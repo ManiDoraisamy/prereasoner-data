@@ -74,6 +74,7 @@ body{font-family:var(--disp);background:var(--grad);color:var(--ink);min-height:
   .hero{flex-direction:column;gap:30px;padding:12px 24px 40px;align-items:center}
   .hero-left{max-width:560px;align-items:center}
   .hero-left .h1{text-align:center}
+  .hero-left .sub{text-align:center}
   .papers{max-width:300px}
 }
 /* analysis screen */
