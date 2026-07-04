@@ -1,0 +1,32 @@
+{
+  "table": "word_element",
+  "key": "name",
+  "concept": [
+    "chemical_element",
+    "element",
+    "metallic_element",
+    "metal",
+    "halogen",
+    "noble_gas",
+    "metalloid",
+    "alkali_metal",
+    "alkaline_earth_metal",
+    "transition_metal",
+    "nonmetal",
+    "rare_earth_element",
+    "actinide",
+    "lanthanide"
+  ],
+  "filter_attrs": [],
+  "links": [],
+  "columns": [
+    "name",
+    "symbol",
+    "atomic_number",
+    "mass",
+    "updated_at",
+    "source"
+  ],
+  "filter_values": {},
+  "source": "Wikidata (live WDQS)"
+}

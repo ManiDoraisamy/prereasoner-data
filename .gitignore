@@ -1,0 +1,36 @@
+# Secrets & local config — never commit
+.env
+*.tfvars
+service-account*.json
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Large model/data artifacts (fetched via scripts — see engine/data/README.md)
+engine/data/*.pt
+engine/data/*.db
+engine/data/*.npz
+engine/data/qwen_lora/
+!engine/data/README.md
+
+# Logs & local state
+*.log
+.firebase/
+firebase-debug.log
+
+# Terraform
+infra/**/.terraform/
+infra/**/*.tfstate
+infra/**/*.tfstate.backup
+infra/**/.terraform.lock.hcl
+
+# Node / tooling
+node_modules/
+
+# OS
+Thumbs.db
+.DS_Store

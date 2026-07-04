@@ -1,0 +1,15 @@
+{
+  /* RTDB = the live reasoning-trace stream. The Cloud Run services (firebase-admin, ADC) WRITE the resolution
+     trace + each view to /runs/{uid}/{jobId} as they compute; the browser SUBSCRIBES and renders slides live,
+     decoupled from the 60s HTTP proxy timeout. Admin writes bypass these rules; a signed-in user may READ only
+     its OWN runs (uid = the verified Firebase uid = the per-user schema sub, so no IDOR). Clients never write. */
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "runs": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid"
+      }
+    }
+  }
+}

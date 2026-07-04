@@ -1,0 +1,94 @@
+# PreReasoner local stack: Postgres (pgvector) + the serving engine.
+#
+#   cp .env.example .env            # set WORLD_PG_PASSWORD (defaults to "devpassword" if unset)
+#   docker compose up --build       # db + engine on http://localhost:8080
+#
+# AUTH_TEST_SUB=localdev is set on the engine so reviewers can call /api/reason and
+# /api/world WITHOUT a Firebase ID token (test-only bypass; never set it in production).
+# RTDB_URL is deliberately NOT set: trace streaming no-ops and responses carry full JSON.
+#
+# One-time database seed (~15-45 min, mostly Wikidata Query Service calls) — the engine
+# resolves nothing until world."words"/"types" etc. are populated. db/ is excluded from
+# the image by .dockerignore, so the dedicated `seed` service below bind-mounts ./db and
+# reuses the engine image (its Python stack already satisfies db/sync/requirements.txt:
+# psycopg2-binary, numpy, torch, transformers). Run it once after `up`:
+#
+#   docker compose --profile seed run --rm seed
+#
+# For the full sync (settlement long tail + aliases; several hours) or per-type syncs,
+# see db/README.md — e.g.:
+#   docker compose --profile seed run --rm seed \
+#     bash -c "python db/sync/sync_wikidata.py --reset && python db/sync/build_world.py && \
+#              python db/sync/build_words.py --cities --city-aliases && python db/sync/sync_types.py"
+
+services:
+  db:
+    image: pgvector/pgvector:pg16   # ships vector + pg_trgm (contrib) — all init.sql needs
+    environment:
+      POSTGRES_DB: world
+      POSTGRES_PASSWORD: ${WORLD_PG_PASSWORD:-devpassword}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Applied automatically on FIRST start of an empty volume; idempotent if re-applied
+      # manually later (docker compose exec -T db psql -U postgres -d world < db/init.sql).
+      - ./db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d world"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  engine:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      WORLD_PG_HOST: db
+      WORLD_PG_PORT: "5432"
+      WORLD_PG_DB: world
+      WORLD_PG_USER: postgres
+      WORLD_PG_PASSWORD: ${WORLD_PG_PASSWORD:-devpassword}
+      WORLD_PG_SSLMODE: prefer        # docker Postgres has no SSL; prefer falls back cleanly
+      AUTH_TEST_SUB: localdev         # local-only Firebase auth bypass — see header comment
+      DEVICE: cpu
+      # RTDB_URL intentionally unset — streaming no-ops locally.
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # One-shot database seeder (profile "seed" keeps it out of `docker compose up`).
+  # Reuses the engine image but overrides the entrypoint: seeding needs no model weights,
+  # so it must not trip the engine's missing-weights startup gate.
+  seed:
+    profiles: ["seed"]
+    build: .
+    entrypoint: []
+    working_dir: /app
+    environment:
+      WORLD_PG_HOST: db
+      WORLD_PG_PORT: "5432"
+      WORLD_PG_DB: world
+      WORLD_PG_USER: postgres
+      WORLD_PG_PASSWORD: ${WORLD_PG_PASSWORD:-devpassword}
+      WORLD_PG_SSLMODE: prefer
+      HF_HOME: /hf                    # persist the bge-small-en-v1.5 download between runs
+    volumes:
+      - ./db:/app/db                  # rw: sync_types.py refreshes db/sync/data/p279_cache.json
+      - hfcache:/hf
+    depends_on:
+      db:
+        condition: service_healthy
+    # Minimal seed (db/README.md §3): countries/currencies/elements + cities pop>=100k,
+    # friendly world tables, the pgvector words index (+HNSW), and the type taxonomy.
+    command: >
+      bash -c "python db/sync/sync_wikidata.py --reset --high-only
+               && python db/sync/build_world.py
+               && python db/sync/build_words.py --cities
+               && python db/sync/sync_types.py
+               && python db/sync/unify_words_qid.py"
+
+volumes:
+  pgdata:
+  hfcache:

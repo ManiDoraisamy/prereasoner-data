@@ -1,0 +1,159 @@
+<!doctype html><html lang=en><head>
+<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Prereasoner - Attach a spreadsheet and ask a question. Watch how our model arrives at the answer.</title>
+<meta name="description" content="AI chatbots can't be trusted with real numbers. You could paste your data into a chatbot, but it might guess the total. You can't tell whether it actually did the math or just made something up. For critical business decisions, "probably right" isn't good enough. Our AI computes the answer and never invents it. Instead of guessing a number the way a chatbot might, it writes out a precise, step-by-step calculation (exactly how a careful analyst would) and runs it on your actual data. So the number is always real and traceable, and it shows you the steps it took to get there.">
+<link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
+<link rel=stylesheet href="styles.css">
+<style>
+.attachbar{flex-wrap:nowrap}
+.chip{min-width:0;cursor:pointer;padding:6px 12px 6px 7px;gap:8px}
+.chip:hover{background:#ece6fb}
+.chip .ic{width:23px;height:23px;font-size:12px}
+.chip .nm{font-weight:600;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+.send{all:unset;cursor:pointer;width:36px;height:36px;border-radius:10px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;margin-left:auto;flex:0 0 auto;box-shadow:0 4px 14px rgba(40,12,140,.30);transition:background .16s,transform .16s}
+.send:hover{background:var(--brand-deep);transform:translateY(-1px)}
+.send svg{width:18px;height:18px}
+/* "+ Add data" menu (Google Sheets / Excel / CSV) */
+.addwrap{position:relative;flex:0 0 auto}
+.addbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;color:var(--brand);font-weight:600;font-size:13px;padding:7px 13px;border-radius:10px;border:1px solid #e5ddfa;background:#faf8ff;transition:background .15s}
+.addbtn:hover{background:#f1ebfd}
+.addbtn .pl{font-size:17px;line-height:1;font-weight:500}
+.addmenu{display:none;position:absolute;bottom:calc(100% + 8px);left:0;background:#fff;border:1px solid #ece6fb;border-radius:12px;box-shadow:0 12px 34px rgba(20,12,48,.18);padding:6px;min-width:196px;z-index:30}
+.addmenu.open{display:block}
+.addmenu button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:9px 11px;border-radius:8px;font-size:13.5px;color:#2a2342;font-weight:500}
+.addmenu button:hover{background:#f3effd}
+.addmenu .mi{width:20px;text-align:center;font-size:15px}
+/* click-to-preview of the attached CSV (spreadsheet) */
+.pbackdrop{display:none;position:fixed;inset:0;background:rgba(20,12,48,.45);z-index:50}
+.preview{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:51;background:#fff;border-radius:14px;max-width:720px;width:92%;max-height:82vh;overflow:auto;box-shadow:0 20px 60px rgba(20,12,48,.35)}
+.preview .ph{position:sticky;top:0;background:#fff;padding:15px 20px;border-bottom:1px solid #efeafa;font:600 13px var(--mono);color:var(--card-ink);z-index:1}
+.preview .ph .c{color:var(--card-ink-dim);font-weight:400}
+.px{position:absolute;top:11px;right:16px;border:0;background:none;font-size:22px;color:#aaa;cursor:pointer;line-height:1;z-index:2}
+.ptab{border-collapse:separate;border-spacing:0;font:13px var(--mono);width:100%}
+.ptab th,.ptab td{border-bottom:1px solid #efeafa;border-right:1px solid #efeafa;padding:6px 11px;text-align:left;color:var(--card-ink);white-space:nowrap}
+.ptab th{background:#f3effd;color:var(--brand);font-weight:600}
+.ptab td.rn,.ptab th.rn{background:#faf9ff;color:#b3acce;text-align:center;width:38px;font-size:11px}
+</style>
+</head><body>
+<div class=page>
+  <div class=hdr><a class=brand href="/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost onclick=loginSoon()>Login</button></div>
+  <div class=hero>
+    <form class=hero-left id=f>
+    <div class=h1>AI model with faithful reasoning</div>
+    <div class=promptcard id=pc>
+      <textarea class=qbox id=q spellcheck=false placeholder="Attach a spreadsheet and ask a question. Watch how our model arrives at the answer.">total amount in France</textarea>
+      <div class=attachbar>
+        <span class=addwrap>
+          <button class=addbtn type=button id=addbtn aria-haspopup=true aria-expanded=false><span class=pl>+</span> Add data</button>
+          <div class=addmenu id=addmenu role=menu>
+            <button type=button data-add=sheets><span class=mi>📊</span> Google Sheets</button>
+            <button type=button data-add=excel><span class=mi>📗</span> Excel (.xlsx)</button>
+            <button type=button data-add=csv><span class=mi>📄</span> CSV</button>
+          </div>
+        </span>
+        <span id=chips style="display:flex;gap:7px;flex-wrap:wrap;min-width:0;align-items:center"></span>
+        <button class=send type=submit aria-label="Ask"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width="2.4" stroke-linecap=round stroke-linejoin=round><line x1=12 y1=20 x2=12 y2=5></line><polyline points="6 11 12 5 18 11"></polyline></svg></button>
+      </div>
+    </div>
+    <div class=err id=err></div>
+  </form>
+    <div class=hero-right>
+      <object class=papers type="image/svg+xml" data="interpretable.svg" aria-label="Anthropic and Prereasoner research papers"></object>
+    </div>
+  </div>
+</div>
+<input type=file id=file accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple style="display:none">
+<div class=pbackdrop id=pbackdrop onclick=closePreview()></div>
+<div class=preview id=preview><button class=px onclick=closePreview() aria-label=Close>&times;</button><div class=ph id=ph></div><div id=ptabwrap></div></div>
+<script src="lib/shared.js"></script>
+<script>
+const CUST='customer_id,name,city,tier\n1,Ada,Paris,gold\n2,Lin,Lyon,silver\n3,Bo,Paris,gold\n4,Sam,Berlin,silver';
+const ORD='order_id,customer_id,amount,status\n101,1,50,shipped\n102,1,30,shipped\n103,2,80,pending\n104,3,20,shipped\n105,3,90,shipped\n106,4,40,pending';
+const $=id=>document.getElementById(id);
+let SHEETS=[{name:'customers.csv',data:CUST},{name:'orders.csv',data:ORD}], isSample=true;  // default = customers+orders; first real upload replaces them
+function loginSoon(){ alert("Sign-in is coming soon. The live version will ask you to log in after you ask."); }
+function renderChips(){
+  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span></span>').join('');
+  [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onclick=()=>openPreview(+el.dataset.i));
+}
+function openPreview(i){
+  const s=SHEETS[i], p=parseCSV(s.data);
+  $('ph').innerHTML=esc(s.name)+' <span class=c>· '+p.rows.length+' rows × '+p.cols.length+' cols</span>';
+  let h='<table class=ptab><tr><th class=rn></th>'+p.cols.map(c=>'<th>'+esc(c.trim())+'</th>').join('')+'</tr>';
+  p.rows.forEach((r,ri)=>{h+='<tr><td class=rn>'+(ri+1)+'</td>'+p.cols.map((c,ci)=>'<td>'+esc(r[ci]==null?'':r[ci])+'</td>').join('')+'</tr>';});
+  $('ptabwrap').innerHTML=h+'</table>';
+  $('preview').style.display='block'; $('pbackdrop').style.display='block';
+}
+function closePreview(){$('preview').style.display='none'; $('pbackdrop').style.display='none';}
+try{                                                       // returning from /sheets: attach the imported Google Sheet + restore the prompt
+  const pend=sessionStorage.getItem(SS.PENDING_SHEETS);
+  if(pend){ const t=JSON.parse(pend); if(t&&t.length){ SHEETS=t; isSample=false; } sessionStorage.removeItem(SS.PENDING_SHEETS); }
+  const pq=sessionStorage.getItem(SS.PENDING_Q);
+  if(pq!=null){ $('q').value=pq; sessionStorage.removeItem(SS.PENDING_Q); }
+}catch(_){}
+renderChips();
+let xlsxLoading=null;                                      // lazy-load SheetJS ONLY when an .xlsx/.xls is attached (CSV-only users download nothing extra)
+function ensureXLSX(){
+  if(window.XLSX)return Promise.resolve();
+  if(!xlsxLoading)xlsxLoading=new Promise((res,rej)=>{const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.onload=res;s.onerror=()=>rej(new Error('could not load the spreadsheet reader'));document.head.appendChild(s);});
+  return xlsxLoading;
+}
+function baseName(n){return (n||'').replace(/\.(csv|tsv|txt|xlsx|xlsm|xls)$/i,'');}
+function addSheet(name,data){if(isSample){SHEETS=[];isSample=false;}SHEETS.push({name:name,data:data});}
+$('file').addEventListener('change',async function(e){     // CSV/TSV read as text; .xlsx/.xls parsed client-side -> ONE table per worksheet (FK-joinable like multi-CSV)
+  const files=[...e.target.files]; if(!files.length)return;
+  $('err').textContent='';
+  for(const f of files){
+    try{
+      if(/\.(xlsx|xlsm|xls)$/i.test(f.name)){
+        await ensureXLSX();
+        const wb=XLSX.read(new Uint8Array(await f.arrayBuffer()),{type:'array'});
+        const used=wb.SheetNames.map(sn=>({sn:sn,csv:XLSX.utils.sheet_to_csv(wb.Sheets[sn])}))
+                                .filter(x=>x.csv.trim().split(/\r?\n/).filter(Boolean).length>=2);
+        if(!used.length){$('err').textContent='“'+f.name+'” has no sheet with a header and a data row.';continue;}
+        used.forEach(x=>addSheet(used.length>1?x.sn:baseName(f.name),x.csv));   // multi-sheet -> one table per sheet
+      }else{
+        addSheet(f.name,await f.text());
+      }
+    }catch(err){$('err').textContent='Could not read “'+f.name+'”: '+((err&&err.message)||err);}
+  }
+  renderChips();
+  e.target.value='';
+});
+$('q').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('f').requestSubmit();}});  // Enter sends, Shift+Enter newline
+$('f').addEventListener('submit',async function(e){
+  e.preventDefault();
+  const q=$('q').value.trim();
+  const valid=SHEETS.filter(s=>s.data.trim().split(/\r?\n/).filter(Boolean).length>=2);
+  if(!valid.length){$('err').textContent='Attach at least one CSV or Excel file with a header row and a data row.';return;}
+  if(!q){$('err').textContent='Type a question about your table.';return;}
+  try{                          // ALL sheets -> /reason (view-stacking composition; delegates plain/world queries to the world path)
+    sessionStorage.setItem(SS.TABLES,JSON.stringify(valid));
+    sessionStorage.setItem(SS.CSV,valid[0].data); sessionStorage.setItem(SS.NAME,valid[0].name);
+    sessionStorage.setItem(SS.Q,q);
+  }catch(_){}
+  location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
+});
+// "+ Add data" menu: Excel/CSV set the file filter then open the picker dialog; Google Sheets -> /sheets (picker)
+const addbtn=$('addbtn'), addmenu=$('addmenu');
+addbtn.onclick=function(e){e.stopPropagation();const o=addmenu.classList.toggle('open');addbtn.setAttribute('aria-expanded',o);};
+document.addEventListener('click',function(){addmenu.classList.remove('open');});
+addmenu.onclick=function(e){e.stopPropagation();};
+[...addmenu.querySelectorAll('button')].forEach(b=>b.onclick=function(){
+  addmenu.classList.remove('open');
+  const kind=b.dataset.add;
+  if(kind==='sheets'){
+    try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value); }catch(_){}   // preserve the typed prompt across the picker round-trip
+    location.href='sheets';                                   // pick a sheet -> returns to home with it attached as a chip
+  } else {
+    $('file').setAttribute('accept', kind==='excel'
+      ? '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : '.csv,.tsv,.txt,text/csv,text/plain');
+    $('file').click();
+  }
+});
+try{ fetch(API_BASE+'/api/reason',{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // home -> /reason: pre-warm that backend
+</script></body></html>

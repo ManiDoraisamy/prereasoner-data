@@ -1,0 +1,101 @@
+<!doctype html><html lang=en><head>
+<meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<title>Prereasoner · import a Google Sheet</title>
+<link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
+<link rel=stylesheet href="styles.css">
+<style>
+.wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:24px}
+.sp{width:34px;height:34px;border:3px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.msg{color:#fff;font:600 18px/1.5 var(--mono,'JetBrains Mono',monospace);max-width:460px}
+.sub{color:rgba(255,255,255,.72);font:400 13px/1.6 var(--mono,'JetBrains Mono',monospace);max-width:440px}
+.row{display:flex;gap:10px;margin-top:6px}
+.btn{all:unset;cursor:pointer;background:#fff;color:var(--brand,#5b3df5);font-weight:600;font-size:14px;padding:11px 22px;border-radius:11px;box-shadow:0 6px 18px rgba(20,12,48,.22)}
+.btn.ghost{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.4);box-shadow:none}
+</style>
+</head><body>
+<div class=wrap>
+  <div class=sp id=sp></div>
+  <div class=msg id=msg>Connecting to Google…</div>
+  <div class=sub id=sub>Pick a sheet to analyze — we read only the one you choose (no access to the rest of your Drive).</div>
+  <div class=row id=actions style="display:none">
+    <button class=btn id=pick>Choose a Google Sheet</button>
+    <button class="btn ghost" id=home>Back</button>
+  </div>
+</div>
+<script src="lib/shared.js"></script>
+<script>
+// Load the Picker from a CLASSIC script via api.js?onload — calling gapi.load from inside the ES module below
+// ran before gapi finished initializing and threw "u[v] is not a function". onload guarantees gapi is ready.
+window.__pickerReady = false;
+function __gapiOnLoad(){ gapi.load('picker', function(){ window.__pickerReady = true; }); }
+</script>
+<script src="https://apis.google.com/js/api.js?onload=__gapiOnLoad"></script>
+<script type="module">
+// One-shot Google Sheets import. Firebase signInWithRedirect adds the NARROW drive.file scope (only files the
+// user picks) and returns an OAuth access token via the credential — same-tab redirect, so no popup blockers and
+// it reuses the same Google session as /world. The Picker chooses ONE sheet; we read it ONCE with that token
+// (no service account / collaborator), convert each tab to CSV, and hand off to home via sessionStorage.
+// Firebase app/auth init is shared (lib/firebase-init.js); the Picker credentials live in lib/config.js.
+import { auth } from "./lib/firebase-init.js";
+import { PICKER_API_KEY, PICKER_APP_ID } from "./lib/config.js";
+import { GoogleAuthProvider, signInWithRedirect, getRedirectResult } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+const SCOPE = "https://www.googleapis.com/auth/drive.file";
+const $ = id => document.getElementById(id);
+// the Picker module is loaded by __gapiOnLoad (api.js?onload, classic script) -> window.__pickerReady
+
+function setMsg(m, s){ $("msg").textContent = m; if (s !== undefined) $("sub").textContent = s; }
+function busy(m){ $("actions").style.display = "none"; $("sp").style.display = "block"; setMsg(m, ""); }
+function fail(m){ $("sp").style.display = "none"; setMsg(m, "Pick a sheet to analyze — we read only the one you choose."); $("actions").style.display = "flex"; }
+$("home").onclick = () => location.href = "/";
+function startAuth(){ busy("Connecting to Google…"); const p = new GoogleAuthProvider(); p.addScope(SCOPE); signInWithRedirect(auth, p); }
+$("pick").onclick = startAuth;
+
+function api(token, url){ return fetch(url, { headers:{ Authorization:"Bearer " + token } }).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }); }
+function toCSV(rows){ return (rows||[]).map(r => (r||[]).map(c => { c = (c==null?"":String(c)); return /[",\n]/.test(c) ? '"'+c.replace(/"/g,'""')+'"' : c; }).join(",")).join("\n"); }
+function nonEmpty(rows){ return (rows||[]).filter(r => r && r.some(c => String(c==null?"":c).trim()!=="")).length >= 2; }
+
+function openPicker(token){
+  const go = () => { if (!window.__pickerReady) return setTimeout(go, 120);
+    setMsg("Choose a Google Sheet…", "");
+    const view = new google.picker.View(google.picker.ViewId.SPREADSHEETS);
+    const picker = new google.picker.PickerBuilder().addView(view)
+      .setOAuthToken(token).setDeveloperKey(PICKER_API_KEY).setAppId(PICKER_APP_ID)
+      .setOrigin(location.protocol + "//" + location.host)
+      .setCallback(d => onPick(token, d)).build();
+    picker.setVisible(true);
+  }; go();
+}
+
+async function onPick(token, data){
+  const A = google.picker.Action;
+  if (data.action === A.CANCELLED){ fail("No sheet selected."); return; }
+  if (data.action !== A.PICKED) return;
+  const doc = data.docs[0], id = doc.id, title = doc.name || "sheet";
+  busy("Reading “" + title + "”…");
+  try{
+    const meta = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id + "?fields=properties.title,sheets.properties.title");
+    const tabs = ((meta.sheets||[]).map(s => s.properties && s.properties.title).filter(Boolean));
+    const tables = [];
+    for (const t of tabs){
+      const range = "'" + t.replace(/'/g, "''") + "'";
+      const vr = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id + "/values/" + encodeURIComponent(range) + "?valueRenderOption=UNFORMATTED_VALUE");
+      if (nonEmpty(vr.values)) tables.push({ name: tabs.length > 1 ? t : title, data: toCSV(vr.values) });
+    }
+    if (!tables.length){ fail("“" + title + "” has no tab with a header and a data row."); return; }
+    sessionStorage.setItem(SS.PENDING_SHEETS, JSON.stringify(tables));   // hand the sheet back to the home page as an attachment
+    location.href = "/";                                     // home shows it as a chip; user edits the prompt, then clicks the arrow
+  }catch(e){ fail("Could not read the sheet: " + ((e && e.message) || e)); }
+}
+
+(async () => {
+  let res = null;
+  try { res = await getRedirectResult(auth); }
+  catch (e) { fail("Google sign-in failed: " + ((e && e.message) || e)); return; }
+  const cred = res ? GoogleAuthProvider.credentialFromResult(res) : null;
+  if (cred && cred.accessToken){ busy("Opening the picker…"); openPicker(cred.accessToken); return; }
+  startAuth();                                                // first visit: redirect to Google for the drive.file token (same-tab)
+})();
+</script>
+</body></html>

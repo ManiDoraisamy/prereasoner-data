@@ -1,0 +1,53 @@
+"""
+gen20 — FULL SCHEMA MIRROR (Mani: "full mirror of schema, data lazy"). For every CONCRETE accepted/added taxonomy
+leaf, discover its real Wikidata property schema and CREATE world."<type>" (columns = the type's Wikidata properties).
+Data is NOT bulk-loaded — it fills lazily via sync_wikidata_world.lazy_resolve when a CSV cell misses in world.words.
+
+Abstract leaves (legal form, taxonomic rank, anthroponym, "person or organization", macrofamily, administrative
+territorial entity, a recurring-time-interval class, a specific species) are SKIPPED — they aren't world-entity tables.
+
+  $env:WORLD_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-world-pg-password --project prereasoner-inference)
+  $env:PYTHONUTF8=1; python -m training.world.mirror_world_schema
+"""
+from __future__ import annotations
+import csv
+import sys
+from pathlib import Path
+
+from training.world.sync_wikidata_world import discover, ensure_table, snake
+from training.lib.pg import _pg
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+# abstract / non-entity leaves — NOT world tables
+SKIP = {"Q10541491", "Q11862829", "Q427626", "Q10856962", "Q106559804", "Q949344",
+        "Q56061", "Q138341612", "Q11618417", "Q726"}
+
+
+def leaf_label(r):
+    cats = [r[f"category_{i}"] for i in range(1, 10) if r.get(f"category_{i}")]
+    return cats[-1] if cats else r["qid"]
+
+
+def main():
+    rows = [r for r in csv.DictReader(open(ROOT / "training/data/taxonomy.csv", encoding="utf-8"))
+            if r.get("status") in ("accepted", "added")]
+    conn = _pg(); conn.autocommit = True; cur = conn.cursor()
+    done = skip = fail = 0
+    for r in rows:
+        qid = r["qid"]; label = snake(leaf_label(r))
+        if qid in SKIP:
+            print(f"  SKIP abstract {label} ({qid})", flush=True); skip += 1; continue
+        try:
+            props = discover(qid)
+            if not props:
+                print(f"  skip {label}: no real-attribute properties", flush=True); skip += 1; continue
+            ensure_table(cur, label, props)
+            print(f"  OK  {label:28s} {len(props)} cols: {[c for _p, c, _l, _t in props][:6]}...", flush=True); done += 1
+        except Exception as e:                                # noqa: BLE001 — one flaky WDQS type shouldn't abort the mirror
+            print(f"  FAIL {label}: {type(e).__name__} {e}", flush=True); fail += 1
+    print(f"\nSCHEMA MIRROR: {done} faithful tables created, {skip} skipped (abstract/empty), {fail} failed", flush=True)
+    return 1 if done == 0 else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

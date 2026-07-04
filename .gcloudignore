@@ -1,0 +1,17 @@
+# Upload list for `gcloud builds submit` (cloudbuild.yaml).
+#
+# CRITICAL: without this file, gcloud derives its ignore list from .gitignore, which
+# excludes the model weights (engine/data/*.pt, *.npz, qwen_lora/) — the built image
+# would then fail at container start. This file keeps engine/ (weights included) in the
+# upload and trims everything the Docker build doesn't need, mirroring .dockerignore.
+.git
+.github
+.env
+docs/
+infra/
+tests/
+training/
+web/
+db/
+**/__pycache__/
+*.pyc

@@ -1,0 +1,56 @@
+{
+  "table": "word_state",
+  "key": "name",
+  "concept": [
+    "american_state",
+    "australian_state",
+    "italian_region",
+    "state",
+    "province",
+    "county",
+    "prefecture",
+    "department",
+    "oblast",
+    "canton",
+    "governorate",
+    "territory",
+    "federal_state",
+    "autonomous_community",
+    "u.s._state",
+    "us_state",
+    "indian_state",
+    "german_state",
+    "canadian_province"
+  ],
+  "filter_attrs": [
+    "country"
+  ],
+  "links": [
+    {
+      "col": "country",
+      "to_table": "word_country",
+      "to_col": "name"
+    }
+  ],
+  "columns": [
+    "name",
+    "country",
+    "population",
+    "level",
+    "updated_at",
+    "source"
+  ],
+  "filter_values": {
+    "country": [
+      "Australia",
+      "Canada",
+      "France",
+      "Germany",
+      "India",
+      "Italy",
+      "United Kingdom",
+      "United States"
+    ]
+  },
+  "source": "Wikidata (live WDQS)"
+}

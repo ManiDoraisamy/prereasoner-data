@@ -1,0 +1,73 @@
+# PreReasoner CI — cheap structural checks only.
+#
+# Deliberately NOT here:
+#   - docker build / pip install of requirements.txt: torch+transformers+spacy is a
+#     multi-GB install, and the model weights (engine/data/*.pt, *.npz, qwen_lora/) are
+#     gitignored, so a CI checkout can never produce a runnable image anyway. The image
+#     is built where the weights live: `gcloud builds submit` (see cloudbuild.yaml).
+#   - live tests: tests/ needs a seeded Postgres + the full model stack (tests/README.md).
+#
+# What CI *can* verify from a bare checkout: every Python file compiles, the frontend
+# JS parses, the Firebase JSON configs are valid JSON, and the Terraform is well-formed.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python-compile:
+    name: Python syntax (engine, db, training, tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # compileall = py_compile over every file; -q prints only failures, nonzero exit on any.
+      # No dependencies installed on purpose (see header comment).
+      - name: py_compile all python sources
+        run: python -m compileall -q engine db training tests
+
+  web-static:
+    name: Web JS parse + Firebase config JSON
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: node --check frontend libs
+        run: |
+          set -e
+          for f in web/public/lib/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+      # database.rules.json is JSONC (Firebase tooling allows /* */ comments in rules
+      # files), so strip block comments before the strict JSON.parse.
+      - name: validate firebase.json / database.rules.json
+        run: |
+          set -e
+          node -e "JSON.parse(require('fs').readFileSync('web/firebase.json', 'utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('web/database.rules.json', 'utf8').replace(/\/\*[\s\S]*?\*\//g, ''))"
+          echo "firebase configs OK"
+
+  terraform:
+    name: Terraform fmt + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff infra
+      # -backend=false: no state backend, no cloud credentials — pure config validation.
+      - name: terraform validate
+        working-directory: infra
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate

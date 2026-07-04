@@ -1,0 +1,32 @@
+{
+  "hosting": {
+    "public": "public",
+    "cleanUrls": true,
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/api/**",
+        "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.@(html|css|svg|js)",
+        "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]
+      }
+    ]
+  },
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "emulators": {
+    "hosting": { "port": 5000 },
+    "auth": { "port": 9099 },
+    "database": { "port": 9000 },
+    "ui": { "enabled": true }
+  }
+}

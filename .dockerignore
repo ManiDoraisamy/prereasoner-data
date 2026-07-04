@@ -1,0 +1,21 @@
+# The image ships ONLY the serving engine + its requirements.
+# db/ is deliberately excluded — the compose "seed" service bind-mounts ./db instead,
+# so seed-script changes never invalidate the image.
+.git
+.gitignore
+.env
+.env.example
+.github
+.dockerignore
+Dockerfile
+docker-compose.yml
+cloudbuild.yaml
+db
+docs
+infra
+tests
+training
+web
+LICENSE
+**/__pycache__
+**/*.pyc

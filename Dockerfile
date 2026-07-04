@@ -1,0 +1,81 @@
+# syntax=docker/dockerfile:1
+# PreReasoner serving engine.
+#
+#   docker build -t prereasoner-engine .
+#   docker run -p 8080:8080 -e WORLD_PG_HOST=... -e WORLD_PG_PASSWORD=... prereasoner-engine
+#
+# Two-stage build: the builder stage installs the (large, CPU-only) Python stack into a
+# self-contained venv; the runtime stage copies just the venv + the engine package. This
+# drops pip's wheel/build leftovers and keeps a single apt layer out of the final image.
+#
+# Model weights (engine/data/encoder.pt, encoder_meta.pt, primitives.npz,
+# anchor_assignment.npz, qwen_lora/) are GITIGNORED: present in a full working copy,
+# absent in a fresh clone/CI. `COPY engine/` succeeds either way, so the *build* never
+# fails on missing weights — instead the entrypoint checks for them at container START
+# and exits with a clear, actionable message. See engine/data/README.md.
+
+# ---------- builder: resolve + install the full serving stack ----------
+FROM python:3.11-slim AS builder
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# requirements.txt pins the CPU torch wheel via its own --extra-index-url line and
+# installs spaCy's en_core_web_md straight from the release wheel (no post-install
+# `spacy download` step needed — but keep the assertion below so a future requirements
+# edit that drops the model wheel fails the build, not the first request).
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt \
+ && python -c "import spacy; spacy.load('en_core_web_md')"
+
+# ---------- runtime ----------
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    # HF cache for the base Qwen model / tokenizer downloads at first load.
+    HF_HOME=/tmp/hf
+
+WORKDIR /app
+
+COPY --from=builder /opt/venv /opt/venv
+
+# engine/ includes engine/data/* when the weights exist locally; in a fresh clone only
+# the small committed artifacts (alloc.json, taxonomy.csv, thresholds, word_*.json) come along.
+COPY engine/ /app/engine/
+
+# Startup gate: verify the gitignored model artifacts are actually in the image (or in a
+# mounted PREREASONER_DATA_DIR) BEFORE handing off to the server, so a weights-less image
+# fails fast with instructions instead of a torch FileNotFoundError stack trace.
+COPY <<'EOF' /app/entrypoint.sh
+#!/bin/sh
+set -e
+DATA_DIR="${PREREASONER_DATA_DIR:-/app/engine/data}"
+missing=""
+for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora; do
+    [ -e "$DATA_DIR/$f" ] || missing="$missing $f"
+done
+if [ -n "$missing" ]; then
+    echo "FATAL: PreReasoner model artifacts are missing from $DATA_DIR:" >&2
+    echo "   $missing" >&2
+    echo "" >&2
+    echo "These files are gitignored (large binaries) and were not present when the image" >&2
+    echo "was built. To fix, either:" >&2
+    echo "  1. Place the artifacts in engine/data/ and rebuild the image" >&2
+    echo "     (see engine/data/README.md for the full artifact list), or" >&2
+    echo "  2. Mount a directory containing them and set PREREASONER_DATA_DIR, e.g." >&2
+    echo "     docker run -v /path/to/data:/data -e PREREASONER_DATA_DIR=/data ..." >&2
+    exit 1
+fi
+exec "$@"
+EOF
+RUN chmod +x /app/entrypoint.sh
+
+EXPOSE 8080
+
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "-m", "engine.server"]

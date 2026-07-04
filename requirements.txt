@@ -1,0 +1,17 @@
+# PreReasoner engine — SERVING dependencies (CPU), version-pinned.
+#   pip install -r requirements.txt
+# torch is the CPU build (the extra index below); serving is CPU-only by default (DEVICE=cpu).
+# spaCy needs the en_core_web_md model — installed here straight from the release wheel.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1
+transformers==4.46.3
+tokenizers>=0.20,<0.21
+safetensors>=0.4
+accelerate>=0.34
+peft>=0.13                      # loads the qwen_lora adapter onto the base Qwen encoder
+numpy==1.26.4
+psycopg2-binary>=2.9            # live world Postgres (pgvector)
+firebase-admin>=6.5             # auth token verification + optional RTDB trace streaming
+spacy==3.8.13                   # entity-surface candidates for prompt resolution
+click>=8.1                      # spaCy 3.8's package init imports its CLI (spacy.cli), which needs click at runtime
+en_core_web_md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl

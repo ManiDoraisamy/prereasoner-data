@@ -1,0 +1,12 @@
+# db/sync — standalone world-database bootstrap/sync scripts.
+psycopg2-binary>=2.9
+numpy>=1.24
+
+# build_words.py / sync_types.py / sync_entity.py embed labels with bge-small-en-v1.5 (CPU is fine):
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.1
+transformers>=4.40
+
+# import_dump.py ONLY (the legacy HF parquet dump path; not needed for the WDQS sync):
+# huggingface_hub>=0.23
+# pyarrow>=15
