@@ -31,18 +31,31 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt \
  && python -c "import spacy; spacy.load('en_core_web_md')"
 
+# Pre-bake the Hugging Face models the engine loads at startup (the Qwen encoder base)
+# and at first embedding (bge-small). Cloud Run containers must NOT download models at
+# boot — the startup probe times out and HF rate limits unauthenticated pulls.
+ENV HF_HOME=/opt/hf
+RUN python - <<'PY'
+from transformers import AutoModel, AutoTokenizer
+for mid in ("Qwen/Qwen2.5-0.5B", "BAAI/bge-small-en-v1.5"):
+    AutoModel.from_pretrained(mid); AutoTokenizer.from_pretrained(mid)
+PY
+
 # ---------- runtime ----------
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
-    # HF cache for the base Qwen model / tokenizer downloads at first load.
-    HF_HOME=/tmp/hf
+    # Baked-in HF cache (builder stage); never touch the network for models at runtime.
+    HF_HOME=/opt/hf \
+    HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
 
 WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /opt/hf /opt/hf
 
 # engine/ includes engine/data/* when the weights exist locally; in a fresh clone only
 # the small committed artifacts (alloc.json, taxonomy.csv, thresholds, word_*.json) come along.

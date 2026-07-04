@@ -6,7 +6,7 @@
   POST /api/world     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth + trace
                         contract as /api/reason; both routes share ONE WorldReasoner instance.
   POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, no auth).
-  GET  /healthz       — liveness (+ whether the models finished loading).
+  GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
 
 Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?} + header
 Authorization: Bearer <Firebase ID token>. For dimension: {data, mode:'analyze'}.
@@ -55,7 +55,9 @@ class H(BaseHTTPRequestHandler):
         self.send_response(204); self._cors(); self.send_header("Content-Length", "0"); self.end_headers()
 
     def do_GET(self):
-        if self.path.rstrip("/") == "/healthz":
+        # /api/healthz is an alias: Google's front end reserves /healthz on *.run.app
+        # domains (answers 404 itself), so external monitors must use the /api/ path.
+        if self.path.rstrip("/") in ("/healthz", "/api/healthz"):
             self._send(200, json.dumps({"ok": MODEL is not None and DIM_MODEL is not None,
                                         "reason": MODEL is not None, "world": MODEL is not None,
                                         "dimension": DIM_MODEL is not None}))
