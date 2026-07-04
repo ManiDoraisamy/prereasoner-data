@@ -43,6 +43,12 @@ window.subscribeRun = (uid, jobId, cb) => {
 // redirect if we are returning from Google, otherwise starts one. Resolves to the uid when
 // signed in (also published as window.__uid), or null when the page is about to navigate away.
 export async function ensureSignedIn(){
+  // LOCAL DEV bypass (localhost only): sessionStorage.setItem('pr_test_auth','1') skips Google
+  // sign-in and sends a dummy bearer token. Pair with AUTH_TEST_SUB on the engine, which then
+  // skips token verification. Has no effect on any deployed origin.
+  if ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') && sessionStorage.getItem('pr_test_auth')) {
+    window.ensureToken = async () => 'local-dev'; window.__uid = 'local-dev'; return 'local-dev';
+  }
   try { await getRedirectResult(auth); } catch (e) {}   // completes the sign-in when returning from Google
   await auth.authStateReady();
   if (!auth.currentUser) { await signInWithRedirect(auth, new GoogleAuthProvider()); return null; }  // -> Google -> back here

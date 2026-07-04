@@ -122,3 +122,17 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   config literal appears only in `lib/config.js`.
 - `node --check` passes on both classic libs, both ES-module libs, every inline script of every
   page (classic and module extracted and parsed separately), and `tests/regression.js`.
+
+## Post-E2E fixes (2026-07-04, verified in real Chrome against a local engine + live Cloud SQL)
+
+- **Early JSON fallback** (reason.html, world.html): the POST body is parsed once
+  (`parseBody`) and raced against the stream — if the body lands and the stream shows no
+  life for 3 s, `renderFromJSON` fires immediately instead of waiting for the 90 s safety
+  net (which remains, with its cold-start retries, now consuming the same parsed promise).
+  Verified: result renders seconds after the engine responds with RTDB disabled.
+- **`API_BASE` is now a localStorage override** (`pr_api_base`), not a source edit — local
+  testing no longer requires touching lib/shared.js.
+- **Auth bypass for local testing** (`sessionStorage pr_test_auth`, firebase-init.js) is
+  gated to localhost hostnames and pairs with the engine's `AUTH_TEST_SUB`.
+- E2E verified: index demo (France = 270 with full join→world→filter→aggregate trace),
+  world page (France cities), clarify flow, info panel, 404, sheets (up to Google Picker).

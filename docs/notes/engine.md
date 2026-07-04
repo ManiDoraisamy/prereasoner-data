@@ -146,3 +146,11 @@ adapter (`base_model_name_or_path: Qwen/Qwen2.5-0.5B`).
 - The engine still initializes firebase-admin via ADC for token verification even when `RTDB_URL` is unset;
   serving `/api/reason`/`/api/world` therefore needs Google credentials unless `AUTH_TEST_SUB` is set.
 - `tests/test_nongeo.py` / lazy fill hit live Wikidata (WDQS + API) — network-dependent and slow by design.
+
+## Post-E2E fix (2026-07-04)
+
+- `world_query._clarify`: never surface a raw Wikidata QID as the proposed entity in the
+  human-facing rephrase ("cities in Q734" bug, found in real-Chrome E2E). Root cause: some
+  live `world."words"` rows carry a bare QID as `canonical`; the rephrase now drops the
+  entity instead (the degenerate-query fallback applies). The words-table data gap itself
+  is a db/sync concern (see docs/notes/db.md).

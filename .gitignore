@@ -21,6 +21,7 @@ engine/data/qwen_lora/
 *.log
 .firebase/
 firebase-debug.log
+.claude/
 
 # Terraform
 infra/**/.terraform/

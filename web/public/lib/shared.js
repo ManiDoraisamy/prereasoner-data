@@ -4,10 +4,11 @@
 
 // Where the pages talk to the engine. '' = same origin, i.e. the /api/** rewrite in
 // firebase.json (Firebase Hosting -> the "prereasoner-api" Cloud Run service).
-// LOCAL DEV: point this at a locally running engine, e.g. 'http://localhost:8080'
-// (the engine must then allow CORS from your dev origin) — the Firebase Hosting
-// emulator proxies /api/** to the DEPLOYED Cloud Run service, not to localhost.
-const API_BASE = '';
+// LOCAL DEV: the Firebase Hosting emulator proxies /api/** to the DEPLOYED Cloud Run
+// service, not to localhost — so to test against a locally running engine, run once
+// in the browser console:  localStorage.setItem('pr_api_base','http://localhost:8080')
+// (the engine sends permissive CORS). Remove the key to return to same-origin.
+const API_BASE = localStorage.getItem('pr_api_base') || '';
 
 // sessionStorage keys — the only state handed between pages (tables, question, clarify payload).
 const SS = {

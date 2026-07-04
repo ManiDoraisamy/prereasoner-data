@@ -595,7 +595,9 @@ class WorldQuery(EncoderQuery, EntityQuery):
         if not content:
             return None
         ent = self._best_world_entity(content)               # ('german','Germany','country',0.70) | None
-        ent_tok = ent[0] if ent else None
+        if ent and _re.fullmatch(r"[Qq]\d+", str(ent[1] or "")):
+            ent = None                                       # words row whose canonical is a raw Wikidata QID (data
+        ent_tok = ent[0] if ent else None                    # gap): never surface a QID in a human-facing rephrase
         _, scores = self.read_op_model(norm, question, fks)
         sum_s, avg_s, cnt_s = scores.get("SUM", 0.0), scores.get("AVG", 0.0), scores.get("COUNT", 0.0)
         nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]

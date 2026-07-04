@@ -203,8 +203,9 @@ async function run(){
   // (1) kick off the job FIRE-AND-FORGET: the answer arrives via RTDB, not this response. A cold-start 503/HTML or a
   // 60s proxy timeout on a slow lazy Wikidata fill is harmless — we never await the body on the streaming path. We KEEP
   // the promise so the FALLBACK can await it if RTDB never reports a status.
+  const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
   const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-                                    body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).catch(()=>null);
+                                    body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).then(parseBody).catch(()=>null);
   // (2) subscribe to the live trace. Streamed views -> appendView (view mode); status drives the thinking/lock states.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
@@ -219,6 +220,15 @@ async function run(){
       onError:e=>{ if(SETTLED)return; fail(e||'the model reported an error'); settle(); },
     });
   }
+  // (2b) EARLY FALLBACK: the POST body only arrives when the job is COMPLETE, so if it lands and the
+  // stream has shown no life shortly after, streaming is unavailable (RTDB unset or unreachable) —
+  // render the JSON now instead of holding the loading slide until the 90s safety net below.
+  httpPromise.then(async j=>{
+    if(!j||SETTLED||DONE)return;
+    await new Promise(res=>setTimeout(res,3000));             // grace: a merely-lagging stream still wins
+    if(SETTLED||DONE||VIEWS.length||RESOLVES.length)return;
+    renderFromJSON(j);
+  });
   // (3) FALLBACK: if RTDB never reports a status within ~90s (RTDB down, or backend not streaming), AWAIT the HTTP
   // body and render from the full JSON exactly as before — the endpoint still returns {sql, result, dims, clarify}.
   setTimeout(async()=>{
@@ -226,8 +236,8 @@ async function run(){
     let j=null;
     for(let attempt=1; attempt<=5 && !j && !SETTLED && !DONE; attempt++){          // cold-start retry on the fallback path
       try{
-        const r=attempt===1?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})});
-        if(r&&r.ok){ const txt=await r.text(); if(txt.trim().charAt(0)==='{'){ j=JSON.parse(txt); break; } }
+        j=attempt===1?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).then(parseBody);
+        if(j)break;
       }catch(e){}
       loadingSlide('Warming up the model (~1 min on first use)…');
       await new Promise(res=>setTimeout(res, attempt<=2?5000:9000));

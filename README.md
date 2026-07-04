@@ -30,7 +30,7 @@ The trained weights (`encoder.pt` ~70 MB, `encoder_meta.pt`, `qwen_lora/`) are n
 git. Place them in `engine/data/` — see [engine/data/README.md](engine/data/README.md) for the
 artifact table and download location. <!-- TODO before publish: upload artifacts to Hugging Face Hub and link here. -->
 
-## Run it locally (no GCP account needed)
+## Run and test it locally (no GCP account needed)
 
 ```bash
 cp .env.example .env          # defaults are fine for local
@@ -42,12 +42,16 @@ Then ask a question (local mode bypasses Firebase auth via `AUTH_TEST_SUB`):
 
 ```bash
 curl -s localhost:8080/api/reason -X POST -H "Content-Type: application/json" \
+  -H "Authorization: Bearer dev" \
   -d '{"tables":[{"name":"cities","data":"city,population\nParis,2100000\nLyon,520000"}],
        "question":"which city has the largest population?"}'
 ```
 
-Details, seeding options, and the frontend emulator workflow: [db/README.md](db/README.md) and
-[web/README.md](web/README.md).
+**[docs/TESTING.md](docs/TESTING.md) is the full local test guide**: running the engine
+without Docker (`python -m engine.server`), testing every endpoint with curl, driving the
+web UI in a browser against the local engine (two console toggles — no Google sign-in, no
+deploy), the browser regression suite, and the end-to-end Python suites. Database seeding
+options are in [db/README.md](db/README.md), frontend details in [web/README.md](web/README.md).
 
 ## Deploy on your own GCP project
 

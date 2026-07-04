@@ -74,10 +74,20 @@ Notes on what the emulator does and does not give you — honestly:
 - **Pages, auth, RTDB** run locally.
 - **`/api/**` rewrites are proxied to the real, deployed Cloud Run service** in the project you
   selected with `firebase use`. The hosting emulator cannot proxy a `run:` rewrite to localhost.
-- **To point the pages at a locally running engine**, set `API_BASE` at the top of
-  `public/lib/shared.js` to e.g. `'http://localhost:8080'`. The pages then call
-  `http://localhost:8080/api/reason` etc. directly — your local engine must serve those paths
-  and allow CORS from your dev origin (`http://localhost:5000`).
+- **To point the pages at a locally running engine**, run once in the browser console:
+  ```js
+  localStorage.setItem('pr_api_base', 'http://localhost:8080')
+  ```
+  Every page then calls `http://localhost:8080/api/...` directly (the engine sends permissive
+  CORS). `localStorage.removeItem('pr_api_base')` returns to the same-origin rewrite.
+- **To skip Google sign-in entirely** (works on `localhost` only), run the engine with
+  `AUTH_TEST_SUB=localdev` and set in the browser console:
+  ```js
+  sessionStorage.setItem('pr_test_auth', '1')
+  ```
+  The pages then send a dummy bearer token that the engine accepts without verification.
+  Both toggles together give a fully local, no-Google, no-deploy test loop — see
+  [docs/TESTING.md](../docs/TESTING.md) for the end-to-end recipe.
 - Sign-in against the **production** Google identity works on `localhost` only if `localhost`
   is in the Firebase Auth authorized domains (it is by default for new projects).
 
