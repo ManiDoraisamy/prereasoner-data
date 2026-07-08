@@ -5,15 +5,14 @@
 > the code (`runtime20/*`, `/reason`, `/world`, the `world.words` / `wikipedia."<type>"` schema)
 > before acting. Code wins where this doc disagrees.
 >
-> **Honest scope of this version (state it, don't hide it):** in v1 the LLM does the
+> **Scope of this version:** in v1 the LLM does the
 > *decomposition* — it decides how a multi-hop question breaks into steps. That decomposition
 > happens inside the LLM's forward pass and is **not auditable**. PreReasoner makes each
 > **execution** auditable (every step it runs emits a trace), but the **plan** that chose those
 > steps is a black-box LLM output. So v1 delivers *interpretable execution, opaque reasoning*.
 > That is a real and shippable improvement over a pure LLM (the numbers are derived, not guessed),
 > but it is **not** the full auditability claim. The full claim requires v2 (see `mcp-future.md`),
-> where PreReasoner derives the plan too. Do not let v1 marketing overstate this: v1 is "the
-> numbers are computed and checkable," not "the reasoning is auditable."
+> where PreReasoner derives the plan too.
 
 ---
 
@@ -105,13 +104,13 @@ handled explicitly in the MCP tool description and the orchestrator system promp
    orchestrator override it.
 
 Encode 1–4 in **both** the MCP tool description (so any orchestrator sees them) and a recommended
-system-prompt snippet shipped with the server. The honest limit: you cannot *guarantee* the LLM
+system-prompt snippet shipped with the server. The limit: you cannot *guarantee* the LLM
 calls the tool — that is v1's irreducible weakness, and it is the reason v2 exists. Make deferral
 the default and make bypass expensive; do not claim it is impossible to bypass.
 
 ---
 
-## Multi-hop in v1 (the part that is NOT auditable, handled honestly)
+## Multi-hop in v1 (the part that is NOT auditable)
 
 For "second name of the third person in gold tier" — a multi-hop question — v1 has the LLM
 **decompose** it into a sequence of `prereasoner_query` calls (resolve gold-tier set → order →
@@ -157,8 +156,7 @@ decomposition needs to be auditable, the answer is to **derive** it (v2), not to
 
 - An LLM orchestrator (via MCP) can: upload user data, ask a single-hop question, and get back a
   value + SQL + resolution-with-candidates + live trace.
-- A multi-hop question executes as a sequence of auditable single-hop calls, with the sequence
-  shown to the user and the **decomposition honestly labeled as LLM-chosen, not derived**.
+- A multi-hop question executes as a sequence of auditable single-hop calls
 - `clarify`/`unresolved` pass through to the user intact in an adversarial test (a deliberately
   ambiguous query does not get a confabulated answer).
 - The routing-discipline rules (1–4) are present in both the tool description and the shipped
