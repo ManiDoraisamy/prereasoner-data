@@ -49,9 +49,22 @@ export async function ensureSignedIn(){
   if ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') && sessionStorage.getItem('pr_test_auth')) {
     window.ensureToken = async () => 'local-dev'; window.__uid = 'local-dev'; return 'local-dev';
   }
-  try { await getRedirectResult(auth); } catch (e) {}   // completes the sign-in when returning from Google
+  let redirectErr = null;
+  try { await getRedirectResult(auth); } catch (e) { redirectErr = e; }   // completes the sign-in when returning from Google
   await auth.authStateReady();
-  if (!auth.currentUser) { await signInWithRedirect(auth, new GoogleAuthProvider()); return null; }  // -> Google -> back here
+  if (!auth.currentUser) {
+    // LOOP BREAKER: if we set the pending flag before redirecting and came back STILL signed
+    // out, the redirect flow failed (cancelled, or the browser dropped the pending sign-in).
+    // Never re-redirect in that state — throw so the page can show a retry UI instead of
+    // bouncing the user to the Google account chooser forever.
+    if (sessionStorage.getItem('pr_auth_pending')) {
+      sessionStorage.removeItem('pr_auth_pending');
+      throw new Error('Google sign-in did not complete' + (redirectErr ? ` (${redirectErr.code || redirectErr.message})` : '') + ' — please try again.');
+    }
+    sessionStorage.setItem('pr_auth_pending', '1');
+    await signInWithRedirect(auth, new GoogleAuthProvider()); return null;  // -> Google -> back here
+  }
+  sessionStorage.removeItem('pr_auth_pending');
   window.__uid = auth.currentUser.uid;
   return auth.currentUser.uid;
 }

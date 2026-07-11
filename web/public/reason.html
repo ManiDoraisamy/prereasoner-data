@@ -1,77 +1,112 @@
 <!doctype html><html lang=en><head>
 <meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
-<title>Prereasoner · reasoning</title>
+<title>Prereasoner · workbook</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css?v=8">
+<link rel=stylesheet href="styles.css?v=9">
 <style>
-.spin{display:inline-block;width:14px;height:14px;border:2.5px solid #d9d2f3;border-top-color:var(--brand);border-radius:50%;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
-.gridcard{background:transparent;box-shadow:none;border-radius:0;overflow:visible;max-width:820px;width:min(820px,100%);padding:0;display:flex;flex-direction:column;gap:13px;align-self:center}
-.bubble{background:#fff;border-radius:16px;box-shadow:0 14px 40px rgba(40,12,140,.22);padding:15px 20px}
-.lbl{font:600 10px var(--mono);letter-spacing:.6px;text-transform:uppercase;color:var(--card-ink-dim);margin-bottom:9px}
-.qbub{font-size:16px;color:var(--card-ink);font-weight:500;line-height:1.4}
-.rtab{border-collapse:separate;border-spacing:0;font-size:13px;width:auto;min-width:100%}
-.rtab th,.rtab td{border-bottom:1px solid #efeafa;border-right:1px solid #efeafa;padding:7px 11px;text-align:left;vertical-align:top;white-space:nowrap}
-.rtab tr:last-child td{border-bottom:none}.rtab th:last-child,.rtab td:last-child{border-right:none}
-.rtab th{background:#f3effd;color:var(--brand);font:600 12px var(--mono)}
-.rtab td.n,.rtab th.n{text-align:right;font-variant-numeric:tabular-nums}
-.rtab td{max-width:340px;overflow:hidden;text-overflow:ellipsis}
-.rtab .val{color:var(--card-ink);font-family:var(--mono)}
-.rtab th.hl{background:#e7defc;color:#5b3fd6}.rtab td.hl{background:#f3effd;color:#4a2db5;font-weight:600}
-.rtwrap{overflow-x:auto;overflow-y:visible;max-width:100%}
-.rtwrap::-webkit-scrollbar{height:8px}.rtwrap::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}.rtwrap::-webkit-scrollbar-track{background:transparent}
-.think{display:flex;align-items:center;gap:9px;color:var(--ink-dim);font:600 13px var(--mono);padding:2px 6px}
-/* the decomposition breadcrumb: the stack of views, current step highlighted (the reasoning trace = the data) */
-.plan{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:2px}
-.pstep{font:600 11px var(--mono);background:#efeafa;color:#8579b8;border-radius:9999px;padding:3px 11px;white-space:nowrap}
-.pstep.done{background:#d9d2f3;color:#4a3f7a}.pstep.on{background:var(--brand);color:#fff}
-.parrow{color:#cbc4e6;font:700 12px var(--mono);align-self:center}
-.infobtn{all:unset;cursor:pointer;width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.18);color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px}.infobtn:hover{background:rgba(255,255,255,.32)}
-.backdrop{display:none;position:fixed;inset:0;background:rgba(20,12,48,.45);z-index:40}
-.infocard{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:41;background:#fff;border-radius:14px;padding:22px 24px;max-width:520px;width:90%;max-height:84vh;overflow:auto;box-shadow:0 20px 60px rgba(20,12,48,.3);font-size:13px;color:#333;line-height:1.55}
-.ih{font-weight:700;color:#1c1340;margin:14px 0 7px}.ih:first-of-type{margin-top:2px}
-.ix{position:absolute;top:8px;right:14px;border:0;background:none;font-size:22px;color:#aaa;cursor:pointer;line-height:1}
-.tabs{display:flex;gap:2px;border-bottom:1px solid #eee;margin:0 0 13px;padding-right:26px}
-.tab{all:unset;cursor:pointer;padding:7px 12px;font:600 12px var(--mono);color:#a79fc6;border-bottom:2px solid transparent}
-.tab:hover{color:var(--brand)}.tab.active{color:var(--brand);border-bottom-color:var(--brand)}
-.tabpane{display:none}.tabpane.active{display:block}
-.vstep{margin:0 0 12px}.vop{font:700 12px var(--mono);color:#1c1340}.vlabel{color:#6b5fa8;font-size:12px;margin:1px 0 5px}
+/* ---- read-only WORKBOOK on the FormFacade design system (styles.css tokens only) ----
+   Left: the spreadsheet (white .gridcard sheet + bottom tab strip). Right: the chat rail.
+   Sheet classes: green = the user's input tables (never touched by the AI), blue = the AI's
+   derivation sheets (one per view step), grey = reference tables the resolution used
+   (hidden behind a toggle). */
+.spin{display:inline-block;width:13px;height:13px;border:2.5px solid #d9d2f3;border-top-color:var(--brand);border-radius:50%;animation:sp .8s linear infinite;flex:0 0 auto}@keyframes sp{to{transform:rotate(360deg)}}
+.workmain{flex:1;min-height:0;display:flex;gap:18px;padding:4px 26px 18px}
+.sheetside{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+
+/* the active sheet */
+.sheetcard{flex:1;min-height:0;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(40,12,140,.28);display:flex;flex-direction:column;overflow:hidden}
+.sheetband{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #efeafa}
+.sheetband .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.sheetband .snm{font:600 13px var(--mono);color:var(--card-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheetband .skind{font:600 9.5px var(--mono);letter-spacing:1.1px;text-transform:uppercase;padding:3px 9px;border-radius:9999px;flex:0 0 auto}
+.sheetband .slabel{font:12px var(--disp);color:var(--card-ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.sqlbtn{all:unset;cursor:pointer;font:600 10.5px var(--mono);letter-spacing:.8px;color:var(--brand);padding:4px 10px;border:1px solid #ddd4f5;border-radius:9999px;flex:0 0 auto}
+.sqlbtn:hover{background:#f3effd}
+.sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
+.sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
 .vtok.kw{background:#7c3aed}.vtok.world{background:#c026d3}.vtok.lit{background:#d6336c}.vtok.tbl{background:#0891b2}
-.emptynote{color:#9a93b5;font-size:12.5px;padding:8px 2px}
+.sheetscroll{flex:1;min-height:0;overflow:auto}
+.sheetscroll::-webkit-scrollbar{height:9px;width:9px}.sheetscroll::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}.sheetscroll::-webkit-scrollbar-track{background:transparent}
+table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
+.wb th,.wb td{border-right:1px solid #efeafa;border-bottom:1px solid #efeafa;padding:7px 12px;text-align:left;vertical-align:top;white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}
+.wb th{position:sticky;top:0;z-index:2;background:#f3effd;color:var(--brand);font:600 12px var(--mono);letter-spacing:.3px}
+.wb th.rn,.wb td.rn{position:sticky;left:0;z-index:1;background:#faf9ff;color:#b3acce;text-align:center;font:12px var(--mono);min-width:40px;max-width:40px}
+.wb th.rn{z-index:3;background:#f3effd}
+.wb td{font-family:var(--mono);color:var(--card-ink)}
+.wb td.n,.wb th.n{text-align:right;font-variant-numeric:tabular-nums}
+.wb.result td{color:#4a2db5;font-weight:600}
+.capnote{padding:8px 16px;font:11.5px var(--mono);color:var(--card-ink-dim);border-top:1px solid #efeafa}
+.sheetmsg{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--card-ink-dim);font:600 13px var(--mono);padding:30px}
+
+/* bottom tab strip (the workbook's sheets) */
+.tabstrip{flex:0 0 auto;display:flex;align-items:center;gap:7px;overflow-x:auto;padding:2px 2px 4px}
+.tabstrip::-webkit-scrollbar{height:7px}.tabstrip::-webkit-scrollbar-thumb{background:rgba(255,255,255,.35);border-radius:6px}.tabstrip::-webkit-scrollbar-track{background:transparent}
+.wtab{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 15px;border-radius:10px 10px 3px 3px;background:rgba(255,255,255,.16);color:#fff;font:600 12px var(--mono);white-space:nowrap;transition:background .14s}
+.wtab:hover{background:rgba(255,255,255,.30)}
+.wtab.active{background:#fff;color:var(--card-ink);box-shadow:0 8px 22px rgba(40,12,140,.25)}
+.wtab .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.dot.input{background:#27b57e}.dot.deriv{background:#8f7bf2}.dot.ref{background:#b9b3cf}
+.wtab.active .dot.deriv{background:var(--brand)}
+.skind.input{background:#e2f6ec;color:#177a53}.skind.deriv{background:#eee9fc;color:var(--brand)}.skind.ref{background:#f0eef6;color:#6f6a87}
+.band-input{background:#27b57e}.band-deriv{background:var(--brand)}.band-ref{background:#b9b3cf}
+.bandbar{height:4px;flex:0 0 auto}
+.tabsep{width:1px;height:22px;background:rgba(255,255,255,.35);flex:0 0 auto;margin:0 3px}
+.reftoggle{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;color:rgba(255,255,255,.85);font:600 11.5px var(--mono);white-space:nowrap}
+.reftoggle:hover{background:rgba(255,255,255,.16)}
+
+/* right rail — the chat / "what I did" panel (Excel-Copilot side, but ours) */
+.rail{flex:0 0 340px;max-width:340px;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(40,12,140,.28);display:flex;flex-direction:column;min-height:0}
+.railhdr{flex:0 0 auto;padding:13px 18px;border-bottom:1px solid #efeafa;font:600 10.5px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--card-ink-dim)}
+.railscroll{flex:1;min-height:0;overflow-y:auto;padding:14px 18px}
+.railscroll::-webkit-scrollbar{width:8px}.railscroll::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}
+.turn{margin-bottom:14px}
+.turn .who{font:600 9.5px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--card-ink-dim);margin-bottom:5px}
+.turn .msg{font:14px/1.5 var(--disp);color:var(--card-ink);background:#f3effd;border:1px solid #ddd4f5;border-radius:11px;padding:10px 13px;white-space:pre-wrap;word-break:break-word}
+.turn.ai .msg{background:#faf9ff;border-color:#efeafa}
+.statusline{display:flex;align-items:center;gap:9px;font:600 12.5px var(--mono);color:var(--card-ink-dim);padding:2px 1px;min-height:20px}
+.steps{display:flex;flex-direction:column;gap:5px;margin-top:9px}
+.steplink{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid #efeafa;border-radius:9px;font:13px var(--disp);color:var(--card-ink)}
+.steplink:hover{border-color:var(--brand);background:#faf9ff}
+.steplink.on{border-color:var(--brand);background:#f3effd}
+.steplink .idx{font:600 10.5px var(--mono);color:#fff;background:#8f7bf2;border-radius:6px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.steplink.refl .idx{background:#b9b3cf}
+.steplink .stx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.resultline{margin-top:12px;padding:12px 14px;border-radius:11px;background:#eee9fc;border:1px solid #ddd4f5}
+.resultline .rk{font:600 9.5px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--brand);margin-bottom:4px}
+.resultline .rv{font:600 22px var(--disp);color:var(--card-ink);letter-spacing:-.4px;word-break:break-word}
+.resultline .rv.small{font-size:14px;font-weight:500}
+.warn{margin-top:9px;padding:9px 12px;border-radius:9px;background:#fdf3e6;border:1px solid #f5ddb8;color:#8a5a13;font:12px/1.45 var(--disp)}
+.failbox{margin-top:9px;padding:11px 13px;border-radius:9px;background:#fdeaea;border:1px solid #f2c4c4;color:#8f2020;font:13px/1.5 var(--disp)}
+.retry{all:unset;cursor:pointer;display:inline-block;margin-top:9px;padding:7px 16px;background:var(--brand);color:#fff;border-radius:9999px;font:600 11px var(--mono);letter-spacing:1px;text-transform:uppercase}
+
+@media(max-width:880px){
+  .workmain{flex-direction:column;padding:4px 12px 12px;gap:10px}
+  .rail{flex:0 0 auto;max-width:none;max-height:42vh}
+  .sheetside{min-height:46vh}
+}
 </style>
 </head><body>
 <div class=screen>
   <div class=hdr><a class=brand href="/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div>
     <a class=ghost href="/" style="text-decoration:none">+ New</a></div>
-  <div class=stage><div class=badge id=badge></div></div>
-  <div class=gridwrap><div class=gridcard id=gridcard></div></div>
-  <div class=controls>
-    <button class=playbtn id=play onclick=togglePlay() aria-label=Play></button>
-    <button class=stepbtn onclick="step(-1)">&#9664;</button>
-    <div class=scrub id=scrub onclick=scrubClick(event)><div class=track><div class=fill id=fill></div><div class=ticks id=ticks></div><div class=knob id=knob></div></div></div>
-    <button class=stepbtn onclick="step(1)">&#9654;</button>
-    <button class=infobtn id=infobtn title="What is this?" onclick=toggleInfo()>&#9432;</button>
-  </div>
-  <div class=backdrop id=backdrop onclick=closeInfo()></div>
-  <div class=infocard id=infocard>
-    <button class=ix onclick=closeInfo() aria-label=Close>&times;</button>
-    <div class=tabs>
-      <button class="tab active" id=tab-plan onclick="showTab('plan')">&#9783; Decomposition</button>
-      <button class="tab" id=tab-sql onclick="showTab('sql')">&#9881; Views &amp; SQL</button>
+  <div class=workmain>
+    <div class=sheetside>
+      <div class=sheetcard id=sheetcard>
+        <div class=sheetmsg id=sheetmsg><span class=spin></span> Loading your data…</div>
+      </div>
+      <div class=tabstrip id=tabstrip></div>
     </div>
-    <div class="tabpane active" id=pane-plan></div>
-    <div class="tabpane" id=pane-sql></div>
+    <div class=rail>
+      <div class=railhdr>Prereasoner</div>
+      <div class=railscroll id=rail></div>
+    </div>
   </div>
 </div>
 <script src="lib/shared.js"></script>
-<script src="lib/table-render.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-$('play').innerHTML=PLAY;
-function toggleInfo(){const o=$('infocard').style.display==='block';$('infocard').style.display=o?'none':'block';$('backdrop').style.display=o?'none':'block';}
-function closeInfo(){$('infocard').style.display='none';$('backdrop').style.display='none';}
-function showTab(n){['plan','sql'].forEach(k=>{$('tab-'+k).classList.toggle('active',k===n);$('pane-'+k).classList.toggle('active',k===n);});}
 function getSheets(){
   try{const t=sessionStorage.getItem(SS.TABLES);if(t){const a=JSON.parse(t);if(a&&a.length)return a;}}catch(_){}
   return [{name:'customers.csv',data:'customer_id,name,city\n1,Ada,Paris\n2,Lin,Lyon\n3,Bo,Paris\n4,Sam,Berlin\n5,Mai,Lyon'},
@@ -80,20 +115,38 @@ function getSheets(){
 function getQ(){try{const q=sessionStorage.getItem(SS.Q);if(q)return q;}catch(_){}return 'top 3 cities by total amount';}
 const SHEETS=getSheets(), question=getQ();
 const TABNAMES=SHEETS.map((s,i)=>slug(s.name,i));
+const MAX_RENDER_ROWS=500;
 
-let J=null,INPUTS=[],VIEWS=[],PLAN=[],LAST=0,S=0,playTimer=null,READY=false;
-// streaming state: resolve slides + views arrive one-by-one over RTDB. RESOLVES = the per-column resolution slides
-// (each = {table,column,wtable,columns,rows}), shown between Input and the view stack.
-// AUTO = auto-advance to the newest slide until the user touches the transport (then they drive). SETTLED = the run
-// reached a terminal state (done/clarify/error) from EITHER channel, so the other channel is ignored (no double-render).
-let RESOLVES=[],STREAMING=false,AUTO=true,SETTLED=false,DONE=false,UNSUB=null,doneTimer=null;
-const SEEN=new Set(), SEEN_R=new Set();                        // view + resolve keys already appended (RTDB resync re-delivers)
-function fail(m){READY=false;STREAMING=false;stopPlay();$('badge').innerHTML='&#9888; '+esc(m);}
-function qBubble(){return '<div class=bubble><div class=qbub>'+esc(question)+'</div></div>';}
-function planBar(upto){            // the view DAG as a breadcrumb, steps <=upto highlighted (current = upto)
-  if(VIEWS.length<=1)return '';    // a single (delegated) result has no decomposition to show — no breadcrumb
-  const chips=VIEWS.map((v,i)=>'<span class="pstep'+(i+1<upto?' done':i+1===upto?' on':'')+'">'+esc(oplabel(v.op))+'</span>');
-  return '<div class=plan>'+chips.join('<span class=parrow>&rsaquo;</span>')+'</div>';
+/* ---------------- workbook state ----------------
+   BOOK = ordered sheet metas {id, cls:'input'|'deriv'|'ref', name, label, cols, rows, sql, result}.
+   Greens first (the user's tables), blues appended as view steps stream in, greys collected
+   separately behind the Reference toggle. AUTO = follow the newest sheet until the user clicks
+   a tab (then they drive). SETTLED/DONE/SEEN: identical run-state semantics to the previous
+   trace player (terminal state settles once; RTDB resync re-delivery is deduped). */
+let BOOK=[],ACTIVE=null,AUTO=true,REF_OPEN=false;
+let J=null,VIEWS=[],RESOLVES=[],SETTLED=false,DONE=false,UNSUB=null,doneTimer=null,STATUS='Analyzing input…',FAILMSG=null;
+const SEEN=new Set(),SEEN_R=new Set();
+
+function sheetById(id){return BOOK.find(s=>s.id===id);}
+function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
+
+/* ---------------- rendering ---------------- */
+function isNum(v){return v!==''&&v!=null&&/^-?\$?[\d,]*\.?\d+%?$/.test(String(v).trim());}
+function fmt(v){ if(typeof v==='number'&&!Number.isInteger(v)) return (Math.round(v*1000)/1000).toString(); return v==null?'':String(v); }
+function renderGrid(m){
+  const cols=m.cols||[],rows=(m.rows||[]);
+  const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
+  const shown=rows.slice(0,MAX_RENDER_ROWS);
+  let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+'"><thead><tr><th class=rn></th>';
+  for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
+  h+='</tr></thead><tbody>';
+  for(let ri=0;ri<shown.length;ri++){ h+='<tr><td class=rn>'+(ri+1)+'</td>';
+    for(let ci=0;ci<cols.length;ci++) h+='<td'+(numeric[ci]?' class=n':'')+'>'+esc(fmt(shown[ri][ci]))+'</td>';
+    h+='</tr>'; }
+  if(!rows.length) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
+  h+='</tbody></table></div>';
+  if(rows.length>MAX_RENDER_ROWS) h+='<div class=capnote>showing the first '+MAX_RENDER_ROWS+' of '+rows.length+' rows</div>';
+  return h;
 }
 function tokCls(tk){const u=tk.toUpperCase();
   if(['SELECT','SUM','COUNT','AVG','MIN','MAX','FROM','JOIN','LEFT','ON','WHERE','AND','OR','GROUP','BY','ORDER','LIMIT','DESC','ASC','AS','IS','NULL','NULLIF'].includes(u))return 'kw';
@@ -101,162 +154,164 @@ function tokCls(tk){const u=tk.toUpperCase();
   const m=tk.match(/^"([^"]+)"$/); if(m&&TABNAMES.includes(m[1].toLowerCase()))return 'tbl';
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
-function fillInfo(){
-  $('pane-plan').innerHTML = VIEWS.length
-    ? '<div class=ih>Question &rarr; a stack of simple views</div><div class=plan style="justify-content:flex-start">'
-        +VIEWS.map(v=>'<span class=pstep>'+esc(oplabel(v.op))+'</span>').join('<span class=parrow>&rsaquo;</span>')+'</div>'
-      +VIEWS.map((v,i)=>'<div class=vstep><div class=vop>'+(i+1)+'. '+esc(oplabel(v.op))+'</div><div class=vlabel>'+esc(v.label||'')+'</div></div>').join('')
-    : '<div class=emptynote>This question was answered directly (no multi-step decomposition).</div>';
-  $('pane-sql').innerHTML = VIEWS.length
-    ? VIEWS.map(v=>'<div class=vstep><div class=vop>'+esc(v.name)+' &middot; '+esc(oplabel(v.op))+'</div><div class=vsql>'
-        +sqlTokens(v.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>').join('')
-    : '<div class=vsql>'+sqlTokens((J&&J.sql)||'').map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div>';
+const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Reference'};
+function renderSheet(){
+  const m=sheetById(ACTIVE);
+  if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
+  let h='<div class="bandbar band-'+m.cls+'"></div><div class=sheetband>'
+    +'<span class="dot '+m.cls+'"></span><span class=snm>'+esc(m.name)+'</span>'
+    +'<span class="skind '+m.cls+'">'+(m.result?'Result':KINDLBL[m.cls])+'</span>'
+    +'<span class=slabel>'+esc(m.label||'')+'</span>'
+    +(m.sql?'<button class=sqlbtn onclick=toggleSql()>SQL</button>':'')
+    +'</div>';
+  if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
+  h+=renderGrid(m);
+  $('sheetcard').innerHTML=h;
 }
-function inputBubbles(){return INPUTS.map(t=>tableBubble(t.cols,t.rows,t.name)).join('');}
-function resolveSlide(r){                                   // ONE string column's resolution: the source table with that
-  // column highlighted, then (connected) the "<type> (wikipedia)" table it resolved into with its `name` column
-  // highlighted to match, and a "Resolving <col>… -> Resolved <col>" status line (the prompt stays in the badge).
-  const src=INPUTS.find(t=>slug(t.name)===r.table)||INPUTS.find(t=>(t.cols||[]).includes(r.column))||INPUTS[0];
-  const a=src?tableBubble(src.cols,src.rows,src.name,{hlcol:r.column}):'';
-  const status=statusBubble('Resolving '+(r.column||'')+'…','Resolved '+(r.column||''));
-  if(r.unconnected||!r.columns) return a+status;           // unconnected free-text column -> embedded as a vector, no table
-  return a+tableBubble(r.columns||[],r.rows||[],(r.wtable||'')+' (wikipedia)',{hlcol:r.hlcol||'name'})+status;
+function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
+function renderTabs(){
+  const main=BOOK.filter(s=>s.cls!=='ref'), refs=BOOK.filter(s=>s.cls==='ref');
+  let h=main.map(s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot '+s.cls+'"></span>'+esc(s.result?'Result':s.name)+'</button>').join('');
+  if(refs.length){
+    h+='<span class=tabsep></span><button class=reftoggle onclick=toggleRefs()>'+(REF_OPEN?'&#9662;':'&#9656;')+' Reference ('+refs.length+')</button>';
+    if(REF_OPEN) h+=refs.map(s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot ref"></span>'+esc(s.name)+'</button>').join('');
+  }
+  $('tabstrip').innerHTML=h;
 }
-function statusBubble(progressText,doneText){              // a step's progress/completion line (the badge stays the prompt)
-  const done=SETTLED||(S<LAST);                            // done once the run settled OR a later slide superseded this one
-  return '<div class=bubble><div class=qbub>'+esc(done?doneText:progressText)+'</div></div>';
-}
-function loadingSlide(msg){$('badge').textContent=question;
-  $('gridcard').innerHTML=inputBubbles()+'<div class=bubble><div class=qbub>'+esc('Analyzing input…')+'</div></div>';}
-function buildTicks(){const t=$('ticks');t.innerHTML='';for(let i=0;i<=LAST;i++)t.insertAdjacentHTML('beforeend','<div class=tick></div>');}
+function pick(id){ AUTO=false; ACTIVE=id; const m=sheetById(id); if(m&&m.cls==='ref') REF_OPEN=true; paint(); }
+function toggleRefs(){ REF_OPEN=!REF_OPEN; renderTabs(); }
 
+function resultSummary(){
+  const r=(J&&J.result)||null; if(!r||!r.rows||!r.rows.length) return null;
+  if(r.rows.length===1&&r.columns&&r.columns.length===1) return {k:r.columns[0],v:fmt(r.rows[0][0]),big:true};
+  if(r.rows.length===1) return {k:'result',v:r.columns.map((c,i)=>c+': '+fmt(r.rows[0][i])).join('  ·  '),big:false};
+  return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
+}
+function renderRail(){
+  let h='<div class=turn><div class=who>You</div><div class=msg>'+esc(question)+'</div></div>';
+  h+='<div class="turn ai"><div class=who>Prereasoner</div>';
+  if(FAILMSG){ h+='<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div></div>'; $('rail').innerHTML=h; return; }
+  h+='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
+  const derivs=BOOK.filter(s=>s.cls==='deriv'), refs=BOOK.filter(s=>s.cls==='ref');
+  if(derivs.length){
+    h+='<div class=steps>'+derivs.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.label||s.name)+'</span></button>').join('')+'</div>';
+  }
+  if(refs.length){
+    h+='<div class=steps>'+refs.map(s=>'<button class="steplink refl'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>&#9707;</span><span class=stx>looked up '+esc(s.name)+'</span></button>').join('')+'</div>';
+  }
+  if(SETTLED){ const rs=resultSummary();
+    if(rs) h+='<div class=resultline><div class=rk>'+esc(rs.k)+'</div><div class="rv'+(rs.big?'':' small')+'">'+esc(rs.v)+'</div></div>';
+  }
+  ((J&&J.warnings)||[]).forEach(w=>{ h+='<div class=warn>&#9888; '+esc(String(w))+'</div>'; });
+  h+='</div>';
+  $('rail').innerHTML=h;
+}
+function paint(){ renderTabs(); renderSheet(); renderRail(); }
+function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed'; paint(); }
+
+/* ---------------- the run (streaming + fallbacks — same contract as before) ---------------- */
 const ENDPOINT=API_BASE+'/api/reason';
+function seedInputs(){
+  SHEETS.forEach((s,i)=>{ const p=parseCSV(s.data);
+    addSheet({id:'in'+i, cls:'input', name:s.name, label:p.rows.length+' rows — yours, untouched', cols:p.cols, rows:p.rows}); });
+  ACTIVE=BOOK.length?BOOK[0].id:null; paint();
+}
+function appendView(v){
+  VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
+  STATUS=oplabel(v.op)+'…';
+  addSheet({id:'v'+VIEWS.length, cls:'deriv', name:v.name||('step_'+VIEWS.length), label:v.label||oplabel(v.op), cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
+}
+function appendResolve(r){
+  RESOLVES.push(r);
+  STATUS='Resolving '+(r.column||'')+'…';
+  if(!r.unconnected&&r.columns)
+    addSheet({id:'r'+RESOLVES.length, cls:'ref', name:(r.wtable||'world')+' (wikipedia)', label:'resolved "'+(r.column||'')+'" against this reference', cols:r.columns||[], rows:r.rows||[]});
+  else paint();
+}
+function markDone(){ if(SETTLED)return; DONE=true; clearTimeout(doneTimer); doneTimer=setTimeout(finalize,400); }
+function finalize(){
+  if(SETTLED)return; settle();
+  if(!VIEWS.length){                                          // delegated (no composition) — synthesize the single result sheet
+    const r=(J&&J.result)||{};
+    appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[]});
+  } else if(J&&J.result&&J.result.rows){                      // the last view's table is the authoritative final answer
+    const lv=VIEWS[VIEWS.length-1], lm=BOOK.filter(s=>s.cls==='deriv').pop();
+    lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows||lv.rows;
+    if(lm){ lm.cols=lv.columns; lm.rows=lv.rows; }
+  }
+  const last=BOOK.filter(s=>s.cls==='deriv').pop();
+  if(last){ last.result=true; if(AUTO) ACTIVE=last.id; }
+  const n=BOOK.filter(s=>s.cls==='deriv').length;
+  STATUS='Answered in '+n+' step'+(n===1?'':'s');
+  paint();
+}
+function renderFromJSON(j){
+  if(SETTLED)return;
+  if(j.clarify){ goClarify(Object.assign({question:question},j)); return; }
+  if(j.error){ fail(j.error); settle(); return; }
+  J=j; (j.views||[]).forEach(v=>appendView(v));
+  DONE=true; finalize();
+}
+function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} }
+function goClarify(c){ settle(); try{ sessionStorage.setItem(SS.CLARIFY,JSON.stringify(c)); }catch(_){}; location.href='clarify'; }
+
 async function run(){
-  INPUTS=SHEETS.map(s=>{const p=parseCSV(s.data);return {name:s.name,cols:p.cols,rows:p.rows};}); loadingSlide('Resolving to the world…');
+  seedInputs();
   let token;
   try{ token=await window.ensureToken(); }
   catch(e){ fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }
   const uid=window.__uid;
   const jobId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
-  STREAMING=true;
-  // (1) kick off the job FIRE-AND-FORGET: the answer arrives via RTDB, not this response. A cold-start 503/HTML or a
-  // 60s proxy timeout is harmless here — we never await the body on the streaming path. We DO keep the promise so the
-  // FALLBACK can await it if RTDB never reports a status.
+  // (1) kick off the job FIRE-AND-FORGET: on the streaming path the answer arrives via RTDB, not this
+  // response. Keep the parsed-body promise so both fallbacks can await it (body reads exactly once).
   const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
   const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
                                     body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).then(parseBody).catch(()=>null);
-  // (2) subscribe to the live trace. Each view -> appendView (grows the slider); status drives the thinking/lock states.
+  // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
       onStatus:st=>{ if(SETTLED)return;
-        if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length) loadingSlide('Resolving to the world…');
-        else if(st==='running'&&!VIEWS.length&&!RESOLVES.length) loadingSlide('Decomposing into a stack of views…');
+        if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Resolving to the world…'; renderRail(); }
+        else if(st==='running'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Decomposing into steps…'; renderRail(); }
         else if(st==='done') markDone(); },
-      onResolve:(k,r)=>{ if(SETTLED||!r||typeof r!=='object'||!r.column||SEEN_R.has(k))return; SEEN_R.add(k); appendResolve(r); if(DONE)markDone(); },  // only valid per-column slides (ignore stale flat-map strings)
+      onResolve:(k,r)=>{ if(SETTLED||!r||typeof r!=='object'||!r.column||SEEN_R.has(k))return; SEEN_R.add(k); appendResolve(r); if(DONE)markDone(); },
       onView:(k,v)=>{ if(SETTLED||!v||SEEN.has(k))return; SEEN.add(k); appendView(v); if(DONE)markDone(); },
       onResult:r=>{ if(SETTLED)return; J=J||{}; J.result=r; if(DONE)markDone(); },
       onClarify:c=>{ if(SETTLED)return; goClarify(Object.assign({question:question},c)); },
       onError:e=>{ if(SETTLED)return; fail(e||'the model reported an error'); settle(); },
     });
   }
-  // (2b) EARLY FALLBACK: the POST body only arrives when the job is COMPLETE, so if it lands and the
-  // stream has shown no life shortly after, streaming is unavailable (RTDB unset or unreachable) —
-  // render the JSON now instead of holding the loading slide until the 90s safety net below.
+  // (2b) EARLY FALLBACK: the POST body only arrives when the job is COMPLETE — if it lands and the
+  // stream has shown no life shortly after, streaming is unavailable; render the JSON now.
   httpPromise.then(async j=>{
     if(!j||SETTLED||DONE)return;
     await new Promise(res=>setTimeout(res,3000));             // grace: a merely-lagging stream still wins
     if(SETTLED||DONE||VIEWS.length||RESOLVES.length)return;
     renderFromJSON(j);
   });
-  // (3) FALLBACK: if RTDB never reports a status within ~90s (RTDB down, or backend not streaming), AWAIT the HTTP
-  // body and render from the full JSON exactly as before — the endpoint still returns {views, result, clarify}.
+  // (3) SAFETY NET: if RTDB never reports within ~90s, await/re-drive the POST (cold-start retries).
   setTimeout(async()=>{
     if(SETTLED||DONE||VIEWS.length)return;
     let j=null;
-    for(let a=0;a<5&&!j&&!SETTLED&&!DONE;a++){                // re-drive the POST with cold-start retry on the fallback path
+    for(let a=0;a<5&&!j&&!SETTLED&&!DONE;a++){
       try{
         j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).then(parseBody);
         if(j)break;
       }catch(_){}
-      if(a<4){ loadingSlide('Warming up the model (cold start)…'); await new Promise(res=>setTimeout(res,4000)); }
+      if(a<4){ STATUS='Warming up the model (cold start)…'; renderRail(); await new Promise(res=>setTimeout(res,4000)); }
     }
     if(SETTLED||DONE||VIEWS.length)return;
     if(!j){ fail('the model is taking too long to start — please try again in a moment'); return; }
     renderFromJSON(j);
   },90000);
 }
-// append one streamed view to the stack and grow the slider; auto-advance to it unless the user is driving.
-function appendView(v){
-  VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
-  LAST=RESOLVES.length+VIEWS.length; READY=true; buildTicks(); fillInfo();
-  if(AUTO){ stopPlay(); render(LAST); }                       // watch it build: jump to the newest view
-  else render(S);                                             // user is scrubbing -> keep their slide, just refresh ticks
-}
-// one resolution slide arrived (a string column resolved to its world table) -> insert it after Input, before views.
-function appendResolve(r){
-  RESOLVES.push(r);
-  LAST=RESOLVES.length+VIEWS.length; READY=true; buildTicks();
-  if(AUTO){ stopPlay(); render(RESOLVES.length); }            // watch it resolve: jump to the new 'Resolving <col>' slide
-  else render(S);
-}
-// status=done arrived. Mark the run finished, then settle on a short delay so a trailing view child (RTDB may deliver
-// the last view AFTER the status value) still lands before we lock + tear down the subscription.
-function markDone(){
-  if(SETTLED)return; DONE=true;
-  clearTimeout(doneTimer); doneTimer=setTimeout(finalize,400);
-}
-function finalize(){
-  if(SETTLED)return; settle();
-  if(!VIEWS.length){                                          // delegated (no composition) — synthesize the single result view
-    const r=(J&&J.result)||{};
-    VIEWS=[{name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[]}];
-    J=J||{}; J.views=VIEWS;
-  } else if(J&&J.result&&J.result.rows){                      // make the last view's table the authoritative final answer
-    const lv=VIEWS[VIEWS.length-1]; lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows||lv.rows;
-  }
-  LAST=RESOLVES.length+VIEWS.length; READY=true; buildTicks(); fillInfo();
-  if(AUTO){ render(LAST); }                                   // land on the Result
-  else render(S);
-}
-// the fallback path: the full JSON arrived. Render it exactly like the original (non-streaming) flow.
-function renderFromJSON(j){
-  if(SETTLED)return;
-  if(j.clarify){ goClarify(Object.assign({question:question},j)); return; }
-  if(j.error){ fail(j.error); settle(); return; }
-  settle();
-  J=j; VIEWS=j.views||[]; PLAN=j.plan||[]; fillInfo();
-  if(!VIEWS.length){ VIEWS=[{name:'result',op:'group_agg',label:'result',sql:j.sql||'',columns:(j.result&&j.result.columns)||[],rows:(j.result&&j.result.rows)||[]}]; }
-  LAST=RESOLVES.length+VIEWS.length; READY=true; DONE=true; buildTicks(); startPlay();
-}
-function settle(){ SETTLED=true; STREAMING=false; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} }
-function goClarify(c){ settle(); try{ sessionStorage.setItem(SS.CLARIFY,JSON.stringify(c)); }catch(_){}; location.href='clarify'; }
-function render(slide){
-  if(!READY)return; S=Math.max(0,Math.min(LAST,+slide));
-  $('fill').style.width=(LAST?S/LAST*100:0)+'%'; $('knob').style.left=(LAST?S/LAST*100:0)+'%';
-  const nR=RESOLVES.length; let h;                           // the badge stays the PROMPT for every slide (set below)
-  if(S===0){ h=inputBubbles()+statusBubble('Analyzing input…','Analyzed input'); }
-  else if(S<=nR){ h=resolveSlide(RESOLVES[S-1]); }
-  else { const v=VIEWS[S-nR-1];
-    // "Result" only once the run is SETTLED — mid-stream the newest view is just the latest STEP, not the final answer.
-    const isResult=(S===LAST)&&SETTLED;
-    const stepping=(S===LAST)&&!SETTLED;                      // newest view while still streaming -> a small live cue
-    h = planBar(S-nR)+tableBubble(v.columns||[],v.rows||[],isResult?'Result':(v.label||oplabel(v.op)))
-      + (stepping?'<div class=bubble><div class=think>'+SPINNER+' '+esc('Reasoning…')+'</div></div>':''); }
-  $('badge').textContent=question; $('gridcard').innerHTML=h;
-}
-function drive(){AUTO=false;}                                  // the user took the wheel -> stop auto-advancing to new views
-function step(d){drive();stopPlay();render(S+d);}
-function scrubClick(e){if(!READY)return;drive();stopPlay();const r=$('scrub').getBoundingClientRect();render(Math.round((e.clientX-r.left)/r.width*LAST));}
-function togglePlay(){if(!READY)return;drive();playTimer?stopPlay():startPlay();}
-function startPlay(){if(!READY)return;$('play').innerHTML=PAUSE;let s=0;render(0);const dt=Math.max(950,Math.round(4600/(LAST||1)));
-  playTimer=setInterval(()=>{s++;if(s>LAST){stopPlay();return}render(s);},dt);}
-function stopPlay(){if(playTimer){clearInterval(playTimer);playTimer=null}$('play').innerHTML=PLAY;}
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend
 </script>
 <script type="module">
-// Firebase init + Google sign-in + the RTDB run subscription all live in lib/firebase-init.js
-// (it publishes window.ensureToken / window.subscribeRun / window.__uid for the classic script above).
-// /reason is AUTHENTICATED-only: sign-in is a same-tab redirect; Google returns straight back here.
+// Firebase init + Google sign-in + the RTDB run subscription live in lib/firebase-init.js.
+// ensureSignedIn resolves the uid, resolves null when redirecting to Google, and THROWS when a
+// redirect came back without a session (the loop-breaker) — show that instead of looping.
 import { ensureSignedIn } from "./lib/firebase-init.js";
-if (await ensureSignedIn()) run();                            // signed in -> render + query (null = redirecting to Google)
+try { if (await ensureSignedIn()) run(); }
+catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }
 </script></body></html>

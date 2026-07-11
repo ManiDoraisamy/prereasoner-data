@@ -136,3 +136,18 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   gated to localhost hostnames and pairs with the engine's `AUTH_TEST_SUB`.
 - E2E verified: index demo (France = 270 with full join→world→filter→aggregate trace),
   world page (France cities), clarify flow, info panel, 404, sheets (up to Google Picker).
+
+## Workbook redesign + sign-in loop fix (2026-07-11, live)
+
+- **reason.html is now the read-only WORKBOOK** (per the inbound redesign spec): green input
+  sheets (user tables, never touched), blue derivation sheets (one per streamed view, named
+  columns, SQL disclosure per sheet), grey reference sheets (streamed resolves) hidden behind a
+  "Reference (n)" toggle, bottom tab strip, chat rail on the RIGHT with the question, live
+  status, step links (click -> sheet) and the result card. Streaming/early-fallback/90s-safety/
+  clarify semantics preserved from the trace player. Verified live on chat.prereasoner.com
+  (France demo: 4 streamed steps + 1 reference sheet, answer 270).
+- **Google sign-in redirect loop FIXED**: authDomain now follows location.hostname on
+  hosting-connected domains (third-party-storage partitioning made cross-domain redirects lose
+  the pending sign-in -> infinite account chooser, reported on prereasoner.com), plus loop
+  breakers in firebase-init.ensureSignedIn and sheets.html (a returned-but-signed-out redirect
+  shows a retry UI instead of re-redirecting). world.html/reason.html catch the throw.

@@ -92,9 +92,18 @@ async function onPick(token, data){
 (async () => {
   let res = null;
   try { res = await getRedirectResult(auth); }
-  catch (e) { fail("Google sign-in failed: " + ((e && e.message) || e)); return; }
+  catch (e) { sessionStorage.removeItem("pr_sheets_pending"); fail("Google sign-in failed: " + ((e && e.message) || e)); return; }
   const cred = res ? GoogleAuthProvider.credentialFromResult(res) : null;
-  if (cred && cred.accessToken){ busy("Opening the picker…"); openPicker(cred.accessToken); return; }
+  if (cred && cred.accessToken){ sessionStorage.removeItem("pr_sheets_pending"); busy("Opening the picker…"); openPicker(cred.accessToken); return; }
+  // LOOP BREAKER: we set the pending flag before redirecting — if we're back and STILL have no
+  // token (cancelled, or the browser dropped the pending sign-in), fail with the retry actions
+  // instead of bouncing to the Google account chooser forever.
+  if (sessionStorage.getItem("pr_sheets_pending")){
+    sessionStorage.removeItem("pr_sheets_pending");
+    fail("Google sign-in did not complete — please try again.");
+    return;
+  }
+  sessionStorage.setItem("pr_sheets_pending", "1");
   startAuth();                                                // first visit: redirect to Google for the drive.file token (same-tab)
 })();
 </script>

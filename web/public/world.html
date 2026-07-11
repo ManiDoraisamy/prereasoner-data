@@ -319,5 +319,8 @@ try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){} 
 // /world is AUTHENTICATED-only and sign-in happens here as a same-tab REDIRECT (no button). Google returns
 // straight back (same-origin handler) — no home bounce. The uploaded sheets ride along in sessionStorage.
 import { ensureSignedIn } from "./lib/firebase-init.js";
-if (await ensureSignedIn()) run();                                // signed in -> render + query (null = redirecting to Google)
+// ensureSignedIn: uid when signed in, null when redirecting to Google, THROWS when a redirect
+// came back without a session (loop-breaker) — show the failure instead of looping.
+try { if (await ensureSignedIn()) run(); }
+catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }
 </script></body></html>
