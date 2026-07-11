@@ -165,3 +165,15 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
 - Verified: localhost:8090 home -> arrow -> /reason workbook (France demo, 270) and /world
   workbook (cities demo, Lyon+Paris), plus live chat.prereasoner.com/world with real auth +
   streaming (4 steps + wikipedia reference sheet, 270).
+
+## Chat rail + workbook UX pass (2026-07-11, live)
+
+- The rail IS a chat now: turns (user bubble right-aligned, no speaker labels — ChatGPT-minimal),
+  an "Ask a follow-up…" input; each follow-up archives the previous turn to one answer line and
+  re-runs the workbook on the same attached tables (derived/reference sheets replaced, green
+  sheets untouched; RUN-guard supersedes stale async callbacks). The Sonnet/MCP chat surface
+  (chat.html + orchestrator /chat) is separate and untouched.
+- Tabs are Excel-style: attached under the square-bottomed sheet card, rounded DOWN.
+- Sheet order everywhere = input -> Reference (collapsed) -> steps.
+- Human names only: tabs/band/steps use the step label ("join orders + customers"), never
+  v1/b1/step_1 (internal names remain visible only inside the SQL disclosure).

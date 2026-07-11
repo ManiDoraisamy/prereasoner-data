@@ -120,10 +120,10 @@ table.sheet{border-collapse:separate;border-spacing:0}
    (hidden behind a toggle). */
 .spin{display:inline-block;width:13px;height:13px;border:2.5px solid #d9d2f3;border-top-color:var(--brand);border-radius:50%;animation:sp .8s linear infinite;flex:0 0 auto}@keyframes sp{to{transform:rotate(360deg)}}
 .workmain{flex:1;min-height:0;display:flex;gap:18px;padding:4px 26px 18px}
-.sheetside{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+.sheetside{flex:1;min-width:0;display:flex;flex-direction:column;gap:0}
 
 /* the active sheet */
-.sheetcard{flex:1;min-height:0;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(40,12,140,.28);display:flex;flex-direction:column;overflow:hidden}
+.sheetcard{flex:1;min-height:0;background:#fff;border-radius:14px 14px 0 0;box-shadow:0 18px 50px rgba(40,12,140,.28);display:flex;flex-direction:column;overflow:hidden}
 .sheetband{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #efeafa}
 .sheetband .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
 .sheetband .snm{font:600 13px var(--mono);color:var(--card-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -149,11 +149,11 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .sheetmsg{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--card-ink-dim);font:600 13px var(--mono);padding:30px}
 
 /* bottom tab strip (the workbook's sheets) */
-.tabstrip{flex:0 0 auto;display:flex;align-items:center;gap:7px;overflow-x:auto;padding:2px 2px 4px}
+.tabstrip{flex:0 0 auto;display:flex;align-items:flex-start;gap:5px;overflow-x:auto;padding:0 10px 8px;background:rgba(255,255,255,.10);border-radius:0 0 14px 14px}
 .tabstrip::-webkit-scrollbar{height:7px}.tabstrip::-webkit-scrollbar-thumb{background:rgba(255,255,255,.35);border-radius:6px}.tabstrip::-webkit-scrollbar-track{background:transparent}
-.wtab{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 15px;border-radius:10px 10px 3px 3px;background:rgba(255,255,255,.16);color:#fff;font:600 12px var(--mono);white-space:nowrap;transition:background .14s}
+.wtab{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 15px;border-radius:0 0 10px 10px;background:rgba(255,255,255,.16);color:#fff;font:600 12px var(--mono);white-space:nowrap;transition:background .14s;max-width:240px}
 .wtab:hover{background:rgba(255,255,255,.30)}
-.wtab.active{background:#fff;color:var(--card-ink);box-shadow:0 8px 22px rgba(40,12,140,.25)}
+.wtab.active{background:#fff;color:var(--card-ink);box-shadow:0 10px 22px rgba(40,12,140,.22)}
 .wtab .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
 .dot.input{background:#27b57e}.dot.deriv{background:#8f7bf2}.dot.ref{background:#b9b3cf}
 .wtab.active .dot.deriv{background:var(--brand)}
@@ -169,7 +169,9 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .railhdr{flex:0 0 auto;padding:13px 18px;border-bottom:1px solid #efeafa;font:600 10.5px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--card-ink-dim)}
 .railscroll{flex:1;min-height:0;overflow-y:auto;padding:14px 18px}
 .railscroll::-webkit-scrollbar{width:8px}.railscroll::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}
-.turn{margin-bottom:14px}
+.turn{margin-bottom:12px}
+.turn.user{display:flex;justify-content:flex-end}
+.turn.user .msg{max-width:88%}
 .turn .who{font:600 9.5px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--card-ink-dim);margin-bottom:5px}
 .turn .msg{font:14px/1.5 var(--disp);color:var(--card-ink);background:#f3effd;border:1px solid #ddd4f5;border-radius:11px;padding:10px 13px;white-space:pre-wrap;word-break:break-word}
 .turn.ai .msg{background:#faf9ff;border-color:#efeafa}
@@ -194,3 +196,11 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
   .rail{flex:0 0 auto;max-width:none;max-height:42vh}
   .sheetside{min-height:46vh}
 }
+
+/* chat input bar (rail bottom) */
+.chatbar{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid #efeafa}
+.chatbar textarea{flex:1;border:1px solid #ddd4f5;border-radius:11px;outline:none;resize:none;padding:9px 12px;font:14px/1.45 var(--disp);color:var(--card-ink);background:#faf9ff;max-height:110px}
+.chatbar textarea:focus{border-color:var(--brand);background:#fff}
+.sendbtn{all:unset;cursor:pointer;width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;flex:0 0 auto}
+.sendbtn:hover{transform:translateY(-1px)}
+.sendbtn[disabled]{opacity:.4;cursor:default;transform:none}
