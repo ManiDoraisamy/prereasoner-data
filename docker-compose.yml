@@ -58,6 +58,25 @@ services:
       db:
         condition: service_healthy
 
+  # The Sonnet orchestrator + PreReasoner MCP server (mcp-now.md §7). Calls the engine over the compose
+  # network (ENGINE_BASE_URL=http://engine:8080), same way the engine reaches db. Needs ANTHROPIC_API_KEY
+  # in .env. Local: chat UI + /chat on http://localhost:8090; the engine runs with AUTH_TEST_SUB so no
+  # Firebase token is needed and RTDB is unset (the reasoning player rebuilds from the returned views).
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile.orchestrator
+    ports:
+      - "8090:8090"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
+      ENGINE_BASE_URL: http://engine:8080
+      ORCH_HOST: 0.0.0.0
+      ORCH_PORT: "8090"
+    depends_on:
+      - engine
+
   # One-shot database seeder (profile "seed" keeps it out of `docker compose up`).
   # Reuses the engine image but overrides the entrypoint: seeding needs no model weights,
   # so it must not trip the engine's missing-weights startup gate.
@@ -87,7 +106,8 @@ services:
                && python db/sync/build_world.py
                && python db/sync/build_words.py --cities
                && python db/sync/sync_types.py
-               && python db/sync/unify_words_qid.py"
+               && python db/sync/unify_words_qid.py
+               && python -m db.sync.build_u_s_state"
 
 volumes:
   pgdata:

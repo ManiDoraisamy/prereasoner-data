@@ -2,13 +2,13 @@
 types the uploaded column to its world table; the planner joins it + filters/aggregates by a WORLD attribute
 the upload never had.
 
-Synced + joinable world tables (taxonomy leaves with a world_table, all populated): Cities (200,886), Countries
-(209), States (175), Places (167,781). Places is the CITY-alternate (LEAF_TABLES['city']=['Cities','Places']) —
-a city column routes to Cities, so Places is exercised via the city leaf, not independently. So the
-independently-routed joins are:
-  city    -> Cities    (filter by country / continent)
-  country -> Countries (filter by continent — the attribute a bare country list lacks)
-  u_s_state -> States  (filter by country — Lombardy/Sicily are in Italy)
+The independently-routed joins, with the world-table name each column routes to (all qid-keyed now; see
+docs/notes/naming.md). city/country use the exact-label wikipedia."<type>" tables; u_s_state uses the
+aggregate qid-keyed world."u_s_state" (built by db/sync/build_u_s_state.py) — name-join, but country/continent
+are qid FKs so the filter is exact:
+  city      -> "city"       (wikipedia.city;    filter by country / continent)
+  country   -> "country"    (wikipedia.country; filter by continent)
+  u_s_state -> "u_s_state"  (world.u_s_state;   filter by country — Lombardy/Sicily in Italy)
 Runs against the LIVE world Postgres on the consolidated single-model path.
 
   Needs a synced world Postgres (docker-compose + db/sync) and WORLD_PG_* env vars set.
@@ -26,13 +26,15 @@ STATE = {"name": "s", "columns": ["state", "amount"],
          "rows": [["Lombardy", 100], ["Bavaria", 50], ["Texas", 80], ["Sicily", 30]]}
 
 # (label, table, expected_table, question, expected_scalar)
+# expected_table = the world-table name the column routes to. city/country use the qid-keyed wikipedia
+# exact-label names ("city"/"country"); u_s_state uses the friendly name-keyed table (docs/notes/naming.md).
 CASES = [
-    ("city->Cities (country filter)",   CITY,    "Cities in the World",    "total amount in France",   220),  # Paris+Lyon+Nice
-    ("city->Cities (continent filter)", CITY,    "Cities in the World",    "total amount in Europe",   270),  # +Berlin, -Tokyo
-    ("city->Cities (Asia)",             CITY,    "Cities in the World",    "total amount in Asia",      30),  # Tokyo
-    ("country->Countries (continent)",  COUNTRY, "Countries in the World", "total amount in Asia",      80),  # Japan
-    ("country->Countries (Europe)",     COUNTRY, "Countries in the World", "total amount in Europe",   150),  # France+Germany
-    ("u_s_state->States (country)",     STATE,   "States in the World",    "total amount in Italy",    130),  # Lombardy+Sicily
+    ("city->city (country filter)",       CITY,    "city",                "total amount in France",   220),  # Paris+Lyon+Nice
+    ("city->city (continent filter)",     CITY,    "city",                "total amount in Europe",   270),  # +Berlin, -Tokyo
+    ("city->city (Asia)",                 CITY,    "city",                "total amount in Asia",      30),  # Tokyo
+    ("country->country (continent)",      COUNTRY, "country",             "total amount in Asia",      80),  # Japan
+    ("country->country (Europe)",         COUNTRY, "country",             "total amount in Europe",   150),  # France+Germany
+    ("u_s_state->u_s_state (country)",     STATE,   "u_s_state",           "total amount in Italy",    130),  # Lombardy+Sicily
 ]
 
 

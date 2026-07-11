@@ -133,7 +133,9 @@ def fetch_one(eqid, props):
         v = f"v{i}"
         where.append(f"OPTIONAL {{ ?x wdt:{pid} ?{v} }}")                    # item-valued -> the entity IRI (qid below)
         sel.append(f"(SAMPLE(?{v}) AS ?{col})")
-    bs = wdqs(f"SELECT {' '.join(sel)} WHERE {{ {' '.join(where)} }}", timeout=30, retries=2)
+    # Widened for dev-machine robustness: WDQS reads can be slow/rate-limited off Cloud Run, and a timeout
+    # here makes an entity silently fail to lazy-fill -> undercounted sums (see docs/notes/naming.md).
+    bs = wdqs(f"SELECT {' '.join(sel)} WHERE {{ {' '.join(where)} }}", timeout=60, retries=4)
     if not bs:
         return None
     b = bs[0]; r = {"qid": eqid, "name": V(b, "name")}

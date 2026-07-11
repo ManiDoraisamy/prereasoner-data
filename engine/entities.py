@@ -33,8 +33,12 @@ STOP = {"in", "the", "of", "a", "an", "for", "to", "by", "on", "at", "with", "an
 # wikipedia table (exact Wikidata label) -> the `type` its rows carry in world."words" (cell-side bridge resolution).
 # The tables are the qid-keyed wikipedia."city"/"country" (via WORLD_NAMES); the planner resolves both the cell
 # bridge and the filter to QIDS, so every world join + filter is qid PK/FK.
-WORLD_TABLE_TYPE = {"city": "city", "country": "country"}
-TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # 'city' -> 'city' (the wikipedia table)
+# Route value -> the `type` its cells carry in world."words" (for cell-side bridge resolution).
+# city/country use the qid-keyed wikipedia."<type>" tables; u_s_state uses the aggregate qid-keyed
+# world."u_s_state" (its cells resolve as type='state'; see db/sync/build_u_s_state.py). element/etc. remain
+# on the friendly name-keyed family (routed by the value-membership fallback). See docs/notes/naming.md.
+WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state"}
+TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # 'state' -> 'u_s_state' (the qid-keyed table)
 VALUE_ROUTE_MIN = 0.80   # a column routes to a world table when >= this fraction of its cells resolve to that type
 
 

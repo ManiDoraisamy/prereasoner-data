@@ -22,12 +22,14 @@ from engine.world_tables import WORLD_NAMES, csv_table  # noqa: F401  (csv_table
 DATA = DATA_DIR
 
 # friendly names for the extra world tables (mirrors WORLD_NAMES for the originals)
-FRIENDLY15 = {"word_element": "Elements in the World", "word_state": "States in the World",
+# word_state -> the qid-keyed world."u_s_state" (migrated; docs/notes/naming.md). element/continent remain
+# on the friendly name-keyed family.
+FRIENDLY15 = {"word_element": "Elements in the World", "word_state": "u_s_state",
               "word_continent": "Continents in the World"}
 ALL_FRIENDLY = {**WORLD_NAMES, **FRIENDLY15}
 
 # routing targets, in PRIORITY order (only matters for genuinely city-vs-X ambiguous cells).
-ROUTE_ORDER = ["Cities in the World", "Countries in the World", "States in the World", "Elements in the World"]
+ROUTE_ORDER = ["Cities in the World", "Countries in the World", "u_s_state", "Elements in the World"]
 
 # SPECIFIC routing concepts per family — deliberately NOT the broad word_*.json `concept` lists, which include
 # generic geographic terms (location/region/district/geographical_area) that overlap subdivisions and made a
@@ -41,9 +43,9 @@ ROUTE_CONCEPTS = {
     "Countries in the World": {"country", "nation", "sovereign_state", "european_country", "asian_country",
                                "african_country", "north_american_country", "south_american_country",
                                "balkan_country", "arab_country"},
-    "States in the World": {"american_state", "australian_state", "italian_region", "state", "province",
-                            "county", "prefecture", "department", "oblast", "canton", "governorate",
-                            "territory", "federal_state", "autonomous_community", "u.s._state"},
+    "u_s_state": {"american_state", "australian_state", "italian_region", "state", "province",
+                  "county", "prefecture", "department", "oblast", "canton", "governorate",
+                  "territory", "federal_state", "autonomous_community", "u.s._state"},
     "Elements in the World": {"chemical_element", "element", "metallic_element", "metal", "halogen",
                               "noble_gas", "metalloid", "alkali_metal", "alkaline_earth_metal",
                               "transition_metal", "nonmetal", "rare_earth_element", "actinide", "lanthanide"},

@@ -2,8 +2,10 @@
 Postgres.
 
 Asserts, with the model wired into WorldQuery.route():
-  (1) the MODEL types the uploaded `city` column -> "Cities in the World" (NOT value-membership), and leaves the
-      free-text/name columns untyped;
+  (1) the MODEL types the uploaded `city` column -> the qid-keyed wikipedia table "city" (NOT
+      value-membership), and leaves the free-text/name columns untyped. NOTE: the route value is the
+      wikipedia exact-label table name ("city"), NOT the older friendly name ("Cities in the World") —
+      city/country migrated to the qid-keyed wikipedia."<type>" schema; see docs/notes/naming.md;
   (2) the world JOIN built on that model-typed column answers the aggregate ("how many customers in France");
   (3) the persisted connected bridge carries world_qid = the model's table qid (Q515 city);
   (4) a NON-geo column ("name") is NOT mis-joined (the model + embedding gate keep it out).
@@ -39,8 +41,11 @@ def main():
     # (1) the MODEL types the city column
     routes = Q.route(CUST)
     print("model-driven routes:", {k[1]: v for k, v in routes.items()})
-    if routes.get(("customers", "city")) != "Cities in the World":
-        fails.append(f"(1) model did not type 'city' -> Cities (got {routes.get(('customers','city'))!r})")
+    # The route value is the qid-keyed wikipedia table name ("city"), not the friendly "Cities in the
+    # World" — city/country migrated to wikipedia."<type>" (docs/notes/naming.md). State/element still
+    # route to the friendly name-keyed family.
+    if routes.get(("customers", "city")) != "city":
+        fails.append(f"(1) model did not type 'city' -> 'city' (got {routes.get(('customers','city'))!r})")
     if ("customers", "name") in routes:
         fails.append(f"(1) model mis-typed 'name' -> {routes[('customers','name')]!r} (should be untyped)")
 

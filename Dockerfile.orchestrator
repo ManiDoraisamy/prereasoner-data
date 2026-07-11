@@ -1,0 +1,30 @@
+# The Sonnet orchestrator + the PreReasoner MCP server (mcp-now.md §7).
+#
+# One lean image: the orchestrator HTTP server spawns the MCP server as a stdio subprocess (same image),
+# and the MCP server calls the engine over HTTP (ENGINE_BASE_URL). NO torch/transformers/spaCy here — the
+# heavy model image is the separate engine Dockerfile. This container only needs anthropic + mcp + httpx.
+#
+# Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
+# Run:    docker run -p 8090:8090 -e ANTHROPIC_API_KEY=... -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
+FROM python:3.11-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+
+COPY orchestrator/requirements.txt /app/orchestrator/requirements.txt
+RUN pip install --no-cache-dir -r orchestrator/requirements.txt
+
+# engine/ is copied for engine.config only (the ONE config module); its heavy submodules are never
+# imported here and their deps are intentionally absent. mcp_server/ + orchestrator/ are the app.
+# web/ lets the container also serve the static chat UI (used locally; in prod Firebase Hosting serves it).
+COPY engine/ /app/engine/
+COPY mcp_server/ /app/mcp_server/
+COPY orchestrator/ /app/orchestrator/
+COPY web/ /app/web/
+
+# Cloud Run injects PORT; the orchestrator binds ORCH_PORT. Map them so the container obeys Cloud Run.
+ENV ORCH_HOST=0.0.0.0 ORCH_PORT=8090
+EXPOSE 8090
+
+# ORCH_PORT falls back to $PORT when Cloud Run sets it (see CMD). ENGINE_BASE_URL must be provided.
+CMD ["sh", "-c", "ORCH_PORT=${PORT:-8090} python -m orchestrator.server"]

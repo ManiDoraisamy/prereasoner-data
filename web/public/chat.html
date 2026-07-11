@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prereasoner — chat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+/* Chat + reasoning player, on the FormFacade design system (styles.css). Left: chat sidebar (white
+   panel). Right: the reasoning "video player" — same gradient + white .gridcard + white transport as
+   reason.html, reusing styles.css .badge/.gridwrap/.gridcard/.controls/.playbtn/.scrub. */
+.appwrap{position:fixed;inset:0;display:flex;overflow:hidden}
+
+/* ---- left: chat sidebar ---- */
+.chatpane{width:380px;min-width:380px;background:#fff;display:flex;flex-direction:column;
+  box-shadow:0 0 46px rgba(40,12,140,.30);z-index:5}
+.chdr{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #efeafa}
+.chdr img{height:26px;width:auto;display:block}
+.chdr span{font:600 20px var(--disp);color:var(--card-ink);letter-spacing:-.4px}
+.datachips{padding:11px 20px;border-bottom:1px solid #efeafa;display:flex;gap:8px;flex-wrap:wrap;
+  align-items:center;font:12px var(--mono);color:var(--card-ink-dim)}
+.datachips .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;background:#f3effd;
+  border:1px solid #ddd4f5;border-radius:9999px;color:var(--card-ink);font:600 12px var(--mono)}
+.addcsv{cursor:pointer;color:var(--brand);font:600 12.5px var(--disp)}
+.chatscroll{flex:1;overflow-y:auto;padding:16px 18px}
+.turn{margin-bottom:15px}
+.turn .who{font:600 10px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--card-ink-dim);margin-bottom:4px}
+.turn .msg{font:14.5px/1.55 var(--disp);color:var(--card-ink);background:#faf9ff;border:1px solid #efeafa;
+  border-radius:11px;padding:10px 13px;white-space:pre-wrap}
+.turn.user .msg{background:#f3effd;border-color:#ddd4f5}
+.replays{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.replay{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;background:#fff;border:1px solid #e5ddfa;
+  border-radius:9px;padding:7px 10px;font:13px var(--disp);color:var(--card-ink)}
+.replay:hover{border-color:var(--brand);background:#faf9ff}
+.replay .tri{width:16px;height:16px;color:var(--brand);flex:0 0 auto}
+.replay .pill{font:600 9.5px var(--mono);letter-spacing:.6px;text-transform:uppercase;padding:2px 7px;border-radius:6px;flex:0 0 auto}
+.replay .pill.answered{background:#eee9fc;color:var(--brand)}
+.replay .pill.clarify{background:#fdeede;color:#c85f12}
+.replay .pill.error{background:#fde3dd;color:#c0392b}
+.replay .q{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.composer{padding:13px;border-top:1px solid #efeafa;display:flex;gap:9px;align-items:flex-end}
+.composer textarea{flex:1;border:1px solid #ddd4f5;border-radius:11px;outline:none;background:#fff;
+  color:var(--card-ink);font:14.5px var(--disp);padding:11px 13px;height:44px;max-height:140px;resize:none}
+.composer textarea:focus{border-color:var(--brand)}
+.composer .send{all:unset;cursor:pointer;width:44px;height:44px;border-radius:11px;background:var(--brand);color:#fff;
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 6px 18px rgba(40,12,140,.30);transition:background .16s,transform .16s}
+.composer .send:hover{background:var(--brand-deep);transform:translateY(-1px)}
+.composer .send[disabled]{opacity:.5;cursor:default;transform:none}
+.composer .send svg{width:19px;height:19px}
+
+/* ---- right: reasoning player (gradient bg from body; white gridcard like reason.html) ---- */
+.playpane{flex:1;display:flex;flex-direction:column;min-width:0}
+.playpane .stage{flex:0 0 auto}
+.playpane .gridwrap{justify-content:flex-start}
+.gridcard{padding:18px;min-width:280px}
+#empty{color:var(--ink-dim);font:15px/1.6 var(--disp);max-width:560px;margin:8vh auto 0;text-align:center}
+/* player content inside the white gridcard */
+.bubble{margin-bottom:14px}
+.bubble:last-child{margin-bottom:0}
+.bubble .lbl{font:600 11px var(--mono);letter-spacing:.4px;text-transform:uppercase;color:var(--brand);margin-bottom:6px}
+.rtwrap{overflow-x:auto}
+table.rtab{border-collapse:separate;border-spacing:0;font:13px var(--mono)}
+.rtab th,.rtab td{border-bottom:1px solid #efeafa;border-right:1px solid #efeafa;padding:6px 11px;text-align:left}
+.rtab th{background:#f3effd;color:var(--brand);font-weight:600}
+.rtab td{color:var(--card-ink)}
+.rtab td.n,.rtab th.n{text-align:right}
+.rtab .hl{background:#fff4ec;color:var(--accent)}
+.plan{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.pstep{font:600 11px var(--mono);padding:3px 10px;border-radius:9999px;background:#f3effd;color:var(--card-ink-dim)}
+.pstep.done{color:var(--brand)} .pstep.on{background:var(--brand);color:#fff}
+.think{display:flex;align-items:center;gap:8px;color:var(--card-ink-dim);font:13px var(--mono)}
+.spin{width:12px;height:12px;border:2px solid #e5ddfa;border-top-color:var(--brand);border-radius:50%;
+  display:inline-block;animation:sp .8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+.sqlbox{font:12px/1.5 var(--mono);color:var(--card-ink);background:#faf9ff;border:1px solid #efeafa;
+  border-radius:9px;padding:10px 12px;white-space:pre-wrap;overflow-x:auto}
+.clarcard .lbl{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="appwrap">
+  <aside class="chatpane">
+    <div class="chdr"><img src="login_logo.svg" alt=""><span>Prereasoner</span></div>
+    <div class="datachips"><span id="tablechips"></span>
+      <label class="addcsv">+ CSV<input id="csvfile" type="file" accept=".csv" hidden></label></div>
+    <div class="chatscroll" id="chat"></div>
+    <form class="composer" id="composer">
+      <textarea id="msg" placeholder="Ask about your data…  (try: total amount in France)"></textarea>
+      <button class="send" id="send" type="submit" aria-label="Ask">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="5"></line><polyline points="6 11 12 5 18 11"></polyline></svg>
+      </button>
+    </form>
+  </aside>
+
+  <main class="playpane">
+    <div class="stage"><div class="badge" id="badge">The reasoning for each answer replays here</div></div>
+    <div class="gridwrap"><div id="gridcard">
+      <div id="empty">Ask a question on the left. When Prereasoner answers, press ▶ on that reply to
+        watch it resolve → join → filter → aggregate → result.</div>
+    </div></div>
+    <div class="controls">
+      <button class="playbtn" id="play" type="button" aria-label="Play"></button>
+      <button class="stepbtn" type="button" data-step="-1">◀</button>
+      <div class="scrub" id="scrub"><div class="track"><div class="fill" id="fill"></div><div class="ticks" id="ticks"></div><div class="knob" id="knob"></div></div></div>
+      <button class="stepbtn" type="button" data-step="1">▶</button>
+    </div>
+  </main>
+</div>
+
+<script src="lib/shared.js"></script>
+<script src="lib/table-render.js"></script>
+<script type="module">
+import { ensureSignedIn } from "./lib/firebase-init.js";
+
+const $ = id => document.getElementById(id);
+
+// ---- session data (attach CSVs; a small built-in sample so you can ask immediately) ----
+let SESSION_TABLES = [
+  { name: "customers", data: "customer_id,city\n1,Paris\n2,Lyon\n3,Berlin\n" },
+  { name: "orders",    data: "order_id,customer_id,amount\n10,1,120\n11,2,150\n12,3,90\n" },
+];
+let HISTORY = [];
+let TOKEN = null;
+let isSample = true;   // the built-in customers/orders is a sample; the first real upload replaces it
+
+function renderChips(){
+  $("tablechips").innerHTML = SESSION_TABLES.map(t => '<span class="chip">📄 '+esc(t.name)+'</span>').join(" ")
+    || '<span>no data attached</span>';
+}
+$("csvfile").addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  if(isSample){ SESSION_TABLES = []; isSample = false; }   // drop the sample once the user attaches their own data
+  SESSION_TABLES.push({ name: f.name.replace(/\.csv$/i,""), data: await f.text() });
+  renderChips();
+});
+
+// ============================ the reasoning player ============================
+// One record per assistant turn's trace, so ANY past answer replays. Slide index:
+// 0 = inputs; 1..nR = resolution slides; nR+1..LAST = views (last = Result).
+let ACTIVE = null, playTimer = null;
+
+function parseTables(tables){
+  return (tables||[]).map(t => { const p = parseCSV(t.data); return { name: t.name, cols: p.cols, rows: p.rows }; });
+}
+function recordFromTrace(trace){
+  const e = trace.engine || {};
+  let views = (e.views || []).slice();
+  const result = e.answer || e.result || null;
+  if(!views.length && result) views = [{ op:"group_agg", label:"Result", sql:e.sql||"", columns:result.columns, rows:result.rows }];
+  const rec = {
+    question: trace.question || "", inputs: parseTables(SESSION_TABLES),
+    resolves: e.resolves || [], views, result, sql: e.sql || "",
+    status: e.status, clarify: e.status === "clarify" ? (e.clarify||{}) : null, S: 0,
+  };
+  rec.last = rec.resolves.length + views.length + (rec.clarify ? 1 : 0);
+  return rec;
+}
+function inputsSlide(rec){
+  return rec.inputs.map(t => tableBubble(t.cols, t.rows, t.name, {maxRows:8})).join("")
+    + '<div class="bubble"><div class="think">'+SPINNER+' analyzed input</div></div>';
+}
+function planBar(rec, upto){
+  if(rec.views.length <= 1) return "";
+  return '<div class="plan">' + rec.views.map((v,i) =>
+    '<span class="pstep '+(i<upto?"done":(i===upto?"on":""))+'">'+esc(v.label||oplabel(v.op))+'</span>'
+  ).join("") + '</div>';
+}
+function viewSlide(rec, vi){
+  const v = rec.views[vi];
+  const isResult = vi === rec.views.length - 1;
+  const cols = (isResult && rec.result) ? rec.result.columns : (v.columns||[]);
+  const rows = (isResult && rec.result) ? rec.result.rows : (v.rows||[]);
+  let h = planBar(rec, vi) + tableBubble(cols, rows, isResult ? "Result" : (v.label||oplabel(v.op)));
+  if(isResult && rec.sql) h += '<div class="sqlbox">'+esc(rec.sql)+'</div>';
+  return h;
+}
+function clarifySlide(rec){
+  const c = rec.clarify || {};
+  return '<div class="bubble clarcard"><div class="lbl">Needs clarification — not guessing</div>'
+    + '<div style="font:14.5px var(--disp);color:var(--card-ink)">Did you mean: <b>'+esc(c.proposed||"")+'</b></div>'
+    + (c.dropped && c.dropped.length ? '<div class="think" style="margin-top:6px">dropped: '+esc(c.dropped.join(", "))+'</div>' : '')
+    + '</div>' + (c.original_sql ? '<div class="sqlbox">'+esc(c.original_sql)+'</div>' : '');
+}
+function buildTicks(rec){
+  const t = $("ticks"); t.innerHTML = "";
+  for(let i=0;i<=rec.last;i++){ const d=document.createElement("div"); d.className="tick";
+    d.style.left = (rec.last ? i/rec.last*100 : 0) + "%"; d.style.position="absolute"; d.style.transform="translateX(-50%)"; t.appendChild(d); }
+}
+function render(){
+  const rec = ACTIVE; if(!rec) return;
+  const S = rec.S, nR = rec.resolves.length;
+  $("fill").style.width = (rec.last ? S/rec.last*100 : 0) + "%";
+  $("knob").style.left  = (rec.last ? S/rec.last*100 : 0) + "%";
+  let h;
+  if(rec.clarify && S >= rec.last) h = clarifySlide(rec);
+  else if(S === 0) h = inputsSlide(rec);
+  else if(S <= nR) h = resolveSlide(rec.resolves[S-1]);
+  else h = viewSlide(rec, S - nR - 1);
+  $("badge").textContent = rec.question;
+  $("gridcard").innerHTML = h;
+}
+function resolveSlide(r){
+  if(!r) return "";
+  const src = tableBubble([r.column||"cell"], (r.rows||[]).map(x=>[x]), (r.table||"")+" · "+(r.column||""), {hlcol:r.column});
+  const world = (r.unconnected || !r.columns) ? "" :
+    tableBubble(r.columns, r.rows, (r.wtable||"world")+" (wikipedia)", {hlcol:r.hlcol||"name"});
+  return src + world + '<div class="bubble"><div class="think">'+SPINNER+' resolved '+esc(r.column||"")+'</div></div>';
+}
+function stopPlay(){ if(playTimer){clearInterval(playTimer);playTimer=null;} $("play").innerHTML = PLAY; }
+function startPlay(){
+  if(!ACTIVE) return; $("play").innerHTML = PAUSE; ACTIVE.S = 0; render();
+  const dt = Math.max(900, Math.round(4600/(ACTIVE.last||1)));
+  playTimer = setInterval(() => { ACTIVE.S++; if(ACTIVE.S>ACTIVE.last){stopPlay();ACTIVE.S=ACTIVE.last;return;} render(); }, dt);
+}
+function togglePlay(){ if(!ACTIVE) return; playTimer ? stopPlay() : startPlay(); }
+function step(d){ if(!ACTIVE) return; stopPlay(); ACTIVE.S = Math.max(0, Math.min(ACTIVE.last, ACTIVE.S + d)); render(); }
+function scrubClick(e){ if(!ACTIVE) return; stopPlay(); const r=$("scrub").getBoundingClientRect();
+  ACTIVE.S = Math.round((e.clientX-r.left)/r.width*ACTIVE.last); render(); }
+function loadTrace(trace){ stopPlay(); ACTIVE = recordFromTrace(trace); buildTicks(ACTIVE); startPlay(); }
+
+$("play").onclick = togglePlay;
+document.querySelectorAll("#controls .stepbtn").forEach(b => b.onclick = () => step(+b.dataset.step));
+$("scrub").onclick = scrubClick;
+$("play").innerHTML = PLAY;
+
+// ============================ chat ============================
+function addTurn(role, text){
+  const d = document.createElement("div"); d.className = "turn " + role;
+  d.innerHTML = '<div class="who">'+(role==="user"?"You":"Prereasoner")+'</div><div class="msg"></div>';
+  d.querySelector(".msg").textContent = text;
+  $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
+  return d;
+}
+function attachReplays(turnEl, traces){
+  if(!traces || !traces.length) return;
+  const wrap = document.createElement("div"); wrap.className = "replays";
+  traces.forEach((t,i) => {
+    const st = (t.engine && t.engine.status) || "answered";
+    const btn = document.createElement("button"); btn.className = "replay"; btn.type = "button";
+    btn.innerHTML = '<span class="tri">'+PLAY+'</span><span class="pill '+st+'">'+st+'</span>'
+      + '<span class="q">'+esc(t.question||("step "+(i+1)))+'</span>';
+    btn.onclick = () => loadTrace(t);
+    wrap.appendChild(btn);
+  });
+  turnEl.appendChild(wrap);
+}
+async function send(text){
+  addTurn("user", text);
+  $("send").disabled = true;
+  const thinking = addTurn("assistant", "…");
+  try{
+    const r = await fetch("/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json", "Authorization": "Bearer " + (TOKEN||"") },
+      body: JSON.stringify({ message: text, tables: SESSION_TABLES, history: HISTORY }),
+    });
+    const j = await r.json();
+    thinking.querySelector(".msg").textContent = j.reply || j.error || "(no reply)";
+    if(j.history) HISTORY = j.history;
+    attachReplays(thinking, j.traces);
+    if(j.traces && j.traces.length) loadTrace(j.traces[0]);
+  }catch(e){ thinking.querySelector(".msg").textContent = "error: " + e; }
+  $("send").disabled = false;
+}
+$("composer").addEventListener("submit", e => {
+  e.preventDefault(); const v = $("msg").value.trim(); if(!v) return; $("msg").value = ""; send(v);
+});
+$("msg").addEventListener("keydown", e => {
+  if(e.key === "Enter" && !e.shiftKey){ e.preventDefault(); $("composer").requestSubmit(); }
+});
+
+// ---- boot: auth mode from the orchestrator (/config): "test" => local bypass, "firebase" => Google ----
+renderChips();
+(async () => {
+  let mode = "firebase";
+  try { mode = (await (await fetch("/config")).json()).authMode || "firebase"; } catch(_){}
+  const isLocal = location.hostname==="localhost" || location.hostname==="127.0.0.1";
+  if(mode === "test" && isLocal) sessionStorage.setItem("pr_test_auth","1");
+  else sessionStorage.removeItem("pr_test_auth");
+  const uid = await ensureSignedIn();
+  if(uid){ try{ TOKEN = await window.ensureToken(); }catch(_){ TOKEN=""; } }
+})();
+</script>
+</body>
+</html>

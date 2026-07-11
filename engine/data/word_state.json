@@ -1,5 +1,6 @@
 {
   "table": "word_state",
+  "_note": "key is 'name': the persisted bridge resolves non-city cells to the canonical NAME, so the join is on world.u_s_state.name; the qid PK + country/continent qid FKs make the country/continent FILTER exact (docs/notes/naming.md).",
   "key": "name",
   "concept": [
     "american_state",
@@ -23,22 +24,23 @@
     "canadian_province"
   ],
   "filter_attrs": [
-    "country"
+    "country",
+    "continent"
   ],
   "links": [
     {
       "col": "country",
       "to_table": "word_country",
-      "to_col": "name"
+      "to_col": "qid"
     }
   ],
   "columns": [
+    "qid",
     "name",
     "country",
+    "continent",
     "population",
-    "level",
-    "updated_at",
-    "source"
+    "capital"
   ],
   "filter_values": {
     "country": [
@@ -50,7 +52,16 @@
       "Italy",
       "United Kingdom",
       "United States"
+    ],
+    "continent": [
+      "Africa",
+      "Antarctica",
+      "Asia",
+      "Europe",
+      "North America",
+      "Oceania",
+      "South America"
     ]
   },
-  "source": "Wikidata (live WDQS)"
+  "source": "Wikidata (live WDQS); qid-keyed projection built by db/sync/build_u_s_state.py"
 }
