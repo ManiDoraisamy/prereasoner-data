@@ -151,3 +151,17 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   the pending sign-in -> infinite account chooser, reported on prereasoner.com), plus loop
   breakers in firebase-init.ensureSignedIn and sheets.html (a returned-but-signed-out redirect
   shows a retry UI instead of re-redirecting). world.html/reason.html catch the throw.
+
+## World workbook + shared lib + local dev server flow (2026-07-11, live)
+
+- The workbook is now SHARED CODE: lib/workbook.js (logic, parameterized by window.WB_CONFIG:
+  endpoint/status strings/demo data) + the workbook styles moved into styles.css (?v=10).
+  reason.html and world.html are thin shells — /world's trace-player UI is gone.
+- Local dev via the orchestrator (localhost:8090): its static server now emulates Firebase
+  Hosting cleanUrls (/reason -> reason.html; was {"error":"not found"}), and ensureSignedIn
+  auto-detects the orchestrator's GET /config authMode "test" on localhost — the home-page
+  click-through works with no console flags. (orchestrator/server.py fix is in the working
+  tree; that file is owned by the MCP session and still untracked.)
+- Verified: localhost:8090 home -> arrow -> /reason workbook (France demo, 270) and /world
+  workbook (cities demo, Lyon+Paris), plus live chat.prereasoner.com/world with real auth +
+  streaming (4 steps + wikipedia reference sheet, 270).

@@ -110,3 +110,87 @@ table.sheet{border-collapse:separate;border-spacing:0}
 .tick{width:2px;height:2px;border-radius:50%;background:rgba(255,255,255,.45)}
 .lcount{font-family:var(--mono);font-size:12px;color:#fff;min-width:108px;text-align:right}
 .foot{flex:0 0 auto;padding:0 36px 12px;text-align:center;color:var(--ink-faint);font-size:11px}
+
+/* ---- read-only WORKBOOK (reason + world): sheets, tab strip, right chat rail.
+   Logic lives in lib/workbook.js; pages are thin shells. ---- */
+/* ---- read-only WORKBOOK on the FormFacade design system (styles.css tokens only) ----
+   Left: the spreadsheet (white .gridcard sheet + bottom tab strip). Right: the chat rail.
+   Sheet classes: green = the user's input tables (never touched by the AI), blue = the AI's
+   derivation sheets (one per view step), grey = reference tables the resolution used
+   (hidden behind a toggle). */
+.spin{display:inline-block;width:13px;height:13px;border:2.5px solid #d9d2f3;border-top-color:var(--brand);border-radius:50%;animation:sp .8s linear infinite;flex:0 0 auto}@keyframes sp{to{transform:rotate(360deg)}}
+.workmain{flex:1;min-height:0;display:flex;gap:18px;padding:4px 26px 18px}
+.sheetside{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+
+/* the active sheet */
+.sheetcard{flex:1;min-height:0;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(40,12,140,.28);display:flex;flex-direction:column;overflow:hidden}
+.sheetband{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #efeafa}
+.sheetband .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+.sheetband .snm{font:600 13px var(--mono);color:var(--card-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sheetband .skind{font:600 9.5px var(--mono);letter-spacing:1.1px;text-transform:uppercase;padding:3px 9px;border-radius:9999px;flex:0 0 auto}
+.sheetband .slabel{font:12px var(--disp);color:var(--card-ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.sqlbtn{all:unset;cursor:pointer;font:600 10.5px var(--mono);letter-spacing:.8px;color:var(--brand);padding:4px 10px;border:1px solid #ddd4f5;border-radius:9999px;flex:0 0 auto}
+.sqlbtn:hover{background:#f3effd}
+.sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
+.sqlrow.open{display:block}
+.vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
+.vtok.kw{background:#7c3aed}.vtok.world{background:#c026d3}.vtok.lit{background:#d6336c}.vtok.tbl{background:#0891b2}
+.sheetscroll{flex:1;min-height:0;overflow:auto}
+.sheetscroll::-webkit-scrollbar{height:9px;width:9px}.sheetscroll::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}.sheetscroll::-webkit-scrollbar-track{background:transparent}
+table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
+.wb th,.wb td{border-right:1px solid #efeafa;border-bottom:1px solid #efeafa;padding:7px 12px;text-align:left;vertical-align:top;white-space:nowrap;max-width:360px;overflow:hidden;text-overflow:ellipsis}
+.wb th{position:sticky;top:0;z-index:2;background:#f3effd;color:var(--brand);font:600 12px var(--mono);letter-spacing:.3px}
+.wb th.rn,.wb td.rn{position:sticky;left:0;z-index:1;background:#faf9ff;color:#b3acce;text-align:center;font:12px var(--mono);min-width:40px;max-width:40px}
+.wb th.rn{z-index:3;background:#f3effd}
+.wb td{font-family:var(--mono);color:var(--card-ink)}
+.wb td.n,.wb th.n{text-align:right;font-variant-numeric:tabular-nums}
+.wb.result td{color:#4a2db5;font-weight:600}
+.capnote{padding:8px 16px;font:11.5px var(--mono);color:var(--card-ink-dim);border-top:1px solid #efeafa}
+.sheetmsg{flex:1;display:flex;align-items:center;justify-content:center;gap:10px;color:var(--card-ink-dim);font:600 13px var(--mono);padding:30px}
+
+/* bottom tab strip (the workbook's sheets) */
+.tabstrip{flex:0 0 auto;display:flex;align-items:center;gap:7px;overflow-x:auto;padding:2px 2px 4px}
+.tabstrip::-webkit-scrollbar{height:7px}.tabstrip::-webkit-scrollbar-thumb{background:rgba(255,255,255,.35);border-radius:6px}.tabstrip::-webkit-scrollbar-track{background:transparent}
+.wtab{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:8px;padding:8px 15px;border-radius:10px 10px 3px 3px;background:rgba(255,255,255,.16);color:#fff;font:600 12px var(--mono);white-space:nowrap;transition:background .14s}
+.wtab:hover{background:rgba(255,255,255,.30)}
+.wtab.active{background:#fff;color:var(--card-ink);box-shadow:0 8px 22px rgba(40,12,140,.25)}
+.wtab .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.dot.input{background:#27b57e}.dot.deriv{background:#8f7bf2}.dot.ref{background:#b9b3cf}
+.wtab.active .dot.deriv{background:var(--brand)}
+.skind.input{background:#e2f6ec;color:#177a53}.skind.deriv{background:#eee9fc;color:var(--brand)}.skind.ref{background:#f0eef6;color:#6f6a87}
+.band-input{background:#27b57e}.band-deriv{background:var(--brand)}.band-ref{background:#b9b3cf}
+.bandbar{height:4px;flex:0 0 auto}
+.tabsep{width:1px;height:22px;background:rgba(255,255,255,.35);flex:0 0 auto;margin:0 3px}
+.reftoggle{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:7px;padding:8px 13px;border-radius:10px;color:rgba(255,255,255,.85);font:600 11.5px var(--mono);white-space:nowrap}
+.reftoggle:hover{background:rgba(255,255,255,.16)}
+
+/* right rail — the chat / "what I did" panel (Excel-Copilot side, but ours) */
+.rail{flex:0 0 340px;max-width:340px;background:#fff;border-radius:14px;box-shadow:0 18px 50px rgba(40,12,140,.28);display:flex;flex-direction:column;min-height:0}
+.railhdr{flex:0 0 auto;padding:13px 18px;border-bottom:1px solid #efeafa;font:600 10.5px var(--mono);letter-spacing:1.6px;text-transform:uppercase;color:var(--card-ink-dim)}
+.railscroll{flex:1;min-height:0;overflow-y:auto;padding:14px 18px}
+.railscroll::-webkit-scrollbar{width:8px}.railscroll::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}
+.turn{margin-bottom:14px}
+.turn .who{font:600 9.5px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--card-ink-dim);margin-bottom:5px}
+.turn .msg{font:14px/1.5 var(--disp);color:var(--card-ink);background:#f3effd;border:1px solid #ddd4f5;border-radius:11px;padding:10px 13px;white-space:pre-wrap;word-break:break-word}
+.turn.ai .msg{background:#faf9ff;border-color:#efeafa}
+.statusline{display:flex;align-items:center;gap:9px;font:600 12.5px var(--mono);color:var(--card-ink-dim);padding:2px 1px;min-height:20px}
+.steps{display:flex;flex-direction:column;gap:5px;margin-top:9px}
+.steplink{all:unset;cursor:pointer;display:flex;align-items:center;gap:9px;padding:7px 10px;border:1px solid #efeafa;border-radius:9px;font:13px var(--disp);color:var(--card-ink)}
+.steplink:hover{border-color:var(--brand);background:#faf9ff}
+.steplink.on{border-color:var(--brand);background:#f3effd}
+.steplink .idx{font:600 10.5px var(--mono);color:#fff;background:#8f7bf2;border-radius:6px;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+.steplink.refl .idx{background:#b9b3cf}
+.steplink .stx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.resultline{margin-top:12px;padding:12px 14px;border-radius:11px;background:#eee9fc;border:1px solid #ddd4f5}
+.resultline .rk{font:600 9.5px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--brand);margin-bottom:4px}
+.resultline .rv{font:600 22px var(--disp);color:var(--card-ink);letter-spacing:-.4px;word-break:break-word}
+.resultline .rv.small{font-size:14px;font-weight:500}
+.warn{margin-top:9px;padding:9px 12px;border-radius:9px;background:#fdf3e6;border:1px solid #f5ddb8;color:#8a5a13;font:12px/1.45 var(--disp)}
+.failbox{margin-top:9px;padding:11px 13px;border-radius:9px;background:#fdeaea;border:1px solid #f2c4c4;color:#8f2020;font:13px/1.5 var(--disp)}
+.retry{all:unset;cursor:pointer;display:inline-block;margin-top:9px;padding:7px 16px;background:var(--brand);color:#fff;border-radius:9999px;font:600 11px var(--mono);letter-spacing:1px;text-transform:uppercase}
+
+@media(max-width:880px){
+  .workmain{flex-direction:column;padding:4px 12px 12px;gap:10px}
+  .rail{flex:0 0 auto;max-width:none;max-height:42vh}
+  .sheetside{min-height:46vh}
+}

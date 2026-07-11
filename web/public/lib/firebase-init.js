@@ -45,9 +45,19 @@ window.subscribeRun = (uid, jobId, cb) => {
 export async function ensureSignedIn(){
   // LOCAL DEV bypass (localhost only): sessionStorage.setItem('pr_test_auth','1') skips Google
   // sign-in and sends a dummy bearer token. Pair with AUTH_TEST_SUB on the engine, which then
-  // skips token verification. Has no effect on any deployed origin.
-  if ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') && sessionStorage.getItem('pr_test_auth')) {
-    window.ensureToken = async () => 'local-dev'; window.__uid = 'local-dev'; return 'local-dev';
+  // skips token verification. When the flag is unset, ask the local dev server: the orchestrator
+  // (localhost:8090) serves GET /config with authMode "test" when it proxies a local engine —
+  // auto-bypass so the click-through from the home page just works. The Firebase Hosting
+  // emulator has no /config (404) -> normal Google sign-in. No effect on any deployed origin.
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    let t = sessionStorage.getItem('pr_test_auth');
+    if (t == null) {
+      try {
+        const c = await fetch('/config', { cache: 'no-store' }).then(r => r.ok ? r.json() : null);
+        if (c && c.authMode === 'test') t = '1';
+      } catch (_) {}
+    }
+    if (t) { window.ensureToken = async () => 'local-dev'; window.__uid = 'local-dev'; return 'local-dev'; }
   }
   let redirectErr = null;
   try { await getRedirectResult(auth); } catch (e) { redirectErr = e; }   // completes the sign-in when returning from Google
