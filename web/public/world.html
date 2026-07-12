@@ -3,13 +3,24 @@
 <title>Prereasoner · world knowledge</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css?v=11">
+<link rel=stylesheet href="styles.css?v=12">
 </head><body class=app>
 <!-- The read-only WORKBOOK on the /api/world path (unified-encoder world joins / hybrid
      semantic SQL). Same shell as /reason: shared logic in lib/workbook.js, styles in styles.css. -->
 <div class=screen>
-  <div class=hdr><a class=brand href="/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div>
-    <a class=ghost href="/" style="text-decoration:none">+ New</a></div>
+  <div class=hdr>
+    <button class=menubtn id=menubtn aria-label="Conversations" onclick=openDrawer()><svg viewBox="0 0 24 24" width=20 height=20 aria-hidden=true><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width=2 stroke-linecap=round fill=none/></svg></button>
+    <a class=hlogo href="/" aria-label=Home><img class=logo src="login_logo.svg" alt=""></a>
+    <div class=htitle id=htitle title=""></div>
+    <div class=spacer></div>
+    <a class=ghost href="/" style="text-decoration:none">+ New</a>
+  </div>
+  <div class=drawer-backdrop id=drawerback onclick=closeDrawer()></div>
+  <aside class=drawer id=drawer aria-label="Conversations">
+    <div class=drawerhd><span>Conversations</span><button class=drawerx onclick=closeDrawer() aria-label=Close>&times;</button></div>
+    <a class=convnew href="/">+ New conversation</a>
+    <div class=convlist id=convlist></div>
+  </aside>
   <div class=workmain>
     <div class=sheetside>
       <div class=sheetcard id=sheetcard>

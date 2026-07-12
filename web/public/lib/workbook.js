@@ -260,7 +260,29 @@ function wireChat(){
   if(box) box.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
   const t=$('tabstrip'); if(t) t.addEventListener('scroll',updateTabArrows);
   window.addEventListener('resize',updateTabArrows);
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
 }
 
-function run(){ wireChat(); seedInputs(); startRun(); }
+/* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */
+function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.title=q; } document.title='Prereasoner · '+(q.length>40?q.slice(0,40)+'…':q); }
+
+/* ---- conversations drawer ----
+   listConversations() is the SEAM to the conversation store. The store (a "chat" Postgres
+   schema: user_profile / conversation / user_conversation, per the conversation-schema design)
+   is a backend change owned with the MCP/orchestrator layer; until it lands this returns [] and
+   the drawer shows an empty state. When wired, return [{id, question, ts}] newest-first and
+   selecting one should load that conversation (its own schema). */
+async function listConversations(){ try{ if(window.listConversations) return await window.listConversations(); }catch(_){} return []; }
+function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
+function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
+async function renderDrawer(){
+  const list=$('convlist'); if(!list)return;
+  list.innerHTML='<div class=convempty>Loading…</div>';
+  const convs=await listConversations();
+  if(!convs.length){ list.innerHTML='<div class=convempty>Your past conversations will appear here.</div>'; return; }
+  list.innerHTML=convs.map(c=>'<button class=convitem onclick="openConversation(\''+esc(c.id)+'\')"><div class=cq>'+esc(c.question||'(untitled)')+'</div>'+(c.ts?'<div class=ct>'+esc(c.ts)+'</div>':'')+'</button>').join('');
+}
+function openConversation(id){ if(window.openConversation){ window.openConversation(id); return; } closeDrawer(); }
+
+function run(){ wireChat(); setHeaderTitle(question); seedInputs(); startRun(); }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend
