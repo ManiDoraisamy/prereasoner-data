@@ -9,10 +9,6 @@
     ],
     "rewrites": [
       {
-        "source": "/chat",
-        "run": { "serviceId": "prereasoner-chat", "region": "us-central1" }
-      },
-      {
         "source": "/api/**",
         "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
       }
