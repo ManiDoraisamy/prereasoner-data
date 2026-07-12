@@ -35,7 +35,7 @@ const MAX_RENDER_ROWS=500;
    BOOK = sheet metas {id, cls:'input'|'deriv'|'ref', name(label, human), cols, rows, sql, result}.
    CHAT = finished turns [{q, html}] (minimal: the answer line); the CURRENT turn renders live.
    RUN guards every async callback so a superseded run (follow-up question) can't paint. */
-let BOOK=[],ACTIVE=null,AUTO=true,REF_OPEN=false;
+let BOOK=[],ACTIVE=null,AUTO=true;
 let CHAT=[],question=getQ();
 let J=null,VIEWS=[],RESOLVES=[],SETTLED=false,DONE=false,UNSUB=null,doneTimer=null,STATUS='Analyzing input…',FAILMSG=null,RUN=0;
 let SEEN=new Set(),SEEN_R=new Set();
@@ -83,19 +83,22 @@ function renderSheet(){
 function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
 function tabTxt(s){ const t=s.result?'Result':s.name; return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
-  // Reading order: your data -> the reference lookups it used (collapsed) -> the derivation steps.
+  // Reading order: your data -> the reference lookups it used -> the derivation steps.
   const inputs=BOOK.filter(s=>s.cls==='input'), refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
   const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+'</button>';
-  let h=inputs.map(tab).join('');
-  if(refs.length){
-    h+='<button class=reftoggle onclick=toggleRefs()>'+(REF_OPEN?'&#9662;':'&#9656;')+' Reference ('+refs.length+')</button>';
-    if(REF_OPEN) h+=refs.map(tab).join('');
-  }
-  h+=derivs.map(tab).join('');
-  $('tabstrip').innerHTML=h;
+  $('tabstrip').innerHTML=inputs.map(tab).join('')+refs.map(tab).join('')+derivs.map(tab).join('');
+  const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
+  updateTabArrows();
 }
-function pick(id){ AUTO=false; ACTIVE=id; const m=sheetById(id); if(m&&m.cls==='ref') REF_OPEN=true; paint(); }
-function toggleRefs(){ REF_OPEN=!REF_OPEN; renderTabs(); }
+function pick(id){ AUTO=false; ACTIVE=id; paint(); }
+// Google-Sheets-style paging for the tab strip (its native scrollbar is hidden).
+function scrollTabs(d){ const t=$('tabstrip'); if(t) t.scrollBy({left:d*220,behavior:'smooth'}); }
+function updateTabArrows(){
+  const t=$('tabstrip'), l=$('tabL'), r=$('tabR'); if(!t||!l||!r)return;
+  const over=t.scrollWidth>t.clientWidth+2;
+  l.disabled=!over||t.scrollLeft<=2;
+  r.disabled=!over||t.scrollLeft+t.clientWidth>=t.scrollWidth-2;
+}
 
 /* ---------------- rendering: the chat rail ---------------- */
 function resultSummary(){
@@ -239,7 +242,7 @@ function resetRun(){
   if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} clearTimeout(doneTimer);
   BOOK=BOOK.filter(s=>s.cls==='input');                       // the user's sheets stay; derived/reference sheets are the run's
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
-  SEEN=new Set(); SEEN_R=new Set(); AUTO=true; REF_OPEN=false;
+  SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; ACTIVE=BOOK.length?BOOK[0].id:null;
 }
 function sendChat(){
@@ -255,6 +258,8 @@ function wireChat(){
   const box=$('chatq'), btn=$('chatsend');
   if(btn) btn.onclick=sendChat;
   if(box) box.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
+  const t=$('tabstrip'); if(t) t.addEventListener('scroll',updateTabArrows);
+  window.addEventListener('resize',updateTabArrows);
 }
 
 function run(){ wireChat(); seedInputs(); startRun(); }

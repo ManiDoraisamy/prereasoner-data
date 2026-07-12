@@ -177,3 +177,13 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
 - Sheet order everywhere = input -> Reference (collapsed) -> steps.
 - Human names only: tabs/band/steps use the step label ("join orders + customers"), never
   v1/b1/step_1 (internal names remain visible only inside the SQL disclosure).
+
+## Launch UX pass (2026-07-12, live)
+
+- App layout: purple gradient is HEADER-ONLY on the workbook pages (<body class=app>); the
+  workspace is white edge-to-edge — sheet grid flush left, chat rail flush right, hairline
+  dividers, no floating cards.
+- Bottom tab bar is Google-Sheets-style: light strip, active tab WHITE and fused with the
+  sheet above (covers the strip border), ‹ › arrow paging (native scrollbar hidden,
+  auto-disable when no overflow, active tab scrolled into view), reference sheets are
+  ordinary always-visible tabs (collapse toggle removed).

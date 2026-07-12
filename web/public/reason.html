@@ -3,8 +3,8 @@
 <title>Prereasoner · workbook</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css?v=10">
-</head><body>
+<link rel=stylesheet href="styles.css?v=11">
+</head><body class=app>
 <!-- The read-only WORKBOOK (shared logic: lib/workbook.js; shared styles: styles.css).
      Green sheets = the user's tables (the AI never writes here). Blue sheets = one per
      reasoning step. Grey sheets = reference tables, behind the Reference toggle. -->
@@ -16,7 +16,11 @@
       <div class=sheetcard id=sheetcard>
         <div class=sheetmsg id=sheetmsg><span class=spin></span> Loading your data…</div>
       </div>
-      <div class=tabstrip id=tabstrip></div>
+      <div class=tabsbar>
+        <button class=tabarrow id=tabL onclick=scrollTabs(-1) aria-label="Previous sheets" disabled>&#8249;</button>
+        <button class=tabarrow id=tabR onclick=scrollTabs(1) aria-label="Next sheets" disabled>&#8250;</button>
+        <div class=tabscroll id=tabstrip></div>
+      </div>
     </div>
     <div class=rail>
       <div class=railscroll id=rail></div>

@@ -3,8 +3,8 @@
 <title>Prereasoner · world knowledge</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css?v=10">
-</head><body>
+<link rel=stylesheet href="styles.css?v=11">
+</head><body class=app>
 <!-- The read-only WORKBOOK on the /api/world path (unified-encoder world joins / hybrid
      semantic SQL). Same shell as /reason: shared logic in lib/workbook.js, styles in styles.css. -->
 <div class=screen>
@@ -15,7 +15,11 @@
       <div class=sheetcard id=sheetcard>
         <div class=sheetmsg id=sheetmsg><span class=spin></span> Loading your data…</div>
       </div>
-      <div class=tabstrip id=tabstrip></div>
+      <div class=tabsbar>
+        <button class=tabarrow id=tabL onclick=scrollTabs(-1) aria-label="Previous sheets" disabled>&#8249;</button>
+        <button class=tabarrow id=tabR onclick=scrollTabs(1) aria-label="Next sheets" disabled>&#8250;</button>
+        <div class=tabscroll id=tabstrip></div>
+      </div>
     </div>
     <div class=rail>
       <div class=railscroll id=rail></div>
