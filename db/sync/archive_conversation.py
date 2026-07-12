@@ -18,6 +18,12 @@ GCS_BUCKET. Requires pg_dump + psql on PATH, and either the `google-cloud-storag
     python db/sync/archive_conversation.py restore c_<32hex>
     python db/sync/archive_conversation.py list
 
+SECURITY: `restore` pipes the downloaded dump straight into `psql` with admin libpq credentials,
+so the archive bucket is a TRUST BOUNDARY — anyone who can write `gs://$GCS_BUCKET/conversations/`
+can run arbitrary SQL on the world DB at restore time. Lock the bucket down to this tool's service
+account only; never make it writable by application/end users. (The `c_<32hex>` regex validates the
+filename, never the payload.) This is an operator tool, not reachable from the web request path.
+
 NOTE: this is the "later" archival capability from the design — written and self-consistent, but
 not yet exercised end-to-end against a live GCS bucket. Smoke-test in a scratch project first.
 """

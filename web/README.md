@@ -1,47 +1,64 @@
 # PreReasoner — web frontend
 
 The static web UI for PreReasoner: attach a spreadsheet (CSV / Excel / Google Sheets), ask a
-question in plain language, and watch the model arrive at the answer step by step — every
-intermediate table is real, computed data, not generated text.
+question in plain language, and read the answer as a **workbook** — your tables and every
+reasoning step shown as spreadsheet tabs, with a chat rail for follow-ups. Every intermediate
+table is real, computed data, not generated text.
 
 It is plain HTML/CSS/JS (no build step, no framework) served by **Firebase Hosting**, with:
 
 - **Auth**: Firebase Authentication (Google sign-in, same-tab redirect).
 - **Engine**: one Cloud Run service (`prereasoner-api`) reached via the Hosting rewrite
-  `/api/**` → Cloud Run. Endpoints the pages use: `POST /api/reason`, `POST /api/world`
-  (plus `GET` pings to the same paths to pre-warm the scale-to-zero service, and
-  `GET /healthz` on the service itself).
+  `/api/**` → Cloud Run. Endpoints the pages use: `POST /api/reason`, `POST /api/world`, and the
+  conversation endpoints `GET /api/conversations` / `GET /api/conversation` (plus `GET` pings to
+  pre-warm the scale-to-zero service, and `GET /healthz`).
 - **Live trace**: Firebase Realtime Database. The engine streams the reasoning trace to
-  `/runs/{uid}/{jobId}`; the browser subscribes and renders slides live, decoupled from the
-  60s HTTP proxy timeout. A signed-in user can read only their own runs (`database.rules.json`).
+  `/runs/{uid}/{jobId}`; the workbook subscribes and adds sheets live as they're produced,
+  decoupled from the 60s HTTP proxy timeout. A signed-in user can read only their own runs
+  (`database.rules.json`).
+
+## The workbook
+
+`reason.html` and `world.html` are the same **workbook**, differing only in which engine endpoint
+they call. Its logic is one shared module, `lib/workbook.js`:
+
+- The left side is the spreadsheet — a sheet with a Google-Sheets-style bottom tab bar. Sheets are
+  colour-coded: **green** = your uploaded tables (read-only; the AI never writes here), **blue** =
+  one per reasoning step (named for what it does, with a per-sheet SQL disclosure), **grey** = the
+  world-knowledge lookups a step used.
+- The right side is the **chat**: your question, the live status, links to each step, the result,
+  and a follow-up box. A follow-up re-runs over the same tables in the same conversation.
+- The header shows the conversation's opening question; the ☰ menu opens the **conversations
+  drawer** (past conversations from `GET /api/conversations`, re-openable — each re-hydrates its
+  stored tables). A conversation's `conversation_id` round-trips in `sessionStorage` and on every
+  request, so follow-ups continue it (see [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §8).
 
 ## Page map
 
 ```
 index.html   home: attach data (+ Add data -> Excel/CSV file picker, or sheets.html), type a question
    ├─> sheets.html   Google Sheets import (drive.file scope + Picker) — returns to home with the sheet attached
-   └─> reason.html   the main reasoning player: decomposition into a stack of views, streamed live
-          │             (POST /api/reason; sign-in happens here as a redirect)
-          └─> clarify.html   shown when the model is UNSURE: confirm/edit its proposed reading
-                 └─> world.html   the world-knowledge player: SQL forming + world joins (POST /api/world)
+   └─> reason.html   the workbook on POST /api/reason (sign-in happens here as a redirect)
+          │
+          ├─> world.html    the same workbook on POST /api/world (world-knowledge joins)
+          └─> clarify.html  shown when the model is UNSURE: confirm/edit its proposed reading,
+                            then re-run on whichever page raised it
 404.html     Firebase default not-found page
 ```
-
-`world.html` is also a standalone player (clarify re-runs through it); `reason.html` delegates
-plain/world queries to the same backend paths.
 
 Shared code lives in `public/lib/`:
 
 | file | contents |
 |---|---|
 | `lib/config.js` | Firebase web config + Picker credentials — the ONE place self-hosters edit (all values are public client identifiers, not secrets) |
-| `lib/shared.js` | `esc`, `parseCSV`, `slug`, `sqlTokens`, op labels, sessionStorage keys (`SS.*`), play/pause/spinner UI constants, `API_BASE` |
+| `lib/shared.js` | `esc`, `parseCSV`, `slug`, `sqlTokens`, op labels, sessionStorage keys (`SS.*`), UI constants, `API_BASE` |
 | `lib/firebase-init.js` | Firebase app/auth/RTDB init, `ensureSignedIn()`, `window.ensureToken`, `window.subscribeRun` |
-| `lib/table-render.js` | `tableBubble()` — the table-in-a-bubble renderer used by the players |
+| `lib/workbook.js` | the workbook itself — sheets, tabs, the chat rail, conversations, and the streaming/fallback run logic |
+| `lib/table-render.js` | `tableBubble()` — a standalone table renderer (used by the regression harness) |
 
 `lib/config.js` and `lib/firebase-init.js` are ES modules (imported by the pages'
-`<script type="module">` blocks); `lib/shared.js` and `lib/table-render.js` are classic scripts
-loaded via `<script src>` **before** the pages' inline scripts that use them.
+`<script type="module">` blocks); `lib/shared.js` and `lib/workbook.js` are classic scripts loaded
+via `<script src>` **before** the module block calls `run()`.
 
 ## Self-hosting checklist
 

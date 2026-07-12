@@ -72,7 +72,7 @@ else{
     e.preventDefault();
     const q=$('q').value.trim(); if(!q)return;
     try{ sessionStorage.setItem(SS.Q,q); sessionStorage.removeItem(SS.CLARIFY); }catch(_){}
-    location.href='world';
+    location.href=(C.from==='reason'||C.from==='world')?C.from:'reason';   // re-run on the SAME endpoint that raised the clarify
   });
   setTimeout(()=>{try{$('q').focus();$('q').setSelectionRange($('q').value.length,$('q').value.length);}catch(_){}},60);
 }

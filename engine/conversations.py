@@ -76,27 +76,39 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
     `user_id` is always the server-verified token subject — never client-supplied."""
     conn = _pg()
     try:
-        cur = conn.cursor()
-        _ensure(cur)
-        cur.execute('INSERT INTO "chat"."user_profile" (user_id) VALUES (%s) '
-                    'ON CONFLICT (user_id) DO UPDATE SET last_seen = now()', (user_id,))
-        if conversation_id:
-            if not _ID_RE.match(conversation_id):
-                raise NotOwned("bad conversation id")
-            cur.execute('SELECT 1 FROM "chat"."user_conversation" '
-                        'WHERE conversation_id = %s AND user_id = %s', (conversation_id, user_id))
-            if not cur.fetchone():
-                raise NotOwned("conversation not found")     # not yours OR absent — same answer
+        try:
+            cur = conn.cursor()
+            _ensure(cur)
+            cur.execute('INSERT INTO "chat"."user_profile" (user_id) VALUES (%s) '
+                        'ON CONFLICT (user_id) DO UPDATE SET last_seen = now()', (user_id,))
+            if conversation_id:
+                if not _ID_RE.match(conversation_id):
+                    raise NotOwned("bad conversation id")
+                cur.execute('SELECT 1 FROM "chat"."user_conversation" '
+                            'WHERE conversation_id = %s AND user_id = %s', (conversation_id, user_id))
+                if not cur.fetchone():
+                    raise NotOwned("conversation not found")     # not yours OR absent — same answer
+                # Keep the stored source tables in step with the schema this run rebuilds, so a later
+                # re-open (get_conversation) — and a GCS archive — never diverges from the live data.
+                if sheets:
+                    cur.execute('UPDATE "chat"."conversation" SET tables = %s WHERE conversation_id = %s',
+                                (json.dumps(_store_tables(sheets)), conversation_id))
+                conn.commit()
+                return conversation_id
+            cid = _new_id()
+            cur.execute('INSERT INTO "chat"."conversation" (conversation_id, initial_prompt, tables) '
+                        'VALUES (%s, %s, %s)',
+                        (cid, (initial_prompt or "")[:2000], json.dumps(_store_tables(sheets))))
+            cur.execute('INSERT INTO "chat"."user_conversation" (user_id, conversation_id) VALUES (%s, %s)',
+                        (user_id, cid))
             conn.commit()
-            return conversation_id
-        cid = _new_id()
-        cur.execute('INSERT INTO "chat"."conversation" (conversation_id, initial_prompt, tables) '
-                    'VALUES (%s, %s, %s)',
-                    (cid, (initial_prompt or "")[:2000], json.dumps(_store_tables(sheets))))
-        cur.execute('INSERT INTO "chat"."user_conversation" (user_id, conversation_id) VALUES (%s, %s)',
-                    (user_id, cid))
-        conn.commit()
-        return cid
+            return cid
+        except Exception:                                    # never leave a half-written / aborted transaction
+            try:
+                conn.rollback()
+            except Exception:                                # noqa: BLE001
+                pass
+            raise
     finally:
         conn.close()
 

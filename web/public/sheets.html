@@ -49,7 +49,8 @@ function setMsg(m, s){ $("msg").textContent = m; if (s !== undefined) $("sub").t
 function busy(m){ $("actions").style.display = "none"; $("sp").style.display = "block"; setMsg(m, ""); }
 function fail(m){ $("sp").style.display = "none"; setMsg(m, "Pick a sheet to analyze — we read only the one you choose."); $("actions").style.display = "flex"; }
 $("home").onclick = () => location.href = "/";
-function startAuth(){ busy("Connecting to Google…"); const p = new GoogleAuthProvider(); p.addScope(SCOPE); signInWithRedirect(auth, p); }
+function startAuth(){ busy("Connecting to Google…"); try{ sessionStorage.setItem("pr_sheets_pending","1"); }catch(_){}  // guard EVERY redirect (auto + the manual retry button) so the loop-breaker can't be bypassed
+  const p = new GoogleAuthProvider(); p.addScope(SCOPE); signInWithRedirect(auth, p); }
 $("pick").onclick = startAuth;
 
 function api(token, url){ return fetch(url, { headers:{ Authorization:"Bearer " + token } }).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }); }

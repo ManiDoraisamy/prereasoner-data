@@ -133,7 +133,9 @@ function renderRail(){
   for(const t of CHAT) h+='<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
   h+='<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
-  const btn=$('chatsend'); if(btn) btn.disabled=!SETTLED&&!FAILMSG;
+  // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps
+  // send disabled until it lands — otherwise the follow-up would orphan into a fresh conversation.
+  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&convId())||FAILMSG);
 }
 function paint(){ renderTabs(); renderSheet(); renderRail(); }
 function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed'; paint(); }
@@ -164,9 +166,9 @@ function finalize(){
   if(!VIEWS.length){                                          // delegated (no composition) — synthesize the single result sheet
     const r=(J&&J.result)||{};
     appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[]});
-  } else if(J&&J.result&&J.result.rows){                      // the last view's table is the authoritative final answer
+  } else if(J&&J.result&&Array.isArray(J.result.rows)){       // the last view's table is the authoritative final answer
     const lv=VIEWS[VIEWS.length-1], lm=BOOK.filter(s=>s.cls==='deriv').pop();
-    lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows||lv.rows;
+    lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows;   // an empty result ([]) legitimately shows "no rows"
     if(lm){ lm.cols=lv.columns; lm.rows=lv.rows; }
   }
   const last=BOOK.filter(s=>s.cls==='deriv').pop();
@@ -183,7 +185,8 @@ function renderFromJSON(j){
   DONE=true; finalize();
 }
 function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); }
-function goClarify(c){ settle(); try{ sessionStorage.setItem(SS.CLARIFY,JSON.stringify(c)); }catch(_){}; location.href='clarify'; }
+function goClarify(c){ settle();                              // record which page raised the clarify so the rephrase re-runs on the SAME endpoint
+  try{ c=Object.assign({from: WB.endpoint.indexOf('/api/world')>=0?'world':'reason'}, c); sessionStorage.setItem(SS.CLARIFY,JSON.stringify(c)); }catch(_){}; location.href='clarify'; }
 
 async function startRun(){
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
@@ -198,10 +201,13 @@ async function startRun(){
   const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
   const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
                                     body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()})}).then(parseBody).catch(()=>null);
-  httpPromise.then(j=>{ if(j&&j.conversation_id){ try{ sessionStorage.setItem('pr_conversation_id', j.conversation_id); }catch(_){} } });
+  // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
+  // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
+  httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ try{ sessionStorage.setItem('pr_conversation_id', j.conversation_id); }catch(_){} renderRail(); } });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
+      onConversation:c=>{ if(RUN!==myRun||!c)return; try{ sessionStorage.setItem('pr_conversation_id', c); }catch(_){} renderRail(); },   // arrives early via the stream — reliable even if the HTTP body is lost
       onStatus:st=>{ if(!live())return;
         if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Resolving to the world…'; renderRail(); }
         else if(st==='running'&&!VIEWS.length&&!RESOLVES.length){ STATUS=WB.runningMsg; renderRail(); }
@@ -262,6 +268,7 @@ function wireChat(){
   const t=$('tabstrip'); if(t) t.addEventListener('scroll',updateTabArrows);
   window.addEventListener('resize',updateTabArrows);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
+  const cl=$('convlist'); if(cl) cl.addEventListener('click',e=>{ const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
 }
 
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */
@@ -287,16 +294,24 @@ async function openConversation(id){                          // re-hydrate a pa
     location.reload();
   }catch(_){ closeDrawer(); }
 }
-function newConversation(){ try{ sessionStorage.removeItem('pr_conversation_id'); }catch(_){}; location.href='/'; }
+function newConversation(){ try{ ['pr_conversation_id',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
 function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
 function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
 async function renderDrawer(){
   const list=$('convlist'); if(!list)return;
   list.innerHTML='<div class=convempty>Loading…</div>';
   const convs=await listConversations();
+  list.innerHTML='';
   if(!convs.length){ list.innerHTML='<div class=convempty>Your past conversations will appear here.</div>'; return; }
   const cur=convId();
-  list.innerHTML=convs.map(c=>'<button class="convitem'+(c.id===cur?' on':'')+'" onclick="openConversation(\''+esc(c.id)+'\')"><div class=cq>'+esc(c.question||'(untitled)')+'</div>'+(c.ts?'<div class=ct>'+esc(prettyTs(c.ts))+'</div>':'')+'</button>').join('');
+  // Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
+  // id/question come from the server and must not be interpolated into markup or an inline handler.
+  for(const c of convs){
+    const b=document.createElement('button'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
+    const q=document.createElement('div'); q.className='cq'; q.textContent=c.question||'(untitled)'; b.appendChild(q);
+    if(c.ts){ const t=document.createElement('div'); t.className='ct'; t.textContent=prettyTs(c.ts); b.appendChild(t); }
+    list.appendChild(b);
+  }
 }
 
 function run(){ wireChat(); setHeaderTitle(question); seedInputs(); startRun(); }

@@ -12,7 +12,7 @@
     <button class=menubtn id=menubtn aria-label="Conversations" onclick=openDrawer()><svg viewBox="0 0 24 24" width=20 height=20 aria-hidden=true><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width=2 stroke-linecap=round fill=none/></svg></button>
     <div class=htitle id=htitle title=""></div>
     <div class=spacer></div>
-    <a class=ghost href="/" style="text-decoration:none" onclick="try{sessionStorage.removeItem('pr_conversation_id')}catch(_){}">+ New</a>
+    <a class=ghost href="/" style="text-decoration:none" onclick="newConversation();return false">+ New</a>
   </div>
   <div class=drawer-backdrop id=drawerback onclick=closeDrawer()></div>
   <aside class=drawer id=drawer aria-label="Conversations">

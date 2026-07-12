@@ -93,21 +93,25 @@ plus a health check. The static frontend (`web/`) calls it through a single `/ap
                       v                    v
             +------------------+   +----------------+
             | Postgres `world` |   | Wikidata (WDQS)|
-            | user schemas +   |   | fills world    |
-            | wikipedia world  |   | rows on demand |
-            | DB + resolution  |   +----------------+
+            | conversation     |   | fills world    |
+            | schemas + chat + |   | rows on demand |
+            | wikipedia world  |   +----------------+
+            | DB + resolution  |
             +------------------+
 ```
 
-- **Browser app** (`web/`) — collects the CSVs + question and renders the streamed reasoning
-  trace. Plain HTML/JS, no build step.
-- **Firebase Auth (Google)** — identifies the user; the verified Google ID is the key to their
-  private data (§8).
+- **Browser app** (`web/`) — the **workbook**: the user's tables and every reasoning step appear
+  as spreadsheet tabs, with a chat rail for follow-ups and saved conversations (§8). Plain
+  HTML/JS, no build step. It renders the reasoning trace live as it streams (§9).
+- **Firebase Auth (Google)** — identifies the user; the verified identity is what authorizes
+  access to a conversation's data (§8).
 - **`prereasoner-api`** — the model + planner + SQL executor, one HTTP service. Request limits:
   10 MB body, 8 sheets, 5,000 rows per sheet. `/api/reason` and `/api/world` share one
   `WorldReasoner` instance behind one lock; `/api/dimension` has its own stateless model and lock.
+  It also serves the conversation endpoints (`GET /api/conversations`, `GET /api/conversation`).
 - **Postgres `world`** — holds the shared `wikipedia` world DB, the `world` resolution/taxonomy
-  index, and each user's uploaded tables + bridges. Contract in [`db/README.md`](../db/README.md).
+  index, a small `chat` schema (who owns which conversation), and one schema per conversation
+  holding its tables + bridges (§8). Contract in [`db/README.md`](../db/README.md).
 - **Wikidata (WDQS)** — the world tables start empty and **lazy-sync** rows from Wikidata on
   demand (`engine/world_sync.py: ensure_entity`), the first time a resolved QID is needed. Not a
   bulk offline import on the hot path.
@@ -409,35 +413,58 @@ checked against the resolved **QID** in the QID-keyed SQL.
 
 ---
 
-## 8. Multi-tenancy & auth
+## 8. Conversations, identity & isolation
 
-`/api/reason` and `/api/world` execute on live multi-tenant Postgres, gated by Firebase Google
-auth. `/api/dimension` is unauthenticated by design — it is stateless and stores nothing.
+`/api/reason` and `/api/world` execute on live Postgres, gated by Firebase Google auth.
+`/api/dimension` is unauthenticated by design — it is stateless and stores nothing.
 
-- **Identity = the verified Google `sub`.** Firebase Admin verifies the ID token server-side
-  (`engine/auth.py: _verify_principal`); the per-user schema name is *always* that `sub`,
-  **never** client-supplied → no IDOR. `_verify_principal` returns both the Google `sub` (the
-  Postgres schema) and the Firebase `uid` (the trace-stream path, §9). These helpers are
-  security-critical and are kept exactly as they ran in production.
-- **Sign-in is a redirect on the page** (not a popup): an unauthenticated visit bounces to Google
-  and returns to the page. The frontend uses a same-origin `authDomain` so the redirect result
-  survives browser storage partitioning (details in [`web/README.md`](../web/README.md)).
-- **Isolation** is application-enforced: schema derived from the verified token + `search_path`
-  + the SELECT-only guard. There is one Postgres role; per-user separation is by schema.
-- **Uploads + bridges persist** as real tables in the user's schema (re-created/updated per
-  upload). The shared `wikipedia` and `world` schemas are read via `search_path`, never copied
-  per user.
-- **No concurrent-request deadlock.** The bridge read connection is `autocommit=True` (no
-  idle-in-transaction read locks), and the per-request bridge-column migration — an `ACCESS
-  EXCLUSIVE` lock — is guarded by an `information_schema` check so it fires only when the column
-  is genuinely missing. Steady state takes no exclusive lock, so concurrent same-user requests
-  (the cold-start retry case) can't wedge each other.
-- **Test bypass.** `AUTH_TEST_SUB` skips token verification and pins a fixed `sub` — for the
-  local test harness only; never set it on a live service.
+**A conversation owns a schema.** Each conversation gets its own Postgres schema (named by a
+random `conversation_id`, `c_<32 hex>`) that holds that conversation's uploaded tables and derived
+data. So a conversation is self-contained — inspectable on its own, and archivable as a unit (§8.2).
+The engine module `engine/conversations.py` owns this; the DDL is in [`db/init.sql`](../db/init.sql).
+
+**Who a conversation belongs to lives in a small `chat` schema:**
+
+| table | holds |
+|---|---|
+| `chat.user_profile` | the signed-in identity — the verified Google `sub`. |
+| `chat.conversation` | `conversation_id`, the opening question, the uploaded tables (so it re-opens self-contained), a timestamp. |
+| `chat.user_conversation` | the ownership link — which user owns which conversation. |
+
+### 8.1 The security model (why this isn't an IDOR)
+
+The identity is **always the verified token subject** (`engine/auth.py: _verify_principal`
+returns the Google `sub` + the Firebase `uid`) — never anything the client sends. A request may
+carry a `conversation_id`, but it is honored **only after** an ownership check against
+`chat.user_conversation` confirms it belongs to the verified user; otherwise the engine mints a
+fresh conversation. A `conversation_id` that isn't yours (or doesn't exist) returns the same "not
+found" either way — no enumeration. And because a `conversation_id` doubles as a schema name, it
+is validated against the strict `c_<32 hex>` shape before it ever reaches SQL, so it can't inject.
+
+- **Isolation** is application-enforced: the working schema comes from the (authorized)
+  conversation, `search_path` scopes queries to it plus the shared `wikipedia`/`world` schemas,
+  and generated SQL is SELECT-only with quoted identifiers. One Postgres role; separation by schema.
+- **Sign-in is a same-tab redirect** (not a popup). The frontend sets `authDomain` to the domain
+  you're actually on so the redirect result survives browser storage partitioning, with a
+  loop-breaker that shows a retry instead of bouncing forever (details in
+  [`web/README.md`](../web/README.md)).
+- **No concurrent-request deadlock.** The bridge read connection is `autocommit=True`, and the
+  one `ACCESS EXCLUSIVE` migration (adding a bridge column) is guarded by an `information_schema`
+  check so it fires only when genuinely needed — steady state takes no exclusive lock.
+- **Test bypass.** `AUTH_TEST_SUB` skips token verification and pins a fixed user — local harness
+  only; never on a live service.
 
 Note: the engine initializes firebase-admin (Application Default Credentials) for token
-verification even when trace streaming is disabled, so serving the authenticated routes needs
-Google credentials unless `AUTH_TEST_SUB` is set.
+verification even when trace streaming is off, so the authenticated routes need Google
+credentials unless `AUTH_TEST_SUB` is set.
+
+### 8.2 Archiving a conversation (optional)
+
+Because a conversation is one self-contained schema, an idle one can be serialized to Cloud
+Storage and restored on demand: `db/sync/archive_conversation.py` `pg_dump`s the schema to
+`gs://$GCS_BUCKET/conversations/<id>.sql.gz` (optionally dropping it to free the database) and
+restores it with `psql`. The `chat` metadata stays, so the conversation remains listed and
+re-openable. (Operator tooling; the restore bucket is a trust boundary — lock it down.)
 
 ---
 
@@ -474,7 +501,8 @@ Browser (reason/world page)          prereasoner-api                Firebase RTD
   Database at all.
 - **Keyed on the Firebase `uid`, not the schema `sub`.** The stream lives under the
   authenticated user's node; a client cannot choose another user's stream (§8).
-- **Stream schema** at `/runs/{uid}/{jobId}`: `status`
+- **Stream schema** at `/runs/{uid}/{jobId}`: `conversation_id` (emitted first, so the browser
+  learns it even if the HTTP body is lost to a proxy timeout — §8), `status`
   (`resolving|running|done|clarify|error`), `resolve/{cell}: qid`, `views/{i}:
   {op,label,sql,columns,rows}`, `result: {columns,rows}`, `clarify`, `error`.
 - **Security.** `web/database.rules.json` makes `/runs/{uid}` **read-only by its owner**

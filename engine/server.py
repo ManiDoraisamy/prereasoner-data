@@ -138,8 +138,10 @@ class H(BaseHTTPRequestHandler):
             try:
                 conv = resolve_conversation(sub, req.get("conversation_id"), req.get("question", ""), sheets)
             except NotOwned:
-                self._send(403, json.dumps({"error": "conversation not found"})); return
+                # 404 (not 403) to match GET /api/conversation — "not yours" and "absent" look identical (no enumeration).
+                self._send(404, json.dumps({"error": "conversation not found"})); return
             emit = emitter(uid, req.get("jobId"))            # RTDB key = the Firebase uid (== browser auth.uid); no-op if no jobId
+            emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
             emit("status", "running")
             with WORLD_LOCK:
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live

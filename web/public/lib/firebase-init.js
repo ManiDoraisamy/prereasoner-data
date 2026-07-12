@@ -22,6 +22,7 @@ window.ensureToken = () => getIdToken(auth.currentUser);
 // done / fallback. Reads are allowed only for uid === auth.uid (database.rules.json).
 window.subscribeRun = (uid, jobId, cb) => {
   const base = ref(db, `runs/${uid}/${jobId}`);
+  const convRef = ref(db, `runs/${uid}/${jobId}/conversation_id`);
   const statusRef = ref(db, `runs/${uid}/${jobId}/status`);
   const resolveRef = ref(db, `runs/${uid}/${jobId}/resolve`);
   const viewsRef = ref(db, `runs/${uid}/${jobId}/views`);
@@ -29,6 +30,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const clarifyRef = ref(db, `runs/${uid}/${jobId}/clarify`);
   const errorRef = ref(db, `runs/${uid}/${jobId}/error`);
   const questionRef = ref(db, `runs/${uid}/${jobId}/question`);
+  const uConv = onValue(convRef, s => { const v = s.val(); if (v != null && cb.onConversation) cb.onConversation(v); });
   const uStatus = onValue(statusRef, s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
   const uResolve = onChildAdded(resolveRef, s => { if (cb.onResolve) cb.onResolve(s.key, s.val()); });
   const uView = onChildAdded(viewsRef, s => { if (cb.onView) cb.onView(s.key, s.val()); });
@@ -36,7 +38,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uQuestion = onValue(questionRef, s => { const v = s.val(); if (v != null && cb.onQuestion) cb.onQuestion(v); });
   const uClarify = onValue(clarifyRef, s => { const v = s.val(); if (v && cb.onClarify) cb.onClarify(v); });
   const uError = onValue(errorRef, s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
-  return () => { try { uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uError(); off(base); } catch(_){} };
+  return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uError(); off(base); } catch(_){} };
 };
 
 // Google sign-in as a same-tab REDIRECT (no button, no popup blockers): completes a pending
