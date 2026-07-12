@@ -206,8 +206,6 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .app .hdr{gap:12px}
 .menubtn{all:unset;cursor:pointer;width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
 .menubtn:hover{background:rgba(255,255,255,.14)}
-.hlogo{display:flex;align-items:center;flex:0 0 auto}.hlogo .logo{height:28px;width:auto;display:block}
-.hlogo:hover{opacity:.9}
 .htitle{flex:1;min-width:0;color:#fff;font:600 15px var(--disp);letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.96}
 .drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(20,12,48,.42);z-index:40}
 .drawer-backdrop.open{display:block}
