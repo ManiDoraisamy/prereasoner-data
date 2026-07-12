@@ -1,16 +1,19 @@
 """The ONE PreReasoner server. Serves all three inference paths from a single process:
 
   POST /api/reason    — the composition reasoner (view-stacking) on the live world path. Firebase auth
-                        (the per-user Postgres schema is ALWAYS the verified Google sub) + live reasoning-trace
-                        streaming to RTDB (/runs/{uid}/{jobId}) when RTDB_URL is configured.
-  POST /api/world     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth + trace
-                        contract as /api/reason; both routes share ONE WorldReasoner instance.
+                        derives the verified user; the working Postgres schema is the CONVERSATION (owned
+                        by that user, see engine.conversations) + live reasoning-trace streaming to RTDB
+                        (/runs/{uid}/{jobId}) when RTDB_URL is configured.
+  POST /api/world     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth +
+                        conversation + trace contract; both routes share ONE WorldReasoner instance.
   POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, no auth).
+  GET  /api/conversations       — the signed-in user's conversations (drawer list; ownership-scoped).
+  GET  /api/conversation?id=…   — one conversation's opening prompt + stored tables (re-open).
   GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
 
-Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?} + header
-Authorization: Bearer <Firebase ID token>. For dimension: {data, mode:'analyze'}.
-Non-prod bypass: AUTH_TEST_SUB -> fixed sub, skips token verification (test-only).
+Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?, conversation_id?} +
+header Authorization: Bearer <Firebase ID token>. The response echoes conversation_id. For dimension:
+{data, mode:'analyze'}. Non-prod bypass: AUTH_TEST_SUB -> fixed user, skips token verification (test-only).
 
 Run: python -m engine.server
 """
@@ -19,10 +22,13 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from urllib.parse import urlparse, parse_qs
+
 from engine.config import HOST, PORT
 from engine.auth import _verify_principal, _bearer, _slug
 from engine.tables import csv_table
 from engine.trace import emitter, stream_final, set_ctx
+from engine.conversations import resolve_conversation, list_conversations, get_conversation, NotOwned
 
 MODEL = None                       # the ONE WorldReasoner, shared by /api/reason and /api/world
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
@@ -55,16 +61,36 @@ class H(BaseHTTPRequestHandler):
         self.send_response(204); self._cors(); self.send_header("Content-Length", "0"); self.end_headers()
 
     def do_GET(self):
+        u = urlparse(self.path)
+        path = u.path.rstrip("/")
         # /api/healthz is an alias: Google's front end reserves /healthz on *.run.app
         # domains (answers 404 itself), so external monitors must use the /api/ path.
-        if self.path.rstrip("/") in ("/healthz", "/api/healthz"):
+        if path in ("/healthz", "/api/healthz"):
             self._send(200, json.dumps({"ok": MODEL is not None and DIM_MODEL is not None,
                                         "reason": MODEL is not None, "world": MODEL is not None,
                                         "dimension": DIM_MODEL is not None}))
+        elif path in ("/api/conversations", "/api/conversation"):
+            self._get_conversations(path, parse_qs(u.query))
         else:
             self._send(200, "prereasoner engine - POST /api/reason | /api/world {tables, question} + Bearer "
                             "Firebase token; POST /api/dimension {data, mode:'analyze'}",
                        "text/plain; charset=utf-8")
+
+    # ---------------- conversation list / re-open (auth required; ownership-scoped) ----------------
+    def _get_conversations(self, path, qs):
+        try:
+            sub, _uid = _verify_principal(_bearer(self.headers, None))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            if path == "/api/conversations":
+                self._send(200, json.dumps({"conversations": list_conversations(sub)})); return
+            cid = (qs.get("id") or [""])[0]
+            try:
+                self._send(200, json.dumps(get_conversation(sub, cid)))
+            except NotOwned:
+                self._send(404, json.dumps({"error": "conversation not found"}))   # not yours OR absent
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
 
     def do_POST(self):
         path = self.path.rstrip("/")
@@ -83,7 +109,7 @@ class H(BaseHTTPRequestHandler):
             if n > MAX_BODY:
                 self._send(200, json.dumps({"error": "payload too large"})); return
             req = json.loads(self.rfile.read(n) or b"{}")
-            sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = Postgres schema; uid = RTDB /runs key
+            sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = VERIFIED user id (auth); uid = RTDB /runs key
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
                 return
@@ -105,14 +131,24 @@ class H(BaseHTTPRequestHandler):
                 if len(t["rows"]) > MAX_ROWS:
                     truncated.append(f"{t['name']}: only the first {MAX_ROWS} rows were used ({len(t['rows'])} uploaded)")
                     t["rows"] = t["rows"][:MAX_ROWS]
+            # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
+            # conversation id is honored ONLY after the ownership check (chat.user_conversation);
+            # otherwise a new conversation is minted for the verified user. No conversation id
+            # ever reaches the schema without passing through this authorization (no IDOR).
+            try:
+                conv = resolve_conversation(sub, req.get("conversation_id"), req.get("question", ""), sheets)
+            except NotOwned:
+                self._send(403, json.dumps({"error": "conversation not found"})); return
             emit = emitter(uid, req.get("jobId"))            # RTDB key = the Firebase uid (== browser auth.uid); no-op if no jobId
             emit("status", "running")
             with WORLD_LOCK:
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
                 try:
-                    res = MODEL.serve(tabs, req.get("question", ""), sub, req.get("as_of"), emit=emit)
+                    res = MODEL.serve(tabs, req.get("question", ""), conv, req.get("as_of"), emit=emit)
                 finally:
                     set_ctx(None)
+            if isinstance(res, dict):
+                res["conversation_id"] = conv                # so the browser persists it for follow-up turns
             if truncated and isinstance(res, dict):
                 res.setdefault("warnings", []).extend(truncated)
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)

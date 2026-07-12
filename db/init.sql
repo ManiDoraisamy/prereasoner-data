@@ -298,3 +298,33 @@ CREATE OR REPLACE VIEW world."States in the World"     AS SELECT * FROM world."S
 --    Queries run with:
 --      SET search_path TO "<sub>", wikipedia, world, public
 -- ----------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- chat: conversation identity + ownership (engine/conversations.py).
+-- The working Postgres schema for a run is the CONVERSATION id (self-contained,
+-- archivable). Authorization is by the verified user via user_conversation — a
+-- client cannot use a conversation id it does not own (no IDOR). The engine also
+-- creates these idempotently at runtime, so applying this file is optional.
+-- ---------------------------------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS "chat";
+
+CREATE TABLE IF NOT EXISTS "chat"."user_profile" (
+  user_id     text PRIMARY KEY,                    -- the verified Google sub (stable across devices)
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  last_seen   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "chat"."conversation" (
+  conversation_id text PRIMARY KEY,                -- also the name of this conversation's data schema (c_<32 hex>)
+  initial_prompt  text,                            -- the opening question (drawer label)
+  tables          jsonb,                           -- the uploaded CSVs [{name,data}] so a conversation re-opens self-contained
+  created_at      timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS "chat"."user_conversation" (
+  user_id         text NOT NULL REFERENCES "chat"."user_profile"(user_id),
+  conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, conversation_id)
+);
+CREATE INDEX IF NOT EXISTS ix_user_conv ON "chat"."user_conversation" (user_id, created_at DESC);

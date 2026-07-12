@@ -197,7 +197,8 @@ async function startRun(){
   // response. Keep the parsed-body promise so both fallbacks can await it (body reads exactly once).
   const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
   const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-                                    body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).then(parseBody).catch(()=>null);
+                                    body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()})}).then(parseBody).catch(()=>null);
+  httpPromise.then(j=>{ if(j&&j.conversation_id){ try{ sessionStorage.setItem('pr_conversation_id', j.conversation_id); }catch(_){} } });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
@@ -226,7 +227,7 @@ async function startRun(){
     let j=null;
     for(let a=0;a<5&&!j&&live()&&!DONE;a++){
       try{
-        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId})}).then(parseBody);
+        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()})}).then(parseBody);
         if(j)break;
       }catch(_){}
       if(a<4&&live()){ STATUS=WB.warmupMsg; renderRail(); await new Promise(res=>setTimeout(res,4000)); }
@@ -266,13 +267,27 @@ function wireChat(){
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */
 function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.title=q; } document.title='Prereasoner · '+(q.length>40?q.slice(0,40)+'…':q); }
 
-/* ---- conversations drawer ----
-   listConversations() is the SEAM to the conversation store. The store (a "chat" Postgres
-   schema: user_profile / conversation / user_conversation, per the conversation-schema design)
-   is a backend change owned with the MCP/orchestrator layer; until it lands this returns [] and
-   the drawer shows an empty state. When wired, return [{id, question, ts}] newest-first and
-   selecting one should load that conversation (its own schema). */
-async function listConversations(){ try{ if(window.listConversations) return await window.listConversations(); }catch(_){} return []; }
+/* ---- conversations drawer (backed by the engine's chat schema; ownership-scoped) ---- */
+function convId(){ try{ return sessionStorage.getItem('pr_conversation_id')||null; }catch(_){ return null; } }
+function prettyTs(iso){ if(!iso)return ''; try{ return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } }
+async function listConversations(){
+  try{ const tk=await window.ensureToken();
+    const r=await fetch(API_BASE+'/api/conversations',{headers:{Authorization:'Bearer '+tk}});
+    if(!r.ok) return []; const j=await r.json(); return j.conversations||[];
+  }catch(_){ return []; }
+}
+async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt), then reload
+  try{ const tk=await window.ensureToken();
+    const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+tk}});
+    if(!r.ok){ closeDrawer(); return; }
+    const j=await r.json();
+    sessionStorage.setItem('pr_conversation_id', j.conversation_id);
+    sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
+    sessionStorage.setItem(SS.Q, j.question||'');
+    location.reload();
+  }catch(_){ closeDrawer(); }
+}
+function newConversation(){ try{ sessionStorage.removeItem('pr_conversation_id'); }catch(_){}; location.href='/'; }
 function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
 function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
 async function renderDrawer(){
@@ -280,9 +295,9 @@ async function renderDrawer(){
   list.innerHTML='<div class=convempty>Loading…</div>';
   const convs=await listConversations();
   if(!convs.length){ list.innerHTML='<div class=convempty>Your past conversations will appear here.</div>'; return; }
-  list.innerHTML=convs.map(c=>'<button class=convitem onclick="openConversation(\''+esc(c.id)+'\')"><div class=cq>'+esc(c.question||'(untitled)')+'</div>'+(c.ts?'<div class=ct>'+esc(c.ts)+'</div>':'')+'</button>').join('');
+  const cur=convId();
+  list.innerHTML=convs.map(c=>'<button class="convitem'+(c.id===cur?' on':'')+'" onclick="openConversation(\''+esc(c.id)+'\')"><div class=cq>'+esc(c.question||'(untitled)')+'</div>'+(c.ts?'<div class=ct>'+esc(prettyTs(c.ts))+'</div>':'')+'</button>').join('');
 }
-function openConversation(id){ if(window.openConversation){ window.openConversation(id); return; } closeDrawer(); }
 
 function run(){ wireChat(); setHeaderTitle(question); seedInputs(); startRun(); }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

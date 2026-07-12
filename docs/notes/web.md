@@ -187,3 +187,23 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   sheet above (covers the strip border), ‹ › arrow paging (native scrollbar hidden,
   auto-disable when no overflow, active tab scrolled into view), reference sheets are
   ordinary always-visible tabs (collapse toggle removed).
+
+## Conversations: chat schema + conversation-scoped data schemas (2026-07-12, live)
+
+- Identity model changed: the working Postgres schema is the CONVERSATION id (c_<32 hex>), not
+  the user. A new `chat` schema holds user_profile (verified Google sub) / conversation
+  (initial_prompt, tables jsonb, created_at) / user_conversation (ownership link). engine/
+  conversations.py owns this; db/init.sql has the DDL (engine also ensures it at runtime).
+- Security (IDOR): the user id is always the verified token subject; a client-supplied
+  conversation_id is honored ONLY after chat.user_conversation confirms ownership, else 403.
+  A malformed/injection id fails the c_<32hex> shape guard. Verified: cross-user POST→403,
+  cross-user GET→404, "chat; DROP TABLE"→403.
+- Engine API: POST reason/world accept+echo conversation_id; GET /api/conversations (drawer
+  list, ownership-scoped) and GET /api/conversation?id= (re-open: opening prompt + stored tables).
+- Frontend: header shows the conversation's opening question (truncates); hamburger drawer lists
+  past conversations and opens them (rehydrates stored tables + reloads); a query from home or
+  "+ New" starts a fresh conversation. conversation_id round-trips via sessionStorage.
+- GCS archival (the "later" capability): db/sync/archive_conversation.py serializes a
+  conversation's schema to gs://$GCS_BUCKET/conversations/<id>.sql.gz (pg_dump→gzip→GCS, optional
+  DROP) and restores it (download→psql). Written + self-consistent; NOT yet E2E-tested against a
+  live bucket.

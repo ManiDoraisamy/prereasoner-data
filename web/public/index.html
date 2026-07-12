@@ -142,6 +142,7 @@ $('f').addEventListener('submit',async function(e){
     sessionStorage.setItem(SS.TABLES,JSON.stringify(valid));
     sessionStorage.setItem(SS.CSV,valid[0].data); sessionStorage.setItem(SS.NAME,valid[0].name);
     sessionStorage.setItem(SS.Q,q);
+    sessionStorage.removeItem('pr_conversation_id');                                // a query from home starts a NEW conversation
   }catch(_){}
   location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
 });
