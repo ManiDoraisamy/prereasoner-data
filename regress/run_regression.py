@@ -119,6 +119,17 @@ def run_unit_checks():
         fails.append(f"joins.discover_fks re-admitted spurious self-id join concert_ID->stadium (got {sfks})")
     else:
         print("  ok       fk_no_spurious_selfid")
+    # (3) TableQuery.plan calls self._is_id (the year-filter helper), so EVERY TableQuery subclass used in
+    # serving must have it — the PG own-data planner _TableQueryPg lacked it and crashed live (offline
+    # EncoderQuery has it, so this is invisible to the model tiers). Pin every serving subclass.
+    from engine.tables import TableQuery
+    from engine.pg import _TableQueryPg
+    from engine.encoder_overlay import EncoderQuery
+    missing = [c.__name__ for c in (TableQuery, _TableQueryPg, EncoderQuery) if not hasattr(c, "_is_id")]
+    if missing:
+        fails.append(f"REG TableQuery subclass(es) missing _is_id -> plan() crashes: {missing}")
+    else:
+        print("  ok   REG tablequery_subclasses_have_is_id")
     if fails:
         for f in fails:
             print(f"  FAIL {f}")

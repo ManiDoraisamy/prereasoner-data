@@ -163,6 +163,13 @@ class TableQuery:
         self.qwen = None
         self.hdim = None
 
+    @staticmethod
+    def _is_id(name):
+        """Structural surrogate-key test (a primary/foreign key is never a SUM/AVG measure). Defined on the
+        BASE so EVERY TableQuery subclass has it — the PG own-data planner (_TableQueryPg) and the offline
+        EncoderQuery both call self._is_id from plan(); a subclass-only definition crashed _TableQueryPg."""
+        return bool(re.search(r"(^id$|_?id$|^index$|^pk$)", name.lower()))
+
     # ---------- encoding ----------
     @torch.no_grad()
     def _encode(self, texts):
