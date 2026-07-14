@@ -303,6 +303,13 @@ A one-line Tier-2 follow-up (extend the slot year filter to integer year columns
 `assemble_exec` errors are all cross-table column references (`no such column: Pets.PetType`) — the
 slot planner's single-join limit, i.e. the known multi-join Tier-2 item surfacing as an error.
 
+**Post-fix (regression repair, commit `397f639`) — Spider-neutral.** Repairing the two shipped live
+regressions (re-admit relationship-named FKs in `engine/joins.py`; integer-year filter in `engine/tables.py`)
+re-ran to **49.5% / 40.4% / 19.2%** — statistically identical to tier-1 (the FK change only affects
+compose-routed multi-table queries; net flips 0 gained / 2 lost, both non-regressions: a CPU-contention
+timeout and a multi-year-`OR` case wrong in both tiers). The correctness fix is confirmed free on the
+benchmark; its value is on the live product (relationship-named FK joins), guarded now by `regress/`.
+
 **Honest notes:** (a) the routing gain is bundled with the harness-faithfulness fallback — the clean
 separation would need another baseline run with only the fallback added; the join fix (−79 hard
 errors) and COUNT fix are cleanly attributable. (b) `engine/world_compose.py` / `engine/joins.py` /
