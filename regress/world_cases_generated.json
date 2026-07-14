@@ -1,0 +1,562 @@
+[
+ {
+  "label": "City column, country filter (France) \u2014 no entity noun",
+  "capability": "country filter on a resolved city column",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nParis,100\nLyon,50\nMarseille,30\nBerlin,70\nTokyo,20"
+   }
+  ],
+  "question": "total amount in France",
+  "expected_kind": "scalar",
+  "expected_value": "180",
+  "prediction": "works",
+  "derivation": "Bridge resolves Paris->Q90, Lyon->Q456, Marseille->Q23482 (all wikipedia.city.country='Q142' France), Berlin->Germany, Tokyo->Japan. Delegate SQL: JOIN wikipedia.city ON qid, WHERE city.country='Q142'. Sum over France rows = 100+50+30 = 180. Verified live: result [[180]], clarify=None, meaning_join=True.",
+  "reason": "Phrased without the entity noun so the binder has no dropped token; the city->country QID join and 'France'->'Q142' filter bind cleanly. Confirmed end-to-end."
+ },
+ {
+  "label": "City column, SAME query WITH entity noun ('cities in France')",
+  "capability": "country filter on a city column, entity-noun phrasing",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nParis,100\nLyon,50\nMarseille,30\nBerlin,70\nTokyo,20"
+   }
+  ],
+  "question": "total amount for cities in France",
+  "expected_kind": "clarify",
+  "expected_value": "clarify (dropped token 'cities'); the underlying sum would be 180",
+  "prediction": "breaks",
+  "derivation": "Same rows/join as the works-case (original_sql shows WHERE city.country='Q142', would sum 180). But the delegate returns clarify: bindings only bound 'total'->amount SUM, dropped=['cities']. Verified live: clarify=True, proposed='total amount', dropped=['cities'], result=None.",
+  "reason": "The entity-type noun 'cities' binds to no column/measure and lands in `dropped`, so the delegate raises CLARIFY instead of answering \u2014 even though its own original_sql already expresses the correct France-filtered sum. This is the dominant failure mode for natural 'cities in X' phrasing."
+ },
+ {
+  "label": "City column, continent filter (Europe) \u2014 city->country->continent",
+  "capability": "continent filter via 2-hop city resolution",
+  "tables": [
+   {
+    "name": "rev",
+    "csv": "city,sales\nParis,100\nLyon,50\nMarseille,30\nBerlin,70\nTokyo,20"
+   }
+  ],
+  "question": "total sales in Europe",
+  "expected_kind": "scalar",
+  "expected_value": "250",
+  "prediction": "works",
+  "derivation": "Cities resolve; delegate joins wikipedia.country ON lower(city.country)=lower(country.qid), filters country.continent='Q46' (Europe). France(Q142) & Germany(Q183) are Q46; Japan(Q17) is Q48. Europe rows: Paris100+Lyon50+Marseille30+Berlin70 = 250; Tokyo(Asia) excluded. Verified live with equivalent table: [[250]].",
+  "reason": "The city continent path uses wikipedia.country.continent (a QID, Q46=Europe verified) and joins qid=qid; binds cleanly when phrased without the entity noun."
+ },
+ {
+  "label": "City column, continent filter (Asia)",
+  "capability": "continent filter (Asia) via city resolution",
+  "tables": [
+   {
+    "name": "rev",
+    "csv": "city,sales\nTokyo,10\nOsaka,5\nMumbai,8\nParis,3\nBerlin,4"
+   }
+  ],
+  "question": "total sales in Asia",
+  "expected_kind": "scalar",
+  "expected_value": "23",
+  "prediction": "works",
+  "derivation": "Tokyo->Japan(Q17,Q48), Osaka->Japan, Mumbai->India(Q668,Q48) are Asia; Paris->France(Q46), Berlin->Germany(Q46) are Europe. WHERE country.continent='Q48'. Asia sum = 10+5+8 = 23. (End-to-end run on the smaller {Tokyo,Osaka=... } variant confirmed the Asia join fires; single-city variant 'total amount in Asia' returned [[20]] for Tokyo-only.)",
+  "reason": "Same working 2-hop path as Europe; Q48=Asia verified in wikipedia.country for Japan/India. Continent filter binds when the entity noun is omitted."
+ },
+ {
+  "label": "COUNTRY column, continent filter (Asia) \u2014 known broken",
+  "capability": "continent filter on a country entity column",
+  "tables": [
+   {
+    "name": "csv",
+    "csv": "country,amount\nJapan,100\nIndia,50\nChina,30\nFrance,70\nGermany,20"
+   }
+  ],
+  "question": "total amount in Asia",
+  "expected_kind": "scalar",
+  "expected_value": "broken: crashes on the composed path, returns empty [['']] on the delegate; the intended Asia answer would be 180 (Japan100+India50+China30)",
+  "prediction": "breaks",
+  "derivation": "Intended: Japan/India/China are continent Asia -> 100+50+30 = 180. Actual (verified live): ComposedWorldQuery crashes in ComposeEngine._load ('duplicate column name: country' \u2014 _world_lookup emits geocol 'country' AND an enriched 'country' attr), falls back to the delegate, which emits SQL joining ON lower(country.qid)=lower(__bridge0.canon) where canon is the NAME 'Japan' (never equals a QID) -> zero matching rows -> SUM = [['']] (empty).",
+  "reason": "Two independent defects on the country-column path: (1) duplicate 'country' column name crashes the sqlite view load; (2) the delegate join compares wikipedia.country.qid to the bridge's canonical NAME, so it never matches. Confirmed the exact SQL and empty result live. This is the brief's known-broken case."
+ },
+ {
+  "label": "Same-name disambiguation via per-row country column (France)",
+  "capability": "same-name city disambiguation (Paris FR vs Paris US) with an upload country column",
+  "tables": [
+   {
+    "name": "branches",
+    "csv": "city,country,amount\nParis,France,100\nParis,United States,40\nLondon,United Kingdom,60\nLondon,Canada,25"
+   }
+  ],
+  "question": "total amount in France",
+  "expected_kind": "scalar",
+  "expected_value": "100",
+  "prediction": "works",
+  "derivation": "_city_bridge_disamb_sql resolves each (city,country) pair to the row-correct qid: Paris/France->Q90, Paris/US->Q830149, London/UK->Q84, London/Canada->Q92561. Join pins BOTH city AND row-country; WHERE city.country='Q142' AND lower(branches.country)='france'. Only Paris/France(100) qualifies. Verified live: [[100]].",
+  "reason": "The disambiguation bridge keys on the per-row country column so it separates the two Paris rows correctly; Paris/US(40) is excluded. Confirmed end-to-end."
+ },
+ {
+  "label": "Same-name disambiguation, continent filter (Europe)",
+  "capability": "same-name disambiguation + continent filter",
+  "tables": [
+   {
+    "name": "branches",
+    "csv": "city,country,amount\nParis,France,100\nParis,United States,40\nLondon,United Kingdom,60\nLondon,Canada,25"
+   }
+  ],
+  "question": "total amount in Europe",
+  "expected_kind": "scalar",
+  "expected_value": "160",
+  "prediction": "works",
+  "derivation": "Pairs resolve as above; 2-hop to wikipedia.country.continent='Q46'. Paris/France(Q142,Q46) and London/UK(Q84->UK Q145,Q46) are Europe; Paris/US and London/Canada(North America) excluded. Sum = 100+60 = 160. Verified live: [[160]].",
+  "reason": "Disambiguated qids feed the same working city->country->continent QID join; the two non-European namesakes drop out. Confirmed end-to-end."
+ },
+ {
+  "label": "Ambiguous bare city, NO country column (London)",
+  "capability": "same-name city with no disambiguating column (default resolution)",
+  "tables": [
+   {
+    "name": "stores",
+    "csv": "city,amount\nLondon,100\nParis,50"
+   }
+  ],
+  "question": "total amount in Canada",
+  "expected_kind": "scalar",
+  "expected_value": "0 / empty \u2014 London silently resolves to London GB (Q84), not London CA",
+  "prediction": "breaks",
+  "derivation": "With no country column, _city_bridge_sql.pick ranks by is_primary then population: London->Q84 (United Kingdom, pop 8.8M) not London/Canada(Q92561, pop 422k); Paris->Q90 (France, primary). Neither maps to Canada, so WHERE city.country='Q30'(Canada) matches nothing -> empty/0, even though a 'London in Canada' interpretation exists.",
+  "reason": "The resolver deterministically picks the primary/largest namesake, so an ambiguous upload silently commits to London GB / Paris FR; a Canada filter then yields empty. There is no clarification that the city was ambiguous. (Resolution ranking verified against world.words is_primary/population.)"
+ },
+ {
+  "label": "Currency-NAME filter on a city column (euro)",
+  "capability": "currency-name filter/group over a resolved city column",
+  "tables": [
+   {
+    "name": "orders",
+    "csv": "city,amount\nParis,100\nBerlin,50\nTokyo,30\nLondon,70"
+   }
+  ],
+  "question": "total amount where currency is euro",
+  "expected_kind": "unsupported",
+  "expected_value": "unsupported \u2014 no world path filters an uploaded geo column by currency name; intended euro answer would be 150 (Paris100+Berlin50)",
+  "prediction": "unsupported",
+  "derivation": "Intended: Paris(France) & Berlin(Germany) use currency_name 'euro' (verified world.Countries: France/Germany/Italy='euro'); Tokyo='yen', London='pound sterling'. Euro sum = 100+50 = 150. Actual (verified live): 'currency is euro' is not recognized as a world dim filter; the query falls through to the own-data table planner and raises AttributeError (_TableQueryPg has no attribute _is_id, engine/tables.py:452).",
+  "reason": "No _world_link / delegate branch maps 'euro' (a currency NAME) to a filter on a city column's chained currency_name; the request never enters the world path and hits an unrelated crash in the own-data planner. Currency-name filtering of a geo column is effectively unsupported."
+ },
+ {
+  "label": "Total amount by continent",
+  "capability": "average/sum metric grouped by world continent (2-hop city->country->continent join then group_agg)",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,500\nOsaka,300\nMumbai,400\nDelhi,600\nParis,700\nBerlin,200\nMadrid,100"
+   }
+  ],
+  "question": "What is the total amount by continent?",
+  "expected_kind": "contains",
+  "expected_value": "Asia 1800, Europe 1000",
+  "prediction": "works",
+  "reason": "_composed gate fires via reader head or delegates; engine builds world_join then group_agg SUM(amount) by continent. _world_link joins (continent is a mentioned keep column, no value filter). Verified in DB: Tokyo/Osaka(Japan)+Mumbai/Delhi(India)=Asia; Paris(France)+Berlin(Germany)+Madrid(Spain)=Europe. Engine offline plan=[world_join, group_agg] returned Asia=1800.0, Europe=1000.0 exactly.",
+  "derivation": "Resolve each city to winning qid (words: is_primary/pop DESC), read world.Countries.continent for its country. Asia rows = Tokyo500+Osaka300+Mumbai400+Delhi600 = 1800; Europe = Paris700+Berlin200+Madrid100 = 1000."
+ },
+ {
+  "label": "Average amount by continent",
+  "capability": "AVG metric grouped by world continent",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,500\nOsaka,300\nMumbai,400\nDelhi,600\nParis,700\nBerlin,200\nMadrid,100"
+   }
+  ],
+  "question": "What is the average amount by continent?",
+  "expected_kind": "contains",
+  "expected_value": "Asia 450, Europe 333.33",
+  "prediction": "works",
+  "reason": "_operator regex matches 'average' -> AVG (encoder-free path) or read_op_model -> AVG; group_agg AVG(amount) by continent over the world join. Engine offline returned Asia=450.0, Europe=333.333... .",
+  "derivation": "Asia AVG = 1800/4 = 450.0 (Tokyo,Osaka,Mumbai,Delhi). Europe AVG = 1000/3 = 333.333 (Paris,Berlin,Madrid)."
+ },
+ {
+  "label": "Share of total by continent",
+  "capability": "SHARE primitive stacked on the continent group-by (each continent's amount / grand total)",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,500\nOsaka,300\nMumbai,400\nDelhi,600\nParis,700\nBerlin,200\nMadrid,100"
+   }
+  ],
+  "question": "What is each continent's share of total amount?",
+  "expected_kind": "contains",
+  "expected_value": "Asia 0.6429, Europe 0.3571",
+  "prediction": "works",
+  "reason": "SHARE is in DEPTH_PRIMS so the gate stands on the engine; plan=[world_join, group_agg, share]. share_view divides each group's amount by grand total 2800. Engine offline returned Asia=0.642857..., Europe=0.357142... .",
+  "derivation": "Grand total = 2800. Asia share = 1800/2800 = 0.642857; Europe = 1000/2800 = 0.357143."
+ },
+ {
+  "label": "Top-N cities by metric within a continent",
+  "capability": "world_filter (continent='Asia') then top-N cities by uploaded metric",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,500\nOsaka,300\nMumbai,400\nDelhi,600\nParis,700\nBerlin,200\nMadrid,100"
+   }
+  ],
+  "question": "What are the top 2 cities by amount in Asia?",
+  "expected_kind": "contains",
+  "expected_value": "Delhi 600, Tokyo 500",
+  "prediction": "works",
+  "reason": "'Asia' is a continent VALUE present in the world table's continent column, so _world_link returns a FILTER (continent='Asia'); _topn parses 'top 2'. plan=[world_join, world_filter, group_agg, topn]. Engine offline returned Delhi=600.0 then Tokyo=500.0.",
+  "derivation": "Filter to Asia cities: Tokyo500, Osaka300, Mumbai400, Delhi600. Top 2 by amount desc = Delhi(600), Tokyo(500)."
+ },
+ {
+  "label": "Which continent has the most sales (argmax phrasing)",
+  "capability": "reduce continent group-by to the single winner via superlative",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,500\nOsaka,300\nMumbai,400\nDelhi,600\nParis,700\nBerlin,200\nMadrid,100"
+   }
+  ],
+  "question": "Which continent has the most sales?",
+  "expected_kind": "scalar",
+  "expected_value": "Asia",
+  "prediction": "breaks",
+  "reason": "The engine group-bys correctly (Asia=1800 > Europe=1000) but never RANKS to a single row: 'most' is matched by neither _topn (compose.py:148-159 keys on top/highest/best/largest/bottom/lowest/worst) nor _sort (compose.py:162). Engine offline plan=[world_join, group_agg] returned the full 2-row table [Asia 1800, Europe 1000], not the scalar 'Asia'. (Rephrasing to 'highest continent by total amount' adds a topn view and puts Asia on top.)",
+  "derivation": "Correct answer is Asia (1800 > 1000). Engine returns the group table without selecting the max, so it does not answer the argmax question as asked."
+ },
+ {
+  "label": "Per-capita (metric / world population), natural phrasing",
+  "capability": "DIVIDE uploaded metric by world population per city",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,500\nOsaka,300\nMumbai,400\nDelhi,600\nParis,700\nBerlin,200\nMadrid,100"
+   }
+  ],
+  "question": "What is the amount per capita by city?",
+  "expected_kind": "contains",
+  "expected_value": "Osaka 1.09e-4, Paris 3.33e-4, Tokyo 3.51e-5 (amount/population)",
+  "prediction": "breaks",
+  "reason": "_divide (compose.py:199-207) requires BOTH ratio columns to appear as question tokens; 'population' is absent from 'per capita', so divide_pair=None. Worse, _world_link finds no continent value and no mentioned keep column, so the world JOIN never fires -> plan collapses to a bare group_agg on the upload (no population column at all). Engine offline plan=[group_agg], no population, no ratio. NOTE: rephrasing to 'amount per population by city' WORKS (population becomes a named keep column: join fires + divide fires) \u2014 verified offline: Osaka 300/2751862=1.090e-4, Paris 700/2103778=3.327e-4, Tokyo 500/14264798=3.505e-5.",
+  "derivation": "Correct per-capita = amount/Cities.population per resolved qid: Tokyo 500/14264798=3.505e-5, Osaka 300/2751862=1.090e-4, Mumbai 400/15414288=2.595e-5, Delhi 600/26495000=2.265e-5, Paris 700/2103778=3.327e-4, Berlin 200/3782202=5.288e-5, Madrid 100/3506730=2.852e-5. The 'per capita' wording produces none of this."
+ },
+ {
+  "label": "avg-population-measure",
+  "capability": "population as a MEASURE (average) over resolved cities via world join",
+  "tables": [
+   {
+    "name": "citysales",
+    "csv": "city,amount\nTokyo,100\nOsaka,200\nNagoya,50"
+   }
+  ],
+  "question": "What is the average population of these cities?",
+  "expected_kind": "scalar",
+  "expected_value": "6447834.67",
+  "derivation": "AVG over the canonical (max-population) resolution of each name: Tokyo 14264798, Osaka 2751862, Nagoya 2326844 -> sum 19343504 / 3 = 6447834.666... Queried world.\"Cities\" ORDER BY population DESC LIMIT 1 per name.",
+  "prediction": "works",
+  "reason": "WORLD_MEASURES regex (world_compose.py:51) matches 'population' -> _composed True. _world_link keeps population in `keep` (numeric, joined into base). _operator reads AVG ('average'); _pick_measure selects `population` (single non-id numeric of the joined base beside `amount` \u2014 here the encoder cosine or the OR-of-named picks population when the question names it; note `amount` is also numeric so this depends on the measure readout landing on population). serve() returns the engine answer via the WORLD_MEASURES arm (line 291) even without a composition view. Risk: if the measure readout lands on `amount` instead of `population` the number is wrong, but the population MEASURE path itself is supported."
+ },
+ {
+  "label": "total-population-measure",
+  "capability": "population as a MEASURE (total/sum) over resolved cities",
+  "tables": [
+   {
+    "name": "jp",
+    "csv": "city,units\nTokyo,3\nOsaka,7\nNagoya,2"
+   }
+  ],
+  "question": "What is the total population of these cities combined?",
+  "expected_kind": "scalar",
+  "expected_value": "19343504",
+  "derivation": "SUM of canonical populations: 14264798 + 2751862 + 2326844 = 19343504 (world.\"Cities\" max-pop row per name).",
+  "prediction": "works",
+  "reason": "Same gate + join as avg case; _operator defaults/reads SUM ('total'). population is available as a measure column in the joined base and aggregated. Supported (numeric world attr as measure)."
+ },
+ {
+  "label": "topn-cities-by-population",
+  "capability": "population as a MEASURE driving a top-N rank (composition view topn)",
+  "tables": [
+   {
+    "name": "mixed",
+    "csv": "city,spend\nTokyo,10\nOsaka,10\nNagoya,10\nLyon,10\nMarseille,10"
+   }
+  ],
+  "question": "Which are the top 2 cities by population?",
+  "expected_kind": "contains",
+  "expected_value": "Tokyo, Osaka",
+  "derivation": "Rank canonical populations desc: Tokyo 14264798, Osaka 2751862, Nagoya 2326844, Marseille 886040, Lyon 519127 -> top 2 = Tokyo, Osaka.",
+  "prediction": "works",
+  "reason": "WORLD_MEASURES gate fires ('population'). TOPN primitive builds `topn` view (a _COMPOSITION_VIEWS member, line 238) so the engine stands even without the WORLD_MEASURES OR. _topn parses 'top 2'; rank_select orders by the population metric. topn_view emits ORDER BY population DESC LIMIT 2. Supported."
+ },
+ {
+  "label": "avg-element-mass-measure",
+  "capability": "element mass as a MEASURE (average) via world.Elements join",
+  "tables": [
+   {
+    "name": "inv",
+    "csv": "metal,kg\nIron,5\nCopper,3\nGold,1"
+   }
+  ],
+  "question": "What is the average atomic mass of these metals?",
+  "expected_kind": "scalar",
+  "expected_value": "105.4525",
+  "derivation": "world.\"Elements\": Iron 55.845, Copper 63.546, Gold 196.96657. AVG = (55.845+63.546+196.96657)/3 = 105.4525233...",
+  "prediction": "works",
+  "reason": "WORLD_MEASURES matches 'atomic ... mass'. ENTITY_ATTRS['element'] (world_compose.py:81) exposes mass; _enrich joins world.\"Elements\" by name and mass lands in `keep` as a numeric measure. _operator AVG, _pick_measure -> mass. Supported."
+ },
+ {
+  "label": "total-atomic-number-measure",
+  "capability": "element atomic_number as a MEASURE (sum)",
+  "tables": [
+   {
+    "name": "el",
+    "csv": "element,grams\nIron,2\nCopper,4\nGold,6"
+   }
+  ],
+  "question": "What is the sum of the atomic numbers of these elements?",
+  "expected_kind": "scalar",
+  "expected_value": "134",
+  "derivation": "Iron 26 + Copper 29 + Gold 79 = 134 (world.\"Elements\".atomic_number).",
+  "prediction": "works",
+  "reason": "WORLD_MEASURES matches 'atomic number'. atomic_number exposed via ENTITY_ATTRS['element'], joined as numeric measure, SUM aggregated. Supported."
+ },
+ {
+  "label": "sales-in-big-cities-population-filter",
+  "capability": "population as a FILTER threshold on a pre-aggregation row set ('big cities' = pop>1,000,000) \u2014 the user's target case",
+  "tables": [
+   {
+    "name": "s",
+    "csv": "city,sales\nTokyo,100\nOsaka,200\nNagoya,50\nLyon,30\nMarseille,40"
+   }
+  ],
+  "question": "What is the total sales in big cities with population over 1,000,000?",
+  "expected_kind": "scalar",
+  "expected_value": "350",
+  "derivation": "Rows whose canonical city population > 1,000,000: Tokyo(14.26M), Osaka(2.75M), Nagoya(2.33M) qualify; Marseille(886040), Lyon(519127) do not. Sum sales of qualifying = 100+200+50 = 350. (Wrong engine answer would be the ungrouped total 420.)",
+  "prediction": "breaks",
+  "reason": "population cannot become a filter: _world_link (compose.py:369-372) does `if all(_isnum(v)): continue`, so a numeric world column is never returned as (dim,value) and no world_filter view is built. The 'over 1,000,000' HAVING (_having) applies only to the final aggregated `metric` (sales), not to population, so it does not restrict by city size. With no filter bound and no grouping dim, the plan collapses to SUM(sales) over ALL rows = 420, not 350. WORLD_MEASURES still gates it to the engine (matches 'population') and serve() returns that wrong total via the WORLD_MEASURES arm. Numeric world attrs are measures, not filter dims \u2014 exactly the unsupported case."
+ },
+ {
+  "label": "cities-with-population-over-1M-list",
+  "capability": "population as a FILTER producing a filtered entity list ('cities with population > 1,000,000')",
+  "tables": [
+   {
+    "name": "c",
+    "csv": "city,orders\nTokyo,1\nOsaka,1\nNagoya,1\nLyon,1\nMarseille,1"
+   }
+  ],
+  "question": "Which cities have a population greater than 1,000,000?",
+  "expected_kind": "contains",
+  "expected_value": "Tokyo, Osaka, Nagoya",
+  "derivation": "Canonical populations >1M: Tokyo 14264798, Osaka 2751862, Nagoya 2326844 (Marseille 886040 and Lyon 519127 excluded).",
+  "prediction": "unsupported",
+  "reason": "Same _world_link numeric-skip: population never becomes a filter dim, so there is no world_filter to subset the list. There is also no aggregate/measure verb here, so the engine has nothing to threshold; _having needs an aggregated metric. The composed path cannot express 'rows where joined population > X'. This is a pure population-as-filter request that the planner does not support."
+ },
+ {
+  "label": "2-hop scalar: total sales in Asia over a CITY column (city->country->continent filter)",
+  "capability": "multi-hop city->country->continent as a world FILTER on a scalar aggregate",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,sales\nTokyo,120\nMumbai,80\nShanghai,60\nParis,50\nBerlin,40\nMadrid,30\nToronto,70\nSydney,90\nCairo,20\nLagos,15\nNairobi,25"
+   }
+  ],
+  "question": "What are the total sales in Asia?",
+  "expected_kind": "scalar",
+  "expected_value": "260",
+  "prediction": "works",
+  "reason": "The city column routes (11/11 cells resolve >=0.80). Each city resolves to its primary qid, Cities.qid->country name, _enrich chains Countries.name->continent (text 'Asia'). 'Asia' is named in the question and continent is a TEXT column, so _world_link makes it a world FILTER (world_join -> world_filter continent='Asia'), then SUM(sales). This is a clean world-filtered scalar: the delegate answers it and serve() re-expresses it as the view stack (guarded by _same_answer). Tokyo(Japan)+Mumbai(India)+Shanghai(China) = 120+80+60.",
+  "derivation": "Resolve each city to primary/highest-pop qid, join Cities.qid->country, Countries.name->continent. Asia cities: Tokyo(Japan,Q17), Mumbai(India), Shanghai(China). SUM(sales where continent='Asia') = 120+80+60 = 260. Continent labels + canon_country verified via world.\"Countries\" and world.\"words\"."
+ },
+ {
+  "label": "2-hop group: sales BY continent over a CITY column (open-ended 2-hop group)",
+  "capability": "metric asked 'by continent' over a city column \u2014 a 2-hop group with no named filter value",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,sales\nTokyo,120\nMumbai,80\nShanghai,60\nParis,50\nBerlin,40\nMadrid,30\nToronto,70\nSydney,90\nCairo,20\nLagos,15\nNairobi,25"
+   }
+  ],
+  "question": "Total sales by continent?",
+  "expected_kind": "contains",
+  "expected_value": "Asia=260; Europe=120; North America=70; Oceania=90; Africa=60",
+  "prediction": "breaks",
+  "reason": "No world VALUE is named (no 'Asia'/'Europe'), so _world_link returns an ATTRIBUTE-ONLY join (no world_filter) and the plan is a bare GROUP by the continent text column -> plan collapses to [world_join, group_agg] with NO composition view. ComposedWorldQuery.serve requires a _COMPOSITION_VIEWS op or a WORLD_MEASURE to stand on the engine; a plain group has neither, so it falls through to the WorldQuery delegate. The delegate has no dedicated 2-hop city->continent GROUP path (it does named-value world FILTERS, not open group-by over a chained world attr), so the correct 5-row grouped table is not reliably produced. High risk of an ungrouped total or a clarify.",
+  "derivation": "SUM(sales) grouped by resolved continent: Asia=Tokyo120+Mumbai80+Shanghai60=260; Europe=Paris50+Berlin40+Madrid30=120; North America=Toronto70; Oceania=Sydney90; Africa=Cairo20+Lagos15+Nairobi25=60. Continents verified in world.\"Countries\"."
+ },
+ {
+  "label": "2-hop currency: total spend in euros over a CITY column (city->country->currency filter)",
+  "capability": "multi-hop city->country->currency_name as a world FILTER",
+  "tables": [
+   {
+    "name": "spend",
+    "csv": "city,spend\nTokyo,120\nMumbai,80\nShanghai,60\nParis,50\nBerlin,40\nMadrid,30"
+   }
+  ],
+  "question": "What is the total spend in euros?",
+  "expected_kind": "scalar",
+  "expected_value": "120",
+  "prediction": "works",
+  "reason": "_enrich chains country->currency (currency_name), a TEXT column in the world table. 'euros'/'euro' is a named world value, so it becomes a world_filter currency='euro', giving a scalar the delegate answers and serve() re-expresses. Paris/Berlin/Madrid all resolve to euro-zone countries (France/Germany/Spain), so SUM=50+40+30. (Depends on the surface form 'euros' normalizing/embedding to currency_name 'euro'; exact-name match on 'euro' is the reliable path \u2014 a plural/synonym could miss, hence not 'works' if the filter value fails to resolve, but the euro-country arithmetic is fixed.)",
+  "derivation": "currency_name from world.\"Countries\": France/Germany/Spain -> 'euro'. Euro cities: Paris50, Berlin40, Madrid30. SUM=120. Japan->yen, India->indian rupee, China->renminbi are excluded."
+ },
+ {
+  "label": "Single-hop over a COUNTRY column: total in Asia (country->continent)",
+  "capability": "1-hop country->continent world FILTER as a control for the 2-hop cases",
+  "tables": [
+   {
+    "name": "rev",
+    "csv": "country,amount\nJapan,100\nIndia,60\nFrance,40\nGermany,30\nKenya,20\nNigeria,10"
+   }
+  ],
+  "question": "What is the total amount in Asia?",
+  "expected_kind": "scalar",
+  "expected_value": "160",
+  "prediction": "works",
+  "reason": "Country column routes as type=country; _enrich reads Countries.name->continent directly (one hop, no city bridge). 'Asia' named -> world_filter continent='Asia' -> scalar SUM. Japan+India = 100+60. Simpler and more robust than the city 2-hop because it skips the city->qid disambiguation step.",
+  "derivation": "continent per country (world.\"Countries\"): Japan=Asia, India=Asia, France=Europe, Germany=Europe, Kenya=Africa, Nigeria=Africa. SUM(amount where continent='Asia') = 100+60 = 160."
+ },
+ {
+  "label": "Robustness: mixed column, 5 real cities + 1 garbage cell, total in Asia",
+  "capability": "garbage-tolerant routing + unresolved-cell exclusion on a 2-hop filter",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,sales\nTokyo,120\nMumbai,80\nParis,50\nBerlin,40\nNairobi,25\nZzqxville,999"
+   }
+  ],
+  "question": "What are the total sales in Asia?",
+  "expected_kind": "scalar",
+  "expected_value": "200",
+  "prediction": "works",
+  "reason": "5/6 = 0.833 >= VALUE_ROUTE_MIN (0.80) so the column still routes as city. 'Zzqxville' resolves to no qid so it produces no bridge row -> absent from the world meaning table -> excluded from the join and the sum (its 999 never counts). 'Asia' named -> world_filter scalar. Tokyo+Mumbai only. Verified the 0.833 ratio and empty norm-membership for 'Zzqxville'.",
+  "derivation": "City resolution count verified 5/6=0.833>=0.80. Asia cities in the set: Tokyo120, Mumbai80. Paris/Berlin=Europe, Nairobi=Africa, Zzqxville dropped. SUM=120+80=200."
+ },
+ {
+  "label": "Non-existent city: unresolved entity dropped from the world join",
+  "capability": "graceful handling of a city that isn't in the world DB",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,sales\nTokyo,120\nMumbai,80\nWakanda,500\nAtlantis City,300"
+   }
+  ],
+  "question": "What are the total sales in Asia?",
+  "expected_kind": "scalar",
+  "expected_value": "200",
+  "prediction": "works",
+  "reason": "Real cities are 2/4 = 0.50 < 0.80, so value-membership routing does NOT fire on the column as a whole via the deterministic path; however the composed _world_lookup still resolves the cells that DO match (Tokyo, Mumbai) through the city bridge and drops the two fictional cities (verified: 'Wakanda'/'Atlantis City' have no norm membership -> no bridge row). If the column fails to route entirely, the world join yields no rows for those cells anyway. Either way the fictional-city amounts (500,300) are excluded; the Asia scalar is Tokyo+Mumbai. Marked works for the ARITHMETIC (fictional rows never contribute); note routing is borderline at 0.50 so the whole column could fail to route and the query degrade to a non-world/clarify answer \u2014 the one risk here is routing, not wrong inclusion.",
+  "derivation": "'Wakanda' and 'Atlantis City' verified absent from world.\"words\" (empty membership). Only Tokyo(Asia)+Mumbai(Asia) contribute. SUM=120+80=200; fictional cities' 500+300 excluded."
+ },
+ {
+  "label": "Out-of-model entity type: a PRODUCT column (no world type)",
+  "capability": "column of an entity type the world model has no table for",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "product,units\nWidget-X,120\nGizmo-9,80\nSprocket,60\nBlorptown,40"
+   }
+  ],
+  "question": "What are the total units in Asia?",
+  "expected_kind": "unsupported",
+  "expected_value": "no world join possible; cannot filter by continent",
+  "prediction": "unsupported",
+  "reason": "The product values resolve to NO world type (verified empty norm-membership for all four), so value-membership routing fails (0/4 < 0.80) and the model-fallback routing has no city/country/continent to attach. _world_lookup finds no connected column -> world table is None -> no continent attribute exists to filter on. 'Asia' cannot bind. The engine either returns a plain (non-world) aggregate ignoring 'Asia' or the delegate clarifies. There is no world attribute the upload never had to join, so the world-QA premise is unsupported for this column.",
+  "derivation": "All four product tokens verified absent from world.\"words\". No continent can be derived; the 'in Asia' filter has nothing to bind to. Correct behavior is unsupported / clarify, not a number."
+ },
+ {
+  "label": "Plain non-world aggregate control (no world join needed)",
+  "capability": "baseline single-table aggregate that must NOT invoke the world path",
+  "tables": [
+   {
+    "name": "orders",
+    "csv": "region,amount\nNorth,10\nSouth,20\nEast,30\nWest,40"
+   }
+  ],
+  "question": "What is the total amount?",
+  "expected_kind": "scalar",
+  "expected_value": "100",
+  "prediction": "works",
+  "reason": "'region' values (North/South/East/West) don't resolve to any world type, so no world join fires; _composed gate finds no WORLD_MEASURE and no DEPTH primitive, so it delegates to WorldQuery, which does a plain SUM(amount). No continent/currency chain involved. Pure control confirming the world machinery stays out of the way for a non-world question.",
+  "derivation": "SUM(amount) = 10+20+30+40 = 100. No world lookup; direct single-table aggregate."
+ },
+ {
+  "label": "total_sales_by_currency (group-by currency name)",
+  "capability": "currency NAME group-by: 'total sales by currency'",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,100000\nMumbai,50000\nParis,8000\nBerlin,6000\nLondon,7000\nNew York City,9000"
+   }
+  ],
+  "question": "What is the total sales by currency?",
+  "expected_kind": "contains",
+  "expected_value": "yen=100000; indian rupee=50000; euro=14000 (Paris 8000 + Berlin 6000); pound sterling=7000; united states dollar=9000",
+  "derivation": "Resolve each city -> country -> world.\"Countries\".currency_name (live-verified): Tokyo->yen, Mumbai->indian rupee, Paris/Berlin->euro, London->pound sterling, NYC->united states dollar. Group amount by currency_name: SELECT currency_name, SUM(amount) GROUP BY currency_name over the resolved rows => {yen:100000, indian rupee:50000, euro:14000, pound sterling:7000, united states dollar:9000}.",
+  "prediction": "unsupported",
+  "reason": "The upload has no 'currency' column. Currency is only synthesized in the COMPOSED path (_enrich chains country->currency_name). But the compose gate _composed() only fires on DEPTH_PRIMS or WORLD_MEASURES; a bare group-by is neither, so this delegates to WorldQuery. WorldQuery/EntityQuery resolve only country/city/continent/state (world_query.py:512) and expose no currency dimension, so it cannot GROUP BY currency at all. Result: currency grouping never materializes -> unsupported (at best a currency-blind total or a clarify, never the per-currency breakdown)."
+ },
+ {
+  "label": "sales_where_currency_is_euro (single-word currency filter)",
+  "capability": "currency NAME filter: 'sales where currency is Euro'",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,100000\nMumbai,50000\nParis,8000\nBerlin,6000\nLondon,7000\nNew York City,9000"
+   }
+  ],
+  "question": "What is the total sales where the currency is euro?",
+  "expected_kind": "scalar",
+  "expected_value": "14000",
+  "derivation": "Euro-country cities are Paris(France) and Berlin(Germany) \u2014 both currency_name='euro' (live-verified). SUM(amount) WHERE currency_name='euro' = 8000 + 6000 = 14000. The other cities (yen/indian rupee/pound sterling/usd) are excluded.",
+  "prediction": "breaks",
+  "reason": "Correct answer is 14000, but the engine will not produce it. _composed() does not fire ('euro' is not a DEPTH_PRIM and not a WORLD_MEASURE), so it delegates to WorldQuery. WorldQuery cannot resolve 'euro' as a geo entity (it only knows country/city/continent/state; _best_world_entity only checks country/city NN). So no currency filter binds. Note the composed path COULD in principle filter: _world_link builds toks=set(re.findall(r'[a-z]+',low)) and 'euro' IS a single token that equals the currency world-value 'euro' (compose.py:367-374) \u2014 but that path is never entered because the gate doesn't fire. Net: the currency filter is silently dropped; the delegate returns a currency-blind total (180000) or a clarify, not 14000."
+ },
+ {
+  "label": "sales_where_currency_is_pound_sterling (multi-word currency filter)",
+  "capability": "currency NAME filter with a MULTI-WORD value ('pound sterling')",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nLondon,7000\nManchester,3000\nParis,8000\nTokyo,100000"
+   }
+  ],
+  "question": "What is the total sales where the currency is pound sterling?",
+  "expected_kind": "scalar",
+  "expected_value": "10000",
+  "derivation": "UK cities London + Manchester both resolve to United Kingdom, currency_name='pound sterling' (live-verified for UK). SUM(amount) WHERE currency_name='pound sterling' = 7000 + 3000 = 10000 (Paris=euro, Tokyo=yen excluded).",
+  "prediction": "breaks",
+  "reason": "Correct = 10000 but unreachable, and this case ALSO exposes a second, code-level failure even if the composed path fired: _world_link matches a currency value only when `str(r[di]).lower() in toks` where toks is a SET OF SINGLE [a-z]+ TOKENS (compose.py:367,374). The world value 'pound sterling' is two words and is never equal to any single token, so it can NEVER be matched \u2014 unlike single-word 'euro'/'yen'. Combined with the gate not firing (delegate can't resolve 'pound'/'sterling' as geo), the filter is dropped -> wrong (currency-blind total) / clarify."
+ },
+ {
+  "label": "total_sales_in_asia (continent filter, currency-blind aggregate)",
+  "capability": "continent filter over cities (currency is IGNORED \u2014 raw sum of mixed-currency amounts)",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,amount\nTokyo,100000\nMumbai,50000\nParis,8000\nNew York City,9000"
+   }
+  ],
+  "question": "What is the total sales in Asia?",
+  "expected_kind": "scalar",
+  "expected_value": "150000",
+  "derivation": "Asian cities: Tokyo (Japan, Asia) + Mumbai (India, Asia); Paris (Europe) and NYC (North America) excluded (live-verified continents). SUM(amount) = 100000 + 50000 = 150000. NOTE this raw sum adds 100000 JPY + 50000 INR as if same unit \u2014 the engine is currency-BLIND and does not convert; the number is only meaningful if the user already normalized currency.",
+  "prediction": "works",
+  "reason": "'Asia' is a continent, a geo type the delegate resolves (TYPE_QID has continent Q5107; wikipedia qid join filters continent, per _uncovered's continent='Q46' handling). The delegate produces SUM(amount) WHERE continent=Asia = 150000, and serve() re-expresses it as the view stack (world_join->world_filter->group_agg). It WORKS numerically but demonstrates the currency blindness: it sums heterogeneous local currencies without conversion or warning."
+ },
+ {
+  "label": "total_in_usd_currency_conversion (the FX probe)",
+  "capability": "CURRENCY CONVERSION: amounts in each city local currency, asked as a single USD total",
+  "tables": [
+   {
+    "name": "sales",
+    "csv": "city,local_amount\nTokyo,100000\nMumbai,50000\nParis,8000\nBerlin,6000\nLondon,7000\nNew York City,9000"
+   }
+  ],
+  "question": "Convert each city's sales into US dollars and give me the grand total in USD.",
+  "expected_kind": "unsupported",
+  "expected_value": "Requires EXTERNAL FX rates not in the DB. Illustratively, with sample rates (JPY 0.0064, INR 0.012, EUR 1.08, GBP 1.27, USD 1.0): 100000*0.0064 + 50000*0.012 + 8000*1.08 + 6000*1.08 + 7000*1.27 + 9000*1.0 = 640 + 600 + 8640 + 6480 + 8890 + 9000 = 34250 USD (rates are external and time-varying, so this exact number is not derivable from the DB).",
+  "derivation": "A correct answer needs per-currency FX rates: total_usd = SUM(local_amount * fx[currency_of(city)]). The DB has NO FX/exchange-rate table (scanned information_schema for %exchange%/%fx%/%rate%/%convers% -> only pg_conversion (internal), federated_state, chat tables; public.currency has only code/name/symbol, no rate). Currency_name per city resolves fine, but there is no rate to multiply by. Sample computation above uses INVENTED external rates purely to show the shape; it is NOT what the engine can compute.",
+  "prediction": "unsupported",
+  "reason": "No FX table exists anywhere in the world DB, and the compose engine has no per-row/per-group scalar-multiply-by-rate primitive (its primitives are filter/time/group/yoy/running/share/divide/having/topn/sort \u2014 divide is column/column, not join-to-a-rate-table). So conversion is structurally impossible. The engine cannot produce 34250. Best realistic behavior: it either ignores currency and returns the raw currency-blind grand total (180000), or the delegate's clarify gate fires on the dropped 'usd'/'convert' words. It neither converts nor errors cleanly on the missing FX \u2014 the strongest evidence of the currency-conversion gap."
+ }
+]
