@@ -18,16 +18,16 @@ Prediction accuracy (designer vs reality): **28/35**. The map below is what the 
 
 ## 🐞 Bugs
 
-### ✅ Fixed (non-architectural, deterministic — verified live, no regression)
+### ✅ Fixed — verified live, no regression, full deploy suite green (7/7 engine suites, test_world_joins 6/6)
 | # | bug | fix | verified |
 |---|---|---|---|
+| B1 | **All `country`-column world joins empty** (`lower(country.qid)=lower(name)` → 0 rows) | `entities.py` `_world_joins`: for qid-keyed tables, map the resolved canonical → qid via `world."words"` (`DISTINCT ON (canonical)` to avoid altLabel fan-out) and join on `qid`. Type-aware (keyed on `right_col=="qid"`, so `u_s_state` name-join is untouched) — **completes the qid migration**. | country→Asia=80/Europe=150; China-robust (Asia=180/Europe=90) ✓ |
 | B1b | composed country path crashed `duplicate column name: country` | `world_compose.py`: drop an enriched attr colliding with the geo column | no crash ✓ |
 | B3 | **Entity-noun clarify gate** ("cities in France" → clarify though the SQL was correct) | `world_query.py` `_uncovered`: exclude entity-type nouns + schema-word plurals from the dropped-word set | "cities in France"=180, no clarify ✓ |
 
-### ⏭ Deferred — architectural
+### ⏭ Deferred — architectural (planner: `_world_link` "numeric attrs are measures, not filter dims")
 | # | bug | why architectural |
 |---|---|---|
-| B1 | **All `country`-column world joins empty** (`lower(country.qid)=lower(name)` → 0 rows) | `wikipedia."country"` is **qid-keyed** and lazily filled with **official** names (26 rows, only 12% match the resolved common name); a name-join silently undercounts official-name countries (China/USA/UK). Robust fix = a **type-aware qid-join** (country qid-keyed, `u_s_state` name-keyed) = **completing the incomplete qid migration**. Left broken-honest, not partially patched. |
 | B2 | **Element measures silently wrong** — "avg atomic mass" → `AVG("kg")` over the *uploaded* column | `_world_link` measure-selection prefers a competing upload column over `world.Elements.mass` |
 | B4 | **Group-BY a world attribute** — "total sales **by continent**" → empty breakdown | `_world_link` "numeric attrs are measures, not filter/group dims" |
 | B5 | **Superlative over a world group** — "which continent has the most sales" → None | no argmax over a world-joined dim |

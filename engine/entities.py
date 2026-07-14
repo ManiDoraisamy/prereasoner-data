@@ -404,20 +404,28 @@ class EntityQuery(RoutedQuery):
             elif idx == 0 and name_bridge:
                 b = "__bridge0"
                 fw += f' JOIN ({name_bridge}) AS {b}(cell, canon) ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
-                # NOTE: for qid-keyed world tables (wikipedia."country") right_col is `qid` while canon is a NAME, so
-                # this join returns 0 rows -> every country-column world join is empty. A name-join "fixes" it only
-                # for the ~26 lazily-synced countries whose common name == wikipedia.country.name; official-name
-                # countries (China/PRC, USA, UK) then silently UNDERCOUNT. The robust fix is a type-aware qid-join
-                # (resolve canon->qid via world."words", join on R.qid) — that completes the qid migration and is
-                # tracked as an ARCHITECTURAL item (see regress/CAPABILITY_MAP.md B1). Left broken-honest, not
-                # partially-patched, to avoid shipping a silent undercount.
-                cond = f'lower({qident(R)}.{qident(j["right_col"])}) = lower({b}.canon)'
-                if "is_primary" in self.words[R].get("columns", []):
-                    cond += f' AND {qident(R)}.{qident("is_primary")} = 1'
-                if "valid_from" in self.words[R]["columns"]:
-                    cond += (f' AND {qident(R)}.{qident("valid_from")} <= {qlit(as_of)}'
-                             f' AND ({qident(R)}.{qident("valid_to")} IS NULL OR {qlit(as_of)} < {qident(R)}.{qident("valid_to")})')
-                fw += f' JOIN {qident(R)} ON {cond}'
+                if j["right_col"] == "qid":
+                    # QID-KEYED world table (wikipedia."country" migrated to qid keys): the name bridge yields the
+                    # canonical NAME, but the table joins on `qid`, so a name/qid join returned 0 rows — every
+                    # country-column world join was empty. Map canon -> qid through world."words" (the SAME index the
+                    # bridge resolved through) and join on qid. Robust to official-vs-common name mismatch
+                    # (China's canon 'China' -> Q148 -> wikipedia.country.qid Q148), which a name-join silently drops.
+                    # world."words" has MANY rows per entity (one per altLabel), all sharing the qid, so DISTINCT ON
+                    # (canonical) collapses to ONE qid per name — else the aggregate fans out by the altLabel count.
+                    w = f"{b}_w"
+                    fw += (f' JOIN (SELECT DISTINCT ON (lower({qident("canonical")})) lower({qident("canonical")}) AS cn, '
+                           f'{qident("qid")} FROM world."words" WHERE {qident("type")}={qlit(wtype)} '
+                           f'AND {qident("qid")} IS NOT NULL ORDER BY lower({qident("canonical")}), {qident("qid")}) '
+                           f'{w} ON {w}.cn = lower({b}.canon)')
+                    fw += f' JOIN {qident(R)} ON {qident(R)}.{qident("qid")} = {w}.{qident("qid")}'
+                else:
+                    cond = f'lower({qident(R)}.{qident(j["right_col"])}) = lower({b}.canon)'
+                    if "is_primary" in self.words[R].get("columns", []):
+                        cond += f' AND {qident(R)}.{qident("is_primary")} = 1'
+                    if "valid_from" in self.words[R]["columns"]:
+                        cond += (f' AND {qident(R)}.{qident("valid_from")} <= {qlit(as_of)}'
+                                 f' AND ({qident(R)}.{qident("valid_to")} IS NULL OR {qlit(as_of)} < {qident(R)}.{qident("valid_to")})')
+                    fw += f' JOIN {qident(R)} ON {cond}'
             else:
                 fw += f' JOIN {qident(R)} ON {self._join_cond(idx, j, mtab, disamb, as_of)}'
         return fw, disamb, warnings
