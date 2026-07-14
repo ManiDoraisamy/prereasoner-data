@@ -346,6 +346,11 @@ class TableQuery:
         present = [nm for nm, cues in AGG_CUES.items() if any(t in cues for t in low)]
         if not present and "how" in low and "many" in low:
             present = ["count"]
+        # "total NUMBER of X" is a row count — 'total' merely modifies the count noun, it is not a SUM cue.
+        # Without this, both cues fire and the intent margin sometimes picks SUM -> SUM(first numeric).
+        if "sum" in present and "count" in present and any(
+                low[i + 1] in AGG_CUES["count"] for i, t in enumerate(low[:-1]) if t in AGG_CUES["sum"]):
+            present.remove("sum")
         if present:
             scored = sorted(((nm, iscore(f"agg_{nm}")[0]) for nm in present), key=lambda a: -a[1])
             if len(scored) == 1 or scored[0][1] - scored[1][1] >= MARGIN:
@@ -359,9 +364,16 @@ class TableQuery:
                         tgt = self._link(qvec[k], low[k], sch, kind="num")
                         if tgt:
                             break
-                    tgt = tgt or (numeric[0] if numeric else None)
-                    if tgt:
-                        slots["agg"] = ("SUM" if nm == "sum" else "AVG", tgt["table"], tgt["name"])
+                    if tgt is None and any(tk == t["name"].lower() or tk.rstrip("s") == t["name"].lower().rstrip("s")
+                                           for tk in low for t in tables):
+                        # "total SINGERS" names the ENTITY, not a measure: no numeric column is nameable
+                        # after the cue but a TABLE is named -> row count (EncoderQuery.read_op_all's
+                        # token_table precedence), instead of blindly SUM-ing the first numeric column.
+                        slots["agg"] = ("COUNT", None, "*")
+                    else:
+                        tgt = tgt or (numeric[0] if numeric else None)
+                        if tgt:
+                            slots["agg"] = ("SUM" if nm == "sum" else "AVG", tgt["table"], tgt["name"])
 
         if not slots["agg"]:                                      # MIN/MAX agg ("maximum index", "max subscription
             MM = {"MAX": {"max", "maximum"}, "MIN": {"min", "minimum"}}   # date") — cue + an EXPLICIT numeric/date

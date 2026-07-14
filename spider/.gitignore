@@ -1,0 +1,6 @@
+data/*.json
+data/*.sqlite
+data/dbs/
+results/*per_example*.json
+__pycache__/
+*.pyc

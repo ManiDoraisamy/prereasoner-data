@@ -32,7 +32,13 @@ class ComposedWorldQuery:
     # The composition primitives this layer ADDS over the delegate (WorldQuery already does plain aggregate +
     # FK/world joins + list-vs-aggregate). A row COUNT is read separately off read_op_model (it is an operator, not
     # a head dim) because the delegate's count+world path is weak.
-    DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING"})
+    # ONLY primitives the delegate genuinely CANNOT express gate to the engine. TOPN/SORT/TIME are handled by
+    # the delegate's slot planner (ORDER BY/LIMIT, superlative argmax, year filters) WITH projection and
+    # value-matched WHERE — which the engine's aggregate-only stack lacks — so gating them here sent
+    # projection/filter questions to the weaker path (measured on the Spider dev probe: 59% of questions
+    # routed to the engine at an 8% hit rate vs the delegate's 51%; see spider/results/RESULTS.md).
+    # Keep in sync with spider/probe/full_eval.py::DEPTH_PRIMS.
+    DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "SHARE", "HAVING", "DIVIDE", "RUNNING"})
 
     def __init__(self):
         self.qw = WorldQuery()                            # resolution + world DB + auth + bridge machinery

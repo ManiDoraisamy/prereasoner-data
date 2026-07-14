@@ -1,0 +1,67 @@
+{
+  "n": 1034,
+  "config": "gold_tables",
+  "answered_pct": 97.7,
+  "error_pct": 2.3,
+  "correct_lenient_pct": 40.6,
+  "correct_strict_pct": 19.3,
+  "scalar_gold_accuracy_pct": 49.8,
+  "scalar_gold_n": 404,
+  "totals": {
+    "n": 1034,
+    "answered": 1010,
+    "correct_lenient": 420,
+    "scalar_total": 404,
+    "scalar_correct": 201,
+    "correct_strict": 200,
+    "error": 24
+  },
+  "error_stage_histogram": {
+    "assemble_exec": 24
+  },
+  "path_histogram": {
+    "slot": 878,
+    "compose": 156
+  },
+  "path_correct_lenient": {
+    "slot": 409,
+    "compose": 11
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 248,
+      "answered": 248,
+      "correct_lenient": 154,
+      "scalar_total": 173,
+      "scalar_correct": 109,
+      "correct_strict": 110
+    },
+    "medium": {
+      "n": 446,
+      "answered": 443,
+      "correct_lenient": 156,
+      "correct_strict": 79,
+      "scalar_total": 101,
+      "scalar_correct": 41,
+      "error": 3
+    },
+    "hard": {
+      "n": 174,
+      "answered": 165,
+      "correct_lenient": 81,
+      "scalar_total": 74,
+      "scalar_correct": 36,
+      "error": 9,
+      "correct_strict": 6
+    },
+    "extra": {
+      "n": 166,
+      "answered": 154,
+      "correct_lenient": 29,
+      "error": 12,
+      "scalar_total": 56,
+      "scalar_correct": 15,
+      "correct_strict": 5
+    }
+  }
+}

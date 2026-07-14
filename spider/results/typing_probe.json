@@ -1,0 +1,2051 @@
+{
+  "summary": {
+    "n_columns": 115,
+    "geo_hint_cols": 10,
+    "nongeo_cols": 105,
+    "general_typing_distribution": {
+      "car_model": 13,
+      "country": 12,
+      "breed": 11,
+      "language": 10,
+      "song": 8,
+      "power_station": 8,
+      "city": 7,
+      "legal_form": 6,
+      "website": 5,
+      "restaurant": 4,
+      "neighborhood": 4,
+      "musical_group": 3,
+      "street": 3,
+      "bank": 3,
+      "film": 3,
+      "equus_caballus": 2,
+      "taxonomic_rank": 2,
+      "academic_discipline": 2,
+      "__abstain__": 2,
+      "federated_state": 2,
+      "ski_resort": 1,
+      "academic_journal": 1,
+      "political_party": 1,
+      "musician": 1,
+      "school": 1
+    },
+    "world_routing_distribution": {
+      "city": 50,
+      "__none__": 50,
+      "country": 15
+    },
+    "nongeo_general_misfire": {
+      "n": 103,
+      "pct": 98.1
+    },
+    "nongeo_world_overreach": {
+      "n": 55,
+      "pct": 52.4
+    },
+    "geo_world_recall": {
+      "n": 10,
+      "of": 10,
+      "pct": 100.0
+    }
+  },
+  "columns": [
+    {
+      "db": "battle_death",
+      "table": "battle",
+      "column": "name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.368,
+      "world_leaf": "city",
+      "world_score": 0.244,
+      "sample": [
+        "Battle of Adrianople",
+        "Battle of Boruy",
+        "Battle of Messinopolis",
+        "Battle of Philippopolis",
+        "Battle of Rodosto",
+        "Battle of Rusion"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "battle",
+      "column": "date",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.204,
+      "world_leaf": "city",
+      "world_score": 0.106,
+      "sample": [
+        "14 April 1205",
+        "31 January 1206",
+        "31 June 1208",
+        "4 September 1207",
+        "February 1206",
+        "June 1205"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "battle",
+      "column": "bulgarian_commander",
+      "geo_hint": false,
+      "typed_leaf": "legal_form",
+      "typed_score": 0.169,
+      "world_leaf": "country",
+      "world_score": 0.114,
+      "sample": [
+        "Boril",
+        "Ivan Asen II",
+        "Kaloyan",
+        "Unknown"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "battle",
+      "column": "latin_commander",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.233,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Baldwin I",
+        "Boniface of Montferrat",
+        "Henry I",
+        "John of Brienne",
+        "Thierry de Termond",
+        "Unknown"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "battle",
+      "column": "result",
+      "geo_hint": false,
+      "typed_leaf": "restaurant",
+      "typed_score": 0.326,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Bulgarian victory",
+        "Latin victory",
+        "Two Year Truce"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "ship",
+      "column": "name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.365,
+      "world_leaf": "city",
+      "world_score": 0.221,
+      "sample": [
+        "Bacchus",
+        "Bon Accord",
+        "HMS Atalanta",
+        "HMS Avon",
+        "Lettice",
+        "Mary"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "ship",
+      "column": "ship_type",
+      "geo_hint": false,
+      "typed_leaf": "ski_resort",
+      "typed_score": 0.198,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "18-gun Brig",
+        "8 gun Brig",
+        "Brig"
+      ]
+    },
+    {
+      "db": "battle_death",
+      "table": "ship",
+      "column": "location",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.37,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "English Channel",
+        "Mid-Atlantic",
+        "SW Approaches"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "continents",
+      "column": "Continent",
+      "geo_hint": true,
+      "typed_leaf": "country",
+      "typed_score": 0.286,
+      "world_leaf": "country",
+      "world_score": 0.286,
+      "sample": [
+        "africa",
+        "america",
+        "asia",
+        "australia",
+        "europe"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "countries",
+      "column": "CountryName",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.46,
+      "world_leaf": "country",
+      "world_score": 0.46,
+      "sample": [
+        "australia",
+        "brazil",
+        "egypt",
+        "france",
+        "germany",
+        "italy"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "car_makers",
+      "column": "Maker",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.395,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "amc",
+        "bmw",
+        "chrysler",
+        "citroen",
+        "daimler benz",
+        "fiat"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "car_makers",
+      "column": "FullName",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.403,
+      "world_leaf": "city",
+      "world_score": 0.072,
+      "sample": [
+        "American Motor Company",
+        "BMW",
+        "Chrysler",
+        "Citroen",
+        "Daimler Benz",
+        "Fiat"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "model_list",
+      "column": "Model",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.349,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "amc",
+        "audi",
+        "bmw",
+        "buick",
+        "cadillac",
+        "capri"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "car_names",
+      "column": "Model",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.348,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        " volkswagen",
+        "amc",
+        "audi",
+        "bmw",
+        "buick",
+        "cadillac"
+      ]
+    },
+    {
+      "db": "car_1",
+      "table": "car_names",
+      "column": "Make",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.398,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        " mazda glc deluxe",
+        "amc ambassador brougham",
+        "amc ambassador dpl",
+        "amc ambassador sst",
+        "amc concord",
+        "amc concord d/l"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "stadium",
+      "column": "Location",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.216,
+      "world_leaf": "city",
+      "world_score": 0.155,
+      "sample": [
+        "Alloa Athletic",
+        "Arbroath",
+        "Ayr United",
+        "Brechin City",
+        "East Fife",
+        "Peterhead"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "stadium",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.245,
+      "world_leaf": "city",
+      "world_score": 0.091,
+      "sample": [
+        "Balmoor",
+        "Bayview Stadium",
+        "Forthbank Stadium",
+        "Gayfield Park",
+        "Glebe Park",
+        "Hampden Park"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "singer",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.196,
+      "world_leaf": "city",
+      "world_score": 0.111,
+      "sample": [
+        "Joe Sharp",
+        "John Nizinik",
+        "Justin Brown",
+        "Rose White",
+        "Timbaland",
+        "Tribal King"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "singer",
+      "column": "Country",
+      "geo_hint": true,
+      "typed_leaf": "country",
+      "typed_score": 0.758,
+      "world_leaf": "country",
+      "world_score": 0.758,
+      "sample": [
+        "France",
+        "Netherlands",
+        "United States"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "singer",
+      "column": "Song_Name",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.477,
+      "world_leaf": "city",
+      "world_score": 0.089,
+      "sample": [
+        "Dangerous",
+        "Gentleman",
+        "Hey Oh",
+        "Love",
+        "Sun",
+        "You"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "concert",
+      "column": "concert_Name",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.174,
+      "world_leaf": "city",
+      "world_score": 0.159,
+      "sample": [
+        "Auditions",
+        "Home Visits",
+        "Super bootcamp",
+        "Week 1",
+        "Week 2"
+      ]
+    },
+    {
+      "db": "concert_singer",
+      "table": "concert",
+      "column": "Theme",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.202,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Bleeding Love",
+        "Free choice",
+        "Free choice 2",
+        "Happy Tonight",
+        "Party All Night",
+        "Wide Awake"
+      ]
+    },
+    {
+      "db": "course_teach",
+      "table": "course",
+      "column": "Staring_Date",
+      "geo_hint": false,
+      "typed_leaf": "equus_caballus",
+      "typed_score": 0.223,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "10 May",
+        "11 May",
+        "13 May",
+        "14 May",
+        "15 May",
+        "17 May"
+      ]
+    },
+    {
+      "db": "course_teach",
+      "table": "course",
+      "column": "Course",
+      "geo_hint": false,
+      "typed_leaf": "academic_journal",
+      "typed_score": 0.151,
+      "world_leaf": "city",
+      "world_score": 0.059,
+      "sample": [
+        "Bible",
+        "French",
+        "Geography",
+        "Health",
+        "History",
+        "Language Arts"
+      ]
+    },
+    {
+      "db": "course_teach",
+      "table": "teacher",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.198,
+      "world_leaf": "city",
+      "world_score": 0.126,
+      "sample": [
+        "Anne Walker",
+        "Gustaaf Deloor",
+        "John Deloor",
+        "Joseph Huts",
+        "Kearsley Brown",
+        "Lucy Wong"
+      ]
+    },
+    {
+      "db": "course_teach",
+      "table": "teacher",
+      "column": "Hometown",
+      "geo_hint": false,
+      "typed_leaf": "neighborhood",
+      "typed_score": 0.265,
+      "world_leaf": "city",
+      "world_score": 0.137,
+      "sample": [
+        "Blackrod Urban District",
+        "Bolton County Borough",
+        "Farnworth Municipal Borough",
+        "Horwich Urban District",
+        "Kearsley Urban District",
+        "Little Lever Urban District"
+      ]
+    },
+    {
+      "db": "cre_Doc_Template_Mgt",
+      "table": "Ref_Template_Types",
+      "column": "Template_Type_Code",
+      "geo_hint": false,
+      "typed_leaf": "website",
+      "typed_score": 0.208,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "AD",
+        "BK",
+        "CV",
+        "PP",
+        "PPT"
+      ]
+    },
+    {
+      "db": "cre_Doc_Template_Mgt",
+      "table": "Ref_Template_Types",
+      "column": "Template_Type_Description",
+      "geo_hint": false,
+      "typed_leaf": "restaurant",
+      "typed_score": 0.21,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Advertisement",
+        "Book",
+        "CV",
+        "Paper",
+        "Presentation"
+      ]
+    },
+    {
+      "db": "cre_Doc_Template_Mgt",
+      "table": "Templates",
+      "column": "Template_Type_Code",
+      "geo_hint": false,
+      "typed_leaf": "website",
+      "typed_score": 0.208,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "AD",
+        "BK",
+        "CV",
+        "PP",
+        "PPT"
+      ]
+    },
+    {
+      "db": "cre_Doc_Template_Mgt",
+      "table": "Documents",
+      "column": "Document_Name",
+      "geo_hint": false,
+      "typed_leaf": "website",
+      "typed_score": 0.233,
+      "world_leaf": "city",
+      "world_score": 0.097,
+      "sample": [
+        "A history of Arts",
+        "About Korea",
+        "Customer reviews",
+        "Data base",
+        "Do not panic",
+        "How Google people work"
+      ]
+    },
+    {
+      "db": "cre_Doc_Template_Mgt",
+      "table": "Documents",
+      "column": "Document_Description",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.16,
+      "world_leaf": "city",
+      "world_score": 0.136,
+      "sample": [
+        "b",
+        "f",
+        "h",
+        "k",
+        "n",
+        "r"
+      ]
+    },
+    {
+      "db": "cre_Doc_Template_Mgt",
+      "table": "Paragraphs",
+      "column": "Paragraph_Text",
+      "geo_hint": false,
+      "typed_leaf": "political_party",
+      "typed_score": 0.221,
+      "world_leaf": "country",
+      "world_score": 0.139,
+      "sample": [
+        "Brazil",
+        "Fiji",
+        "Indonesia",
+        "Ireland",
+        "Japan",
+        "Jersey"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Breeds",
+      "column": "breed_code",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.75,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "BUL",
+        "ESK",
+        "HUS"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Breeds",
+      "column": "breed_name",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.697,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Bulldog",
+        "Eskimo",
+        "Husky"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Charges",
+      "column": "charge_type",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.211,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Daily Accommodation",
+        "Drugs",
+        "Health Check"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Sizes",
+      "column": "size_code",
+      "geo_hint": false,
+      "typed_leaf": "musical_group",
+      "typed_score": 0.204,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "LGE",
+        "MED",
+        "SML"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Sizes",
+      "column": "size_description",
+      "geo_hint": false,
+      "typed_leaf": "musical_group",
+      "typed_score": 0.294,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Large",
+        "Medium",
+        "Small"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Treatment_Types",
+      "column": "treatment_type_code",
+      "geo_hint": false,
+      "typed_leaf": "taxonomic_rank",
+      "typed_score": 0.151,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "EXAM",
+        "VAC",
+        "WALK"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Treatment_Types",
+      "column": "treatment_type_description",
+      "geo_hint": false,
+      "typed_leaf": "academic_discipline",
+      "typed_score": 0.198,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Physical examination",
+        "Take for a Walk",
+        "Vaccination"
+      ]
+    },
+    {
+      "db": "dog_kennels",
+      "table": "Owners",
+      "column": "first_name",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.153,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Adelle",
+        "Cindy",
+        "Emelie",
+        "Gay",
+        "Heather",
+        "Jaclyn"
+      ]
+    },
+    {
+      "db": "employee_hire_evaluation",
+      "table": "employee",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.162,
+      "world_leaf": "city",
+      "world_score": 0.161,
+      "sample": [
+        "Andrew Sheridan",
+        "George Chuter",
+        "Jason Hobson",
+        "Lee Mears",
+        "Louis Deacon",
+        "Mark Regan"
+      ]
+    },
+    {
+      "db": "employee_hire_evaluation",
+      "table": "employee",
+      "column": "City",
+      "geo_hint": true,
+      "typed_leaf": "city",
+      "typed_score": 0.386,
+      "world_leaf": "city",
+      "world_score": 0.386,
+      "sample": [
+        "Bath",
+        "Bristol",
+        "Leicester",
+        "Sale",
+        "Wasps"
+      ]
+    },
+    {
+      "db": "employee_hire_evaluation",
+      "table": "shop",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.184,
+      "world_leaf": "city",
+      "world_score": 0.149,
+      "sample": [
+        "FC Haka",
+        "FC Honka",
+        "FC Inter",
+        "FC KooTeePee",
+        "FC Lahti",
+        "FF Jaro"
+      ]
+    },
+    {
+      "db": "employee_hire_evaluation",
+      "table": "shop",
+      "column": "Location",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.213,
+      "world_leaf": "city",
+      "world_score": 0.116,
+      "sample": [
+        "Espoo",
+        "Helsinki",
+        "Jakobstad",
+        "Kotka",
+        "Kuopio",
+        "Lahti"
+      ]
+    },
+    {
+      "db": "employee_hire_evaluation",
+      "table": "shop",
+      "column": "District",
+      "geo_hint": false,
+      "typed_leaf": "street",
+      "typed_score": 0.47,
+      "world_leaf": "city",
+      "world_score": 0.127,
+      "sample": [
+        "Arto Tolsa Areena",
+        "Finnair Stadium",
+        "Jakobstads Centralplan",
+        "Lahden Stadion",
+        "Magnum Areena",
+        "Tapiolan Urheilupuisto"
+      ]
+    },
+    {
+      "db": "employee_hire_evaluation",
+      "table": "shop",
+      "column": "Manager_name",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.185,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Antti Muurinen",
+        "Ilkka M\u00e4kel\u00e4",
+        "Job Dragtsma",
+        "Kai Nyyss\u00f6nen",
+        "Mika Laurikainen",
+        "Mika Lehkosuo"
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "airlines",
+      "column": "Airline",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.25,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "AirTran Airways",
+        "Allegiant Air",
+        "American Airlines",
+        "Continental Airlines",
+        "Delta Airlines",
+        "Frontier Airlines"
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "airlines",
+      "column": "Abbreviation",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.237,
+      "world_leaf": "city",
+      "world_score": 0.092,
+      "sample": [
+        "AirTran",
+        "Allegiant",
+        "American",
+        "Continental",
+        "Delta",
+        "Frontier"
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "airports",
+      "column": "City",
+      "geo_hint": true,
+      "typed_leaf": "city",
+      "typed_score": 0.408,
+      "world_leaf": "city",
+      "world_score": 0.408,
+      "sample": [
+        " Alexander City AL  ",
+        " Alexandria LA  ",
+        " Aliceville AL  ",
+        " Amarillo   ",
+        " Ann Arbor MI  ",
+        " Anniston AL  "
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "airports",
+      "column": "AirportCode",
+      "geo_hint": false,
+      "typed_leaf": "bank",
+      "typed_score": 0.181,
+      "world_leaf": "city",
+      "world_score": 0.084,
+      "sample": [
+        "AAF",
+        "ABI",
+        "ABL",
+        "ABQ",
+        "ABR",
+        "ABY"
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "airports",
+      "column": "AirportName",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.181,
+      "world_leaf": "city",
+      "world_score": 0.16,
+      "sample": [
+        "Ada ",
+        "Adak Island Ns ",
+        "Ainsworth ",
+        "Akhiok SPB ",
+        "Akiak ",
+        "Akron/canton Regional "
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "flights",
+      "column": "SourceAirport",
+      "geo_hint": false,
+      "typed_leaf": "bank",
+      "typed_score": 0.211,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        " AAF",
+        " ABI",
+        " ABL",
+        " ABQ",
+        " ABR",
+        " ABY"
+      ]
+    },
+    {
+      "db": "flight_2",
+      "table": "flights",
+      "column": "DestAirport",
+      "geo_hint": false,
+      "typed_leaf": "bank",
+      "typed_score": 0.208,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        " AAF",
+        " ABI",
+        " ABL",
+        " ABQ",
+        " ABR",
+        " ABY"
+      ]
+    },
+    {
+      "db": "museum_visit",
+      "table": "museum",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.256,
+      "world_leaf": "city",
+      "world_score": 0.114,
+      "sample": [
+        "Capital Plaza Museum",
+        "Central City District Residential Museum",
+        "Jefferson Development Museum",
+        "Place Tower Museum",
+        "Plaza Museum",
+        "RiverPark Museum"
+      ]
+    },
+    {
+      "db": "museum_visit",
+      "table": "visitor",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "city",
+      "typed_score": 0.166,
+      "world_leaf": "city",
+      "world_score": 0.166,
+      "sample": [
+        "Arjen Robben",
+        "Fernando Gago",
+        "Gonzalo Higua\u00edn ",
+        "Guti Midfielder",
+        "Rafael van der Vaart",
+        "Ra\u00fal Brown"
+      ]
+    },
+    {
+      "db": "network_1",
+      "table": "Highschooler",
+      "column": "name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.401,
+      "world_leaf": "city",
+      "world_score": 0.209,
+      "sample": [
+        "Alexis",
+        "Andrew",
+        "Austin",
+        "Brittany",
+        "Cassandra",
+        "Gabriel"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "conductor",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.181,
+      "world_leaf": "city",
+      "world_score": 0.18,
+      "sample": [
+        "Antal Brown",
+        "Antal Dor\u00e1ti",
+        "Charles Dutoit",
+        "Colin Davis",
+        "Gerard Schwarz",
+        "Igor Stravinsky"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "conductor",
+      "column": "Nationality",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.146,
+      "world_leaf": "country",
+      "world_score": 0.11,
+      "sample": [
+        "France",
+        "UK",
+        "USA"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "orchestra",
+      "column": "Orchestra",
+      "geo_hint": false,
+      "typed_leaf": "street",
+      "typed_score": 0.228,
+      "world_leaf": "city",
+      "world_score": 0.125,
+      "sample": [
+        "Chicago Symphony Orchestra",
+        "Columbia Symphony Orchestra",
+        "Detroit Symphony Orchestra",
+        "Kirov Orchestra",
+        "London Symphony Orchestra",
+        "Montreal Symphony Orchestra"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "orchestra",
+      "column": "Record_Company",
+      "geo_hint": false,
+      "typed_leaf": "restaurant",
+      "typed_score": 0.175,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Columbia Masterworks",
+        "Decca Records",
+        "Delos Records",
+        "Deutsche Grammophon",
+        "EMI",
+        "Koch Records / Naxos Records"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "orchestra",
+      "column": "Major_Record_Format",
+      "geo_hint": false,
+      "typed_leaf": "musical_group",
+      "typed_score": 0.218,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "CD",
+        "CD / LP",
+        "DVD"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "performance",
+      "column": "Type",
+      "geo_hint": false,
+      "typed_leaf": "__abstain__",
+      "typed_score": null,
+      "world_leaf": "city",
+      "world_score": 0.117,
+      "sample": [
+        "Auditions 1",
+        "Auditions 2",
+        "Auditions 3",
+        "Auditions 4",
+        "Auditions 5",
+        "Live final"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "performance",
+      "column": "Date",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.17,
+      "world_leaf": "city",
+      "world_score": 0.09,
+      "sample": [
+        "10 June",
+        "11 June",
+        "12 June",
+        "13 June",
+        "14 June",
+        "15 June"
+      ]
+    },
+    {
+      "db": "orchestra",
+      "table": "show",
+      "column": "If_first_show",
+      "geo_hint": false,
+      "typed_leaf": "equus_caballus",
+      "typed_score": 0.176,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Fir Park",
+        "Glebe Park",
+        "Hampden Park",
+        "St. Mirren Park"
+      ]
+    },
+    {
+      "db": "pets_1",
+      "table": "Student",
+      "column": "LName",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.273,
+      "world_leaf": "city",
+      "world_score": 0.107,
+      "sample": [
+        "Adams",
+        "Andreou",
+        "Apap",
+        "Brody",
+        "Brown",
+        "Cheng"
+      ]
+    },
+    {
+      "db": "pets_1",
+      "table": "Student",
+      "column": "Fname",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.214,
+      "world_leaf": "city",
+      "world_score": 0.107,
+      "sample": [
+        "Andy",
+        "Arthur",
+        "Bruce",
+        "Charles",
+        "David",
+        "Derek"
+      ]
+    },
+    {
+      "db": "pets_1",
+      "table": "Student",
+      "column": "city_code",
+      "geo_hint": false,
+      "typed_leaf": "city",
+      "typed_score": 0.64,
+      "world_leaf": "city",
+      "world_score": 0.64,
+      "sample": [
+        "ATL",
+        "BAL",
+        "BOS",
+        "CHI",
+        "DAL",
+        "DET"
+      ]
+    },
+    {
+      "db": "poker_player",
+      "table": "people",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "power_station",
+      "typed_score": 0.178,
+      "world_leaf": "city",
+      "world_score": 0.113,
+      "sample": [
+        "Aleksey Ostapenko",
+        "Maksim Botin",
+        "Roman Bragin",
+        "Semen Poltavskiy",
+        "Sergey Grankin",
+        "Teodor Salparov"
+      ]
+    },
+    {
+      "db": "poker_player",
+      "table": "people",
+      "column": "Birth_Date",
+      "geo_hint": false,
+      "typed_leaf": "neighborhood",
+      "typed_score": 0.17,
+      "world_leaf": "city",
+      "world_score": 0.136,
+      "sample": [
+        "April 17, 1987",
+        "August 16, 1982",
+        "August 8, 1986",
+        "February 8, 1981",
+        "January 22, 1987",
+        "July 14, 1983"
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Ref_Property_Types",
+      "column": "property_type_code",
+      "geo_hint": false,
+      "typed_leaf": "legal_form",
+      "typed_score": 0.279,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Apartment",
+        "Field",
+        "House",
+        "Other",
+        "Shop"
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Ref_Property_Types",
+      "column": "property_type_description",
+      "geo_hint": false,
+      "typed_leaf": "legal_form",
+      "typed_score": 0.328,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Apartment, Flat, Condo, etc.",
+        "Field, Meadow.",
+        "House, Bungalow, etc.",
+        "Other, to be determined.",
+        "Shop, Retail Outlet."
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Other_Available_Features",
+      "column": "feature_name",
+      "geo_hint": false,
+      "typed_leaf": "legal_form",
+      "typed_score": 0.161,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "AirCon",
+        "BurglarAlarm",
+        "Pool"
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Other_Available_Features",
+      "column": "feature_description",
+      "geo_hint": false,
+      "typed_leaf": "film",
+      "typed_score": 0.196,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Air Conditioning.",
+        "Burglar Alarm",
+        "Swimming Pool."
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Properties",
+      "column": "property_type_code",
+      "geo_hint": false,
+      "typed_leaf": "legal_form",
+      "typed_score": 0.279,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Apartment",
+        "Field",
+        "House",
+        "Other",
+        "Shop"
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Properties",
+      "column": "property_name",
+      "geo_hint": false,
+      "typed_leaf": "legal_form",
+      "typed_score": 0.176,
+      "world_leaf": "city",
+      "world_score": 0.088,
+      "sample": [
+        "avalon",
+        "chelsea",
+        "high line",
+        "longacre",
+        "murray hill",
+        "parc coliseum"
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Properties",
+      "column": "property_address",
+      "geo_hint": false,
+      "typed_leaf": "__abstain__",
+      "typed_score": null,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "062 Micaela Court Apt. 707\nMargretville, WV 51628-3617",
+        "084 Lakin Vista Apt. 394\nFishertown, MA 16876",
+        "092 Paucek Highway Apt. 772\nEast Erika, IA 61358",
+        "098 Tremaine Highway Suite 569\nSouth Wilford, NJ 46587-3537",
+        "107 Roob Courts\nErdmanburgh, IA 42926-0873",
+        "1474 Dibbert Fields Suite 055\nSouth Renee, IN 58286-3097"
+      ]
+    },
+    {
+      "db": "real_estate_properties",
+      "table": "Properties",
+      "column": "apt_feature_1",
+      "geo_hint": false,
+      "typed_leaf": "taxonomic_rank",
+      "typed_score": 0.178,
+      "world_leaf": "city",
+      "world_score": 0.098,
+      "sample": [
+        "aut",
+        "consequatur",
+        "enim",
+        "est",
+        "et",
+        "fuga"
+      ]
+    },
+    {
+      "db": "singer",
+      "table": "singer",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.21,
+      "world_leaf": "city",
+      "world_score": 0.131,
+      "sample": [
+        "Abigail Johnson",
+        "Alice Walton",
+        "Christy Walton",
+        "Gina Rinehart",
+        "Iris Fontbona",
+        "Jacqueline Mars"
+      ]
+    },
+    {
+      "db": "singer",
+      "table": "singer",
+      "column": "Citizenship",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.503,
+      "world_leaf": "country",
+      "world_score": 0.503,
+      "sample": [
+        "Australia",
+        "Chile",
+        "France",
+        "Germany",
+        "United States"
+      ]
+    },
+    {
+      "db": "singer",
+      "table": "song",
+      "column": "Title",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.288,
+      "world_leaf": "city",
+      "world_score": 0.049,
+      "sample": [
+        "All This Time",
+        "Call on Me",
+        "Cha Cha Slide",
+        "Do They Know It's Christmas",
+        "F**k It (I Don't Want You Back)",
+        "Left Outside Alone"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Addresses",
+      "column": "line_1",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.196,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "0144 Lamar Plaza Apt. 346",
+        "0643 Muller Vista",
+        "16998 Mraz Lodge",
+        "186 Evan Motorway Apt. 409",
+        "193 Marlin Brook",
+        "202 Hessel Views Apt. 468"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Addresses",
+      "column": "line_2",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.21,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Apt. 305",
+        "Apt. 335",
+        "Apt. 370",
+        "Apt. 388",
+        "Apt. 406",
+        "Apt. 468"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Addresses",
+      "column": "city",
+      "geo_hint": true,
+      "typed_leaf": "city",
+      "typed_score": 0.984,
+      "world_leaf": "city",
+      "world_score": 0.984,
+      "sample": [
+        "Goodwinhaven",
+        "Herzoghaven",
+        "Lake Careyberg",
+        "Lake Laishafurt",
+        "Mariliehaven",
+        "Michelleburgh"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Addresses",
+      "column": "state_province_county",
+      "geo_hint": false,
+      "typed_leaf": "federated_state",
+      "typed_score": 0.214,
+      "world_leaf": "city",
+      "world_score": 0.058,
+      "sample": [
+        "Arkansas",
+        "Delaware",
+        "Florida",
+        "Hawaii",
+        "Idaho",
+        "Kansas"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Addresses",
+      "column": "country",
+      "geo_hint": true,
+      "typed_leaf": "country",
+      "typed_score": 0.975,
+      "world_leaf": "country",
+      "world_score": 0.975,
+      "sample": [
+        "Angola",
+        "Bermuda",
+        "Burundi",
+        "Cook Islands",
+        "Croatia",
+        "Gabon"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Courses",
+      "column": "course_name",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.299,
+      "world_leaf": "city",
+      "world_score": 0.06,
+      "sample": [
+        "ai",
+        "cal",
+        "db",
+        "dl",
+        "ds",
+        "en"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Courses",
+      "column": "course_description",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.276,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "b",
+        "c",
+        "d",
+        "k",
+        "l",
+        "n"
+      ]
+    },
+    {
+      "db": "student_transcripts_tracking",
+      "table": "Departments",
+      "column": "department_name",
+      "geo_hint": false,
+      "typed_leaf": "academic_discipline",
+      "typed_score": 0.153,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "art",
+        "biology",
+        "computer science",
+        "dance",
+        "drama",
+        "economics"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "TV_Channel",
+      "column": "series_name",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.188,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Classica",
+        "Hip Hop TV",
+        "MTV Classic",
+        "MTV Dance",
+        "MTV Hits",
+        "MTV Live HD"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "TV_Channel",
+      "column": "Country",
+      "geo_hint": true,
+      "typed_leaf": "country",
+      "typed_score": 0.901,
+      "world_leaf": "country",
+      "world_score": 0.901,
+      "sample": [
+        "Italy",
+        "Poland",
+        "United Kingdom"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "TV_Channel",
+      "column": "Package_Option",
+      "geo_hint": false,
+      "typed_leaf": "website",
+      "typed_score": 0.175,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Option",
+        "Sky Famiglia",
+        "Sky Famiglia + Sky HD",
+        "no ( FTV )"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "TV_series",
+      "column": "Episode",
+      "geo_hint": false,
+      "typed_leaf": "film",
+      "typed_score": 0.258,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "A Love of a Lifetime",
+        "Blowback",
+        "Double Down",
+        "Emily",
+        "Friendly Skies",
+        "Game Three"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "TV_series",
+      "column": "Air_Date",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.176,
+      "world_leaf": "city",
+      "world_score": 0.104,
+      "sample": [
+        "December 10, 2007",
+        "December 17, 2007",
+        "November 12, 2007",
+        "November 19, 2007",
+        "November 26, 2007",
+        "November 5, 2007"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "Cartoon",
+      "column": "Title",
+      "geo_hint": false,
+      "typed_leaf": "song",
+      "typed_score": 0.285,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Dawn of the Dead Man!",
+        "Day of the Dark Knight!",
+        "Deep Cover for Batman!",
+        "Enter the Outsiders!",
+        "Evil Under the Sea!",
+        "Fall of the Blue Beetle!"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "Cartoon",
+      "column": "Directed_by",
+      "geo_hint": false,
+      "typed_leaf": "film",
+      "typed_score": 0.245,
+      "world_leaf": "city",
+      "world_score": 0.066,
+      "sample": [
+        "Ben Jones",
+        "Brandon Vietti",
+        "Michael Chang"
+      ]
+    },
+    {
+      "db": "tvshow",
+      "table": "Cartoon",
+      "column": "Written_by",
+      "geo_hint": false,
+      "typed_leaf": "website",
+      "typed_score": 0.239,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Adam Beechen",
+        "J. M. DeMatteis",
+        "James Krieg",
+        "Joseph Kuhr",
+        "Matt Wayne",
+        "Michael Jelenic"
+      ]
+    },
+    {
+      "db": "voter_1",
+      "table": "AREA_CODE_STATE",
+      "column": "state",
+      "geo_hint": true,
+      "typed_leaf": "city",
+      "typed_score": 0.227,
+      "world_leaf": "city",
+      "world_score": 0.227,
+      "sample": [
+        "AK",
+        "AL",
+        "AR",
+        "AZ",
+        "CA",
+        "CO"
+      ]
+    },
+    {
+      "db": "voter_1",
+      "table": "CONTESTANTS",
+      "column": "contestant_name",
+      "geo_hint": false,
+      "typed_leaf": "musician",
+      "typed_score": 0.157,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Alana Bregman",
+        "Allie Rogalski",
+        "Edwina Burnam",
+        "Ericka Dieter",
+        "Jessie Alloway",
+        "Jessie Eichman"
+      ]
+    },
+    {
+      "db": "voter_1",
+      "table": "VOTES",
+      "column": "state",
+      "geo_hint": true,
+      "typed_leaf": "federated_state",
+      "typed_score": 0.224,
+      "world_leaf": "city",
+      "world_score": 0.132,
+      "sample": [
+        "CA",
+        "NJ\n",
+        "NY"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "city",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "city",
+      "typed_score": 0.207,
+      "world_leaf": "city",
+      "world_score": 0.207,
+      "sample": [
+        "A Coru\u00f1a (La Coru\u00f1a)",
+        "Aachen",
+        "Aalborg",
+        "Aba",
+        "Abadan",
+        "Abaetetuba"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "city",
+      "column": "CountryCode",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.366,
+      "world_leaf": "country",
+      "world_score": 0.366,
+      "sample": [
+        "ABW",
+        "AFG",
+        "AGO",
+        "AIA",
+        "ALB",
+        "AND"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "city",
+      "column": "District",
+      "geo_hint": false,
+      "typed_leaf": "street",
+      "typed_score": 0.299,
+      "world_leaf": "city",
+      "world_score": 0.191,
+      "sample": [
+        "ARMM",
+        "Abhasia [Aphazeti]",
+        "Abidjan",
+        "Abruzzit",
+        "Abu Dhabi",
+        "Aceh"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "country",
+      "column": "Code",
+      "geo_hint": false,
+      "typed_leaf": "neighborhood",
+      "typed_score": 0.162,
+      "world_leaf": "city",
+      "world_score": 0.077,
+      "sample": [
+        "ABW",
+        "AFG",
+        "AGO",
+        "AIA",
+        "ALB",
+        "AND"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "country",
+      "column": "Name",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.486,
+      "world_leaf": "country",
+      "world_score": 0.486,
+      "sample": [
+        "Afghanistan",
+        "Albania",
+        "Algeria",
+        "American Samoa",
+        "Andorra",
+        "Angola"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "country",
+      "column": "Continent",
+      "geo_hint": true,
+      "typed_leaf": "country",
+      "typed_score": 0.284,
+      "world_leaf": "country",
+      "world_score": 0.284,
+      "sample": [
+        "Africa",
+        "Antarctica",
+        "Asia",
+        "Europe",
+        "North America",
+        "Oceania"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "country",
+      "column": "Region",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.347,
+      "world_leaf": "country",
+      "world_score": 0.347,
+      "sample": [
+        "Antarctica",
+        "Australia and New Zealand",
+        "Baltic Countries",
+        "British Islands",
+        "Caribbean",
+        "Central Africa"
+      ]
+    },
+    {
+      "db": "world_1",
+      "table": "country",
+      "column": "LocalName",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.278,
+      "world_leaf": "country",
+      "world_score": 0.278,
+      "sample": [
+        "Afganistan/Afqanestan",
+        "Al-Bahrayn",
+        "Al-Imarat al-\u00b4Arabiya al-Muttahida",
+        "Al-Jaza\u2019ir/Alg\u00e9rie",
+        "Al-Kuwayt",
+        "Al-Maghrib"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "players",
+      "column": "first_name",
+      "geo_hint": false,
+      "typed_leaf": "car_model",
+      "typed_score": 0.17,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "A",
+        "A Ram",
+        "Aafje",
+        "Aanandita",
+        "Aandrita",
+        "Aanu"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "players",
+      "column": "last_name",
+      "geo_hint": false,
+      "typed_leaf": "language",
+      "typed_score": 0.205,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "A A Ali",
+        "Aagaard",
+        "Aallonen",
+        "Aalto",
+        "Ababii",
+        "Abad"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "players",
+      "column": "hand",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.184,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "L",
+        "R",
+        "U"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "players",
+      "column": "country_code",
+      "geo_hint": false,
+      "typed_leaf": "country",
+      "typed_score": 0.498,
+      "world_leaf": "country",
+      "world_score": 0.498,
+      "sample": [
+        "AHO",
+        "ALB",
+        "ALG",
+        "AND",
+        "ANG",
+        "ANT"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "matches",
+      "column": "loser_ioc",
+      "geo_hint": false,
+      "typed_leaf": "breed",
+      "typed_score": 0.141,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "AUS",
+        "BEL",
+        "BLR",
+        "CHN",
+        "CZE",
+        "DEN"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "matches",
+      "column": "loser_name",
+      "geo_hint": false,
+      "typed_leaf": "restaurant",
+      "typed_score": 0.224,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "Agnieszka Radwanska",
+        "Alize Cornet",
+        "Ana Ivanovic",
+        "Anastasia Pavlyuchenkova",
+        "Angelique Kerber",
+        "Annika Beck"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "matches",
+      "column": "round",
+      "geo_hint": false,
+      "typed_leaf": "neighborhood",
+      "typed_score": 0.277,
+      "world_leaf": "__none__",
+      "world_score": null,
+      "sample": [
+        "BR",
+        "F",
+        "QF",
+        "R16",
+        "R32",
+        "RR"
+      ]
+    },
+    {
+      "db": "wta_1",
+      "table": "matches",
+      "column": "score",
+      "geo_hint": false,
+      "typed_leaf": "school",
+      "typed_score": 0.266,
+      "world_leaf": "city",
+      "world_score": 0.113,
+      "sample": [
+        "2-6 6-3 1-0 RET",
+        "4-1 RET",
+        "4-6 6-3 1-0 RET",
+        "6-1 3-0 RET",
+        "7-6(1) 0-0 RET",
+        "W/O"
+      ]
+    }
+  ]
+}
