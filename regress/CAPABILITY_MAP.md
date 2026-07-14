@@ -31,11 +31,11 @@ Prediction accuracy (designer vs reality): **28/35**. The map below is what the 
 | B4 | **Group-BY a world attribute** — "total sales **by continent**" / "per country" → empty | (1) `world_compose.py`: add `GROUP` to `DEPTH_PRIMS` so a "by X" aggregation gates to the engine; (2) `serve()` STANDS on a genuine world group-by (world_join + a *grouped* agg, cols≥2, non-empty) instead of discarding it; (3) `compose.py`: `has["GROUP"] |= bool(dims)` so a named grouping dim fires GROUP even when the head misfires TIME on "continent". Scalar aggregates still defer to the delegate. | by continent = {Europe:190, Asia:140}; per country = {France:120,…}; scalars unchanged ✓ |
 | B5 | **Superlative over a world group** — "which continent has the most sales" | now groups + ranks via the B4 fixes (returns the continent breakdown sorted desc). Nit: "the most" still returns top-3, not top-1 — a small `_topn` "most/least→n=1" tweak remains. | grouped+ranked ✓ (argmax nit open) |
 
-### ⏭ Deferred — architectural (planner: `_world_link` "numeric attrs are measures, not filter dims")
-| # | bug | why architectural |
+### ⏭ Deferred — architectural
+| # | bug | why architectural (root cause, diagnosed) |
 |---|---|---|
-| B2 | **Element measures silently wrong** — "avg atomic mass" → `AVG("kg")` over the *uploaded* column | `_world_link` measure-selection prefers a competing upload column over `world.Elements.mass` |
-| B7 | **Currency-name filter/group** — "sales where currency is euro" → clarify | `currency_name` isn't a filter dimension (new dimension type) |
+| B2 | **Element (non-geo) world attributes not usable as measures** — "avg atomic mass" → `AVG("kg")` over the *uploaded* column, **no world join at all** (silently wrong, plausible number) | NOT a measure-selection bug: the element column never resolves to a world join. The router's `world_leaves` are only `city`/`country`; non-geo types (element/hospital/…) route through a separate path that filters by country and aggregates the *upload's* column — nothing exposes `world.Elements.mass`/`atomic_number` as a measure. A proper fix wires a new non-geo world-measure path (route→world join, expose numeric attrs, select the world attribute); a cheap interim is to CLARIFY instead of silently averaging an unrelated column. Niche use case. |
+| B7 | **Currency-name filter/group** — "sales where currency is euro" → clarify | `currency_name` (a country-chained attr) isn't exposed as a filter dimension. Likely tractable by reusing the geo world-join path (as continent does), not yet attempted. |
 
 ### 🤷 Not a clean bug (ambiguous phrasing)
 | B6 | "total **sales** in Asia" → `COUNT(*)`=2 when the table is named `sales` and the metric column is `amount` — a defensible read; no deterministic right answer. |
