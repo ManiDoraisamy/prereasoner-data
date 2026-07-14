@@ -39,8 +39,11 @@ class ComposedWorldQuery:
     # by city") stopped building their view stack (test_geo composite cases -> plan=[]). The live view stack is
     # the product; the benchmark is not. So TOPN/SORT/TIME stay. Distinguishing a Spider projection/sort from a
     # live composite analytic is a routing refinement for later — NOT a reason to drop them here.
+    # GROUP is included: a "by <world attribute>" aggregation ("total sales by continent", "sales per country")
+    # needs the engine's group_agg over the world join — the delegate can only produce a single scalar. A GROUP
+    # false-positive is harmless: serve() only STANDS on the engine for a genuine grouped result (see below).
     # Keep in sync with spider/probe/full_eval.py::DEPTH_PRIMS.
-    DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING"})
+    DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
 
     def __init__(self):
         self.qw = WorldQuery()                            # resolution + world DB + auth + bridge machinery
@@ -289,10 +292,18 @@ class ComposedWorldQuery:
             try:
                 er = self._run_engine(tables, question, sub, as_of, emit=emit)
                 # Stand on the engine only if it actually built a composition/world stack. If it collapsed to a plain
-                # [join, group_agg] (the gate misfired and no filter bound, e.g. 'German sales'), fall through to the
-                # delegate so its CLARIFY gate fires instead of silently returning the ungrouped total.
-                if (any(v.get("op") in self._COMPOSITION_VIEWS for v in (er.get("views") or []))
-                        or self.WORLD_MEASURES.search(question or "")):
+                # [join, group_agg] SCALAR (the gate misfired and no filter bound, e.g. 'German sales'), fall through
+                # to the delegate so its CLARIFY gate fires instead of silently returning the ungrouped total.
+                _views = er.get("views") or []
+                # a genuine WORLD GROUP-BY: a world join + a group_agg that actually GROUPED (a real multi-column
+                # breakdown, columns>=2 = dimension+aggregate, not a scalar) + a non-empty result. The delegate
+                # cannot produce this ("total sales by continent" -> per-continent rows), so stand on the engine.
+                _world_grouped = (any(v.get("op") in ("world_join", "world_filter") for v in _views)
+                                  and any(v.get("op") == "group_agg" and len(v.get("columns") or []) >= 2 for v in _views)
+                                  and (er.get("result") or {}).get("rows"))
+                if (any(v.get("op") in self._COMPOSITION_VIEWS for v in _views)
+                        or self.WORLD_MEASURES.search(question or "")
+                        or _world_grouped):
                     return er
             except Exception as e:                        # noqa: BLE001 — never hard-fail; fall back to delegate
                 import traceback

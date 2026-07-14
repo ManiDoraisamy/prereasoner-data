@@ -34,7 +34,7 @@ DIFFS = ["easy", "medium", "hard", "extra"]
 # Mirrors the LIVE routing gate — keep in sync with engine.world_compose.ComposedWorldQuery.DEPTH_PRIMS.
 # The Spider-only trim of TOPN/SORT/TIME was REVERTED: it lifted the benchmark but broke live composite view
 # stacks (test_geo). This mirror tracks the live gate, so the Spider number here reflects real behavior.
-DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING"})
+DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
 
 
 def slot_predict(enc, tabs, question):

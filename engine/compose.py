@@ -239,6 +239,10 @@ class ComposeEngine:
             has["TIME"] = has["TIME"] or bool(time_preds)
             has["HAVING"] = has["HAVING"] or having_pred is not None
             has["DIVIDE"] = has["DIVIDE"] or divide_pair is not None
+            # a named grouping dimension in the question IS a group-by, even when the head misfires (it fires TIME,
+            # not GROUP, on 'by continent'). dims are column names actually mentioned, so this only adds a real
+            # group-by ("total sales by continent" -> group by continent), never a spurious one on a scalar query.
+            has["GROUP"] = has["GROUP"] or bool(dims)
         else:
             has = {"EXCL": bool(self.EXCL_TRIGGER.search(low)),
                    "RATIO": bool(re.search(r'year over year|year-over-year|\byoy\b|\bgrowth\b', low)),

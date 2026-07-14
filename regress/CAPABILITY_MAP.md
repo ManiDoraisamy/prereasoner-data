@@ -25,12 +25,16 @@ Prediction accuracy (designer vs reality): **28/35**. The map below is what the 
 | B1b | composed country path crashed `duplicate column name: country` | `world_compose.py`: drop an enriched attr colliding with the geo column | no crash ✓ |
 | B3 | **Entity-noun clarify gate** ("cities in France" → clarify though the SQL was correct) | `world_query.py` `_uncovered`: exclude entity-type nouns + schema-word plurals from the dropped-word set | "cities in France"=180, no clarify ✓ |
 
+### ✅ Fixed (architectural — planner routing/composition, verified live, full suite green)
+| # | bug | fix | verified |
+|---|---|---|---|
+| B4 | **Group-BY a world attribute** — "total sales **by continent**" / "per country" → empty | (1) `world_compose.py`: add `GROUP` to `DEPTH_PRIMS` so a "by X" aggregation gates to the engine; (2) `serve()` STANDS on a genuine world group-by (world_join + a *grouped* agg, cols≥2, non-empty) instead of discarding it; (3) `compose.py`: `has["GROUP"] |= bool(dims)` so a named grouping dim fires GROUP even when the head misfires TIME on "continent". Scalar aggregates still defer to the delegate. | by continent = {Europe:190, Asia:140}; per country = {France:120,…}; scalars unchanged ✓ |
+| B5 | **Superlative over a world group** — "which continent has the most sales" | now groups + ranks via the B4 fixes (returns the continent breakdown sorted desc). Nit: "the most" still returns top-3, not top-1 — a small `_topn` "most/least→n=1" tweak remains. | grouped+ranked ✓ (argmax nit open) |
+
 ### ⏭ Deferred — architectural (planner: `_world_link` "numeric attrs are measures, not filter dims")
 | # | bug | why architectural |
 |---|---|---|
 | B2 | **Element measures silently wrong** — "avg atomic mass" → `AVG("kg")` over the *uploaded* column | `_world_link` measure-selection prefers a competing upload column over `world.Elements.mass` |
-| B4 | **Group-BY a world attribute** — "total sales **by continent**" → empty breakdown | `_world_link` "numeric attrs are measures, not filter/group dims" |
-| B5 | **Superlative over a world group** — "which continent has the most sales" → None | no argmax over a world-joined dim |
 | B7 | **Currency-name filter/group** — "sales where currency is euro" → clarify | `currency_name` isn't a filter dimension (new dimension type) |
 
 ### 🤷 Not a clean bug (ambiguous phrasing)
