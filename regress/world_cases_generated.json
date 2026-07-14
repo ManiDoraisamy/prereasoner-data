@@ -25,9 +25,9 @@
    }
   ],
   "question": "total amount for cities in France",
-  "expected_kind": "clarify",
-  "expected_value": "clarify (dropped token 'cities'); the underlying sum would be 180",
-  "prediction": "breaks",
+  "expected_kind": "scalar",
+  "expected_value": "180",
+  "prediction": "works",
   "derivation": "Same rows/join as the works-case (original_sql shows WHERE city.country='Q142', would sum 180). But the delegate returns clarify: bindings only bound 'total'->amount SUM, dropped=['cities']. Verified live: clarify=True, proposed='total amount', dropped=['cities'], result=None.",
   "reason": "The entity-type noun 'cities' binds to no column/measure and lands in `dropped`, so the delegate raises CLARIFY instead of answering \u2014 even though its own original_sql already expresses the correct France-filtered sum. This is the dominant failure mode for natural 'cities in X' phrasing."
  },
@@ -74,10 +74,10 @@
   ],
   "question": "total amount in Asia",
   "expected_kind": "scalar",
-  "expected_value": "broken: crashes on the composed path, returns empty [['']] on the delegate; the intended Asia answer would be 180 (Japan100+India50+China30)",
+  "expected_value": "180",
   "prediction": "breaks",
   "derivation": "Intended: Japan/India/China are continent Asia -> 100+50+30 = 180. Actual (verified live): ComposedWorldQuery crashes in ComposeEngine._load ('duplicate column name: country' \u2014 _world_lookup emits geocol 'country' AND an enriched 'country' attr), falls back to the delegate, which emits SQL joining ON lower(country.qid)=lower(__bridge0.canon) where canon is the NAME 'Japan' (never equals a QID) -> zero matching rows -> SUM = [['']] (empty).",
-  "reason": "Two independent defects on the country-column path: (1) duplicate 'country' column name crashes the sqlite view load; (2) the delegate join compares wikipedia.country.qid to the bridge's canonical NAME, so it never matches. Confirmed the exact SQL and empty result live. This is the brief's known-broken case."
+  "reason": "ARCHITECTURAL (B1): country is qid-keyed but resolved by name -> empty join. Deferred; see CAPABILITY_MAP.md."
  },
  {
   "label": "Same-name disambiguation via per-row country column (France)",

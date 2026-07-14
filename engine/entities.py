@@ -404,6 +404,13 @@ class EntityQuery(RoutedQuery):
             elif idx == 0 and name_bridge:
                 b = "__bridge0"
                 fw += f' JOIN ({name_bridge}) AS {b}(cell, canon) ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
+                # NOTE: for qid-keyed world tables (wikipedia."country") right_col is `qid` while canon is a NAME, so
+                # this join returns 0 rows -> every country-column world join is empty. A name-join "fixes" it only
+                # for the ~26 lazily-synced countries whose common name == wikipedia.country.name; official-name
+                # countries (China/PRC, USA, UK) then silently UNDERCOUNT. The robust fix is a type-aware qid-join
+                # (resolve canon->qid via world."words", join on R.qid) — that completes the qid migration and is
+                # tracked as an ARCHITECTURAL item (see regress/CAPABILITY_MAP.md B1). Left broken-honest, not
+                # partially-patched, to avoid shipping a silent undercount.
                 cond = f'lower({qident(R)}.{qident(j["right_col"])}) = lower({b}.canon)'
                 if "is_primary" in self.words[R].get("columns", []):
                     cond += f' AND {qident(R)}.{qident("is_primary")} = 1'

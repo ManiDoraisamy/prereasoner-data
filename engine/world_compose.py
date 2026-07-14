@@ -126,7 +126,9 @@ class ComposedWorldQuery:
                     self._emit_unconnected_slide(t["name"], col, _ridx)
             if ent and result is None:
                 self._enrich(cur, ent)                    # join each entity's source table + country -> continent/currency
-                attrs = sorted({k for d in ent.values() for k in d if not k.startswith("_")})
+                # drop an enriched attr whose name collides with the geo column itself (a COUNTRY column enriches a
+                # 'country' attr -> two 'country' columns -> ComposeEngine._load crashed 'duplicate column name').
+                attrs = sorted({k for d in ent.values() for k in d if not k.startswith("_") and k != geocol})
                 result = {"name": "world meaning", "columns": [geocol] + attrs,
                           "rows": [[v] + [d.get(a) for a in attrs] for v, d in ent.items()]}
         return result

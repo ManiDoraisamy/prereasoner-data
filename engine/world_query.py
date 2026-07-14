@@ -526,15 +526,27 @@ class WorldQuery(EncoderQuery, EntityQuery):
         import re as _re
         sqll = (sql or "").lower()
         has_agg = bool(_re.search(r'\b(sum|count|avg|min|max)\s*\(', sqll))
+        def _forms(w):
+            f = {w, w.rstrip("s"), w + "s"}
+            if w.endswith("y"):
+                f.add(w[:-1] + "ies")                        # city -> cities
+            if w.endswith("ies"):
+                f.add(w[:-3] + "y")
+            return f
         sch_words = set()
         for c in sch:
             for nm in (str(c["table"]).lower(), str(c["name"]).lower()):
-                sch_words |= {nm, nm.rstrip("s")} | set(nm.split("_"))
+                for part in {nm} | set(nm.split("_")):
+                    sch_words |= _forms(part)                # incl. plurals: a 'city' column also covers 'cities'
         # question / aggregate CUE words are realized by the OPERATOR (has_agg), not by a filter — they are never a
         # world entity, so excluding them stops _best_world_entity from spuriously matching e.g. 'how'/'many' to a
         # town and falsely reporting the COUNT query "dropped" them (which hijacked 'how many … in France' to clarify).
+        # The world ENTITY-TYPE nouns (cities/countries/…) NAME the resolved type — never a dropped filter value —
+        # so 'total amount for CITIES in France' must not report 'cities' dropped and hijack a correct join to clarify.
         CUE = {"how", "many", "much", "number", "list", "show", "give", "find", "get", "what", "which", "who", "whom",
-               "where", "when", "average", "avg", "mean", "total", "sum", "count", "per", "each", "are", "were"}
+               "where", "when", "average", "avg", "mean", "total", "sum", "count", "per", "each", "are", "were",
+               "city", "cities", "country", "countries", "state", "states", "town", "towns", "place", "places",
+               "nation", "nations", "element", "elements"}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]

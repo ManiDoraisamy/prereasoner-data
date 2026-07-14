@@ -16,11 +16,11 @@
     "capability": "country filter on a city column, entity-noun phrasing",
     "question": "total amount for cities in France",
     "prediction": "breaks",
-    "verdict": "CLARIFY",
-    "why": "engine asked to clarify",
-    "scalar": null,
-    "clarify": true,
-    "sql": null,
+    "verdict": "ANSWERED",
+    "why": "produced an answer 180.0 (expected unsupported/clarify)",
+    "scalar": 180.0,
+    "clarify": false,
+    "sql": "SELECT SUM(\"amount\") AS \"amount\" FROM \"b2\"",
     "error": null
   },
   {
@@ -44,7 +44,7 @@
     "why": "got 23 want 23",
     "scalar": 23,
     "clarify": false,
-    "sql": "SELECT SUM( \"rev\".\"sales\" ) FROM \"rev\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"rev connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"rev\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
+    "sql": "SELECT SUM( \"rev\".\"sales\" ) FROM \"rev\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"rev connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"rev\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
     "error": null
   },
   {
@@ -53,10 +53,10 @@
     "question": "total amount in Asia",
     "prediction": "breaks",
     "verdict": "FAIL",
-    "why": "got  want broken: crashes on the composed path, returns empty [['']] on the delegate; the intended Asia answer would be 180 (Japan100+India50+China30)",
-    "scalar": "",
+    "why": "got 150 want broken: crashes on the composed path, returns empty [['']] on the delegate; the intended Asia answer would be 180 (Japan100+India50+China30)",
+    "scalar": 150,
     "clarify": false,
-    "sql": "SELECT SUM( \"csv\".\"amount\" ) FROM \"csv\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"csv connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"csv\".\"country\" JOIN \"country\" ON lower(\"country\".\"qid\") = lower(__bridge0.canon) WHERE \"country\".\"continent\" = 'Q48'",
+    "sql": "SELECT SUM( \"csv\".\"amount\" ) FROM \"csv\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"csv connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"csv\".\"country\" JOIN \"country\" ON lower(\"country\".\"name\") = lower(__bridge0.canon) WHERE \"country\".\"continent\" = 'Q48'",
     "error": null
   },
   {
@@ -116,7 +116,7 @@
     "why": "ok",
     "scalar": "",
     "clarify": false,
-    "sql": "SELECT SUM( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q15'",
+    "sql": "SELECT SUM( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q15'",
     "error": null
   },
   {
@@ -128,7 +128,7 @@
     "why": "ok",
     "scalar": "",
     "clarify": false,
-    "sql": "SELECT AVG( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q15'",
+    "sql": "SELECT AVG( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q15'",
     "error": null
   },
   {
@@ -164,7 +164,7 @@
     "why": "got None want Asia",
     "scalar": null,
     "clarify": false,
-    "sql": "SELECT DISTINCT \"country\".\"continent\" FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\")",
+    "sql": "SELECT DISTINCT \"country\".\"continent\" FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\")",
     "error": null
   },
   {
@@ -272,7 +272,7 @@
     "why": "got 260 want 260",
     "scalar": 260,
     "clarify": false,
-    "sql": "SELECT SUM( \"sales\".\"sales\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
+    "sql": "SELECT SUM( \"sales\".\"sales\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
     "error": null
   },
   {
@@ -284,7 +284,7 @@
     "why": "missing ['asia=260; europe=120; north america=70; oceania=90; africa=60']",
     "scalar": 60,
     "clarify": false,
-    "sql": "SELECT SUM( \"sales\".\"sales\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q15'",
+    "sql": "SELECT SUM( \"sales\".\"sales\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q15'",
     "error": null
   },
   {
@@ -304,11 +304,11 @@
     "capability": "1-hop country->continent world FILTER as a control for the 2-hop cases",
     "question": "What is the total amount in Asia?",
     "prediction": "works",
-    "verdict": "FAIL",
-    "why": "got  want 160",
-    "scalar": "",
+    "verdict": "PASS",
+    "why": "got 160 want 160",
+    "scalar": 160,
     "clarify": false,
-    "sql": "SELECT SUM( \"rev\".\"amount\" ) FROM \"rev\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"rev connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"rev\".\"country\" JOIN \"country\" ON lower(\"country\".\"qid\") = lower(__bridge0.canon) WHERE \"country\".\"continent\" = 'Q48'",
+    "sql": "SELECT SUM( \"rev\".\"amount\" ) FROM \"rev\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"rev connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"rev\".\"country\" JOIN \"country\" ON lower(\"country\".\"name\") = lower(__bridge0.canon) WHERE \"country\".\"continent\" = 'Q48'",
     "error": null
   },
   {
@@ -320,7 +320,7 @@
     "why": "got 200 want 200",
     "scalar": 200,
     "clarify": false,
-    "sql": "SELECT SUM( \"sales\".\"sales\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
+    "sql": "SELECT SUM( \"sales\".\"sales\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
     "error": null
   },
   {
@@ -404,7 +404,7 @@
     "why": "got 2 want 150000",
     "scalar": 2,
     "clarify": false,
-    "sql": "SELECT COUNT( * ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
+    "sql": "SELECT COUNT( * ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"cap_probe2\".\"sales connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"sales\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid JOIN \"country\" ON lower(\"city\".\"country\") = lower(\"country\".\"qid\") WHERE \"country\".\"continent\" = 'Q48'",
     "error": null
   },
   {
