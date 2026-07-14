@@ -442,20 +442,37 @@ class TableQuery:
             if col is not None and val is not None:
                 slots["where"].append((col, op, val))
 
-        # DATE filter: a 4-digit year + a date column ("subscribed in 2021", "before 2021", "since 2020",
-        # "between 2020 and 2021"). Compares the ISO year prefix: substr(col,1,4) op 'YYYY' (wrap="year").
+        # DATE / YEAR filter: a 4-digit year + a year-ish column. A real DATE column compares the ISO year
+        # prefix (substr(col,1,4) op 'YYYY', wrap="year"); an INTEGER/REAL year column ("Year", "*_year", or a
+        # column whose values are all 4-digit years) compares NUMERICALLY (Year = 1980) — "how many cars were
+        # made in 1980". Without the integer arm the year token silently dropped (counted every row).
         datecols = [c for c in sch if c.get("is_date")]
+
+        def _is_intyear(c):
+            if c.get("is_date") or c["affinity"] not in ("INTEGER", "REAL") or self._is_id(c["name"]):
+                return False
+            n = c["name"].lower()
+            if n == "year" or n.endswith("_year"):
+                return True
+            vs = [str(v).strip() for v in (c.get("values") or []) if v is not None and str(v).strip() != ""]
+            return bool(vs) and all(re.fullmatch(r"(19|20)\d\d", v) for v in vs)
+
+        intyearcols = [c for c in sch if _is_intyear(c)]
         years = [t for t in low if re.fullmatch(r"(19|20)\d{2}", t)]
-        if datecols and years and not any(str(w[2]).lower() in years for w in slots["where"]):
-            dcol = stem_date() or datecols[0]
+        if (datecols or intyearcols) and years and not any(str(w[2]).lower() in years for w in slots["where"]):
+            ycol = stem_date() or (datecols[0] if datecols else intyearcols[0])
+            wrap = "year" if ycol.get("is_date") else None      # date -> substr prefix; int year -> plain numeric
+
+            def _wt(op, y):
+                return (ycol, op, y, wrap) if wrap else (ycol, op, y)
             if len(years) >= 2 and "between" in low:
-                slots["where"] += [(dcol, ">=", years[0], "year"), (dcol, "<=", years[1], "year")]
+                slots["where"] += [_wt(">=", years[0]), _wt("<=", years[1])]
             else:
                 yi = low.index(years[0])
                 prep = next((low[j] for j in range(yi - 1, max(-1, yi - 3), -1)
                              if low[j] in {"in", "during", "of", "before", "after", "since", "from"}), "in")
                 op = {"before": "<", "after": ">", "since": ">=", "from": ">="}.get(prep, "=")
-                slots["where"].append((dcol, op, years[0], "year"))
+                slots["where"].append(_wt(op, years[0]))
 
         # numeric "after/before/since N" on a NUMERIC column that is named in the query — e.g. an integer year
         # column ("founded after 2010" -> Founded > 2010). The date filter above already handled before/after for

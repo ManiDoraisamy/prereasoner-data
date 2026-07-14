@@ -61,6 +61,10 @@ COPY --from=builder /opt/hf /opt/hf
 # the small committed artifacts (alloc.json, taxonomy.csv, thresholds, word_*.json) come along.
 COPY engine/ /app/engine/
 
+# regress/ = the pre-deploy regression gate (regress.run_regression). Shipped in the image so cloudbuild
+# can run the OFFLINE tier against the real weights right after build (no Postgres needed) — see cloudbuild.yaml.
+COPY regress/ /app/regress/
+
 # Startup gate: verify the gitignored model artifacts are actually in the image (or in a
 # mounted PREREASONER_DATA_DIR) BEFORE handing off to the server, so a weights-less image
 # fails fast with instructions instead of a torch FileNotFoundError stack trace.

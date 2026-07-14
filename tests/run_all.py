@@ -6,7 +6,9 @@ present, so this is safe to run anywhere:
   - test_orchestrator   runs iff ANTHROPIC_API_KEY is set (else SKIP, exit 0)
   - test_world/geo/...  run iff WORLD_PG_PASSWORD is set (else SKIP, exit 0) — the real engine tests
 
-This is the command wired into the deploy pipeline ("test all of them every time" — see cloudbuild.yaml).
+The PRE-DEPLOY gate is `regress.run_regression` (offline text-to-SQL goldens + world-model-join goldens);
+its world tier reuses these engine suites. cloudbuild.yaml runs the offline tier in the built image; run
+this (or `regress.run_regression --require-world`) against a seeded Postgres for the full world suite.
 
 Run:  python -m tests.run_all
 Env:  RUN_ENGINE_TESTS=0 skips the live-Postgres engine suites even if WORLD_PG_PASSWORD is set.

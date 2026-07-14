@@ -30,13 +30,18 @@ def discover_fks(tables):
                         continue
                     name_ok = cc.lower() == pc.lower() or pc.lower() in cc.lower()
                     if not name_ok and cc.lower().endswith(("id", "_id")):
-                        # a generic id suffix alone is NOT evidence: small integer id ranges make
-                        # concert_ID ⊆ Stadium_ID "inclusion-true" while being no FK. Require the id
-                        # column's STEM to name the parent (Owner_ID names 'owners'; concert_ID does
-                        # not name 'stadium'); a bare 'Id' child column may key an id-named parent col.
+                        # An id-suffixed inclusion is a FK when the id names a FOREIGN entity, NOT when it is the
+                        # child's OWN identifier coincidentally ⊆ another id column. Small integer id ranges make
+                        # concert.concert_ID ⊆ stadium.Stadium_ID inclusion-true though it is no FK (concert_ID is
+                        # concert's own key). But relationship-named foreign keys (stores.Manager_ID -> employees,
+                        # Owner_ID/Buyer_ID -> a differently-named parent) are the common real pattern and MUST
+                        # resolve. So: accept when the stem names the parent, OR the stem is a foreign name (not the
+                        # child's own table) and the parent key is id-shaped. Reject only the child's self-id.
                         stem = re.sub(r"_?ids?$", "", cc.lower())
-                        name_ok = ((stem in parent["name"].lower() or stem in pc.lower()) if stem
-                                   else pc.lower().endswith("id"))
+                        child_sing = child["name"].lower().rstrip("s")
+                        names_parent = bool(stem) and (stem in parent["name"].lower() or stem in pc.lower())
+                        is_self_id = (not stem) or stem == child["name"].lower() or stem == child_sing
+                        name_ok = names_parent or (not is_self_id and pc.lower().endswith("id"))
                     if cvals <= pset and name_ok:                    # inclusion dependency + name/shape compatible
                         out.append((child["name"], cc, parent["name"], pc)); seen.add((child["name"], cc))
                         break

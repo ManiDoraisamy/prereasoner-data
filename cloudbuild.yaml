@@ -22,6 +22,28 @@ steps:
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
       - .
 
+  # REGRESSION GATE (offline tier) — runs the golden non-world text-to-SQL cases + engine.joins invariants
+  # INSIDE the freshly built image (real Qwen/LoRA weights are baked in; no Postgres needed). A regression
+  # here FAILS the build, so the image below is never pushed. This is the gate that would have caught the
+  # FK-miss + integer-year regressions. See regress/run_regression.py.
+  - id: regress-offline
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['build']
+    args:
+      - run
+      - --rm
+      - --entrypoint
+      - python
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
+      - -m
+      - regress.run_regression
+      - --offline
+  # WORLD tier (the world-model-join goldens + tests/ oracle suites) needs the seeded world Postgres. Wire it
+  # by connecting Cloud SQL (add the cloud-sql-proxy sidecar or _CLOUDSQL substitution) and passing
+  # WORLD_PG_PASSWORD from Secret Manager, then run `python -m regress.run_regression --require-world`
+  # (tests/ must also be added to the image / .gcloudignore for the reused oracle suites). Until wired, the
+  # world tier must be run pre-deploy against a seeded DB (dev or staging). Skipped != passed.
+
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
 
