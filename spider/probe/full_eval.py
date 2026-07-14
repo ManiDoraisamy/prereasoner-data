@@ -32,9 +32,9 @@ from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_timeout
 
 DIFFS = ["easy", "medium", "hard", "extra"]
 # Mirrors the LIVE routing gate — keep in sync with engine.world_compose.ComposedWorldQuery.DEPTH_PRIMS.
-# (Tier-1 fix: TOPN/SORT/TIME no longer gate to compose; the slot planner handles order/limit/year filters
-# WITH projection + WHERE, and measured far stronger — see results/RESULTS.md §4.)
-DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "SHARE", "HAVING", "DIVIDE", "RUNNING"})
+# The Spider-only trim of TOPN/SORT/TIME was REVERTED: it lifted the benchmark but broke live composite view
+# stacks (test_geo). This mirror tracks the live gate, so the Spider number here reflects real behavior.
+DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING"})
 
 
 def slot_predict(enc, tabs, question):
