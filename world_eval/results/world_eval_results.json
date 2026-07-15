@@ -1,0 +1,244 @@
+{
+  "n": 8,
+  "exact": 6,
+  "lenient": 6,
+  "cases": [
+    {
+      "label": "sales_by_continent",
+      "cap": "country->continent | group+sum",
+      "question": "total amount by continent",
+      "oracle": [
+        [
+          "Asia",
+          "310"
+        ],
+        [
+          "South America",
+          "90"
+        ],
+        [
+          "Europe",
+          "200"
+        ],
+        [
+          "North America",
+          "300"
+        ]
+      ],
+      "pred": [
+        [
+          "Asia",
+          "310.0"
+        ],
+        [
+          "Europe",
+          "200.0"
+        ],
+        [
+          "North America",
+          "300.0"
+        ],
+        [
+          "South America",
+          "90.0"
+        ]
+      ],
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT \"continent\", SUM(\"amount\") AS \"amount\" FROM \"b1\" GROUP BY \"continent\"",
+      "error": null
+    },
+    {
+      "label": "top_continent",
+      "cap": "country->continent | argmax",
+      "question": "which continent has the highest total amount",
+      "oracle": [
+        [
+          "Asia"
+        ]
+      ],
+      "pred": [
+        [
+          "Asia",
+          "310.0"
+        ],
+        [
+          "North America",
+          "300.0"
+        ],
+        [
+          "Europe",
+          "200.0"
+        ]
+      ],
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": false,
+      "pred_sql": "SELECT \"continent\", \"amount\" FROM \"v1\" ORDER BY \"amount\" DESC LIMIT 3",
+      "error": null
+    },
+    {
+      "label": "total_in_asia",
+      "cap": "country->continent | filter+sum (scalar)",
+      "question": "total amount in Asia",
+      "oracle": [
+        [
+          "310"
+        ]
+      ],
+      "pred": [
+        [
+          "310"
+        ]
+      ],
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT SUM( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"sales connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"sales\".\"country\" JOIN (SELECT DISTINCT ON (lower(\"canonical\")) lower(\"canonical\") AS cn, \"qid\" FROM world.\"words\" WHERE \"type\"='country' AND \"qid\" IS NOT NULL ORDER BY lower(\"canonical\"), \"qid\") __bridge0_w ON __bridge0_w.cn = lower(__bridge0.canon) JOIN \"country\" ON \"country\".\"qid\" = __bridge0_w.\"qid\" WHERE \"country\".\"continent\" = 'Q48'",
+      "error": null
+    },
+    {
+      "label": "countries_in_europe",
+      "cap": "country->continent | filter+count (scalar)",
+      "question": "how many are in Europe",
+      "oracle": [
+        [
+          "2"
+        ]
+      ],
+      "pred": [
+        [
+          "2"
+        ]
+      ],
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT COUNT(*) AS \"count\" FROM \"b2\"",
+      "error": null
+    },
+    {
+      "label": "amount_by_currency",
+      "cap": "country->currency | group+sum",
+      "question": "total amount by currency",
+      "oracle": [
+        [
+          "CNY",
+          "200"
+        ],
+        [
+          "EUR",
+          "200"
+        ],
+        [
+          "USD",
+          "300"
+        ],
+        [
+          "JPY",
+          "60"
+        ],
+        [
+          "BRL",
+          "90"
+        ],
+        [
+          "INR",
+          "50"
+        ]
+      ],
+      "pred": [
+        [
+          "brazilian real",
+          "90.0"
+        ],
+        [
+          "euro",
+          "200.0"
+        ],
+        [
+          "indian rupee",
+          "50.0"
+        ],
+        [
+          "renminbi",
+          "200.0"
+        ],
+        [
+          "united states dollar",
+          "300.0"
+        ],
+        [
+          "yen",
+          "60.0"
+        ]
+      ],
+      "verdict": "FAIL",
+      "passed": false,
+      "lenient": false,
+      "pred_sql": "SELECT \"currency\", SUM(\"amount\") AS \"amount\" FROM \"b1\" GROUP BY \"currency\"",
+      "error": null
+    },
+    {
+      "label": "avg_atomic_mass",
+      "cap": "element->mass | avg (scalar)",
+      "question": "average atomic mass",
+      "oracle": [
+        [
+          "9.672666666666666"
+        ]
+      ],
+      "pred": [
+        [
+          "2.0"
+        ]
+      ],
+      "verdict": "FAIL",
+      "passed": false,
+      "lenient": false,
+      "pred_sql": "SELECT AVG(\"qty\") AS \"qty\" FROM \"samples\"",
+      "error": null
+    },
+    {
+      "label": "total_amount_france",
+      "cap": "city->country | filter+sum, 2-table (scalar)",
+      "question": "total amount in France",
+      "oracle": [
+        [
+          "270"
+        ]
+      ],
+      "pred": [
+        [
+          "270"
+        ]
+      ],
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT SUM( \"orders\".\"amount\" ) FROM \"customers\" JOIN \"orders\" ON \"orders\".\"customer\" = \"customers\".\"name\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"customers connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"customers\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid WHERE \"city\".\"country\" = 'Q142'",
+      "error": null
+    },
+    {
+      "label": "count_customers_france",
+      "cap": "city->country | filter+count (scalar)",
+      "question": "how many customers are in France",
+      "oracle": [
+        [
+          "2"
+        ]
+      ],
+      "pred": [
+        [
+          "2"
+        ]
+      ],
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT COUNT(*) AS \"count\" FROM \"b2\"",
+      "error": null
+    }
+  ]
+}
