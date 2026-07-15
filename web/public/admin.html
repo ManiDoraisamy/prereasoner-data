@@ -35,6 +35,8 @@
   .uname{font-weight:600;font-size:13.5px}
   .uemail{color:#5a5175;font-size:12.5px}
   .usub{color:#a89fc0;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:1px}
+  .cprompt{font-weight:500;color:var(--ink)}
+  .cid{color:#a89fc0;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:1px}
   .countbtn{padding:4px 13px;border-radius:20px;border:1px solid #d9ccf5;background:#f2eefc;color:var(--brand-deep);font-weight:700;font-size:13px;cursor:pointer}
   .countbtn:hover{background:#e7dffb}
   .countbtn.zero{color:var(--muted);background:#f6f5fa;border-color:var(--line);font-weight:600;cursor:default}
@@ -136,7 +138,6 @@ function renderUsers(){
         `${nConv} ${nConv?(open?'▾':'▸'):''}</button></td>`+
       `<td class=muted>${fmtDate(u.created_at)}</td><td class=muted>${fmtDate(u.last_seen)}</td>`+
       `<td class=row-actions>`+
-        `<button class="btn" data-deluser="${esc(u.user_id)}" data-auth="0">Delete data</button>`+
         `<button class="btn danger" data-deluser="${esc(u.user_id)}" data-auth="1">Delete user + auth</button>`+
       `</td>`;
     tb.appendChild(tr);
@@ -144,7 +145,7 @@ function renderUsers(){
       for(const c of convsFor(u.user_id)){
         const cr=document.createElement('tr'); cr.className='conv';
         cr.innerHTML =
-          `<td colspan=2 style="padding-left:26px"><span class=mono>${esc(c.conversation_id)}</span> — ${esc(c.initial_prompt)||'<span class=muted>(no prompt)</span>'}</td>`+
+          `<td colspan=2 style="padding-left:26px"><div class=cprompt>${esc(c.initial_prompt)||'<span class=muted>(no prompt)</span>'}</div><div class=cid>${esc(c.conversation_id)}</div></td>`+
           `<td>${c.schema_exists?`<span class="pill ok">${fmtKB(c.size_bytes)} · ${c.n_tables} tbl</span>`:'<span class="pill no">no schema</span>'}</td>`+
           `<td class=muted>${fmtDate(c.created_at)}</td>`+
           `<td class=row-actions><button class="btn danger" data-delconv="${esc(c.conversation_id)}">Delete</button></td>`;
