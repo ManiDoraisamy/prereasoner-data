@@ -29,6 +29,7 @@ from engine.auth import _verify_principal, _bearer, _slug
 from engine.tables import csv_table
 from engine.trace import emitter, stream_final, set_ctx
 from engine.conversations import resolve_conversation, list_conversations, get_conversation, NotOwned
+from engine import admin
 
 MODEL = None                       # the ONE WorldReasoner, shared by /api/reason and /api/world
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
@@ -71,6 +72,8 @@ class H(BaseHTTPRequestHandler):
                                         "dimension": DIM_MODEL is not None}))
         elif path in ("/api/conversations", "/api/conversation"):
             self._get_conversations(path, parse_qs(u.query))
+        elif path.startswith("/api/admin/"):
+            self._get_admin(path, parse_qs(u.query))
         else:
             self._send(200, "prereasoner engine - POST /api/reason | /api/world {tables, question} + Bearer "
                             "Firebase token; POST /api/dimension {data, mode:'analyze'}",
@@ -98,8 +101,51 @@ class H(BaseHTTPRequestHandler):
             self._post_world()
         elif path == DIM_ROUTE:
             self._post_dimension()
+        elif path == "/api/admin/delete":
+            self._post_admin_delete()
         else:
             self._send(404, json.dumps({"error": "POST /api/reason | /api/world | /api/dimension"}))
+
+    # ---------------- admin dashboard (email-allowlisted; reads via GET, deletes via POST) ----------------
+    def _require_admin(self, body=None):
+        who = admin.verify_admin(_bearer(self.headers, body))
+        if not who:
+            self._send(403, json.dumps({"error": "admin only"}))
+        return who
+
+    def _get_admin(self, path, qs):
+        try:
+            if not self._require_admin():
+                return
+            if path.rstrip("/") == "/api/admin/users":
+                self._send(200, json.dumps({"users": admin.list_users()}))
+            elif path.rstrip("/") == "/api/admin/conversations":
+                self._send(200, json.dumps({"conversations": admin.list_conversations((qs.get("user") or [None])[0])}))
+            elif path.rstrip("/") == "/api/admin/orphans":
+                self._send(200, json.dumps({"orphans": admin.list_orphans()}))
+            else:
+                self._send(404, json.dumps({"error": "GET /api/admin/users | conversations[?user=] | orphans"}))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
+
+    def _post_admin_delete(self):
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            if not self._require_admin(req):
+                return
+            target = req.get("target")
+            if target == "conversation":
+                out = admin.delete_conversation(req.get("id", ""))
+            elif target == "user":
+                out = admin.delete_user(req.get("id", ""), also_auth=bool(req.get("also_auth")))
+            elif target == "orphans":
+                out = admin.delete_orphans()
+            else:
+                self._send(400, json.dumps({"error": "target must be conversation | user | orphans"})); return
+            self._send(200, json.dumps({"ok": True, **out}))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
 
     # ---------------- /api/reason + /api/world (Firebase auth + RTDB trace stream) ----------------
     def _post_world(self):

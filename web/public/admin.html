@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang=en>
+<head>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width, initial-scale=1">
+<title>Prereasoner — Admin</title>
+<style>
+  :root{--brand:#5b2be0;--brand-deep:#3d1a9e;--ink:#221a3a;--muted:#7a7192;--line:#eae6f5;--danger:#d33a4b;--bg:#faf9fe}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+  header{display:flex;align-items:center;gap:12px;padding:14px 22px;border-bottom:1px solid var(--line);background:#fff;position:sticky;top:0;z-index:5}
+  header h1{font-size:16px;margin:0;font-weight:700}
+  header .who{margin-left:auto;color:var(--muted);font-size:13px}
+  main{max-width:1080px;margin:0 auto;padding:22px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-bottom:18px}
+  .stats{display:flex;gap:26px;flex-wrap:wrap}
+  .stat b{display:block;font-size:22px;font-weight:700}.stat span{color:var(--muted);font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);font-size:12px}
+  td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tr.conv td{background:#fcfbff;font-size:12.5px;color:#4a4260}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+  .pill{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;font-weight:600}
+  .pill.ok{background:#e8f7ee;color:#1c8f4a}.pill.no{background:#fdeaec;color:var(--danger)}
+  button{all:unset;cursor:pointer;font:inherit}
+  .btn{padding:5px 11px;border-radius:8px;font-size:12.5px;font-weight:600;border:1px solid var(--line);color:var(--ink)}
+  .btn:hover{background:#f4f1fc}
+  .btn.danger{color:#fff;background:var(--danger);border-color:var(--danger)}.btn.danger:hover{background:#b7303f}
+  .btn.ghost{color:var(--muted)}
+  .expand{cursor:pointer;color:var(--brand);font-weight:600}
+  .muted{color:var(--muted)}
+  #msg{padding:10px 14px;border-radius:8px;margin-bottom:14px;display:none}
+  #msg.err{background:#fdeaec;color:var(--danger);display:block}
+  #msg.ok{background:#e8f7ee;color:#1c8f4a;display:block}
+  .gate{max-width:420px;margin:12vh auto;text-align:center;color:var(--muted)}
+  .row-actions{display:flex;gap:8px;justify-content:flex-end}
+</style>
+</head>
+<body>
+<header>
+  <h1>Prereasoner · Admin</h1>
+  <span class=who id=who></span>
+  <button class="btn ghost" id=refresh style="margin-left:14px">↻ Refresh</button>
+</header>
+
+<div class=gate id=gate>Checking access…</div>
+
+<main id=app style="display:none">
+  <div id=msg></div>
+  <div class="card stats" id=summary></div>
+
+  <div class=card>
+    <div style="display:flex;align-items:center;margin-bottom:8px">
+      <b style="font-size:15px">Users</b>
+      <span class=muted style="margin-left:8px" id=usersHint></span>
+    </div>
+    <table><thead><tr>
+      <th>User (Google sub)</th><th>Conversations</th><th>Created</th><th>Last seen</th><th></th>
+    </tr></thead><tbody id=users></tbody></table>
+  </div>
+
+  <div class=card id=orphanCard style="display:none">
+    <div style="display:flex;align-items:center">
+      <b style="font-size:15px">Orphan schemas</b>
+      <span class=muted style="margin-left:8px">c_* data schemas with no conversation row</span>
+      <button class="btn danger" id=cleanOrphans style="margin-left:auto">Sweep all orphans</button>
+    </div>
+    <div id=orphans class=muted style="margin-top:8px;font-size:12px"></div>
+  </div>
+</main>
+
+<script type="module">
+import { ensureSignedIn } from './lib/firebase-init.js';
+
+const $ = id => document.getElementById(id);
+const fmtKB = b => b >= 1048576 ? (b/1048576).toFixed(1)+' MB' : Math.round(b/1024)+' KB';
+const fmtDate = s => s ? new Date(s).toLocaleString() : '—';
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+async function api(path, opts={}) {
+  const token = await window.ensureToken();
+  const r = await fetch(path, { ...opts, headers: { 'content-type':'application/json', 'Authorization':'Bearer '+token, ...(opts.headers||{}) } });
+  const body = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(body.error || ('HTTP '+r.status));
+  return body;
+}
+function flash(text, ok=true){ const m=$('msg'); m.textContent=text; m.className = ok?'ok':'err'; setTimeout(()=>{m.className='';}, 6000); }
+
+let USERS=[], CONVS=[], expanded=new Set();
+
+async function load(){
+  const [u, c, o] = await Promise.all([ api('/api/admin/users'), api('/api/admin/conversations'), api('/api/admin/orphans') ]);
+  USERS=u.users; CONVS=c.conversations;
+  const totBytes = CONVS.reduce((a,x)=>a+x.size_bytes,0);
+  const live = CONVS.filter(x=>x.schema_exists).length;
+  $('summary').innerHTML =
+    `<div class=stat><b>${USERS.length}</b><span>users</span></div>`+
+    `<div class=stat><b>${CONVS.length}</b><span>conversations</span></div>`+
+    `<div class=stat><b>${live}</b><span>live schemas</span></div>`+
+    `<div class=stat><b>${fmtKB(totBytes)}</b><span>total data</span></div>`+
+    `<div class=stat><b>${o.orphans.length}</b><span>orphan schemas</span></div>`;
+  renderUsers();
+  renderOrphans(o.orphans);
+}
+
+function convsFor(uid){ return CONVS.filter(c=>c.user_id===uid); }
+
+function renderUsers(){
+  const tb=$('users'); tb.innerHTML='';
+  for(const u of USERS){
+    const tr=document.createElement('tr');
+    const open=expanded.has(u.user_id);
+    tr.innerHTML =
+      `<td><span class=expand data-u="${esc(u.user_id)}">${open?'▾':'▸'}</span> <span class=mono>${esc(u.user_id)}</span></td>`+
+      `<td>${u.n_conversations}</td><td class=muted>${fmtDate(u.created_at)}</td><td class=muted>${fmtDate(u.last_seen)}</td>`+
+      `<td class=row-actions>`+
+        `<button class="btn" data-deluser="${esc(u.user_id)}" data-auth="0">Delete data</button>`+
+        `<button class="btn danger" data-deluser="${esc(u.user_id)}" data-auth="1">Delete user + auth</button>`+
+      `</td>`;
+    tb.appendChild(tr);
+    if(open){
+      for(const c of convsFor(u.user_id)){
+        const cr=document.createElement('tr'); cr.className='conv';
+        cr.innerHTML =
+          `<td colspan=2 style="padding-left:26px"><span class=mono>${esc(c.conversation_id)}</span> — ${esc(c.initial_prompt)||'<span class=muted>(no prompt)</span>'}</td>`+
+          `<td>${c.schema_exists?`<span class="pill ok">${fmtKB(c.size_bytes)} · ${c.n_tables} tbl</span>`:'<span class="pill no">no schema</span>'}</td>`+
+          `<td class=muted>${fmtDate(c.created_at)}</td>`+
+          `<td class=row-actions><button class="btn danger" data-delconv="${esc(c.conversation_id)}">Delete</button></td>`;
+        tb.appendChild(cr);
+      }
+      if(!convsFor(u.user_id).length){
+        const er=document.createElement('tr'); er.className='conv';
+        er.innerHTML=`<td colspan=5 style="padding-left:26px" class=muted>no conversations</td>`; tb.appendChild(er);
+      }
+    }
+  }
+}
+
+function renderOrphans(orphans){
+  $('orphanCard').style.display = orphans.length ? '' : 'none';
+  $('orphans').innerHTML = orphans.map(o=>`<span class=mono>${esc(o.schema)}</span> (${fmtKB(o.size_bytes)})`).join(' · ');
+}
+
+// ---- interactions ----
+$('users').addEventListener('click', async e=>{
+  const ex=e.target.closest('.expand');
+  if(ex){ const u=ex.dataset.u; expanded.has(u)?expanded.delete(u):expanded.add(u); renderUsers(); return; }
+  const dc=e.target.closest('[data-delconv]');
+  if(dc){ const id=dc.dataset.delconv;
+    if(!confirm(`Delete conversation ${id}?\nThis DROPS its Postgres schema (data + views) and its metadata. Irreversible.`)) return;
+    try{ await api('/api/admin/delete',{method:'POST',body:JSON.stringify({target:'conversation',id})}); flash('Deleted conversation '+id); await load(); }
+    catch(err){ flash(err.message,false); } return; }
+  const du=e.target.closest('[data-deluser]');
+  if(du){ const id=du.dataset.deluser, alsoAuth=du.dataset.auth==='1';
+    const n=convsFor(id).length;
+    const warn = alsoAuth
+      ? `Delete user ${id} COMPLETELY?\n• drops all ${n} conversation schema(s) + metadata\n• deletes their Firebase auth account (they cannot sign back into the same identity)\nIrreversible.`
+      : `Delete all data for user ${id}?\n• drops all ${n} conversation schema(s) + metadata + profile\n• KEEPS their Firebase auth account (a fresh profile is created if they return)\nIrreversible.`;
+    if(!confirm(warn)) return;
+    try{ const r=await api('/api/admin/delete',{method:'POST',body:JSON.stringify({target:'user',id,also_auth:alsoAuth})});
+      flash(`Deleted user ${id} — dropped ${r.dropped_schemas.length} schema(s)${alsoAuth?(r.auth_deleted?' + auth':' (auth delete FAILED: '+(r.auth_error||'')+')'):''}`, alsoAuth?r.auth_deleted:true);
+      await load(); }
+    catch(err){ flash(err.message,false); } return; }
+});
+$('cleanOrphans').addEventListener('click', async ()=>{
+  if(!confirm('Sweep ALL orphan schemas (c_* with no conversation row)? Irreversible.')) return;
+  try{ const r=await api('/api/admin/delete',{method:'POST',body:JSON.stringify({target:'orphans'})}); flash(`Swept ${r.count} orphan schema(s)`); await load(); }
+  catch(err){ flash(err.message,false); }
+});
+$('refresh').addEventListener('click', ()=>load().catch(e=>flash(e.message,false)));
+
+// ---- boot: sign in, then verify admin by attempting a read ----
+(async ()=>{
+  try{
+    const uid = await ensureSignedIn();
+    if(uid===null) return;                                  // redirecting to Google
+    $('who').textContent = (window.__uid||'') ;
+    await load();                                           // 403 here => not an admin
+    $('gate').style.display='none'; $('app').style.display='';
+  }catch(err){
+    $('gate').innerHTML = /admin only/i.test(err.message)
+      ? '<b>Not authorized.</b><br>Your account is not on the admin allowlist.'
+      : 'Could not load: '+esc(err.message);
+  }
+})();
+</script>
+</body>
+</html>
