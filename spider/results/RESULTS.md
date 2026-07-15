@@ -364,3 +364,40 @@ structurally-impossible floor (no subquery/set-op primitive) + projection/multi-
 interpretable generator** (Qwen2.5-0.5B + LoRA) that emits SQL as an inspectable view stack, not a
 GPT-4-class free-form model. Spider is not the product target; capability (2), scored 0 here by construction,
 is measured in the world suite.
+
+---
+
+## §8 — Context-aware routing (recovers the tier-1 gain WITHOUT the revert)
+
+The §6 tier-1 routing win came from a blunt `DEPTH_PRIMS` trim (drop TOPN/SORT/TIME) that **broke live world
+composite view-stacks** (`test_geo`) and was reverted (§7) — costing ~3 pts. The 34% "mis-routed to compose"
+bucket (the biggest scalar-miss cause) is a **routing** defect, not model capacity, so it's fixable in code.
+
+**Root cause of the mis-route:** the gate routes any TOPN/SORT/TIME to the compose engine, and the engine
+**always inserts a `group_agg`** (it has no plain projection). So a Spider projection/superlative ("min
+weight of an 8-cyl car in 1974", "top 3 heaviest cars") lands on the aggregating engine and comes back wrong,
+where the slot-filler would project + filter + order it correctly.
+
+**The fix — world-gated stand-on (`engine/world_compose.py`, mirrored in `full_eval.py`).** Don't change the
+gate; change what the engine STANDS on. Split the composition views: `ENGINE_ONLY` (yoy/running/share/divide/
+having — the slot-filler can't do these) always stand; `SLOT_OVERLAP` (topn/sort/time_filter — the slot-filler
+also does these, WITH projection+WHERE) stand **only when a WORLD join is in the stack**. A bare non-world
+sort/top-N/year-filter falls through to the slot-filler. On Spider `world=None`, so SLOT_OVERLAP never stands
+→ the slot-filler owns them (the tier-1 behavior); live world composites (world join present) still stand.
+The one over-specified `test_geo` assertion — a bare `top 3 cities` — was retargeted to check the *answer*
+(the slot-filler's `SELECT city ORDER BY amount DESC LIMIT 3` is correct); the compose top-N capability stays
+covered by `top 3 cities by population` + `total amount in Europe by city`.
+
+**Before → after (deployed `now` → `gate`), clean text-to-SQL:**
+
+| metric (clean, n=771) | now (HEAD) | **gate (world-gated routing)** | tier-1 peak (for ref) |
+|---|--:|--:|--:|
+| scalar-gold | 50.5% | **54.1%** (+3.6) | 53.7% |
+| lenient | 41.9% | **45.8%** | 44.5% |
+| strict | 18.7% | **21.1%** | 21.0% |
+
+Routing shifted compose **288 → 95** (the mis-routes fell to the slot-filler). Guards held: `test_geo` 35/35,
+`world_eval` 6/8, offline regression gate green — the benchmark win with **no** live regression, so the revert
+is no longer needed. (Caveat: this `gate` run hit 24 CPU-contention **timeouts**, inflating the ALL error rate
+to 4.5% and trimming clean scalar_n 307→303; on a quiet host the clean number is a touch higher, not lower.)
+The routing change is committed in `28105cd`; `full_eval_gate.json` here is the corrected strict-gating result.

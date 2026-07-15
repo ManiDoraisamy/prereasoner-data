@@ -1,69 +1,70 @@
 {
   "n": 1034,
   "config": "gold_tables",
-  "answered_pct": 97.6,
-  "error_pct": 2.4,
-  "correct_lenient_pct": 39.4,
-  "correct_strict_pct": 17.3,
-  "scalar_gold_accuracy_pct": 45.0,
-  "scalar_gold_n": 402,
+  "answered_pct": 95.5,
+  "error_pct": 4.5,
+  "correct_lenient_pct": 41.9,
+  "correct_strict_pct": 19.4,
+  "scalar_gold_accuracy_pct": 50.5,
+  "scalar_gold_n": 398,
   "totals": {
     "n": 1034,
-    "answered": 1009,
-    "correct_lenient": 407,
-    "scalar_total": 402,
-    "scalar_correct": 181,
-    "correct_strict": 179,
-    "error": 25
+    "answered": 987,
+    "correct_lenient": 433,
+    "scalar_total": 398,
+    "scalar_correct": 201,
+    "correct_strict": 201,
+    "error": 47
   },
   "error_stage_histogram": {
-    "assemble_exec": 19,
-    "timeout": 6
+    "assemble_exec": 23,
+    "timeout": 24
   },
   "path_histogram": {
-    "slot": 785,
-    "compose": 243,
-    "timeout": 6
+    "slot": 915,
+    "compose": 95,
+    "timeout": 24
   },
   "path_correct_lenient": {
-    "slot": 378,
-    "compose": 29
+    "slot": 423,
+    "compose": 10
   },
   "by_difficulty": {
     "easy": {
       "n": 248,
-      "answered": 248,
-      "correct_lenient": 142,
+      "answered": 247,
+      "correct_lenient": 160,
       "scalar_total": 173,
-      "scalar_correct": 97,
-      "correct_strict": 96
+      "scalar_correct": 111,
+      "correct_strict": 111,
+      "error": 1
     },
     "medium": {
       "n": 446,
-      "answered": 442,
-      "correct_lenient": 155,
-      "correct_strict": 74,
-      "scalar_total": 101,
-      "scalar_correct": 38,
-      "error": 4
+      "answered": 435,
+      "correct_lenient": 159,
+      "correct_strict": 78,
+      "scalar_total": 99,
+      "scalar_correct": 41,
+      "error": 11
     },
     "hard": {
       "n": 174,
-      "answered": 162,
-      "correct_lenient": 81,
-      "scalar_total": 72,
-      "scalar_correct": 31,
-      "error": 12,
+      "answered": 157,
+      "correct_lenient": 84,
+      "scalar_total": 70,
+      "scalar_correct": 34,
+      "error": 17,
       "correct_strict": 6
     },
     "extra": {
       "n": 166,
-      "answered": 157,
-      "correct_lenient": 29,
-      "error": 9,
+      "answered": 148,
+      "correct_lenient": 30,
+      "error": 18,
       "scalar_total": 56,
       "scalar_correct": 15,
-      "correct_strict": 3
+      "correct_strict": 6
     }
   }
 }
