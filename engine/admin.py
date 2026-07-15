@@ -1,9 +1,14 @@
 """admin.py — admin-only dashboard backend.
 
-Read: list users (+ conversation counts, last seen) and conversations (+ whether the data schema still
-exists, its size, table count). Write (DESTRUCTIVE): drop a conversation's schema + metadata, delete a user
-(their conversations/schemas + profile, optionally the Firebase auth account), and sweep orphan schemas
-(c_* schemas with no chat.conversation row).
+Read: list users (+ their Google identity name/email/avatar, conversation counts, last seen) and conversations
+(+ whether the data schema still exists, its size, table count). Write (DESTRUCTIVE): drop a conversation's
+schema + metadata, delete a user (their conversations/schemas + profile, optionally the Firebase auth account),
+and sweep orphan schemas (c_* schemas with no chat.conversation row).
+
+Identity: chat.user_profile stores ONLY the user_id, which is the Google *sub* (not the firebase uid) — so the
+name/email/photo come from Firebase Auth, looked up by the google.com PROVIDER identity (get_users with a
+ProviderIdentifier), NOT by uid. Enrichment is best-effort: if auth is unconfigured/unpermitted it degrades to
+showing the sub, and the rest of the dashboard still works.
 
 Auth: gated to an email allowlist (ADMIN_EMAILS, default the owner). NOT the normal user auth — a logged-in
 non-admin gets 403. Every destructive op RE-VALIDATES the schema id shape (c_<32 hex>) before DROP SCHEMA, so
@@ -23,6 +28,18 @@ def _admins():
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 
+def _fb():
+    """Ensure the firebase-admin app exists and return the auth module. Raises if firebase is unavailable."""
+    import firebase_admin
+    from firebase_admin import auth as fb_auth
+    try:
+        firebase_admin.get_app()
+    except ValueError:
+        from engine.trace import ensure_app
+        ensure_app()
+    return fb_auth
+
+
 def verify_admin(token):
     """Verify the Firebase token AND require its email be in the admin allowlist. -> admin email | None.
     Honors the AUTH_TEST_SUB bypass for local testing (returns 'test-admin')."""
@@ -31,19 +48,61 @@ def verify_admin(token):
         return "test-admin"
     if not token:
         return None
-    import firebase_admin
-    from firebase_admin import auth as fb_auth
     try:
-        firebase_admin.get_app()
-    except ValueError:
-        from engine.trace import ensure_app
-        ensure_app()
-    try:
-        dec = fb_auth.verify_id_token(token)
+        dec = _fb().verify_id_token(token)
     except Exception:                                # noqa: BLE001
         return None
     email = (dec.get("email") or "").lower()
     return email if (email and email in _admins()) else None
+
+
+# ---------------- identity (Firebase Auth, keyed by the Google sub) ----------------
+def _identities(subs):
+    """Map Google subs -> {email, name, photo, firebase_uid} via Firebase Auth. Our user_id IS the Google sub,
+    so we look up by the google.com provider identity (not by uid). Best-effort: a sub simply stays absent from
+    the result if auth is unconfigured/unpermitted, so the dashboard still renders with just the sub."""
+    subs = [s for s in dict.fromkeys(subs) if s]           # de-dup, drop blanks, preserve order
+    if not subs:
+        return {}
+    from engine.config import auth_test_sub
+    if auth_test_sub():                                    # local/test: no real auth backend
+        return {}
+    try:
+        fb_auth = _fb()
+    except Exception:                                      # noqa: BLE001
+        return {}
+    out = {}
+    for i in range(0, len(subs), 100):                     # get_users caps at 100 identifiers per call
+        chunk = subs[i:i + 100]
+        try:
+            res = fb_auth.get_users([fb_auth.ProviderIdentifier("google.com", s) for s in chunk])
+        except Exception:                                  # noqa: BLE001 — perms/network: degrade to sub-only
+            continue
+        for u in res.users:
+            g = next((p for p in (u.provider_data or []) if p.provider_id == "google.com"), None)
+            sub = g.uid if g else None                     # the google.com provider uid == our stored user_id
+            if not sub:
+                continue
+            out[sub] = {"email": u.email or (g.email if g else None),
+                        "name": u.display_name or (g.display_name if g else None),
+                        "photo": u.photo_url or (g.photo_url if g else None),
+                        "firebase_uid": u.uid}
+    return out
+
+
+def _firebase_uid_for(fb_auth, sub):
+    """Resolve our stored user_id (a Google sub) to the firebase uid that delete_user requires. Falls back to
+    treating the id as a uid directly (for any non-Google account). -> uid | None."""
+    try:
+        res = fb_auth.get_users([fb_auth.ProviderIdentifier("google.com", sub)])
+        if res.users:
+            return res.users[0].uid
+    except Exception:                                      # noqa: BLE001
+        pass
+    try:
+        return fb_auth.get_user(sub).uid                   # sub may already be a firebase uid
+    except Exception:                                      # noqa: BLE001
+        return None
 
 
 # ---------------- reads ----------------
@@ -58,7 +117,8 @@ def _schema_stats(cur):
 
 
 def list_users():
-    """Every user with their conversation count + timestamps, newest-active first."""
+    """Every user with their Google identity (name/email/photo), conversation count + timestamps, newest-active
+    first. Identity is best-effort (see _identities); user_id (the Google sub) is always present."""
     conn = _pg()
     try:
         cur = conn.cursor()
@@ -67,11 +127,19 @@ def list_users():
             'FROM "chat"."user_profile" p '
             'LEFT JOIN "chat"."user_conversation" uc ON uc.user_id = p.user_id '
             'GROUP BY p.user_id, p.created_at, p.last_seen ORDER BY p.last_seen DESC')
-        rows = cur.fetchall()
-        return [{"user_id": r[0], "created_at": r[1].isoformat() if r[1] else None,
-                 "last_seen": r[2].isoformat() if r[2] else None, "n_conversations": int(r[3])} for r in rows]
+        users = [{"user_id": r[0], "created_at": r[1].isoformat() if r[1] else None,
+                  "last_seen": r[2].isoformat() if r[2] else None, "n_conversations": int(r[3])}
+                 for r in cur.fetchall()]
     finally:
         conn.close()
+    ident = _identities([u["user_id"] for u in users])
+    for u in users:
+        info = ident.get(u["user_id"], {})
+        u["name"] = info.get("name")
+        u["email"] = info.get("email")
+        u["photo"] = info.get("photo")
+        u["firebase_uid"] = info.get("firebase_uid")
+    return users
 
 
 def list_conversations(user_id=None):
@@ -160,14 +228,11 @@ def delete_user(user_id, also_auth=False):
     auth_deleted = False
     if also_auth:
         try:
-            import firebase_admin
-            from firebase_admin import auth as fb_auth
-            try:
-                firebase_admin.get_app()
-            except ValueError:
-                from engine.trace import ensure_app
-                ensure_app()
-            fb_auth.delete_user(user_id)                       # user_id == the Google sub == the firebase uid
+            fb_auth = _fb()
+            uid = _firebase_uid_for(fb_auth, user_id)          # user_id is the Google sub; delete_user needs the uid
+            if not uid:
+                raise ValueError("no Firebase auth account for this Google identity")
+            fb_auth.delete_user(uid)
             auth_deleted = True
         except Exception as e:                                 # noqa: BLE001 — data is already gone; report the auth miss
             return {"deleted_user": user_id, "dropped_schemas": dropped, "auth_deleted": False,

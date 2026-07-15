@@ -28,6 +28,17 @@
   .btn.danger{color:#fff;background:var(--danger);border-color:var(--danger)}.btn.danger:hover{background:#b7303f}
   .btn.ghost{color:var(--muted)}
   .expand{cursor:pointer;color:var(--brand);font-weight:600}
+  .user{display:flex;align-items:center;gap:11px}
+  .av{position:relative;width:38px;height:38px;border-radius:50%;flex:0 0 38px;background:#ece7fb;display:flex;align-items:center;justify-content:center;color:var(--brand-deep);font-weight:700;font-size:15px;overflow:hidden}
+  .av img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .uinfo{min-width:0}
+  .uname{font-weight:600;font-size:13.5px}
+  .uemail{color:#5a5175;font-size:12.5px}
+  .usub{color:#a89fc0;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;margin-top:1px}
+  .countbtn{padding:4px 13px;border-radius:20px;border:1px solid #d9ccf5;background:#f2eefc;color:var(--brand-deep);font-weight:700;font-size:13px;cursor:pointer}
+  .countbtn:hover{background:#e7dffb}
+  .countbtn.zero{color:var(--muted);background:#f6f5fa;border-color:var(--line);font-weight:600;cursor:default}
+  tr.urow.open>td{background:#f7f4ff}
   .muted{color:var(--muted)}
   #msg{padding:10px 14px;border-radius:8px;margin-bottom:14px;display:none}
   #msg.err{background:#fdeaec;color:var(--danger);display:block}
@@ -55,7 +66,7 @@
       <span class=muted style="margin-left:8px" id=usersHint></span>
     </div>
     <table><thead><tr>
-      <th>User (Google sub)</th><th>Conversations</th><th>Created</th><th>Last seen</th><th></th>
+      <th>User</th><th>Conversations</th><th>Created</th><th>Last seen</th><th></th>
     </tr></thead><tbody id=users></tbody></table>
   </div>
 
@@ -108,11 +119,22 @@ function convsFor(uid){ return CONVS.filter(c=>c.user_id===uid); }
 function renderUsers(){
   const tb=$('users'); tb.innerHTML='';
   for(const u of USERS){
-    const tr=document.createElement('tr');
     const open=expanded.has(u.user_id);
+    const tr=document.createElement('tr'); tr.className='urow'+(open?' open':'');
+    const initial=esc((u.name||u.email||u.user_id||'?').trim().charAt(0).toUpperCase());
+    const avatar = u.photo
+      ? `<span class=av>${initial}<img src="${esc(u.photo)}" referrerpolicy="no-referrer" alt="" onerror="this.remove()"></span>`
+      : `<span class=av>${initial}</span>`;
+    const nConv=u.n_conversations;
     tr.innerHTML =
-      `<td><span class=expand data-u="${esc(u.user_id)}">${open?'▾':'▸'}</span> <span class=mono>${esc(u.user_id)}</span></td>`+
-      `<td>${u.n_conversations}</td><td class=muted>${fmtDate(u.created_at)}</td><td class=muted>${fmtDate(u.last_seen)}</td>`+
+      `<td><div class=user>${avatar}<div class=uinfo>`+
+        `<div class=uname>${u.name?esc(u.name):'<span class=muted>(name unavailable)</span>'}</div>`+
+        `<div class=uemail>${u.email?esc(u.email):'<span class=muted>no email on file</span>'}</div>`+
+        `<div class=usub title="Google sub">${esc(u.user_id)}</div>`+
+      `</div></div></td>`+
+      `<td><button class="countbtn${nConv?'':' zero'}" data-u="${esc(u.user_id)}"${nConv?'':' disabled'}>`+
+        `${nConv} ${nConv?(open?'▾':'▸'):''}</button></td>`+
+      `<td class=muted>${fmtDate(u.created_at)}</td><td class=muted>${fmtDate(u.last_seen)}</td>`+
       `<td class=row-actions>`+
         `<button class="btn" data-deluser="${esc(u.user_id)}" data-auth="0">Delete data</button>`+
         `<button class="btn danger" data-deluser="${esc(u.user_id)}" data-auth="1">Delete user + auth</button>`+
@@ -143,8 +165,8 @@ function renderOrphans(orphans){
 
 // ---- interactions ----
 $('users').addEventListener('click', async e=>{
-  const ex=e.target.closest('.expand');
-  if(ex){ const u=ex.dataset.u; expanded.has(u)?expanded.delete(u):expanded.add(u); renderUsers(); return; }
+  const cb=e.target.closest('.countbtn');
+  if(cb){ const u=cb.dataset.u; expanded.has(u)?expanded.delete(u):expanded.add(u); renderUsers(); return; }
   const dc=e.target.closest('[data-delconv]');
   if(dc){ const id=dc.dataset.delconv;
     if(!confirm(`Delete conversation ${id}?\nThis DROPS its Postgres schema (data + views) and its metadata. Irreversible.`)) return;
