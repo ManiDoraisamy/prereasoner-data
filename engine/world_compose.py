@@ -236,13 +236,21 @@ class ComposedWorldQuery:
     # gate misfired (e.g. 'German sales' bound no filter) -> defer to the delegate so its clarify gate can fire.
     _REAL_VIEWS = {"world_join", "world_filter", "topn", "yoy", "running", "share", "divide", "having",
                    "time_filter", "filter", "sort"}
-    # the DEPTH composition views — the engine genuinely COMPOSED (vs a plain world-filtered aggregate that merely
-    # MISFIRED the depth gate, e.g. a spurious primitive on "total customers in France" gating it to the engine,
-    # whose plan then collapses to base join/world_join/world_filter/group_agg). Standing on the engine requires one
-    # of these OR a world MEASURE the delegate can't expose; a bare aggregate/count defers to the delegate, which is
-    # authoritative (incl. the entity-count fix) — so the gate's CPU-sensitive primitive readout is non-load-bearing
-    # for plain aggregates (it can flip between hosts, but the answer no longer depends on it).
-    _COMPOSITION_VIEWS = {"topn", "yoy", "running", "share", "divide", "having", "time_filter", "sort"}
+    # The DEPTH composition views the engine can build, SPLIT by whether the slot-filler can also express them:
+    #   ENGINE_ONLY = genuine multi-step composition the delegate/slot-filler cannot do (year-over-year, running
+    #     total, share, ratio-divide, HAVING) -> ALWAYS stand on the engine when built.
+    #   SLOT_OVERLAP = order/limit/top-N/argmax/year-filter, which the slot-filler ALSO does — and does WITH
+    #     projection + WHERE. Stand on the engine for these ONLY when a WORLD join is in the stack (a genuine world
+    #     composite, e.g. "top 3 cities by population" = world.Cities join + top-N). A bare NON-world sort/top-N/
+    #     year-filter is exactly what the slot-filler handles better, so it falls through to the delegate.
+    # This is the context-aware routing: it recovers the Spider projection/sort losses (Spider is world=None, so
+    # SLOT_OVERLAP never stands -> the slot-filler projects/filters/orders) WITHOUT dropping the live world
+    # composites the blunt DEPTH_PRIMS trim broke (test_geo: world join present -> stands). Standing also holds for a
+    # world MEASURE the delegate can't expose, or a genuine world GROUP-BY. A bare aggregate/count defers to the
+    # (authoritative) delegate. Keep in sync with spider/probe/full_eval.py.
+    _ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
+    _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
+    _COMPOSITION_VIEWS = _ENGINE_ONLY_VIEWS | _SLOT_OVERLAP_VIEWS         # union, for reference / external callers
 
     def _run_engine(self, tables, question, sub, as_of, emit=None):
         """Build the composed view stack (join -> world_join -> world_filter -> ... -> aggregate) for `question`
@@ -298,10 +306,18 @@ class ComposedWorldQuery:
                 # a genuine WORLD GROUP-BY: a world join + a group_agg that actually GROUPED (a real multi-column
                 # breakdown, columns>=2 = dimension+aggregate, not a scalar) + a non-empty result. The delegate
                 # cannot produce this ("total sales by continent" -> per-continent rows), so stand on the engine.
-                _world_grouped = (any(v.get("op") in ("world_join", "world_filter") for v in _views)
+                _world_involved = any(v.get("op") in ("world_join", "world_filter") for v in _views)
+                _world_grouped = (_world_involved
                                   and any(v.get("op") == "group_agg" and len(v.get("columns") or []) >= 2 for v in _views)
                                   and (er.get("result") or {}).get("rows"))
-                if (any(v.get("op") in self._COMPOSITION_VIEWS for v in _views)
+                # ENGINE_ONLY composition always stands. A SLOT_OVERLAP view (sort / top-N / year-filter) stands ONLY
+                # when a WORLD join is in the stack (a genuine world composite, e.g. "top 3 cities by population" =
+                # world.Cities join + top-N). A BARE non-world sort/top-N/year-filter falls through to the slot-filler,
+                # which projects+filters+orders it correctly — compose has NO plain projection (it always aggregates),
+                # so it's the wrong host for a bare superlative ("top 3 cities" -> the slot-filler's clean
+                # `SELECT city ORDER BY amount DESC LIMIT 3`). Plus world measure / world group-by.
+                if (any(v.get("op") in self._ENGINE_ONLY_VIEWS for v in _views)
+                        or (_world_involved and any(v.get("op") in self._SLOT_OVERLAP_VIEWS for v in _views))
                         or self.WORLD_MEASURES.search(question or "")
                         or _world_grouped):
                     return er

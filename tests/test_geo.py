@@ -302,11 +302,17 @@ def main():
     ok("software: router types the column -> 'software'", osw and osw["leaf"] == "software",
        f"got={osw and osw.get('leaf')}")
 
-    # C4 composite view-stacks: top-N and by-city (the canonical stacked plans).
+    # C4 composite view-stacks: by-city world composite below. A BARE non-world "top 3 cities" is now a plain
+    # projection+order+limit the slot-filler OWNS (compose has no plain projection — it always aggregates — so it is
+    # the wrong host for a bare superlative; routing it there was the Spider mis-route). The compose top-N capability
+    # stays covered by "top 3 cities by population" (B) and "…Europe by city" below, so here we check the ANSWER (top
+    # 3 by amount = Paris/Lyon/Tokyo, Berlin excluded) via whichever path serves it.
     rtopn = _retry(lambda: qc.serve([CUST], "top 3 cities", sub))
     if rtopn is not None:
-        plan = rtopn.get("plan") or []
-        ok("composite: 'top 3 cities' builds a top-N stack", "topn" in plan, f"plan={plan}")
+        rows = (rtopn.get("result") or {}).get("rows") or []
+        cities = {str(c).strip().lower() for r in rows for c in r}
+        ok("composite: 'top 3 cities' returns the top 3 by amount (Paris/Lyon/Tokyo, Berlin excluded)",
+           len(rows) == 3 and {"paris", "lyon", "tokyo"} <= cities and "berlin" not in cities, f"rows={rows}")
     reubc = _retry(lambda: qc.serve([CUST], "total amount in Europe by city", sub))
     if reubc is not None:
         planb = reubc.get("plan") or []

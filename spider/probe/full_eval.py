@@ -63,11 +63,14 @@ def compose_predict(eng, tabs, question):
             "plan": res.get("plan"), "primitives": res.get("primitives")}
 
 
-# the DEPTH composition views — mirrors engine.world_compose.ComposedWorldQuery._COMPOSITION_VIEWS:
-# the live serve() stands on the engine ONLY if its plan actually built one of these; a plan that
-# collapsed to bare [join, group_agg] (a head false-positive with no operand bound) falls through to
-# the delegate, as does ANY engine exception.
-_COMPOSITION_VIEWS = {"topn", "yoy", "running", "share", "divide", "having", "time_filter", "sort"}
+# the DEPTH composition views — mirrors engine.world_compose.ComposedWorldQuery, SPLIT by whether the slot-filler
+# can also express them. ENGINE_ONLY (yoy/running/share/divide/having) the slot-filler cannot do -> always stand on
+# compose. SLOT_OVERLAP (topn/sort/time_filter) the slot-filler ALSO does WITH projection+WHERE -> stand on compose
+# only when a WORLD join is in the plan (world_join/world_filter). On Spider world=None, so a world join NEVER
+# appears -> SLOT_OVERLAP always falls to the slot-filler (recovering the projection/sort losses), while the live
+# world composites (world join present) still stand. Keep in sync with world_compose.py.
+_ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
+_SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 
 
 def predict(enc, eng, reader, tabs, question):
@@ -80,8 +83,11 @@ def predict(enc, eng, reader, tabs, question):
     if depth:
         try:
             r = compose_predict(eng, tabs, question)
-            if any(op in _COMPOSITION_VIEWS for op in (r.get("plan") or [])):
-                return r                          # the engine genuinely composed — stand on it
+            plan = r.get("plan") or []
+            world = any(op in ("world_join", "world_filter") for op in plan)   # never true on Spider (world=None)
+            if (any(op in _ENGINE_ONLY_VIEWS for op in plan)
+                    or (world and any(op in _SLOT_OVERLAP_VIEWS for op in plan))):
+                return r                          # genuine composition (or a world composite) — stand on it
         except Exception:                         # noqa: BLE001 — live serve() delegates on engine error
             pass
     try:
