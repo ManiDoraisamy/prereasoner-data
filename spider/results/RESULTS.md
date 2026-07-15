@@ -317,3 +317,50 @@ errors) and COUNT fix are cleanly attributable. (b) `engine/world_compose.py` / 
 Postgres and should be run before deploying. (c) Predicted Tier-1 yield was +15–29 lenient; measured
 **+14.8** — at the low edge, because compose's residual 156 routed queries (HAVING/RATIO head fires
 that genuinely compose) still hit only 7%.
+
+---
+
+## §7 — Deployed "now" state + the two-suite split (clean text-to-SQL vs world)
+
+Two corrections were folded in after §6, so the tier-1 peak is **not** what ships:
+
+**(a) The routing trim was REVERTED.** Tier-1 trimmed `DEPTH_PRIMS` (dropped `TOPN/SORT/TIME`) to send
+those to the slot-filler — a big part of its gain. That trim **broke live composite view-stacks**
+(`test_geo`), so it was reverted; the live gate is back to
+`{EXCL,RATIO,TOPN,SHARE,TIME,HAVING,SORT,DIVIDE,RUNNING,GROUP}` (`GROUP` added for the B4 group-by case).
+`spider/probe/full_eval.py:DEPTH_PRIMS` mirrors the live gate, so its number now reflects **what actually
+ships**. The durable, cleanly-attributable wins are kept: the join-flatten fix (−79 hard errors), the
+COUNT/SUM fix, and the integer-year fix.
+
+**(b) Spider must be scored on the NON-WORLD subset.** PreReasoner has two separable capabilities —
+(1) text-to-SQL over self-contained data, and (2) world-model resolution+join (only `city`/`country` have
+world tables). Spider exercises only (1); every gold query touching a `country`/`city` column is where (2)
+would fire on the live system, so it belongs in the **world suite**, not Spider. `spider/probe/subset_rescore.py`
+partitions dev into **771 clean text-to-SQL** vs **263 world-touching** (`world_1` 116, `flight_2` 32,
+`car_1` 22, `concert_singer` 21, `wta_1` 18, `course_teach` 12, `tvshow` 12, …) and re-scores any
+per-example file on each subset (no model re-run). Note: the offline harness runs `world=None`, so the
+world-touching set does **not** fail here from bad world joins (none are attempted) — the split is about
+correct **attribution** (those queries' live behavior is world routing) and about not letting entity-column
+queries flatter or drag the pure text-to-SQL number.
+
+**Three-way, scalar-gold / lenient / strict %** (gold_tables, n=1034; re-scored via `subset_rescore.py`):
+
+| subset | before (baseline) | tier-1 (peak, pre-revert) | **now (HEAD / deployed)** |
+|---|---|---|---|
+| **ALL** (1034) | 35.5 / 25.8 / 13.5 | 49.8 / 40.6 / 19.3 | **46.0 / 38.6 / 16.7** |
+| **CLEAN text-to-SQL** (771) | 39.9 / 27.1 / 15.3 | 53.7 / 44.5 / 21.0 | **50.5 / 41.9 / 18.7** |
+| WORLD-touching (263) → world suite | 22.1 / 22.1 / 8.4 | 37.1 / 29.3 / 14.4 | 31.6 / 28.9 / 11.0 |
+
+**Headline (deployed, before → now, clean text-to-SQL suite):** scalar **39.9% → 50.5%** (+10.6), lenient
+**27.1% → 41.9%** (+14.8), strict **15.3% → 18.7%** (+3.4); error rate **9.0% → 2.3%** (the 79 `join_build`
+hard errors gone and staying gone). "Now" sits **below** the tier-1 peak by ~3 pts scalar because the
+routing trim was traded away to keep the live world path correct — the right trade: Spider is the
+diagnostic, the live product is the target. Routing "now": slot 740 / compose 288 (baseline 427/606, tier-1
+878/156). Artifacts: `full_eval_now.json`, `full_eval_per_example_now.json` (gitignored), `subset_rescore.py`.
+
+**LLM yardstick.** On the comparable metric (strict ≈ Spider execution accuracy), the deployed generator is
+~**18.7% clean strict** vs strong LLM pipelines at **~82–86%** (top leaderboard ~91%). The gap is the ~16%
+structurally-impossible floor (no subquery/set-op primitive) + projection/multi-join binding — on a **0.5B
+interpretable generator** (Qwen2.5-0.5B + LoRA) that emits SQL as an inspectable view stack, not a
+GPT-4-class free-form model. Spider is not the product target; capability (2), scored 0 here by construction,
+is measured in the world suite.
