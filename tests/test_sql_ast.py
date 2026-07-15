@@ -470,6 +470,67 @@ def test_phase4_can_be_disabled_without_contaminating_phase3():
     assert " HAVING " in phase4[0].sql
 
 
+def test_phase5_searches_row_superlative():
+    candidate = best("Show the name and country of the youngest person", [PEOPLE])
+    assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 1')
+    assert execute([PEOPLE], candidate.sql) == [("Bob", "France")]
+
+
+def test_phase5_preserves_filter_on_row_superlative():
+    candidate = best(
+        "For people from France, show the name of the oldest person",
+        [PEOPLE],
+    )
+    assert 'WHERE "people"."Country" = \'France\'' in candidate.sql
+    assert candidate.sql.endswith('ORDER BY "people"."Age" DESC LIMIT 1')
+    assert execute([PEOPLE], candidate.sql) == [("Alice",)]
+
+
+def test_phase5_searches_explicit_top_n():
+    candidate = best("Show the 2 youngest people names", [PEOPLE])
+    assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 2')
+    assert execute([PEOPLE], candidate.sql) == [("Bob",), ("Alice",)]
+
+
+def test_phase5_searches_frequency_superlative():
+    candidate = best("Which country has the most people?", [PEOPLE])
+    assert 'GROUP BY "people"."Country"' in candidate.sql
+    assert candidate.sql.endswith("ORDER BY COUNT(*) DESC LIMIT 1")
+    assert execute([PEOPLE], candidate.sql) == [("France",)]
+
+
+def test_phase5_frequency_superlative_can_return_count():
+    candidate = best(
+        "List the country with the most people and how many people it has",
+        [PEOPLE],
+    )
+    assert candidate.sql.startswith('SELECT "people"."Country", COUNT(*)')
+    assert execute([PEOPLE], candidate.sql) == [("France", 2)]
+
+
+def test_phase5_searches_set_difference():
+    candidate = best(
+        "Show the stadium names without any concert",
+        [STADIUM, CONCERT],
+        STADIUM_FKS,
+    )
+    assert " EXCEPT SELECT " in candidate.sql
+    assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
+
+
+def test_phase5_guards_multi_aggregate_and_can_be_disabled():
+    aggregate = best("What are the minimum and maximum age of people?", [PEOPLE])
+    assert aggregate.sql == 'SELECT MIN("people"."Age"), MAX("people"."Age") FROM "people"'
+
+    searcher = SQLSearcher.from_tables([PEOPLE], [])
+    question = "Show the name and country of the youngest person"
+    phase4 = searcher.search(question, phase5=False)
+    phase5 = searcher.search(question, phase5=True)
+    assert all("phase5:" not in evidence for candidate in phase4 for evidence in candidate.evidence)
+    assert " LIMIT 1" not in phase4[0].sql
+    assert " LIMIT 1" in phase5[0].sql
+
+
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -503,6 +564,13 @@ TESTS = [
     test_phase4_keeps_grouped_superlative_as_aggregate,
     test_phase4_infers_high_confidence_missing_entity_fk,
     test_phase4_can_be_disabled_without_contaminating_phase3,
+    test_phase5_searches_row_superlative,
+    test_phase5_preserves_filter_on_row_superlative,
+    test_phase5_searches_explicit_top_n,
+    test_phase5_searches_frequency_superlative,
+    test_phase5_frequency_superlative_can_return_count,
+    test_phase5_searches_set_difference,
+    test_phase5_guards_multi_aggregate_and_can_be_disabled,
 ]
 
 

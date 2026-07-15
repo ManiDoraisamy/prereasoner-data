@@ -131,10 +131,19 @@ class CandidateRanker:
         select_columns = tuple(item.expression for item in query.select if isinstance(item.expression, ColumnRef))
         aggregates = tuple(item.expression for item in query.select if isinstance(item.expression, Aggregate))
         group_columns = query.group_by
+        count_ranked = any(
+            isinstance(term.expression, Aggregate) and term.expression.function == "COUNT"
+            for term in query.order_by
+        )
         features: list[tuple[str, float]] = [("base", 0.0)]
 
         if roles.count_requested:
-            if roles.group_requested:
+            if count_ranked:
+                features.append((
+                    "count_ranked_entity",
+                    4.0 if group_columns and query.limit is not None and select_columns else -3.0,
+                ))
+            elif roles.group_requested:
                 features.append(("count_group_present", 2.5 if group_columns else -4.0))
             else:
                 features.append(("count_without_spurious_group", 2.5 if not group_columns else -5.0))
@@ -149,7 +158,12 @@ class CandidateRanker:
                 features.append(("distinct_not_grouped", -3.0))
 
         for column in group_columns:
-            alignment = self._group_alignment(column, roles)
+            alignment = self._group_alignment(column, roles) or (
+                count_ranked and any(
+                    selected == column or selected.table == column.table
+                    for selected in select_columns
+                )
+            )
             features.append((f"group_role:{_column_label(column)}", 2.5 if alignment else -4.0))
 
         for column in select_columns:

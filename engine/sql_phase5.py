@@ -12,7 +12,6 @@ from engine.sql_ast import (
     Literal,
     OrderTerm,
     Predicate,
-    Query,
     SQLType,
     ScalarSubquery,
     SelectItem,
@@ -94,9 +93,25 @@ class Phase5Expander(Phase4Expander):
         token_set = set(tokens)
         if token_set & {"different", "each", "per"}:
             return []
+        if token_set & {"order", "ordered", "sort", "sorted"}:
+            return []
         if token_set & {"average", "avg", "mean", "sum", "total"}:
             return []
+        if token_set & {"maximum", "max"} and token_set & {"minimum", "min"}:
+            return []
+        if ("how" in token_set or "number" in token_set or "count" in token_set) and bool(
+            token_set & {"greater", "larger", "less", "lower", "more", "smaller", "than"}
+        ):
+            return []
+        if token_set & {"rarest", "commonest"} or (
+            token_set & {"most", "least"} and "common" in token_set
+        ):
+            return []
         targets = self._superlative_targets(tokens)
+        targets = [
+            target for target in targets
+            if not self._prefer_scalar_extrema(target, candidates)
+        ]
         if not targets:
             return []
         frequency = _frequency_cue(tokens)
@@ -167,6 +182,77 @@ class Phase5Expander(Phase4Expander):
                     )
                     if built is not None:
                         out.append(built)
+        out.extend(self._direct_row_superlatives(tokens, targets, limit, candidates))
+        return out
+
+    def _direct_row_superlatives(
+        self, tokens: tuple[str, ...], targets: Sequence[SuperlativeTarget], limit: int,
+        candidates: Sequence[ScoredQuery],
+    ) -> list[ScoredQuery]:
+        linked = []
+        for table in self.schema.tables:
+            linked.extend(self._projection_columns(tokens, table))
+        linked.sort(key=lambda item: (item[2], -item[1], item[0].table, item[0].name))
+        projection_columns = tuple(dict.fromkeys(column for column, _, _ in linked[:6]))
+        if not projection_columns:
+            return []
+
+        categorical_options = []
+        for candidate in candidates[:60]:
+            query = candidate.query
+            if not isinstance(query, SelectQuery):
+                continue
+            terms = [
+                term for term in _and_terms(query.where)
+                if isinstance(term, Comparison)
+                and isinstance(term.right, Literal)
+                and not term.right.type.numeric
+                and not _linker_noise(term)
+            ]
+            if terms:
+                categorical_options.append(terms)
+        categorical_options.append([])
+
+        out = []
+        for target in targets[:3]:
+            numeric = [
+                comparison for comparison in self._numeric_comparisons(tokens)
+                if comparison.left != target.column
+                and not _is_limit_literal(comparison, tokens, target.cue_position, limit)
+            ]
+            for categorical in categorical_options[:8]:
+                filters = _unique_predicates(categorical + numeric)
+                required = {target.column.table}
+                required.update(column.table for column in projection_columns)
+                required.update(
+                    term.left.table for term in filters
+                    if isinstance(term, Comparison) and isinstance(term.left, ColumnRef)
+                )
+                for tree in self.schema.join_trees(required, limit=6):
+                    shell = SelectQuery(
+                        tuple(SelectItem(column) for column in projection_columns),
+                        tree.root,
+                        joins=tree.joins,
+                    )
+                    projection = self._row_projection(tokens, shell, target.column)
+                    if not projection:
+                        continue
+                    query = replace(
+                        shell,
+                        select=projection,
+                        where=and_predicates(filters),
+                        order_by=(OrderTerm(target.column, target.direction),),
+                        limit=limit,
+                        distinct=_explicit_distinct(tokens),
+                    )
+                    built = _candidate(
+                        query,
+                        64.0 + target.score + 0.75 * len(projection)
+                        + min(2.0, float(len(categorical))) - 0.2 * len(tree.joins),
+                        ("phase5:row-superlative:direct",),
+                    )
+                    if built is not None:
+                        out.append(built)
         return out
 
     def _frequency_superlative_candidates(
@@ -234,9 +320,12 @@ class Phase5Expander(Phase4Expander):
                         groups = self._frequency_groups(
                             entity_table, counted_table, joins, columns
                         )
+                        select = projection
+                        if _frequency_count_output(tokens):
+                            select = projection + (SelectItem(Aggregate("COUNT", Star())),)
                         for selected_where, where_bonus in where_options:
                             query = SelectQuery(
-                                select=projection,
+                                select=select,
                                 from_table=source,
                                 joins=joins,
                                 where=selected_where,
@@ -260,7 +349,7 @@ class Phase5Expander(Phase4Expander):
         self, question: str, candidates: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
         match = _NEGATIVE_RE.search(question)
-        if match is None:
+        if match is None or "but" in _tokens(question):
             return []
         tokens = _tokens(question)
         normalized_prefix = _tokens(question[:match.start()])
@@ -345,7 +434,10 @@ class Phase5Expander(Phase4Expander):
             mention_positions.extend(
                 index for index, token in enumerate(tokens) if token == compact
             )
-            explicit = _column_matches(column.name, token_set)
+            measure_words = semantic - {"num", "number", "of"}
+            explicit = _column_matches(column.name, token_set) or bool(
+                measure_words and measure_words <= token_set
+            )
             inferred_age = bool(
                 semantic & {"age", "birth", "birthday", "date"}
                 and any(cue in {"youngest", "oldest"} for _, cue in cue_positions)
@@ -408,6 +500,27 @@ class Phase5Expander(Phase4Expander):
         if target not in columns and _target_requested_in_projection(target, tokens):
             columns.append(target)
         return tuple(SelectItem(column) for column in dict.fromkeys(columns[:4]))
+
+    @staticmethod
+    def _prefer_scalar_extrema(
+        target: SuperlativeTarget, candidates: Sequence[ScoredQuery]
+    ) -> bool:
+        temporal = bool(set(_semantic_tokens(target.column.name)) & {"date", "time", "year"})
+        if not temporal:
+            return False
+        for candidate in candidates:
+            query = candidate.query
+            if not isinstance(query, SelectQuery):
+                continue
+            selected = {
+                item.expression for item in query.select
+                if isinstance(item.expression, ColumnRef)
+            }
+            if target.column not in selected:
+                continue
+            if any(_target_extrema_predicate(term, target.column) for term in _and_terms(query.where)):
+                return True
+        return False
 
     @staticmethod
     def _frequency_groups(
@@ -473,6 +586,15 @@ def _frequency_relation_words(tokens: tuple[str, ...], cue_position: int) -> set
             break
         out.append(token)
     return set(out)
+
+
+def _frequency_count_output(tokens: tuple[str, ...]) -> bool:
+    normalized = " ".join(tokens)
+    return bool(
+        re.search(r"\band (?:the )?(?:number|count|how many)\b", normalized)
+        or re.search(r"\b(?:number|count) (?:of )?.{0,25}\bit has\b", normalized)
+        or re.search(r"\bhow many .{0,30}\b(?:use|uses|have|has)\b", normalized)
+    )
 
 
 def _observed_numeric(values: Sequence[object]) -> bool:

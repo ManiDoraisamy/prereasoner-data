@@ -1396,6 +1396,10 @@ def _nearby_operator(tokens: tuple[str, ...], index: int) -> str:
         return "<"
     if after == ("or", "more"):
         return ">="
+    if after in {("or", "after"), ("or", "later")}:
+        return ">="
+    if after in {("or", "before"), ("or", "earlier")}:
+        return "<="
     return "="
 
 
@@ -1438,12 +1442,16 @@ def _is_id(name: str) -> bool:
 
 
 def _projection_window(tokens: tuple[str, ...]) -> tuple[tuple[int, str], ...]:
-    commands = {"find", "give", "list", "return", "show"}
+    commands = {"find", "give", "list", "return", "show", "what", "which"}
     boundaries = {"has", "have", "having", "shared", "that", "under", "where", "which", "who", "whose", "with"}
     late_commands = [index for index, token in enumerate(tokens) if token in commands and index > 2]
     if late_commands:
         start = late_commands[-1] + 1
-        return tuple(enumerate(tokens[start:], start))
+        end = next(
+            (index for index in range(start + 1, len(tokens)) if tokens[index] in boundaries),
+            len(tokens),
+        )
+        return tuple(enumerate(tokens[start:end], start))
     start = 1 if tokens and tokens[0] in commands else 0
     end = next(
         (index for index in range(max(start + 1, 2), len(tokens)) if tokens[index] in boundaries),
