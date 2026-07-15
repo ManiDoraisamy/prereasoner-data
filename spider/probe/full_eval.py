@@ -22,7 +22,12 @@ import argparse
 import collections
 import json
 import os
+import sys
 import warnings
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
 
 warnings.filterwarnings("ignore")
 
@@ -35,6 +40,21 @@ DIFFS = ["easy", "medium", "hard", "extra"]
 # The Spider-only trim of TOPN/SORT/TIME was REVERTED: it lifted the benchmark but broke live composite view
 # stacks (test_geo). This mirror tracks the live gate, so the Spider number here reflects real behavior.
 DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
+
+
+def spider_foreign_keys(meta):
+    """Convert Spider's indexed FK metadata to the planner's named edge format."""
+    columns = meta["column_names_original"]
+    tables = meta["table_names_original"]
+    out = []
+    for from_index, to_index in meta.get("foreign_keys", []):
+        from_table, from_column = columns[from_index]
+        to_table, to_column = columns[to_index]
+        if from_table < 0 or to_table < 0:
+            continue
+        out.append({"from_table": tables[from_table], "from_col": from_column,
+                    "to_table": tables[to_table], "to_col": to_column, "conf": 1.0})
+    return out
 
 
 def slot_predict(enc, tabs, question):
@@ -55,6 +75,41 @@ def slot_predict(enc, tabs, question):
                                           "join" if join else "") if k)]}
 
 
+def ast_predict(enc, tabs, question, schema_fks=None):
+    """Run semantic AST ranking, then execution-rerank a bounded candidate prefix."""
+    norm, discovered_fks = enc.ingest(tabs)
+    fks = schema_fks if schema_fks is not None else discovered_fks
+    sch, _, tmap = enc.schema(norm, fks)
+    candidates = enc.search_ast(question, sch, norm, fks)
+    from engine.sql_rank import execute_and_rerank
+    from engine.sql_search import SchemaGraph
+
+    def execute(sql):
+        ok, why = enc.guard(sql)
+        if not ok:
+            raise RuntimeError(f"guard: {why}")
+        return enc.execute(tmap, sch, sql)
+
+    graph = SchemaGraph.from_planner(sch, fks)
+    executions = execute_and_rerank(question, candidates, graph, execute, max_candidates=5)
+    errors = [execution.error for execution in executions if execution.error]
+    for execution in executions:
+        candidate = execution.candidate
+        if execution.error:
+            continue
+        rows = execution.rows
+        ok, why = enc.guard(candidate.sql)
+        if not ok:
+            errors.append(f"guard: {why}")
+            continue
+        return {"ok": True, "sql": candidate.sql, "rows": [list(row) for row in rows], "path": "ast",
+                "plan": list(candidate.evidence), "candidate_count": len(candidates),
+                "executed_candidate_count": len(executions), "candidate_score": round(candidate.score, 4),
+                "rank_features": dict(candidate.features)}
+    detail = errors[0] if errors else "no connected AST candidate"
+    return {"ok": False, "error": detail, "stage": "ast_search", "path": "ast"}
+
+
 def compose_predict(eng, tabs, question):
     res = eng.run(tabs, question, world=None)
     ans = res.get("answer")
@@ -73,7 +128,7 @@ _ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
 _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 
 
-def predict(enc, eng, reader, tabs, question):
+def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None):
     """Route like the live system (gate -> compose -> stand-or-fall-back -> delegate/slot). Any
     unrecovered exception is caught and attributed to a stage."""
     try:
@@ -91,12 +146,12 @@ def predict(enc, eng, reader, tabs, question):
         except Exception:                         # noqa: BLE001 — live serve() delegates on engine error
             pass
     try:
-        return slot_predict(enc, tabs, question)
+        return ast_predict(enc, tabs, question, schema_fks) if planner == "ast" else slot_predict(enc, tabs, question)
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
         stage = ("join_build" if ("ambiguous" in str(e) or ("join" in str(e).lower()))
                  else "assemble_exec")
-        return {"ok": False, "error": msg, "stage": stage, "path": "slot"}
+        return {"ok": False, "error": msg, "stage": stage, "path": planner}
 
 
 def main():
@@ -106,6 +161,8 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "results"))
     ap.add_argument("--per-diff", type=int, default=0)
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
+    ap.add_argument("--planner", default="slot", choices=["slot", "ast"],
+                    help="fallback text-to-SQL planner; ast enables deterministic AST search and ranking")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0)
     ap.add_argument("--tag", default="")
@@ -113,6 +170,7 @@ def main():
 
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     tables_meta = {t["db_id"]: t for t in json.load(open(os.path.join(args.data, "tables.json"), encoding="utf-8"))}
+    ast_fks = {db_id: spider_foreign_keys(meta) for db_id, meta in tables_meta.items()} if args.planner == "ast" else {}
 
     buckets = collections.defaultdict(list)
     for i, ex in enumerate(dev):
@@ -155,7 +213,10 @@ def main():
         else:
             tabs = list(capped.values())
 
-        r, terr = run_with_timeout(lambda: predict(enc, eng, reader, tabs, ex["question"]), args.timeout)
+        r, terr = run_with_timeout(
+            lambda: predict(enc, eng, reader, tabs, ex["question"], args.planner, ast_fks.get(db_id)),
+            args.timeout,
+        )
         if terr is not None:
             r = {"ok": False, "error": str(terr), "stage": "timeout", "path": "timeout"}
         cmp = compare(gold_rows, r.get("rows")) if r["ok"] else {}
@@ -187,7 +248,7 @@ def main():
         tot.update(stat[d])
     N = max(tot["n"], 1)
     summary = {
-        "n": tot["n"], "config": args.config,
+        "n": tot["n"], "config": args.config, "planner": args.planner,
         "answered_pct": round(100 * tot["answered"] / N, 1),
         "error_pct": round(100 * tot["error"] / N, 1),
         "correct_lenient_pct": round(100 * tot["correct_lenient"] / N, 1),

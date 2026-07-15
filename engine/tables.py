@@ -595,6 +595,48 @@ class TableQuery:
                     return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
         return None
 
+    def ast_semantic_signals(self, question, sch):
+        """Encode role-specific question phrases in the same metric space as schema columns."""
+        from engine.sql_rank import SemanticSignals, semantic_role_phrases
+        phrases = semantic_role_phrases(question)
+        columns = [c for c in sch if c.get("qvec") is not None]
+        if not columns or getattr(self, "qwen", None) is None:
+            return SemanticSignals.empty()
+        tables = sorted({c["table"] for c in sch})
+        roles = list(phrases)
+        vectors = self._encode([phrases[role] for role in roles] + tables)
+        role_vectors = {role: vectors[i] for i, role in enumerate(roles)}
+        table_vectors = {table: vectors[len(roles) + i] for i, table in enumerate(tables)}
+
+        def cosine(a, b):
+            av = np.asarray(a, np.float32); bv = np.asarray(b, np.float32)
+            return float(av @ bv / ((np.linalg.norm(av) * np.linalg.norm(bv)) + 1e-9))
+
+        column_roles = {
+            role: {(c["table"], c["name"]): cosine(vector, c["qvec"]) for c in columns}
+            for role, vector in role_vectors.items()
+        }
+        global_vector = role_vectors["global"]
+        table_global = {table: cosine(global_vector, vector) for table, vector in table_vectors.items()}
+        return SemanticSignals(column_roles, table_global)
+
+    def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
+                   use_semantic_signals=True, phase2=True, phase3=True, phase4=True,
+                   phase5=True):
+        """Return ranked, typed SQL AST candidates for the deterministic planner.
+
+        This is parallel to ``plan``/``assemble`` during rollout: callers can compare both planners without
+        changing the established serving route.  ``tables`` stays in the signature to match ``plan`` and make
+        the boundary explicit; the rich ``sch`` already contains its values and inferred types.
+        """
+        from engine.sql_search import SQLSearcher, SchemaGraph
+        graph = SchemaGraph.from_planner(sch, fks)
+        signals = self.ast_semantic_signals(question, sch) if use_semantic_signals else None
+        return SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates).search(
+            question, semantic_signals=signals, phase2=phase2, phase3=phase3, phase4=phase4,
+            phase5=phase5,
+        )
+
     # ---------- assembly ----------
     def assemble(self, slots, join, involved, sch):
         toks = []

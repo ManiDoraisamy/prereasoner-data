@@ -1,0 +1,523 @@
+"""Hermetic execution tests for deterministic SQL AST search and ranking.
+
+Run: python -m tests.test_sql_ast
+"""
+from __future__ import annotations
+
+import sqlite3
+import sys
+
+from engine.sql_ast import (
+    ASTValidationError,
+    Aggregate,
+    ColumnRef,
+    Comparison,
+    ExistsPredicate,
+    InPredicate,
+    Join,
+    Literal,
+    OrderTerm,
+    SQLType,
+    ScalarSubquery,
+    SelectItem,
+    SelectQuery,
+    SetQuery,
+    Star,
+    SubquerySource,
+    render_query,
+    validate_query,
+)
+from engine.sql_rank import CandidateRanker, ExecutedCandidate, SemanticSignals
+from engine.sql_search import SQLSearcher, ScoredQuery
+
+
+PEOPLE = {
+    "name": "people",
+    "columns": ["Person_ID", "Name", "Country", "Age"],
+    "rows": [[1, "Alice", "France", 30], [2, "Bob", "France", 20], [3, "Cara", "Spain", 40]],
+}
+CUSTOMERS = {
+    "name": "customers",
+    "columns": ["Customer_ID", "Name"],
+    "rows": [[1, "Alice"], [2, "Bob"]],
+}
+ORDERS = {
+    "name": "orders",
+    "columns": ["Order_ID", "Customer_ID"],
+    "rows": [[10, 1], [11, 2]],
+}
+ITEMS = {
+    "name": "items",
+    "columns": ["Item_ID", "Order_ID", "Price"],
+    "rows": [[100, 10, 8], [101, 10, 12], [102, 11, 30]],
+}
+COMMERCE_FKS = [
+    {"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"},
+    {"from_table": "items", "from_col": "Order_ID", "to_table": "orders", "to_col": "Order_ID"},
+]
+STADIUM = {
+    "name": "stadium",
+    "columns": ["Stadium_ID", "Name", "Capacity"],
+    "rows": [[1, "Alpha", 6000], [2, "Beta", 9000], [3, "Gamma", 12000]],
+}
+CONCERT = {
+    "name": "concert",
+    "columns": ["Concert_ID", "Stadium_ID"],
+    "rows": [[1, 1], [2, 1], [3, 2]],
+}
+STADIUM_FKS = [
+    {"from_table": "concert", "from_col": "Stadium_ID", "to_table": "stadium", "to_col": "Stadium_ID"},
+]
+PETS = {
+    "name": "Pets",
+    "columns": ["PetID", "PetType", "pet_age"],
+    "rows": [[1, "dog", 3], [2, "cat", 5], [3, "dog", 7]],
+}
+AIRPORTS = {
+    "name": "airports",
+    "columns": ["AirportCode", "City"],
+    "rows": [["ABZ", "Aberdeen"], ["ASY", "Ashley"], ["LAX", "Los Angeles"]],
+}
+FLIGHTS = {
+    "name": "flights",
+    "columns": ["Flight_ID", "SourceAirport", "DestAirport"],
+    "rows": [[1, "ABZ", "ASY"], [2, "ASY", "ABZ"], [3, "ABZ", "LAX"]],
+}
+FLIGHT_FKS = [
+    {"from_table": "flights", "from_col": "SourceAirport", "to_table": "airports", "to_col": "AirportCode"},
+    {"from_table": "flights", "from_col": "DestAirport", "to_table": "airports", "to_col": "AirportCode"},
+]
+
+
+def _qident(value):
+    return '"' + str(value).replace('"', '""') + '"'
+
+
+def execute(tables, sql):
+    con = sqlite3.connect(":memory:")
+    for table in tables:
+        columns = table["columns"]
+        con.execute(f"CREATE TABLE {_qident(table['name'])} (" + ", ".join(_qident(c) for c in columns) + ")")
+        placeholders = ",".join("?" for _ in columns)
+        con.executemany(f"INSERT INTO {_qident(table['name'])} VALUES ({placeholders})", table["rows"])
+    rows = con.execute(sql).fetchall()
+    con.close()
+    return rows
+
+
+def best(question, tables, fks=()):
+    candidates = SQLSearcher.from_tables(tables, fks).search(question)
+    assert candidates, f"no candidates for {question!r}"
+    return candidates[0]
+
+
+def test_typed_ast_rejects_invalid_aggregate():
+    name = ColumnRef("people", "Name", SQLType.TEXT)
+    query = SelectQuery((SelectItem(Aggregate("SUM", name)),), "people")
+    try:
+        validate_query(query)
+    except ASTValidationError:
+        return
+    raise AssertionError("SUM(text) passed AST validation")
+
+
+def test_grouped_ast_rejects_ungrouped_ordering():
+    country = ColumnRef("people", "Country", SQLType.TEXT)
+    age = ColumnRef("people", "Age", SQLType.INTEGER)
+    query = SelectQuery(
+        (SelectItem(country), SelectItem(Aggregate("AVG", age))),
+        "people",
+        group_by=(country,),
+        order_by=(OrderTerm(age, "DESC"),),
+    )
+    try:
+        validate_query(query)
+    except ASTValidationError:
+        return
+    raise AssertionError("aggregate query ordered by an ungrouped column")
+
+
+def test_projection_filter_and_order():
+    candidate = best(
+        "Show name, country and age for people from France ordered by age descending",
+        [PEOPLE],
+    )
+    assert execute([PEOPLE], candidate.sql) == [("Alice", "France", 30), ("Bob", "France", 20)]
+    assert candidate.sql.endswith('ORDER BY "people"."Age" DESC')
+
+
+def test_multiple_aggregates_share_a_typed_operand():
+    candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
+    assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
+    assert 'AVG("people"."Age")' in candidate.sql
+    assert 'MIN("people"."Age")' in candidate.sql
+    assert 'MAX("people"."Age")' in candidate.sql
+
+
+def test_repeated_count_paraphrase_is_one_aggregate():
+    candidate = best("Count the number of people from France", [PEOPLE])
+    assert candidate.sql.count("COUNT(") == 1
+    assert execute([PEOPLE], candidate.sql) == [(2,)]
+
+
+def test_phase2_ranks_count_distinct_above_grouped_count():
+    candidate = best("Find the number of distinct type of pets", [PETS])
+    assert candidate.sql == 'SELECT COUNT(DISTINCT "Pets"."PetType") FROM "Pets"'
+    assert execute([PETS], candidate.sql) == [(2,)]
+
+
+def test_phase2_coordinates_multiple_aggregate_operands():
+    candidate = best("Find the average and maximum age for each type of pet", [PETS])
+    assert 'AVG("Pets"."pet_age")' in candidate.sql
+    assert 'MAX("Pets"."pet_age")' in candidate.sql
+    assert 'MAX("Pets"."PetType")' not in candidate.sql
+
+
+def test_multi_hop_join_uses_bridge_table():
+    candidate = best("show customer names and item prices", [CUSTOMERS, ORDERS, ITEMS], COMMERCE_FKS)
+    assert candidate.sql.count(" JOIN ") == 2
+    assert 'JOIN "orders"' in candidate.sql
+    assert execute([CUSTOMERS, ORDERS, ITEMS], candidate.sql) == [
+        ("Alice", 8), ("Alice", 12), ("Bob", 30),
+    ]
+
+
+def test_grouped_count_uses_entity_display_column():
+    candidate = best("For each stadium, how many concerts play there?", [STADIUM, CONCERT], STADIUM_FKS)
+    assert 'GROUP BY "stadium"."Name"' in candidate.sql
+    assert "COUNT(*)" in candidate.sql
+    assert execute([STADIUM, CONCERT], candidate.sql) == [("Alpha", 2), ("Beta", 1)]
+
+
+def test_filter_column_does_not_leak_into_projection():
+    candidate = best("show stadium names with capacity between 5000 and 10000", [STADIUM])
+    assert candidate.sql.startswith('SELECT "stadium"."Name" FROM')
+    assert execute([STADIUM], candidate.sql) == [("Alpha",), ("Beta",)]
+
+
+def test_order_column_does_not_leak_into_projection():
+    candidate = best("show people names ordered by age descending", [PEOPLE])
+    assert candidate.sql.startswith('SELECT "people"."Name" FROM')
+    assert execute([PEOPLE], candidate.sql) == [("Cara",), ("Alice",), ("Bob",)]
+
+
+def test_literals_are_escaped_by_renderer():
+    authors = {"name": "authors", "columns": ["Name"], "rows": [["O'Reilly"], ["Elsevier"]]}
+    candidate = best("show names for O'Reilly", [authors])
+    assert "'O''Reilly'" in candidate.sql
+    assert execute([authors], candidate.sql) == [("O'Reilly",)]
+
+
+def test_grouped_topn_orders_by_aggregate_across_bridge():
+    candidate = best("show top 2 customer names by total item price", [CUSTOMERS, ORDERS, ITEMS], COMMERCE_FKS)
+    assert 'GROUP BY "customers"."Name"' in candidate.sql
+    assert 'ORDER BY SUM("items"."Price") DESC LIMIT 2' in candidate.sql
+    assert execute([CUSTOMERS, ORDERS, ITEMS], candidate.sql) == [("Bob", 30), ("Alice", 20)]
+
+
+def test_search_is_deterministic():
+    searcher = SQLSearcher.from_tables([CUSTOMERS, ORDERS, ITEMS], COMMERCE_FKS)
+    first = [(c.sql, c.score) for c in searcher.search("show customer names and item prices")]
+    second = [(c.sql, c.score) for c in searcher.search("show customer names and item prices")]
+    assert first == second
+
+
+def test_encoder_role_signal_breaks_ambiguous_column_tie():
+    customers = {"name": "customers", "columns": ["Name"], "rows": [["Alice"]]}
+    orders = {"name": "orders", "columns": ["Name"], "rows": [["First order"]]}
+    signals = SemanticSignals(
+        {"projection": {("customers", "Name"): 0.1, ("orders", "Name"): 0.9}},
+        {},
+    )
+    candidates = SQLSearcher.from_tables([customers, orders], []).search(
+        "show names", semantic_signals=signals,
+    )
+    assert candidates[0].sql == 'SELECT "orders"."Name" FROM "orders"'
+    assert any(name == "model_projection" for name, _ in candidates[0].features)
+
+
+def test_execution_rerank_penalizes_empty_candidate():
+    query_a = SelectQuery((SelectItem(Star()),), "empty_table")
+    query_b = SelectQuery((SelectItem(Star()),), "nonempty_table")
+    first = ScoredQuery(query_a, render_query(query_a), 10.0, ())
+    second = ScoredQuery(query_b, render_query(query_b), 9.0, ())
+    ranked = CandidateRanker(SQLSearcher.from_tables(
+        [{"name": "empty_table", "columns": ["x"], "rows": []},
+         {"name": "nonempty_table", "columns": ["x"], "rows": [[1]]}],
+        [],
+    ).schema).rank_executions("show rows", [
+        ExecutedCandidate(first, ("x",), ()),
+        ExecutedCandidate(second, ("x",), ((1,),)),
+    ])
+    assert ranked[0].candidate.sql == second.sql
+
+
+def test_recursive_ast_scalar_subquery_executes():
+    age = ColumnRef("people", "Age", SQLType.INTEGER)
+    name = ColumnRef("people", "Name", SQLType.TEXT)
+    average = SelectQuery((SelectItem(Aggregate("AVG", age)),), "people")
+    query = SelectQuery(
+        (SelectItem(name),),
+        "people",
+        where=Comparison(age, ">", ScalarSubquery(average)),
+    )
+    assert execute([PEOPLE], render_query(query)) == [("Cara",)]
+
+
+def test_recursive_ast_correlated_exists_executes():
+    customer_id = ColumnRef("customers", "Customer_ID", SQLType.INTEGER)
+    order_customer_id = ColumnRef("orders", "Customer_ID", SQLType.INTEGER)
+    subquery = SelectQuery(
+        (SelectItem(Star()),),
+        "orders",
+        where=Comparison(order_customer_id, "=", customer_id),
+    )
+    query = SelectQuery(
+        (SelectItem(ColumnRef("customers", "Name", SQLType.TEXT)),),
+        "customers",
+        where=ExistsPredicate(subquery),
+    )
+    assert execute([CUSTOMERS, ORDERS], render_query(query)) == [("Alice",), ("Bob",)]
+
+
+def test_recursive_ast_set_query_in_derived_table_executes():
+    country = ColumnRef("people", "Country", SQLType.TEXT)
+    age = ColumnRef("people", "Age", SQLType.INTEGER)
+    older = SelectQuery(
+        (SelectItem(country),), "people", where=Comparison(age, ">", Literal(25, SQLType.INTEGER))
+    )
+    younger = SelectQuery(
+        (SelectItem(country),), "people", where=Comparison(age, "<", Literal(35, SQLType.INTEGER))
+    )
+    query = SelectQuery(
+        (SelectItem(Aggregate("COUNT", Star())),),
+        SubquerySource(SetQuery(older, "INTERSECT", younger), "matches"),
+    )
+    assert execute([PEOPLE], render_query(query)) == [(1,)]
+
+
+def test_phase3_searches_scalar_average():
+    candidate = best("Show names of people older than the average age", [PEOPLE])
+    assert "(SELECT AVG(" in candidate.sql
+    assert execute([PEOPLE], candidate.sql) == [("Cara",)]
+
+
+def test_phase3_searches_anti_membership():
+    candidate = SQLSearcher.from_tables([STADIUM, CONCERT], STADIUM_FKS).search(
+        "Show the stadium names without any concert", phase5=False
+    )[0]
+    assert " NOT IN (SELECT " in candidate.sql
+    assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
+
+
+def test_phase3_searches_route_self_join():
+    candidate = best(
+        "How many flights depart from City Aberdeen and have destination City Ashley?",
+        [AIRPORTS, FLIGHTS],
+        FLIGHT_FKS,
+    )
+    assert candidate.sql.count('JOIN "airports"') == 2
+    assert 'AS "source"' in candidate.sql and 'AS "destination"' in candidate.sql
+    assert execute([AIRPORTS, FLIGHTS], candidate.sql) == [(1,)]
+
+
+def test_phase3_searches_nested_count_aggregate():
+    students = {
+        "name": "students",
+        "columns": ["Student_ID", "Name"],
+        "rows": [[1, "Alice"], [2, "Bob"]],
+    }
+    pets = {
+        "name": "pets",
+        "columns": ["Pet_ID", "Student_ID"],
+        "rows": [[1, 1], [2, 1], [3, 2]],
+    }
+    fks = [
+        {"from_table": "pets", "from_col": "Student_ID", "to_table": "students", "to_col": "Student_ID"},
+    ]
+    candidate = best("What is the average number of pets per student?", [students, pets], fks)
+    assert 'AVG("counts"."value_count")' in candidate.sql
+    assert "FROM (SELECT" in candidate.sql
+    assert execute([students, pets], candidate.sql) == [(1.5,)]
+
+
+def test_phase4_searches_cross_table_count_having():
+    candidate = best(
+        "Show stadium names that have more than one concert",
+        [STADIUM, CONCERT],
+        STADIUM_FKS,
+    )
+    assert 'GROUP BY "stadium"."Stadium_ID"' in candidate.sql
+    assert "HAVING COUNT(*) > 1" in candidate.sql
+    assert execute([STADIUM, CONCERT], candidate.sql) == [("Alpha",)]
+
+
+def test_phase4_searches_single_table_count_having():
+    candidate = best("List countries having at least two people", [PEOPLE])
+    assert 'GROUP BY "people"."Country"' in candidate.sql
+    assert "HAVING COUNT(*) >= 2" in candidate.sql
+    assert execute([PEOPLE], candidate.sql) == [("France",)]
+
+
+def test_phase4_searches_disjunction():
+    candidate = best(
+        "How many people are from France or have age greater than 35?",
+        [PEOPLE],
+    )
+    assert '"people"."Country" = \'France\' OR "people"."Age" > 35' in candidate.sql
+    assert execute([PEOPLE], candidate.sql) == [(3,)]
+
+
+def test_phase4_disjunction_deduplicates_entities_across_relation():
+    customers = {
+        "name": "customers",
+        "columns": ["Customer_ID", "Name"],
+        "rows": [[1, "Alice"], [2, "Bob"]],
+    }
+    orders = {
+        "name": "orders",
+        "columns": ["Order_ID", "Customer_ID", "Type"],
+        "rows": [[1, 1, "cat"], [2, 1, "dog"], [3, 2, "bird"]],
+    }
+    fks = [
+        {"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"},
+    ]
+    candidate = best("Show customer names with order type cat or dog", [customers, orders], fks)
+    assert candidate.sql.startswith('SELECT DISTINCT "customers"."Name"')
+    assert execute([customers, orders], candidate.sql) == [("Alice",)]
+
+
+def test_phase4_disjunction_preserves_shared_official_filter():
+    countries = {
+        "name": "country",
+        "columns": ["Code", "Name"],
+        "rows": [["A", "Alpha"], ["B", "Beta"], ["C", "Gamma"]],
+    }
+    languages = {
+        "name": "countrylanguage",
+        "columns": ["CountryCode", "Language", "IsOfficial"],
+        "rows": [["A", "English", "T"], ["B", "Dutch", "T"], ["C", "English", "F"]],
+    }
+    fks = [
+        {"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"},
+    ]
+    candidate = best(
+        "What are the country names where either English or Dutch is the official language?",
+        [countries, languages],
+        fks,
+    )
+    assert '"countrylanguage"."IsOfficial" = \'T\'' in candidate.sql
+    assert execute([countries, languages], candidate.sql) == [("Alpha",), ("Beta",)]
+
+
+def test_phase4_searches_filtered_scalar_minimum():
+    cars = {
+        "name": "cars_data",
+        "columns": ["Id", "Horsepower", "Cylinders"],
+        "rows": [[1, 10, 2], [2, 20, 3], [3, 30, 4]],
+    }
+    names = {
+        "name": "car_names",
+        "columns": ["MakeId", "Make"],
+        "rows": [[1, "A"], [2, "B"], [3, "C"]],
+    }
+    fks = [
+        {"from_table": "car_names", "from_col": "MakeId", "to_table": "cars_data", "to_col": "Id"},
+    ]
+    candidate = best(
+        "Among the cars with more than lowest horsepower, which ones do not have more "
+        "than 3 cylinders? List the car makeid and make name.",
+        [cars, names],
+        fks,
+    )
+    assert candidate.sql.startswith('SELECT "car_names"."MakeId", "car_names"."Make"')
+    assert '"cars_data"."Cylinders" <= 3' in candidate.sql
+    assert '(SELECT MIN("cars_data"."Horsepower") FROM "cars_data")' in candidate.sql
+    assert execute([cars, names], candidate.sql) == [(2, "B")]
+
+
+def test_phase4_keeps_grouped_superlative_as_aggregate():
+    candidate = best("What is the maximum age for all the different countries?", [PEOPLE])
+    assert 'MAX("people"."Age")' in candidate.sql
+    assert 'GROUP BY "people"."Country"' in candidate.sql
+    assert "(SELECT MAX(" not in candidate.sql
+    assert execute([PEOPLE], candidate.sql) == [("France", 30), ("Spain", 40)]
+
+
+def test_phase4_infers_high_confidence_missing_entity_fk():
+    airlines = {
+        "name": "airlines",
+        "columns": ["uid", "Airline"],
+        "rows": [[1, "A"], [2, "B"], [3, "C"]],
+    }
+    flights = {
+        "name": "flights",
+        "columns": ["Airline", "FlightNo"],
+        "rows": [[1, 10], [1, 11], [2, 12]],
+    }
+    candidate = best("Find all airlines that have at least 2 flights", [airlines, flights])
+    assert 'JOIN "airlines" ON "flights"."Airline" = "airlines"."uid"' in candidate.sql
+    assert execute([airlines, flights], candidate.sql) == [("A",)]
+
+
+def test_phase4_can_be_disabled_without_contaminating_phase3():
+    searcher = SQLSearcher.from_tables([STADIUM, CONCERT], STADIUM_FKS)
+    question = "Show stadium names that have more than one concert"
+    phase3 = searcher.search(question, phase3=True, phase4=False, phase5=False)
+    phase4 = searcher.search(question, phase3=True, phase4=True, phase5=False)
+    assert all("phase4:" not in evidence for candidate in phase3 for evidence in candidate.evidence)
+    assert " HAVING " not in phase3[0].sql
+    assert " HAVING " in phase4[0].sql
+
+
+TESTS = [
+    test_typed_ast_rejects_invalid_aggregate,
+    test_grouped_ast_rejects_ungrouped_ordering,
+    test_projection_filter_and_order,
+    test_multiple_aggregates_share_a_typed_operand,
+    test_repeated_count_paraphrase_is_one_aggregate,
+    test_phase2_ranks_count_distinct_above_grouped_count,
+    test_phase2_coordinates_multiple_aggregate_operands,
+    test_multi_hop_join_uses_bridge_table,
+    test_grouped_count_uses_entity_display_column,
+    test_filter_column_does_not_leak_into_projection,
+    test_order_column_does_not_leak_into_projection,
+    test_literals_are_escaped_by_renderer,
+    test_grouped_topn_orders_by_aggregate_across_bridge,
+    test_search_is_deterministic,
+    test_encoder_role_signal_breaks_ambiguous_column_tie,
+    test_execution_rerank_penalizes_empty_candidate,
+    test_recursive_ast_scalar_subquery_executes,
+    test_recursive_ast_correlated_exists_executes,
+    test_recursive_ast_set_query_in_derived_table_executes,
+    test_phase3_searches_scalar_average,
+    test_phase3_searches_anti_membership,
+    test_phase3_searches_route_self_join,
+    test_phase3_searches_nested_count_aggregate,
+    test_phase4_searches_cross_table_count_having,
+    test_phase4_searches_single_table_count_having,
+    test_phase4_searches_disjunction,
+    test_phase4_disjunction_deduplicates_entities_across_relation,
+    test_phase4_disjunction_preserves_shared_official_filter,
+    test_phase4_searches_filtered_scalar_minimum,
+    test_phase4_keeps_grouped_superlative_as_aggregate,
+    test_phase4_infers_high_confidence_missing_entity_fk,
+    test_phase4_can_be_disabled_without_contaminating_phase3,
+]
+
+
+def main():
+    failed = []
+    for test in TESTS:
+        try:
+            test()
+            print(f"  ok   {test.__name__}")
+        except Exception as exc:  # noqa: BLE001
+            failed.append(test.__name__)
+            print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
+    print(f"\nSQL AST: {len(TESTS) - len(failed)} passed, {len(failed)} failed")
+    sys.exit(1 if failed else 0)
+
+
+if __name__ == "__main__":
+    main()
