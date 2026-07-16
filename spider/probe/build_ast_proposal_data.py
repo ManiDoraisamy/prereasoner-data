@@ -15,6 +15,7 @@ import collections
 import hashlib
 import json
 import os
+import re
 import sys
 from typing import Any, Iterable, Mapping, Sequence
 
@@ -31,6 +32,7 @@ except ImportError:  # direct script execution
 
 
 DATASET_VERSION = 1
+CONTRAST_VERSION = 1
 
 
 def split_database_ids(
@@ -211,6 +213,93 @@ def example_record(
     }
 
 
+def contrast_record(
+    record: Mapping[str, Any], metadata: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Build deterministic same-profile role contrasts for measured failure families."""
+    target = record["target"]
+    roles = target["roles"]
+    table_names = metadata["table_names_original"]
+    column_names = metadata["column_names_original"]
+    column_types = metadata.get("column_types", ())
+    inventory = []
+    type_by_column = {}
+    for index, (table_index, column_name) in enumerate(column_names):
+        if table_index < 0:
+            continue
+        qualified = (
+            f"{canonical_name(table_names[table_index])}.{canonical_name(column_name)}"
+        )
+        value_type = str(column_types[index]) if index < len(column_types) else "unknown"
+        inventory.append((qualified, canonical_name(table_names[table_index]), value_type))
+        type_by_column[qualified] = value_type
+
+    sketch = target["sketch"]
+    question_tokens = set(re.findall(r"[a-z0-9]+", str(record["question"]).lower()))
+    families = ["projection_identity"]
+    if len(target["tables"]) > 1:
+        families.append("multi_table_role_binding")
+    if sketch.get("aggregate.COUNT") and (
+        sketch.get("order.asc") or sketch.get("order.desc")
+    ) and sketch.get("group_items"):
+        families.append("frequency_extrema")
+    if (
+        "frequency_extrema" in families
+        and sketch.get("order.asc")
+        and question_tokens & {"fewest", "least", "minimum", "rarest"}
+    ):
+        families.append("zero_inclusive_counts")
+
+    pairs = []
+    seen = set()
+    for family in families:
+        selected_roles = (
+            ("projection",)
+            if family == "projection_identity"
+            else ("projection", "group", "order", "aggregate")
+        )
+        for role in selected_roles:
+            role_positives = set(roles.get(role, ()))
+            for positive in sorted(role_positives):
+                positive_table = positive.split(".", 1)[0]
+                positive_type = type_by_column.get(positive, "unknown")
+                negatives = sorted(
+                    qualified for qualified, table, value_type in inventory
+                    if qualified not in role_positives
+                    and (
+                        (family == "multi_table_role_binding" and table != positive_table)
+                        or (family != "multi_table_role_binding" and table == positive_table)
+                    )
+                    and value_type == positive_type
+                )
+                if not negatives:
+                    negatives = sorted(
+                        qualified for qualified, _, _ in inventory
+                        if qualified not in role_positives
+                    )
+                if not negatives:
+                    continue
+                negative = negatives[0]
+                key = (family, role, positive, negative)
+                if key in seen:
+                    continue
+                seen.add(key)
+                pairs.append({
+                    "family": family,
+                    "role": role,
+                    "positive": positive,
+                    "negative": negative,
+                })
+    return {
+        "version": CONTRAST_VERSION,
+        "example_id": record["example_id"],
+        "db_id": record["db_id"],
+        "split": record["split"],
+        "profile": target["sketch"],
+        "pairs": pairs,
+    }
+
+
 def _write_jsonl(path: str, records: Sequence[Mapping[str, Any]]) -> None:
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
@@ -269,6 +358,8 @@ def build_manifest(
     validation: Sequence[Mapping[str, Any]],
     seed: int,
     validation_ratio: float,
+    train_contrasts: Sequence[Mapping[str, Any]] = (),
+    validation_contrasts: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     train_sketches = {
         json.dumps(record["target"]["sketch"], sort_keys=True)
@@ -278,6 +369,9 @@ def build_manifest(
         sum(len(table["columns"]) for table in schema["tables"])
         for schema in schemas
     ]
+    contrast_counts = lambda records: dict(collections.Counter(
+        pair["family"] for record in records for pair in record["pairs"]
+    ).most_common())
     return {
         "version": DATASET_VERSION,
         "objective": "deterministic SQL AST sketch and role-aware schema-link proposals",
@@ -298,11 +392,18 @@ def build_manifest(
         },
         "train": _split_summary(train),
         "validation": _split_summary(validation, train_sketches),
+        "same_profile_contrasts": {
+            "train_pairs": sum(len(record["pairs"]) for record in train_contrasts),
+            "validation_pairs": sum(len(record["pairs"]) for record in validation_contrasts),
+            "train_by_family": contrast_counts(train_contrasts),
+            "validation_by_family": contrast_counts(validation_contrasts),
+        },
         "notes": [
             "Targets come from parsed gold SQL, not from the current candidate pool.",
             "Schema records contain names, types, keys, and foreign keys but no database cell dump.",
             "Predicate literals and LIMIT values are supervised with their bound column and operator.",
             "Validation databases are absent from train so schema-link metrics test transfer.",
+            "Contrast pairs share the example's exact gold profile and change only role bindings.",
         ],
     }
 
@@ -316,6 +417,13 @@ def main() -> None:
     parser.add_argument("--train-out", default=os.path.join(data, "ast_proposals_train.jsonl"))
     parser.add_argument("--validation-out", default=os.path.join(data, "ast_proposals_validation.jsonl"))
     parser.add_argument("--schemas-out", default=os.path.join(data, "ast_proposal_schemas.jsonl"))
+    parser.add_argument(
+        "--train-contrasts-out", default=os.path.join(data, "ast_proposal_contrasts_train.jsonl")
+    )
+    parser.add_argument(
+        "--validation-contrasts-out",
+        default=os.path.join(data, "ast_proposal_contrasts_validation.jsonl"),
+    )
     parser.add_argument("--manifest", default=os.path.join(results, "ast_proposal_data.json"))
     parser.add_argument("--validation-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=1729)
@@ -349,6 +457,15 @@ def main() -> None:
     _write_jsonl(args.schemas_out, schemas)
     _write_jsonl(args.train_out, train_records)
     _write_jsonl(args.validation_out, validation_records)
+    train_contrasts = [
+        contrast_record(record, metadata[str(record["db_id"])]) for record in train_records
+    ]
+    validation_contrasts = [
+        contrast_record(record, metadata[str(record["db_id"])])
+        for record in validation_records
+    ]
+    _write_jsonl(args.train_contrasts_out, train_contrasts)
+    _write_jsonl(args.validation_contrasts_out, validation_contrasts)
     manifest = build_manifest(
         args.source,
         schemas,
@@ -356,6 +473,8 @@ def main() -> None:
         validation_records,
         args.seed,
         args.validation_ratio,
+        train_contrasts,
+        validation_contrasts,
     )
     os.makedirs(os.path.dirname(os.path.abspath(args.manifest)), exist_ok=True)
     with open(args.manifest, "w", encoding="utf-8") as handle:

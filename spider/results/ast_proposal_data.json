@@ -139,10 +139,27 @@
       "having": 95
     }
   },
+  "same_profile_contrasts": {
+    "train_pairs": 13595,
+    "validation_pairs": 3268,
+    "train_by_family": {
+      "projection_identity": 7340,
+      "multi_table_role_binding": 4905,
+      "frequency_extrema": 1204,
+      "zero_inclusive_counts": 146
+    },
+    "validation_by_family": {
+      "projection_identity": 1719,
+      "multi_table_role_binding": 1122,
+      "frequency_extrema": 393,
+      "zero_inclusive_counts": 34
+    }
+  },
   "notes": [
     "Targets come from parsed gold SQL, not from the current candidate pool.",
     "Schema records contain names, types, keys, and foreign keys but no database cell dump.",
     "Predicate literals and LIMIT values are supervised with their bound column and operator.",
-    "Validation databases are absent from train so schema-link metrics test transfer."
+    "Validation databases are absent from train so schema-link metrics test transfer.",
+    "Contrast pairs share the example's exact gold profile and change only role bindings."
   ]
 }

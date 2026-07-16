@@ -41,6 +41,7 @@ missing candidate shapes, bounded search, and ranking the wrong valid interpreta
 | `engine/sql_learned_rank.py` | Optional dependency-free inference for frozen ranker artifacts. |
 | `engine/sql_profile.py` | Runtime structural and role-aware profiles for typed ASTs. |
 | `engine/sql_proposal.py` | Frozen deterministic sketch, table, and role-proposal artifact inference. |
+| `engine/sql_profile_expansion.py` | Bounded exact-profile projection, aggregate, group, order, and limit expansion. |
 | `spider/probe/ast_profile.py` | Spider-gold profiling and full-pool failure diagnosis. |
 | `spider/probe/mine_ast_failures.py` | Full-pool recall, linking, and composition failure analysis. |
 | `spider/probe/build_ast_proposal_data.py` | Database-disjoint sketch/link/literal supervision builder. |
@@ -279,6 +280,9 @@ and 11 threshold-calibration databases; the original 28-database validation spli
 untouched. The heads optimize feature presence, categorical feature counts, exact-profile
 top-k recall, table selection, and seven column roles. Column training uses deterministic
 same-table, same-type, and lexical hard negatives.
+The proposal builder also emits same-profile positive/negative role pairs. The current train
+split has 13,595 pairs: 7,340 projection-identity, 4,905 multi-table binding, 1,204
+frequency-extrema, and 146 zero-inclusive-count contrasts.
 
 On the 1,331 examples from 28 unseen validation databases:
 
@@ -288,29 +292,35 @@ On the 1,331 examples from 28 unseen validation databases:
 | Sketch presence micro F1 | 72.3% |
 | Gold-present categorical count accuracy | 77.7% |
 | Table MRR / top-1 / recall@3 | 84.2% / 74.0% / 88.6% |
-| Column-role macro MRR / top-1 / recall@3 | 62.4% / 46.9% / 67.3% |
+| Column-role macro MRR / top-1 / recall@3 | 63.0% / 47.6% / 67.8% |
+| Held-out projection / frequency contrast accuracy | 81.1% / 87.8% |
+| Held-out zero-inclusive / multi-table contrast accuracy | 97.1% / 82.2% |
 
-The integrated Spider-dev ablation is deliberately less flattering. Relative to the existing
-encoder-integrated AST baseline, the proposer changes 115 selected SQL predictions and produces
-seven strict wins and seven strict losses:
+The first passive-reranking ablation did not improve integrated top-1 accuracy. The current
+implementation instead uses the first 16 predicted profiles to instantiate validated variants
+of compatible typed scaffolds. Every generated query is re-profiled and retained only when its
+counted structure exactly equals the requested profile.
 
-| Integrated metric | Baseline | With proposer | Delta |
+On all 1,034 Spider dev examples, using the same gold-table configuration, pool 180, and
+denotation evaluator:
+
+| Candidate-pool metric | Phase 5 | Profile expansion | Delta |
 |---|---:|---:|---:|
-| Strict | 366 (35.4%) | 366 (35.4%) | 0 |
-| Lenient | 482 (46.6%) | 481 (46.5%) | -1 |
-| Scalar | 231/408 (56.6%) | 231/408 (56.6%) | 0 |
-| Timeouts | 3 | 10 | +7 |
+| Top-1 strict | 408 (39.5%) | 345 (33.4%) | -63 |
+| Top-10 strict oracle | 460 (44.5%) | 491 (47.5%) | +31 |
+| Full-pool strict oracle | 465 (45.0%) | 575 (55.6%) | +110 |
+| Full-pool lenient oracle | 612 (59.2%) | 738 (71.4%) | +126 |
+| Average candidates | 5.60 | 78.71 | +73.11 |
 
-The artifact is therefore research-only and remains under `spider/data/`. The important next
-step is not a larger encoder: the learned profile beam currently reorders ASTs that the grammar
-already generated; it does not instantiate a missing profile. Proposal-conditioned typed
-expansion must turn the beam into candidate recall. Training should also add same-profile
-contrastive cases for projection identity, frequency extrema, zero-inclusive counts, and
-multi-table role binding, where the ablation has paired wins and regressions. Only after that
-controlled 0.5B experiment should an otherwise identical Qwen2.5-1.5B run test capacity.
+The requested candidate-recall objective is therefore achieved: 110 additional dev examples now
+have a strict-correct typed query in the pool. The artifact remains research-only because ranking
+does not yet exploit the larger pool and the generator reaches the 180-candidate cap. The next
+work is proposal-aware ranking and deduplicating low-value binding combinations while preserving
+the 575-example strict oracle. A larger encoder remains a later controlled capacity ablation.
 
 Full metrics are in `spider/results/ast_proposer.json` and the promotion decision is in
-`spider/results/ast_proposer_ablation.json`.
+`spider/results/ast_proposer_ablation.json`; the full pool run is
+`spider/results/ast_profile_expansion.json`.
 
 ## Reproducing results
 
@@ -344,6 +354,11 @@ python spider/probe/full_eval.py --dbs spider/data/dbs \
   --config gold_tables --planner ast \
   --proposer-model spider/data/sql_proposer.json \
   --tag ast_proposer --checkpoint-every 25 --resume
+
+python spider/probe/ast_eval.py --dbs spider/data/dbs \
+  --pool 180 --top-k 10 \
+  --proposer-model spider/data/sql_proposer.json \
+  --out spider/results/ast_profile_expansion.json
 ```
 
 For slow CPU research environments, `--max-new 50` checkpoints and exits cleanly after
@@ -385,13 +400,14 @@ The hermetic AST suite executes generated SQL against in-memory SQLite:
 python -m tests.test_sql_ast
 ```
 
-Its 64 cases cover typing and grouping rejection, projection and filter isolation,
+Its 67 cases cover typing and grouping rejection, projection and filter isolation,
 multiple aggregates, direct and bridge joins, deterministic ordering, execution
 reranking, subqueries, set operations, aliases, self-joins, nested aggregation,
 `HAVING`, disjunction scope, inferred high-confidence joins, extrema, zero-inclusive
 counts, top-N, set difference, ranker artifact round trips, evaluator accounting,
 failure-profile alignment, database-disjoint proposal splits, literal targets, compact
-proposer artifact round trips, profile promotion, and opt-in learned-model isolation.
+proposer artifact round trips, profile promotion and expansion, same-profile contrast
+construction, and opt-in learned-model isolation.
 
 ## Current boundary
 
@@ -400,6 +416,7 @@ Phase 5 are complete as engineering capabilities. Phase 6 is complete as a train
 serialization, and deterministic-inference experiment, but its current artifact is
 not accurate enough to promote. Future accuracy work should target measured
 candidate-recall and schema-binding failures before adding more ranking complexity. The
-failure miner, proposal corpus, structured training objective, compact artifact, opt-in
-integration, and full ablation are complete. The next implementation phase is
-proposal-conditioned typed expansion, not another reranker or an unpaired model-size swap.
+failure miner, proposal corpus, structured training objective, compact artifact, profile-driven
+typed expansion, targeted contrast data, and full pool ablation are complete. The next
+implementation phase is proposal-aware ranking and expansion-budget calibration, not an
+unpaired model-size swap.

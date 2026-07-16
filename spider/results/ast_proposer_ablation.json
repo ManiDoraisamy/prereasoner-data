@@ -1,9 +1,9 @@
 {
-  "version": 1,
+  "version": 2,
   "artifact": {
     "path": "spider/data/sql_proposer.json",
-    "sha256": "33d7aed61b2e709e1382c7f05d99fa18edf5740d97085a9083eda023dfa0aeb0",
-    "bytes": 5121285,
+    "sha256": "301f9f5e39b5bd2fdb8e2f4dccc5187d24f46fb5a1fa46720704121ae61fdd56",
+    "bytes": 5121988,
     "promoted": false
   },
   "objective": "deterministic top-k AST sketch and role-aware schema linking",
@@ -21,11 +21,18 @@
     "table_mrr": 0.842276,
     "table_top1_hit": 0.740045,
     "table_recall_at_3": 0.886364,
-    "column_role_macro_mrr": 0.623558,
-    "column_role_macro_top1_hit": 0.468757,
-    "column_role_macro_recall_at_3": 0.672966
+    "column_role_macro_mrr": 0.629556,
+    "column_role_macro_top1_hit": 0.475566,
+    "column_role_macro_recall_at_3": 0.678226,
+    "same_profile_contrast_accuracy": {
+      "projection_identity": 0.810937,
+      "frequency_extrema": 0.877863,
+      "zero_inclusive_counts": 0.970588,
+      "multi_table_role_binding": 0.821747
+    }
   },
-  "integrated_spider_dev": {
+  "historical_passive_rerank": {
+    "artifact_sha256": "33d7aed61b2e709e1382c7f05d99fa18edf5740d97085a9083eda023dfa0aeb0",
     "examples": 1034,
     "config": "gold_tables",
     "baseline": {
@@ -64,9 +71,41 @@
     "changed_sql_predictions": 115,
     "selected_candidates_with_profile_feature": 451
   },
+  "profile_conditioned_pool": {
+    "examples": 1034,
+    "config": "gold_tables",
+    "pool": 180,
+    "baseline": {
+      "strict_correct": 408,
+      "strict_pct": 39.5,
+      "top10_oracle_strict_correct": 460,
+      "top10_oracle_strict_pct": 44.5,
+      "pool_oracle_strict_correct": 465,
+      "pool_oracle_strict_pct": 45.0,
+      "average_candidates": 5.6,
+      "maximum_candidates": 157
+    },
+    "with_profile_expansion": {
+      "strict_correct": 345,
+      "strict_pct": 33.4,
+      "top10_oracle_strict_correct": 491,
+      "top10_oracle_strict_pct": 47.5,
+      "pool_oracle_strict_correct": 575,
+      "pool_oracle_strict_pct": 55.6,
+      "average_candidates": 78.71,
+      "maximum_candidates": 180
+    },
+    "deltas": {
+      "strict_correct": -63,
+      "top10_oracle_strict_correct": 31,
+      "pool_oracle_strict_correct": 110,
+      "pool_oracle_strict_points": 10.6,
+      "average_candidates": 73.11
+    }
+  },
   "decision": {
     "promotion_gate_passed": false,
-    "reason": "The deterministic proposer changes valid interpretations but has zero strict and scalar net gain, a one-example lenient regression, and seven additional timeouts.",
-    "next_objective": "Use the learned beam to instantiate missing typed AST shapes, and add same-profile contrastive supervision for projection identity, frequency extrema, zero-inclusive counts, and multi-table role binding before a larger-backbone ablation."
+    "reason": "Profile-conditioned expansion adds 110 strict-reachable examples, but current ranking loses 63 top-1 strict answers and the average pool grows from 5.60 to 78.71 candidates.",
+    "next_objective": "Calibrate proposal-aware ranking and reduce redundant profile variants while preserving the 575-example strict pool oracle."
   }
 }

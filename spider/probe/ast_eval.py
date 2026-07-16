@@ -1,4 +1,4 @@
-"""Fast, model-free evaluation for the deterministic SQL AST phases.
+"""Deterministic SQL AST phase and optional profile-expansion evaluation.
 
 Phase 1 and Phase 2 share the same base pool; Phase 3 adds bounded recursive candidates;
 Phase 4 adds aggregate constraints, disjunctions, and relational subqueries; Phase 5 adds
@@ -18,6 +18,8 @@ import json
 import os
 import sys
 import time
+
+import numpy as np
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
@@ -47,6 +49,8 @@ from engine.sql_search import SQLSearcher
 def _score(counter, gold_rows, candidates, con, top_k):
     if is_scalar(gold_rows):
         counter["scalar_n"] += 1
+    counter["candidate_total"] += len(candidates)
+    counter["candidate_max"] = max(counter["candidate_max"], len(candidates))
     if not candidates:
         counter["no_candidate"] += 1
         return
@@ -80,6 +84,14 @@ def _summary(counter, total):
         "no_candidate": counter["no_candidate"],
         "execution_failure": counter["execution_failure"],
         "gold_execution_failure": counter["gold_execution_failure"],
+        "strict_correct": counter["strict"],
+        "lenient_correct": counter["lenient"],
+        "scalar_correct": counter["scalar"],
+        "topk_oracle_strict_correct": counter["topk_oracle_strict"],
+        "pool_oracle_strict_correct": counter["oracle_strict"],
+        "pool_oracle_lenient_correct": counter["oracle_lenient"],
+        "average_candidates": round(counter["candidate_total"] / max(total, 1), 2),
+        "maximum_candidates": counter["candidate_max"],
         "lenient_pct": pct(counter["lenient"]),
         "strict_pct": pct(counter["strict"]),
         "scalar_pct": pct(counter["scalar"], counter["scalar_n"]),
@@ -102,17 +114,40 @@ def main():
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--ranker-model", default="",
                         help="optional frozen Phase 6 ranker JSON")
+    parser.add_argument("--proposer-model", default="",
+                        help="optional frozen structured proposer JSON")
+    parser.add_argument("--profile-max-candidates", type=int, default=64)
+    parser.add_argument("--profile-per-profile", type=int, default=6)
     parser.add_argument("--out", default="")
     args = parser.parse_args()
+    if args.profile_max_candidates < 1 or args.profile_per_profile < 1:
+        parser.error("profile candidate budgets must be positive")
 
     rank_model = None
     if args.ranker_model:
         from engine.sql_learned_rank import load_ranker_model
         rank_model = load_ranker_model(args.ranker_model)
 
+    proposal_model = None
+    proposal_encoder = None
+    proposal_question_vectors = {}
+    descriptor_cache = {}
+    if args.proposer_model:
+        from engine.encoder_overlay import EncoderQuery
+        from engine.sql_proposal import SQLProposalModel
+
+        proposal_model = SQLProposalModel.load(args.proposer_model)
+        print("loading frozen encoder for profile proposals...", flush=True)
+        proposal_encoder = EncoderQuery()
+
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     if args.limit:
         dev = dev[:args.limit]
+    if proposal_encoder is not None:
+        vectors = proposal_encoder._encode([str(example["question"]) for example in dev])
+        proposal_question_vectors = {
+            index: vectors[index] for index in range(len(dev))
+        }
     metas = {meta["db_id"]: meta
              for meta in json.load(open(os.path.join(args.data, "tables.json"), encoding="utf-8"))}
     db_cache = {}
@@ -125,6 +160,8 @@ def main():
     }
     if rank_model is not None:
         stats["phase6"] = collections.Counter()
+    if proposal_model is not None:
+        stats["profile_expansion"] = collections.Counter()
     started = time.time()
 
     for index, example in enumerate(dev, 1):
@@ -153,6 +190,45 @@ def main():
         phase5 = searcher.search(
             example["question"], phase2=True, phase3=True, phase4=True, phase5=True
         )
+        profile_candidates = ()
+        if proposal_model is not None:
+            from engine.sql_proposal import semantic_signals_from_schema
+
+            schema_columns = tuple({
+                "table": column.ref.table,
+                "name": column.ref.name,
+                "affinity": (
+                    "INTEGER" if column.ref.type.value == "integer"
+                    else "REAL" if column.ref.type.value == "real"
+                    else "DATE" if column.ref.type.value == "date"
+                    else "TEXT"
+                ),
+                "is_date": column.ref.type.value == "date",
+            } for column in searcher.schema.columns)
+
+            def encode_with_cache(texts):
+                _, *descriptors = texts
+                missing = [
+                    descriptor for descriptor in dict.fromkeys(descriptors)
+                    if descriptor not in descriptor_cache
+                ]
+                if missing:
+                    encoded = proposal_encoder._encode(missing)
+                    descriptor_cache.update(zip(missing, encoded))
+                return np.vstack([
+                    proposal_question_vectors[index - 1],
+                    *(descriptor_cache[descriptor] for descriptor in descriptors),
+                ])
+
+            signals = semantic_signals_from_schema(
+                proposal_model, example["question"], schema_columns, encode_with_cache
+            )
+            profile_candidates = searcher.search(
+                example["question"], semantic_signals=signals,
+                phase2=True, phase3=True, phase4=True, phase5=True,
+                profile_max_candidates=args.profile_max_candidates,
+                profile_per_profile=args.profile_per_profile,
+            )
         phase6 = rank_model.rerank(example["question"], phase5) if rank_model else ()
 
         con = build_mem_db(tables)
@@ -163,6 +239,10 @@ def main():
             _score(stats["phase3"], gold_rows, phase3, con, args.top_k)
             _score(stats["phase4"], gold_rows, phase4, con, args.top_k)
             _score(stats["phase5"], gold_rows, phase5, con, args.top_k)
+            if proposal_model is not None:
+                _score(
+                    stats["profile_expansion"], gold_rows, profile_candidates, con, args.top_k
+                )
             if rank_model is not None:
                 _score(stats["phase6"], gold_rows, phase6, con, args.top_k)
         else:
@@ -176,6 +256,8 @@ def main():
         "config": args.config,
         "top_k": args.top_k,
         "pool": args.pool,
+        "profile_max_candidates": args.profile_max_candidates,
+        "profile_per_profile": args.profile_per_profile,
         "elapsed_seconds": round(time.time() - started, 2),
         "phase1": _summary(stats["phase1"], len(dev)),
         "phase2": _summary(stats["phase2"], len(dev)),
@@ -186,6 +268,11 @@ def main():
     if rank_model is not None:
         result["ranker_model"] = args.ranker_model
         result["phase6"] = _summary(stats["phase6"], len(dev))
+    if proposal_model is not None:
+        result["proposer_model"] = args.proposer_model
+        result["profile_expansion"] = _summary(
+            stats["profile_expansion"], len(dev)
+        )
     print(json.dumps(result, indent=2))
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

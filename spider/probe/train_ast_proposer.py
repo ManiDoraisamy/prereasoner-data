@@ -105,6 +105,14 @@ def _load_schemas(path: str) -> dict[str, dict[str, Any]]:
     return schemas
 
 
+def _load_contrasts(path: str) -> dict[str, dict[str, Any]]:
+    records = _load_jsonl(path)
+    contrasts = {str(record["example_id"]): record for record in records}
+    if len(contrasts) != len(records):
+        raise ValueError("proposal contrast file contains duplicate example IDs")
+    return contrasts
+
+
 def _sha256(path: str) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:
@@ -348,6 +356,7 @@ def _pair_dataset(
     embeddings: Embeddings,
     roles: Sequence[str] | None,
     max_column_candidates: int,
+    contrasts: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> PairDataset:
     question_indices: list[int] = []
     entity_indices: list[int] = []
@@ -395,9 +404,20 @@ def _pair_dataset(
                 for index in candidates
                 if entities[index].key.split("|column:", 1)[1] in positives
             }
-            kept = list(sorted(positive_indices))
-            kept.extend(index for index in ranked if index not in positive_indices)
-            candidates = kept[:max(max_column_candidates, len(positive_indices))]
+            record_contrasts = (contrasts or {}).get(str(record["example_id"]), {})
+            contrast_columns = {
+                str(pair[field])
+                for pair in record_contrasts.get("pairs", ())
+                for field in ("positive", "negative")
+            }
+            contrast_indices = {
+                index for index in candidates
+                if entities[index].key.split("|column:", 1)[1] in contrast_columns
+            }
+            required_indices = positive_indices | contrast_indices
+            kept = list(sorted(required_indices))
+            kept.extend(index for index in ranked if index not in required_indices)
+            candidates = kept[:max(max_column_candidates, len(positive_indices | contrast_indices))]
             candidate_targets = {}
             for index in candidates:
                 qualified = entities[index].key.split("|column:", 1)[1]
@@ -412,6 +432,9 @@ def _pair_dataset(
         positive_tables = {entities[index].table for index in positive_entities}
         for index in candidates:
             target = candidate_targets[index]
+            qualified = (
+                entities[index].key.split("|column:", 1)[1] if roles is not None else ""
+            )
             row_weights = []
             for role, role_position in role_index.items():
                 positive = bool(target[role_position])
@@ -423,7 +446,21 @@ def _pair_dataset(
                         or entities[index].value_type in positive_types
                     )
                 )
-                row_weights.append(2.0 if hard_negative else 1.0)
+                contrast_pairs = (
+                    (contrasts or {}).get(str(record["example_id"]), {}).get("pairs", ())
+                    if roles is not None else ()
+                )
+                contrast_positive = any(
+                    pair["role"] == role and pair["positive"] == qualified
+                    for pair in contrast_pairs
+                )
+                contrast_negative = any(
+                    pair["role"] == role and pair["negative"] == qualified
+                    for pair in contrast_pairs
+                )
+                row_weights.append(
+                    4.0 if contrast_negative else 2.0 if contrast_positive or hard_negative else 1.0
+                )
             question_indices.append(q_index)
             entity_indices.append(index)
             extras.append(pair_extra_features(
@@ -724,6 +761,46 @@ def ranking_metrics(
     return result
 
 
+def contrast_metrics(
+    dataset: PairDataset,
+    scores: np.ndarray,
+    records: Sequence[Mapping[str, Any]],
+    contrasts: Mapping[str, Mapping[str, Any]],
+    embeddings: Embeddings,
+    entities: Sequence[Entity],
+    role_names: Sequence[str],
+) -> dict[str, Any]:
+    entity_index = {entity.key: index for index, entity in enumerate(entities)}
+    row_index = {
+        (int(question), int(entity)): row
+        for row, (question, entity) in enumerate(
+            zip(dataset.question_indices, dataset.entity_indices)
+        )
+    }
+    role_index = {role: index for index, role in enumerate(role_names)}
+    outcomes: dict[str, list[float]] = {}
+    for record in records:
+        example_id = str(record["example_id"])
+        q_index = embeddings.question_index[example_id]
+        db_id = str(record["db_id"])
+        for pair in contrasts.get(example_id, {}).get("pairs", ()):
+            role = str(pair["role"])
+            positive = entity_index.get(_column_key(db_id, str(pair["positive"])))
+            negative = entity_index.get(_column_key(db_id, str(pair["negative"])))
+            positive_row = row_index.get((q_index, positive))
+            negative_row = row_index.get((q_index, negative))
+            if positive_row is None or negative_row is None or role not in role_index:
+                continue
+            position = role_index[role]
+            outcomes.setdefault(str(pair["family"]), []).append(float(
+                scores[positive_row, position] > scores[negative_row, position]
+            ))
+    return {
+        family: {"pairs": len(values), "accuracy": float(np.mean(values))}
+        for family, values in sorted(outcomes.items())
+    }
+
+
 def _round_metrics(value: Any) -> Any:
     if isinstance(value, float):
         return round(value, 6)
@@ -801,6 +878,13 @@ def main() -> None:
         "--validation", default=os.path.join(data, "ast_proposals_validation.jsonl")
     )
     parser.add_argument("--schemas", default=os.path.join(data, "ast_proposal_schemas.jsonl"))
+    parser.add_argument(
+        "--train-contrasts", default=os.path.join(data, "ast_proposal_contrasts_train.jsonl")
+    )
+    parser.add_argument(
+        "--validation-contrasts",
+        default=os.path.join(data, "ast_proposal_contrasts_validation.jsonl"),
+    )
     parser.add_argument("--adapter", default=os.path.join(ROOT, "engine", "data", "qwen_lora"))
     parser.add_argument("--cache", default=os.path.join(data, "ast_proposal_embeddings.npz"))
     parser.add_argument("--out", default=os.path.join(data, "sql_proposer.json"))
@@ -844,6 +928,8 @@ def main() -> None:
     validation_records = _limit_by_database(
         _load_jsonl(args.validation), args.max_validation
     )
+    train_contrasts = _load_contrasts(args.train_contrasts)
+    validation_contrasts = _load_contrasts(args.validation_contrasts)
     schemas = _load_schemas(args.schemas)
     records = train_records + validation_records
     missing_schemas = sorted({str(record["db_id"]) for record in records} - set(schemas))
@@ -901,7 +987,7 @@ def main() -> None:
     )
     fit_columns = _pair_dataset(
         fit, columns, column_by_db, embeddings.columns, embeddings, ROLE_NAMES,
-        args.max_column_candidates,
+        args.max_column_candidates, train_contrasts,
     )
     validation_tables = _pair_dataset(
         validation_records, tables, table_by_db, embeddings.tables, embeddings, None,
@@ -909,7 +995,7 @@ def main() -> None:
     )
     validation_columns = _pair_dataset(
         validation_records, columns, column_by_db, embeddings.columns, embeddings,
-        ROLE_NAMES, max(len(columns), args.max_column_candidates),
+        ROLE_NAMES, max(len(columns), args.max_column_candidates), validation_contrasts,
     )
     print(
         f"training pairs: tables={len(fit_tables)} columns={len(fit_columns)}",
@@ -971,6 +1057,10 @@ def main() -> None:
     )
     table_metrics = ranking_metrics(validation_tables, table_scores, ("table",))
     role_metrics = ranking_metrics(validation_columns, role_scores, ROLE_NAMES)
+    held_out_contrast_metrics = contrast_metrics(
+        validation_columns, role_scores, validation_records, validation_contrasts,
+        embeddings, columns, ROLE_NAMES,
+    )
     elapsed = time.time() - started
     hard_negatives = int(np.logical_and(fit_columns.labels == 0, fit_columns.weights > 1).sum())
     report = _round_metrics({
@@ -986,6 +1076,8 @@ def main() -> None:
             "train_sha256": provenance["train_sha256"],
             "validation_sha256": provenance["validation_sha256"],
             "schemas_sha256": provenance["schemas_sha256"],
+            "train_contrasts_sha256": _sha256(args.train_contrasts),
+            "validation_contrasts_sha256": _sha256(args.validation_contrasts),
         },
         "split": {
             "fit_examples": len(fit),
@@ -1031,6 +1123,7 @@ def main() -> None:
             "profile_beam": validation_profile_metrics,
             "tables": table_metrics,
             "column_roles": role_metrics,
+            "same_profile_contrasts": held_out_contrast_metrics,
         },
     })
     metadata = {
@@ -1041,6 +1134,8 @@ def main() -> None:
             "train_sha256": provenance["train_sha256"],
             "validation_sha256": provenance["validation_sha256"],
             "schemas_sha256": provenance["schemas_sha256"],
+            "train_contrasts_sha256": _sha256(args.train_contrasts),
+            "validation_contrasts_sha256": _sha256(args.validation_contrasts),
         },
         "maximum_feature_count": count_classes,
         "validation_metrics": report["validation"],

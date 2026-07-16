@@ -59,7 +59,11 @@ from spider.probe.ast_profile import (
     profile_query,
     profile_spider_sql,
 )
-from spider.probe.build_ast_proposal_data import extract_literal_targets, split_database_ids
+from spider.probe.build_ast_proposal_data import (
+    contrast_record,
+    extract_literal_targets,
+    split_database_ids,
+)
 
 
 PEOPLE = {
@@ -346,6 +350,52 @@ def test_proposed_sketch_profile_promotes_matching_typed_candidate():
     ])
     assert ranked[0].query == limited_query
     assert ("model_sketch_profile:1", 4.0) in ranked[0].features
+
+
+def test_profile_beam_expands_missing_projection_binding():
+    schema = SQLSearcher.from_tables([PEOPLE], []).schema
+    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
+    target = SelectQuery((SelectItem(age),), "people")
+    signals = SemanticSignals(
+        {"projection": {("people", "Age"): 1.0, ("people", "Name"): 0.1}},
+        {"people": 1.0},
+        (profile_query(target).sketch_map,),
+    )
+    candidates = SQLSearcher(schema, max_candidates=25).search(
+        "show people details", semantic_signals=signals, phase3=False, phase4=False, phase5=False
+    )
+    assert any(candidate.query == target for candidate in candidates)
+    assert any("profile-expand:1" in candidate.evidence for candidate in candidates)
+
+
+def test_profile_beam_instantiates_grouped_frequency_shape():
+    schema = SQLSearcher.from_tables([PEOPLE], []).schema
+    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
+    desired = SelectQuery(
+        (SelectItem(name), SelectItem(Aggregate("COUNT", Star()))),
+        "people",
+        group_by=(name,),
+        order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),),
+        limit=1,
+    )
+    profile = profile_query(desired).sketch_map
+    signals = SemanticSignals(
+        {
+            "projection": {("people", "Name"): 1.0},
+            "aggregate": {("people", "Age"): 0.8},
+            "group": {("people", "Name"): 1.0},
+            "order": {("people", "Age"): 0.7},
+        },
+        {"people": 1.0},
+        (profile,),
+    )
+    candidates = SQLSearcher(schema, max_candidates=40).search(
+        "show people details", semantic_signals=signals, phase3=False, phase4=False, phase5=False
+    )
+    expanded = [candidate for candidate in candidates if "profile-expand:1" in candidate.evidence]
+    assert expanded
+    assert all(profile_query(candidate.query).sketch_map == profile for candidate in expanded)
+    assert any(candidate.query == desired for candidate in expanded)
 
 
 def test_execution_rerank_penalizes_empty_candidate():
@@ -1085,6 +1135,56 @@ def test_ast_proposal_targets_keep_typed_filter_literals():
     ]
 
 
+def test_ast_proposal_contrasts_cover_targeted_same_profile_families():
+    record = {
+        "example_id": "library:00001",
+        "db_id": "library",
+        "split": "train",
+        "question": "Which author has the fewest books?",
+        "target": {
+            "sketch": {
+                "aggregate.COUNT": 2,
+                "blocks": 1,
+                "from_tables": 2,
+                "group_items": 1,
+                "joins": 1,
+                "join_predicates": 1,
+                "limit": 1,
+                "order.asc": 1,
+                "predicate.=": 1,
+                "select_items": 2,
+            },
+            "tables": ["authors", "books"],
+            "roles": {
+                "projection": ["authors.id", "authors.name"],
+                "group": ["authors.name"],
+                "aggregate": ["books.id"],
+                "order": ["books.id"],
+            },
+        },
+    }
+    metadata = {
+        "table_names_original": ["Authors", "Books"],
+        "column_names_original": [
+            (-1, "*"), (0, "id"), (0, "name"),
+            (1, "id"), (1, "author_id"), (1, "title"),
+        ],
+        "column_types": ["text", "number", "text", "number", "number", "text"],
+    }
+    contrast = contrast_record(record, metadata)
+    families = {pair["family"] for pair in contrast["pairs"]}
+    assert families == {
+        "projection_identity",
+        "frequency_extrema",
+        "zero_inclusive_counts",
+        "multi_table_role_binding",
+    }
+    assert contrast["profile"] == record["target"]["sketch"]
+    assert all(pair["positive"] != pair["negative"] for pair in contrast["pairs"])
+    for pair in contrast["pairs"]:
+        assert pair["negative"] not in set(record["target"]["roles"].get(pair["role"], ()))
+
+
 def test_sql_proposer_artifact_round_trip_is_deterministic():
     import numpy as np
 
@@ -1155,6 +1255,8 @@ TESTS = [
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,
     test_proposed_sketch_profile_promotes_matching_typed_candidate,
+    test_profile_beam_expands_missing_projection_binding,
+    test_profile_beam_instantiates_grouped_frequency_shape,
     test_execution_rerank_penalizes_empty_candidate,
     test_phase3_ranks_set_query_by_both_operands,
     test_recursive_ast_scalar_subquery_executes,
@@ -1198,6 +1300,7 @@ TESTS = [
     test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks,
     test_ast_proposal_split_is_deterministic_and_database_disjoint,
     test_ast_proposal_targets_keep_typed_filter_literals,
+    test_ast_proposal_contrasts_cover_targeted_same_profile_families,
     test_sql_proposer_artifact_round_trip_is_deterministic,
 ]
 

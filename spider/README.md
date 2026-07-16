@@ -12,8 +12,9 @@
 > Spider-train gold trees into database-disjoint sketch, schema-link, and literal targets;
 > `probe/train_ast_proposer.py` fits deterministic top-k sketch and role-aware schema heads.
 > Their audits are `results/ast_proposal_data.json`, `results/ast_proposer.json`, and
-> `results/ast_proposer_ablation.json`. The 0.5B proposer is not promoted: it leaves strict
-> and scalar accuracy unchanged in the full integrated ablation. These tools belong to the
+> `results/ast_proposer_ablation.json`. Profile-conditioned expansion raises strict pool oracle
+> from 45.0% to 55.6%, but is not promoted because top-1 strict falls and the average pool grows
+> from 5.60 to 78.71 candidates. These tools belong to the
 > current AST planner work; the rest of this document preserves the earlier route diagnosis.
 
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.

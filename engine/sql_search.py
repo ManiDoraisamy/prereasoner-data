@@ -76,7 +76,9 @@ class SQLSearcher:
 
     def search(self, question: str, semantic_signals=None, phase2: bool = True,
                phase3: bool = True, phase4: bool = True,
-               phase5: bool = True, rank_model=None) -> list[ScoredQuery]:
+               phase5: bool = True, rank_model=None,
+               profile_max_candidates: int = 64,
+               profile_per_profile: int = 6) -> list[ScoredQuery]:
         tokens = _tokens(question)
         if not tokens:
             return []
@@ -182,6 +184,16 @@ class SQLSearcher:
                     continue
                 generated = expander_type(self.schema, pool_size).expand(question, pool)
                 pool = _merge_candidates(pool, generated)
+        if semantic_signals is not None and semantic_signals.sketch_profiles:
+            from engine.sql_profile_expansion import ProfileQueryExpander
+
+            generated = ProfileQueryExpander(
+                self.schema,
+                semantic_signals,
+                min(pool_size, max(1, profile_max_candidates)),
+                max(1, profile_per_profile),
+            ).expand(question, pool)
+            pool = _merge_candidates(pool, generated)
         if not phase2:
             return pool[:self.max_candidates]
         from engine.sql_rank import CandidateRanker
