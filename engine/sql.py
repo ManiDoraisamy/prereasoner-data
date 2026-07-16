@@ -39,7 +39,10 @@ from engine.sql_rank import (
     execute_and_rerank,
 )
 from engine.sql_profile import SQLProfile, profile_query
+from engine.sql_profile_expansion import ProfileSearchConfig
+from engine.sql_planner import DeterministicSQLPlanner
 from engine.sql_proposal import SQLProposalModel, semantic_signals_from_schema
+from engine.sql_proposal_runtime import ProposalSignalProvider
 from engine.sql_schema import ForeignKey, SchemaGraph
 from engine.sql_search import SQLSearcher
 
@@ -52,6 +55,7 @@ __all__ = [
     "ColumnRef",
     "Comparison",
     "ExecutedCandidate",
+    "DeterministicSQLPlanner",
     "ExistsPredicate",
     "ForeignKey",
     "InPredicate",
@@ -64,6 +68,8 @@ __all__ = [
     "SQLSearcher",
     "SQLProfile",
     "SQLProposalModel",
+    "ProfileSearchConfig",
+    "ProposalSignalProvider",
     "SQLType",
     "ScalarSubquery",
     "SchemaGraph",

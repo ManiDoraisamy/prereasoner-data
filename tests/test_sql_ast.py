@@ -5,6 +5,7 @@ Run: python -m tests.test_sql_ast
 from __future__ import annotations
 
 from collections import Counter
+import os
 import sqlite3
 import sys
 import tempfile
@@ -39,6 +40,7 @@ from engine.sql_learned_rank import (
     TreeNode,
     learned_feature_vector,
     load_ranker_model,
+    rerank_with_promotion_gate,
 )
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_proposal import (
@@ -48,6 +50,8 @@ from engine.sql_proposal import (
     semantic_signals_from_schema,
 )
 from engine.sql_profile_expansion import ProfileQueryExpander
+from engine.sql_proposal_runtime import schema_descriptors
+from engine.tables import TableQuery
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
     record_integrated_result,
@@ -67,7 +71,10 @@ from spider.probe.build_ast_proposal_data import (
     extract_literal_targets,
     split_database_ids,
 )
-from spider.probe.train_ast_ranker import load_or_encode_question_vectors
+from spider.probe.train_ast_ranker import (
+    calibrate_promotion_gate,
+    load_or_encode_question_vectors,
+)
 
 
 PEOPLE = {
@@ -966,11 +973,16 @@ def test_public_sql_facade_exposes_stable_planner_contract():
     assert sql.SQLProposalModel is SQLProposalModel
     assert sql.SelectQuery is SelectQuery
     assert sql.load_ranker_model is load_ranker_model
+    assert sql.ProfileSearchConfig().max_candidates == 32
     assert callable(sql.execute_and_rerank)
     assert callable(sql.profile_query)
     candidates = sql.SQLSearcher.from_tables([PEOPLE], []).search("list person names")
     assert candidates
     assert isinstance(candidates[0].query, sql.SelectQuery)
+    planner = sql.DeterministicSQLPlanner(sql.SQLSearcher.from_tables([PEOPLE], []))
+    assert planner.search("list person names")[0].sql == candidates[0].sql
+    descriptors = schema_descriptors(planner.searcher.schema)
+    assert descriptors[0].keys() == {"table", "name", "affinity", "is_date"}
 
 
 def test_shared_spider_evaluation_contract():
@@ -995,6 +1007,44 @@ def test_shared_spider_evaluation_contract():
         "from_table": "visits", "from_col": "person_id",
         "to_table": "people", "to_col": "id", "conf": 1.0,
     }]
+
+
+def test_live_table_query_ast_mode_executes_typed_candidate():
+    class HermeticTableQuery(TableQuery):
+        def schema(self, tables, fks):
+            columns = []
+            index = 0
+            for table in tables:
+                for name in table["columns"]:
+                    values = [row[table["columns"].index(name)] for row in table["rows"]]
+                    numeric = values and all(isinstance(value, (int, float)) for value in values)
+                    columns.append({
+                        "table": table["name"], "name": name, "idx": index,
+                        "struct": set(), "affinity": "INTEGER" if numeric else "TEXT",
+                        "ace": [], "is_date": False,
+                        "qvec": np.zeros(2, dtype=np.float32), "values": values,
+                    })
+                    index += 1
+            return columns, {}, {table["name"]: table for table in tables}
+
+        def ast_semantic_signals(self, question, sch, proposal_model=None, proposal_question_vector=None):
+            return SemanticSignals.empty()
+
+    previous = os.environ.get("PREREASONER_SQL_PLANNER")
+    os.environ["PREREASONER_SQL_PLANNER"] = "ast"
+    try:
+        response = HermeticTableQuery().serve([PEOPLE], "list person names")
+    finally:
+        if previous is None:
+            os.environ.pop("PREREASONER_SQL_PLANNER", None)
+        else:
+            os.environ["PREREASONER_SQL_PLANNER"] = previous
+    assert response["valid"] is True
+    assert response["error"] is None
+    assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
+    assert response["candidate_count"] > 0
+    assert response["ast"].startswith("SelectQuery(")
+    assert response["model"].endswith("(ast)")
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
@@ -1316,6 +1366,50 @@ def test_ranker_question_vector_cache_is_reused_and_fingerprinted():
             raise AssertionError("stale question-vector cache was accepted")
 
 
+def test_profile_promotion_gate_requires_calibrated_generated_margin():
+    schema = SQLSearcher.from_tables([PEOPLE], []).schema
+    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
+    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
+    fallback_query = SelectQuery((SelectItem(name),), "people")
+    generated_query = SelectQuery((SelectItem(age),), "people")
+    fallback = ScoredQuery(fallback_query, render_query(fallback_query), 0.0, ())
+    generated = ScoredQuery(
+        generated_query, render_query(generated_query), 2.0, ("profile-expand:1",),
+        (("profile_binding_quality", 0.8),),
+    )
+    model = LinearRankerModel(
+        {"baseline_score": 1.0}, metadata={"promotion_gate": {"margin_threshold": 1.0}}
+    )
+    assert rerank_with_promotion_gate(model, "show values", [fallback, generated])[0].sql == generated.sql
+    strict = LinearRankerModel(
+        {"baseline_score": 1.0}, metadata={"promotion_gate": {"margin_threshold": 3.0}}
+    )
+    assert rerank_with_promotion_gate(strict, "show values", [fallback, generated])[0].sql == fallback.sql
+    ungated = LinearRankerModel({"baseline_score": 1.0})
+    assert rerank_with_promotion_gate(ungated, "show values", [fallback, generated])[0].sql == fallback.sql
+
+
+def test_promotion_gate_calibration_prefers_zero_loss_margin():
+    model = LinearRankerModel({"signal": 1.0})
+    groups = [
+        {"candidates": [
+            {"rank": 0, "sql": "base", "correct": False, "features": {}},
+            {"rank": 1, "sql": "good", "correct": True, "features": {
+                "signal": 1.1, "heuristic_value.profile_binding_quality": 0.8,
+            }},
+        ]},
+        {"candidates": [
+            {"rank": 0, "sql": "base", "correct": True, "features": {}},
+            {"rank": 1, "sql": "bad", "correct": False, "features": {
+                "signal": 0.6, "heuristic_value.profile_binding_quality": 0.7,
+            }},
+        ]},
+    ]
+    gate = calibrate_promotion_gate(groups, model)
+    assert gate["margin_threshold"] == 0.75
+    assert gate["wins"] == 1 and gate["losses"] == 0
+
+
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -1378,6 +1472,7 @@ TESTS = [
     test_phase6_tree_artifact_has_dependency_free_inference,
     test_public_sql_facade_exposes_stable_planner_contract,
     test_shared_spider_evaluation_contract,
+    test_live_table_query_ast_mode_executes_typed_candidate,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
     test_ast_failure_profiles_share_structural_and_schema_vocabulary,
@@ -1388,6 +1483,8 @@ TESTS = [
     test_ast_proposal_contrasts_cover_targeted_same_profile_families,
     test_sql_proposer_artifact_round_trip_is_deterministic,
     test_ranker_question_vector_cache_is_reused_and_fingerprinted,
+    test_profile_promotion_gate_requires_calibrated_generated_margin,
+    test_promotion_gate_calibration_prefers_zero_loss_margin,
 ]
 
 

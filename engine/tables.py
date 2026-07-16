@@ -162,7 +162,8 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
-        self._ast_proposal_descriptor_cache = {}
+        self._ast_proposal_provider = None
+        self._ast_runtime_models = {}
 
     @staticmethod
     def _is_id(name):
@@ -601,32 +602,15 @@ class TableQuery:
     ):
         """Encode role-specific question phrases in the same metric space as schema columns."""
         if proposal_model is not None:
-            from engine.sql_proposal import semantic_signals_from_schema
-            descriptor_cache = getattr(self, "_ast_proposal_descriptor_cache", None)
-            if descriptor_cache is None:
-                descriptor_cache = self._ast_proposal_descriptor_cache = {}
+            from engine.sql_proposal_runtime import ProposalSignalProvider
 
-            def encode_with_cached_descriptors(texts):
-                question_text, *descriptors = texts
-                missing = [
-                    descriptor for descriptor in dict.fromkeys(descriptors)
-                    if descriptor not in descriptor_cache
-                ]
-                if missing:
-                    values = self._encode(missing)
-                    descriptor_cache.update(zip(missing, values))
-                question_vector = (
-                    np.asarray(proposal_question_vector, np.float32)
-                    if proposal_question_vector is not None
-                    else self._encode([question_text])[0]
+            provider = getattr(self, "_ast_proposal_provider", None)
+            if provider is None or provider.model is not proposal_model:
+                provider = self._ast_proposal_provider = ProposalSignalProvider(
+                    proposal_model, self
                 )
-                return np.vstack([
-                    question_vector,
-                    *(descriptor_cache[value] for value in descriptors),
-                ])
-
-            return semantic_signals_from_schema(
-                proposal_model, question, sch, encode_with_cached_descriptors
+            return provider.signals_from_descriptors(
+                question, sch, proposal_question_vector
             )
         from engine.sql_rank import SemanticSignals, semantic_role_phrases
         phrases = semantic_role_phrases(question)
@@ -654,7 +638,7 @@ class TableQuery:
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, phase2=True, phase3=True, phase4=True,
                    phase5=True, rank_model=None, proposal_model=None,
-                   proposal_question_vector=None):
+                   proposal_question_vector=None, profile_config=None):
         """Return ranked, typed SQL AST candidates for the deterministic planner.
 
         This is parallel to ``plan``/``assemble`` during rollout: callers can compare both planners without
@@ -669,10 +653,74 @@ class TableQuery:
             )
             if use_semantic_signals else None
         )
-        return SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates).search(
+        candidates = SQLSearcher(
+            graph, beam_size=beam_size, max_candidates=max_candidates
+        ).search(
             question, semantic_signals=signals, phase2=phase2, phase3=phase3, phase4=phase4,
-            phase5=phase5, rank_model=rank_model,
+            phase5=phase5, profile_config=profile_config,
         )
+        if rank_model is None:
+            return candidates
+        if proposal_model is not None:
+            from engine.sql_learned_rank import rerank_with_promotion_gate
+
+            return rerank_with_promotion_gate(rank_model, question, candidates)
+        return rank_model.rerank(question, candidates)
+
+    def _ast_models(self, mode):
+        """Load explicitly requested frozen artifacts once per TableQuery instance."""
+        cached = self._ast_runtime_models.get(mode)
+        if cached is not None:
+            return cached
+        from engine.config import sql_proposer_path, sql_ranker_path
+
+        proposer = ranker = None
+        if mode in {"ast_profile", "ast_strict"}:
+            from engine.sql_proposal import SQLProposalModel
+
+            path = sql_proposer_path()
+            if not path.exists():
+                raise RuntimeError(f"SQL proposer artifact not found: {path}")
+            proposer = SQLProposalModel.load(str(path))
+        if mode == "ast_strict":
+            from engine.sql_learned_rank import load_ranker_model
+
+            path = sql_ranker_path()
+            if not path.exists():
+                raise RuntimeError(f"SQL ranker artifact not found: {path}")
+            ranker = load_ranker_model(str(path))
+            if "promotion_gate" not in ranker.metadata:
+                raise RuntimeError("SQL strict ranker has no held-out promotion gate")
+        self._ast_runtime_models[mode] = (proposer, ranker)
+        return proposer, ranker
+
+    def _serve_ast(self, question, norm, fks, sch, tablemap, mode):
+        from engine.sql_profile_expansion import ProfileSearchConfig
+
+        proposer, ranker = self._ast_models(mode)
+        candidates = self.search_ast(
+            question, sch, norm, fks,
+            max_candidates=180 if proposer is not None else 25,
+            use_semantic_signals=True,
+            proposal_model=proposer,
+            rank_model=ranker,
+            profile_config=ProfileSearchConfig() if proposer is not None else None,
+        )
+        if not candidates:
+            return None, None, "planner: no valid AST candidate", ()
+        candidate = candidates[0]
+        ok, why = self.guard(candidate.sql)
+        if not ok:
+            return candidate, None, "guard: " + why, candidates
+        try:
+            cols, rows = self.execute(tablemap, sch, candidate.sql)
+            result = {
+                "columns": cols,
+                "rows": [["" if value is None else value for value in row] for row in rows[:50]],
+            }
+            return candidate, result, None, candidates
+        except Exception as exc:  # execution errors are returned in the serving envelope
+            return candidate, None, f"{type(exc).__name__}: {exc}", candidates
 
     # ---------- assembly ----------
     def assemble(self, slots, join, involved, sch):
@@ -879,6 +927,44 @@ class TableQuery:
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
         norm, fks = self.ingest(tables)
         sch, colidx, tablemap = self.schema(norm, fks)
+        from engine.config import sql_planner_mode
+
+        mode = sql_planner_mode()
+        if mode != "legacy":
+            try:
+                candidate, result, err, candidates = self._serve_ast(
+                    question, norm, fks, sch, tablemap, mode
+                )
+            except Exception as exc:
+                candidate, result, candidates = None, None, ()
+                err = f"{type(exc).__name__}: {exc}"
+            sql = candidate.sql if candidate is not None else None
+            return {
+                "question": question,
+                "sql": sql,
+                "valid": candidate is not None and err is None,
+                "error": err,
+                "result": result,
+                "tables": [{
+                    "name": table["name"], "columns": table["columns"],
+                    "n_rows": len(table["rows"]), "dropped": table.get("_dedup_dropped", 0),
+                } for table in norm],
+                "fks": [{
+                    "from": qual(fk["from_table"], fk["from_col"]),
+                    "to": qual(fk["to_table"], fk["to_col"]), "conf": fk["conf"],
+                } for fk in fks],
+                "join": None,
+                "schema": [{
+                    "table": column["table"], "name": column["name"],
+                    "affinity": column["affinity"], "ace": column["ace"],
+                } for column in sch],
+                "tokens": [],
+                "ast": repr(candidate.query) if candidate is not None else None,
+                "candidate_count": len(candidates),
+                "evidence": list(candidate.evidence) if candidate is not None else [],
+                "features": dict(candidate.features) if candidate is not None else {},
+                "model": f"engine - deterministic typed SQL AST planner ({mode})",
+            }
         slots, join, involved, _ = self.plan(question, sch, norm, fks)
         sql, toks = self.assemble(slots, join, involved, sch)
         ok, why = self.guard(sql)

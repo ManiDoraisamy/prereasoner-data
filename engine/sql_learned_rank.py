@@ -340,6 +340,34 @@ def learned_feature_vector(
     return {name: float(value) for name, value in features.items() if value != 0.0}
 
 
+def rerank_with_promotion_gate(
+    model: RankerModel,
+    question: str,
+    candidates: Sequence[ScoredQuery],
+) -> list[ScoredQuery]:
+    """Allow only a calibrated profile-generated challenger to displace rank one."""
+    if not candidates:
+        return []
+    ranked = model.rerank(question, candidates)
+    threshold = float(model.metadata.get("promotion_gate", {}).get("margin_threshold", math.inf))
+    fallback = candidates[0]
+    scored_fallback = next(candidate for candidate in ranked if candidate.sql == fallback.sql)
+    eligible = [
+        candidate for candidate in ranked
+        if candidate.sql != fallback.sql
+        and "profile_binding_quality" in dict(candidate.features)
+    ]
+    challenger = eligible[0] if eligible else None
+    if challenger is not None and challenger.score - scored_fallback.score >= threshold:
+        return [challenger, scored_fallback] + [
+            candidate for candidate in ranked
+            if candidate.sql not in {challenger.sql, scored_fallback.sql}
+        ]
+    return [scored_fallback] + [
+        candidate for candidate in ranked if candidate.sql != scored_fallback.sql
+    ]
+
+
 def learned_question_features(question: str) -> dict[str, float]:
     """Question-only features shared by online extraction and cached training groups."""
     tokens = tuple(token.lower() for token in _TOKEN_RE.findall(question))

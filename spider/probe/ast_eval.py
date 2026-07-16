@@ -19,8 +19,6 @@ import os
 import sys
 import time
 
-import numpy as np
-
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
@@ -43,6 +41,8 @@ except ImportError:  # direct script execution
     )
 
 from engine.sql_rank import CandidateRanker
+from engine.sql_profile_expansion import ProfileSearchConfig
+from engine.sql_proposal_runtime import ProposalSignalProvider
 from engine.sql_search import SQLSearcher
 
 
@@ -138,8 +138,8 @@ def main():
 
     proposal_model = None
     proposal_encoder = None
+    proposal_provider = None
     proposal_question_vectors = {}
-    descriptor_cache = {}
     if args.proposer_model:
         from engine.encoder_overlay import EncoderQuery
         from engine.sql_proposal import SQLProposalModel
@@ -147,6 +147,15 @@ def main():
         proposal_model = SQLProposalModel.load(args.proposer_model)
         print("loading frozen encoder for profile proposals...", flush=True)
         proposal_encoder = EncoderQuery()
+        proposal_provider = ProposalSignalProvider(proposal_model, proposal_encoder)
+
+    profile_config = ProfileSearchConfig(
+        max_candidates=args.profile_max_candidates,
+        per_profile=args.profile_per_profile,
+        generation_penalty=args.profile_generation_penalty,
+        binding_quality_weight=args.profile_binding_quality_weight,
+        preserve_baseline_top=not args.allow_profile_top,
+    )
 
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     if args.limit:
@@ -173,6 +182,7 @@ def main():
         if rank_model is not None:
             stats["profile_ranked"] = collections.Counter()
             stats["profile_ranked_safe"] = collections.Counter()
+            stats["profile_promoted"] = collections.Counter()
     started = time.time()
 
     for index, example in enumerate(dev, 1):
@@ -203,54 +213,29 @@ def main():
         )
         profile_candidates = ()
         if proposal_model is not None:
-            from engine.sql_proposal import semantic_signals_from_schema
-
-            schema_columns = tuple({
-                "table": column.ref.table,
-                "name": column.ref.name,
-                "affinity": (
-                    "INTEGER" if column.ref.type.value == "integer"
-                    else "REAL" if column.ref.type.value == "real"
-                    else "DATE" if column.ref.type.value == "date"
-                    else "TEXT"
-                ),
-                "is_date": column.ref.type.value == "date",
-            } for column in searcher.schema.columns)
-
-            def encode_with_cache(texts):
-                _, *descriptors = texts
-                missing = [
-                    descriptor for descriptor in dict.fromkeys(descriptors)
-                    if descriptor not in descriptor_cache
-                ]
-                if missing:
-                    encoded = proposal_encoder._encode(missing)
-                    descriptor_cache.update(zip(missing, encoded))
-                return np.vstack([
-                    proposal_question_vectors[index - 1],
-                    *(descriptor_cache[descriptor] for descriptor in descriptors),
-                ])
-
-            signals = semantic_signals_from_schema(
-                proposal_model, example["question"], schema_columns, encode_with_cache
+            signals = proposal_provider.signals(
+                example["question"], searcher.schema,
+                proposal_question_vectors[index - 1],
             )
             profile_candidates = searcher.search(
                 example["question"], semantic_signals=signals,
                 phase2=True, phase3=True, phase4=True, phase5=True,
-                profile_max_candidates=args.profile_max_candidates,
-                profile_per_profile=args.profile_per_profile,
-                profile_generation_penalty=args.profile_generation_penalty,
-                profile_binding_quality_weight=args.profile_binding_quality_weight,
-                profile_preserve_baseline_top=not args.allow_profile_top,
+                profile_config=profile_config,
             )
         phase6 = rank_model.rerank(example["question"], phase5) if rank_model else ()
         profile_ranked = ()
         profile_ranked_safe = ()
+        profile_promoted = ()
         if rank_model is not None and profile_candidates:
+            from engine.sql_learned_rank import rerank_with_promotion_gate
+
             profile_ranked = rank_model.rerank(example["question"], profile_candidates)
             fallback = profile_candidates[0]
             profile_ranked_safe = (fallback,) + tuple(
                 candidate for candidate in profile_ranked if candidate.sql != fallback.sql
+            )
+            profile_promoted = rerank_with_promotion_gate(
+                rank_model, example["question"], profile_candidates
             )
 
         con = build_mem_db(tables)
@@ -269,6 +254,10 @@ def main():
                     _score(stats["profile_ranked"], gold_rows, profile_ranked, con, args.top_k)
                     _score(
                         stats["profile_ranked_safe"], gold_rows, profile_ranked_safe,
+                        con, args.top_k,
+                    )
+                    _score(
+                        stats["profile_promoted"], gold_rows, profile_promoted,
                         con, args.top_k,
                     )
             if rank_model is not None:
@@ -308,6 +297,9 @@ def main():
             result["profile_ranked"] = _summary(stats["profile_ranked"], len(dev))
             result["profile_ranked_safe"] = _summary(
                 stats["profile_ranked_safe"], len(dev)
+            )
+            result["profile_promoted"] = _summary(
+                stats["profile_promoted"], len(dev)
             )
     print(json.dumps(result, indent=2))
     if args.out:

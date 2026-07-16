@@ -1,7 +1,7 @@
 """Bounded typed-AST expansion driven by predicted structural profiles."""
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from itertools import combinations, product
 import re
 from typing import Iterable, Mapping, Sequence
@@ -34,6 +34,21 @@ _CONTROLLED_FEATURES = frozenset({
     "aggregate.SUM",
 })
 _NUMBER_RE = re.compile(r"\b([1-9][0-9]*)\b")
+
+
+@dataclass(frozen=True)
+class ProfileSearchConfig:
+    max_candidates: int = 32
+    per_profile: int = 4
+    generation_penalty: float = 5.0
+    binding_quality_weight: float = 2.0
+    preserve_baseline_top: bool = True
+
+    def __post_init__(self) -> None:
+        if self.max_candidates < 1 or self.per_profile < 1:
+            raise ValueError("profile candidate budgets must be positive")
+        if self.generation_penalty < 0 or self.binding_quality_weight < 0:
+            raise ValueError("profile weights must be nonnegative")
 
 
 class ProfileQueryExpander:

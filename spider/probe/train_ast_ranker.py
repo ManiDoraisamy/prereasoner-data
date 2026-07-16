@@ -141,7 +141,19 @@ def build_training_groups(
     stats: Counter[str] = Counter()
     db_cache: dict[str, dict[str, dict[str, Any]]] = {}
     started = time.time()
-    descriptor_cache = {}
+    from engine.sql_profile_expansion import ProfileSearchConfig
+
+    profile_config = ProfileSearchConfig(
+        max_candidates=profile_max_candidates,
+        per_profile=profile_per_profile,
+        generation_penalty=profile_generation_penalty,
+        binding_quality_weight=profile_binding_quality_weight,
+    )
+    proposal_provider = None
+    if proposal_model is not None:
+        from engine.sql_proposal_runtime import ProposalSignalProvider
+
+        proposal_provider = ProposalSignalProvider(proposal_model, proposal_encoder)
     for index, example in enumerate(examples, 1):
         db_id = str(example["db_id"])
         meta = metas.get(db_id)
@@ -172,44 +184,13 @@ def build_training_groups(
         )
         signals = None
         if proposal_model is not None:
-            from engine.sql_proposal import semantic_signals_from_schema
-
-            schema_columns = tuple({
-                "table": column.ref.table,
-                "name": column.ref.name,
-                "affinity": (
-                    "INTEGER" if column.ref.type.value == "integer"
-                    else "REAL" if column.ref.type.value == "real"
-                    else "DATE" if column.ref.type.value == "date"
-                    else "TEXT"
-                ),
-                "is_date": column.ref.type.value == "date",
-            } for column in searcher.schema.columns)
-
-            def encode_with_cache(texts):
-                _, *descriptors = texts
-                missing = [
-                    descriptor for descriptor in dict.fromkeys(descriptors)
-                    if descriptor not in descriptor_cache
-                ]
-                if missing:
-                    encoded = proposal_encoder._encode(missing)
-                    descriptor_cache.update(zip(missing, encoded))
-                return np.vstack([
-                    question_vectors[index - 1],
-                    *(descriptor_cache[descriptor] for descriptor in descriptors),
-                ])
-
-            signals = semantic_signals_from_schema(
-                proposal_model, str(example["question"]), schema_columns, encode_with_cache
+            signals = proposal_provider.signals(
+                str(example["question"]), searcher.schema, question_vectors[index - 1]
             )
         candidates = searcher.search(
             str(example["question"]),
             semantic_signals=signals,
-            profile_max_candidates=profile_max_candidates,
-            profile_per_profile=profile_per_profile,
-            profile_generation_penalty=profile_generation_penalty,
-            profile_binding_quality_weight=profile_binding_quality_weight,
+            profile_config=profile_config,
         )
         records = []
         positive_count = 0
@@ -358,6 +339,60 @@ def ranking_metrics(
     }
 
 
+def calibrate_promotion_gate(
+    groups: Sequence[Mapping[str, Any]], model: RankerModel
+) -> dict[str, Any]:
+    """Select the lowest zero-loss margin with maximal corrective promotions."""
+    rows = []
+    for group in groups:
+        candidates = list(group["candidates"])
+        if not candidates:
+            continue
+        fallback = min(candidates, key=lambda candidate: (candidate["rank"], candidate["sql"]))
+        generated = [
+            candidate for candidate in candidates
+            if candidate is not fallback
+            and "heuristic_value.profile_binding_quality" in candidate["features"]
+        ]
+        if not generated:
+            continue
+        challenger = max(
+            generated,
+            key=lambda candidate: (model.score(candidate["features"]), candidate["sql"]),
+        )
+        rows.append((
+            model.score(challenger["features"]) - model.score(fallback["features"]),
+            bool(fallback["correct"]),
+            bool(challenger["correct"]),
+        ))
+    thresholds = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0)
+    audits = []
+    for threshold in thresholds:
+        selected = [row for row in rows if row[0] >= threshold]
+        wins = sum(not fallback and challenger for _, fallback, challenger in selected)
+        losses = sum(fallback and not challenger for _, fallback, challenger in selected)
+        audits.append({
+            "margin_threshold": threshold,
+            "promotions": len(selected),
+            "wins": wins,
+            "losses": losses,
+            "net_wins": wins - losses,
+        })
+    safe = [audit for audit in audits if audit["losses"] == 0]
+    selected = max(
+        safe or audits,
+        key=lambda audit: (
+            audit["net_wins"], audit["promotions"], -audit["margin_threshold"]
+        ),
+    )
+    return {
+        **selected,
+        "eligible_examples": len(rows),
+        "selection_rule": "max_net_wins_then_promotions_with_zero_observed_losses",
+        "calibration_curve": audits,
+    }
+
+
 def fit_pairwise_ranker(
     train_groups: Sequence[Mapping[str, Any]],
     validation_groups: Sequence[Mapping[str, Any]],
@@ -497,6 +532,7 @@ def fit_tree_ranker(
     min_samples_leaf: int = 20,
     seed: int = 1729,
     metadata: Mapping[str, Any] | None = None,
+    refit_on_validation: bool = True,
 ) -> RankerModel:
     """Fit pointwise boosted trees and select tree count on schema-held-out top-1."""
     try:
@@ -556,6 +592,12 @@ def fit_tree_ranker(
         "train": ranking_metrics(train_groups, best_model),
         "validation": ranking_metrics(validation_groups, best_model),
     }
+    if not refit_on_validation:
+        return best_model.with_metadata({
+            **best_model.metadata,
+            "selection_metrics_before_refit": selection_metrics,
+            "refit_on_all_training": False,
+        })
     refit_groups = list(train_groups) + list(validation_groups)
     refit_matrix, refit_labels, refit_weights = _pointwise_matrix(refit_groups, names)
     refit_classifier = GradientBoostingClassifier(
@@ -657,6 +699,7 @@ def main() -> None:
     parser.add_argument("--learning-rate", type=float, default=0.03)
     parser.add_argument("--l2", type=float, default=0.002)
     parser.add_argument("--negatives", type=int, default=12)
+    parser.add_argument("--holdout-promotion-calibration", action="store_true")
     args = parser.parse_args()
     if args.profile_max_candidates < 1 or args.profile_per_profile < 1:
         parser.error("profile candidate budgets must be positive")
@@ -756,6 +799,7 @@ def main() -> None:
             min_samples_leaf=args.min_samples_leaf,
             seed=args.seed,
             metadata=training_metadata,
+            refit_on_validation=not args.holdout_promotion_calibration,
         )
     else:
         model = fit_pairwise_ranker(
@@ -769,7 +813,7 @@ def main() -> None:
         )
     learned = {
         "artifact_train": ranking_metrics(train_groups, model),
-        "artifact_validation_after_refit": ranking_metrics(validation_groups, model),
+        "artifact_validation": ranking_metrics(validation_groups, model),
     }
     if model.metadata.get("selection_metrics_before_refit"):
         learned["selection_before_refit"] = model.metadata["selection_metrics_before_refit"]
@@ -779,6 +823,10 @@ def main() -> None:
         "baseline_metrics": baseline,
         "learned_metrics": learned,
     })
+    if args.holdout_promotion_calibration:
+        model_metadata["promotion_gate"] = calibrate_promotion_gate(
+            validation_groups, model
+        )
     model = model.with_metadata(model_metadata)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     model.save(args.out)

@@ -31,6 +31,7 @@ from engine.sql_ast import (
     validate_query,
 )
 from engine.sql_candidate import ScoredQuery
+from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import ForeignKey, JoinTree, SchemaColumn, SchemaGraph
 
 
@@ -81,7 +82,14 @@ class SQLSearcher:
                profile_per_profile: int = 4,
                profile_generation_penalty: float = 5.0,
                profile_binding_quality_weight: float = 2.0,
-               profile_preserve_baseline_top: bool = True) -> list[ScoredQuery]:
+               profile_preserve_baseline_top: bool = True,
+               profile_config: ProfileSearchConfig | None = None) -> list[ScoredQuery]:
+        if profile_config is not None:
+            profile_max_candidates = profile_config.max_candidates
+            profile_per_profile = profile_config.per_profile
+            profile_generation_penalty = profile_config.generation_penalty
+            profile_binding_quality_weight = profile_config.binding_quality_weight
+            profile_preserve_baseline_top = profile_config.preserve_baseline_top
         tokens = _tokens(question)
         if not tokens:
             return []

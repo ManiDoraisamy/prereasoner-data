@@ -16,8 +16,9 @@
 > raises top-10 strict oracle from 44.5% to 51.2% and full-pool strict oracle from 45.0% to 53.5%,
 > with 22.02 average candidates. The broader 55.6% pool-recall experiment is retained as an
 > ablation because it regressed top-1 and averaged 78.71 candidates. A profile-aware deterministic
-> ranker preserves top-1 under the safeguard and raises top-10 strict oracle again to 52.1%; raw
-> reranking remains unsafe. These tools belong to the
+> ranker with a held-out 1.5-point promotion gate raises strict top-1 to 40.3% and top-10 strict
+> oracle to 52.3%; raw reranking remains unsafe and the gate is not used for lenient/scalar
+> objectives. These tools belong to the
 > current AST planner work; the rest of this document preserves the earlier route diagnosis.
 
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.

@@ -17,6 +17,8 @@ Everything the serving engine opens at runtime lives here (override the location
 | `taxonomy.csv` | 5 KB | The Wikidata P279 taxonomy (qid, category_1..N root->leaf, status, world_tables). Source of `engine.taxonomy.LEAF_PATH/LEAF_QID/LEAF_TABLES` and the non-geo type map. | yes |
 | `primitives.npz` | 72 KB | The learned 10-primitive linear head (`W`, `prims`, `thr`) read by `engine.primitive_head.PrimitiveReader`. | no (gitignored, `*.npz`) |
 | `sql_ranker.json` | ~300 KB | Optional frozen SQL AST tree ranker. Inference uses `engine.sql_learned_rank` and does not import scikit-learn. The current artifact is experimental and is not loaded automatically because it did not pass the Spider dev promotion gate. | yes |
+| `sql_profile_ranker.json` | ~170 KB | Profile-aware deterministic tree ranker with a held-out 1.5-point strict-denotation promotion gate. Use through `DeterministicSQLPlanner`; it is not appropriate for lenient or scalar objectives. | yes |
+| `sql_proposer.json` | ~5 MB | Frozen structured profile, table, and column-role proposer used by `ast_profile` and `ast_strict` live modes. Its SHA-256 is recorded in `spider/results/ast_proposer_ablation.json`. | yes |
 | `word_city.json` | 5 KB | World word-table metadata (key/concepts/filter attrs/links) for the meaning-graph planner. | yes |
 | `word_country.json` | 4 KB | ditto | yes |
 | `word_state.json` | 1 KB | ditto | yes |
