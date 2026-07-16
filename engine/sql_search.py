@@ -35,7 +35,7 @@ from engine.sql_schema import ForeignKey, JoinTree, SchemaColumn, SchemaGraph
 
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
-_NUMBER_RE = re.compile(r"^-?\d[\d,]*(?:\.\d+)?$")
+_NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
 
@@ -415,11 +415,25 @@ class SQLSearcher:
                                      if j not in used_numbers and _NUMBER_RE.match(tokens[j])), None)
                 if number_index is None:
                     continue
-                targets = self._numeric_targets(mentions, i)
                 value = _number(tokens[number_index])
-                options = [((Comparison(target, operator, Literal(value, target.type)),), 4.5,
-                            f"comparison:{target.table}.{target.name}{operator}{value}")
-                           for target in targets[:4]]
+                date_targets = (
+                    self._date_targets(mentions, i)
+                    if cue in {("after",), ("before",), ("since",)}
+                    and isinstance(value, int) and 1000 <= value <= 9999
+                    else []
+                )
+                if date_targets:
+                    options = []
+                    for target in date_targets[:4]:
+                        date_operator, boundary = _date_year_boundary(cue[0], value)
+                        options.append(((Comparison(
+                            target, date_operator, Literal(boundary, SQLType.DATE)
+                        ),), 5.0, f"date:{target.table}.{target.name}{date_operator}{boundary}"))
+                else:
+                    targets = self._numeric_targets(mentions, i)
+                    options = [((Comparison(target, operator, Literal(value, target.type)),), 4.5,
+                                f"comparison:{target.table}.{target.name}{operator}{value}")
+                               for target in targets[:4]]
                 if options:
                     groups.append(options)
                     used_numbers.add(number_index)
@@ -453,6 +467,23 @@ class SQLSearcher:
         if refs:
             return list(refs)
         return [c.ref for c in self.schema.columns if c.ref.type.numeric and not _is_id(c.ref.name)]
+
+    def _date_targets(self, mentions: tuple[_Mention, ...], position: int) -> list[ColumnRef]:
+        options = [
+            option for mention in mentions for option in mention.options
+            if option.column.type == SQLType.DATE or "year" in _name_words(option.column.name)
+        ]
+        options.sort(key=lambda option: (
+            abs(option.position - position), -option.score,
+            option.column.table, option.column.name,
+        ))
+        refs = _unique_columns(tuple(option.column for option in options))
+        if refs:
+            return list(refs)
+        return [
+            column.ref for column in self.schema.columns
+            if column.ref.type == SQLType.DATE or "year" in _name_words(column.ref.name)
+        ]
 
     def _group_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                        table_scores: dict[str, float], draft: _Draft) -> list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]]:
@@ -615,6 +646,14 @@ def _is_id(name: str) -> bool:
 def _number(value: str) -> int | float:
     cleaned = value.replace(",", "")
     return float(cleaned) if "." in cleaned else int(cleaned)
+
+
+def _date_year_boundary(cue: str, year: int) -> tuple[str, str]:
+    if cue == "after":
+        return ">=", f"{year + 1:04d}-01-01"
+    if cue == "before":
+        return "<", f"{year:04d}-01-01"
+    return ">=", f"{year:04d}-01-01"
 
 
 def _unique_columns(columns: tuple[ColumnRef, ...]) -> tuple[ColumnRef, ...]:

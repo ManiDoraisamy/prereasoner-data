@@ -222,6 +222,11 @@ class ExpansionSupport:
         joins: tuple[Join, ...],
         projection: tuple[SelectItem, ...],
     ) -> list[tuple[ColumnRef, ...]]:
+        projected = tuple(
+            item.expression for item in projection if isinstance(item.expression, ColumnRef)
+        )
+        if projected:
+            return [tuple(dict.fromkeys(projected))]
         if entity_table != counted_table:
             key = join_key(joins, entity_table)
             if key is not None:
@@ -232,11 +237,7 @@ class ExpansionSupport:
             schema_column.ref for schema_column in self.schema.by_table.get(entity_table, ())
             if column_matches(schema_column.ref.name, all_tokens, entity_table)
         ]
-        projected = [item.expression for item in projection if isinstance(item.expression, ColumnRef)]
-        if projected and all(is_id(column.name) for column in projected):
-            ordered = [column for column in columns if not is_id(column.name)] + projected
-        else:
-            ordered = projected + columns
+        ordered = columns
         options = [(column,) for column in dict.fromkeys(ordered)]
         return options or [tuple(self.schema.display_columns(entity_table)[:1])]
 
@@ -256,10 +257,16 @@ class ExpansionSupport:
         out.extend((option, 0.25) for option in projection_options[1:3])
         return out
 
-    def numeric_comparisons(self, question_tokens: tuple[str, ...]) -> list[Comparison]:
+    def numeric_comparisons(
+        self,
+        question_tokens: tuple[str, ...],
+        exclude_positions: frozenset[int] = frozenset(),
+    ) -> list[Comparison]:
         out = []
         mentions = self.mentioned_columns(question_tokens, numeric=True)
         for index, token in enumerate(question_tokens):
+            if index in exclude_positions:
+                continue
             value = parse_number(token)
             if value is None:
                 continue
@@ -277,6 +284,20 @@ class ExpansionSupport:
                 targets = [column for position, column in nearby if abs(position - index) <= 4][:3]
             operator = nearby_operator(question_tokens, index)
             for target in dict.fromkeys(targets):
+                if target.type == SQLType.DATE and isinstance(value, int):
+                    if operator == ">":
+                        out.append(Comparison(
+                            target, ">=", Literal(f"{value + 1:04d}-01-01", SQLType.DATE)
+                        ))
+                    elif operator in {">=", "<"}:
+                        out.append(Comparison(
+                            target, operator, Literal(f"{value:04d}-01-01", SQLType.DATE)
+                        ))
+                    elif operator == "<=":
+                        out.append(Comparison(
+                            target, "<", Literal(f"{value + 1:04d}-01-01", SQLType.DATE)
+                        ))
+                    continue
                 out.append(Comparison(target, operator, Literal(value, target.type)))
         return out
 
@@ -411,6 +432,8 @@ def nearby_operator(question_tokens: tuple[str, ...], index: int) -> str:
         return "<"
     if "after" in before or "over" in before or "above" in before:
         return ">"
+    if "since" in before:
+        return ">="
     if len(before) >= 2 and before[-2:] in {
         ("longer", "than"), ("more", "than"), ("greater", "than")
     }:

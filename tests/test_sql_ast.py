@@ -4,6 +4,7 @@ Run: python -m tests.test_sql_ast
 """
 from __future__ import annotations
 
+from collections import Counter
 import sqlite3
 import sys
 import tempfile
@@ -37,12 +38,13 @@ from engine.sql_learned_rank import (
     learned_feature_vector,
     load_ranker_model,
 )
-from engine.sql_search import SQLSearcher, ScoredQuery
+from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
     recursive_gold_table_names,
     spider_foreign_keys,
 )
+from spider.probe.ast_eval import _score as score_spider_candidates
 
 
 PEOPLE = {
@@ -151,6 +153,60 @@ def test_grouped_ast_rejects_ungrouped_ordering():
     raise AssertionError("aggregate query ordered by an ungrouped column")
 
 
+def test_typed_ast_rejects_mismatched_literal_payloads():
+    code = ColumnRef("items", "code", SQLType.INTEGER)
+    query = SelectQuery(
+        (SelectItem(code),),
+        "items",
+        where=Comparison(code, "=", Literal("0 OR 1=1", SQLType.INTEGER)),
+    )
+    try:
+        render_query(query)
+    except ASTValidationError:
+        pass
+    else:
+        raise AssertionError("numeric-typed string literal reached SQL rendering")
+
+    graph = SchemaGraph.from_planner([{
+        "table": "items",
+        "name": "code",
+        "affinity": "INTEGER",
+        "values": ["1,000", "0 OR 1=1"],
+    }], [])
+    assert graph.columns[0].values == (1000, None)
+
+
+def test_ast_rejects_indeterminate_set_and_aggregate_shapes():
+    star_query = SelectQuery((SelectItem(Star()),), "left_table")
+    compound = SetQuery(star_query, "UNION", SelectQuery((SelectItem(Star()),), "right_table"))
+    invalid = (
+        compound,
+        SelectQuery((SelectItem(Aggregate("COUNT", Star(), distinct=True)),), "items"),
+    )
+    for query in invalid:
+        try:
+            validate_query(query)
+        except ASTValidationError:
+            continue
+        raise AssertionError(f"invalid AST shape passed validation: {query!r}")
+
+
+def test_grouping_validation_sees_ordered_aggregates():
+    item_id = ColumnRef("items", "id", SQLType.INTEGER)
+    name = ColumnRef("items", "name", SQLType.TEXT)
+    query = SelectQuery(
+        (SelectItem(item_id), SelectItem(name)),
+        "items",
+        group_by=(item_id,),
+        order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),),
+    )
+    try:
+        validate_query(query)
+    except ASTValidationError:
+        return
+    raise AssertionError("ORDER BY aggregate did not activate grouped projection validation")
+
+
 def test_projection_filter_and_order():
     candidate = best(
         "Show name, country and age for people from France ordered by age descending",
@@ -158,6 +214,18 @@ def test_projection_filter_and_order():
     )
     assert execute([PEOPLE], candidate.sql) == [("Alice", "France", 30), ("Bob", "France", 20)]
     assert candidate.sql.endswith('ORDER BY "people"."Age" DESC')
+
+
+def test_directional_year_filter_targets_date_column():
+    employees = {
+        "name": "employees",
+        "columns": ["Name", "Hired_Date", "Salary"],
+        "rows": [["Ada", "2014-06-01", 10], ["Lin", "2016-03-01", 20]],
+    }
+    candidate = best("List employee names hired after 2015", [employees])
+    assert '"employees"."Hired_Date" >= \'2016-01-01\'' in candidate.sql
+    assert '"employees"."Salary"' not in candidate.sql
+    assert execute([employees], candidate.sql) == [("Lin",)]
 
 
 def test_multiple_aggregates_share_a_typed_operand():
@@ -339,7 +407,7 @@ def test_phase3_searches_nested_count_aggregate():
     students = {
         "name": "students",
         "columns": ["Student_ID", "Name"],
-        "rows": [[1, "Alice"], [2, "Bob"]],
+        "rows": [[1, "Alice"], [2, "Bob"], [3, "Cara"]],
     }
     pets = {
         "name": "pets",
@@ -352,7 +420,27 @@ def test_phase3_searches_nested_count_aggregate():
     candidate = best("What is the average number of pets per student?", [students, pets], fks)
     assert 'AVG("counts"."value_count")' in candidate.sql
     assert "FROM (SELECT" in candidate.sql
-    assert execute([students, pets], candidate.sql) == [(1.5,)]
+    assert "LEFT JOIN" in candidate.sql
+    assert 'COUNT("pets"."Student_ID")' in candidate.sql
+    assert execute([students, pets], candidate.sql) == [(1.0,)]
+
+
+def test_phase3_set_expansion_keeps_every_categorical_alternative():
+    people = {
+        "name": "people",
+        "columns": ["Name", "Country"],
+        "rows": [["A", "France"], ["B", "Spain"], ["C", "Italy"]],
+    }
+    candidates = SQLSearcher.from_tables([people], [], max_candidates=80).search(
+        "List people in France, Spain, or Italy",
+        phase4=False,
+        phase5=False,
+    )
+    candidate = next(candidate for candidate in candidates if " UNION " in candidate.sql)
+    assert candidate.sql.count("SELECT") == 3
+    assert '"people"."Country" = \'Italy\'' in candidate.sql
+    assert " AND " not in candidate.sql
+    assert execute([people], candidate.sql) == [("A",), ("B",), ("C",)]
 
 
 def test_phase4_searches_cross_table_count_having():
@@ -361,7 +449,7 @@ def test_phase4_searches_cross_table_count_having():
         [STADIUM, CONCERT],
         STADIUM_FKS,
     )
-    assert 'GROUP BY "stadium"."Stadium_ID"' in candidate.sql
+    assert 'GROUP BY "stadium"."Name"' in candidate.sql
     assert "HAVING COUNT(*) > 1" in candidate.sql
     assert execute([STADIUM, CONCERT], candidate.sql) == [("Alpha",)]
 
@@ -380,6 +468,27 @@ def test_phase4_searches_disjunction():
     )
     assert '"people"."Country" = \'France\' OR "people"."Age" > 35' in candidate.sql
     assert execute([PEOPLE], candidate.sql) == [(3,)]
+
+
+def test_phase4_disjoins_every_repeated_column_group():
+    people = {
+        "name": "people",
+        "columns": ["Name", "Country", "Job"],
+        "rows": [
+            ["A", "France", "engineer"],
+            ["B", "Spain", "doctor"],
+            ["C", "France", "teacher"],
+            ["D", "Italy", "engineer"],
+        ],
+    }
+    candidates = SQLSearcher.from_tables([people], [], max_candidates=80).search(
+        "List people in France or Spain who are engineers or doctors"
+    )
+    candidate = candidates[0]
+    assert "Country\" = 'France' OR \"people\".\"Country\" = 'Spain'" in candidate.sql
+    assert "Job\" = 'engineer' OR \"people\".\"Job\" = 'doctor'" in candidate.sql
+    assert execute([people], candidate.sql) == [("A",), ("B",)]
+    assert all(" UNION " not in item.sql for item in candidates)
 
 
 def test_phase4_disjunction_deduplicates_entities_across_relation():
@@ -504,6 +613,23 @@ def test_phase5_searches_explicit_top_n():
     candidate = best("Show the 2 youngest people names", [PEOPLE])
     assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 2')
     assert execute([PEOPLE], candidate.sql) == [("Bob",), ("Alice",)]
+
+
+def test_phase5_distinguishes_limit_token_from_equal_filter_value():
+    cars = {
+        "name": "cars",
+        "columns": ["Name", "Doors", "Price"],
+        "rows": [["A", 2, 100], ["B", 4, 200], ["C", 5, 300]],
+    }
+    candidates = SQLSearcher.from_tables([cars], [], max_candidates=80).search(
+        "List the price of the 2 largest cars by price with more than 2 doors"
+    )
+    candidate = next(
+        item for item in candidates
+        if item.sql.endswith('ORDER BY "cars"."Price" DESC LIMIT 2')
+        and '"cars"."Doors" > 2' in item.sql
+    )
+    assert execute([cars], candidate.sql) == [(300,), (200,)]
 
 
 def test_phase5_searches_frequency_superlative():
@@ -653,12 +779,30 @@ def test_shared_spider_evaluation_contract():
         "to_table": "people", "to_col": "id", "conf": 1.0,
     }]
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
+    assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
+    assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
+
+
+def test_spider_evaluator_does_not_count_all_errors_as_answered():
+    counter = Counter()
+    query = SelectQuery((SelectItem(Star()),), "missing")
+    candidate = ScoredQuery(query, 'SELECT * FROM "missing"', 0.0, ())
+    connection = sqlite3.connect(":memory:")
+    score_spider_candidates(counter, [[1]], [candidate], connection, 1)
+    connection.close()
+    assert counter["answered"] == 0
+    assert counter["execution_failure"] == 1
+    assert counter["scalar_n"] == 1
 
 
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
+    test_typed_ast_rejects_mismatched_literal_payloads,
+    test_ast_rejects_indeterminate_set_and_aggregate_shapes,
+    test_grouping_validation_sees_ordered_aggregates,
     test_projection_filter_and_order,
+    test_directional_year_filter_targets_date_column,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_phase2_ranks_count_distinct_above_grouped_count,
@@ -679,9 +823,11 @@ TESTS = [
     test_phase3_searches_anti_membership,
     test_phase3_searches_route_self_join,
     test_phase3_searches_nested_count_aggregate,
+    test_phase3_set_expansion_keeps_every_categorical_alternative,
     test_phase4_searches_cross_table_count_having,
     test_phase4_searches_single_table_count_having,
     test_phase4_searches_disjunction,
+    test_phase4_disjoins_every_repeated_column_group,
     test_phase4_disjunction_deduplicates_entities_across_relation,
     test_phase4_disjunction_preserves_shared_official_filter,
     test_phase4_searches_filtered_scalar_minimum,
@@ -691,6 +837,7 @@ TESTS = [
     test_phase5_searches_row_superlative,
     test_phase5_preserves_filter_on_row_superlative,
     test_phase5_searches_explicit_top_n,
+    test_phase5_distinguishes_limit_token_from_equal_filter_value,
     test_phase5_searches_frequency_superlative,
     test_phase5_frequency_superlative_can_return_count,
     test_phase5_searches_set_difference,
@@ -701,6 +848,7 @@ TESTS = [
     test_phase6_tree_artifact_has_dependency_free_inference,
     test_public_sql_facade_exposes_stable_planner_contract,
     test_shared_spider_evaluation_contract,
+    test_spider_evaluator_does_not_count_all_errors_as_answered,
 ]
 
 

@@ -23,31 +23,40 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from evalutil import build_mem_db, exec_sql_timed, load_capped
-from spider_eval import compare, gold_table_names, spider_foreign_keys
+try:
+    from .evalutil import build_mem_db, exec_sql_timed, load_capped
+    from .spider_eval import compare, gold_table_names, is_scalar, spider_foreign_keys
+except ImportError:  # direct script execution
+    from evalutil import build_mem_db, exec_sql_timed, load_capped
+    from spider_eval import compare, gold_table_names, is_scalar, spider_foreign_keys
 
 from engine.sql_rank import CandidateRanker
 from engine.sql_search import SQLSearcher
 
 
 def _score(counter, gold_rows, candidates, con, top_k):
+    if is_scalar(gold_rows):
+        counter["scalar_n"] += 1
+    if not candidates:
+        counter["no_candidate"] += 1
+        return
     flags = []
-    scalar_seen = False
+    successful = 0
     for candidate in candidates[:top_k]:
         rows, error = exec_sql_timed(con, candidate.sql)
         comparison = compare(gold_rows, rows) if error is None else {}
         flags.append(comparison)
-        scalar_seen = scalar_seen or bool(comparison.get("gold_scalar"))
-    if not flags:
-        counter["no_candidate"] += 1
+        successful += int(error is None)
+    if successful == 0:
+        counter["execution_failure"] += 1
         return
+    counter["answered"] += 1
     first = flags[0]
     counter["lenient"] += bool(first.get("lenient"))
     counter["strict"] += bool(first.get("strict"))
     counter["oracle_lenient"] += any(flag.get("lenient") for flag in flags)
     counter["oracle_strict"] += any(flag.get("strict") for flag in flags)
-    if scalar_seen:
-        counter["scalar_n"] += 1
+    if is_scalar(gold_rows):
         counter["scalar"] += bool(first.get("scalar_exact"))
 
 
@@ -55,8 +64,9 @@ def _summary(counter, total):
     pct = lambda value, denominator=total: round(100 * value / max(denominator, 1), 1)
     return {
         "n": total,
-        "answered": total - counter["no_candidate"],
+        "answered": counter["answered"],
         "no_candidate": counter["no_candidate"],
+        "execution_failure": counter["execution_failure"],
         "lenient_pct": pct(counter["lenient"]),
         "strict_pct": pct(counter["strict"]),
         "scalar_pct": pct(counter["scalar"], counter["scalar_n"]),

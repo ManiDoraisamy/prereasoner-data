@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import math
+from numbers import Real
 from typing import Any, Iterable, TypeAlias
 
 
@@ -209,6 +210,8 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
             raise ASTValidationError(f"unsupported set operator: {query.operator}")
         _validate_query(query.left, outer_scope)
         _validate_query(query.right, outer_scope)
+        if _has_star_projection(query.left) or _has_star_projection(query.right):
+            raise ASTValidationError("set operands cannot use SELECT * without known output arity")
         if _output_arity(query.left) != _output_arity(query.right):
             raise ASTValidationError("set operands must project the same number of columns")
         for operand in (query.left, query.right):
@@ -257,6 +260,8 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
             raise ASTValidationError(f"unsupported order direction: {term.direction}")
     _validate_predicate(query.where, visible)
     _validate_predicate(query.having, visible)
+    if _predicate_has_aggregate(query.where):
+        raise ASTValidationError("aggregate predicates belong in HAVING, not WHERE")
 
     referenced = set()
     for item in query.select:
@@ -270,8 +275,13 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
     if missing:
         raise ASTValidationError(f"columns reference tables outside visible scope: {sorted(missing)}")
 
-    aggregate_query = any(isinstance(item.expression, Aggregate) for item in query.select)
-    if aggregate_query:
+    grouped_query = (
+        bool(query.group_by)
+        or any(_expr_has_aggregate(item.expression) for item in query.select)
+        or any(_expr_has_aggregate(term.expression) for term in query.order_by)
+        or _predicate_has_aggregate(query.having)
+    )
+    if grouped_query:
         groups = set(query.group_by)
         ungrouped = [item.expression for item in query.select
                      if isinstance(item.expression, ColumnRef) and item.expression not in groups]
@@ -343,9 +353,22 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
             raise ASTValidationError(f"unsupported aggregate: {expr.function}")
         if isinstance(expr.operand, Star) and expr.function != "COUNT":
             raise ASTValidationError(f"{expr.function}(*) is not valid")
+        if isinstance(expr.operand, Star) and expr.distinct:
+            raise ASTValidationError("COUNT(DISTINCT *) is not valid")
         if (expr.function in {"SUM", "AVG"} and isinstance(expr.operand, ColumnRef)
                 and not expr.operand.type.numeric):
             raise ASTValidationError(f"{expr.function} requires a numeric column")
+        return
+    if isinstance(expr, Literal):
+        value = expr.value
+        if expr.type.numeric and value is not None and not (
+            isinstance(value, Real) and not isinstance(value, bool)
+        ):
+            raise ASTValidationError("numeric literals require a numeric value")
+        if (expr.type == SQLType.BOOLEAN and value is not None
+                and not isinstance(value, bool)
+                and not (isinstance(value, int) and value in (0, 1))):
+            raise ASTValidationError("boolean literals require true, false, 0, or 1")
 
 
 def _validate_predicate(predicate: Predicate | None, visible: frozenset[str]) -> None:
@@ -429,8 +452,8 @@ def _render_literal(literal: Literal) -> str:
         return "NULL"
     if literal.type == SQLType.BOOLEAN or isinstance(value, bool):
         return "1" if bool(value) else "0"
-    if literal.type.numeric or (isinstance(value, (int, float)) and not isinstance(value, bool)):
-        if isinstance(value, float) and not math.isfinite(value):
+    if isinstance(value, Real) and not isinstance(value, bool):
+        if not math.isfinite(float(value)):
             raise ASTValidationError("non-finite numeric literal")
         return str(value)
     return "'" + str(value).replace("'", "''") + "'"
@@ -444,6 +467,28 @@ def _output_arity(query: Query) -> int:
     if isinstance(query, SetQuery):
         return _output_arity(query.left)
     return len(query.select)
+
+
+def _has_star_projection(query: Query) -> bool:
+    if isinstance(query, SetQuery):
+        return _has_star_projection(query.left) or _has_star_projection(query.right)
+    return any(isinstance(item.expression, Star) for item in query.select)
+
+
+def _expr_has_aggregate(expression: ScalarExpr) -> bool:
+    return isinstance(expression, Aggregate)
+
+
+def _predicate_has_aggregate(predicate: Predicate | None) -> bool:
+    if predicate is None:
+        return False
+    if isinstance(predicate, BooleanExpr):
+        return any(_predicate_has_aggregate(term) for term in predicate.terms)
+    if isinstance(predicate, ExistsPredicate):
+        return False
+    if isinstance(predicate, InPredicate):
+        return _expr_has_aggregate(predicate.left)
+    return _expr_has_aggregate(predicate.left) or _expr_has_aggregate(predicate.right)
 
 
 def _expr_tables(expr: ScalarExpr) -> set[str]:

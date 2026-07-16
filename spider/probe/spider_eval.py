@@ -100,15 +100,15 @@ def compare(
     if is_scalar(gold_rows):
         scalar_exact = normalize_value(gold_rows[0][0]) in predicted_values
 
-    def row_sets(rows: Sequence[Sequence[Any]] | None) -> collections.Counter:
+    def normalized_rows(rows: Sequence[Sequence[Any]] | None) -> collections.Counter:
         return collections.Counter(
-            frozenset(normalize_value(value) for value in row)
+            tuple(normalize_value(value) for value in row)
             for row in (rows or [])
         )
 
     return {
         "lenient": lenient,
         "scalar_exact": scalar_exact,
-        "strict": row_sets(gold_rows) == row_sets(predicted_rows),
+        "strict": normalized_rows(gold_rows) == normalized_rows(predicted_rows),
         "gold_scalar": is_scalar(gold_rows),
     }

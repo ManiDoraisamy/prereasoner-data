@@ -124,7 +124,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             ):
                 return []
 
-        limit = _requested_limit(tokens, targets[0].cue_position)
+        limit, limit_position = _requested_limit(tokens, targets[0].cue_position)
         out = []
         for target in targets[:3]:
             for candidate in candidates[: self.max_candidates * 3]:
@@ -142,10 +142,11 @@ class ExtremaQueryExpander(ExpansionSupport):
                     if not _linker_noise(term) and not _target_extrema_predicate(term, target.column)
                 ]
                 direct_filters = [
-                    comparison for comparison in self.numeric_comparisons(tokens)
+                    comparison for comparison in self.numeric_comparisons(
+                        tokens, frozenset({limit_position}) if limit_position is not None else frozenset()
+                    )
                     if comparison.left.table in physical
                     and comparison.left != target.column
-                    and not _is_limit_literal(comparison, tokens, target.cue_position, limit)
                 ]
                 where_options = [(and_predicates(_unique_predicates(base_terms)), 0.0)]
                 if direct_filters:
@@ -182,12 +183,14 @@ class ExtremaQueryExpander(ExpansionSupport):
                     )
                     if built is not None:
                         out.append(built)
-        out.extend(self._direct_row_superlatives(tokens, targets, limit, candidates))
+        out.extend(self._direct_row_superlatives(
+            tokens, targets, limit, limit_position, candidates
+        ))
         return out
 
     def _direct_row_superlatives(
         self, tokens: tuple[str, ...], targets: Sequence[SuperlativeTarget], limit: int,
-        candidates: Sequence[ScoredQuery],
+        limit_position: int | None, candidates: Sequence[ScoredQuery],
     ) -> list[ScoredQuery]:
         linked = []
         for table in self.schema.tables:
@@ -216,9 +219,10 @@ class ExtremaQueryExpander(ExpansionSupport):
         out = []
         for target in targets[:3]:
             numeric = [
-                    comparison for comparison in self.numeric_comparisons(tokens)
+                    comparison for comparison in self.numeric_comparisons(
+                        tokens, frozenset({limit_position}) if limit_position is not None else frozenset()
+                    )
                 if comparison.left != target.column
-                and not _is_limit_literal(comparison, tokens, target.cue_position, limit)
             ]
             for categorical in categorical_options[:8]:
                 filters = _unique_predicates(categorical + numeric)
@@ -275,7 +279,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             return []
 
         pseudo = CountThreshold((("=", 1),), cue.position, cue.position + 1, 0.0)
-        limit = _requested_limit(tokens, cue.position)
+        limit, limit_position = _requested_limit(tokens, cue.position)
         out = []
         for entity_table, entity_score in self.entity_tables(tokens, pseudo)[:3]:
             projections = self.projection_options(question, entity_table, None)
@@ -292,9 +296,11 @@ class ExtremaQueryExpander(ExpansionSupport):
                 for source, joins, where, structure_score in structures[:8]:
                     physical = {source, *(join.table for join in joins)}
                     direct_filters = [
-                        comparison for comparison in self.numeric_comparisons(tokens)
+                        comparison for comparison in self.numeric_comparisons(
+                            tokens,
+                            frozenset({limit_position}) if limit_position is not None else frozenset(),
+                        )
                         if comparison.left.table in physical
-                        and not _is_limit_literal(comparison, tokens, cue.position, limit)
                     ]
                     where_options = [(where, 0.0)]
                     if direct_filters:
@@ -526,18 +532,7 @@ class ExtremaQueryExpander(ExpansionSupport):
     def _frequency_groups(
         entity_table: str, counted_table: str, joins, columns: tuple[ColumnRef, ...]
     ) -> tuple[ColumnRef, ...]:
-        if len(columns) == 1:
-            return columns
-        join_columns = [
-            column for join in joins for column in (join.left, join.right)
-            if column.table == entity_table
-        ]
-        keys = [column for column in columns if _is_id(column.name)]
-        if keys:
-            return (keys[0],)
-        if entity_table != counted_table and join_columns:
-            return (join_columns[0],)
-        return columns
+        return tuple(dict.fromkeys(columns))
 
 
 def _frequency_cue(tokens: tuple[str, ...]) -> FrequencyCue | None:
@@ -621,13 +616,13 @@ def _superlative_direction(cue: str, column: ColumnRef) -> str:
     return "ASC" if cue in _MIN_CUES else "DESC"
 
 
-def _requested_limit(tokens: tuple[str, ...], cue_position: int) -> int:
+def _requested_limit(tokens: tuple[str, ...], cue_position: int) -> tuple[int, int | None]:
     for index, token in enumerate(tokens):
         value = _parse_number(token)
         if isinstance(value, int) and 1 <= value <= 100:
             if abs(index - cue_position) <= 2 or (index > 0 and tokens[index - 1] in {"top", "bottom"}):
-                return value
-    return 1
+                return value, index
+    return 1, None
 
 
 def _target_extrema_predicate(predicate: Predicate, target: ColumnRef) -> bool:
@@ -636,17 +631,6 @@ def _target_extrema_predicate(predicate: Predicate, target: ColumnRef) -> bool:
         and predicate.left == target
         and isinstance(predicate.right, ScalarSubquery)
     )
-
-
-def _is_limit_literal(
-    comparison: Comparison, tokens: tuple[str, ...], cue_position: int, limit: int
-) -> bool:
-    if not isinstance(comparison.right, Literal) or comparison.right.value != limit:
-        return False
-    positions = [
-        index for index, token in enumerate(tokens) if _parse_number(token) == limit
-    ]
-    return any(abs(position - cue_position) <= 2 for position in positions)
 
 
 def _target_requested_in_projection(target: ColumnRef, tokens: tuple[str, ...]) -> bool:

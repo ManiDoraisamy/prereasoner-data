@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import heapq
+import math
+from numbers import Real
 import re
 from typing import Any, Iterable, Sequence
 
@@ -10,7 +12,7 @@ from engine.sql_ast import ColumnRef, Join, SQLType
 
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
-_NUMBER_RE = re.compile(r"^-?\d[\d,]*(?:\.\d+)?$")
+_NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _NAME_WORDS = frozenset({"name", "title", "label"})
 
@@ -86,10 +88,12 @@ class SchemaGraph:
             names = [str(column) for column in table["columns"]]
             rows = table.get("rows") or []
             for column_index, column_name in enumerate(names):
-                values = tuple(
+                raw_values = tuple(
                     _row_value(row, column_index, column_name) for row in rows
                 )
-                ref = ColumnRef(name, column_name, _infer_type(column_name, values))
+                column_type = _infer_type(column_name, raw_values)
+                values = tuple(_coerce_value(value, column_type) for value in raw_values)
+                ref = ColumnRef(name, column_name, column_type)
                 refs[(name, column_name)] = ref
                 columns.append(SchemaColumn(ref, values, index))
                 index += 1
@@ -107,9 +111,11 @@ class SchemaGraph:
                 _planner_type(column),
             )
             refs[(ref.table, ref.name)] = ref
+            column_type = _planner_type(column)
             columns.append(SchemaColumn(
                 ref,
-                tuple(column.get("values") or ()),
+                tuple(_coerce_value(value, column_type)
+                      for value in (column.get("values") or ())),
                 int(column.get("idx", index)),
             ))
         edges = (_foreign_key(foreign_key, refs) for foreign_key in fks)
@@ -265,6 +271,31 @@ def _infer_type(name: str, values: Sequence[Any]) -> SQLType:
     if set(_name_words(name)) & {"date", "datetime", "timestamp"}:
         return SQLType.DATE
     return SQLType.TEXT
+
+
+def _coerce_value(value: Any, value_type: SQLType) -> Any:
+    if value is None:
+        return None
+    if value_type.numeric:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, Real):
+            numeric = float(value)
+        else:
+            text = str(value).strip()
+            if not _NUMBER_RE.fullmatch(text):
+                return None
+            numeric = float(text.replace(",", ""))
+        if not math.isfinite(numeric):
+            return None
+        return int(numeric) if value_type == SQLType.INTEGER else numeric
+    if value_type == SQLType.BOOLEAN:
+        if isinstance(value, bool):
+            return value
+        if value in {0, 1}:
+            return bool(value)
+        return None
+    return value
 
 
 def _row_value(row: Any, index: int, name: str) -> Any:

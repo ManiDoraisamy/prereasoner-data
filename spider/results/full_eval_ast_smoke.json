@@ -1,0 +1,58 @@
+{
+  "n": 12,
+  "config": "gold_tables",
+  "planner": "ast",
+  "ranker_model": null,
+  "answered_pct": 100.0,
+  "error_pct": 0.0,
+  "correct_lenient_pct": 66.7,
+  "correct_strict_pct": 66.7,
+  "scalar_gold_accuracy_pct": 66.7,
+  "scalar_gold_n": 3,
+  "totals": {
+    "n": 12,
+    "answered": 12,
+    "correct_lenient": 8,
+    "scalar_total": 3,
+    "scalar_correct": 2,
+    "correct_strict": 8
+  },
+  "error_stage_histogram": {},
+  "path_histogram": {
+    "ast": 9,
+    "compose": 3
+  },
+  "path_correct_lenient": {
+    "ast": 8
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 3,
+      "answered": 3,
+      "correct_lenient": 2,
+      "scalar_total": 2,
+      "scalar_correct": 1,
+      "correct_strict": 2
+    },
+    "medium": {
+      "n": 3,
+      "answered": 3,
+      "correct_lenient": 3,
+      "correct_strict": 3
+    },
+    "hard": {
+      "n": 3,
+      "answered": 3,
+      "correct_lenient": 2,
+      "correct_strict": 2,
+      "scalar_total": 1,
+      "scalar_correct": 1
+    },
+    "extra": {
+      "n": 3,
+      "answered": 3,
+      "correct_lenient": 1,
+      "correct_strict": 1
+    }
+  }
+}

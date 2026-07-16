@@ -925,10 +925,10 @@ def _build_or_predicate(predicates: Sequence[Predicate]) -> Predicate:
     repeated = [group for group in by_column.values() if len(group) >= 2]
     if not repeated:
         return BooleanExpr("OR", tuple(terms))
-    alternatives = max(repeated, key=lambda group: (len(group), repr(group[0])))
-    common = [term for term in terms if term not in alternatives]
-    disjunction = BooleanExpr("OR", tuple(alternatives))
-    return and_predicates(common + [disjunction]) or disjunction
+    repeated_terms = [term for group in repeated for term in group]
+    components: list[Predicate] = [term for term in terms if term not in repeated_terms]
+    components.extend(BooleanExpr("OR", tuple(group)) for group in repeated)
+    return and_predicates(components) or components[0]
 
 
 def _needs_distinct_for_relation(

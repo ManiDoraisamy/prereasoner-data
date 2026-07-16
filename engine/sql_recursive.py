@@ -85,6 +85,12 @@ class RecursiveQueryExpander:
                 if (isinstance(term, Comparison) and isinstance(term.left, ColumnRef)
                         and isinstance(term.right, Literal)):
                     groups[(term.left.table, term.left.name)].append(term)
+            repeated_groups = [
+                distinct for group in groups.values()
+                if len(distinct := _distinct_comparisons(group)) >= 2
+            ]
+            if len(repeated_groups) > 1 and set(tokens) & {"or", "either"}:
+                continue
             for comparisons in groups.values():
                 comparisons = _distinct_comparisons(comparisons)
                 if len(comparisons) < 2:
@@ -98,7 +104,16 @@ class RecursiveQueryExpander:
                 predicate_column = pair[0].left
                 if not isinstance(predicate_column, ColumnRef):
                     continue
-                common = [term for term in terms if term not in pair and not _linker_noise(term)]
+                alternatives = (
+                    comparisons
+                    if len(comparisons) > 2
+                    and all(comparison.operator == "=" for comparison in comparisons)
+                    else list(pair)
+                )
+                common = [
+                    term for term in terms
+                    if term not in alternatives and not _linker_noise(term)
+                ]
 
                 aggregate_items = tuple(
                     item for item in query.select if isinstance(item.expression, Aggregate)
@@ -124,7 +139,7 @@ class RecursiveQueryExpander:
                         continue
                     seen_selects.add(branch_select)
                     branches = []
-                    for comparison in pair:
+                    for comparison in alternatives:
                         branches.append(replace(
                             query,
                             select=branch_select,
@@ -135,7 +150,9 @@ class RecursiveQueryExpander:
                             limit=None,
                             distinct=False,
                         ))
-                    compound = SetQuery(branches[0], operator, branches[1])
+                    compound: Query = branches[0]
+                    for branch in branches[1:]:
+                        compound = SetQuery(compound, operator, branch)
                     if aggregate_items:
                         result: Query = SelectQuery(
                             (SelectItem(Aggregate("COUNT", Star())),),
@@ -359,19 +376,24 @@ class RecursiveQueryExpander:
                 if group_table == counted_table:
                     continue
                 trees = self.schema.join_trees(
-                    {group_table, counted_table}, preferred_root=counted_table, limit=3
+                    {group_table, counted_table}, preferred_root=group_table, limit=3
                 )
                 for tree in trees:
                     group_key = _tree_key(tree.joins, group_table)
+                    counted_key = _tree_key(tree.joins, counted_table)
                     if group_key is None:
                         displays = self.schema.display_columns(group_table)
                         group_key = displays[0] if displays else None
-                    if group_key is None:
+                    if group_key is None or counted_key is None:
                         continue
+                    joins = tuple(replace(join, kind="LEFT") for join in tree.joins)
                     inner = SelectQuery(
-                        (SelectItem(group_key), SelectItem(Aggregate("COUNT", Star()), "value_count")),
+                        (
+                            SelectItem(group_key),
+                            SelectItem(Aggregate("COUNT", counted_key), "value_count"),
+                        ),
                         tree.root,
-                        joins=tree.joins,
+                        joins=joins,
                         group_by=(group_key,),
                     )
                     count_column = ColumnRef("counts", "value_count", SQLType.INTEGER)
@@ -381,7 +403,7 @@ class RecursiveQueryExpander:
                     )
                     built = _candidate(
                         outer,
-                        38.0 - 0.2 * len(tree.joins),
+                        38.0 - 0.2 * len(joins),
                         (f"phase3:nested:{outer_function.lower()}-count",),
                     )
                     if built is not None:
