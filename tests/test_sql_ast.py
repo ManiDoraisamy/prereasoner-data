@@ -46,6 +46,14 @@ from spider.probe.spider_eval import (
     spider_foreign_keys,
 )
 from spider.probe.ast_eval import _score as score_spider_candidates
+from spider.probe.ast_profile import (
+    CandidateAssessment,
+    SQLProfile,
+    diagnose_pool,
+    profile_query,
+    profile_spider_sql,
+)
+from spider.probe.build_ast_proposal_data import extract_literal_targets, split_database_ids
 
 
 PEOPLE = {
@@ -900,6 +908,160 @@ def test_spider_evaluator_does_not_count_all_errors_as_answered():
     assert integrated["scalar_correct"] == 0
 
 
+def test_ast_failure_profiles_share_structural_and_schema_vocabulary():
+    metadata = {
+        "table_names_original": ["people"],
+        "column_names_original": [[-1, "*"], [0, "Name"]],
+    }
+    spider_sql = {
+        "select": [False, [[3, [0, [0, 1, False], None]]]],
+        "from": {"table_units": [["table_unit", 0]], "conds": []},
+        "where": [],
+        "groupBy": [],
+        "having": [],
+        "orderBy": [],
+        "limit": None,
+        "intersect": None,
+        "union": None,
+        "except": None,
+    }
+    name = ColumnRef("people", "Name", SQLType.TEXT)
+    query = SelectQuery((SelectItem(Aggregate("COUNT", name)),), "people")
+    gold = profile_spider_sql(spider_sql, metadata)
+    candidate = profile_query(query)
+    assert gold.sketch == candidate.sketch
+    assert gold.tables == candidate.tables == ("people",)
+    assert gold.role_map == candidate.role_map == {
+        "projection": ("people.name",),
+        "aggregate": ("people.name",),
+    }
+
+
+def test_ast_failure_profiles_align_spider_and_typed_joins():
+    metadata = {
+        "table_names_original": ["parent", "child"],
+        "column_names_original": [
+            [-1, "*"], [0, "id"], [1, "parent_id"],
+        ],
+    }
+    spider_sql = {
+        "select": [False, [[0, [0, [0, 1, False], None]]]],
+        "from": {
+            "table_units": [["table_unit", 1], ["table_unit", 0]],
+            "conds": [[
+                False, 2, [0, [0, 2, False], None], [0, 1, False], None,
+            ]],
+        },
+        "where": [],
+        "groupBy": [],
+        "having": [],
+        "orderBy": [],
+        "limit": None,
+        "intersect": None,
+        "union": None,
+        "except": None,
+    }
+    parent_id = ColumnRef("parent", "id", SQLType.INTEGER)
+    child_parent_id = ColumnRef("child", "parent_id", SQLType.INTEGER)
+    query = SelectQuery(
+        (SelectItem(parent_id),),
+        "child",
+        joins=(Join("parent", child_parent_id, parent_id),),
+    )
+    assert profile_spider_sql(spider_sql, metadata) == profile_query(query)
+
+
+def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
+    gold = SQLProfile.build(
+        {"blocks": 1, "select_items": 2},
+        ["items"],
+        {"projection": ["items.a", "items.b"]},
+    )
+
+    def assessed(rank, profile, *, strict=False, lenient=False):
+        return CandidateAssessment(
+            rank, f"candidate-{rank}", profile, strict=strict, lenient=lenient
+        )
+
+    wrong_sketch = SQLProfile.build(
+        {"blocks": 1, "select_items": 1},
+        ["items"],
+        {"projection": ["items.a"]},
+    )
+    assert diagnose_pool(gold, [assessed(0, wrong_sketch)])["bottleneck"] == "missing_sketch"
+
+    wrong_column = SQLProfile.build(
+        {"blocks": 1, "select_items": 2},
+        ["items"],
+        {"projection": ["items.a", "items.c"]},
+    )
+    diagnosis = diagnose_pool(gold, [assessed(0, wrong_column)])
+    assert diagnosis["bottleneck"] == "missing_column_link"
+    assert diagnosis["missing_role_columns"] == {"projection": ["items.b"]}
+
+    complementary = SQLProfile.build(
+        {"blocks": 1, "select_items": 2},
+        ["items"],
+        {"projection": ["items.b", "items.c"]},
+    )
+    assert diagnose_pool(
+        gold, [assessed(0, wrong_column), assessed(1, complementary)]
+    )["bottleneck"] == "missing_composition"
+
+    exact = assessed(1, gold, strict=True, lenient=True)
+    assert diagnose_pool(gold, [assessed(0, wrong_column), exact])["status"] == "strict_in_pool"
+    assert diagnose_pool(gold, [assessed(0, gold)])["bottleneck"] == "value_or_semantic_mismatch"
+
+
+def test_ast_proposal_split_is_deterministic_and_database_disjoint():
+    database_ids = [f"db_{index}" for index in range(10)]
+    first = split_database_ids(database_ids, validation_ratio=0.2, seed=1729)
+    second = split_database_ids(reversed(database_ids), validation_ratio=0.2, seed=1729)
+    train, validation = first
+    assert first == second
+    assert len(train) == 8
+    assert len(validation) == 2
+    assert not (set(train) & set(validation))
+    assert set(train) | set(validation) == set(database_ids)
+
+
+def test_ast_proposal_targets_keep_typed_filter_literals():
+    metadata = {
+        "table_names_original": ["people"],
+        "column_names_original": [[-1, "*"], [0, "Age"]],
+    }
+    sql = {
+        "select": [False, [[0, [0, [0, 1, False], None]]]],
+        "from": {"table_units": [["table_unit", 0]], "conds": []},
+        "where": [[False, 3, [0, [0, 1, False], None], 21, None]],
+        "groupBy": [],
+        "having": [],
+        "orderBy": [],
+        "limit": 5,
+        "intersect": None,
+        "union": None,
+        "except": None,
+    }
+    assert extract_literal_targets(sql, metadata) == [
+        {
+            "clause": "where",
+            "operator": ">",
+            "column": "people.age",
+            "value": 21,
+            "value_type": "int",
+            "negated": False,
+        },
+        {
+            "clause": "limit",
+            "operator": "limit",
+            "column": None,
+            "value": 5,
+            "value_type": "int",
+            "negated": False,
+        },
+    ]
+
+
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -958,6 +1120,11 @@ TESTS = [
     test_shared_spider_evaluation_contract,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
+    test_ast_failure_profiles_share_structural_and_schema_vocabulary,
+    test_ast_failure_profiles_align_spider_and_typed_joins,
+    test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks,
+    test_ast_proposal_split_is_deterministic_and_database_disjoint,
+    test_ast_proposal_targets_keep_typed_filter_literals,
 ]
 
 

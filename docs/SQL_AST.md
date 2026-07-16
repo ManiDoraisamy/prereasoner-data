@@ -39,6 +39,9 @@ missing candidate shapes, bounded search, and ranking the wrong valid interpreta
 | `engine/sql_extrema.py` | Row/frequency extrema, top-N, and set difference. |
 | `engine/sql_rank.py` | Hand-written semantic features and bounded execution reranking. |
 | `engine/sql_learned_rank.py` | Optional dependency-free inference for frozen ranker artifacts. |
+| `spider/probe/ast_profile.py` | Shared structural and role-aware profiles for gold SQL and planner ASTs. |
+| `spider/probe/mine_ast_failures.py` | Full-pool recall, linking, and composition failure analysis. |
+| `spider/probe/build_ast_proposal_data.py` | Database-disjoint sketch/link/literal supervision builder. |
 
 The capability modules do not inherit from or import private details from one
 another or from the search orchestrator. Shared contracts live in `sql_schema.py`
@@ -203,6 +206,72 @@ answered. It currently trails the model-free hand-ranked planner by 3.2 lenient 
 strict points. Encoder signals and routing therefore need calibration; they are not yet
 the source of an accuracy gain.
 
+### Failure-mining result
+
+`mine_ast_failures.py` profiles the recursive Spider gold tree and every Phase 5 typed
+AST without parsing rendered SQL. It then executes the full candidate pool and separates
+ranking, sketch recall, table/column links, composition, and residual value errors.
+
+The disjoint full-pool outcome on dev is:
+
+| Outcome | n | % |
+|---|---:|---:|
+| Strict-correct at rank 1 | 408 | 39.5% |
+| Strict-correct elsewhere in pool | 57 | 5.5% |
+| Lenient-only, no strict candidate | 180 | 17.4% |
+| Neither metric matches | 343 | 33.2% |
+| No candidate | 46 | 4.4% |
+
+Strict and lenient are not nested metrics here. Thirty-three examples have empty gold
+results: strict equality can correctly match two empty multisets, while lenient
+containment requires at least one gold value. Across the pool there are 465 strict hits,
+612 lenient hits, 432 hits under both metrics, 33 strict-only hits, 180 lenient-only hits,
+and 389 matching neither. Do not derive a lenient-only count by subtracting strict from
+lenient.
+
+Of the 569 examples with no strict-correct candidate, the profiler attributes 302 to no
+matching structural sketch, 180 to lenient over-answers, 46 to an empty candidate pool,
+28 to missing column-role links, 12 to value or residual semantic mismatches, and one to
+failure to combine individually available choices. These labels compare counted profiles,
+so they are diagnostic categories rather than formal SQL-equivalence proofs. The dominant
+missing or extra features are projection width, filters, joins, `DISTINCT`, grouping, and
+nested blocks. The pool cap is not binding: the planner returns only 5.6 candidates on
+average and two at the median.
+
+The compact report is `spider/results/ast_failure_analysis.json`. Per-example detail is
+written to the gitignored `ast_failure_analysis_per_example.json` for local inspection.
+
+### Training-data decision
+
+The old Phase 6 data is ranker data, not proposal data. Its 6,997 generated Spider-train
+groups contain a strict-positive candidate for only 3,135 examples (44.8%). There is no
+positive for 3,862 examples (55.2%), and only 1,791 mixed positive/negative groups with
+13,323 candidate rows can contribute to the ranking loss. Adding more rows in that format
+cannot teach the grammar to create a missing AST.
+
+`build_ast_proposal_data.py` now converts all 7,000 Spider-train examples into direct gold
+supervision for:
+
+- counted recursive SQL sketches and operators;
+- referenced tables and role-specific projection, aggregate, filter, group, order, having,
+  and join columns;
+- typed predicate literals and limits bound to their operator and column;
+- schema names, types, primary keys, and foreign keys, without copying database cell dumps.
+
+The split is database-disjoint: 5,669 examples from 112 databases train, and 1,331 examples
+from 28 unseen databases validate. There are 764 distinct train sketches; 148 validation
+examples use a sketch not observed exactly in train, so compositional generalization remains
+measurable. The manifest is `spider/results/ast_proposal_data.json`; generated JSONL files
+live under gitignored `spider/data/`.
+
+The next model should predict a small beam of sketch and schema-link proposals, then let the
+existing typed AST builder, validator, renderer, and execution checks constrain them. Start
+with the existing Qwen2.5-0.5B backbone under this correct objective. Then run an otherwise
+identical Qwen2.5-1.5B ablation. A larger backbone is promoted only if it materially improves
+database-disjoint sketch/link recall and final strict pool recall after accounting for memory
+and latency. Swapping the current encoder before this baseline would confound model capacity
+with the much larger effect of changing the supervision target.
+
 ## Reproducing results
 
 Fetch the benchmark data:
@@ -215,6 +284,13 @@ Run deterministic stage evaluation:
 
 ```bash
 python spider/probe/ast_eval.py --dbs spider/data/dbs --pool 180 --top-k 10
+```
+
+Mine the current pool and build proposal supervision:
+
+```bash
+python spider/probe/mine_ast_failures.py --dbs spider/data/dbs --pool 180 --top-k 10
+python spider/probe/build_ast_proposal_data.py
 ```
 
 Train on Spider train with database-disjoint validation, then evaluate on untouched
@@ -251,11 +327,12 @@ The hermetic AST suite executes generated SQL against in-memory SQLite:
 python -m tests.test_sql_ast
 ```
 
-Its 57 cases cover typing and grouping rejection, projection and filter isolation,
+Its 62 cases cover typing and grouping rejection, projection and filter isolation,
 multiple aggregates, direct and bridge joins, deterministic ordering, execution
 reranking, subqueries, set operations, aliases, self-joins, nested aggregation,
 `HAVING`, disjunction scope, inferred high-confidence joins, extrema, zero-inclusive
-counts, top-N, set difference, ranker artifact round trips, evaluator accounting, and
+counts, top-N, set difference, ranker artifact round trips, evaluator accounting,
+failure-profile alignment, database-disjoint proposal splits, literal targets, and
 opt-in learned-ranker isolation.
 
 ## Current boundary
@@ -264,4 +341,6 @@ The implementation is coherent and tested, but Spider is not solved. Phase 1 thr
 Phase 5 are complete as engineering capabilities. Phase 6 is complete as a training,
 serialization, and deterministic-inference experiment, but its current artifact is
 not accurate enough to promote. Future accuracy work should target measured
-candidate-recall and schema-binding failures before adding more ranking complexity.
+candidate-recall and schema-binding failures before adding more ranking complexity. The
+failure miner and proposal corpus are complete; training and integrating the proposal model
+is the next implementation phase.

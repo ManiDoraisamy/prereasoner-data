@@ -6,6 +6,13 @@
 > with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the current implementation and results; use this
 > document for the historical probe methodology and legacy-route baseline.
 
+> **Current accuracy-research tools.** `probe/mine_ast_failures.py` compares recursive
+> gold SQL profiles with the complete typed-AST pool and writes
+> `results/ast_failure_analysis.json`. `probe/build_ast_proposal_data.py` converts all
+> Spider-train gold trees into database-disjoint sketch, schema-link, and literal targets;
+> its audit is `results/ast_proposal_data.json`. These tools belong to the current AST
+> planner work; the rest of this document preserves the earlier route diagnosis.
+
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.
 > The goal is to localize *why* PreReasoner scores low on Spider before changing anything. This is
 > **v2**: the v1 spec was written against stale internals (`relate11.py`, `model11.py`, `runtime20/*`,
