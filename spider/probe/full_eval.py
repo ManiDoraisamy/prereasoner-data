@@ -259,8 +259,14 @@ def main():
     }
     os.makedirs(args.out, exist_ok=True)
     suf = ("_" + args.tag) if args.tag else ""
-    json.dump(summary, open(os.path.join(args.out, f"full_eval{suf}.json"), "w"), indent=2)
-    json.dump(per_example, open(os.path.join(args.out, f"full_eval_per_example{suf}.json"), "w"), indent=2)
+    with open(os.path.join(args.out, f"full_eval{suf}.json"), "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2)
+        handle.write("\n")
+    with open(
+        os.path.join(args.out, f"full_eval_per_example{suf}.json"), "w", encoding="utf-8"
+    ) as handle:
+        json.dump(per_example, handle, indent=2)
+        handle.write("\n")
 
     P = print
     P("\n" + "=" * 78); P("PROBE D+ — FULL OFFLINE SYSTEM (slot-filler + compose, live routing)"); P("=" * 78)

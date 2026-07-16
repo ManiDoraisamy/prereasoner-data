@@ -52,7 +52,7 @@ def _score(counter, gold_rows, candidates, con, top_k):
         return
     flags = []
     successful = 0
-    for candidate in candidates[:top_k]:
+    for candidate in candidates:
         rows, error = exec_sql_timed(con, candidate.sql)
         comparison = compare(gold_rows, rows) if error is None else {}
         flags.append(comparison)
@@ -66,6 +66,8 @@ def _score(counter, gold_rows, candidates, con, top_k):
     counter["strict"] += bool(first.get("strict"))
     counter["oracle_lenient"] += any(flag.get("lenient") for flag in flags)
     counter["oracle_strict"] += any(flag.get("strict") for flag in flags)
+    counter["topk_oracle_lenient"] += any(flag.get("lenient") for flag in flags[:top_k])
+    counter["topk_oracle_strict"] += any(flag.get("strict") for flag in flags[:top_k])
     if is_scalar(gold_rows):
         counter["scalar"] += bool(first.get("scalar_exact"))
 
@@ -82,8 +84,10 @@ def _summary(counter, total):
         "strict_pct": pct(counter["strict"]),
         "scalar_pct": pct(counter["scalar"], counter["scalar_n"]),
         "scalar_n": counter["scalar_n"],
-        "topk_oracle_lenient_pct": pct(counter["oracle_lenient"]),
-        "topk_oracle_strict_pct": pct(counter["oracle_strict"]),
+        "topk_oracle_lenient_pct": pct(counter["topk_oracle_lenient"]),
+        "topk_oracle_strict_pct": pct(counter["topk_oracle_strict"]),
+        "pool_oracle_lenient_pct": pct(counter["oracle_lenient"]),
+        "pool_oracle_strict_pct": pct(counter["oracle_strict"]),
     }
 
 

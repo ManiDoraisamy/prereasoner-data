@@ -2,7 +2,7 @@
   "config": "gold_tables",
   "top_k": 10,
   "pool": 180,
-  "elapsed_seconds": 64.21,
+  "elapsed_seconds": 32.67,
   "phase1": {
     "n": 1034,
     "answered": 975,
@@ -14,7 +14,9 @@
     "scalar_pct": 38.2,
     "scalar_n": 408,
     "topk_oracle_lenient_pct": 44.3,
-    "topk_oracle_strict_pct": 24.4
+    "topk_oracle_strict_pct": 24.4,
+    "pool_oracle_lenient_pct": 44.4,
+    "pool_oracle_strict_pct": 24.6
   },
   "phase2": {
     "n": 1034,
@@ -27,7 +29,9 @@
     "scalar_pct": 44.4,
     "scalar_n": 408,
     "topk_oracle_lenient_pct": 44.4,
-    "topk_oracle_strict_pct": 24.6
+    "topk_oracle_strict_pct": 24.6,
+    "pool_oracle_lenient_pct": 44.4,
+    "pool_oracle_strict_pct": 24.6
   },
   "phase3": {
     "n": 1034,
@@ -40,7 +44,9 @@
     "scalar_pct": 45.6,
     "scalar_n": 408,
     "topk_oracle_lenient_pct": 47.7,
-    "topk_oracle_strict_pct": 28.0
+    "topk_oracle_strict_pct": 28.0,
+    "pool_oracle_lenient_pct": 47.8,
+    "pool_oracle_strict_pct": 28.0
   },
   "phase4": {
     "n": 1034,
@@ -53,7 +59,9 @@
     "scalar_pct": 50.5,
     "scalar_n": 408,
     "topk_oracle_lenient_pct": 53.5,
-    "topk_oracle_strict_pct": 35.7
+    "topk_oracle_strict_pct": 35.7,
+    "pool_oracle_lenient_pct": 53.7,
+    "pool_oracle_strict_pct": 35.8
   },
   "phase5": {
     "n": 1034,
@@ -66,7 +74,9 @@
     "scalar_pct": 56.9,
     "scalar_n": 408,
     "topk_oracle_lenient_pct": 58.5,
-    "topk_oracle_strict_pct": 44.5
+    "topk_oracle_strict_pct": 44.5,
+    "pool_oracle_lenient_pct": 59.2,
+    "pool_oracle_strict_pct": 45.0
   },
   "ranker_model": "engine/data/sql_ranker.json",
   "phase6": {
@@ -80,6 +90,8 @@
     "scalar_pct": 57.4,
     "scalar_n": 408,
     "topk_oracle_lenient_pct": 58.5,
-    "topk_oracle_strict_pct": 44.6
+    "topk_oracle_strict_pct": 44.6,
+    "pool_oracle_lenient_pct": 59.2,
+    "pool_oracle_strict_pct": 45.0
   }
 }

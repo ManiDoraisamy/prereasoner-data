@@ -191,9 +191,17 @@ On all 1,034 Spider dev examples with pool 180 and top-10 evaluation:
 | Top-10 strict oracle | 24.4% | 24.6% | 28.0% | 35.7% | 44.5% | 44.6% |
 
 The main unsolved limit is candidate recall and semantic binding, not randomness:
-only 44.5% of examples have a strict-correct Phase 5 query in the top ten. Better ranking
-cannot recover a query the bounded grammar rules did not generate. Whole-database
-table selection is also harder than the oracle `gold_tables` configuration above.
+only 44.5% of examples have a strict-correct Phase 5 query in the top ten, and searching
+the entire returned pool raises that oracle to just 45.0%. A perfect selector can recover
+at most 5.5 strict points from the current pool. The rest requires better candidate recall
+and schema binding. Whole-database table selection is also harder than the oracle
+`gold_tables` configuration above.
+
+The encoder-integrated `full_eval.py` path, which also applies live-style compose routing,
+scores 46.6% lenient, 35.4% strict, and 56.6% scalar (`231/408`), with 95.5% of examples
+answered. It currently trails the model-free hand-ranked planner by 3.2 lenient and 4.1
+strict points. Encoder signals and routing therefore need calibration; they are not yet
+the source of an accuracy gain.
 
 ## Reproducing results
 
