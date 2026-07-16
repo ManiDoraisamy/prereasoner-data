@@ -310,7 +310,7 @@ def learned_feature_vector(
             continue
         family = _feature_family(name)
         family_values[family] += float(value)
-        family_counts[family] += 1
+        family_counts[family] += _feature_count_weight(name)
     for family, value in family_values.items():
         features[f"heuristic_value.{family}"] = value
         features[f"heuristic_count.{family}"] = float(family_counts[family])
@@ -374,11 +374,24 @@ def _hash_bucket(value: str) -> int:
 def _feature_family(name: str) -> str:
     """Collapse schema-specific feature suffixes into trainable global families."""
     parts = name.split(":")
+    while parts and parts[0] in {"left", "right"}:
+        parts.pop(0)
+    if not parts:
+        return "unknown"
     if parts[0] == "aggregate_target" and len(parts) > 1:
         return f"aggregate_target.{parts[1].lower()}"
     if parts[0] == "set_operator" and len(parts) > 1:
         return f"set_operator.{parts[1].lower()}"
     return parts[0]
+
+
+def _feature_count_weight(name: str) -> float:
+    parts = name.split(":")
+    depth = 0
+    while parts and parts[0] in {"left", "right"}:
+        depth += 1
+        parts.pop(0)
+    return 0.5 ** depth
 
 
 def _ast_features(query: Query) -> dict[str, float]:

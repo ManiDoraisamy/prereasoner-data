@@ -27,6 +27,7 @@ from engine.sql_expansion import (
     build_candidate as _candidate,
     column_matches as _column_matches,
     is_id as _is_id,
+    join_key as _join_key,
     linker_noise as _linker_noise,
     parse_number as _parse_number,
     physical_tables as _physical_tables,
@@ -73,6 +74,7 @@ class ExtremaQueryExpander(ExpansionSupport):
 
     def expand(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
         generated = []
+        generated.extend(self._dual_extrema_candidates(question, candidates))
         generated.extend(self._row_superlative_candidates(question, candidates))
         generated.extend(self._frequency_superlative_candidates(question, candidates))
         generated.extend(self._difference_candidates(question, candidates))
@@ -97,7 +99,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             return []
         if token_set & {"average", "avg", "mean", "sum", "total"}:
             return []
-        if token_set & {"maximum", "max"} and token_set & {"minimum", "min"}:
+        if _has_dual_extrema(tokens):
             return []
         if ("how" in token_set or "number" in token_set or "count" in token_set) and bool(
             token_set & {"greater", "larger", "less", "lower", "more", "smaller", "than"}
@@ -186,6 +188,91 @@ class ExtremaQueryExpander(ExpansionSupport):
         out.extend(self._direct_row_superlatives(
             tokens, targets, limit, limit_position, candidates
         ))
+        return out
+
+    def _dual_extrema_candidates(
+        self, question: str, candidates: Sequence[ScoredQuery]
+    ) -> list[ScoredQuery]:
+        tokens = _tokens(question)
+        token_set = set(tokens)
+        if not _has_dual_extrema(tokens):
+            return []
+        if token_set & {"average", "avg", "mean", "sum", "total"}:
+            return []
+        frequency = _frequency_cue(tokens)
+        if frequency is not None and frequency.explicit_number:
+            return []
+        # Explicit MIN/MAX are already handled by the base aggregate planner.
+        if token_set & {"minimum", "min", "maximum", "max"}:
+            return []
+
+        max_position = min(
+            index for index, token in enumerate(tokens)
+            if token in _MAX_CUES and _valid_superlative_cue(tokens, index)
+        )
+        min_position = min(
+            index for index, token in enumerate(tokens)
+            if token in _MIN_CUES and _valid_superlative_cue(tokens, index)
+        )
+        linked_targets = self._superlative_targets(tokens)
+        if not linked_targets:
+            return []
+        fallback = linked_targets[0].column
+        maximum_target = next(
+            (target.column for target in linked_targets if target.direction == "DESC"), fallback
+        )
+        minimum_target = next(
+            (target.column for target in linked_targets if target.direction == "ASC"), fallback
+        )
+        aggregate_targets = (
+            (("MAX", maximum_target), ("MIN", minimum_target))
+            if max_position < min_position
+            else (("MIN", minimum_target), ("MAX", maximum_target))
+        )
+        select = tuple(
+            SelectItem(Aggregate(function, target))
+            for function, target in aggregate_targets
+        )
+        target_tables = {target.table for _, target in aggregate_targets}
+        out = []
+        if len(target_tables) == 1:
+            source = next(iter(target_tables))
+            direct = _candidate(
+                SelectQuery(select, source),
+                66.0,
+                ("phase5:dual-extrema",),
+            )
+            if direct is not None:
+                out.append(direct)
+        for candidate in candidates[: self.max_candidates * 2]:
+            query = candidate.query
+            if not isinstance(query, SelectQuery) or not target_tables <= _physical_tables(query):
+                continue
+            terms = tuple(
+                term for term in _and_terms(query.where)
+                if not _linker_noise(term)
+                and not any(
+                    _target_extrema_predicate(term, target)
+                    for _, target in aggregate_targets
+                )
+            )
+            transformed = replace(
+                query,
+                select=select,
+                where=and_predicates(_unique_predicates(terms)),
+                group_by=(),
+                having=None,
+                order_by=(),
+                limit=None,
+                distinct=False,
+            )
+            built = _candidate(
+                transformed,
+                68.0 + min(2.0, 0.25 * len(terms)) - 0.2 * len(query.joins),
+                candidate.evidence + ("phase5:dual-extrema",),
+            )
+            if built is not None:
+                out.append(built)
         return out
 
     def _direct_row_superlatives(
@@ -290,10 +377,33 @@ class ExtremaQueryExpander(ExpansionSupport):
             )[:3]:
                 if relation_score <= 0:
                     continue
-                structures = self.having_structures(
-                    candidates, entity_table, counted_table, pseudo
-                )
-                for source, joins, where, structure_score in structures[:8]:
+                structures = [
+                    (*structure, Star())
+                    for structure in self.having_structures(
+                        candidates, entity_table, counted_table, pseudo
+                    )
+                ]
+                if cue.direction == "ASC" and entity_table != counted_table:
+                    zero_inclusive = []
+                    for tree in self.schema.join_trees(
+                        {entity_table, counted_table}, preferred_root=entity_table, limit=4
+                    ):
+                        joins = tuple(replace(join, kind="LEFT") for join in tree.joins)
+                        count_key = _join_key(joins, counted_table)
+                        if count_key is not None:
+                            zero_inclusive.append((
+                                tree.root, joins, None, 0.75 - 0.2 * len(joins), count_key
+                            ))
+                    if not zero_inclusive:
+                        inferred = self.inferred_entity_join(entity_table, counted_table)
+                        if inferred is not None:
+                            join = replace(inferred, table=counted_table, kind="LEFT")
+                            count_key = _join_key((join,), counted_table)
+                            if count_key is not None:
+                                zero_inclusive.append((entity_table, (join,), None, 0.5, count_key))
+                    if zero_inclusive:
+                        structures = zero_inclusive
+                for source, joins, where, structure_score, count_operand in structures[:8]:
                     physical = {source, *(join.table for join in joins)}
                     direct_filters = [
                         comparison for comparison in self.numeric_comparisons(
@@ -326,9 +436,10 @@ class ExtremaQueryExpander(ExpansionSupport):
                         groups = self._frequency_groups(
                             entity_table, counted_table, joins, columns
                         )
+                        count = Aggregate("COUNT", count_operand)
                         select = projection
                         if _frequency_count_output(tokens):
-                            select = projection + (SelectItem(Aggregate("COUNT", Star())),)
+                            select = projection + (SelectItem(count),)
                         for selected_where, where_bonus in where_options:
                             query = SelectQuery(
                                 select=select,
@@ -336,7 +447,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                                 joins=joins,
                                 where=selected_where,
                                 group_by=groups,
-                                order_by=(OrderTerm(Aggregate("COUNT", Star()), cue.direction),),
+                                order_by=(OrderTerm(count, cue.direction),),
                                 limit=limit,
                                 distinct=False,
                             )
@@ -528,25 +639,59 @@ class ExtremaQueryExpander(ExpansionSupport):
                 return True
         return False
 
-    @staticmethod
     def _frequency_groups(
-        entity_table: str, counted_table: str, joins, columns: tuple[ColumnRef, ...]
+        self, entity_table: str, counted_table: str, joins, columns: tuple[ColumnRef, ...]
     ) -> tuple[ColumnRef, ...]:
-        return tuple(dict.fromkeys(columns))
+        entity_key = (
+            _join_key(joins, entity_table)
+            if entity_table != counted_table and self._projection_has_duplicates(columns)
+            else None
+        )
+        return tuple(dict.fromkeys((*columns, entity_key) if entity_key is not None else columns))
+
+    def _projection_has_duplicates(self, columns: tuple[ColumnRef, ...]) -> bool:
+        schema_columns = [
+            self.schema.column_map.get((column.table, column.name))
+            for column in columns
+        ]
+        if not schema_columns or any(column is None or not column.values for column in schema_columns):
+            return True
+        row_count = min(len(column.values) for column in schema_columns if column is not None)
+        rows = [
+            tuple(repr(column.values[index]) for column in schema_columns if column is not None)
+            for index in range(row_count)
+        ]
+        return len(rows) != len(set(rows))
+
+
+def _has_dual_extrema(tokens: tuple[str, ...]) -> bool:
+    has_maximum = any(
+        token in _MAX_CUES and _valid_superlative_cue(tokens, index)
+        for index, token in enumerate(tokens)
+    )
+    has_minimum = any(
+        token in _MIN_CUES and _valid_superlative_cue(tokens, index)
+        for index, token in enumerate(tokens)
+    )
+    return has_maximum and has_minimum
 
 
 def _frequency_cue(tokens: tuple[str, ...]) -> FrequencyCue | None:
     normalized = " ".join(tokens)
     explicit_patterns = (
-        r"\b(most|fewest|greatest|largest|highest|least) number of\b",
-        r"\bnumber of .{0,30}\b(most|fewest|greatest|largest|highest|least)\b",
+        r"\b(most|fewest|greatest|largest|highest|least|smallest|lowest) number of\b",
+        r"\bnumber of .{0,30}\b(most|fewest|greatest|largest|highest|least|smallest|lowest)\b",
     )
     for pattern in explicit_patterns:
         match = re.search(pattern, normalized)
         if match:
             cue = match.group(1)
             position = normalized[:match.start(1)].count(" ")
-            return FrequencyCue(position, "ASC" if cue in {"fewest", "least"} else "DESC", True)
+            return FrequencyCue(
+                position,
+                "ASC" if cue in {"fewest", "least", "smallest", "lowest"} else "DESC",
+                True,
+            )
     for index, token in enumerate(tokens):
         if token in {"commonest", "rarest"}:
             return FrequencyCue(index, "ASC" if token == "rarest" else "DESC", False)

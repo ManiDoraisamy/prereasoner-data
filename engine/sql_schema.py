@@ -243,9 +243,27 @@ def _foreign_key(
     else:
         from_table, from_column, to_table, to_column = map(str, raw[:4])
         confidence = float(raw[4]) if len(raw) > 4 else 1.0
-    left = refs.get((from_table, from_column))
-    right = refs.get((to_table, to_column))
+    left = _resolve_ref(refs, from_table, from_column)
+    right = _resolve_ref(refs, to_table, to_column)
     return ForeignKey(left, right, confidence) if left is not None and right is not None else None
+
+
+def _resolve_ref(
+    refs: dict[tuple[str, str], ColumnRef], table: str, column: str
+) -> ColumnRef | None:
+    exact = refs.get((table, column))
+    if exact is not None:
+        return exact
+
+    def normalized_table(value: str) -> str:
+        return (re.sub(r"\W+", "_", value).strip("_") or "t").casefold()
+
+    matches = [
+        ref for (candidate_table, candidate_column), ref in refs.items()
+        if normalized_table(candidate_table) == normalized_table(table)
+        and candidate_column.casefold() == column.casefold()
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
 def _planner_type(column: dict) -> SQLType:

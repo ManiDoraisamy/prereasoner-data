@@ -127,13 +127,13 @@ class CandidateRanker:
                 aligned = "either" in roles.tokens or "or" in roles.tokens
             else:
                 aligned = bool(set(roles.tokens) & {"except", "without", "no", "not", "never"})
-            # Score BOTH operands: the right branch's projection/group/count alignment is namespaced under
-            # "right:" so its feature names don't collide with the left branch's. This lets the ranker prefer a
-            # set candidate whose right operand actually matches the question over one that shares the left branch
-            # but has a wrong right branch (e.g. two EXCEPT candidates differing only in the right projection).
-            return ((f"set_operator:{query.operator.lower()}", 6.0 if aligned else -5.0),
-                    *self._semantic_features(query.left, roles),
-                    *((f"right:{name}", value) for name, value in self._semantic_features(query.right, roles)))
+            left = self._semantic_features(query.left, roles)
+            right = self._semantic_features(query.right, roles)
+            return (
+                (f"set_operator:{query.operator.lower()}", 6.0 if aligned else -5.0),
+                *((f"left:{name}", 0.5 * value) for name, value in left),
+                *((f"right:{name}", 0.5 * value) for name, value in right),
+            )
         select_columns = tuple(item.expression for item in query.select if isinstance(item.expression, ColumnRef))
         aggregates = tuple(item.expression for item in query.select if isinstance(item.expression, Aggregate))
         group_columns = query.group_by

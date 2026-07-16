@@ -41,6 +41,7 @@ from engine.sql_learned_rank import (
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
+    record_integrated_result,
     recursive_gold_table_names,
     spider_foreign_keys,
 )
@@ -335,9 +336,7 @@ def test_execution_rerank_penalizes_empty_candidate():
 
 
 def test_phase3_ranks_set_query_by_both_operands():
-    # Regression (#12): the SetQuery ranker scored only the LEFT operand, so two set candidates that share a
-    # left branch but differ in the RIGHT projection received identical scores. The right operand must also be
-    # scored (namespaced) so the candidate whose right branch projects the requested column ranks higher.
+    # Both branches contribute without doubling the ordinary semantic-feature scale.
     stadium = {"name": "stadium", "columns": ["Name", "Location"],
                "rows": [["Alpha", "North"], ["Beta", "South"]]}
     schema = SQLSearcher.from_tables([stadium], []).schema
@@ -355,8 +354,14 @@ def test_phase3_ranks_set_query_by_both_operands():
     misaligned = ScoredQuery(misaligned_set, render_query(misaligned_set), 0.0, ())
     ranked = CandidateRanker(schema).rank("stadium names except southern ones", [misaligned, aligned])
     scores = {candidate.sql: candidate.score for candidate in ranked}
-    assert scores[aligned.sql] != scores[misaligned.sql]   # right operand now contributes (was identical)
-    assert ranked[0].sql == aligned.sql                    # the correct right projection ranks first
+    assert scores[aligned.sql] != scores[misaligned.sql]
+    assert ranked[0].sql == aligned.sql
+    learned = learned_feature_vector(
+        "stadium names except southern ones", ranked[0]
+    )
+    assert "heuristic_value.left" not in learned
+    assert "heuristic_value.right" not in learned
+    assert learned["heuristic_count.projection_role"] == 1.0
 
 
 def test_recursive_ast_scalar_subquery_executes():
@@ -673,6 +678,57 @@ def test_phase5_frequency_superlative_can_return_count():
     assert execute([PEOPLE], candidate.sql) == [("France", 2)]
 
 
+def test_phase5_frequency_argmin_includes_zero_related_entities():
+    students = {
+        "name": "students",
+        "columns": ["Student_ID", "Name"],
+        "rows": [[1, "Alex"], [2, "Alex"], [3, "Cara"]],
+    }
+    pets = {
+        "name": "pets",
+        "columns": ["Pet_ID", "Student_ID"],
+        "rows": [[1, 1], [2, 1], [3, 3]],
+    }
+    fks = [{
+        "from_table": "pets", "from_col": "Student_ID",
+        "to_table": "students", "to_col": "Student_ID",
+    }]
+    candidate = best(
+        "Which student has the smallest number of pets?",
+        [students, pets],
+        fks,
+    )
+    assert "LEFT JOIN" in candidate.sql
+    assert '"students"."Student_ID"' in candidate.sql.split(" ORDER BY ")[0]
+    assert 'ORDER BY COUNT("pets"."Student_ID") ASC LIMIT 1' in candidate.sql
+    assert execute([students, pets], candidate.sql) == [("Alex",)]
+
+
+def test_phase5_returns_dual_lexical_extrema():
+    cars = {
+        "name": "cars",
+        "columns": ["Name", "Country", "Price", "Weight"],
+        "rows": [
+            ["A", "France", 100, 1000],
+            ["B", "France", 300, 900],
+            ["C", "Spain", 500, 700],
+        ],
+    }
+    candidate = best("Show the highest and lowest price", [cars])
+    assert candidate.sql == 'SELECT MAX("cars"."Price"), MIN("cars"."Price") FROM "cars"'
+    assert execute([cars], candidate.sql) == [(500, 100)]
+
+    filtered = best("Show the highest and lowest price for cars in France", [cars])
+    assert 'WHERE "cars"."Country" = \'France\'' in filtered.sql
+    assert execute([cars], filtered.sql) == [(300, 100)]
+
+    separate = best("Show the highest price and lowest weight", [cars])
+    assert separate.sql == (
+        'SELECT MAX("cars"."Price"), MIN("cars"."Weight") FROM "cars"'
+    )
+    assert execute([cars], separate.sql) == [(500, 700)]
+
+
 def test_phase5_searches_set_difference():
     candidate = best(
         "Show the stadium names without any concert",
@@ -808,6 +864,23 @@ def test_shared_spider_evaluation_contract():
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
 
 
+def test_schema_graph_resolves_normalized_foreign_key_names():
+    graph = SchemaGraph.from_planner(
+        [
+            {"table": "Order_Items", "name": "Order_ID", "affinity": "INTEGER"},
+            {"table": "Orders", "name": "ID", "affinity": "INTEGER"},
+        ],
+        [{
+            "from_table": "Order Items", "from_col": "order_id",
+            "to_table": "orders", "to_col": "id",
+        }],
+    )
+    assert len(graph.foreign_keys) == 1
+    assert graph.foreign_keys[0].signature == (
+        "Order_Items", "Order_ID", "Orders", "ID",
+    )
+
+
 def test_spider_evaluator_does_not_count_all_errors_as_answered():
     counter = Counter()
     query = SelectQuery((SelectItem(Star()),), "missing")
@@ -818,6 +891,13 @@ def test_spider_evaluator_does_not_count_all_errors_as_answered():
     assert counter["answered"] == 0
     assert counter["execution_failure"] == 1
     assert counter["scalar_n"] == 1
+
+    integrated = Counter()
+    record_integrated_result(integrated, [[1]], {}, answered=False)
+    assert integrated["answered"] == 0
+    assert integrated["error"] == 1
+    assert integrated["scalar_total"] == 1
+    assert integrated["scalar_correct"] == 0
 
 
 TESTS = [
@@ -866,6 +946,8 @@ TESTS = [
     test_phase5_distinguishes_limit_token_from_equal_filter_value,
     test_phase5_searches_frequency_superlative,
     test_phase5_frequency_superlative_can_return_count,
+    test_phase5_frequency_argmin_includes_zero_related_entities,
+    test_phase5_returns_dual_lexical_extrema,
     test_phase5_searches_set_difference,
     test_phase5_guards_multi_aggregate_and_can_be_disabled,
     test_phase6_features_are_schema_independent,
@@ -874,6 +956,7 @@ TESTS = [
     test_phase6_tree_artifact_has_dependency_free_inference,
     test_public_sql_facade_exposes_stable_planner_contract,
     test_shared_spider_evaluation_contract,
+    test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
 ]
 

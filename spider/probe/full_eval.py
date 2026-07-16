@@ -33,7 +33,12 @@ warnings.filterwarnings("ignore")
 
 from hardness import eval_hardness
 from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_timeout
-from spider_eval import compare, gold_table_names, spider_foreign_keys
+from spider_eval import (
+    compare,
+    record_integrated_result,
+    recursive_gold_table_names,
+    spider_foreign_keys,
+)
 
 DIFFS = ["easy", "medium", "hard", "extra"]
 # Mirrors the LIVE routing gate — keep in sync with engine.world_compose.ComposedWorldQuery.DEPTH_PRIMS.
@@ -203,7 +208,7 @@ def main():
         capped, gcon = get_db(db_id)
         gold_rows, gerr = exec_sql_timed(gcon, ex["query"], timeout=8.0)
         if args.config == "gold_tables":
-            names = [t.lower() for t in gold_table_names(ex, tables_meta)]
+            names = [t.lower() for t in recursive_gold_table_names(ex, tables_meta)]
             tabs = [capped[t] for t in names if t in capped] or list(capped.values())
         else:
             tabs = list(capped.values())
@@ -222,20 +227,12 @@ def main():
         st = stat[diff]; st["n"] += 1
         if gerr:
             st["gold_exec_error"] += 1
+        record_integrated_result(st, gold_rows, cmp, bool(r["ok"]))
         if not r["ok"]:
-            st["error"] += 1
             stage_hist[r["stage"]] += 1
         else:
-            st["answered"] += 1
             if cmp.get("lenient"):
-                st["correct_lenient"] += 1
                 path_correct[r["path"]] += 1
-            if cmp.get("gold_scalar"):
-                st["scalar_total"] += 1
-                if cmp.get("scalar_exact"):
-                    st["scalar_correct"] += 1
-            if cmp.get("strict"):
-                st["correct_strict"] += 1
         per_example.append({"idx": i, "db_id": db_id, "difficulty": diff, "question": ex["question"],
                             "gold": ex["query"], "gold_exec_error": gerr, **r, **cmp})
         if (n + 1) % 50 == 0:

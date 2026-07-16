@@ -1,7 +1,8 @@
 # Engine tests
 
 `python -m tests.test_sql_ast` is the hermetic SQL AST search/ranking suite and needs neither model weights nor
-Postgres. The remaining engine suites below are live integration tests.
+Postgres. It validates generated SQL by executing it against in-memory SQLite. The remaining engine suites below
+are live integration tests.
 
 These are **live integration tests**: every suite talks to a real world Postgres (pgvector) with the
 `world`/`wikipedia`/`public` schemas populated. The intended harness is the repo's docker-compose Postgres

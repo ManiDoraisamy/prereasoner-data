@@ -25,10 +25,20 @@ if ROOT not in sys.path:
 
 try:
     from .evalutil import build_mem_db, exec_sql_timed, load_capped
-    from .spider_eval import compare, gold_table_names, is_scalar, spider_foreign_keys
+    from .spider_eval import (
+        compare,
+        is_scalar,
+        recursive_gold_table_names,
+        spider_foreign_keys,
+    )
 except ImportError:  # direct script execution
     from evalutil import build_mem_db, exec_sql_timed, load_capped
-    from spider_eval import compare, gold_table_names, is_scalar, spider_foreign_keys
+    from spider_eval import (
+        compare,
+        is_scalar,
+        recursive_gold_table_names,
+        spider_foreign_keys,
+    )
 
 from engine.sql_rank import CandidateRanker
 from engine.sql_search import SQLSearcher
@@ -67,6 +77,7 @@ def _summary(counter, total):
         "answered": counter["answered"],
         "no_candidate": counter["no_candidate"],
         "execution_failure": counter["execution_failure"],
+        "gold_execution_failure": counter["gold_execution_failure"],
         "lenient_pct": pct(counter["lenient"]),
         "strict_pct": pct(counter["strict"]),
         "scalar_pct": pct(counter["scalar"], counter["scalar_n"]),
@@ -118,7 +129,7 @@ def main():
             db_cache[db_id] = load_capped(os.path.join(args.dbs, db_id + ".sqlite"), args.cap)
         capped = db_cache[db_id]
         if args.config == "gold_tables":
-            names = [name.lower() for name in gold_table_names(example, metas)]
+            names = [name.lower() for name in recursive_gold_table_names(example, metas)]
             tables = [capped[name] for name in names if name in capped] or list(capped.values())
         else:
             tables = list(capped.values())
@@ -150,6 +161,9 @@ def main():
             _score(stats["phase5"], gold_rows, phase5, con, args.top_k)
             if rank_model is not None:
                 _score(stats["phase6"], gold_rows, phase6, con, args.top_k)
+        else:
+            for counter in stats.values():
+                counter["gold_execution_failure"] += 1
         con.close()
         if index % 250 == 0:
             print(f"  {index}/{len(dev)}", flush=True)
@@ -172,6 +186,7 @@ def main():
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:
             json.dump(result, handle, indent=2)
+            handle.write("\n")
 
 
 if __name__ == "__main__":

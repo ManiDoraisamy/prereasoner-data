@@ -21,6 +21,8 @@ Given a question, table data, and foreign keys, the planner:
 The same question, schema, values, settings, and model artifact always produce the
 same ordered candidates. Determinism removes sampling variance; it does not remove
 semantic ambiguity or guarantee that the correct AST exists in the searched pool.
+There is no decoder entropy to average away: remaining errors come from schema linking,
+missing candidate shapes, bounded search, and ranking the wrong valid interpretation.
 
 ## Code map
 
@@ -97,7 +99,8 @@ The AST and search pipeline support:
 - scalar subqueries, `IN`, `NOT IN`, `EXISTS`, and `NOT EXISTS` ASTs;
 - derived tables and nested aggregation;
 - `UNION`, `INTERSECT`, and `EXCEPT` with equal-arity validation;
-- row and frequency argmax/argmin and explicit top-N queries.
+- row and frequency argmax/argmin, zero-inclusive relationship counts, dual extrema,
+  and explicit top-N queries.
 
 Support means the grammar, validator, renderer, and at least one search rule exist.
 It does not mean every natural-language paraphrase is linked to that structure.
@@ -112,9 +115,10 @@ checks:
 - visible table qualifiers and alias scope;
 - connected joins and valid aliased self-joins;
 - scalar and set-query arity;
-- aggregate operand types;
+- aggregate operand and literal payload types;
 - grouped projection and ordering rules;
-- restrictions on compound-query operands.
+- restrictions on compound-query operands, including indeterminate `SELECT *` arity;
+- invalid aggregate forms such as `COUNT(DISTINCT *)`.
 
 Identifiers and literals are quoted by the renderer. The planner emits query ASTs,
 not arbitrary statements. The serving path still applies its existing SELECT-only
@@ -139,10 +143,10 @@ model = load_ranker_model("engine/data/sql_ranker.json")
 candidates = searcher.search(question, rank_model=model)
 ```
 
-The current artifact is experimental and is not loaded automatically. It improved
-database-disjoint training validation from 41.309% to 41.836% strict top-1, but
-regressed untouched Spider dev from 40.2% to 39.5%. The promotion gate therefore
-keeps the hand-ranked planner as the default.
+The current artifact is experimental and is not loaded automatically. On the corrected
+Spider dev evaluation it moves scalar accuracy from 56.9% to 57.4%, but regresses
+lenient accuracy from 49.8% to 48.2% and strict accuracy from 39.5% to 38.5%.
+The promotion gate therefore keeps the hand-ranked planner as the default.
 
 ## Evaluation stages
 
@@ -171,19 +175,23 @@ phase5 = searcher.search(q)  # all deterministic capability expanders enabled
 
 ## Spider status
 
-The fast evaluator uses Spider-declared foreign keys, gold table selection, no encoder
-signals, and no compose route. Gold SQL and denotations are used only for measurement.
+The fast evaluator uses Spider-declared foreign keys, recursively referenced gold table
+selection, no encoder signals, and no compose route. Gold SQL and denotations are used
+only for measurement. Gold and predicted SQL execute against the same capped in-memory
+tables. Every example is accounted for as answered, no-candidate, candidate-execution
+failure, or gold-execution failure.
+
 On all 1,034 Spider dev examples with pool 180 and top-10 evaluation:
 
 | Metric | P1 | P2 | P3 | P4 | P5 default | P6 experimental |
 |---|---:|---:|---:|---:|---:|---:|
-| Lenient | 33.1% | 36.8% | 38.2% | 42.5% | 47.2% | 45.9% |
-| Strict | 19.9% | 24.4% | 26.4% | 32.9% | 40.2% | 39.5% |
-| Scalar | 43.7% | 50.3% | 51.4% | 55.8% | 62.2% | 62.2% |
-| Top-10 strict oracle | 27.5% | 27.9% | 30.0% | 38.2% | 45.8% | 45.6% |
+| Lenient | 34.1% | 38.0% | 40.7% | 44.8% | 49.8% | 48.2% |
+| Strict | 17.8% | 22.1% | 25.3% | 31.7% | 39.5% | 38.5% |
+| Scalar | 38.2% | 44.4% | 45.6% | 50.5% | 56.9% | 57.4% |
+| Top-10 strict oracle | 24.4% | 24.6% | 28.0% | 35.7% | 44.5% | 44.6% |
 
 The main unsolved limit is candidate recall and semantic binding, not randomness:
-only 45.8% of examples have a strict-correct query in the top ten. Better ranking
+only 44.5% of examples have a strict-correct Phase 5 query in the top ten. Better ranking
 cannot recover a query the bounded grammar rules did not generate. Whole-database
 table selection is also harder than the oracle `gold_tables` configuration above.
 
@@ -235,11 +243,12 @@ The hermetic AST suite executes generated SQL against in-memory SQLite:
 python -m tests.test_sql_ast
 ```
 
-It covers typing and grouping rejection, projection and filter isolation, multiple
-aggregates, direct and bridge joins, deterministic ordering, execution reranking,
-subqueries, set operations, aliases, self-joins, nested aggregation, `HAVING`,
-disjunction scope, inferred high-confidence joins, extrema, top-N, set difference,
-ranker artifact round trips, and opt-in learned-ranker isolation.
+Its 57 cases cover typing and grouping rejection, projection and filter isolation,
+multiple aggregates, direct and bridge joins, deterministic ordering, execution
+reranking, subqueries, set operations, aliases, self-joins, nested aggregation,
+`HAVING`, disjunction scope, inferred high-confidence joins, extrema, zero-inclusive
+counts, top-N, set difference, ranker artifact round trips, evaluator accounting, and
+opt-in learned-ranker isolation.
 
 ## Current boundary
 

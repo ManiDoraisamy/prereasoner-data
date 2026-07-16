@@ -29,7 +29,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from hardness import eval_hardness, shape
-from spider_eval import compare, gold_table_names
+from spider_eval import compare, record_integrated_result, recursive_gold_table_names
 
 DIFFS = ["easy", "medium", "hard", "extra"]
 
@@ -136,7 +136,7 @@ def main():
                "gold": ex["query"], "gold_exec_error": gerr, "configs": {}}
         for c in configs:
             if c == "gold_tables":
-                names = [t.lower() for t in gold_table_names(ex, tables_meta)]
+                names = [t.lower() for t in recursive_gold_table_names(ex, tables_meta)]
                 tabs = [alltabs[t] for t in names if t in alltabs]
                 if not tabs:
                     tabs = list(alltabs.values())
@@ -146,19 +146,9 @@ def main():
             cmp = compare(gold_rows, r.get("rows")) if r["ok"] else {}
             st = stat[c][diff]
             st["n"] += 1
+            record_integrated_result(st, gold_rows, cmp, bool(r["ok"]))
             if not r["ok"]:
-                st["error"] += 1
                 stage_hist[c][r["stage"]] += 1
-            else:
-                st["answered"] += 1
-                if cmp.get("lenient"):
-                    st["correct_lenient"] += 1
-                if cmp.get("gold_scalar"):
-                    st["scalar_total"] += 1
-                    if cmp.get("scalar_exact"):
-                        st["scalar_correct"] += 1
-                if cmp.get("strict"):
-                    st["correct_strict"] += 1
             rec["configs"][c] = {**r, **cmp}
         per_example.append(rec)
         if (n + 1) % 25 == 0:

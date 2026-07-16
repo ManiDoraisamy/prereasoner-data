@@ -86,6 +86,25 @@ def is_scalar(rows: Sequence[Sequence[Any]] | None) -> bool:
     return rows is not None and len(rows) == 1 and len(rows[0]) == 1
 
 
+def record_integrated_result(
+    counter: collections.Counter,
+    gold_rows: Sequence[Sequence[Any]] | None,
+    comparison: Mapping[str, Any],
+    answered: bool,
+) -> None:
+    """Record an integrated prediction without dropping failed scalar examples."""
+    if is_scalar(gold_rows):
+        counter["scalar_total"] += 1
+    if not answered:
+        counter["error"] += 1
+        return
+    counter["answered"] += 1
+    counter["correct_lenient"] += bool(comparison.get("lenient"))
+    counter["correct_strict"] += bool(comparison.get("strict"))
+    if is_scalar(gold_rows):
+        counter["scalar_correct"] += bool(comparison.get("scalar_exact"))
+
+
 def compare(
     gold_rows: Sequence[Sequence[Any]] | None,
     predicted_rows: Sequence[Sequence[Any]] | None,
