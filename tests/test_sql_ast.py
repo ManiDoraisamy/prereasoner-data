@@ -334,6 +334,31 @@ def test_execution_rerank_penalizes_empty_candidate():
     assert ranked[0].candidate.sql == second.sql
 
 
+def test_phase3_ranks_set_query_by_both_operands():
+    # Regression (#12): the SetQuery ranker scored only the LEFT operand, so two set candidates that share a
+    # left branch but differ in the RIGHT projection received identical scores. The right operand must also be
+    # scored (namespaced) so the candidate whose right branch projects the requested column ranks higher.
+    stadium = {"name": "stadium", "columns": ["Name", "Location"],
+               "rows": [["Alpha", "North"], ["Beta", "South"]]}
+    schema = SQLSearcher.from_tables([stadium], []).schema
+    name = ColumnRef("stadium", "Name", SQLType.TEXT)
+    location = ColumnRef("stadium", "Location", SQLType.TEXT)
+    left = SelectQuery((SelectItem(name),), "stadium",
+                       where=Comparison(location, "=", Literal("North", SQLType.TEXT)))
+    right_name = SelectQuery((SelectItem(name),), "stadium",
+                             where=Comparison(location, "=", Literal("South", SQLType.TEXT)))
+    right_location = SelectQuery((SelectItem(location),), "stadium",
+                                 where=Comparison(location, "=", Literal("South", SQLType.TEXT)))
+    aligned_set = SetQuery(left, "EXCEPT", right_name)
+    misaligned_set = SetQuery(left, "EXCEPT", right_location)
+    aligned = ScoredQuery(aligned_set, render_query(aligned_set), 0.0, ())
+    misaligned = ScoredQuery(misaligned_set, render_query(misaligned_set), 0.0, ())
+    ranked = CandidateRanker(schema).rank("stadium names except southern ones", [misaligned, aligned])
+    scores = {candidate.sql: candidate.score for candidate in ranked}
+    assert scores[aligned.sql] != scores[misaligned.sql]   # right operand now contributes (was identical)
+    assert ranked[0].sql == aligned.sql                    # the correct right projection ranks first
+
+
 def test_recursive_ast_scalar_subquery_executes():
     age = ColumnRef("people", "Age", SQLType.INTEGER)
     name = ColumnRef("people", "Name", SQLType.TEXT)
@@ -816,6 +841,7 @@ TESTS = [
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,
     test_execution_rerank_penalizes_empty_candidate,
+    test_phase3_ranks_set_query_by_both_operands,
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,
     test_recursive_ast_set_query_in_derived_table_executes,
