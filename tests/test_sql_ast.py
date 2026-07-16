@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import sqlite3
 import sys
+import tempfile
 
 from engine.sql_ast import (
     ASTValidationError,
@@ -28,7 +29,20 @@ from engine.sql_ast import (
     validate_query,
 )
 from engine.sql_rank import CandidateRanker, ExecutedCandidate, SemanticSignals
+from engine.sql_learned_rank import (
+    DecisionTree,
+    LinearRankerModel,
+    TreeEnsembleRankerModel,
+    TreeNode,
+    learned_feature_vector,
+    load_ranker_model,
+)
 from engine.sql_search import SQLSearcher, ScoredQuery
+from spider.probe.spider_eval import (
+    compare as compare_spider_rows,
+    recursive_gold_table_names,
+    spider_foreign_keys,
+)
 
 
 PEOPLE = {
@@ -531,6 +545,116 @@ def test_phase5_guards_multi_aggregate_and_can_be_disabled():
     assert " LIMIT 1" in phase5[0].sql
 
 
+def test_phase6_features_are_schema_independent():
+    age = ColumnRef("private_people", "SecretAge", SQLType.INTEGER)
+    query = SelectQuery((SelectItem(Aggregate("MAX", age)),), "private_people")
+    candidate = ScoredQuery(
+        query,
+        render_query(query),
+        7.0,
+        ("phase5:row-superlative",),
+        (("aggregate_target:MAX:private_people.SecretAge", 3.0),),
+    )
+    features = learned_feature_vector("What is the maximum secret age?", candidate)
+    assert "private_people" not in " ".join(features)
+    assert "SecretAge" not in " ".join(features)
+    assert features["ast.aggregate.MAX"] == 1.0
+    assert features["heuristic_value.aggregate_target.max"] == 3.0
+
+
+def test_phase6_model_round_trip_and_deterministic_rerank():
+    count_query = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "people")
+    rows_query = SelectQuery((SelectItem(Star()),), "people")
+    candidates = [
+        ScoredQuery(rows_query, render_query(rows_query), 10.0, ()),
+        ScoredQuery(count_query, render_query(count_query), 9.0, ()),
+    ]
+    model = LinearRankerModel(
+        {"match.count": 5.0, "baseline_score": 0.01},
+        metadata={"fixture": True},
+    )
+    first = model.rerank("How many people are there?", candidates)
+    second = model.rerank("How many people are there?", candidates)
+    assert first[0].sql == render_query(count_query)
+    assert [(candidate.sql, candidate.score) for candidate in first] == [
+        (candidate.sql, candidate.score) for candidate in second
+    ]
+    with tempfile.TemporaryDirectory() as directory:
+        path = directory + "/ranker.json"
+        model.save(path)
+        loaded = LinearRankerModel.load(path)
+    assert loaded.to_dict() == model.to_dict()
+    assert loaded.rerank("How many people are there?", candidates)[0].sql == render_query(count_query)
+
+
+def test_phase6_is_opt_in_at_search_boundary():
+    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=20)
+    baseline = searcher.search("How many people are there?")
+    model = LinearRankerModel({"match.count": 1.0, "baseline_score": 1.0})
+    learned = searcher.search("How many people are there?", rank_model=model)
+    learned_again = searcher.search("How many people are there?", rank_model=model)
+    assert all("phase6:" not in item for candidate in baseline for item in candidate.evidence)
+    assert any("phase6:" in item for item in learned[0].evidence)
+    assert learned[0].sql == model.rerank("How many people are there?", baseline)[0].sql
+    assert [(candidate.sql, candidate.score) for candidate in learned] == [
+        (candidate.sql, candidate.score) for candidate in learned_again
+    ]
+
+
+def test_phase6_tree_artifact_has_dependency_free_inference():
+    tree = DecisionTree((
+        TreeNode("match.count", 0.5, 1, 2),
+        TreeNode(value=-1.0),
+        TreeNode(value=2.0),
+    ))
+    model = TreeEnsembleRankerModel((tree,), learning_rate=0.25, base_score=0.5)
+    assert model.score({"match.count": 0.0}) == 0.25
+    assert model.score({"match.count": 1.0}) == 1.0
+    with tempfile.TemporaryDirectory() as directory:
+        path = directory + "/tree-ranker.json"
+        model.save(path)
+        loaded = load_ranker_model(path)
+    assert isinstance(loaded, TreeEnsembleRankerModel)
+    assert loaded.to_dict() == model.to_dict()
+
+
+def test_public_sql_facade_exposes_stable_planner_contract():
+    from engine import sql
+
+    assert sql.SQLSearcher is SQLSearcher
+    assert sql.SelectQuery is SelectQuery
+    assert sql.load_ranker_model is load_ranker_model
+    assert callable(sql.execute_and_rerank)
+    candidates = sql.SQLSearcher.from_tables([PEOPLE], []).search("list person names")
+    assert candidates
+    assert isinstance(candidates[0].query, sql.SelectQuery)
+
+
+def test_shared_spider_evaluation_contract():
+    metadata = {
+        "demo": {
+            "table_names_original": ["people", "visits"],
+            "column_names_original": [
+                [-1, "*"], [0, "id"], [1, "person_id"],
+            ],
+            "foreign_keys": [[2, 1]],
+        }
+    }
+    example = {
+        "db_id": "demo",
+        "sql": {
+            "from": {"table_units": [["table_unit", 0]]},
+            "where": ["nested", {"table_units": [["table_unit", 1]]}],
+        },
+    }
+    assert recursive_gold_table_names(example, metadata) == ["people", "visits"]
+    assert spider_foreign_keys(metadata["demo"]) == [{
+        "from_table": "visits", "from_col": "person_id",
+        "to_table": "people", "to_col": "id", "conf": 1.0,
+    }]
+    assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
+
+
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -571,6 +695,12 @@ TESTS = [
     test_phase5_frequency_superlative_can_return_count,
     test_phase5_searches_set_difference,
     test_phase5_guards_multi_aggregate_and_can_be_disabled,
+    test_phase6_features_are_schema_independent,
+    test_phase6_model_round_trip_and_deterministic_rerank,
+    test_phase6_is_opt_in_at_search_boundary,
+    test_phase6_tree_artifact_has_dependency_free_inference,
+    test_public_sql_facade_exposes_stable_planner_contract,
+    test_shared_spider_evaluation_contract,
 ]
 
 

@@ -16,6 +16,7 @@ Everything the serving engine opens at runtime lives here (override the location
 | `assignment.csv` | 3.7 MB | The training-token table; at runtime only used by `engine.router._supported_leaves` (which leaves have >=3 training rows). | yes |
 | `taxonomy.csv` | 5 KB | The Wikidata P279 taxonomy (qid, category_1..N root->leaf, status, world_tables). Source of `engine.taxonomy.LEAF_PATH/LEAF_QID/LEAF_TABLES` and the non-geo type map. | yes |
 | `primitives.npz` | 72 KB | The learned 10-primitive linear head (`W`, `prims`, `thr`) read by `engine.primitive_head.PrimitiveReader`. | no (gitignored, `*.npz`) |
+| `sql_ranker.json` | ~300 KB | Optional frozen SQL AST tree ranker. Inference uses `engine.sql_learned_rank` and does not import scikit-learn. The current artifact is experimental and is not loaded automatically because it did not pass the Spider dev promotion gate. | yes |
 | `word_city.json` | 5 KB | World word-table metadata (key/concepts/filter attrs/links) for the meaning-graph planner. | yes |
 | `word_country.json` | 4 KB | ditto | yes |
 | `word_state.json` | 1 KB | ditto | yes |

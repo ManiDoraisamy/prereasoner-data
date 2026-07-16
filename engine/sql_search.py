@@ -3,17 +3,16 @@
 The searcher does not decode SQL tokens.  It links question spans to typed schema
 objects, expands a bounded beam of semantic choices, searches the FK graph for
 join trees (including bridge tables), validates complete ASTs, and only then
-renders SQL. Phase 2 applies the inspectable semantic ranker; Phase 3 adds a
-bounded recursive-query expansion; Phase 4 adds aggregate constraints,
-disjunctions, and relational subqueries; Phase 5 adds deterministic arg-extrema,
-top-N, and set-difference candidates before ranking.
+renders SQL. Ordered capability expanders add recursive queries, constraints,
+disjunctions, relational subqueries, extrema, top-N, and set difference before
+the inspectable ranker runs. An optional frozen model can rerank the completed
+pool without changing its grammar.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-import heapq
 import re
-from typing import Any, Iterable, Sequence
+from typing import Any, Sequence
 
 from engine.sql_ast import (
     Aggregate,
@@ -31,197 +30,14 @@ from engine.sql_ast import (
     render_query,
     validate_query,
 )
+from engine.sql_candidate import ScoredQuery
+from engine.sql_schema import ForeignKey, JoinTree, SchemaColumn, SchemaGraph
 
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
 _NUMBER_RE = re.compile(r"^-?\d[\d,]*(?:\.\d+)?$")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}(?:[ T].*)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
-_NAME_WORDS = frozenset({"name", "title", "label"})
-
-
-@dataclass(frozen=True)
-class SchemaColumn:
-    ref: ColumnRef
-    values: tuple[Any, ...] = ()
-    index: int = -1
-
-
-@dataclass(frozen=True)
-class ForeignKey:
-    from_column: ColumnRef
-    to_column: ColumnRef
-    confidence: float = 1.0
-
-    @property
-    def tables(self) -> frozenset[str]:
-        return frozenset((self.from_column.table, self.to_column.table))
-
-    @property
-    def signature(self) -> tuple[str, str, str, str]:
-        return (self.from_column.table, self.from_column.name,
-                self.to_column.table, self.to_column.name)
-
-
-@dataclass(frozen=True)
-class JoinTree:
-    root: str
-    edge_indexes: tuple[int, ...]
-    joins: tuple[Join, ...]
-    confidence: float
-
-
-class SchemaGraph:
-    def __init__(self, columns: Iterable[SchemaColumn], foreign_keys: Iterable[ForeignKey]):
-        self.columns = tuple(columns)
-        self.by_table: dict[str, tuple[SchemaColumn, ...]] = {}
-        grouped: dict[str, list[SchemaColumn]] = {}
-        for column in self.columns:
-            grouped.setdefault(column.ref.table, []).append(column)
-        self.by_table = {table: tuple(cols) for table, cols in grouped.items()}
-        self.tables = tuple(grouped)
-        self.column_map = {(c.ref.table, c.ref.name): c for c in self.columns}
-        self.foreign_keys = tuple(
-            fk for fk in foreign_keys
-            if fk.from_column.table in self.by_table and fk.to_column.table in self.by_table
-        )
-        adjacency: dict[str, list[int]] = {table: [] for table in self.tables}
-        for i, fk in enumerate(self.foreign_keys):
-            adjacency[fk.from_column.table].append(i)
-            adjacency[fk.to_column.table].append(i)
-        self.adjacency = {table: tuple(sorted(indexes, key=self._edge_sort_key))
-                          for table, indexes in adjacency.items()}
-        self.value_index = self._build_value_index()
-
-    @classmethod
-    def from_tables(cls, tables: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":
-        columns: list[SchemaColumn] = []
-        refs: dict[tuple[str, str], ColumnRef] = {}
-        index = 0
-        for table in tables:
-            name = str(table["name"])
-            names = [str(c) for c in table["columns"]]
-            rows = table.get("rows") or []
-            for ci, col_name in enumerate(names):
-                values = tuple(_row_value(row, names, ci, col_name) for row in rows)
-                ref = ColumnRef(name, col_name, _infer_type(col_name, values))
-                refs[(name, col_name)] = ref
-                columns.append(SchemaColumn(ref, values, index))
-                index += 1
-        edges = [_foreign_key(fk, refs) for fk in fks]
-        return cls(columns, (edge for edge in edges if edge is not None))
-
-    @classmethod
-    def from_planner(cls, sch: Sequence[dict], fks: Sequence[dict | tuple]) -> "SchemaGraph":
-        columns: list[SchemaColumn] = []
-        refs: dict[tuple[str, str], ColumnRef] = {}
-        for i, col in enumerate(sch):
-            typ = _planner_type(col)
-            ref = ColumnRef(str(col["table"]), str(col["name"]), typ)
-            refs[(ref.table, ref.name)] = ref
-            columns.append(SchemaColumn(ref, tuple(col.get("values") or ()), int(col.get("idx", i))))
-        edges = [_foreign_key(fk, refs) for fk in fks]
-        return cls(columns, (edge for edge in edges if edge is not None))
-
-    def display_columns(self, table: str) -> tuple[ColumnRef, ...]:
-        columns = list(self.by_table.get(table, ()))
-        columns.sort(key=lambda c: (
-            0 if set(_name_words(c.ref.name)) & _NAME_WORDS else 1,
-            0 if c.ref.type == SQLType.TEXT else 1,
-            1 if _is_id(c.ref.name) else 0,
-            c.index,
-        ))
-        return tuple(c.ref for c in columns)
-
-    def join_trees(self, required_tables: Iterable[str], preferred_root: str | None = None,
-                   limit: int = 8, max_hops: int = 6) -> tuple[JoinTree, ...]:
-        required = frozenset(t for t in required_tables if t in self.by_table)
-        if not required:
-            return ()
-        root = preferred_root if preferred_root in required else sorted(required)[0]
-        if len(required) == 1:
-            return (JoinTree(root, (), (), 1.0),)
-
-        queue: list[tuple[int, float, tuple, frozenset[str], tuple[int, ...]]] = []
-        heapq.heappush(queue, (0, 0.0, (), frozenset((root,)), ()))
-        seen: set[tuple[frozenset[str], tuple[int, ...]]] = set()
-        found: list[JoinTree] = []
-        expansions = 0
-        while queue and len(found) < limit and expansions < 5000:
-            _, _, _, nodes, edges = heapq.heappop(queue)
-            state_key = (nodes, edges)
-            if state_key in seen:
-                continue
-            seen.add(state_key)
-            expansions += 1
-            if required <= nodes:
-                joins = self._materialize_joins(root, edges)
-                confidence = sum(self.foreign_keys[i].confidence for i in edges) / max(len(edges), 1)
-                found.append(JoinTree(root, edges, joins, confidence))
-                continue
-            if len(edges) >= max_hops:
-                continue
-            candidates = sorted({i for table in nodes for i in self.adjacency.get(table, ())},
-                                key=self._edge_sort_key)
-            for edge_index in candidates:
-                fk = self.foreign_keys[edge_index]
-                outside = fk.tables - nodes
-                if len(outside) != 1:
-                    continue
-                new_edges = tuple(sorted(edges + (edge_index,)))
-                new_nodes = nodes | outside
-                signature = tuple(self.foreign_keys[i].signature for i in new_edges)
-                conf_cost = -sum(self.foreign_keys[i].confidence for i in new_edges)
-                heapq.heappush(queue, (len(new_edges), conf_cost, signature, new_nodes, new_edges))
-        return tuple(found)
-
-    def _materialize_joins(self, root: str, edge_indexes: tuple[int, ...]) -> tuple[Join, ...]:
-        remaining = list(edge_indexes)
-        joined = {root}
-        out: list[Join] = []
-        while remaining:
-            picked = None
-            for edge_index in sorted(remaining, key=self._edge_sort_key):
-                fk = self.foreign_keys[edge_index]
-                left_in = fk.from_column.table in joined
-                right_in = fk.to_column.table in joined
-                if left_in == right_in:
-                    continue
-                new_table = fk.to_column.table if left_in else fk.from_column.table
-                out.append(Join(new_table, fk.from_column, fk.to_column))
-                joined.add(new_table)
-                picked = edge_index
-                break
-            if picked is None:
-                raise ValueError("join edge set is disconnected")
-            remaining.remove(picked)
-        return tuple(out)
-
-    def _edge_sort_key(self, edge_index: int) -> tuple:
-        edge = self.foreign_keys[edge_index]
-        return (-edge.confidence, edge.signature)
-
-    def _build_value_index(self) -> dict[str, tuple[tuple[ColumnRef, Any], ...]]:
-        values: dict[str, list[tuple[ColumnRef, Any]]] = {}
-        for column in self.columns:
-            seen = set()
-            for value in column.values:
-                norm = _normal_value(value)
-                if not norm or norm in seen or _NUMBER_RE.match(norm):
-                    continue
-                seen.add(norm)
-                values.setdefault(norm, []).append((column.ref, value))
-        return {value: tuple(options) for value, options in values.items()}
-
-
-@dataclass(frozen=True)
-class ScoredQuery:
-    query: Query
-    sql: str
-    score: float
-    evidence: tuple[str, ...]
-    features: tuple[tuple[str, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -260,7 +76,7 @@ class SQLSearcher:
 
     def search(self, question: str, semantic_signals=None, phase2: bool = True,
                phase3: bool = True, phase4: bool = True,
-               phase5: bool = True) -> list[ScoredQuery]:
+               phase5: bool = True, rank_model=None) -> list[ScoredQuery]:
         tokens = _tokens(question)
         if not tokens:
             return []
@@ -351,37 +167,28 @@ class SQLSearcher:
         pool_size = max(self.beam_size, self.max_candidates * 4)
         base = sorted(dedup.values(), key=lambda c: (-c.score, c.sql))[:pool_size]
         pool = base
-        if phase3:
-            from engine.sql_phase3 import Phase3Expander
-            advanced = Phase3Expander(self.schema, pool_size).expand(question, base)
-            combined = {candidate.sql: candidate for candidate in base}
-            for candidate in advanced:
-                old = combined.get(candidate.sql)
-                if old is None or candidate.score > old.score:
-                    combined[candidate.sql] = candidate
-            pool = sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
-        if phase4:
-            from engine.sql_phase4 import Phase4Expander
-            advanced = Phase4Expander(self.schema, pool_size).expand(question, pool)
-            combined = {candidate.sql: candidate for candidate in pool}
-            for candidate in advanced:
-                old = combined.get(candidate.sql)
-                if old is None or candidate.score > old.score:
-                    combined[candidate.sql] = candidate
-            pool = sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
-        if phase5:
-            from engine.sql_phase5 import Phase5Expander
-            advanced = Phase5Expander(self.schema, pool_size).expand(question, pool)
-            combined = {candidate.sql: candidate for candidate in pool}
-            for candidate in advanced:
-                old = combined.get(candidate.sql)
-                if old is None or candidate.score > old.score:
-                    combined[candidate.sql] = candidate
-            pool = sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
+        if phase3 or phase4 or phase5:
+            from engine.sql_recursive import RecursiveQueryExpander
+            from engine.sql_constraints import ConstraintQueryExpander
+            from engine.sql_extrema import ExtremaQueryExpander
+
+            expansion_pipeline = (
+                (phase3, RecursiveQueryExpander),
+                (phase4, ConstraintQueryExpander),
+                (phase5, ExtremaQueryExpander),
+            )
+            for enabled, expander_type in expansion_pipeline:
+                if not enabled:
+                    continue
+                generated = expander_type(self.schema, pool_size).expand(question, pool)
+                pool = _merge_candidates(pool, generated)
         if not phase2:
             return pool[:self.max_candidates]
         from engine.sql_rank import CandidateRanker
-        return CandidateRanker(self.schema, semantic_signals).rank(question, pool)[:self.max_candidates]
+        ranked = CandidateRanker(self.schema, semantic_signals).rank(
+            question, pool
+        )[:self.max_candidates]
+        return rank_model.rerank(question, ranked) if rank_model is not None else ranked
 
     def _expand(self, drafts: list[_Draft], choices: list[tuple[tuple, float, tuple[str, ...]]],
                 field: str) -> list[_Draft]:
@@ -474,8 +281,8 @@ class SQLSearcher:
                 cues.append(("COUNT", i))
         cues = list(dict.fromkeys(cues))
         # "count the number" and "average mean" are reinforcing paraphrases, not requests for duplicate
-        # SELECT items.  Phase 1 supports several *different* aggregates in one query; repeated functions
-        # collapse to their earliest cue until argument-scope parsing arrives in a later phase.
+        # The base search supports several different aggregates in one query; repeated functions
+        # collapse to their earliest cue until argument-scope parsing becomes more precise.
         seen_functions = set()
         unique_cues = []
         for function, position in sorted(cues, key=lambda item: item[1]):
@@ -768,41 +575,16 @@ class SQLSearcher:
         return sorted(required, key=lambda table: (-table_scores.get(table, 0.0), table))[0]
 
 
-def _foreign_key(raw: dict | tuple, refs: dict[tuple[str, str], ColumnRef]) -> ForeignKey | None:
-    if isinstance(raw, dict):
-        ft, fc = str(raw["from_table"]), str(raw["from_col"])
-        tt, tc = str(raw["to_table"]), str(raw["to_col"])
-        confidence = float(raw.get("conf", raw.get("confidence", 1.0)) or 1.0)
-    else:
-        ft, fc, tt, tc = map(str, raw[:4])
-        confidence = float(raw[4]) if len(raw) > 4 else 1.0
-    left, right = refs.get((ft, fc)), refs.get((tt, tc))
-    return ForeignKey(left, right, confidence) if left is not None and right is not None else None
-
-
-def _planner_type(column: dict) -> SQLType:
-    if column.get("is_date"):
-        return SQLType.DATE
-    affinity = str(column.get("affinity", "")).upper()
-    return {"INTEGER": SQLType.INTEGER, "REAL": SQLType.REAL, "NUMERIC": SQLType.REAL,
-            "BOOLEAN": SQLType.BOOLEAN, "DATE": SQLType.DATE, "TEXT": SQLType.TEXT}.get(affinity, SQLType.UNKNOWN)
-
-
-def _infer_type(name: str, values: Sequence[Any]) -> SQLType:
-    populated = [value for value in values if value is not None and str(value).strip()]
-    if populated and all(_DATE_RE.match(str(value).strip()) for value in populated):
-        return SQLType.DATE
-    if populated and all(_NUMBER_RE.match(str(value).strip()) for value in populated):
-        return SQLType.REAL if any("." in str(value) for value in populated) else SQLType.INTEGER
-    if set(_name_words(name)) & {"date", "datetime", "timestamp"}:
-        return SQLType.DATE
-    return SQLType.TEXT
-
-
-def _row_value(row: Any, names: list[str], index: int, name: str) -> Any:
-    if isinstance(row, dict):
-        return row.get(name)
-    return row[index] if index < len(row) else None
+def _merge_candidates(
+    existing: Sequence[ScoredQuery], generated: Sequence[ScoredQuery]
+) -> list[ScoredQuery]:
+    """Merge one ordered expansion stage, keeping the best score per rendered SQL."""
+    combined = {candidate.sql: candidate for candidate in existing}
+    for candidate in generated:
+        old = combined.get(candidate.sql)
+        if old is None or candidate.score > old.score:
+            combined[candidate.sql] = candidate
+    return sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
 
 
 def _tokens(question: str) -> tuple[str, ...]:
@@ -828,12 +610,6 @@ def _canon(word: str) -> str:
 def _is_id(name: str) -> bool:
     words = _name_words(name)
     return bool(words) and words[-1].lower() in {"id", "identifier", "key"}
-
-
-def _normal_value(value: Any) -> str:
-    if value is None:
-        return ""
-    return " ".join(_tokens(str(value)))
 
 
 def _number(value: str) -> int | float:

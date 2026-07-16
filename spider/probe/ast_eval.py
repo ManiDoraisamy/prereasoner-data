@@ -1,8 +1,9 @@
-"""Fast, model-free evaluation for the five deterministic SQL AST phases.
+"""Fast, model-free evaluation for the deterministic SQL AST phases.
 
 Phase 1 and Phase 2 share the same base pool; Phase 3 adds bounded recursive candidates;
 Phase 4 adds aggregate constraints, disjunctions, and relational subqueries; Phase 5 adds
-arg-extrema, top-N, and set difference. Spider-declared
+arg-extrema, top-N, and set difference. An optional Phase 6 artifact reranks the Phase 5
+pool. Spider-declared
 foreign keys are available to every phase. Gold SQL is used only after ranking, for denotation
 measurement. This isolates deterministic AST search and ranking from the encoder/compose route.
 
@@ -22,9 +23,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from compose_eval import compare, gold_table_names
 from evalutil import build_mem_db, exec_sql_timed, load_capped
-from full_eval import spider_foreign_keys
+from spider_eval import compare, gold_table_names, spider_foreign_keys
 
 from engine.sql_rank import CandidateRanker
 from engine.sql_search import SQLSearcher
@@ -75,8 +75,15 @@ def main():
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--pool", type=int, default=100)
     parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--ranker-model", default="",
+                        help="optional frozen Phase 6 ranker JSON")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
+
+    rank_model = None
+    if args.ranker_model:
+        from engine.sql_learned_rank import load_ranker_model
+        rank_model = load_ranker_model(args.ranker_model)
 
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     if args.limit:
@@ -91,6 +98,8 @@ def main():
         "phase4": collections.Counter(),
         "phase5": collections.Counter(),
     }
+    if rank_model is not None:
+        stats["phase6"] = collections.Counter()
     started = time.time()
 
     for index, example in enumerate(dev, 1):
@@ -119,6 +128,7 @@ def main():
         phase5 = searcher.search(
             example["question"], phase2=True, phase3=True, phase4=True, phase5=True
         )
+        phase6 = rank_model.rerank(example["question"], phase5) if rank_model else ()
 
         con = build_mem_db(tables)
         gold_rows, gold_error = exec_sql_timed(con, example["query"])
@@ -128,6 +138,8 @@ def main():
             _score(stats["phase3"], gold_rows, phase3, con, args.top_k)
             _score(stats["phase4"], gold_rows, phase4, con, args.top_k)
             _score(stats["phase5"], gold_rows, phase5, con, args.top_k)
+            if rank_model is not None:
+                _score(stats["phase6"], gold_rows, phase6, con, args.top_k)
         con.close()
         if index % 250 == 0:
             print(f"  {index}/{len(dev)}", flush=True)
@@ -143,6 +155,9 @@ def main():
         "phase4": _summary(stats["phase4"], len(dev)),
         "phase5": _summary(stats["phase5"], len(dev)),
     }
+    if rank_model is not None:
+        result["ranker_model"] = args.ranker_model
+        result["phase6"] = _summary(stats["phase6"], len(dev))
     print(json.dumps(result, indent=2))
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

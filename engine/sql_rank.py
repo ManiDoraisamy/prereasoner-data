@@ -11,7 +11,8 @@ import re
 from typing import Any, Callable, Mapping, Sequence
 
 from engine.sql_ast import Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, Star
-from engine.sql_search import SchemaGraph, ScoredQuery
+from engine.sql_candidate import ScoredQuery
+from engine.sql_schema import SchemaGraph
 
 
 ColumnKey = tuple[str, str]

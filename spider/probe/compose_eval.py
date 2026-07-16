@@ -29,6 +29,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 from hardness import eval_hardness, shape
+from spider_eval import compare, gold_table_names
 
 DIFFS = ["easy", "medium", "hard", "extra"]
 
@@ -53,16 +54,6 @@ def sqlite_tables(db_path):
     return out
 
 
-def gold_table_names(ex, tables_meta):
-    """the ORIGINAL table names the gold SQL's FROM references (via the parsed sql's table_units)."""
-    names = []
-    tn = tables_meta[ex["db_id"]]["table_names_original"]
-    for tu in ex["sql"]["from"]["table_units"]:
-        if tu[0] == "table_unit" and isinstance(tu[1], int):
-            names.append(tn[tu[1]])
-    return list(dict.fromkeys(names))
-
-
 def exec_gold(db_path, sql):
     con = sqlite3.connect(db_path)
     con.text_factory = lambda b: b.decode("utf-8", "replace")
@@ -73,43 +64,6 @@ def exec_gold(db_path, sql):
         return None, f"{type(e).__name__}: {e}"
     finally:
         con.close()
-
-
-# ---------------- denotation comparison ----------------
-def nval(v):
-    if v is None:
-        return "∅"
-    s = str(v).strip()
-    try:
-        return round(float(s.replace(",", "").lstrip("$").rstrip("%")), 3)
-    except (ValueError, AttributeError):
-        return s.lower()
-
-
-def flat_set(rows):
-    return {nval(v) for r in (rows or []) for v in r}
-
-
-def is_scalar(rows):
-    return rows is not None and len(rows) == 1 and len(rows[0]) == 1
-
-
-def compare(gold_rows, pred_rows):
-    """Return dict of match flags. lenient=gold values all appear in pred (generous upper bound);
-    scalar_exact=clean unambiguous scalar-gold match; strict=order-insensitive full-row multiset equality."""
-    if gold_rows is None:
-        return {"gold_exec_error": True}
-    gset, pset = flat_set(gold_rows), flat_set(pred_rows)
-    lenient = bool(gset) and gset <= pset
-    scalar = None
-    if is_scalar(gold_rows):
-        scalar = nval(gold_rows[0][0]) in pset
-    # strict: same number of rows, each gold row's value-set present as some pred row's value-set
-    def rowsets(rows):
-        return collections.Counter(frozenset(nval(v) for v in r) for r in (rows or []))
-    strict = rowsets(gold_rows) == rowsets(pred_rows)
-    return {"lenient": lenient, "scalar_exact": scalar, "strict": strict,
-            "gold_scalar": is_scalar(gold_rows)}
 
 
 # ---------------- run one config ----------------

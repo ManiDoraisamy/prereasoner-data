@@ -1,5 +1,11 @@
 # Spider Benchmark — Diagnose Before Fixing (v2)
 
+> **Current planner note.** This document records the original diagnostic study of the slot-filler
+> and compose routes. The repository now also contains a typed deterministic AST planner with
+> subqueries, aliases, self-joins, set operations, nested aggregation, and bounded AST search. Start
+> with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the current implementation and results; use this
+> document for the historical probe methodology and legacy-route baseline.
+
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.
 > The goal is to localize *why* PreReasoner scores low on Spider before changing anything. This is
 > **v2**: the v1 spec was written against stale internals (`relate11.py`, `model11.py`, `runtime20/*`,
@@ -37,8 +43,9 @@ Routing: a question whose **learned primitive head** fires a *depth* primitive
 (→ slot-filler for a self-contained table). The live full stack (`WorldReasoner → ComposedWorldQuery →
 WorldQuery`) additionally does world resolution + a **clarify gate**, and executes on **Postgres**.
 
-**Neither generator has a nested-subquery primitive, a set-operation (`INTERSECT/UNION/EXCEPT`)
-primitive, or a self-join.** These are hard, planner-agnostic ceilings (measured in Probe A).
+**Neither legacy generator has a nested-subquery primitive, a set-operation
+(`INTERSECT/UNION/EXCEPT`) primitive, or a self-join.** Those were hard ceilings for the two routes
+measured by this diagnostic. They are not ceilings of the newer AST planner.
 
 ---
 

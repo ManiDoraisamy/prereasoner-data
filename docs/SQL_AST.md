@@ -1,190 +1,250 @@
-# Deterministic SQL AST Search
+# Deterministic SQL Planner
 
-`engine/sql_ast.py`, `engine/sql_search.py`, `engine/sql_rank.py`, and the `engine/sql_phase*.py` expanders
-implement the deterministic text-to-SQL planner. The planner
-constructs typed SQL objects and renders SQL only after a complete candidate passes structural validation.
-It does not decode SQL tokens.
+This is the first document to read when working on PreReasoner's typed SQL planner.
+The planner searches a bounded space of valid SQL abstract syntax trees (ASTs). It
+does not generate SQL token by token, repair malformed SQL, or sample from a decoder.
 
-## Phase 1 envelope
+## Mental model
 
-The AST and searcher currently support:
+Given a question, table data, and foreign keys, the planner:
 
-- multiple projected columns;
-- `DISTINCT` projections;
-- `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`, including several different aggregates in one query;
-- equality, inequality, numeric range, categorical value, and year predicates combined with `AND`;
-- `GROUP BY`, aggregate ordering, ordinary ordering, and `LIMIT`;
-- deterministic search over direct and multi-hop foreign-key join trees;
-- typed validation before SQL rendering;
-- deterministic candidate scores and evidence records.
+1. Builds a typed schema graph from columns, observed values, and relationships.
+2. Links question spans to tables, columns, literals, aggregates, and operators.
+3. Expands ambiguous bindings in a bounded deterministic beam.
+4. Connects required tables through direct or multi-hop foreign-key paths.
+5. Adds recursive, constraint, extrema, and set-operation candidates when their
+   question cues and schema preconditions are satisfied.
+6. Rejects invalid trees with scope, type, grouping, arity, and join validation.
+7. Renders valid ASTs to SQL and ranks them with inspectable features.
+8. Optionally reranks a bounded prefix from execution results or a frozen model.
 
-Phase 1 generation contains one `SELECT` block. The shared AST now also represents the recursive Phase 3
-grammar described below; `phase3=False, phase4=False, phase5=False` keeps the original generation envelope
-unchanged for evaluation.
+The same question, schema, values, settings, and model artifact always produce the
+same ordered candidates. Determinism removes sampling variance; it does not remove
+semantic ambiguity or guarantee that the correct AST exists in the searched pool.
 
-## Phase 2 ranking
+## Code map
 
-Phase 2 reranks the Phase 1 pool without changing its SQL grammar:
+| Module | Responsibility |
+|---|---|
+| `engine/sql.py` | Stable public imports for planner users. |
+| `engine/sql_ast.py` | Immutable AST nodes, recursive validation, and SQL rendering. |
+| `engine/sql_schema.py` | Typed columns, observed values, foreign keys, and join-path search. |
+| `engine/sql_candidate.py` | Shared immutable scored-candidate contract. |
+| `engine/sql_search.py` | Base beam search and ordered capability-expansion pipeline. |
+| `engine/sql_expansion.py` | Shared schema-linking and AST construction support for expanders. |
+| `engine/sql_recursive.py` | Subqueries, membership, set operations, derived tables, and self-joins. |
+| `engine/sql_constraints.py` | `HAVING`, disjunctions, scalar comparisons, and relation membership. |
+| `engine/sql_extrema.py` | Row/frequency extrema, top-N, and set difference. |
+| `engine/sql_rank.py` | Hand-written semantic features and bounded execution reranking. |
+| `engine/sql_learned_rank.py` | Optional dependency-free inference for frozen ranker artifacts. |
 
-- question-role features distinguish projections, counted entities, aggregate operands, grouping keys,
-  filters, and ordering columns;
-- repeated aggregate operands are coordinated, so `AVG(age), MAX(age)` outranks `AVG(age), MAX(type)`;
-- count questions penalize accidental grouping, while `each`/`per` questions require aligned grouping;
-- `distinct` count and explicit `id instead of name` semantics are scored directly;
-- role-specific question phrases and schema columns are compared in the existing encoder metric space;
-- every score contribution is attached to the candidate trace as `rank:*` evidence;
-- the five highest semantic candidates are executed, with errors, empty results, null-only results, and result
-  shape contributing bounded `exec:*` evidence.
+The capability modules do not inherit from or import private details from one
+another or from the search orchestrator. Shared contracts live in `sql_schema.py`
+and `sql_candidate.py`, shared expansion behavior lives in `sql_expansion.py`, and
+`SQLSearcher.search` is the only place that orders the stages.
 
-Fixed inputs and model weights produce the same candidate order. Execution is evidence for ranking, not a
-search loop that mutates the query.
-
-## Phase 3 recursive search
-
-Phase 3 expands the ranked pool with recursive, scope-aware SQL structures:
-
-- `SetQuery` models `UNION`, `INTERSECT`, and `EXCEPT` with equal-arity validation;
-- `ScalarSubquery`, `InPredicate`, and `ExistsPredicate` model scalar, membership, and correlated subqueries;
-- `SubquerySource` supports derived tables and nested aggregation;
-- source and join aliases have independent SQL scopes, enabling deterministic self-joins;
-- recursive validation checks visible qualifiers, connected aliased joins, scalar/subquery arity, aggregate
-  types, grouping, set operands, and compound-query restrictions before rendering;
-- high-confidence Spider expansions split contradictory same-column filters into set branches, construct
-  anti-membership queries, rewrite local comparisons against aggregate subqueries, select entities through
-  superlative scalar subqueries, build nested count aggregates, and expand repeated-FK route/relationship
-  self-joins.
-
-`EXISTS` is represented, validated, rendered, and covered by execution tests. Spider dev contains no gold
-`EXISTS` query, so Phase 3 currently prefers the much more common `IN`/set forms during synthesis.
-
-## Phase 4 constraint search
-
-Phase 4 expands validated Phase 3 candidates with bounded rules for the highest-mass remaining Spider
-structures:
-
-- count and aggregate constraints become typed `GROUP BY ... HAVING` trees rather than row predicates;
-- categorical and numeric alternatives become nested `OR` expressions while shared predicates remain
-  conjunctive;
-- relation-filtered entity projections use `DISTINCT` when the join can duplicate the entity;
-- `AVG`, `MIN`, and `MAX` comparisons become scalar subqueries while explicit grouped aggregates stay grouped;
-- scalar row and frequency selectors model comparisons against superlative rows and least/most-common values;
-- positive, negative, and compound membership forms use typed `IN`/`NOT IN` subqueries;
-- when Spider omits an entity FK, a Phase 4 fallback may add one join only when observed child values are a
-  near-subset of a unique parent key and the relation role matches the entity name.
-
-Every expansion is immutable, recursively validated, deterministically rendered, deduplicated by SQL, and
-bounded by the configured candidate pool.
-
-## Phase 5 extrema search
-
-Phase 5 targets deterministic ordering and set operations that remain outside the earlier envelopes:
-
-- row argmax/argmin maps `youngest`, `oldest`, `highest`, `lowest`, and related cues to typed order columns;
-- explicit result cardinality produces bounded top-N candidates rather than an unbounded sort;
-- filters and joins are preserved while scalar-extrema predicates are converted to `ORDER BY ... LIMIT` when
-  the question asks for one row;
-- dirty Spider measure columns can be ordered when their observed values are overwhelmingly numeric even if
-  schema inference classified the column as text;
-- frequency argmax/argmin emits `GROUP BY ... ORDER BY COUNT(*) ... LIMIT`, optionally returning the count;
-- direct join-tree search and the Phase 4 high-confidence relation fallback cover cross-table frequency cases;
-- negative relation questions can become typed, equal-arity `EXCEPT` trees when both schema sides are present;
-- guards keep all-row sorting, grouped aggregates, multi-aggregate MIN/MAX, nested comparative counts, and
-  scalar tie-preserving extrema in their earlier representations.
-
-## Search pipeline
-
-1. Build a `SchemaGraph` from typed columns, observed values, and foreign keys.
-2. Link question spans to candidate tables, columns, values, aggregate functions, comparisons, grouping,
-   ordering, and limits.
-3. Expand ambiguous semantic bindings in a bounded beam.
-4. Collect every table required by each semantic draft.
-5. Search the undirected foreign-key graph for connected join trees. Bridge tables can be introduced even
-   when they were not directly selected.
-6. Construct immutable `SelectQuery` candidates and reject type or grouping violations.
-7. Expand high-confidence recursive candidates from the validated base pool.
-8. Expand aggregate constraints, disjunctions, scalar selectors, and membership candidates.
-9. Expand row/frequency extrema, top-N, and set-difference candidates.
-10. Validate the complete recursive tree, render it, and rank the surviving SQL strings.
-
-The same inputs produce the same candidate order. A future learned ranker may replace or augment the current
-scores without introducing sampling; fixed weights and deterministic operators preserve reproducibility.
-
-## API
-
-For raw table dictionaries:
+## Quick start
 
 ```python
-from engine.sql_search import SQLSearcher
+from engine.sql import SQLSearcher
+
+tables = [
+    {
+        "name": "orders",
+        "columns": ["id", "customer_id", "amount"],
+        "rows": [[1, 10, 25.0], [2, 10, 40.0], [3, 11, 12.5]],
+    },
+    {
+        "name": "customers",
+        "columns": ["id", "name"],
+        "rows": [[10, "Ada"], [11, "Lin"]],
+    },
+]
+foreign_keys = [
+    {
+        "from_table": "orders",
+        "from_col": "customer_id",
+        "to_table": "customers",
+        "to_col": "id",
+        "conf": 1.0,
+    }
+]
 
 searcher = SQLSearcher.from_tables(tables, foreign_keys)
-candidates = searcher.search("show top 5 customers by total order amount")
-sql = candidates[0].sql
-ast = candidates[0].query
-evidence = candidates[0].evidence
+candidates = searcher.search("list each customer name and total order amount")
+
+best = candidates[0]
+print(best.sql)
+print(best.query)       # typed AST
+print(best.evidence)    # generation and ranking trace
+print(best.features)    # numeric rank features
 ```
 
-Phase controls are explicit:
+`TableQuery.search_ast(...)` exposes the same planner through the existing ingestion
+and encoder path. It can supply role-specific semantic similarities from the frozen
+encoder without changing the SQL grammar.
+
+## Supported SQL
+
+The AST and search pipeline support:
+
+- one or many projected columns and `DISTINCT`;
+- `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`, including multiple aggregates;
+- typed comparisons, numeric ranges, categorical values, dates, `AND`, and `OR`;
+- `GROUP BY`, aggregate constraints in `HAVING`, ordering, and limits;
+- deterministic direct and multi-hop joins, including bridge tables;
+- aliases and self-joins;
+- scalar subqueries, `IN`, `NOT IN`, `EXISTS`, and `NOT EXISTS` ASTs;
+- derived tables and nested aggregation;
+- `UNION`, `INTERSECT`, and `EXCEPT` with equal-arity validation;
+- row and frequency argmax/argmin and explicit top-N queries.
+
+Support means the grammar, validator, renderer, and at least one search rule exist.
+It does not mean every natural-language paraphrase is linked to that structure.
+`EXISTS`, for example, is fully represented and tested, but Spider dev has no gold
+`EXISTS` example and the searcher usually favors more common membership forms.
+
+## Safety and validation
+
+SQL is rendered only after the complete recursive tree passes validation. Validation
+checks:
+
+- visible table qualifiers and alias scope;
+- connected joins and valid aliased self-joins;
+- scalar and set-query arity;
+- aggregate operand types;
+- grouped projection and ordering rules;
+- restrictions on compound-query operands.
+
+Identifiers and literals are quoted by the renderer. The planner emits query ASTs,
+not arbitrary statements. The serving path still applies its existing SELECT-only
+guard before execution.
+
+## Ranking
+
+The default ranker is deterministic and inspectable. It scores role alignment for
+projection, filtering, counting, aggregate operands, grouping, ordering, distinctness,
+and requested identifiers. Each contribution is attached as `rank:*` evidence.
+
+A caller may execute a bounded candidate prefix with `execute_and_rerank`. Execution
+errors, empty results, null-only results, and result shape add bounded `exec:*`
+features. Execution informs ordering; it never mutates or regenerates a query.
+
+The optional frozen learned ranker is loaded explicitly:
 
 ```python
-phase1 = searcher.search(question, phase2=False, phase3=False, phase4=False, phase5=False)
-phase2 = searcher.search(question, phase2=True, phase3=False, phase4=False, phase5=False)
-phase3 = searcher.search(question, phase2=True, phase3=True, phase4=False, phase5=False)
-phase4 = searcher.search(question, phase2=True, phase3=True, phase4=True, phase5=False)
-phase5 = searcher.search(question, phase2=True, phase3=True, phase4=True, phase5=True)  # defaults
+from engine.sql import SQLSearcher, load_ranker_model
+
+model = load_ranker_model("engine/data/sql_ranker.json")
+candidates = searcher.search(question, rank_model=model)
 ```
 
-The existing `TableQuery` schema path exposes the same planner through:
+The current artifact is experimental and is not loaded automatically. It improved
+database-disjoint training validation from 41.309% to 41.836% strict top-1, but
+regressed untouched Spider dev from 40.2% to 39.5%. The promotion gate therefore
+keeps the hand-ranked planner as the default.
+
+## Evaluation stages
+
+The old phase names remain only as stable ablation controls and evidence labels.
+They are useful for measuring where accuracy comes from; they are not separate
+runtime architectures.
+
+| Stage | Adds |
+|---|---|
+| Phase 1 | Typed base AST, projections, filters, aggregates, joins, grouping, ordering, limits. |
+| Phase 2 | Hand semantic ranking and execution checks. |
+| Phase 3 | Recursive queries, set operations, aliases, self-joins, nested aggregation. |
+| Phase 4 | Aggregate constraints, disjunctions, scalar selectors, membership rules. |
+| Phase 5 | Row/frequency extrema, top-N, and set difference. This is the default. |
+| Phase 6 | Optional frozen learned reranker. Experimental and not promoted. |
+
+For controlled ablations:
 
 ```python
-candidates = table_query.search_ast(question, schema, tables, foreign_keys)
+phase1 = searcher.search(q, phase2=False, phase3=False, phase4=False, phase5=False)
+phase2 = searcher.search(q, phase2=True, phase3=False, phase4=False, phase5=False)
+phase3 = searcher.search(q, phase2=True, phase3=True, phase4=False, phase5=False)
+phase4 = searcher.search(q, phase2=True, phase3=True, phase4=True, phase5=False)
+phase5 = searcher.search(q)  # all deterministic capability expanders enabled
 ```
 
-`TableQuery.search_ast` accepts the same `phase2`, `phase3`, `phase4`, and `phase5` flags for model-backed
-baseline runs.
+## Spider status
 
-The Spider harness keeps the original planner as its default and enables this planner explicitly:
+The fast evaluator uses Spider-declared foreign keys, gold table selection, no encoder
+signals, and no compose route. Gold SQL and denotations are used only for measurement.
+On all 1,034 Spider dev examples with pool 180 and top-10 evaluation:
+
+| Metric | P1 | P2 | P3 | P4 | P5 default | P6 experimental |
+|---|---:|---:|---:|---:|---:|---:|
+| Lenient | 33.1% | 36.8% | 38.2% | 42.5% | 47.2% | 45.9% |
+| Strict | 19.9% | 24.4% | 26.4% | 32.9% | 40.2% | 39.5% |
+| Scalar | 43.7% | 50.3% | 51.4% | 55.8% | 62.2% | 62.2% |
+| Top-10 strict oracle | 27.5% | 27.9% | 30.0% | 38.2% | 45.8% | 45.6% |
+
+The main unsolved limit is candidate recall and semantic binding, not randomness:
+only 45.8% of examples have a strict-correct query in the top ten. Better ranking
+cannot recover a query the bounded grammar rules did not generate. Whole-database
+table selection is also harder than the oracle `gold_tables` configuration above.
+
+## Reproducing results
+
+Fetch the benchmark data:
 
 ```bash
-python spider/probe/full_eval.py --dbs spider/data/dbs --config gold_tables --planner ast --tag ast
+python spider/probe/fetch_data.py --include-train
 ```
 
-Spider's declared foreign keys are converted to named graph edges for this mode. Uploaded CSVs continue to
-use the engine's deterministic inclusion-dependency discovery.
-
-The fast model-free evaluator reports all five phases independently:
+Run deterministic stage evaluation:
 
 ```bash
 python spider/probe/ast_eval.py --dbs spider/data/dbs --pool 180 --top-k 10
 ```
 
-On the 1,034-example Spider dev split with `gold_tables`:
+Train on Spider train with database-disjoint validation, then evaluate on untouched
+dev:
 
-| Metric | Phase 1 | Phase 2 | Phase 3 | Phase 4 | Phase 5 |
-|---|---:|---:|---:|---:|---:|
-| Lenient | 33.1% | 36.8% | 38.2% | 42.5% | 47.2% |
-| Strict | 19.9% | 24.4% | 26.4% | 32.9% | 40.2% |
-| Scalar | 43.7% | 50.3% | 51.4% | 55.8% | 62.2% |
-| Top-10 strict oracle | 27.5% | 27.9% | 30.0% | 38.2% | 45.8% |
+```bash
+python spider/probe/train_ast_ranker.py --dbs spider/data/dbs \
+  --pool 180 --negative-pool 32 \
+  --cache spider/data/ranker_train_gold_180.jsonl \
+  --out engine/data/sql_ranker.json
 
-Phase 2's nearly fixed oracle shows a ranking gain. Phase 3 expands recursive coverage, and Phase 4 adds
-aggregate constraints and disjunctions. Phase 5 adds 7.3 strict top-1 points and 7.6 strict-oracle points over
-Phase 4; its full-split audit records 76 strict gains and no regressions. This evaluation excludes encoder
-signals and the compose route; `full_eval.py --planner ast` exercises those integrations.
+python spider/probe/ast_eval.py --dbs spider/data/dbs \
+  --pool 180 --top-k 10 \
+  --ranker-model engine/data/sql_ranker.json \
+  --out spider/results/ast_eval_phase6.json
+```
 
-## Verification
+`train_ast_ranker.py` refuses `dev.json` unless the diagnostic-only override is
+explicitly supplied. Training uses scikit-learn; frozen tree inference uses only the
+Python standard library.
 
-The hermetic suite executes generated SQL against in-memory SQLite:
+Run the integrated encoder and compose-route harness with:
+
+```bash
+python spider/probe/full_eval.py --dbs spider/data/dbs \
+  --config gold_tables --planner ast --tag ast
+```
+
+## Tests
+
+The hermetic AST suite executes generated SQL against in-memory SQLite:
 
 ```bash
 python -m tests.test_sql_ast
 ```
 
-It covers type rejection, multi-column projection, value/range predicates, multiple aggregates, bridge-table
-joins, grouped counts, aggregate Top-N, count-distinct and aggregate-role failures from Spider, encoder signal
-tie-breaking, execution reranking, scalar and correlated subqueries, compound/derived queries, anti-membership,
-self-joins, nested count aggregation, and repeatability.
-Phase 4 coverage additionally includes HAVING constraints, disjunction scope and deduplication, scalar
-aggregate filters, inferred high-confidence joins, shared predicates, grouped-superlative guards, and phase
-isolation.
-Phase 5 coverage includes filtered row extrema, explicit top-N, grouped frequency extrema with optional count
-output, direct set difference, multi-aggregate and nested-comparison guards, and Phase 5 isolation.
+It covers typing and grouping rejection, projection and filter isolation, multiple
+aggregates, direct and bridge joins, deterministic ordering, execution reranking,
+subqueries, set operations, aliases, self-joins, nested aggregation, `HAVING`,
+disjunction scope, inferred high-confidence joins, extrema, top-N, set difference,
+ranker artifact round trips, and opt-in learned-ranker isolation.
+
+## Current boundary
+
+The implementation is coherent and tested, but Spider is not solved. Phase 1 through
+Phase 5 are complete as engineering capabilities. Phase 6 is complete as a training,
+serialization, and deterministic-inference experiment, but its current artifact is
+not accurate enough to promote. Future accuracy work should target measured
+candidate-recall and schema-binding failures before adding more ranking complexity.

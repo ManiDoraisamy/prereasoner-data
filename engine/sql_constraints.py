@@ -1,13 +1,13 @@
-"""Phase 4 aggregate constraints, disjunctions, and relational subqueries.
+"""Aggregate constraints, disjunctions, and relational-subquery expansion.
 
-Phase 4 is a separate deterministic expansion layer so the Phase 3 envelope stays
-reproducible.  Rules operate on typed ASTs and schema objects, never SQL strings.
+This is an independent deterministic capability layer. Rules operate on typed
+ASTs and schema objects, never SQL strings.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 import re
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from engine.sql_ast import (
     Aggregate,
@@ -15,7 +15,6 @@ from engine.sql_ast import (
     ColumnRef,
     Comparison,
     InPredicate,
-    Join,
     Literal,
     OrderTerm,
     Predicate,
@@ -26,20 +25,31 @@ from engine.sql_ast import (
     SelectQuery,
     Star,
     and_predicates,
-    render_query,
 )
-from engine.sql_search import SchemaGraph, ScoredQuery
+from engine.sql_expansion import (
+    CountThreshold,
+    ExpansionSupport,
+    and_terms as _and_terms,
+    build_candidate as _candidate,
+    column_matches as _column_matches,
+    column_requested_as_output as _column_requested_as_output,
+    count_requested as _count_requested,
+    entity_join_key as _entity_join_key,
+    explicit_order as _explicit_order,
+    expression_table as _expression_table,
+    is_id as _is_id,
+    linker_noise as _linker_noise,
+    name_tokens as _name_tokens,
+    parse_number as _parse_number,
+    physical_tables as _physical_tables,
+    projection_window as _projection_window,
+    semantic_tokens as _semantic_tokens,
+    tokens as _tokens,
+    unique_predicates as _unique_predicates,
+)
+from engine.sql_candidate import ScoredQuery
 
 
-_WORD_NUMBERS = {
-    "zero": 0, "one": 1, "single": 1, "two": 2, "couple": 2, "three": 3,
-    "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,
-    "ten": 10,
-}
-_NOISE_VALUES = frozenset({
-    "a", "an", "and", "any", "are", "as", "at", "by", "for", "from", "in", "no", "not",
-    "is", "of", "on", "or", "the", "to", "with", "without",
-})
 _COUNT_RELATION_CUES = frozenset({
     "contain", "contains", "conduct", "conducted", "design", "designed", "enroll", "enrolled",
     "has", "have", "having", "make", "operate", "perform", "performed", "produce", "shared",
@@ -47,24 +57,8 @@ _COUNT_RELATION_CUES = frozenset({
 })
 
 
-@dataclass(frozen=True)
-class CountThreshold:
-    predicates: tuple[tuple[str, int], ...]
-    start: int
-    end: int
-    strength: float
-
-    @property
-    def values(self) -> frozenset[int]:
-        return frozenset(value for _, value in self.predicates)
-
-
-class Phase4Expander:
+class ConstraintQueryExpander(ExpansionSupport):
     """Add bounded candidates for Spider's remaining high-mass structures."""
-
-    def __init__(self, schema: SchemaGraph, max_candidates: int = 180):
-        self.schema = schema
-        self.max_candidates = max(1, max_candidates)
 
     def expand(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
         generated: list[ScoredQuery] = []
@@ -93,20 +87,20 @@ class Phase4Expander:
             return []
         out = []
         for threshold in thresholds:
-            if self._threshold_targets_column(tokens, threshold):
+            if self.threshold_targets_column(tokens, threshold):
                 continue
-            entity_options = self._entity_tables(tokens, threshold)
+            entity_options = self.entity_tables(tokens, threshold)
             for entity_table, entity_score in entity_options[:2]:
-                counted_options = self._counted_tables(tokens, threshold, entity_table)
+                counted_options = self.counted_tables(tokens, threshold, entity_table)
                 for counted_table, relation_score in counted_options[:2]:
                     if relation_score <= 0:
                         continue
-                    structures = self._having_structures(
+                    structures = self.having_structures(
                         candidates, entity_table, counted_table, threshold
                     )
                     for source, joins, where, structure_score in structures[:8]:
                         regular_numeric = [
-                            comparison for comparison in self._numeric_comparisons(tokens)
+                            comparison for comparison in self.numeric_comparisons(tokens)
                             if comparison.left.table in {source, *(join.table for join in joins)}
                             and not (
                                 isinstance(comparison.right, Literal)
@@ -125,15 +119,15 @@ class Phase4Expander:
                             ]
                             direct_where = and_predicates(_unique_predicates(existing + regular_numeric))
                             where_options.append((direct_where, 1.5))
-                        projection_options = self._projection_options(
+                        projection_options = self.projection_options(
                             question, entity_table, where
                         )
                         if not projection_options:
                             continue
-                        group_options = self._group_options(
+                        group_options = self.group_options(
                             question, entity_table, counted_table, joins, projection_options[0]
                         )
-                        select_options = self._having_select_options(
+                        select_options = self.having_select_options(
                             question, projection_options
                         )
                         count = Aggregate("COUNT", Star())
@@ -143,10 +137,10 @@ class Phase4Expander:
                         )
                         having = and_predicates(having_terms)
                         for selected_where, where_bonus in where_options:
-                            filtered_projection = self._projection_options(
+                            filtered_projection = self.projection_options(
                                 question, entity_table, selected_where
                             )
-                            selected_options = self._having_select_options(
+                            selected_options = self.having_select_options(
                                 question, filtered_projection
                             )
                             for select, select_bonus in selected_options[:4]:
@@ -226,7 +220,7 @@ class Phase4Expander:
                     and isinstance(term.right, Literal)
                 ]
                 movable.extend(
-                    comparison for comparison in self._numeric_comparisons(question_tokens)
+                    comparison for comparison in self.numeric_comparisons(question_tokens)
                     if comparison.left == aggregate.operand
                     and comparison not in movable
                 )
@@ -272,7 +266,7 @@ class Phase4Expander:
         if "or" not in tokens and "either" not in tokens:
             return []
         out = []
-        numeric = self._numeric_comparisons(tokens)
+        numeric = self.numeric_comparisons(tokens)
         for candidate in candidates:
             query = candidate.query
             if not isinstance(query, SelectQuery) or query.where is None:
@@ -366,7 +360,7 @@ class Phase4Expander:
                 preferred = {
                     column
                     for table in _physical_tables(query)
-                    for column, _, _ in self._projection_columns(_tokens(question), table)
+                    for column, _, _ in self.projection_columns(_tokens(question), table)
                 }
                 filtered_projections = tuple(
                     item for item in projections if item.expression in preferred
@@ -455,7 +449,7 @@ class Phase4Expander:
                         for table in _physical_tables(query):
                             linked.extend(
                                 (column, score, position)
-                                for column, score, position in self._projection_columns(
+                                for column, score, position in self.projection_columns(
                                     _tokens(question), table
                                 )
                                 if column != target
@@ -471,7 +465,7 @@ class Phase4Expander:
                         continue
                     physical = _physical_tables(query)
                     direct_filters = [
-                        comparison for comparison in self._numeric_comparisons(_tokens(question))
+                        comparison for comparison in self.numeric_comparisons(_tokens(question))
                         if comparison.left.table in physical and comparison.left != target
                     ]
                     categorical = [
@@ -513,7 +507,7 @@ class Phase4Expander:
             "<" if token_set & {"smaller", "lower", "less", "fewer"} else None
         )
         if superlative_positions and comparative is not None:
-            all_mentions = self._mentioned_columns(tokens, numeric=False)
+            all_mentions = self.mentioned_columns(tokens, numeric=False)
             for table in self.schema.tables:
                 columns = [(position, column) for position, column in all_mentions if column.table == table]
                 if len({column for _, column in columns}) < 2:
@@ -556,7 +550,7 @@ class Phase4Expander:
         elif {"most", "common"} <= token_set or "commonest" in token_set:
             rare_direction = "DESC"
         if rare_direction is not None:
-            text_mentions = self._mentioned_columns(tokens, numeric=False)
+            text_mentions = self.mentioned_columns(tokens, numeric=False)
             targets = [column for _, column in text_mentions if not column.type.numeric]
             for target in dict.fromkeys(targets):
                 inner = SelectQuery(
@@ -654,11 +648,11 @@ class Phase4Expander:
             ]
             if not negative or not positive:
                 continue
-            entity_table = self._entity_tables(_tokens(question), CountThreshold((("=", 1),), 0, 0, 0))[0][0]
+            entity_table = self.entity_tables(_tokens(question), CountThreshold((("=", 1),), 0, 0, 0))[0][0]
             key = _entity_join_key(query, entity_table)
             if key is None:
                 continue
-            entity_select = self._projection_options(question, entity_table, None)[0]
+            entity_select = self.projection_options(question, entity_table, None)[0]
             negative_terms = [Comparison(term.left, "=", term.right) for term in negative]
             membership = replace(
                 query,
@@ -775,7 +769,7 @@ class Phase4Expander:
         for table in _physical_tables(query):
             linked.extend(
                 (column, score, position)
-                for column, score, position in self._projection_columns(tokens, table)
+                for column, score, position in self.projection_columns(tokens, table)
                 if column not in filter_columns
             )
         linked.sort(key=lambda item: (item[2], -item[1], item[0].table, item[0].name))
@@ -788,7 +782,7 @@ class Phase4Expander:
         self, question: str, candidates: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
         tokens = _tokens(question)
-        numeric = self._numeric_comparisons(tokens)
+        numeric = self.numeric_comparisons(tokens)
         categorical = []
         for candidate in candidates:
             query = candidate.query
@@ -833,7 +827,7 @@ class Phase4Expander:
         if not select_options:
             linked = []
             for table in self.schema.tables:
-                linked.extend(self._projection_columns(tokens, table))
+                linked.extend(self.projection_columns(tokens, table))
             linked.sort(key=lambda item: (item[2], -item[1], item[0].table, item[0].name))
             filter_columns = {
                 predicate.left for predicate in predicates
@@ -902,258 +896,6 @@ class Phase4Expander:
             if value is not None:
                 out.append(Comparison(column, "=", Literal(value, column.type)))
         return out
-
-    def _entity_tables(
-        self, tokens: tuple[str, ...], threshold: CountThreshold
-    ) -> list[tuple[str, float]]:
-        prefix = set(tokens[:max(threshold.start, 1)])
-        all_tokens = set(tokens)
-        scored = []
-        for table in self.schema.tables:
-            projection = self._projection_columns(tokens, table)
-            table_words = set(_semantic_tokens(table))
-            prefix_overlap = len(table_words & prefix)
-            global_overlap = len(table_words & all_tokens)
-            mention_positions = [
-                index for index, token in enumerate(tokens[:threshold.start])
-                if token in table_words
-            ]
-            mention_score = 8.0 + 0.1 * (threshold.start - min(mention_positions)) \
-                if mention_positions else 0.0
-            score = 2.0 * len(projection) + 2.0 * prefix_overlap + global_overlap + mention_score
-            scored.append((table, score))
-        return sorted(scored, key=lambda item: (-item[1], item[0]))
-
-    def _counted_tables(
-        self, tokens: tuple[str, ...], threshold: CountThreshold, entity_table: str
-    ) -> list[tuple[str, float]]:
-        suffix = set(tokens[max(0, threshold.start - 7):min(len(tokens), threshold.end + 7)])
-        scored = []
-        for table in self.schema.tables:
-            words = set(_semantic_tokens(table))
-            overlap = len(words & suffix)
-            score = 3.0 * overlap
-            if table != entity_table and overlap:
-                score += 0.75
-            scored.append((table, score))
-        return sorted(scored, key=lambda item: (-item[1], item[0]))
-
-    def _having_structures(
-        self, candidates: Sequence[ScoredQuery], entity_table: str,
-        counted_table: str, threshold: CountThreshold,
-    ) -> list[tuple[str, tuple[Join, ...], Predicate | None, float]]:
-        structures = []
-        required = {entity_table, counted_table}
-        join_trees = self.schema.join_trees(required, preferred_root=counted_table, limit=4)
-        for tree in join_trees:
-            structures.append((tree.root, tree.joins, None, -0.2 * len(tree.joins)))
-        if entity_table != counted_table and not join_trees:
-            inferred = self._inferred_entity_join(entity_table, counted_table)
-            if inferred is not None:
-                structures.append((counted_table, (inferred,), None, -0.25))
-        for candidate in candidates:
-            query = candidate.query
-            if not isinstance(query, SelectQuery) or not isinstance(query.from_table, str):
-                continue
-            if not required <= _physical_tables(query):
-                continue
-            where = _clean_threshold_where(query.where, threshold.values)
-            structures.append((query.from_table, query.joins, where, 0.5 + 0.2 * len(_and_terms(where)) if where else 0.5))
-        dedup = {}
-        for structure in structures:
-            key = (structure[0], structure[1], repr(structure[2]))
-            old = dedup.get(key)
-            if old is None or structure[3] > old[3]:
-                dedup[key] = structure
-        return sorted(dedup.values(), key=lambda item: (-item[3], repr(item)))
-
-    def _inferred_entity_join(self, entity_table: str, counted_table: str) -> Join | None:
-        """Infer a missing FK only from a unique parent key and near-subset child values."""
-        entity_words = set(_semantic_tokens(entity_table))
-        options = []
-        for parent in self.schema.by_table.get(entity_table, ()):
-            parent_values = _value_set(parent.values)
-            if len(parent_values) < 2 or len(parent_values) < 0.95 * _value_count(parent.values):
-                continue
-            for child in self.schema.by_table.get(counted_table, ()):
-                if not _compatible_types(parent.ref.type, child.ref.type):
-                    continue
-                child_values = _value_set(child.values)
-                if len(child_values) < 2 or _value_count(child.values) < 1.2 * len(child_values):
-                    continue
-                overlap = len(parent_values & child_values) / len(child_values)
-                if overlap < 0.9:
-                    continue
-                child_words = set(_semantic_tokens(child.ref.name))
-                parent_words = set(_semantic_tokens(parent.ref.name))
-                role_match = bool(child_words & entity_words)
-                name_match = bool(child_words & parent_words)
-                if not role_match and not name_match:
-                    continue
-                score = 4.0 * overlap + 2.0 * role_match + name_match
-                options.append((score, parent.ref, child.ref))
-        if not options:
-            return None
-        _, parent, child = max(
-            options,
-            key=lambda item: (item[0], item[1].name, item[2].name),
-        )
-        return Join(entity_table, child, parent)
-
-    def _projection_columns(
-        self, tokens: tuple[str, ...], table: str
-    ) -> list[tuple[ColumnRef, float, int]]:
-        window = _projection_window(tokens)
-        token_set = {token for _, token in window}
-        explicit_id = bool(token_set & {"id", "identifier", "code"})
-        matches = []
-        for schema_column in self.schema.by_table.get(table, ()):
-            column = schema_column.ref
-            compact = re.sub(r"[^a-z0-9]", "", column.name.lower())
-            if _is_id(column.name) and not explicit_id and compact not in token_set:
-                continue
-            if not _column_matches(column.name, token_set, table):
-                continue
-            words = set(_semantic_tokens(column.name))
-            compact_hits = {index for index, token in window if token == compact}
-            semantic_hits = {index for index, token in window if token in words}
-            coverage = compact_hits or semantic_hits
-            specificity = len(words & token_set)
-            position = min(coverage) if coverage else len(tokens) + 5
-            matches.append((column, float(specificity), position, coverage, words))
-        out = []
-        for column, specificity, position, coverage, words in matches:
-            shadowed = any(
-                words < other_words and coverage and coverage <= other_coverage
-                for other, _, _, other_coverage, other_words in matches
-                if other != column
-            )
-            if not shadowed:
-                out.append((column, specificity, position))
-        return sorted(out, key=lambda item: (item[2], -item[1], item[0].name))
-
-    def _projection_options(
-        self, question: str, table: str, where: Predicate | None
-    ) -> list[tuple[SelectItem, ...]]:
-        tokens = _tokens(question)
-        filter_columns = {
-            term.left for term in _and_terms(where)
-            if isinstance(term, Comparison) and isinstance(term.left, ColumnRef)
-        } if where is not None else set()
-        linked = [
-            column for column, _, _ in self._projection_columns(tokens, table)
-            if column not in filter_columns
-        ]
-        if not linked:
-            linked = list(self.schema.display_columns(table)[:1])
-        full = tuple(SelectItem(column) for column in dict.fromkeys(linked[:4]))
-        options = [full]
-        options.extend((SelectItem(column),) for column in linked[:4])
-        return list(dict.fromkeys(options))
-
-    def _group_options(
-        self, question: str, entity_table: str, counted_table: str,
-        joins: tuple[Join, ...], projection: tuple[SelectItem, ...],
-    ) -> list[tuple[ColumnRef, ...]]:
-        if entity_table != counted_table:
-            key = _join_key(joins, entity_table)
-            if key is not None:
-                return [(key,)]
-        tokens = _tokens(question)
-        all_tokens = set(tokens)
-        columns = [
-            schema_column.ref for schema_column in self.schema.by_table.get(entity_table, ())
-            if _column_matches(schema_column.ref.name, all_tokens, entity_table)
-        ]
-        projected = [item.expression for item in projection if isinstance(item.expression, ColumnRef)]
-        if projected and all(_is_id(column.name) for column in projected):
-            ordered = [column for column in columns if not _is_id(column.name)] + projected
-        else:
-            ordered = projected + columns
-        options = [(column,) for column in dict.fromkeys(ordered)]
-        return options or [tuple(self.schema.display_columns(entity_table)[:1])]
-
-    @staticmethod
-    def _having_select_options(
-        question: str, projection_options: list[tuple[SelectItem, ...]]
-    ) -> list[tuple[tuple[SelectItem, ...], float]]:
-        tokens = _tokens(question)
-        projection = projection_options[0]
-        if _top_level_count(tokens):
-            return [((SelectItem(Aggregate("COUNT", Star())),), 3.0)]
-        out = [(projection, 2.0)]
-        if _count_requested(tokens):
-            count = SelectItem(Aggregate("COUNT", Star()))
-            out.append(((count,) + projection, 4.0))
-            out.append((projection + (count,), 3.5))
-        out.extend((option, 0.25) for option in projection_options[1:3])
-        return out
-
-    def _numeric_comparisons(self, tokens: tuple[str, ...]) -> list[Comparison]:
-        out = []
-        mentions = self._mentioned_columns(tokens, numeric=True)
-        for index, token in enumerate(tokens):
-            value = _parse_number(token)
-            if value is None:
-                continue
-            if isinstance(value, int) and 1900 <= value <= 2100:
-                year_columns = [
-                    column.ref for column in self.schema.columns
-                    if "year" in _semantic_tokens(column.ref.name) or column.ref.type == SQLType.DATE
-                ]
-                targets = year_columns[:3]
-            else:
-                nearby = sorted(
-                    mentions,
-                    key=lambda item: (abs(item[0] - index), item[1].table, item[1].name),
-                )
-                targets = [column for position, column in nearby if abs(position - index) <= 4][:3]
-            operator = _nearby_operator(tokens, index)
-            for target in dict.fromkeys(targets):
-                out.append(Comparison(target, operator, Literal(value, target.type)))
-        return out
-
-    def _threshold_targets_column(
-        self, tokens: tuple[str, ...], threshold: CountThreshold
-    ) -> bool:
-        number_positions = [
-            index for index in range(threshold.start, min(len(tokens), threshold.end + 1))
-            if _parse_number(tokens[index]) is not None
-        ]
-        if not number_positions:
-            return False
-        for schema_column in self.schema.columns:
-            column = schema_column.ref
-            if _is_id(column.name) or not column.type.numeric:
-                continue
-            for number_position in number_positions:
-                local = set(tokens[max(0, number_position - 3):min(len(tokens), number_position + 2)])
-                if _column_matches(column.name, local):
-                    return True
-        return False
-
-    def _mentioned_columns(
-        self, tokens: tuple[str, ...], numeric: bool
-    ) -> list[tuple[int, ColumnRef]]:
-        out = []
-        for schema_column in self.schema.columns:
-            column = schema_column.ref
-            if numeric and (not column.type.numeric or _is_id(column.name)):
-                continue
-            words = set(_semantic_tokens(column.name))
-            for index, token in enumerate(tokens):
-                if token in words:
-                    out.append((index, column))
-        return out
-
-
-def _candidate(query: Query, score: float, evidence: tuple[str, ...]) -> ScoredQuery | None:
-    try:
-        sql = render_query(query)
-    except (TypeError, ValueError):
-        return None
-    return ScoredQuery(query, sql, score, evidence)
-
 
 def _explicit_aggregate_constraint(
     tokens: tuple[str, ...], aggregate: Aggregate, literal: Literal
@@ -1306,245 +1048,3 @@ def _sanitized_having_query(
     if not selected_aggregates:
         return None
     return replace(query, select=select, group_by=(group,), order_by=(), limit=None)
-
-
-def _clean_threshold_where(
-    predicate: Predicate | None, values: frozenset[int]
-) -> Predicate | None:
-    if predicate is None:
-        return None
-    terms = []
-    for term in _and_terms(predicate):
-        if _linker_noise(term):
-            continue
-        if isinstance(term, Comparison) and isinstance(term.right, Literal):
-            try:
-                if int(term.right.value) in values:
-                    continue
-            except (TypeError, ValueError):
-                pass
-        terms.append(term)
-    return and_predicates(terms)
-
-
-def _and_terms(predicate: Predicate | None) -> tuple[Predicate, ...]:
-    if predicate is None:
-        return ()
-    if isinstance(predicate, BooleanExpr) and predicate.operator == "AND":
-        return tuple(term for child in predicate.terms for term in _and_terms(child))
-    return (predicate,)
-
-
-def _linker_noise(predicate: Predicate) -> bool:
-    return (
-        isinstance(predicate, Comparison)
-        and isinstance(predicate.right, Literal)
-        and str(predicate.right.value).strip().lower() in _NOISE_VALUES
-    )
-
-
-def _physical_tables(query: SelectQuery) -> set[str]:
-    out = {query.from_table} if isinstance(query.from_table, str) else set()
-    out.update(join.table for join in query.joins)
-    return out
-
-
-def _join_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
-    columns = [column for join in joins for column in (join.left, join.right) if column.table == table]
-    return sorted(set(columns), key=lambda column: (0 if _is_id(column.name) else 1, column.name))[0] if columns else None
-
-
-def _entity_join_key(query: SelectQuery, table: str) -> ColumnRef | None:
-    return _join_key(query.joins, table)
-
-
-def _expression_table(expression) -> str | None:
-    if isinstance(expression, ColumnRef):
-        return expression.table
-    if isinstance(expression, Aggregate) and isinstance(expression.operand, ColumnRef):
-        return expression.operand.table
-    return None
-
-
-def _unique_predicates(predicates: Iterable[Predicate]) -> list[Predicate]:
-    out = []
-    seen = set()
-    for predicate in predicates:
-        key = repr(predicate)
-        if key not in seen:
-            seen.add(key)
-            out.append(predicate)
-    return out
-
-
-def _nearby_operator(tokens: tuple[str, ...], index: int) -> str:
-    before = tokens[max(0, index - 4):index]
-    after = tokens[index + 1:index + 3]
-    if "not" in before and len(before) >= 2 and before[-2:] == ("more", "than"):
-        return "<="
-    if "before" in before or "under" in before or "below" in before:
-        return "<"
-    if "after" in before or "over" in before or "above" in before:
-        return ">"
-    if len(before) >= 2 and before[-2:] in {
-        ("longer", "than"), ("more", "than"), ("greater", "than")
-    }:
-        return ">"
-    if len(before) >= 2 and before[-2:] in {
-        ("shorter", "than"), ("less", "than"), ("fewer", "than")
-    }:
-        return "<"
-    if after == ("or", "more"):
-        return ">="
-    if after in {("or", "after"), ("or", "later")}:
-        return ">="
-    if after in {("or", "before"), ("or", "earlier")}:
-        return "<="
-    return "="
-
-
-def _column_requested_as_output(column: ColumnRef, question: str) -> bool:
-    normalized = " ".join(_tokens(question))
-    words = _semantic_tokens(column.name)
-    temporal = bool(set(words) & {"year", "date", "time"})
-    if temporal and "production time" in normalized:
-        return True
-    return temporal and bool(
-        re.search(r"\b(?:what|which|show|list|give|find).{0,80}\b(?:year|date|time)\b", normalized)
-    )
-
-
-def _top_level_count(tokens: tuple[str, ...]) -> bool:
-    normalized = " ".join(tokens[:8])
-    return normalized.startswith("how many") or normalized.startswith("what is the number") \
-        or normalized.startswith("what are the number")
-
-
-def _count_requested(tokens: tuple[str, ...]) -> bool:
-    return bool(set(tokens) & {"count", "number"}) or "how many" in " ".join(tokens)
-
-
-def _explicit_order(tokens: tuple[str, ...]) -> bool:
-    return bool(set(tokens) & {"order", "ordered", "sort", "sorted", "top", "bottom"})
-
-
-def _parse_number(token: str) -> int | float | None:
-    if token in _WORD_NUMBERS:
-        return _WORD_NUMBERS[token]
-    if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
-        return float(token) if "." in token else int(token)
-    return None
-
-
-def _is_id(name: str) -> bool:
-    words = _name_tokens(name)
-    return bool(words) and words[-1] in {"id", "identifier", "key", "code"}
-
-
-def _projection_window(tokens: tuple[str, ...]) -> tuple[tuple[int, str], ...]:
-    commands = {"find", "give", "list", "return", "show", "what", "which"}
-    boundaries = {"has", "have", "having", "shared", "that", "under", "where", "which", "who", "whose", "with"}
-    late_commands = [index for index, token in enumerate(tokens) if token in commands and index > 2]
-    if late_commands:
-        start = late_commands[-1] + 1
-        end = next(
-            (index for index in range(start + 1, len(tokens)) if tokens[index] in boundaries),
-            len(tokens),
-        )
-        return tuple(enumerate(tokens[start:end], start))
-    start = 1 if tokens and tokens[0] in commands else 0
-    end = next(
-        (index for index in range(max(start + 1, 2), len(tokens)) if tokens[index] in boundaries),
-        len(tokens),
-    )
-    return tuple(enumerate(tokens[start:end], start))
-
-
-def _column_matches(name: str, tokens: set[str], table: str | None = None) -> bool:
-    compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
-    if compact in tokens:
-        return True
-    special = {
-        "fname": ({"first"}, {"name"}),
-        "firstname": ({"first"}, {"name"}),
-        "lname": ({"last"}, {"name"}),
-        "lastname": ({"last"}, {"name"}),
-        "sex": ({"sex", "gender"},),
-        "gender": ({"sex", "gender"},),
-        "mpg": ({"mpg", "mile"}, {"mpg", "gallon"}),
-    }
-    groups = special.get(compact)
-    if groups is None:
-        aliases = {
-            "maker": {"maker", "manufacturer"},
-            "weight": {"weight", "weigh", "weighed", "weighing"},
-            "accelerate": {"accelerate", "acceleration"},
-            "hometown": {"hometown", "town", "city"},
-            "death": {"death", "killed"},
-        }
-        table_words = set(_name_tokens(table)) if table is not None else set()
-        words = [
-            word for word in _name_tokens(name)
-            if word not in {"of"} and (word not in table_words or len(_name_tokens(name)) == 1)
-        ]
-        groups = tuple(aliases.get(word, {word}) for word in words)
-    return bool(groups) and all(bool(group & tokens) for group in groups)
-
-
-def _semantic_tokens(name: str) -> tuple[str, ...]:
-    compact = re.sub(r"[^a-z0-9]", "", str(name).lower())
-    special = {
-        "fname": ("first", "name"), "firstname": ("first", "name"),
-        "lname": ("last", "name"), "lastname": ("last", "name"),
-        "sex": ("sex", "gender"), "gender": ("sex", "gender"),
-    }
-    words = list(special.get(compact, _name_tokens(name)))
-    synonyms = {
-        "maker": ("manufacturer",), "manufacturer": ("maker",),
-        "weight": ("weigh", "weighed", "weighing"),
-        "accelerate": ("acceleration",), "hometown": ("town", "city"),
-        "death": ("killed",), "song": ("songs",), "visit": ("visited",),
-    }
-    expanded = list(words)
-    for word in words:
-        expanded.extend(synonyms.get(word, ()))
-    return tuple(dict.fromkeys(expanded))
-
-
-def _value_set(values: Sequence[object]) -> set[object]:
-    return {value for value in values if value is not None and str(value).strip()}
-
-
-def _value_count(values: Sequence[object]) -> int:
-    return sum(value is not None and bool(str(value).strip()) for value in values)
-
-
-def _compatible_types(left: SQLType, right: SQLType) -> bool:
-    return left == right or (left.numeric and right.numeric)
-
-
-def _name_tokens(name: str) -> tuple[str, ...]:
-    spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(_canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
-
-
-def _tokens(text: str) -> tuple[str, ...]:
-    out = []
-    for token in re.findall(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?", text.lower()):
-        if token.endswith("'s"):
-            token = token[:-2]
-        out.append(_canon(token))
-    return tuple(out)
-
-
-def _canon(word: str) -> str:
-    word = word.lower().strip()
-    if word == "ids":
-        return "id"
-    if len(word) > 4 and word.endswith("ies"):
-        return word[:-3] + "y"
-    if len(word) > 3 and word.endswith("ses"):
-        return word[:-2]
-    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
-        return word[:-1]
-    return word

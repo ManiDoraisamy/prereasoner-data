@@ -1,4 +1,5 @@
 data/*.json
+data/*.jsonl
 data/*.sqlite
 data/dbs/
 results/*per_example*.json

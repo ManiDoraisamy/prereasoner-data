@@ -1,4 +1,4 @@
-"""Phase 5 deterministic arg-extrema, top-N, and set-difference search."""
+"""Deterministic arg-extrema, top-N, and set-difference expansion."""
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -20,22 +20,22 @@ from engine.sql_ast import (
     Star,
     and_predicates,
 )
-from engine.sql_phase4 import (
+from engine.sql_expansion import (
     CountThreshold,
-    Phase4Expander,
-    _and_terms,
-    _candidate,
-    _column_matches,
-    _is_id,
-    _linker_noise,
-    _parse_number,
-    _physical_tables,
-    _projection_window,
-    _semantic_tokens,
-    _tokens,
-    _unique_predicates,
+    ExpansionSupport,
+    and_terms as _and_terms,
+    build_candidate as _candidate,
+    column_matches as _column_matches,
+    is_id as _is_id,
+    linker_noise as _linker_noise,
+    parse_number as _parse_number,
+    physical_tables as _physical_tables,
+    projection_window as _projection_window,
+    semantic_tokens as _semantic_tokens,
+    tokens as _tokens,
+    unique_predicates as _unique_predicates,
 )
-from engine.sql_search import ScoredQuery
+from engine.sql_candidate import ScoredQuery
 
 
 _MAX_CUES = frozenset({
@@ -68,7 +68,7 @@ class FrequencyCue:
     explicit_number: bool
 
 
-class Phase5Expander(Phase4Expander):
+class ExtremaQueryExpander(ExpansionSupport):
     """Add bounded candidates for row and grouped extrema plus set difference."""
 
     def expand(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
@@ -142,7 +142,7 @@ class Phase5Expander(Phase4Expander):
                     if not _linker_noise(term) and not _target_extrema_predicate(term, target.column)
                 ]
                 direct_filters = [
-                    comparison for comparison in self._numeric_comparisons(tokens)
+                    comparison for comparison in self.numeric_comparisons(tokens)
                     if comparison.left.table in physical
                     and comparison.left != target.column
                     and not _is_limit_literal(comparison, tokens, target.cue_position, limit)
@@ -191,7 +191,7 @@ class Phase5Expander(Phase4Expander):
     ) -> list[ScoredQuery]:
         linked = []
         for table in self.schema.tables:
-            linked.extend(self._projection_columns(tokens, table))
+            linked.extend(self.projection_columns(tokens, table))
         linked.sort(key=lambda item: (item[2], -item[1], item[0].table, item[0].name))
         projection_columns = tuple(dict.fromkeys(column for column, _, _ in linked[:6]))
         if not projection_columns:
@@ -216,7 +216,7 @@ class Phase5Expander(Phase4Expander):
         out = []
         for target in targets[:3]:
             numeric = [
-                comparison for comparison in self._numeric_comparisons(tokens)
+                    comparison for comparison in self.numeric_comparisons(tokens)
                 if comparison.left != target.column
                 and not _is_limit_literal(comparison, tokens, target.cue_position, limit)
             ]
@@ -277,22 +277,22 @@ class Phase5Expander(Phase4Expander):
         pseudo = CountThreshold((("=", 1),), cue.position, cue.position + 1, 0.0)
         limit = _requested_limit(tokens, cue.position)
         out = []
-        for entity_table, entity_score in self._entity_tables(tokens, pseudo)[:3]:
-            projections = self._projection_options(question, entity_table, None)
+        for entity_table, entity_score in self.entity_tables(tokens, pseudo)[:3]:
+            projections = self.projection_options(question, entity_table, None)
             if not projections:
                 continue
-            for counted_table, relation_score in self._counted_tables(
+            for counted_table, relation_score in self.counted_tables(
                 tokens, pseudo, entity_table
             )[:3]:
                 if relation_score <= 0:
                     continue
-                structures = self._having_structures(
+                structures = self.having_structures(
                     candidates, entity_table, counted_table, pseudo
                 )
                 for source, joins, where, structure_score in structures[:8]:
                     physical = {source, *(join.table for join in joins)}
                     direct_filters = [
-                        comparison for comparison in self._numeric_comparisons(tokens)
+                        comparison for comparison in self.numeric_comparisons(tokens)
                         if comparison.left.table in physical
                         and not _is_limit_literal(comparison, tokens, cue.position, limit)
                     ]
@@ -356,23 +356,23 @@ class Phase5Expander(Phase4Expander):
         negative_position = len(normalized_prefix)
         pseudo = CountThreshold((("=", 1),), negative_position, negative_position + 1, 0.0)
         out = []
-        for entity_table, entity_score in self._entity_tables(tokens, pseudo)[:3]:
-            projection_options = self._projection_options(question, entity_table, None)
+        for entity_table, entity_score in self.entity_tables(tokens, pseudo)[:3]:
+            projection_options = self.projection_options(question, entity_table, None)
             if not projection_options:
                 continue
-            for relation_table, relation_score in self._counted_tables(
+            for relation_table, relation_score in self.counted_tables(
                 tokens, pseudo, entity_table
             )[:3]:
                 if relation_table == entity_table or relation_score <= 0:
                     continue
-                structures = self._having_structures(
+                structures = self.having_structures(
                     candidates, entity_table, relation_table, pseudo
                 )
                 for source, joins, where, structure_score in structures[:6]:
                     physical = {source, *(join.table for join in joins)}
                     terms = [term for term in _and_terms(where) if not _linker_noise(term)]
                     terms.extend(
-                        comparison for comparison in self._numeric_comparisons(tokens)
+                        comparison for comparison in self.numeric_comparisons(tokens)
                         if comparison.left.table in physical
                     )
                     for projection in projection_options[:3]:
@@ -473,7 +473,7 @@ class Phase5Expander(Phase4Expander):
     ) -> tuple[SelectItem, ...]:
         linked = []
         for table in _physical_tables(query):
-            linked.extend(self._projection_columns(tokens, table))
+            linked.extend(self.projection_columns(tokens, table))
         linked.sort(key=lambda item: (item[2], -item[1], item[0].table, item[0].name))
         filtered = []
         for column, score, position in linked:

@@ -1,6 +1,6 @@
-"""Phase 3 recursive-query expansion for the deterministic SQL searcher.
+"""Recursive-query expansion for the deterministic SQL planner.
 
-The expander adds a bounded set of Spider-shaped candidates to the Phase 1 pool.
+The expander adds a bounded set of recursive candidates to the base search pool.
 Each rule is grammar-driven and inspectable; no SQL text is decoded or repaired.
 """
 from __future__ import annotations
@@ -31,7 +31,8 @@ from engine.sql_ast import (
     and_predicates,
     render_query,
 )
-from engine.sql_search import ForeignKey, SchemaGraph, ScoredQuery
+from engine.sql_candidate import ScoredQuery
+from engine.sql_schema import ForeignKey, SchemaGraph
 
 
 _NEGATIVE_RE = re.compile(
@@ -46,7 +47,7 @@ _SOURCE_WORDS = frozenset({"source", "origin", "depart", "departure", "from"})
 _DESTINATION_WORDS = frozenset({"dest", "destination", "arrival", "arrive", "to"})
 
 
-class Phase3Expander:
+class RecursiveQueryExpander:
     """Generate recursive AST candidates from high-confidence structural cues."""
 
     def __init__(self, schema: SchemaGraph, max_candidates: int = 160):

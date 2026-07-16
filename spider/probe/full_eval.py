@@ -32,29 +32,14 @@ if ROOT not in sys.path:
 warnings.filterwarnings("ignore")
 
 from hardness import eval_hardness
-from compose_eval import gold_table_names, compare
 from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_timeout
+from spider_eval import compare, gold_table_names, spider_foreign_keys
 
 DIFFS = ["easy", "medium", "hard", "extra"]
 # Mirrors the LIVE routing gate — keep in sync with engine.world_compose.ComposedWorldQuery.DEPTH_PRIMS.
 # The Spider-only trim of TOPN/SORT/TIME was REVERTED: it lifted the benchmark but broke live composite view
 # stacks (test_geo). This mirror tracks the live gate, so the Spider number here reflects real behavior.
 DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
-
-
-def spider_foreign_keys(meta):
-    """Convert Spider's indexed FK metadata to the planner's named edge format."""
-    columns = meta["column_names_original"]
-    tables = meta["table_names_original"]
-    out = []
-    for from_index, to_index in meta.get("foreign_keys", []):
-        from_table, from_column = columns[from_index]
-        to_table, to_column = columns[to_index]
-        if from_table < 0 or to_table < 0:
-            continue
-        out.append({"from_table": tables[from_table], "from_col": from_column,
-                    "to_table": tables[to_table], "to_col": to_column, "conf": 1.0})
-    return out
 
 
 def slot_predict(enc, tabs, question):
@@ -75,14 +60,14 @@ def slot_predict(enc, tabs, question):
                                           "join" if join else "") if k)]}
 
 
-def ast_predict(enc, tabs, question, schema_fks=None):
+def ast_predict(enc, tabs, question, schema_fks=None, rank_model=None):
     """Run semantic AST ranking, then execution-rerank a bounded candidate prefix."""
     norm, discovered_fks = enc.ingest(tabs)
     fks = schema_fks if schema_fks is not None else discovered_fks
     sch, _, tmap = enc.schema(norm, fks)
-    candidates = enc.search_ast(question, sch, norm, fks)
+    candidates = enc.search_ast(question, sch, norm, fks, rank_model=rank_model)
     from engine.sql_rank import execute_and_rerank
-    from engine.sql_search import SchemaGraph
+    from engine.sql_schema import SchemaGraph
 
     def execute(sql):
         ok, why = enc.guard(sql)
@@ -128,7 +113,8 @@ _ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
 _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 
 
-def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None):
+def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None,
+            rank_model=None):
     """Route like the live system (gate -> compose -> stand-or-fall-back -> delegate/slot). Any
     unrecovered exception is caught and attributed to a stage."""
     try:
@@ -146,7 +132,7 @@ def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None):
         except Exception:                         # noqa: BLE001 — live serve() delegates on engine error
             pass
     try:
-        return ast_predict(enc, tabs, question, schema_fks) if planner == "ast" else slot_predict(enc, tabs, question)
+        return ast_predict(enc, tabs, question, schema_fks, rank_model) if planner == "ast" else slot_predict(enc, tabs, question)
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
         stage = ("join_build" if ("ambiguous" in str(e) or ("join" in str(e).lower()))
@@ -163,10 +149,19 @@ def main():
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
     ap.add_argument("--planner", default="slot", choices=["slot", "ast"],
                     help="fallback text-to-SQL planner; ast enables deterministic AST search and ranking")
+    ap.add_argument("--ranker-model", default="",
+                    help="optional frozen Phase 6 ranker JSON (AST planner only)")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0)
     ap.add_argument("--tag", default="")
     args = ap.parse_args()
+
+    rank_model = None
+    if args.ranker_model:
+        if args.planner != "ast":
+            ap.error("--ranker-model requires --planner ast")
+        from engine.sql_learned_rank import load_ranker_model
+        rank_model = load_ranker_model(args.ranker_model)
 
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     tables_meta = {t["db_id"]: t for t in json.load(open(os.path.join(args.data, "tables.json"), encoding="utf-8"))}
@@ -214,7 +209,10 @@ def main():
             tabs = list(capped.values())
 
         r, terr = run_with_timeout(
-            lambda: predict(enc, eng, reader, tabs, ex["question"], args.planner, ast_fks.get(db_id)),
+            lambda: predict(
+                enc, eng, reader, tabs, ex["question"], args.planner,
+                ast_fks.get(db_id), rank_model,
+            ),
             args.timeout,
         )
         if terr is not None:
@@ -249,6 +247,7 @@ def main():
     N = max(tot["n"], 1)
     summary = {
         "n": tot["n"], "config": args.config, "planner": args.planner,
+        "ranker_model": args.ranker_model or None,
         "answered_pct": round(100 * tot["answered"] / N, 1),
         "error_pct": round(100 * tot["error"] / N, 1),
         "correct_lenient_pct": round(100 * tot["correct_lenient"] / N, 1),

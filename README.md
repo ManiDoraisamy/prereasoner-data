@@ -67,8 +67,9 @@ Three ideas do the work:
    SQL views and runs them on your actual data. That stack *is* the reasoning trace — the same
    thing the workbook shows as blue tabs.
 
-Full technical detail is in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**; the research thesis
-and how it differs from RAG / agentic text-to-SQL is in **[docs/RESEARCH.md](docs/RESEARCH.md)**.
+Full technical detail is in **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**; the typed SQL planner
+has a focused guide in **[docs/SQL_AST.md](docs/SQL_AST.md)**; the research thesis and how it differs
+from RAG / agentic text-to-SQL is in **[docs/RESEARCH.md](docs/RESEARCH.md)**.
 
 ---
 
@@ -82,7 +83,8 @@ and how it differs from RAG / agentic text-to-SQL is in **[docs/RESEARCH.md](doc
 | `training/` | Reproduce the trained encoder and LoRA adapter from scratch (GPU). |
 | `infra/` | Terraform to stand the whole thing up on your own GCP project. |
 | `tests/` | End-to-end suites against a live, seeded database. |
-| `docs/` | Architecture, research, and the local testing guide. |
+| `docs/` | Architecture, deterministic SQL planner, research, and local testing guides. |
+| `spider/` | Spider benchmark data tooling, evaluation harnesses, ranker training, and recorded results. |
 
 **Model weights** (`encoder.pt` ~70 MB, `encoder_meta.pt`, `qwen_lora/`) aren't in git — put them
 in `engine/data/` (see [engine/data/README.md](engine/data/README.md)).

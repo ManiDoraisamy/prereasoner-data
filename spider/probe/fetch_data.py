@@ -1,4 +1,4 @@
-"""Fetch the Spider dev split + schemas + the 20 dev SQLite databases into ../data (gitignored).
+"""Fetch Spider examples, schemas, and SQLite databases into ../data (gitignored).
 
 dev.json / tables.json come from the official taoyds/spider eval examples (they carry the pre-parsed
 `sql` dict used by the official eval_hardness). The per-DB SQLite files come from the premai-io/spider
@@ -6,6 +6,7 @@ HF mirror (the canonical DBs are a Google-Drive zip; the HF mirror is scriptable
 used for the DBs because raw curl gets rate-limited on rapid multi-file pulls.
 """
 from __future__ import annotations
+import argparse
 import json
 import os
 import urllib.request
@@ -24,11 +25,21 @@ def get(url, dst):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--include-train", action="store_true",
+        help="also fetch train_spider.json and every database referenced by it",
+    )
+    args = parser.parse_args()
     os.makedirs(DBS, exist_ok=True)
     get(f"{RAW}/dev.json", os.path.join(DATA, "dev.json"))
     get(f"{RAW}/tables.json", os.path.join(DATA, "tables.json"))
-    dev = json.load(open(os.path.join(DATA, "dev.json"), encoding="utf-8"))
-    dbids = sorted({e["db_id"] for e in dev})
+    examples = json.load(open(os.path.join(DATA, "dev.json"), encoding="utf-8"))
+    if args.include_train:
+        train_path = os.path.join(DATA, "train_spider.json")
+        get(f"{RAW}/train_spider.json", train_path)
+        examples.extend(json.load(open(train_path, encoding="utf-8")))
+    dbids = sorted({e["db_id"] for e in examples})
     try:
         from huggingface_hub import hf_hub_download
     except ImportError:

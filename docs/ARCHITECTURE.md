@@ -344,6 +344,17 @@ resolution, and the intent readout.
 
 ---
 
+### Typed SQL planner
+
+For general relational questions, `TableQuery.search_ast` also exposes the typed deterministic SQL
+planner. Its public facade is `engine/sql.py`; `engine/sql_schema.py` owns the typed foreign-key
+graph, `engine/sql_search.py` owns bounded search, and capability modules add recursive queries,
+constraints, extrema, and set operations. Complete trees are validated by `engine/sql_ast.py` before rendering. The
+planner is available alongside the established slot and compose routes during rollout. See
+[`docs/SQL_AST.md`](SQL_AST.md) for its API, capability map, tests, and Spider results.
+
+---
+
 ## 7. World knowledge & the data model
 
 The world DB is the **`wikipedia` Postgres schema: `qid` PRIMARY KEY / `qid` FOREIGN KEY

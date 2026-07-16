@@ -622,7 +622,7 @@ class TableQuery:
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, phase2=True, phase3=True, phase4=True,
-                   phase5=True):
+                   phase5=True, rank_model=None):
         """Return ranked, typed SQL AST candidates for the deterministic planner.
 
         This is parallel to ``plan``/``assemble`` during rollout: callers can compare both planners without
@@ -634,7 +634,7 @@ class TableQuery:
         signals = self.ast_semantic_signals(question, sch) if use_semantic_signals else None
         return SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates).search(
             question, semantic_signals=signals, phase2=phase2, phase3=phase3, phase4=phase4,
-            phase5=phase5,
+            phase5=phase5, rank_model=rank_model,
         )
 
     # ---------- assembly ----------
