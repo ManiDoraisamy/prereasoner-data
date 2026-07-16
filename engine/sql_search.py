@@ -77,8 +77,11 @@ class SQLSearcher:
     def search(self, question: str, semantic_signals=None, phase2: bool = True,
                phase3: bool = True, phase4: bool = True,
                phase5: bool = True, rank_model=None,
-               profile_max_candidates: int = 64,
-               profile_per_profile: int = 6) -> list[ScoredQuery]:
+               profile_max_candidates: int = 32,
+               profile_per_profile: int = 4,
+               profile_generation_penalty: float = 5.0,
+               profile_binding_quality_weight: float = 2.0,
+               profile_preserve_baseline_top: bool = True) -> list[ScoredQuery]:
         tokens = _tokens(question)
         if not tokens:
             return []
@@ -184,7 +187,11 @@ class SQLSearcher:
                     continue
                 generated = expander_type(self.schema, pool_size).expand(question, pool)
                 pool = _merge_candidates(pool, generated)
-        if semantic_signals is not None and semantic_signals.sketch_profiles:
+        profile_baseline = tuple(pool)
+        profile_requested = bool(
+            semantic_signals is not None and semantic_signals.sketch_profiles
+        )
+        if profile_requested:
             from engine.sql_profile_expansion import ProfileQueryExpander
 
             generated = ProfileQueryExpander(
@@ -192,6 +199,8 @@ class SQLSearcher:
                 semantic_signals,
                 min(pool_size, max(1, profile_max_candidates)),
                 max(1, profile_per_profile),
+                max(0.0, profile_generation_penalty),
+                max(0.0, profile_binding_quality_weight),
             ).expand(question, pool)
             pool = _merge_candidates(pool, generated)
         if not phase2:
@@ -200,6 +209,14 @@ class SQLSearcher:
         ranked = CandidateRanker(self.schema, semantic_signals).rank(
             question, pool
         )[:self.max_candidates]
+        if profile_requested and profile_preserve_baseline_top and profile_baseline:
+            fallback = CandidateRanker(self.schema).rank(question, profile_baseline)[0]
+            fallback = replace(
+                fallback,
+                evidence=fallback.evidence + ("profile:fallback-top",),
+            )
+            ranked = [fallback] + [candidate for candidate in ranked if candidate.sql != fallback.sql]
+            ranked = ranked[:self.max_candidates]
         return rank_model.rerank(question, ranked) if rank_model is not None else ranked
 
     def _expand(self, drafts: list[_Draft], choices: list[tuple[tuple, float, tuple[str, ...]]],

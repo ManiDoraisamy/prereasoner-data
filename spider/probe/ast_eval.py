@@ -116,12 +116,20 @@ def main():
                         help="optional frozen Phase 6 ranker JSON")
     parser.add_argument("--proposer-model", default="",
                         help="optional frozen structured proposer JSON")
-    parser.add_argument("--profile-max-candidates", type=int, default=64)
-    parser.add_argument("--profile-per-profile", type=int, default=6)
+    parser.add_argument("--profile-max-candidates", type=int, default=32)
+    parser.add_argument("--profile-per-profile", type=int, default=4)
+    parser.add_argument("--profile-generation-penalty", type=float, default=5.0)
+    parser.add_argument("--profile-binding-quality-weight", type=float, default=2.0)
+    parser.add_argument("--allow-profile-top", action="store_true")
     parser.add_argument("--out", default="")
     args = parser.parse_args()
-    if args.profile_max_candidates < 1 or args.profile_per_profile < 1:
-        parser.error("profile candidate budgets must be positive")
+    if (
+        args.profile_max_candidates < 1
+        or args.profile_per_profile < 1
+        or args.profile_generation_penalty < 0
+        or args.profile_binding_quality_weight < 0
+    ):
+        parser.error("profile candidate budgets must be positive and profile weights nonnegative")
 
     rank_model = None
     if args.ranker_model:
@@ -228,6 +236,9 @@ def main():
                 phase2=True, phase3=True, phase4=True, phase5=True,
                 profile_max_candidates=args.profile_max_candidates,
                 profile_per_profile=args.profile_per_profile,
+                profile_generation_penalty=args.profile_generation_penalty,
+                profile_binding_quality_weight=args.profile_binding_quality_weight,
+                profile_preserve_baseline_top=not args.allow_profile_top,
             )
         phase6 = rank_model.rerank(example["question"], phase5) if rank_model else ()
 
@@ -258,6 +269,9 @@ def main():
         "pool": args.pool,
         "profile_max_candidates": args.profile_max_candidates,
         "profile_per_profile": args.profile_per_profile,
+        "profile_generation_penalty": args.profile_generation_penalty,
+        "profile_binding_quality_weight": args.profile_binding_quality_weight,
+        "profile_preserve_baseline_top": not args.allow_profile_top,
         "elapsed_seconds": round(time.time() - started, 2),
         "phase1": _summary(stats["phase1"], len(dev)),
         "phase2": _summary(stats["phase2"], len(dev)),

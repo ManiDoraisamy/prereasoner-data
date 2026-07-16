@@ -297,26 +297,31 @@ On the 1,331 examples from 28 unseen validation databases:
 | Held-out zero-inclusive / multi-table contrast accuracy | 97.1% / 82.2% |
 
 The first passive-reranking ablation did not improve integrated top-1 accuracy. The current
-implementation instead uses the first 16 predicted profiles to instantiate validated variants
-of compatible typed scaffolds. Every generated query is re-profiled and retained only when its
-counted structure exactly equals the requested profile.
+implementation instead uses predicted profiles to instantiate validated variants of compatible
+typed scaffolds. Every generated query is re-profiled and retained only when its counted
+structure exactly equals the requested profile. Binding quality orders variants within each
+profile; the search keeps at most four per profile and 32 generated candidates overall. Generated
+queries receive a 5.0 score penalty, and the original hand-ranked top candidate is explicitly
+preserved so profile expansion cannot reduce deterministic top-1 accuracy.
 
 On all 1,034 Spider dev examples, using the same gold-table configuration, pool 180, and
 denotation evaluator:
 
-| Candidate-pool metric | Phase 5 | Profile expansion | Delta |
+| Candidate-pool metric | Phase 5 | Compressed profile expansion | Delta |
 |---|---:|---:|---:|
-| Top-1 strict | 408 (39.5%) | 345 (33.4%) | -63 |
-| Top-10 strict oracle | 460 (44.5%) | 491 (47.5%) | +31 |
-| Full-pool strict oracle | 465 (45.0%) | 575 (55.6%) | +110 |
-| Full-pool lenient oracle | 612 (59.2%) | 738 (71.4%) | +126 |
-| Average candidates | 5.60 | 78.71 | +73.11 |
+| Top-1 strict | 408 (39.5%) | 408 (39.5%) | 0 |
+| Top-10 strict oracle | 460 (44.5%) | 529 (51.2%) | +69 |
+| Full-pool strict oracle | 465 (45.0%) | 553 (53.5%) | +88 |
+| Full-pool lenient oracle | 612 (59.2%) | 717 (69.3%) | +105 |
+| Average candidates | 5.60 | 22.02 | +16.42 |
 
-The requested candidate-recall objective is therefore achieved: 110 additional dev examples now
-have a strict-correct typed query in the pool. The artifact remains research-only because ranking
-does not yet exploit the larger pool and the generator reaches the 180-candidate cap. The next
-work is proposal-aware ranking and deduplicating low-value binding combinations while preserving
-the 575-example strict oracle. A larger encoder remains a later controlled capacity ablation.
+The requested candidate-recall objective is therefore achieved without a top-1 regression: 88
+additional dev examples have a strict-correct typed query in the pool, and 69 are already exposed
+within the first ten candidates. The earlier broad beam reached 575 strict pool hits (55.6%) but
+lost 63 top-1 answers and averaged 78.71 candidates; it remains recorded in the ablation file as
+the recall ceiling that motivated compression. The next work is integrated execution/latency
+measurement and ranking within the larger safe pool. A larger encoder remains a later controlled
+capacity ablation.
 
 Full metrics are in `spider/results/ast_proposer.json` and the promotion decision is in
 `spider/results/ast_proposer_ablation.json`; the full pool run is
@@ -400,7 +405,7 @@ The hermetic AST suite executes generated SQL against in-memory SQLite:
 python -m tests.test_sql_ast
 ```
 
-Its 67 cases cover typing and grouping rejection, projection and filter isolation,
+Its 70 cases cover typing and grouping rejection, projection and filter isolation,
 multiple aggregates, direct and bridge joins, deterministic ordering, execution
 reranking, subqueries, set operations, aliases, self-joins, nested aggregation,
 `HAVING`, disjunction scope, inferred high-confidence joins, extrema, zero-inclusive
@@ -417,6 +422,6 @@ serialization, and deterministic-inference experiment, but its current artifact 
 not accurate enough to promote. Future accuracy work should target measured
 candidate-recall and schema-binding failures before adding more ranking complexity. The
 failure miner, proposal corpus, structured training objective, compact artifact, profile-driven
-typed expansion, targeted contrast data, and full pool ablation are complete. The next
-implementation phase is proposal-aware ranking and expansion-budget calibration, not an
-unpaired model-size swap.
+typed expansion, targeted contrast data, safeguarded compression, and full pool ablation are
+complete. The next implementation phase is integrated execution/latency validation and ranking
+inside the expanded pool, not an unpaired model-size swap.

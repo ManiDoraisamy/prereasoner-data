@@ -43,13 +43,17 @@ class ProfileQueryExpander:
         self,
         schema: SchemaGraph,
         signals,
-        max_candidates: int = 64,
-        per_profile: int = 6,
+        max_candidates: int = 32,
+        per_profile: int = 4,
+        generation_penalty: float = 5.0,
+        binding_quality_weight: float = 2.0,
     ):
         self.schema = schema
         self.signals = signals
         self.max_candidates = max(1, max_candidates)
         self.per_profile = max(1, per_profile)
+        self.generation_penalty = max(0.0, float(generation_penalty))
+        self.binding_quality_weight = max(0.0, float(binding_quality_weight))
         self._columns = {
             (column.ref.table, column.ref.name): column.ref for column in schema.columns
         }
@@ -76,7 +80,7 @@ class ProfileQueryExpander:
                         continue
                     built = build_candidate(
                         query,
-                        scaffold.score - 4.0 - 0.25 * profile_rank,
+                        scaffold.score - self.generation_penalty - 0.25 * profile_rank,
                         scaffold.evidence + (f"profile-expand:{profile_rank + 1}",),
                     )
                     if built is None:
@@ -84,6 +88,7 @@ class ProfileQueryExpander:
                     quality = self._binding_quality(query)
                     built = replace(
                         built,
+                        score=built.score + self.binding_quality_weight * quality,
                         features=built.features + (("profile_binding_quality", quality),),
                     )
                     old = generated.get(built.sql)

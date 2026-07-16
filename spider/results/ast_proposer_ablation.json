@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "artifact": {
     "path": "spider/data/sql_proposer.json",
     "sha256": "301f9f5e39b5bd2fdb8e2f4dccc5187d24f46fb5a1fa46720704121ae61fdd56",
@@ -71,7 +71,7 @@
     "changed_sql_predictions": 115,
     "selected_candidates_with_profile_feature": 451
   },
-  "profile_conditioned_pool": {
+  "broad_profile_conditioned_pool": {
     "examples": 1034,
     "config": "gold_tables",
     "pool": 180,
@@ -103,9 +103,50 @@
       "average_candidates": 73.11
     }
   },
+  "compressed_safe_profile_pool": {
+    "examples": 1034,
+    "config": "gold_tables",
+    "pool": 180,
+    "profile_max_candidates": 32,
+    "per_profile": 4,
+    "generation_penalty": 5.0,
+    "preserve_baseline_top": true,
+    "baseline": {
+      "strict_correct": 408,
+      "strict_pct": 39.5,
+      "top10_oracle_strict_correct": 460,
+      "top10_oracle_strict_pct": 44.5,
+      "pool_oracle_strict_correct": 465,
+      "pool_oracle_strict_pct": 45.0,
+      "pool_oracle_lenient_correct": 612,
+      "pool_oracle_lenient_pct": 59.2,
+      "average_candidates": 5.6,
+      "maximum_candidates": 157
+    },
+    "with_profile_expansion": {
+      "strict_correct": 408,
+      "strict_pct": 39.5,
+      "top10_oracle_strict_correct": 529,
+      "top10_oracle_strict_pct": 51.2,
+      "pool_oracle_strict_correct": 553,
+      "pool_oracle_strict_pct": 53.5,
+      "pool_oracle_lenient_correct": 717,
+      "pool_oracle_lenient_pct": 69.3,
+      "average_candidates": 22.02,
+      "maximum_candidates": 157
+    },
+    "deltas": {
+      "strict_correct": 0,
+      "top10_oracle_strict_correct": 69,
+      "pool_oracle_strict_correct": 88,
+      "pool_oracle_strict_points": 8.5,
+      "pool_oracle_lenient_correct": 105,
+      "average_candidates": 16.42
+    }
+  },
   "decision": {
     "promotion_gate_passed": false,
-    "reason": "Profile-conditioned expansion adds 110 strict-reachable examples, but current ranking loses 63 top-1 strict answers and the average pool grows from 5.60 to 78.71 candidates.",
-    "next_objective": "Calibrate proposal-aware ranking and reduce redundant profile variants while preserving the 575-example strict pool oracle."
+    "reason": "The offline accuracy-safety gate passes: compressed profile expansion preserves all 408 baseline top-1 strict answers while adding 69 top-10 and 88 full-pool strict-reachable examples, with 22.02 average candidates instead of the broad beam's 78.71. Production promotion still requires integrated execution and latency validation.",
+    "next_objective": "Run the safeguarded profile beam through the integrated execution path, measure latency, and improve ranking within the 553-example strict-reachable pool."
   }
 }

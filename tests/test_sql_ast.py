@@ -45,6 +45,7 @@ from engine.sql_proposal import (
     pair_features,
     semantic_signals_from_schema,
 )
+from engine.sql_profile_expansion import ProfileQueryExpander
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
     record_integrated_result,
@@ -396,6 +397,53 @@ def test_profile_beam_instantiates_grouped_frequency_shape():
     assert expanded
     assert all(profile_query(candidate.query).sketch_map == profile for candidate in expanded)
     assert any(candidate.query == desired for candidate in expanded)
+
+
+def test_profile_expansion_caps_variants_and_penalizes_transformation():
+    schema = SQLSearcher.from_tables([PEOPLE], []).schema
+    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
+    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
+    base_query = SelectQuery((SelectItem(name),), "people")
+    scaffold = ScoredQuery(base_query, render_query(base_query), 10.0, ("base",))
+    signals = SemanticSignals(
+        {"projection": {("people", "Age"): 1.0, ("people", "Name"): 0.5}},
+        {"people": 1.0},
+        (profile_query(SelectQuery((SelectItem(age),), "people")).sketch_map,),
+    )
+    expanded = ProfileQueryExpander(
+        schema, signals, max_candidates=2, per_profile=2, generation_penalty=4.0
+    ).expand("show people details", [scaffold])
+    assert 0 < len(expanded) <= 2
+    assert all(candidate.score <= scaffold.score - 4.0 for candidate in expanded)
+    assert all("profile_binding_quality" in dict(candidate.features) for candidate in expanded)
+
+
+def test_profile_expansion_preserves_hand_ranked_fallback_top():
+    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=25)
+    baseline = searcher.search("show people details")
+    age = next(column.ref for column in searcher.schema.columns if column.ref.name == "Age")
+    signals = SemanticSignals(
+        {"projection": {("people", "Age"): 1.0}},
+        {"people": 1.0},
+        (profile_query(SelectQuery((SelectItem(age),), "people")).sketch_map,),
+    )
+    expanded = searcher.search("show people details", semantic_signals=signals)
+    assert expanded[0].sql == baseline[0].sql
+    assert "profile:fallback-top" in expanded[0].evidence
+
+
+def test_profile_fallback_applies_when_no_compatible_variant_exists():
+    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=25)
+    baseline = searcher.search("show people details")
+    impossible = profile_query(SetQuery(
+        SelectQuery((SelectItem(next(iter(searcher.schema.columns)).ref),), "people"),
+        "UNION",
+        SelectQuery((SelectItem(next(iter(searcher.schema.columns)).ref),), "people"),
+    )).sketch_map
+    signals = SemanticSignals({"projection": {}}, {"people": 1.0}, (impossible,))
+    expanded = searcher.search("show people details", semantic_signals=signals)
+    assert expanded[0].sql == baseline[0].sql
+    assert "profile:fallback-top" in expanded[0].evidence
 
 
 def test_execution_rerank_penalizes_empty_candidate():
@@ -1257,6 +1305,9 @@ TESTS = [
     test_proposed_sketch_profile_promotes_matching_typed_candidate,
     test_profile_beam_expands_missing_projection_binding,
     test_profile_beam_instantiates_grouped_frequency_shape,
+    test_profile_expansion_caps_variants_and_penalizes_transformation,
+    test_profile_expansion_preserves_hand_ranked_fallback_top,
+    test_profile_fallback_applies_when_no_compatible_variant_exists,
     test_execution_rerank_penalizes_empty_candidate,
     test_phase3_ranks_set_query_by_both_operands,
     test_recursive_ast_scalar_subquery_executes,
