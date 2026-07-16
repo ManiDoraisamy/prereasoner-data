@@ -1,0 +1,73 @@
+{
+  "n": 1034,
+  "config": "gold_tables",
+  "planner": "ast",
+  "ranker_model": null,
+  "proposer_model": "spider\\data\\sql_proposer.json",
+  "answered_pct": 94.8,
+  "error_pct": 5.2,
+  "correct_lenient_pct": 46.5,
+  "correct_strict_pct": 35.4,
+  "scalar_gold_accuracy_pct": 56.6,
+  "scalar_gold_n": 408,
+  "totals": {
+    "n": 1034,
+    "scalar_total": 408,
+    "answered": 980,
+    "correct_lenient": 481,
+    "correct_strict": 366,
+    "scalar_correct": 231,
+    "error": 54
+  },
+  "error_stage_histogram": {
+    "ast_search": 44,
+    "timeout": 10
+  },
+  "path_histogram": {
+    "ast": 930,
+    "compose": 94,
+    "timeout": 10
+  },
+  "path_correct_lenient": {
+    "ast": 471,
+    "compose": 10
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 248,
+      "scalar_total": 173,
+      "answered": 238,
+      "correct_lenient": 140,
+      "correct_strict": 114,
+      "scalar_correct": 100,
+      "error": 10
+    },
+    "medium": {
+      "n": 446,
+      "answered": 425,
+      "correct_lenient": 198,
+      "correct_strict": 134,
+      "scalar_total": 101,
+      "scalar_correct": 61,
+      "error": 21
+    },
+    "hard": {
+      "n": 174,
+      "answered": 161,
+      "correct_lenient": 100,
+      "correct_strict": 82,
+      "scalar_total": 77,
+      "scalar_correct": 55,
+      "error": 13
+    },
+    "extra": {
+      "n": 166,
+      "answered": 156,
+      "correct_lenient": 43,
+      "correct_strict": 36,
+      "scalar_total": 57,
+      "scalar_correct": 15,
+      "error": 10
+    }
+  }
+}

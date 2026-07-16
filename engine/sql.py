@@ -38,6 +38,8 @@ from engine.sql_rank import (
     SemanticSignals,
     execute_and_rerank,
 )
+from engine.sql_profile import SQLProfile, profile_query
+from engine.sql_proposal import SQLProposalModel, semantic_signals_from_schema
 from engine.sql_schema import ForeignKey, SchemaGraph
 from engine.sql_search import SQLSearcher
 
@@ -60,6 +62,8 @@ __all__ = [
     "Query",
     "RankerModel",
     "SQLSearcher",
+    "SQLProfile",
+    "SQLProposalModel",
     "SQLType",
     "ScalarSubquery",
     "SchemaGraph",
@@ -73,6 +77,8 @@ __all__ = [
     "TreeEnsembleRankerModel",
     "execute_and_rerank",
     "load_ranker_model",
+    "profile_query",
     "render_query",
+    "semantic_signals_from_schema",
     "validate_query",
 ]

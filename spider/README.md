@@ -10,8 +10,11 @@
 > gold SQL profiles with the complete typed-AST pool and writes
 > `results/ast_failure_analysis.json`. `probe/build_ast_proposal_data.py` converts all
 > Spider-train gold trees into database-disjoint sketch, schema-link, and literal targets;
-> its audit is `results/ast_proposal_data.json`. These tools belong to the current AST
-> planner work; the rest of this document preserves the earlier route diagnosis.
+> `probe/train_ast_proposer.py` fits deterministic top-k sketch and role-aware schema heads.
+> Their audits are `results/ast_proposal_data.json`, `results/ast_proposer.json`, and
+> `results/ast_proposer_ablation.json`. The 0.5B proposer is not promoted: it leaves strict
+> and scalar accuracy unchanged in the full integrated ablation. These tools belong to the
+> current AST planner work; the rest of this document preserves the earlier route diagnosis.
 
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.
 > The goal is to localize *why* PreReasoner scores low on Spider before changing anything. This is

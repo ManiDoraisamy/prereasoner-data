@@ -23,6 +23,7 @@ import collections
 import json
 import os
 import sys
+import time
 import warnings
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -47,6 +48,21 @@ DIFFS = ["easy", "medium", "hard", "extra"]
 DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
 
 
+def _write_json_atomic(path, value):
+    temporary = f"{path}.{os.getpid()}.tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(value, handle, indent=2)
+        handle.write("\n")
+    for attempt in range(10):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            if attempt == 9:
+                raise
+            time.sleep(0.1 * (attempt + 1))
+
+
 def slot_predict(enc, tabs, question):
     """Drive the tables.py slot-filler: ingest -> schema -> plan -> assemble -> guard -> execute (SQLite)."""
     norm, fks = enc.ingest(tabs)
@@ -65,12 +81,30 @@ def slot_predict(enc, tabs, question):
                                           "join" if join else "") if k)]}
 
 
-def ast_predict(enc, tabs, question, schema_fks=None, rank_model=None):
+def ast_predict(
+    enc, tabs, question, schema_fks=None, rank_model=None, proposal_model=None,
+    proposal_question_vector=None, schema_cache=None,
+):
     """Run semantic AST ranking, then execution-rerank a bounded candidate prefix."""
-    norm, discovered_fks = enc.ingest(tabs)
-    fks = schema_fks if schema_fks is not None else discovered_fks
-    sch, _, tmap = enc.schema(norm, fks)
-    candidates = enc.search_ast(question, sch, norm, fks, rank_model=rank_model)
+    cache_key = tuple(id(table) for table in tabs)
+    cached = schema_cache.get(cache_key) if schema_cache is not None else None
+    if cached is None:
+        norm, discovered_fks = enc.ingest(tabs)
+        fks = schema_fks if schema_fks is not None else discovered_fks
+        sch, _, tmap = enc.schema(norm, fks)
+        cached = (norm, fks, sch, tmap)
+        if schema_cache is not None:
+            schema_cache[cache_key] = cached
+    norm, fks, sch, tmap = cached
+    candidates = enc.search_ast(
+        question,
+        sch,
+        norm,
+        fks,
+        rank_model=rank_model,
+        proposal_model=proposal_model,
+        proposal_question_vector=proposal_question_vector,
+    )
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
 
@@ -119,7 +153,8 @@ _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 
 
 def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None,
-            rank_model=None):
+            rank_model=None, proposal_model=None, proposal_question_vector=None,
+            ast_schema_cache=None):
     """Route like the live system (gate -> compose -> stand-or-fall-back -> delegate/slot). Any
     unrecovered exception is caught and attributed to a stage."""
     try:
@@ -137,7 +172,13 @@ def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None,
         except Exception:                         # noqa: BLE001 — live serve() delegates on engine error
             pass
     try:
-        return ast_predict(enc, tabs, question, schema_fks, rank_model) if planner == "ast" else slot_predict(enc, tabs, question)
+        return (
+            ast_predict(
+                enc, tabs, question, schema_fks, rank_model, proposal_model,
+                proposal_question_vector, ast_schema_cache,
+            )
+            if planner == "ast" else slot_predict(enc, tabs, question)
+        )
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
         stage = ("join_build" if ("ambiguous" in str(e) or ("join" in str(e).lower()))
@@ -156,10 +197,19 @@ def main():
                     help="fallback text-to-SQL planner; ast enables deterministic AST search and ranking")
     ap.add_argument("--ranker-model", default="",
                     help="optional frozen Phase 6 ranker JSON (AST planner only)")
+    ap.add_argument("--proposer-model", default="",
+                    help="optional frozen structured proposer JSON (AST planner only)")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0)
     ap.add_argument("--tag", default="")
+    ap.add_argument("--checkpoint-every", type=int, default=25)
+    ap.add_argument("--resume", action="store_true")
+    ap.add_argument("--retry-timeouts", action="store_true")
+    ap.add_argument("--max-new", type=int, default=0,
+                    help="checkpoint and exit cleanly after this many new predictions")
     args = ap.parse_args()
+    if args.checkpoint_every < 0 or args.max_new < 0:
+        ap.error("checkpoint cadence and max-new must be nonnegative")
 
     rank_model = None
     if args.ranker_model:
@@ -167,6 +217,12 @@ def main():
             ap.error("--ranker-model requires --planner ast")
         from engine.sql_learned_rank import load_ranker_model
         rank_model = load_ranker_model(args.ranker_model)
+    proposal_model = None
+    if args.proposer_model:
+        if args.planner != "ast":
+            ap.error("--proposer-model requires --planner ast")
+        from engine.sql_proposal import SQLProposalModel
+        proposal_model = SQLProposalModel.load(args.proposer_model)
 
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     tables_meta = {t["db_id"]: t for t in json.load(open(os.path.join(args.data, "tables.json"), encoding="utf-8"))}
@@ -180,6 +236,33 @@ def main():
         picked += (buckets[d][:args.per_diff] if args.per_diff else buckets[d])
     picked.sort()
 
+    os.makedirs(args.out, exist_ok=True)
+    suffix = ("_" + args.tag) if args.tag else ""
+    checkpoint_path = os.path.join(
+        args.out, f"full_eval_per_example{suffix}.checkpoint.json"
+    )
+    checkpoint_contract = {
+        "picked": picked,
+        "config": args.config,
+        "planner": args.planner,
+        "ranker_model": args.ranker_model or None,
+        "proposer_model": args.proposer_model or None,
+        "cap": args.cap,
+        "timeout": args.timeout,
+    }
+    completed = {}
+    if args.resume and os.path.exists(checkpoint_path):
+        with open(checkpoint_path, encoding="utf-8") as handle:
+            checkpoint = json.load(handle)
+        if checkpoint.get("contract") != checkpoint_contract:
+            ap.error("checkpoint does not match this evaluation contract")
+        completed = {
+            int(record["idx"]): record
+            for record in checkpoint["records"]
+            if not (args.retry_timeouts and record.get("stage") == "timeout")
+        }
+        print(f"resuming from {len(completed)} checkpointed examples", flush=True)
+
     print("loading encoder (Qwen LoRA + relational readout, CPU)...", flush=True)
     from engine.encoder_overlay import EncoderQuery
     from engine.primitive_head import PrimitiveReader
@@ -187,9 +270,17 @@ def main():
     enc = EncoderQuery()
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
+    proposal_question_vectors = {}
+    if proposal_model is not None:
+        remaining = [index for index in picked if index not in completed]
+        values = enc._encode([str(dev[index]["question"]) for index in remaining])
+        proposal_question_vectors = {
+            index: values[position] for position, index in enumerate(remaining)
+        }
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}
+    ast_schema_cache = {}
     def get_db(db_id):
         if db_id not in db_cache:
             capped = load_capped(os.path.join(args.dbs, db_id + ".sqlite"), cap=args.cap)
@@ -202,6 +293,12 @@ def main():
     path_hist = collections.Counter()
     path_correct = collections.Counter()
     per_example = []
+    new_predictions = 0
+
+    def checkpoint_records():
+        merged = dict(completed)
+        merged.update((int(record["idx"]), record) for record in per_example)
+        return [merged[index] for index in sorted(merged)]
 
     for n, i in enumerate(picked):
         ex = dev[i]; db_id = ex["db_id"]; diff = eval_hardness(ex["sql"])
@@ -213,15 +310,21 @@ def main():
         else:
             tabs = list(capped.values())
 
-        r, terr = run_with_timeout(
-            lambda: predict(
-                enc, eng, reader, tabs, ex["question"], args.planner,
-                ast_fks.get(db_id), rank_model,
-            ),
-            args.timeout,
-        )
-        if terr is not None:
-            r = {"ok": False, "error": str(terr), "stage": "timeout", "path": "timeout"}
+        saved = completed.get(i)
+        if saved is not None:
+            r = saved
+        else:
+            new_predictions += 1
+            r, terr = run_with_timeout(
+                lambda: predict(
+                    enc, eng, reader, tabs, ex["question"], args.planner,
+                    ast_fks.get(db_id), rank_model, proposal_model,
+                    proposal_question_vectors.get(i), ast_schema_cache,
+                ),
+                args.timeout,
+            )
+            if terr is not None:
+                r = {"ok": False, "error": str(terr), "stage": "timeout", "path": "timeout"}
         cmp = compare(gold_rows, r.get("rows")) if r["ok"] else {}
         path_hist[r["path"]] += 1
         st = stat[diff]; st["n"] += 1
@@ -233,10 +336,30 @@ def main():
         else:
             if cmp.get("lenient"):
                 path_correct[r["path"]] += 1
-        per_example.append({"idx": i, "db_id": db_id, "difficulty": diff, "question": ex["question"],
-                            "gold": ex["query"], "gold_exec_error": gerr, **r, **cmp})
+        record = (
+            saved if saved is not None
+            else {"idx": i, "db_id": db_id, "difficulty": diff, "question": ex["question"],
+                  "gold": ex["query"], "gold_exec_error": gerr, **r, **cmp}
+        )
+        per_example.append(record)
+        if args.checkpoint_every and (n + 1) % args.checkpoint_every == 0:
+            _write_json_atomic(
+                checkpoint_path,
+                {"contract": checkpoint_contract, "records": checkpoint_records()},
+            )
         if (n + 1) % 50 == 0:
             print(f"  {n+1}/{len(picked)}", flush=True)
+        if args.max_new and new_predictions >= args.max_new:
+            _write_json_atomic(
+                checkpoint_path,
+                {"contract": checkpoint_contract, "records": checkpoint_records()},
+            )
+            print(
+                f"checkpointed {len(checkpoint_records())}/{len(picked)} examples; "
+                f"clean segment exit after {new_predictions} new predictions",
+                flush=True,
+            )
+            return
 
     tot = collections.Counter()
     for d in DIFFS:
@@ -245,6 +368,7 @@ def main():
     summary = {
         "n": tot["n"], "config": args.config, "planner": args.planner,
         "ranker_model": args.ranker_model or None,
+        "proposer_model": args.proposer_model or None,
         "answered_pct": round(100 * tot["answered"] / N, 1),
         "error_pct": round(100 * tot["error"] / N, 1),
         "correct_lenient_pct": round(100 * tot["correct_lenient"] / N, 1),
@@ -257,8 +381,11 @@ def main():
         "path_correct_lenient": dict(path_correct),
         "by_difficulty": {d: dict(stat[d]) for d in DIFFS},
     }
-    os.makedirs(args.out, exist_ok=True)
-    suf = ("_" + args.tag) if args.tag else ""
+    _write_json_atomic(
+        checkpoint_path,
+        {"contract": checkpoint_contract, "records": checkpoint_records()},
+    )
+    suf = suffix
     with open(os.path.join(args.out, f"full_eval{suf}.json"), "w", encoding="utf-8") as handle:
         json.dump(summary, handle, indent=2)
         handle.write("\n")

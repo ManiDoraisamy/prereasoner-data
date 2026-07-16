@@ -162,6 +162,7 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
+        self._ast_proposal_descriptor_cache = {}
 
     @staticmethod
     def _is_id(name):
@@ -595,8 +596,38 @@ class TableQuery:
                     return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
         return None
 
-    def ast_semantic_signals(self, question, sch):
+    def ast_semantic_signals(
+        self, question, sch, proposal_model=None, proposal_question_vector=None
+    ):
         """Encode role-specific question phrases in the same metric space as schema columns."""
+        if proposal_model is not None:
+            from engine.sql_proposal import semantic_signals_from_schema
+            descriptor_cache = getattr(self, "_ast_proposal_descriptor_cache", None)
+            if descriptor_cache is None:
+                descriptor_cache = self._ast_proposal_descriptor_cache = {}
+
+            def encode_with_cached_descriptors(texts):
+                question_text, *descriptors = texts
+                missing = [
+                    descriptor for descriptor in dict.fromkeys(descriptors)
+                    if descriptor not in descriptor_cache
+                ]
+                if missing:
+                    values = self._encode(missing)
+                    descriptor_cache.update(zip(missing, values))
+                question_vector = (
+                    np.asarray(proposal_question_vector, np.float32)
+                    if proposal_question_vector is not None
+                    else self._encode([question_text])[0]
+                )
+                return np.vstack([
+                    question_vector,
+                    *(descriptor_cache[value] for value in descriptors),
+                ])
+
+            return semantic_signals_from_schema(
+                proposal_model, question, sch, encode_with_cached_descriptors
+            )
         from engine.sql_rank import SemanticSignals, semantic_role_phrases
         phrases = semantic_role_phrases(question)
         columns = [c for c in sch if c.get("qvec") is not None]
@@ -622,7 +653,8 @@ class TableQuery:
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, phase2=True, phase3=True, phase4=True,
-                   phase5=True, rank_model=None):
+                   phase5=True, rank_model=None, proposal_model=None,
+                   proposal_question_vector=None):
         """Return ranked, typed SQL AST candidates for the deterministic planner.
 
         This is parallel to ``plan``/``assemble`` during rollout: callers can compare both planners without
@@ -631,7 +663,12 @@ class TableQuery:
         """
         from engine.sql_search import SQLSearcher, SchemaGraph
         graph = SchemaGraph.from_planner(sch, fks)
-        signals = self.ast_semantic_signals(question, sch) if use_semantic_signals else None
+        signals = (
+            self.ast_semantic_signals(
+                question, sch, proposal_model, proposal_question_vector
+            )
+            if use_semantic_signals else None
+        )
         return SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates).search(
             question, semantic_signals=signals, phase2=phase2, phase3=phase3, phase4=phase4,
             phase5=phase5, rank_model=rank_model,

@@ -51,6 +51,7 @@ class EncoderQuery(TableQuery):
     """TableQuery with the unified (LoRA-fine-tuned) Qwen encoder + the trained relational readout loaded."""
 
     def __init__(self, deploy_dir=DATA_DIR):
+        super().__init__(deploy_dir)
         load_encoder(self, deploy_dir)
 
     # ---------- operator FROM THE MODEL (retires the keyword AGG_CUES) ----------

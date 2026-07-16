@@ -1,0 +1,531 @@
+{
+  "calibration": {
+    "profile_beam": {
+      "profiles": 706,
+      "recall_at_1": 0.12037,
+      "recall_at_16": 0.374074,
+      "recall_at_32": 0.52037,
+      "recall_at_5": 0.259259,
+      "seen_examples": 433,
+      "seen_fraction": 0.801852,
+      "seen_recall_at_1": 0.150115,
+      "seen_recall_at_16": 0.466513,
+      "seen_recall_at_32": 0.648961,
+      "seen_recall_at_5": 0.323326,
+      "unseen_examples": 107
+    },
+    "sketch": {
+      "count_cell_accuracy": 0.505639,
+      "counted_sketch_exact": 0.042593,
+      "features": {
+        "aggregate.AVG": {
+          "gold_count_accuracy": 0.833333,
+          "presence_f1": 0.734694,
+          "support": 48
+        },
+        "aggregate.COUNT": {
+          "gold_count_accuracy": 0.969697,
+          "presence_f1": 0.771739,
+          "support": 198
+        },
+        "aggregate.MAX": {
+          "gold_count_accuracy": 0.875,
+          "presence_f1": 0.393939,
+          "support": 32
+        },
+        "aggregate.MIN": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.357143,
+          "support": 20
+        },
+        "aggregate.SUM": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.285714,
+          "support": 9
+        },
+        "arithmetic.+": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "arithmetic.-": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "blocks": {
+          "gold_count_accuracy": 0.812963,
+          "presence_f1": 1.0,
+          "support": 540
+        },
+        "boolean.and": {
+          "gold_count_accuracy": 0.854839,
+          "presence_f1": 0.351515,
+          "support": 62
+        },
+        "boolean.or": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.241379,
+          "support": 20
+        },
+        "distinct": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.4,
+          "support": 72
+        },
+        "filter_predicates": {
+          "gold_count_accuracy": 0.616541,
+          "presence_f1": 0.780985,
+          "support": 266
+        },
+        "from_tables": {
+          "gold_count_accuracy": 0.546296,
+          "presence_f1": 1.0,
+          "support": 540
+        },
+        "group_items": {
+          "gold_count_accuracy": 0.993464,
+          "presence_f1": 0.654971,
+          "support": 153
+        },
+        "having_predicates": {
+          "gold_count_accuracy": 0.967742,
+          "presence_f1": 0.342857,
+          "support": 31
+        },
+        "join_predicates": {
+          "gold_count_accuracy": 0.811224,
+          "presence_f1": 0.641441,
+          "support": 196
+        },
+        "joins": {
+          "gold_count_accuracy": 0.811224,
+          "presence_f1": 0.641166,
+          "support": 196
+        },
+        "limit": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.566372,
+          "support": 63
+        },
+        "order.asc": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.5,
+          "support": 35
+        },
+        "order.desc": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.521212,
+          "support": 61
+        },
+        "predicate.!=": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.193548,
+          "support": 7
+        },
+        "predicate.<": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.482143,
+          "support": 39
+        },
+        "predicate.<=": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.014599,
+          "support": 3
+        },
+        "predicate.=": {
+          "gold_count_accuracy": 0.525773,
+          "presence_f1": 0.755224,
+          "support": 291
+        },
+        "predicate.>": {
+          "gold_count_accuracy": 0.984375,
+          "presence_f1": 0.680556,
+          "support": 64
+        },
+        "predicate.>=": {
+          "gold_count_accuracy": 0.941176,
+          "presence_f1": 0.304348,
+          "support": 17
+        },
+        "predicate.between": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.5,
+          "support": 3
+        },
+        "predicate.in": {
+          "gold_count_accuracy": 0.878788,
+          "presence_f1": 0.344828,
+          "support": 33
+        },
+        "predicate.like": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.5,
+          "support": 3
+        },
+        "predicate.not": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.363636,
+          "support": 21
+        },
+        "select_items": {
+          "gold_count_accuracy": 0.551852,
+          "presence_f1": 1.0,
+          "support": 540
+        },
+        "self_join": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.074074,
+          "support": 2
+        },
+        "set.except": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.407407,
+          "support": 22
+        },
+        "set.intersect": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.148148,
+          "support": 15
+        },
+        "set.union": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.031915,
+          "support": 6
+        },
+        "subquery.from": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "subquery.predicate": {
+          "gold_count_accuracy": 0.941176,
+          "presence_f1": 0.384615,
+          "support": 68
+        }
+      },
+      "gold_count_accuracy": 0.744015,
+      "micro_f1": 0.728341,
+      "micro_precision": 0.641275,
+      "micro_recall": 0.842764,
+      "presence_exact": 0.064815
+    },
+    "source": "training databases held out from weight fitting"
+  },
+  "data": {
+    "schemas_sha256": "7e16a94251173cc885c6b61cd89e8cf2dff4f8b3c81ae39b9f462c25a1b72923",
+    "train_sha256": "58ffb8c078574d999f0cc856b2f37ec2d626ec279e0adcb57654594d03c37862",
+    "validation_sha256": "3a95020a7e9a8078f0807afee8b41adc11f6ca8cd766a383bbdfbfccabb1e27e"
+  },
+  "encoder": {
+    "adapter_sha256": "41ccf9737206e4669de172ab892dadc85c89c6a0c42890e7847204113a0f40dd",
+    "base_model": "Qwen/Qwen2.5-0.5B",
+    "frozen": true,
+    "hidden_size": 896
+  },
+  "objective": "deterministic top-k AST sketch and role-aware schema linking",
+  "split": {
+    "calibration_databases": 11,
+    "calibration_examples": 540,
+    "database_disjoint": true,
+    "fit_databases": 101,
+    "fit_examples": 5129,
+    "validation_databases": 28,
+    "validation_examples": 1331
+  },
+  "training": {
+    "batch_size": 512,
+    "column_pairs": 117572,
+    "epochs": 12,
+    "learning_rate": 0.003,
+    "loss": {
+      "roles_first": 0.623632,
+      "roles_last": 0.400375,
+      "sketch_first": 7.980164,
+      "sketch_last": 6.038558,
+      "table_first": 1.019435,
+      "table_last": 0.845527
+    },
+    "max_column_candidates": 32,
+    "role_hard_negative_cells": 656053,
+    "seconds": 11.89165,
+    "seed": 19,
+    "sketch_profiles": 706,
+    "table_pairs": 32569
+  },
+  "validation": {
+    "column_roles": {
+      "aggregate": {
+        "examples": 220,
+        "mrr": 0.695825,
+        "recall_at_3": 0.757576,
+        "top1_hit": 0.581818
+      },
+      "filter": {
+        "examples": 573,
+        "mrr": 0.549083,
+        "recall_at_3": 0.612856,
+        "top1_hit": 0.39267
+      },
+      "group": {
+        "examples": 371,
+        "mrr": 0.519506,
+        "recall_at_3": 0.58221,
+        "top1_hit": 0.355795
+      },
+      "having": {
+        "examples": 12,
+        "mrr": 0.540278,
+        "recall_at_3": 0.666667,
+        "top1_hit": 0.333333
+      },
+      "join": {
+        "examples": 464,
+        "mrr": 0.698029,
+        "recall_at_3": 0.607938,
+        "top1_hit": 0.532328
+      },
+      "macro": {
+        "mrr": 0.623558,
+        "recall_at_3": 0.672966,
+        "top1_hit": 0.468757
+      },
+      "order": {
+        "examples": 210,
+        "mrr": 0.691967,
+        "recall_at_3": 0.788095,
+        "top1_hit": 0.557143
+      },
+      "projection": {
+        "examples": 1223,
+        "mrr": 0.670216,
+        "recall_at_3": 0.695421,
+        "top1_hit": 0.528209
+      }
+    },
+    "profile_beam": {
+      "profiles": 706,
+      "recall_at_1": 0.133734,
+      "recall_at_16": 0.467318,
+      "recall_at_32": 0.623591,
+      "recall_at_5": 0.293013,
+      "seen_examples": 1173,
+      "seen_fraction": 0.881292,
+      "seen_recall_at_1": 0.151748,
+      "seen_recall_at_16": 0.530264,
+      "seen_recall_at_32": 0.707587,
+      "seen_recall_at_5": 0.332481,
+      "unseen_examples": 158
+    },
+    "sketch": {
+      "count_cell_accuracy": 0.527909,
+      "counted_sketch_exact": 0.045079,
+      "features": {
+        "aggregate.AVG": {
+          "gold_count_accuracy": 0.954545,
+          "presence_f1": 0.62439,
+          "support": 88
+        },
+        "aggregate.COUNT": {
+          "gold_count_accuracy": 0.945946,
+          "presence_f1": 0.657244,
+          "support": 481
+        },
+        "aggregate.MAX": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.510638,
+          "support": 37
+        },
+        "aggregate.MIN": {
+          "gold_count_accuracy": 0.925926,
+          "presence_f1": 0.577778,
+          "support": 27
+        },
+        "aggregate.SUM": {
+          "gold_count_accuracy": 0.966102,
+          "presence_f1": 0.484076,
+          "support": 59
+        },
+        "arithmetic.+": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "arithmetic.-": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "blocks": {
+          "gold_count_accuracy": 0.847483,
+          "presence_f1": 1.0,
+          "support": 1331
+        },
+        "boolean.and": {
+          "gold_count_accuracy": 0.801887,
+          "presence_f1": 0.212245,
+          "support": 106
+        },
+        "boolean.or": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.252427,
+          "support": 38
+        },
+        "distinct": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.385246,
+          "support": 90
+        },
+        "filter_predicates": {
+          "gold_count_accuracy": 0.78534,
+          "presence_f1": 0.753165,
+          "support": 573
+        },
+        "from_tables": {
+          "gold_count_accuracy": 0.595041,
+          "presence_f1": 1.0,
+          "support": 1331
+        },
+        "group_items": {
+          "gold_count_accuracy": 0.983827,
+          "presence_f1": 0.586243,
+          "support": 371
+        },
+        "having_predicates": {
+          "gold_count_accuracy": 0.978723,
+          "presence_f1": 0.310502,
+          "support": 94
+        },
+        "join_predicates": {
+          "gold_count_accuracy": 0.760776,
+          "presence_f1": 0.616471,
+          "support": 464
+        },
+        "joins": {
+          "gold_count_accuracy": 0.756466,
+          "presence_f1": 0.615264,
+          "support": 464
+        },
+        "limit": {
+          "gold_count_accuracy": 0.992188,
+          "presence_f1": 0.647059,
+          "support": 256
+        },
+        "order.asc": {
+          "gold_count_accuracy": 0.971014,
+          "presence_f1": 0.48048,
+          "support": 138
+        },
+        "order.desc": {
+          "gold_count_accuracy": 0.991379,
+          "presence_f1": 0.600362,
+          "support": 232
+        },
+        "predicate.!=": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.169014,
+          "support": 28
+        },
+        "predicate.<": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.454976,
+          "support": 60
+        },
+        "predicate.<=": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.023973,
+          "support": 10
+        },
+        "predicate.=": {
+          "gold_count_accuracy": 0.599671,
+          "presence_f1": 0.714092,
+          "support": 607
+        },
+        "predicate.>": {
+          "gold_count_accuracy": 0.972603,
+          "presence_f1": 0.657807,
+          "support": 146
+        },
+        "predicate.>=": {
+          "gold_count_accuracy": 0.956522,
+          "presence_f1": 0.215385,
+          "support": 46
+        },
+        "predicate.between": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.153846,
+          "support": 9
+        },
+        "predicate.in": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.424779,
+          "support": 66
+        },
+        "predicate.like": {
+          "gold_count_accuracy": 0.967742,
+          "presence_f1": 0.454545,
+          "support": 31
+        },
+        "predicate.not": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.416667,
+          "support": 55
+        },
+        "select_items": {
+          "gold_count_accuracy": 0.589031,
+          "presence_f1": 1.0,
+          "support": 1331
+        },
+        "self_join": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "set.except": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.300752,
+          "support": 33
+        },
+        "set.intersect": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.304348,
+          "support": 55
+        },
+        "set.union": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.027174,
+          "support": 12
+        },
+        "subquery.from": {
+          "gold_count_accuracy": 0.0,
+          "presence_f1": 0.0,
+          "support": 0
+        },
+        "subquery.predicate": {
+          "gold_count_accuracy": 1.0,
+          "presence_f1": 0.3125,
+          "support": 107
+        }
+      },
+      "gold_count_accuracy": 0.777005,
+      "micro_f1": 0.722607,
+      "micro_precision": 0.638277,
+      "micro_recall": 0.832612,
+      "presence_exact": 0.073629
+    },
+    "tables": {
+      "macro": {
+        "mrr": 0.842276,
+        "recall_at_3": 0.886364,
+        "top1_hit": 0.740045
+      },
+      "table": {
+        "examples": 1331,
+        "mrr": 0.842276,
+        "recall_at_3": 0.886364,
+        "top1_hit": 0.740045
+      }
+    }
+  },
+  "version": 1
+}

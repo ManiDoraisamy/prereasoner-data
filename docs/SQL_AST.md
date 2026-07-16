@@ -39,9 +39,12 @@ missing candidate shapes, bounded search, and ranking the wrong valid interpreta
 | `engine/sql_extrema.py` | Row/frequency extrema, top-N, and set difference. |
 | `engine/sql_rank.py` | Hand-written semantic features and bounded execution reranking. |
 | `engine/sql_learned_rank.py` | Optional dependency-free inference for frozen ranker artifacts. |
-| `spider/probe/ast_profile.py` | Shared structural and role-aware profiles for gold SQL and planner ASTs. |
+| `engine/sql_profile.py` | Runtime structural and role-aware profiles for typed ASTs. |
+| `engine/sql_proposal.py` | Frozen deterministic sketch, table, and role-proposal artifact inference. |
+| `spider/probe/ast_profile.py` | Spider-gold profiling and full-pool failure diagnosis. |
 | `spider/probe/mine_ast_failures.py` | Full-pool recall, linking, and composition failure analysis. |
 | `spider/probe/build_ast_proposal_data.py` | Database-disjoint sketch/link/literal supervision builder. |
+| `spider/probe/train_ast_proposer.py` | Frozen-encoder multi-task proposal training and calibration. |
 
 The capability modules do not inherit from or import private details from one
 another or from the search orchestrator. Shared contracts live in `sql_schema.py`
@@ -150,6 +153,12 @@ The current artifact is experimental and is not loaded automatically. On the cor
 Spider dev evaluation it moves scalar accuracy from 56.9% to 57.4%, but regresses
 lenient accuracy from 49.8% to 48.2% and strict accuracy from 39.5% to 38.5%.
 The promotion gate therefore keeps the hand-ranked planner as the default.
+
+The structured proposer is also opt-in. It uses a frozen Qwen encoder and dependency-free
+NumPy heads to rank exact sketch profiles, tables, and role-specific columns. The top sketch
+profiles add inspectable `model_sketch_profile:*` features; they never bypass AST validation,
+the SELECT-only guard, or execution reranking. It is not loaded automatically because the
+integrated ablation below did not improve strict accuracy.
 
 ## Evaluation stages
 
@@ -264,13 +273,44 @@ examples use a sketch not observed exactly in train, so compositional generaliza
 measurable. The manifest is `spider/results/ast_proposal_data.json`; generated JSONL files
 live under gitignored `spider/data/`.
 
-The next model should predict a small beam of sketch and schema-link proposals, then let the
-existing typed AST builder, validator, renderer, and execution checks constrain them. Start
-with the existing Qwen2.5-0.5B backbone under this correct objective. Then run an otherwise
-identical Qwen2.5-1.5B ablation. A larger backbone is promoted only if it materially improves
-database-disjoint sketch/link recall and final strict pool recall after accounting for memory
-and latency. Swapping the current encoder before this baseline would confound model capacity
-with the much larger effect of changing the supervision target.
+`train_ast_proposer.py` implements the first structured baseline with the existing frozen
+Qwen2.5-0.5B plus LoRA encoder. The 112 training databases are split again into 101 weight-fit
+and 11 threshold-calibration databases; the original 28-database validation split remains
+untouched. The heads optimize feature presence, categorical feature counts, exact-profile
+top-k recall, table selection, and seven column roles. Column training uses deterministic
+same-table, same-type, and lexical hard negatives.
+
+On the 1,331 examples from 28 unseen validation databases:
+
+| Proposal metric | Result |
+|---|---:|
+| Exact profile recall @1 / @5 / @16 / @32 | 13.4% / 29.3% / 46.7% / 62.4% |
+| Sketch presence micro F1 | 72.3% |
+| Gold-present categorical count accuracy | 77.7% |
+| Table MRR / top-1 / recall@3 | 84.2% / 74.0% / 88.6% |
+| Column-role macro MRR / top-1 / recall@3 | 62.4% / 46.9% / 67.3% |
+
+The integrated Spider-dev ablation is deliberately less flattering. Relative to the existing
+encoder-integrated AST baseline, the proposer changes 115 selected SQL predictions and produces
+seven strict wins and seven strict losses:
+
+| Integrated metric | Baseline | With proposer | Delta |
+|---|---:|---:|---:|
+| Strict | 366 (35.4%) | 366 (35.4%) | 0 |
+| Lenient | 482 (46.6%) | 481 (46.5%) | -1 |
+| Scalar | 231/408 (56.6%) | 231/408 (56.6%) | 0 |
+| Timeouts | 3 | 10 | +7 |
+
+The artifact is therefore research-only and remains under `spider/data/`. The important next
+step is not a larger encoder: the learned profile beam currently reorders ASTs that the grammar
+already generated; it does not instantiate a missing profile. Proposal-conditioned typed
+expansion must turn the beam into candidate recall. Training should also add same-profile
+contrastive cases for projection identity, frequency extrema, zero-inclusive counts, and
+multi-table role binding, where the ablation has paired wins and regressions. Only after that
+controlled 0.5B experiment should an otherwise identical Qwen2.5-1.5B run test capacity.
+
+Full metrics are in `spider/results/ast_proposer.json` and the promotion decision is in
+`spider/results/ast_proposer_ablation.json`.
 
 ## Reproducing results
 
@@ -292,6 +332,24 @@ Mine the current pool and build proposal supervision:
 python spider/probe/mine_ast_failures.py --dbs spider/data/dbs --pool 180 --top-k 10
 python spider/probe/build_ast_proposal_data.py
 ```
+
+Train and evaluate the structured proposer:
+
+```bash
+python spider/probe/train_ast_proposer.py \
+  --out spider/data/sql_proposer.json \
+  --report spider/results/ast_proposer.json
+
+python spider/probe/full_eval.py --dbs spider/data/dbs \
+  --config gold_tables --planner ast \
+  --proposer-model spider/data/sql_proposer.json \
+  --tag ast_proposer --checkpoint-every 25 --resume
+```
+
+For slow CPU research environments, `--max-new 50` checkpoints and exits cleanly after
+50 new predictions; repeat the same command with `--resume` until the final summary is written.
+`--retry-timeouts` replaces only timeout-stage checkpoint records and should be used in a clean,
+isolated pass rather than on every segment.
 
 Train on Spider train with database-disjoint validation, then evaluate on untouched
 dev:
@@ -327,13 +385,13 @@ The hermetic AST suite executes generated SQL against in-memory SQLite:
 python -m tests.test_sql_ast
 ```
 
-Its 62 cases cover typing and grouping rejection, projection and filter isolation,
+Its 64 cases cover typing and grouping rejection, projection and filter isolation,
 multiple aggregates, direct and bridge joins, deterministic ordering, execution
 reranking, subqueries, set operations, aliases, self-joins, nested aggregation,
 `HAVING`, disjunction scope, inferred high-confidence joins, extrema, zero-inclusive
 counts, top-N, set difference, ranker artifact round trips, evaluator accounting,
-failure-profile alignment, database-disjoint proposal splits, literal targets, and
-opt-in learned-ranker isolation.
+failure-profile alignment, database-disjoint proposal splits, literal targets, compact
+proposer artifact round trips, profile promotion, and opt-in learned-model isolation.
 
 ## Current boundary
 
@@ -342,5 +400,6 @@ Phase 5 are complete as engineering capabilities. Phase 6 is complete as a train
 serialization, and deterministic-inference experiment, but its current artifact is
 not accurate enough to promote. Future accuracy work should target measured
 candidate-recall and schema-binding failures before adding more ranking complexity. The
-failure miner and proposal corpus are complete; training and integrating the proposal model
-is the next implementation phase.
+failure miner, proposal corpus, structured training objective, compact artifact, opt-in
+integration, and full ablation are complete. The next implementation phase is
+proposal-conditioned typed expansion, not another reranker or an unpaired model-size swap.

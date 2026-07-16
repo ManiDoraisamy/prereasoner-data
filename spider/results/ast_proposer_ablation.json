@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "artifact": {
+    "path": "spider/data/sql_proposer.json",
+    "sha256": "33d7aed61b2e709e1382c7f05d99fa18edf5740d97085a9083eda023dfa0aeb0",
+    "bytes": 5121285,
+    "promoted": false
+  },
+  "objective": "deterministic top-k AST sketch and role-aware schema linking",
+  "validation": {
+    "examples": 1331,
+    "databases": 28,
+    "profile_beam_recall": {
+      "at_1": 0.133734,
+      "at_5": 0.293013,
+      "at_16": 0.467318,
+      "at_32": 0.623591
+    },
+    "sketch_presence_micro_f1": 0.722607,
+    "gold_present_count_accuracy": 0.777005,
+    "table_mrr": 0.842276,
+    "table_top1_hit": 0.740045,
+    "table_recall_at_3": 0.886364,
+    "column_role_macro_mrr": 0.623558,
+    "column_role_macro_top1_hit": 0.468757,
+    "column_role_macro_recall_at_3": 0.672966
+  },
+  "integrated_spider_dev": {
+    "examples": 1034,
+    "config": "gold_tables",
+    "baseline": {
+      "strict_correct": 366,
+      "strict_pct": 35.4,
+      "lenient_correct": 482,
+      "lenient_pct": 46.6,
+      "scalar_correct": 231,
+      "scalar_total": 408,
+      "scalar_pct": 56.6,
+      "answered": 987,
+      "timeouts": 3
+    },
+    "with_proposer": {
+      "strict_correct": 366,
+      "strict_pct": 35.4,
+      "lenient_correct": 481,
+      "lenient_pct": 46.5,
+      "scalar_correct": 231,
+      "scalar_total": 408,
+      "scalar_pct": 56.6,
+      "answered": 980,
+      "timeouts": 10
+    },
+    "deltas": {
+      "strict_correct": 0,
+      "lenient_correct": -1,
+      "scalar_correct": 0,
+      "answered": -7,
+      "timeouts": 7
+    },
+    "strict_wins": [18, 19, 329, 375, 853, 988, 989],
+    "strict_losses": [224, 225, 277, 278, 423, 934, 935],
+    "lenient_wins": [38, 99, 325, 329, 589, 627, 853, 988, 989],
+    "lenient_losses": [80, 277, 278, 423, 494, 515, 609, 934, 935, 985],
+    "changed_sql_predictions": 115,
+    "selected_candidates_with_profile_feature": 451
+  },
+  "decision": {
+    "promotion_gate_passed": false,
+    "reason": "The deterministic proposer changes valid interpretations but has zero strict and scalar net gain, a one-example lenient regression, and seven additional timeouts.",
+    "next_objective": "Use the learned beam to instantiate missing typed AST shapes, and add same-profile contrastive supervision for projection identity, frequency extrema, zero-inclusive counts, and multi-table role binding before a larger-backbone ablation."
+  }
+}

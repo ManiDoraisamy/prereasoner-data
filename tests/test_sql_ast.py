@@ -39,6 +39,12 @@ from engine.sql_learned_rank import (
     load_ranker_model,
 )
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
+from engine.sql_proposal import (
+    PAIR_EXTRA_FEATURES,
+    SQLProposalModel,
+    pair_features,
+    semantic_signals_from_schema,
+)
 from spider.probe.spider_eval import (
     compare as compare_spider_rows,
     record_integrated_result,
@@ -325,6 +331,21 @@ def test_encoder_role_signal_breaks_ambiguous_column_tie():
     )
     assert candidates[0].sql == 'SELECT "orders"."Name" FROM "orders"'
     assert any(name == "model_projection" for name, _ in candidates[0].features)
+
+
+def test_proposed_sketch_profile_promotes_matching_typed_candidate():
+    plain_query = SelectQuery((SelectItem(Star()),), "customers")
+    limited_query = SelectQuery((SelectItem(Star()),), "customers", limit=1)
+    signals = SemanticSignals({}, {}, (profile_query(limited_query).sketch_map,))
+    ranked = CandidateRanker(
+        SQLSearcher.from_tables([CUSTOMERS], []).schema,
+        signals,
+    ).rank("show customers", [
+        ScoredQuery(plain_query, render_query(plain_query), 0.0, ()),
+        ScoredQuery(limited_query, render_query(limited_query), 0.0, ()),
+    ])
+    assert ranked[0].query == limited_query
+    assert ("model_sketch_profile:1", 4.0) in ranked[0].features
 
 
 def test_execution_rerank_penalizes_empty_candidate():
@@ -837,9 +858,11 @@ def test_public_sql_facade_exposes_stable_planner_contract():
     from engine import sql
 
     assert sql.SQLSearcher is SQLSearcher
+    assert sql.SQLProposalModel is SQLProposalModel
     assert sql.SelectQuery is SelectQuery
     assert sql.load_ranker_model is load_ranker_model
     assert callable(sql.execute_and_rerank)
+    assert callable(sql.profile_query)
     candidates = sql.SQLSearcher.from_tables([PEOPLE], []).search("list person names")
     assert candidates
     assert isinstance(candidates[0].query, sql.SelectQuery)
@@ -1062,6 +1085,55 @@ def test_ast_proposal_targets_keep_typed_filter_literals():
     ]
 
 
+def test_sql_proposer_artifact_round_trip_is_deterministic():
+    import numpy as np
+
+    hidden = 3
+    pair_size = hidden + len(PAIR_EXTRA_FEATURES)
+    model = SQLProposalModel(
+        sketch_names=("limit", "aggregate.COUNT"),
+        role_names=("projection", "filter"),
+        sketch_presence_weight=np.asarray([[1, 0, 0], [0, 1, 0]], dtype=np.float32),
+        sketch_presence_bias=np.zeros(2, dtype=np.float32),
+        sketch_count_weight=np.zeros((2, 2, hidden), dtype=np.float32),
+        sketch_count_bias=np.asarray([[1, 0], [1, 0]], dtype=np.float32),
+        sketch_profiles=({"limit": 1}, {"aggregate.COUNT": 1}),
+        sketch_profile_weight=np.asarray([[1, 0, 0], [0, 1, 0]], dtype=np.float32),
+        sketch_profile_bias=np.zeros(2, dtype=np.float32),
+        table_weight=np.ones(pair_size, dtype=np.float32),
+        table_bias=0.0,
+        role_weight=np.ones((2, pair_size), dtype=np.float32),
+        role_bias=np.zeros(2, dtype=np.float32),
+        sketch_thresholds=np.asarray([0.6, 0.6], dtype=np.float32),
+        metadata={"fixture": True, "maximum_feature_count": 4},
+    )
+    question = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+    candidate = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
+    assert model.predict_sketch(question) == {"limit": 1}
+    assert model.propose_sketches(question, limit=2) == (
+        {"limit": 1},
+        {"aggregate.COUNT": 1},
+    )
+    signals = semantic_signals_from_schema(
+        model,
+        "show name",
+        ({"table": "items", "name": "name", "affinity": "TEXT"},),
+        lambda texts: np.repeat(question[None, :], len(texts), axis=0),
+        sketch_limit=1,
+    )
+    assert signals.sketch_profiles == ({"limit": 1},)
+    assert set(signals.column_roles["projection"]) == {("items", "name")}
+    assert len(pair_features("show name", question, "name", candidate)) == pair_size
+    before = model.score_column_roles("show name", question, "name", "text", candidate)
+    with tempfile.TemporaryDirectory() as directory:
+        path = directory + "/proposer.json"
+        model.save(path)
+        loaded = SQLProposalModel.load(path)
+    assert loaded.to_dict() == model.to_dict()
+    assert loaded.predict_sketch(question) == model.predict_sketch(question)
+    assert loaded.score_column_roles("show name", question, "name", "text", candidate) == before
+
+
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -1082,6 +1154,7 @@ TESTS = [
     test_grouped_topn_orders_by_aggregate_across_bridge,
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,
+    test_proposed_sketch_profile_promotes_matching_typed_candidate,
     test_execution_rerank_penalizes_empty_candidate,
     test_phase3_ranks_set_query_by_both_operands,
     test_recursive_ast_scalar_subquery_executes,
@@ -1125,6 +1198,7 @@ TESTS = [
     test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks,
     test_ast_proposal_split_is_deterministic_and_database_disjoint,
     test_ast_proposal_targets_keep_typed_filter_literals,
+    test_sql_proposer_artifact_round_trip_is_deterministic,
 ]
 
 
