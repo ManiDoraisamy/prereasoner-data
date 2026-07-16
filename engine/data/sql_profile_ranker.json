@@ -1,0 +1,7466 @@
+{
+  "base_score": 1.669775429036096e-13,
+  "learning_rate": 0.03,
+  "metadata": {
+    "algorithm": "pointwise_gradient_boosted_trees",
+    "baseline_metrics": {
+      "train": {
+        "examples": 5668,
+        "mrr": 0.384726,
+        "oracle": 2863,
+        "oracle_pct": 50.512,
+        "top1": 1893,
+        "top1_pct": 33.398
+      },
+      "validation": {
+        "examples": 1329,
+        "mrr": 0.432252,
+        "oracle": 731,
+        "oracle_pct": 55.004,
+        "top1": 517,
+        "top1_pct": 38.901
+      }
+    },
+    "best_tree_count": 105,
+    "cap": 5000,
+    "config": "gold_tables",
+    "dataset": "Spider 1.0 train",
+    "estimators_trained": 120,
+    "feature_count": 301,
+    "generation": {
+      "baseline_correct": 2410,
+      "examples": 6997,
+      "oracle_correct": 3594,
+      "positive_candidates": 10907,
+      "skipped_examples": 3
+    },
+    "learned_metrics": {
+      "artifact_train": {
+        "examples": 5668,
+        "mrr": 0.395452,
+        "oracle": 2863,
+        "oracle_pct": 50.512,
+        "top1": 1971,
+        "top1_pct": 34.774
+      },
+      "artifact_validation_after_refit": {
+        "examples": 1329,
+        "mrr": 0.445427,
+        "oracle": 731,
+        "oracle_pct": 55.004,
+        "top1": 544,
+        "top1_pct": 40.933
+      },
+      "selection_before_refit": {
+        "train": {
+          "examples": 5668,
+          "mrr": 0.396118,
+          "oracle": 2863,
+          "oracle_pct": 50.512,
+          "top1": 1977,
+          "top1_pct": 34.88
+        },
+        "validation": {
+          "examples": 1329,
+          "mrr": 0.444057,
+          "oracle": 731,
+          "oracle_pct": 55.004,
+          "top1": 542,
+          "top1_pct": 40.783
+        }
+      }
+    },
+    "learning_rate": 0.03,
+    "max_depth": 3,
+    "min_samples_leaf": 20,
+    "pool": 180,
+    "profile_binding_quality_weight": 2.0,
+    "profile_generation_penalty": 5.0,
+    "profile_max_candidates": 32,
+    "profile_per_profile": 4,
+    "proposer_model_sha256": "301f9f5e39b5bd2fdb8e2f4dccc5187d24f46fb5a1fa46720704121ae61fdd56",
+    "refit_on_all_training": true,
+    "refit_row_count": 80360,
+    "scikit_learn_version": "1.9.0",
+    "seed": 1729,
+    "selection_metrics_before_refit": {
+      "train": {
+        "examples": 5668,
+        "mrr": 0.396118,
+        "oracle": 2863,
+        "oracle_pct": 50.512,
+        "top1": 1977,
+        "top1_pct": 34.88
+      },
+      "validation": {
+        "examples": 1329,
+        "mrr": 0.444057,
+        "oracle": 731,
+        "oracle_pct": 55.004,
+        "top1": 542,
+        "top1_pct": 40.783
+      }
+    },
+    "source_sha256": "7e4aee9c1d90b14108c99936aa63d106915e4e246687545b6dd30fc1c158aad1",
+    "train_database_count": 112,
+    "train_examples": 5668,
+    "training_row_count": 62905,
+    "validation_database_count": 28,
+    "validation_database_sha256": "da41bd072317c6e410ce26ee1f17268e975f3a792a60e8cea32e636469968db4",
+    "validation_examples": 1329
+  },
+  "trees": [
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.25611211359500885
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -0.5079992854731905
+        },
+        {
+          "value": 1.6221318343980968
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.2001660446261392
+        },
+        {
+          "value": 1.122830230731531
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.5549438110803455
+        },
+        {
+          "value": -0.8162647869233085
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6041079902060447
+        },
+        {
+          "value": 0.4489233710675717
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.25611211359500885
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.5949141447702926
+        },
+        {
+          "value": 0.529905745815345
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.1941628316899019
+        },
+        {
+          "value": 1.0894574946147948
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.5091246448100277
+        },
+        {
+          "value": -0.7918967721626423
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5860333648313174
+        },
+        {
+          "value": 0.4354756194283245
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.25611211359500885
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.0742710791528225
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 1.1876971180948805
+        },
+        {
+          "value": 1.6034476842693166
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 1.4244228181564356
+        },
+        {
+          "value": 0.24578767440295712
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5153882503509521
+        },
+        {
+          "value": -0.7648533312775995
+        },
+        {
+          "value": -1.4751690204823962
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5685887117360433
+        },
+        {
+          "value": 0.4224672974221295
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.25611211359500885
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.0742710791528225
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 1.15425160902332
+        },
+        {
+          "value": 1.559753420867682
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 1.3839086728349865
+        },
+        {
+          "value": 0.23843972861640014
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.431656509020368
+        },
+        {
+          "value": -0.7335952269270746
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5517421341333559
+        },
+        {
+          "value": 0.4098798708730119
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.26546555757522583
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -0.6136218566259963
+        },
+        {
+          "value": 1.4516590677562715
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.1469125249494466
+        },
+        {
+          "value": 1.0189433798291914
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.4081136249155422
+        },
+        {
+          "value": -0.7251096659681326
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5090383739048272
+        },
+        {
+          "value": 0.793595409286336
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.23582887649536133
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.4345510879550554
+        },
+        {
+          "value": 0.3945391033134241
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.1889394770654807
+        },
+        {
+          "value": 1.0245962355585019
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5153882503509521
+        },
+        {
+          "value": -0.6266419204857406
+        },
+        {
+          "value": -1.37012872113238
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.45646795424843384
+        },
+        {
+          "value": 0.7969869952241532
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.0742710791528225
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 1.0530272675786867
+        },
+        {
+          "value": 1.4504704824945065
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.06821070729717864
+        },
+        {
+          "value": 0.9194806000969982
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.3533207994859744
+        },
+        {
+          "value": -0.7606737118515213
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5549470486719773
+        },
+        {
+          "value": 0.3887341792979405
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.0742710791528225
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.330155572157582
+        },
+        {
+          "value": 0.3512609189669177
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.06616529155770985
+        },
+        {
+          "value": 0.8937368308911983
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.3200066931075845
+        },
+        {
+          "value": -0.739335118946249
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5387552182217157
+        },
+        {
+          "value": 0.3771429854169938
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.23582887649536133
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -0.7078466695964251
+        },
+        {
+          "value": 1.3172506433425726
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 1.296029413699698
+        },
+        {
+          "value": 0.2700976741535127
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5153882503509521
+        },
+        {
+          "value": -0.5645411335973435
+        },
+        {
+          "value": -1.278341279956712
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.09462318392320822
+        },
+        {
+          "value": -0.8277778326050351
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.0742710791528225
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.9628776942877515
+        },
+        {
+          "value": 1.3576791016799437
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.06046355346766303
+        },
+        {
+          "value": 0.8576416082994276
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.2633450722458968
+        },
+        {
+          "value": -0.6903286100711749
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4728805499008808
+        },
+        {
+          "value": 0.7661261236704114
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.09132610633969307
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.8834067809088256
+        },
+        {
+          "value": 1.3125933933111598
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.012379445440911286
+        },
+        {
+          "value": 0.8149171069626086
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5153882503509521
+        },
+        {
+          "value": -0.6560314530103084
+        },
+        {
+          "value": -1.2226570160733141
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.459092675125857
+        },
+        {
+          "value": 0.742838977478813
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -0.7513810856841115
+        },
+        {
+          "value": 1.2334635303744277
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.08191580932460767
+        },
+        {
+          "value": 0.8555088875150895
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.2106945324450962
+        },
+        {
+          "value": -0.6434450262670675
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4916833303822941
+        },
+        {
+          "value": 0.3960609775729428
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.23582887649536133
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.227232305377094
+        },
+        {
+          "value": 0.20427367831279028
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 1.2135164444248747
+        },
+        {
+          "value": 0.2317679928717761
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5153882503509521
+        },
+        {
+          "value": -0.49714627445949694
+        },
+        {
+          "value": -1.1716244137946743
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.06575849554711076
+        },
+        {
+          "value": -0.7728501440287407
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.09132610633969307
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.8094845489704587
+        },
+        {
+          "value": 1.238109014701314
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.006818659473852406
+        },
+        {
+          "value": 0.7595883401084245
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.1630568961552832
+        },
+        {
+          "value": -0.6007590049508527
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.4270173031736227
+        },
+        {
+          "value": 0.7397226263992536
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.28633540868759155
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.0742710791528225
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.1433052754749726
+        },
+        {
+          "value": 0.17483594685457152
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.04671268658616717
+        },
+        {
+          "value": 0.7578284772910916
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.1382702522548513
+        },
+        {
+          "value": -0.5845635534187333
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4589770550237277
+        },
+        {
+          "value": 0.4000728307520006
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.09132610633969307
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.7644902871420077
+        },
+        {
+          "value": 1.1919333869795061
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.007410281460200494
+        },
+        {
+          "value": 0.7219710882892268
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.06164231523871422
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 10,
+          "right": 11,
+          "threshold": -0.125
+        },
+        {
+          "value": -1.2404307569387312
+        },
+        {
+          "value": -0.0008779167426672501
+        },
+        {
+          "feature": "match.order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.97066932581955
+        },
+        {
+          "value": -0.04920907271703225
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.25611211359500885
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -0.8550494283208518
+        },
+        {
+          "value": 1.1158702468802846
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 1.1288025843398979
+        },
+        {
+          "value": 0.17121408329017226
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5153882503509521
+        },
+        {
+          "value": -0.46673194490894065
+        },
+        {
+          "value": -1.0860138031056303
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.0663259800445328
+        },
+        {
+          "value": -0.7135543220374662
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.11658109351992607
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.6696566138365874
+        },
+        {
+          "value": 1.1308765229733648
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 55.74049949645996
+        },
+        {
+          "value": 0.3149826184648011
+        },
+        {
+          "value": -0.5066164443625429
+        },
+        {
+          "feature": "heuristic_count.profile_binding_quality",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 10,
+          "right": 11,
+          "threshold": -0.125
+        },
+        {
+          "value": -1.1934309396155551
+        },
+        {
+          "value": 0.010404789880306289
+        },
+        {
+          "feature": "match.order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.9305961188615749
+        },
+        {
+          "value": -0.03196881614503067
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.0951059152060183
+        },
+        {
+          "value": 0.07993094882549352
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.03598513503974854
+        },
+        {
+          "value": 0.7410406077837142
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "heuristic_count.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.75
+        },
+        {
+          "value": -1.0748130259990132
+        },
+        {
+          "value": -0.5027716489334737
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.38641172231408455
+        },
+        {
+          "value": 0.7631572735247372
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.1937129646539688
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.0465401935210719
+        },
+        {
+          "value": 1.0703514585161233
+        },
+        {
+          "feature": "heuristic_value.count_target",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.75
+        },
+        {
+          "value": 0.2269266261700747
+        },
+        {
+          "value": 1.0067787427584776
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5297661423683167
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4770203669372369
+        },
+        {
+          "value": 0.31895882982220014
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.1798831894993782
+        },
+        {
+          "value": -0.22634933838998092
+        },
+        {
+          "value": -0.9980094979181705
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.11658109351992607
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.6115441162904341
+        },
+        {
+          "value": 1.0745945324182495
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 55.74049949645996
+        },
+        {
+          "value": 0.29591684767067467
+        },
+        {
+          "value": -0.49454503923205584
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.019291600863575
+        },
+        {
+          "value": -0.34164564102508677
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.597015917301178
+        },
+        {
+          "value": -0.7745024827029741
+        },
+        {
+          "value": 0.20022393481640263
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.23582887649536133
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.0345774332398419
+        },
+        {
+          "value": 1.0330895396952304
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 1.0669403444458037
+        },
+        {
+          "value": 0.18426072273154664
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5301696201440983
+        },
+        {
+          "value": 0.30671886446223545
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.1798831894993782
+        },
+        {
+          "value": -0.21586542005538037
+        },
+        {
+          "value": -0.9655619047866394
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.11658109351992607
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.5769847868369146
+        },
+        {
+          "value": 1.0387001772601099
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 55.74049949645996
+        },
+        {
+          "value": 0.2827156105330298
+        },
+        {
+          "value": -0.48089837477490555
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "heuristic_count.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.75
+        },
+        {
+          "value": -1.006472325467525
+        },
+        {
+          "value": -0.4593255448613753
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.3302441359186454
+        },
+        {
+          "value": 0.7549504104106697
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.004380493532434
+        },
+        {
+          "value": -0.02784794988391336
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.013818023140630808
+        },
+        {
+          "value": 0.6850299596885521
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.9656032200101551
+        },
+        {
+          "value": -0.31301347667138657
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4770676064254687
+        },
+        {
+          "value": 0.3072230493407521
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.1937129646539688
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.0515199573685299
+        },
+        {
+          "value": 0.9807028085304558
+        },
+        {
+          "feature": "heuristic_value.count_target",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.75
+        },
+        {
+          "value": 0.18225003223912414
+        },
+        {
+          "value": 0.9345916106150584
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.42285295891332186
+        },
+        {
+          "value": 0.31079565705260204
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.1798831894993782
+        },
+        {
+          "value": -0.19122561395077817
+        },
+        {
+          "value": -0.9162954119999357
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.11658109351992607
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.5254078295719677
+        },
+        {
+          "value": 0.9902995196093956
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 55.74049949645996
+        },
+        {
+          "value": 0.2658805131986585
+        },
+        {
+          "value": -0.46889814374846367
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "heuristic_count.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.75
+        },
+        {
+          "value": -0.9590900810081089
+        },
+        {
+          "value": -0.429445920866496
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 13,
+          "right": 14,
+          "threshold": 2.495686650276184
+        },
+        {
+          "value": -0.2866809951436311
+        },
+        {
+          "value": 0.880899885250909
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06104702688753605
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9550099868376419
+        },
+        {
+          "value": -0.07673011000262485
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.004725368249910308
+        },
+        {
+          "value": 0.6507727013896333
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.9169038906510051
+        },
+        {
+          "value": -0.28649796083156565
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4409671580916474
+        },
+        {
+          "value": 0.33236605947929176
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.1937129646539688
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.07454195653016395
+        },
+        {
+          "value": 0.8655392525996521
+        },
+        {
+          "feature": "ast.comparison.<=",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8880246200467404
+        },
+        {
+          "value": -1.9210951827479286
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.3922763456263248
+        },
+        {
+          "value": 0.3092275793271379
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.7445201222740301
+        },
+        {
+          "value": 0.8598495738261658
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.0689804336060733
+        },
+        {
+          "value": 0.920289631615842
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.01326309778067806
+        },
+        {
+          "value": 0.6251608134615086
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 10,
+          "right": 11,
+          "threshold": -0.125
+        },
+        {
+          "value": -1.1100799237714767
+        },
+        {
+          "value": -0.6000662546770524
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.01684275901562306
+        },
+        {
+          "value": -0.5973377965009693
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.23582887649536133
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.0311728694870048
+        },
+        {
+          "value": 0.9041824588774252
+        },
+        {
+          "feature": "question_token_count",
+          "left": 6,
+          "right": 7,
+          "threshold": 6.5
+        },
+        {
+          "value": 0.9778831608972913
+        },
+        {
+          "value": 0.12132365508662658
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.9333605766296387
+        },
+        {
+          "value": -1.11067510493413
+        },
+        {
+          "value": 2.129362726642205
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4384389821696694
+        },
+        {
+          "value": 0.5632989856143972
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.09132610633969307
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8321664085016486
+        },
+        {
+          "value": -0.14486890793947654
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.24463352859217863
+        },
+        {
+          "value": -0.4455995004606436
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.8649287895114097
+        },
+        {
+          "value": -0.2433772990894651
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.39435319846122496
+        },
+        {
+          "value": 0.3641110667157348
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.11658109351992607
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.4371088557562677
+        },
+        {
+          "value": 0.9050710460175857
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.18783167569070888
+        },
+        {
+          "value": -0.49185001727238836
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.872240022515973
+        },
+        {
+          "value": -0.2701771863166268
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.597015917301178
+        },
+        {
+          "value": -0.6543395830650517
+        },
+        {
+          "value": 0.2918482130322534
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.1937129646539688
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.12885652825099342
+        },
+        {
+          "value": 0.8015972869457778
+        },
+        {
+          "feature": "ast.comparison.<=",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8207784446115381
+        },
+        {
+          "value": -1.949190949705952
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.34987988829419503
+        },
+        {
+          "value": 0.3192976788154188
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.6818911477602023
+        },
+        {
+          "value": 0.8688790843284951
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.30810147523880005
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.040189459024283
+        },
+        {
+          "value": 0.8512005888640594
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.006978021271916368
+        },
+        {
+          "value": 0.5749909337692776
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.7861762943190799
+        },
+        {
+          "value": -0.20024481389741142
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 13,
+          "right": 14,
+          "threshold": 2.495686650276184
+        },
+        {
+          "value": -0.20047955101937182
+        },
+        {
+          "value": 0.9087609349950748
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.06539557874202728
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8212047137070273
+        },
+        {
+          "value": -0.16338168107341516
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.0378172841384373
+        },
+        {
+          "value": 0.5467737103285608
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.8344802094184571
+        },
+        {
+          "value": -0.242462562964143
+        },
+        {
+          "feature": "question_cue.most",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.1268893529335718
+        },
+        {
+          "value": 0.6042091065196771
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.11791443824768066
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.38021640833030357
+        },
+        {
+          "value": 0.8523032319084903
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 51.33457374572754
+        },
+        {
+          "value": 0.19531159465648926
+        },
+        {
+          "value": -0.4064859549607517
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.8180969779122897
+        },
+        {
+          "value": -0.2356326980952218
+        },
+        {
+          "feature": "question_cue.most",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.1231895067801653
+        },
+        {
+          "value": 0.5840986428338176
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.1937129646539688
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.16098830888585886
+        },
+        {
+          "value": 0.7529384305440235
+        },
+        {
+          "feature": "ast.comparison.<=",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.7707277579614545
+        },
+        {
+          "value": -1.9305251325811015
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.875
+        },
+        {
+          "feature": "match.count",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6983589747341312
+        },
+        {
+          "value": -0.017846019933582206
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.07295416982476974
+        },
+        {
+          "value": 1.7773216322302507
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05183609575033188
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.0453813330939006
+        },
+        {
+          "value": 0.8045730033405215
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.02428457946169935
+        },
+        {
+          "value": 0.5386770749817524
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.7944839385978855
+        },
+        {
+          "value": -0.21993765145844307
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.597015917301178
+        },
+        {
+          "value": -0.6057648649121518
+        },
+        {
+          "value": 0.3093431649306472
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8131884873083081
+        },
+        {
+          "value": -0.23140664328938954
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.875
+        },
+        {
+          "value": -0.10992620433972854
+        },
+        {
+          "value": 0.3677895035755707
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.125
+        },
+        {
+          "feature": "ast.aggregate.SUM",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6836661946555549
+        },
+        {
+          "value": 0.8196116133546631
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 13,
+          "right": 14,
+          "threshold": 2.5444092750549316
+        },
+        {
+          "value": -0.18608762389705874
+        },
+        {
+          "value": 1.0137603358733953
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.7599823964212823
+        },
+        {
+          "value": -0.09148157290024338
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.1469324153204541
+        },
+        {
+          "value": 0.5849324338119107
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.6333333551883698
+        },
+        {
+          "feature": "heuristic_count.model_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.7799674940387062
+        },
+        {
+          "value": 0.2666537125097568
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.13498985767364502
+        },
+        {
+          "value": 1.4314140455205084
+        },
+        {
+          "value": -0.7693211205625805
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.245240190114151
+        },
+        {
+          "value": 0.5719899813618871
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.11791443824768066
+        },
+        {
+          "value": 0.7918845660437673
+        },
+        {
+          "value": 0.26892678914665824
+        },
+        {
+          "feature": "match.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase3",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5561478690396815
+        },
+        {
+          "value": 0.9051420304377357
+        },
+        {
+          "feature": "question_cue.most",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.09923154411963263
+        },
+        {
+          "value": 0.5861603565940516
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.7364543462089448
+        },
+        {
+          "value": -0.0874328775252271
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.1362383037884348
+        },
+        {
+          "value": 0.5610098971791369
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.7083333432674408
+        },
+        {
+          "feature": "heuristic_count.model_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.7609577632477108
+        },
+        {
+          "value": 0.23900220065690017
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.13498985767364502
+        },
+        {
+          "value": 1.1870431597717817
+        },
+        {
+          "value": -0.8228024753262257
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.721007220132023
+        },
+        {
+          "value": -0.08483687627124965
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.13224625413735794
+        },
+        {
+          "value": 0.5443039132125194
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.7083333432674408
+        },
+        {
+          "feature": "heuristic_count.model_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.7467844044186923
+        },
+        {
+          "value": 0.2320796354847601
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.13498985767364502
+        },
+        {
+          "value": 1.1385255830811472
+        },
+        {
+          "value": -0.8037040064647488
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.24516228585479483
+        },
+        {
+          "value": 0.5451066222254708
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.11791443824768066
+        },
+        {
+          "value": 0.7589356761010191
+        },
+        {
+          "value": 0.2551947306061179
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.9357942938804626
+        },
+        {
+          "value": -0.9982430961278219
+        },
+        {
+          "value": 3.245619581094816
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.3753977572919545
+        },
+        {
+          "value": 0.6439352959649749
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.697045341086619
+        },
+        {
+          "value": -0.08584720604638156
+        },
+        {
+          "feature": "ast.select_items",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.2854521877269543
+        },
+        {
+          "value": -0.2567820139123707
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.7083333432674408
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.2570662945508957
+        },
+        {
+          "value": 0.6454342477308869
+        },
+        {
+          "value": 0.15258512833664453
+        },
+        {
+          "feature": "ast.comparison.=",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": -0.11966725348045863
+        },
+        {
+          "value": -1.2383640191474288
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.682375707855169
+        },
+        {
+          "value": -0.08329779580591092
+        },
+        {
+          "feature": "mismatch.unasked_group",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.13632852305912857
+        },
+        {
+          "value": -0.5672605189336455
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.6333333551883698
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.2570662945508957
+        },
+        {
+          "value": 0.6379739130420304
+        },
+        {
+          "value": 0.15762088418409578
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.13498985767364502
+        },
+        {
+          "value": 1.2958880086990057
+        },
+        {
+          "value": -0.6900732831844687
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.32449981570243835
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.24316802720697697
+        },
+        {
+          "value": 0.5361964460528623
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6590114186482905
+        },
+        {
+          "value": 0.337288384421918
+        },
+        {
+          "feature": "origin.phase3",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4883598577041531
+        },
+        {
+          "value": 0.1718995963754872
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 38.76776313781738
+        },
+        {
+          "value": 1.7069932566948443
+        },
+        {
+          "value": 0.20492773512524218
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6612732625707799
+        },
+        {
+          "value": -0.07997070162391831
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.12124285703263303
+        },
+        {
+          "value": 0.5162741872616301
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 10,
+          "right": 11,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.471803074072242
+        },
+        {
+          "value": 0.7324037121567673
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.6333333551883698
+        },
+        {
+          "value": 0.21347535832413317
+        },
+        {
+          "value": -0.6652846321409848
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.2743686561605734
+        },
+        {
+          "value": -1.1857546159611463
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6069058427123477
+        },
+        {
+          "value": -0.4248826825229295
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.2830621004104614
+        },
+        {
+          "value": 0.6231751297692392
+        },
+        {
+          "value": 1.2903136425217856
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.6333333551883698
+        },
+        {
+          "value": 0.20730515142455933
+        },
+        {
+          "value": -0.6495188217314538
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.34054243564605713
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.24523627219488647
+        },
+        {
+          "value": 0.5027428156813121
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6231637468936091
+        },
+        {
+          "value": 0.2955976111970886
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.9357942938804626
+        },
+        {
+          "value": -0.9518085986081847
+        },
+        {
+          "value": 3.2125381315056627
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.3288660416671909
+        },
+        {
+          "value": 0.6441647842307475
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.125
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6325653286691939
+        },
+        {
+          "value": -0.0704196495260106
+        },
+        {
+          "feature": "question_cue.order",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.07492411143307343
+        },
+        {
+          "value": 0.7430067831734458
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 10,
+          "right": 11,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.4393975631269265
+        },
+        {
+          "value": 0.6991895606495911
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.6333333551883698
+        },
+        {
+          "value": 0.19707703695554016
+        },
+        {
+          "value": -0.6252464105218104
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.25460588082076996
+        },
+        {
+          "value": -1.1597518069210127
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6006066498064246
+        },
+        {
+          "value": -0.4094745160842365
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 10,
+          "right": 11,
+          "threshold": -2.5
+        },
+        {
+          "value": -1.3911383821422945
+        },
+        {
+          "value": 0.6861463791051584
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.625
+        },
+        {
+          "value": -0.2838716297803942
+        },
+        {
+          "value": 0.2976506259241418
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5266714096069336
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 3,
+          "right": 4,
+          "threshold": -2.0
+        },
+        {
+          "value": -1.2251954351988277
+        },
+        {
+          "value": -0.033724408012793784
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.2570662945508957
+        },
+        {
+          "value": 0.5697928392311188
+        },
+        {
+          "value": 0.12255275918833773
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6094174206574301
+        },
+        {
+          "value": 0.16487803545570878
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.1322778136932439
+        },
+        {
+          "value": -1.1187046132687255
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5297661423683167
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.04342110926673077
+        },
+        {
+          "value": -0.46859552035501517
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.625
+        },
+        {
+          "value": 0.16439174759446315
+        },
+        {
+          "value": 0.5846034414807492
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.598840518108814
+        },
+        {
+          "value": 0.16306306599949377
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.1209136292292499
+        },
+        {
+          "value": -1.0946307656150793
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.32449981570243835
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "question_token_count",
+          "left": 3,
+          "right": 4,
+          "threshold": 7.5
+        },
+        {
+          "value": 0.5959474920152171
+        },
+        {
+          "value": -0.19785796147577445
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.25
+        },
+        {
+          "value": 0.4457149021715848
+        },
+        {
+          "value": 0.9556895631115859
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.936451643705368
+        },
+        {
+          "value": -0.9050300018198157
+        },
+        {
+          "value": 3.0484411651128536
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.2891769293330192
+        },
+        {
+          "value": 0.6586257319952082
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.11791443824768066
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.26132795214653015
+        },
+        {
+          "value": 0.645042884881249
+        },
+        {
+          "value": 0.14682795139130375
+        },
+        {
+          "feature": "heuristic_count.group_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.11620657739245681
+        },
+        {
+          "value": -2.781744113902104
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": 1.6672831177711487
+        },
+        {
+          "value": -1.0178465589308658
+        },
+        {
+          "value": 0.13586955807852907
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.2140147356821678
+        },
+        {
+          "value": 0.5377457891325654
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.2766381677257693
+        },
+        {
+          "value": 0.391246131468549
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 6,
+          "right": 7,
+          "threshold": -2.0
+        },
+        {
+          "value": -1.1311420170449313
+        },
+        {
+          "value": 0.4274943646142478
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5784057433613465
+        },
+        {
+          "value": 0.16682556212078614
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.0993927392512302
+        },
+        {
+          "value": -1.0551470481293215
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "ast.aggregate.SUM",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4790980521103891
+        },
+        {
+          "value": 1.316790088165042
+        },
+        {
+          "feature": "question_cue.order",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.051227112080494915
+        },
+        {
+          "value": 0.7454795617952558
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.12084659188985825
+        },
+        {
+          "value": 0.539938559613642
+        },
+        {
+          "value": 1.1782200700005567
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.6382468342781067
+        },
+        {
+          "value": -0.8805956742652344
+        },
+        {
+          "value": 0.13369005491630262
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.17039082846056353
+        },
+        {
+          "value": 0.39688718572599757
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.09847249835729599
+        },
+        {
+          "value": -1.9878639858653162
+        },
+        {
+          "value": 0.3839400712503439
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5610315289093016
+        },
+        {
+          "value": 0.16574045050430503
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.0679666976114437
+        },
+        {
+          "value": -1.0307116057524432
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.11791443824768066
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.75
+        },
+        {
+          "value": 0.2659997544631443
+        },
+        {
+          "value": 0.9556630433923714
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.330334850118839
+        },
+        {
+          "value": 0.4444784656414966
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.279157588981016
+        },
+        {
+          "value": 0.2329240724109079
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.22252747416496277
+        },
+        {
+          "value": 0.6762431456834416
+        },
+        {
+          "value": 1.6381969945942867
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.27136007366481496
+        },
+        {
+          "value": 0.37498586958515223
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 6,
+          "right": 7,
+          "threshold": -2.0
+        },
+        {
+          "value": -1.0992049396629862
+        },
+        {
+          "value": 0.4027369350152525
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5444693455145628
+        },
+        {
+          "value": 0.1670471146637894
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.035281054647074
+        },
+        {
+          "value": -1.0055329392447439
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06164231523871422
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -1.0171142722449376
+        },
+        {
+          "value": 1.3930668358484413
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5073465842465332
+        },
+        {
+          "value": -0.3371079124482174
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.12804547764533672
+        },
+        {
+          "value": -1.201819340433427
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.6812955857564977
+        },
+        {
+          "value": -1.8128167194169345
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.2599639062733274
+        },
+        {
+          "value": 0.35726835592002376
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 6,
+          "right": 7,
+          "threshold": -2.0
+        },
+        {
+          "value": -1.0710029529961476
+        },
+        {
+          "value": 0.3874333217324091
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.5260932368900244
+        },
+        {
+          "value": 0.16515818993990994
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9880481738428407
+        },
+        {
+          "value": -0.9948402549762017
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06164231523871422
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.985495673221811
+        },
+        {
+          "value": 1.343679747404802
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.49026198117678466
+        },
+        {
+          "value": -0.3228305293607125
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.12264116210836552
+        },
+        {
+          "value": -1.181972967930856
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.6627753563093756
+        },
+        {
+          "value": -1.774824740506243
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.11791443824768066
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.75
+        },
+        {
+          "value": 0.23725411359277773
+        },
+        {
+          "value": 0.9303706030285821
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.32846296962349036
+        },
+        {
+          "value": 0.4005720685327784
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": 1.6672831177711487
+        },
+        {
+          "value": -0.9708684935233597
+        },
+        {
+          "value": 0.2014935758698053
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.1785064688809696
+        },
+        {
+          "value": 0.4936331315017594
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06164231523871422
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.9562459347663581
+        },
+        {
+          "value": 1.3055166646709668
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.47298049795649216
+        },
+        {
+          "value": -0.31117781762123364
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.11323963312022642
+        },
+        {
+          "value": -1.1635563151187285
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.6373757102978306
+        },
+        {
+          "value": -1.741159278860971
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.17675381622454994
+        },
+        {
+          "value": -1.088426316844536
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5990149892760247
+        },
+        {
+          "value": -0.37867249568261185
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.12084659188985825
+        },
+        {
+          "value": 0.4682839903030631
+        },
+        {
+          "value": 1.1087624897801043
+        },
+        {
+          "feature": "question_cue.both",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.09534410895391927
+        },
+        {
+          "value": -1.1386114308957078
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.24684038299201494
+        },
+        {
+          "value": 0.3268792849157811
+        },
+        {
+          "feature": "question_cue.order",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.2877701263691182
+        },
+        {
+          "value": 0.8743578250514602
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.492343654567487
+        },
+        {
+          "value": 0.1673335391238148
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9397137663542301
+        },
+        {
+          "value": -0.978897790498869
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_count.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.9285178064690665
+        },
+        {
+          "value": 1.2633736228860433
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.4534469515110922
+        },
+        {
+          "value": -0.29866001529048225
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.10697545269871325
+        },
+        {
+          "value": -1.1416751352791115
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.6198770965398527
+        },
+        {
+          "value": -1.6941043491754915
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06164231523871422
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_count.group_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.2257520099164063
+        },
+        {
+          "value": -0.9064531892761716
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.44199120389971036
+        },
+        {
+          "value": -0.289939076786922
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.10384258922911781
+        },
+        {
+          "value": -1.1261729529386069
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.602870351348449
+        },
+        {
+          "value": -1.6563227967747356
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4405762671856372
+        },
+        {
+          "value": 0.16744569274140222
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.042679757878882
+        },
+        {
+          "value": -3.0722351236891168
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5865740728978177
+        },
+        {
+          "value": -0.43365873164875507
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.5538934145199912
+        },
+        {
+          "value": 0.5764539301195547
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 2,
+          "right": 5,
+          "threshold": -2.0
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.7109237909317017
+        },
+        {
+          "value": -0.5729876746127975
+        },
+        {
+          "value": -1.4851453662118532
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.875
+        },
+        {
+          "value": -0.017184467745695445
+        },
+        {
+          "value": 0.33882708061386124
+        },
+        {
+          "feature": "ast.select_blocks",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.02062074840068817
+        },
+        {
+          "value": 2.771805797294968
+        },
+        {
+          "value": -0.3779401631610334
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8819447036764305
+        },
+        {
+          "value": -0.9771681504112062
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06539557874202728
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.25348125398159027
+        },
+        {
+          "value": 0.8094994957754873
+        },
+        {
+          "value": 0.10721138338981819
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.2182533232516847
+        },
+        {
+          "value": -1.5730249573320414
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": 1.6139994859695435
+        },
+        {
+          "value": -0.9337329093569605
+        },
+        {
+          "value": 0.12262170931963359
+        },
+        {
+          "feature": "match.count",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.14686328600446197
+        },
+        {
+          "value": 0.44163232883194986
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4218486337959926
+        },
+        {
+          "value": 0.16158769317469063
+        },
+        {
+          "feature": "match.count",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 1.0211818282714014
+        },
+        {
+          "value": -3.0075596431044795
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5669287789134396
+        },
+        {
+          "value": -0.42800835415636035
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.5254437812267707
+        },
+        {
+          "value": 0.5569994848761572
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.22500000149011612
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.1498301117290101
+        },
+        {
+          "value": -1.051063885214298
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5800034635141686
+        },
+        {
+          "value": -0.3575618881174578
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.08743972331285477
+        },
+        {
+          "feature": "heuristic_value.model_filter",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.12084659188985825
+        },
+        {
+          "value": 0.4166075674215481
+        },
+        {
+          "value": 1.060496057072251
+        },
+        {
+          "feature": "question_cue.both",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.08179846092692224
+        },
+        {
+          "value": -1.1088396453727727
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.40991657618520916
+        },
+        {
+          "value": 0.1545284089799044
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9959537991450508
+        },
+        {
+          "value": -2.9388217109031545
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5514399500021604
+        },
+        {
+          "value": -0.4130095318972273
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.4960310971034023
+        },
+        {
+          "value": 0.5425533777121357
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 2,
+          "right": 5,
+          "threshold": -2.0
+        },
+        {
+          "feature": "question_order",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.21035675209009
+        },
+        {
+          "value": 0.21111164567198049
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.875
+        },
+        {
+          "value": -0.010969810492352568
+        },
+        {
+          "value": 0.3123519191171226
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.02062074840068817
+        },
+        {
+          "value": 2.6385587653543583
+        },
+        {
+          "value": -0.35396945151359305
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8586687536933906
+        },
+        {
+          "value": -0.9481026298934574
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_count.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.8869567396938959
+        },
+        {
+          "value": 1.230717447866845
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.2929534294886923
+        },
+        {
+          "value": 1.371359121125967
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.0805594993702829
+        },
+        {
+          "value": -1.0966151708991747
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.5764687231543703
+        },
+        {
+          "value": -1.6262490875901374
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06539557874202728
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.25348125398159027
+        },
+        {
+          "value": 0.7801603887173488
+        },
+        {
+          "value": 0.0807475241230486
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.17916836755476523
+        },
+        {
+          "value": -1.5236666123482028
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 10,
+          "right": 11,
+          "threshold": -0.125
+        },
+        {
+          "value": -0.6811958127555516
+        },
+        {
+          "value": -0.057780353672204715
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.1804613322019577
+        },
+        {
+          "value": -0.79666924647616
+        },
+        {
+          "value": 1.4313551163043157
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 2,
+          "right": 5,
+          "threshold": 1.25
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.014676849020874872
+        },
+        {
+          "value": -0.7505256175894995
+        },
+        {
+          "feature": "ast.aggregates",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6204034347827053
+        },
+        {
+          "value": 0.5811225085893297
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5303246190118813
+        },
+        {
+          "value": -0.41042625455796417
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.473408710351157
+        },
+        {
+          "value": 0.5198831473363583
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 2,
+          "right": 5,
+          "threshold": -2.0
+        },
+        {
+          "feature": "baseline_score",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.33835818618535995
+        },
+        {
+          "value": 1.9926834644158844
+        },
+        {
+          "value": -1.0794853621892966
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 52.01456832885742
+        },
+        {
+          "value": 0.2344802958834796
+        },
+        {
+          "value": -0.0935921555372099
+        },
+        {
+          "feature": "ast.max_depth",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.02062074840068817
+        },
+        {
+          "value": 2.537008451777363
+        },
+        {
+          "value": -0.33146312322830523
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.8131330567075542
+        },
+        {
+          "value": -0.9370344234682237
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.3817138144669224
+        },
+        {
+          "value": 0.15115131821629624
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9705399668598729
+        },
+        {
+          "value": -2.935747080472073
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5163519604370035
+        },
+        {
+          "value": -0.39880336917845577
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.4481626041591469
+        },
+        {
+          "value": 0.5052798726254224
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.06164231523871422
+        },
+        {
+          "feature": "heuristic_value.group_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.75
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.125
+        },
+        {
+          "value": -0.8853232402552839
+        },
+        {
+          "value": 0.0777368265592998
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.31964935637860864
+        },
+        {
+          "value": 1.297118533271974
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.07093811728464613
+        },
+        {
+          "value": -1.0734243392746035
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 56.06683921813965
+        },
+        {
+          "value": 0.5471813203804468
+        },
+        {
+          "value": -1.7819618655467968
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.30513447523117065
+        },
+        {
+          "value": 0.7740822421298797
+        },
+        {
+          "value": -0.0319054101013868
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.1656055003847651
+        },
+        {
+          "value": -1.4632947124524027
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.05789349037449368
+        },
+        {
+          "value": -0.9787953448901882
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5461648954638315
+        },
+        {
+          "value": -0.30538599380898895
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.3651413008559448
+        },
+        {
+          "value": 0.14141594841848826
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9453403128406443
+        },
+        {
+          "value": -2.8873876108054928
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5009279901521363
+        },
+        {
+          "value": -0.3907824863734046
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.4246394870753918
+        },
+        {
+          "value": 0.4869179721651392
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 2,
+          "right": 5,
+          "threshold": 1.6672831177711487
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 3,
+          "right": 4,
+          "threshold": 2.56891405582428
+        },
+        {
+          "value": -0.9133204359711385
+        },
+        {
+          "value": 0.20048369213067296
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.9384629130363464
+        },
+        {
+          "value": 0.20724636094067234
+        },
+        {
+          "value": 3.2601522745417943
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_count.count_target",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.06090156164249246
+        },
+        {
+          "value": -1.2056034912157705
+        },
+        {
+          "feature": "question_order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6514119994934447
+        },
+        {
+          "value": -0.4198308773312785
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "ast.aggregate.SUM",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.3331990320237117
+        },
+        {
+          "value": 0.12408424490036124
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.3450532853603363
+        },
+        {
+          "value": 0.5717125802300987
+        },
+        {
+          "value": 1.9718135175594997
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.48718611142588314
+        },
+        {
+          "value": -0.38250188315024874
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.4016156164757163
+        },
+        {
+          "value": 0.471393830456032
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.30513447523117065
+        },
+        {
+          "value": 0.7572404711357228
+        },
+        {
+          "value": -0.04627895087071355
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.1500485521140639
+        },
+        {
+          "value": -1.385964102384616
+        },
+        {
+          "feature": "mismatch.unasked_group",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "match.count",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.09942546724010858
+        },
+        {
+          "value": 0.40200495181775014
+        },
+        {
+          "feature": "question_cue.number",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.6182378169292676
+        },
+        {
+          "value": 0.03381128681080651
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": -0.125
+        },
+        {
+          "feature": "question_token_count",
+          "left": 2,
+          "right": 5,
+          "threshold": 11.5
+        },
+        {
+          "feature": "match.group",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.048582182860176
+        },
+        {
+          "value": 0.33228111119364806
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.9113155901432037
+        },
+        {
+          "value": -0.14738676513098337
+        },
+        {
+          "value": 2.766113827953608
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_count.count_target",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.05985518668904679
+        },
+        {
+          "value": -1.1884922593149287
+        },
+        {
+          "feature": "question_order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6293742565972791
+        },
+        {
+          "value": -0.4194571279993612
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.count_without_spurious_group",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.25
+        },
+        {
+          "value": -0.33577551705852493
+        },
+        {
+          "value": 0.11178920288582397
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.9293889675760975
+        },
+        {
+          "value": -2.8962461996819138
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.4752782844533638
+        },
+        {
+          "value": -0.37453733216454405
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.379083632304961
+        },
+        {
+          "value": 0.45631472778764776
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_count.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.group_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.75
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.125
+        },
+        {
+          "value": -0.829549977425346
+        },
+        {
+          "value": 0.051804336474143356
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.2912571225575146
+        },
+        {
+          "value": 1.2544413682108055
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.0598068269659513
+        },
+        {
+          "value": -1.0305928411788638
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 56.06683921813965
+        },
+        {
+          "value": 0.5094612685118056
+        },
+        {
+          "value": -1.7272435039191836
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": -0.125
+        },
+        {
+          "feature": "question_token_count",
+          "left": 2,
+          "right": 5,
+          "threshold": 11.5
+        },
+        {
+          "feature": "match.group",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.03540988714478
+        },
+        {
+          "value": 0.33289261238426376
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.9113155901432037
+        },
+        {
+          "value": -0.12978334967183083
+        },
+        {
+          "value": 2.5796791013600258
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.11625825082937245
+        },
+        {
+          "value": -0.614194832515901
+        },
+        {
+          "feature": "question_order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.6045222097133068
+        },
+        {
+          "value": -0.4043334472019894
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.30513447523117065
+        },
+        {
+          "value": 0.7388038725582856
+        },
+        {
+          "value": -0.061763846794812324
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 6,
+          "right": 7,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.13502126721829938
+        },
+        {
+          "value": -1.2954811782928595
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.0499328785322759
+        },
+        {
+          "value": -0.9472595242870352
+        },
+        {
+          "feature": "heuristic_count.count_group_present",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.3286152396635684
+        },
+        {
+          "value": -1.7995968581932378
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "ast.aggregate.SUM",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.2244368377184998
+        },
+        {
+          "value": 0.8147983440886153
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.3450532853603363
+        },
+        {
+          "value": 0.5527913199256231
+        },
+        {
+          "value": 1.8887108041648801
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.4619282461645527
+        },
+        {
+          "value": -0.36933255558102746
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.359786031795259
+        },
+        {
+          "value": 0.43769508086656395
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 2,
+          "right": 5,
+          "threshold": -2.0
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.7109237909317017
+        },
+        {
+          "value": -0.5106833418113644
+        },
+        {
+          "value": -1.4393220962917381
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.20373823499035468
+        },
+        {
+          "value": -0.12114585943023937
+        },
+        {
+          "feature": "question_order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.comparison.>",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.47686398892254395
+        },
+        {
+          "value": 0.499281744923593
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.3469956379350018
+        },
+        {
+          "value": -0.4601679471242449
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": -0.125
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 2,
+          "right": 5,
+          "threshold": 1.6139994859695435
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 3,
+          "right": 4,
+          "threshold": 2.56891405582428
+        },
+        {
+          "value": -0.893682983521848
+        },
+        {
+          "value": 0.1867500438473232
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.20183299413539071
+        },
+        {
+          "value": 1.056669590224753
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_count.count_target",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.053050410915940614
+        },
+        {
+          "value": -1.1541335262311812
+        },
+        {
+          "feature": "question_order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5954840189216507
+        },
+        {
+          "value": -0.39089604251790644
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_count.profile_binding_quality",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.group_role",
+          "left": 2,
+          "right": 5,
+          "threshold": -0.75
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.125
+        },
+        {
+          "value": -0.787076374045503
+        },
+        {
+          "value": 0.049200406378877876
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.27105099070234795
+        },
+        {
+          "value": 1.2196190394581952
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.0570998702592081
+        },
+        {
+          "value": -0.9973397883521188
+        },
+        {
+          "feature": "baseline_score",
+          "left": 13,
+          "right": 14,
+          "threshold": 40.624969482421875
+        },
+        {
+          "value": 0.5004594266596717
+        },
+        {
+          "value": -1.494560918007495
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "ast.aggregate.SUM",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.21582602056864408
+        },
+        {
+          "value": 0.7959820665977302
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.3180295526981354
+        },
+        {
+          "value": 0.5218237550874326
+        },
+        {
+          "value": 1.78679149097432
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 1.5
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.4455224453471268
+        },
+        {
+          "value": -0.36001364046767725
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.3422154001666242
+        },
+        {
+          "value": 0.42536630778617357
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "ast.predicates",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.30513447523117065
+        },
+        {
+          "value": 0.7179223858184798
+        },
+        {
+          "value": -0.07731438635031776
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 9.949999809265137
+        },
+        {
+          "value": -1.1528463054539773
+        },
+        {
+          "value": 0.1348732022913723
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "origin.phase5",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.04389030513970197
+        },
+        {
+          "value": -0.9242944199899955
+        },
+        {
+          "feature": "heuristic_count.count_group_present",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.31659951111507934
+        },
+        {
+          "value": -1.7606894779991316
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": -0.125
+        },
+        {
+          "feature": "question_token_count",
+          "left": 2,
+          "right": 5,
+          "threshold": 11.5
+        },
+        {
+          "feature": "match.group",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.0102876869638826
+        },
+        {
+          "value": 0.3459555275089402
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.9113155901432037
+        },
+        {
+          "value": -0.09446522362183973
+        },
+        {
+          "value": 2.4129898147130375
+        },
+        {
+          "feature": "match.count",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.10488971929052333
+        },
+        {
+          "value": -0.5856273217130662
+        },
+        {
+          "feature": "question_order",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.5740779491991154
+        },
+        {
+          "value": -0.37710103704403203
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 1,
+          "right": 8,
+          "threshold": -2.0
+        },
+        {
+          "feature": "question_hash.unigram.61",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.model_projection",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.35900409519672394
+        },
+        {
+          "value": 2.1355325773149656
+        },
+        {
+          "value": -0.604647830456594
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.24662162363529205
+        },
+        {
+          "value": -2.1057625900897268
+        },
+        {
+          "value": -1.0612237741178445
+        },
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.875
+        },
+        {
+          "feature": "heuristic_value.count_without_raw_projection",
+          "left": 10,
+          "right": 11,
+          "threshold": -2.0
+        },
+        {
+          "value": -0.6356213963145111
+        },
+        {
+          "value": -0.031992489782568835
+        },
+        {
+          "feature": "heuristic_count.projection_role",
+          "left": 13,
+          "right": 14,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.2737338472048168
+        },
+        {
+          "value": -0.14708987352873934
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 2,
+          "right": 5,
+          "threshold": -2.0
+        },
+        {
+          "feature": "heuristic_value.model_sketch_profile",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.7109237909317017
+        },
+        {
+          "value": -0.48190910996506847
+        },
+        {
+          "value": -1.4024789102817057
+        },
+        {
+          "feature": "question_cue.and",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.19293059413474498
+        },
+        {
+          "value": -0.12569270894391465
+        },
+        {
+          "feature": "question_order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.comparison.>",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.4564064886115417
+        },
+        {
+          "value": 0.4774975803395298
+        },
+        {
+          "feature": "ast.aggregate.COUNT",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.3317781060559176
+        },
+        {
+          "value": -0.41106960169427903
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.05429975502192974
+        },
+        {
+          "feature": "ast.boolean.AND",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "question_hash.bigram.42",
+          "left": 3,
+          "right": 4,
+          "threshold": 1.5
+        },
+        {
+          "value": 0.4302863592600959
+        },
+        {
+          "value": -2.073218034294959
+        },
+        {
+          "feature": "heuristic_count.group_role",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.05338080905382468
+        },
+        {
+          "value": -2.3316940668180672
+        },
+        {
+          "feature": "ast.negated_predicates",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "ast.descending_terms",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.14902228144350285
+        },
+        {
+          "value": 0.23771688352735376
+        },
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.1804613322019577
+        },
+        {
+          "value": -0.9443914062109484
+        },
+        {
+          "value": 1.2670577657558666
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "heuristic_value.projection_role",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.875
+        },
+        {
+          "feature": "ast.aggregate.SUM",
+          "left": 2,
+          "right": 5,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_count.aggregate_target.avg",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.20349563248764932
+        },
+        {
+          "value": 0.7725505432041953
+        },
+        {
+          "feature": "heuristic_value.profile_binding_quality",
+          "left": 6,
+          "right": 7,
+          "threshold": 0.3180295526981354
+        },
+        {
+          "value": 0.4991294036548446
+        },
+        {
+          "value": 1.7106434584100405
+        },
+        {
+          "feature": "question_cue.order",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.5
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 10,
+          "right": 11,
+          "threshold": -2.0
+        },
+        {
+          "value": -1.104051647762987
+        },
+        {
+          "value": 0.11487447812148728
+        },
+        {
+          "feature": "ast.limit",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": 0.7979063728165399
+        },
+        {
+          "value": -1.6965112966143427
+        }
+      ]
+    },
+    {
+      "nodes": [
+        {
+          "feature": "baseline_rank_fraction",
+          "left": 1,
+          "right": 8,
+          "threshold": 0.5361498296260834
+        },
+        {
+          "feature": "heuristic_value.count_group_present",
+          "left": 2,
+          "right": 5,
+          "threshold": -2.0
+        },
+        {
+          "feature": "question_order",
+          "left": 3,
+          "right": 4,
+          "threshold": 0.5
+        },
+        {
+          "value": -1.1211360931029548
+        },
+        {
+          "value": 0.34739699832847964
+        },
+        {
+          "feature": "baseline_score",
+          "left": 6,
+          "right": 7,
+          "threshold": 52.01456832885742
+        },
+        {
+          "value": 0.19223366088781657
+        },
+        {
+          "value": -0.10609975444014522
+        },
+        {
+          "feature": "baseline_reciprocal_rank",
+          "left": 9,
+          "right": 12,
+          "threshold": 0.02062074840068817
+        },
+        {
+          "feature": "heuristic_value.model_order",
+          "left": 10,
+          "right": 11,
+          "threshold": 0.08200668543577194
+        },
+        {
+          "value": 2.742037331172934
+        },
+        {
+          "value": 1.6248973391691057
+        },
+        {
+          "feature": "ast.aggregate.MAX",
+          "left": 13,
+          "right": 14,
+          "threshold": 0.5
+        },
+        {
+          "value": -0.24616258372395045
+        },
+        {
+          "value": 1.243296180412771
+        }
+      ]
+    }
+  ],
+  "type": "deterministic_tree_ranker",
+  "version": 1
+}

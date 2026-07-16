@@ -26,8 +26,12 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from evalutil import build_mem_db, load_capped
-from spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
+try:
+    from .evalutil import build_mem_db, load_capped
+    from .spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
+except ImportError:  # direct script execution
+    from evalutil import build_mem_db, load_capped
+    from spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
 
 from engine.sql_learned_rank import (
     DecisionTree,
@@ -64,6 +68,50 @@ def _file_sha256(path: str) -> str:
     return digest.hexdigest()
 
 
+def load_or_encode_question_vectors(
+    encoder,
+    examples: Sequence[Mapping[str, Any]],
+    proposer_sha256: str,
+    cache_path: str,
+    batch_size: int = 256,
+) -> np.ndarray:
+    """Encode questions with resumable, corpus-fingerprinted checkpoints."""
+    questions = [str(example["question"]) for example in examples]
+    fingerprint = hashlib.sha256(json.dumps(
+        {"questions": questions, "proposer_sha256": proposer_sha256},
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    completed = 0
+    vectors = None
+    if cache_path and os.path.exists(cache_path):
+        cached = np.load(cache_path, allow_pickle=False)
+        cached_fingerprint = str(cached["fingerprint"].item())
+        if cached_fingerprint != fingerprint:
+            raise ValueError("question-vector cache does not match this training corpus")
+        vectors = np.asarray(cached["vectors"], dtype=np.float32)
+        completed = len(vectors)
+        if completed > len(questions):
+            raise ValueError("question-vector cache contains too many rows")
+        print(f"resuming question embeddings at {completed}/{len(questions)}", flush=True)
+
+    chunks = [vectors] if vectors is not None and len(vectors) else []
+    for start in range(completed, len(questions), max(1, batch_size)):
+        stop = min(len(questions), start + max(1, batch_size))
+        chunks.append(encoder._encode(questions[start:stop]))
+        vectors = np.concatenate(chunks, axis=0)
+        chunks = [vectors]
+        if cache_path:
+            os.makedirs(os.path.dirname(os.path.abspath(cache_path)), exist_ok=True)
+            temporary = cache_path + ".tmp.npz"
+            np.savez_compressed(temporary, fingerprint=fingerprint, vectors=vectors)
+            os.replace(temporary, cache_path)
+        print(f"  encoded {stop}/{len(questions)} questions", flush=True)
+    if vectors is None:
+        return np.empty((0, 0), dtype=np.float32)
+    return vectors
+
+
 def _execute(con, sql: str):
     try:
         return [list(row) for row in con.execute(sql).fetchall()], None
@@ -79,6 +127,13 @@ def build_training_groups(
     cap: int,
     pool: int,
     negative_pool: int,
+    proposal_model=None,
+    proposal_encoder=None,
+    question_vectors: Sequence[Any] = (),
+    profile_max_candidates: int = 32,
+    profile_per_profile: int = 4,
+    profile_generation_penalty: float = 5.0,
+    profile_binding_quality_weight: float = 2.0,
     progress_every: int = 100,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Generate candidates, execute them, and retain positives plus hard negatives."""
@@ -86,6 +141,7 @@ def build_training_groups(
     stats: Counter[str] = Counter()
     db_cache: dict[str, dict[str, dict[str, Any]]] = {}
     started = time.time()
+    descriptor_cache = {}
     for index, example in enumerate(examples, 1):
         db_id = str(example["db_id"])
         meta = metas.get(db_id)
@@ -114,7 +170,47 @@ def build_training_groups(
             spider_foreign_keys(meta),
             max_candidates=pool,
         )
-        candidates = searcher.search(str(example["question"]))
+        signals = None
+        if proposal_model is not None:
+            from engine.sql_proposal import semantic_signals_from_schema
+
+            schema_columns = tuple({
+                "table": column.ref.table,
+                "name": column.ref.name,
+                "affinity": (
+                    "INTEGER" if column.ref.type.value == "integer"
+                    else "REAL" if column.ref.type.value == "real"
+                    else "DATE" if column.ref.type.value == "date"
+                    else "TEXT"
+                ),
+                "is_date": column.ref.type.value == "date",
+            } for column in searcher.schema.columns)
+
+            def encode_with_cache(texts):
+                _, *descriptors = texts
+                missing = [
+                    descriptor for descriptor in dict.fromkeys(descriptors)
+                    if descriptor not in descriptor_cache
+                ]
+                if missing:
+                    encoded = proposal_encoder._encode(missing)
+                    descriptor_cache.update(zip(missing, encoded))
+                return np.vstack([
+                    question_vectors[index - 1],
+                    *(descriptor_cache[descriptor] for descriptor in descriptors),
+                ])
+
+            signals = semantic_signals_from_schema(
+                proposal_model, str(example["question"]), schema_columns, encode_with_cache
+            )
+        candidates = searcher.search(
+            str(example["question"]),
+            semantic_signals=signals,
+            profile_max_candidates=profile_max_candidates,
+            profile_per_profile=profile_per_profile,
+            profile_generation_penalty=profile_generation_penalty,
+            profile_binding_quality_weight=profile_binding_quality_weight,
+        )
         records = []
         positive_count = 0
         for rank, candidate in enumerate(candidates):
@@ -495,6 +591,12 @@ def _cache_header(args, train_paths: Sequence[str]) -> dict[str, Any]:
         "pool": args.pool,
         "negative_pool": args.negative_pool,
         "max_examples": args.max_examples,
+        "proposer_model": os.path.abspath(args.proposer_model) if args.proposer_model else "",
+        "proposer_sha256": _file_sha256(args.proposer_model) if args.proposer_model else "",
+        "profile_max_candidates": args.profile_max_candidates,
+        "profile_per_profile": args.profile_per_profile,
+        "profile_generation_penalty": args.profile_generation_penalty,
+        "profile_binding_quality_weight": args.profile_binding_quality_weight,
     }
 
 
@@ -538,6 +640,12 @@ def main() -> None:
     parser.add_argument("--cap", type=int, default=5000)
     parser.add_argument("--pool", type=int, default=100)
     parser.add_argument("--negative-pool", type=int, default=24)
+    parser.add_argument("--proposer-model", default="")
+    parser.add_argument("--question-vector-cache", default="")
+    parser.add_argument("--profile-max-candidates", type=int, default=32)
+    parser.add_argument("--profile-per-profile", type=int, default=4)
+    parser.add_argument("--profile-generation-penalty", type=float, default=5.0)
+    parser.add_argument("--profile-binding-quality-weight", type=float, default=2.0)
     parser.add_argument("--max-examples", type=int, default=0)
     parser.add_argument("--validation-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=1729)
@@ -550,6 +658,10 @@ def main() -> None:
     parser.add_argument("--l2", type=float, default=0.002)
     parser.add_argument("--negatives", type=int, default=12)
     args = parser.parse_args()
+    if args.profile_max_candidates < 1 or args.profile_per_profile < 1:
+        parser.error("profile candidate budgets must be positive")
+    if args.profile_generation_penalty < 0 or args.profile_binding_quality_weight < 0:
+        parser.error("profile weights must be nonnegative")
 
     train_paths = args.train or [
         os.path.join(data, "train_spider.json"),
@@ -566,10 +678,36 @@ def main() -> None:
         print(f"loading candidate cache {args.cache}", flush=True)
         groups = load_cache(args.cache, header)
     else:
+        proposal_model = None
+        proposal_encoder = None
+        question_vectors = ()
+        if args.proposer_model:
+            from engine.encoder_overlay import EncoderQuery
+            from engine.sql_proposal import SQLProposalModel
+
+            proposal_model = SQLProposalModel.load(args.proposer_model)
+            proposal_encoder = EncoderQuery()
+            print("encoding ranker-training questions for profile proposals...", flush=True)
+            vector_cache = args.question_vector_cache or (
+                args.cache + ".questions.npz" if args.cache else ""
+            )
+            question_vectors = load_or_encode_question_vectors(
+                proposal_encoder,
+                examples,
+                _file_sha256(args.proposer_model),
+                vector_cache,
+            )
         print(f"generating candidates for {len(examples)} training examples", flush=True)
         groups, generation_stats = build_training_groups(
             examples, metas, args.dbs, args.config, args.cap, args.pool,
             args.negative_pool,
+            proposal_model=proposal_model,
+            proposal_encoder=proposal_encoder,
+            question_vectors=question_vectors,
+            profile_max_candidates=args.profile_max_candidates,
+            profile_per_profile=args.profile_per_profile,
+            profile_generation_penalty=args.profile_generation_penalty,
+            profile_binding_quality_weight=args.profile_binding_quality_weight,
         )
         if args.cache:
             save_cache(args.cache, header, groups)
@@ -589,6 +727,13 @@ def main() -> None:
         "config": args.config,
         "pool": args.pool,
         "cap": args.cap,
+        "proposer_model_sha256": (
+            _file_sha256(args.proposer_model) if args.proposer_model else ""
+        ),
+        "profile_max_candidates": args.profile_max_candidates,
+        "profile_per_profile": args.profile_per_profile,
+        "profile_generation_penalty": args.profile_generation_penalty,
+        "profile_binding_quality_weight": args.profile_binding_quality_weight,
         "seed": args.seed,
         "train_examples": len(train_groups),
         "validation_examples": len(validation_groups),

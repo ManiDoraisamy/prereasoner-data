@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "artifact": {
     "path": "spider/data/sql_proposer.json",
     "sha256": "301f9f5e39b5bd2fdb8e2f4dccc5187d24f46fb5a1fa46720704121ae61fdd56",
@@ -144,9 +144,39 @@
       "average_candidates": 16.42
     }
   },
+  "profile_aware_ranker": {
+    "artifact": {
+      "path": "engine/data/sql_profile_ranker.json",
+      "sha256": "5a6fa9b7a2af971952bc5579347320a79a9e764a852f08120abdcad8c5aff7a5",
+      "bytes": 171294
+    },
+    "training_validation": {
+      "examples": 1329,
+      "databases_disjoint": true,
+      "oracle_correct": 731,
+      "baseline_top1_correct": 517,
+      "baseline_top1_pct": 38.901,
+      "learned_top1_correct": 544,
+      "learned_top1_pct": 40.933,
+      "baseline_mrr": 0.432252,
+      "learned_mrr": 0.445427
+    },
+    "spider_dev": {
+      "examples": 1034,
+      "raw_top1_strict_correct": 349,
+      "raw_top1_strict_pct": 33.8,
+      "safe_top1_strict_correct": 408,
+      "safe_top1_strict_pct": 39.5,
+      "unranked_top10_strict_correct": 529,
+      "safe_ranked_top10_strict_correct": 539,
+      "safe_ranked_top10_strict_pct": 52.1,
+      "pool_oracle_strict_correct": 553,
+      "pool_oracle_strict_pct": 53.5
+    }
+  },
   "decision": {
     "promotion_gate_passed": false,
     "reason": "The offline accuracy-safety gate passes: compressed profile expansion preserves all 408 baseline top-1 strict answers while adding 69 top-10 and 88 full-pool strict-reachable examples, with 22.02 average candidates instead of the broad beam's 78.71. Production promotion still requires integrated execution and latency validation.",
-    "next_objective": "Run the safeguarded profile beam through the integrated execution path, measure latency, and improve ranking within the 553-example strict-reachable pool."
+    "next_objective": "Calibrate a promotion gate that lets high-confidence generated candidates challenge rank one, then run the safeguarded profile beam through integrated execution and latency validation."
   }
 }

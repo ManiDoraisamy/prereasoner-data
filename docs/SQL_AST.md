@@ -323,6 +323,15 @@ the recall ceiling that motivated compression. The next work is integrated execu
 measurement and ranking within the larger safe pool. A larger encoder remains a later controlled
 capacity ablation.
 
+A profile-aware Phase 6 tree ranker was subsequently trained on all 7,000 Spider training
+examples using the same compressed beam and execution-derived strict labels. Its database-disjoint
+validation split improves top-1 from 517/1,329 (38.9%) to 544/1,329 (40.9%) and MRR from 0.4323
+to 0.4454. On Spider dev, unconstrained reranking is not calibrated and drops top-1 strict to
+349 (33.8%). Keeping the baseline candidate first preserves 408 (39.5%) and raises top-10 strict
+oracle from 529 (51.2%) to 539 (52.1%). The frozen deterministic artifact is
+`engine/data/sql_profile_ranker.json`; full dev metrics are in
+`spider/results/ast_profile_ranked.json`.
+
 Full metrics are in `spider/results/ast_proposer.json` and the promotion decision is in
 `spider/results/ast_proposer_ablation.json`; the full pool run is
 `spider/results/ast_profile_expansion.json`.
@@ -405,7 +414,7 @@ The hermetic AST suite executes generated SQL against in-memory SQLite:
 python -m tests.test_sql_ast
 ```
 
-Its 70 cases cover typing and grouping rejection, projection and filter isolation,
+Its 71 cases cover typing and grouping rejection, projection and filter isolation,
 multiple aggregates, direct and bridge joins, deterministic ordering, execution
 reranking, subqueries, set operations, aliases, self-joins, nested aggregation,
 `HAVING`, disjunction scope, inferred high-confidence joins, extrema, zero-inclusive
@@ -422,6 +431,7 @@ serialization, and deterministic-inference experiment, but its current artifact 
 not accurate enough to promote. Future accuracy work should target measured
 candidate-recall and schema-binding failures before adding more ranking complexity. The
 failure miner, proposal corpus, structured training objective, compact artifact, profile-driven
-typed expansion, targeted contrast data, safeguarded compression, and full pool ablation are
-complete. The next implementation phase is integrated execution/latency validation and ranking
-inside the expanded pool, not an unpaired model-size swap.
+typed expansion, targeted contrast data, safeguarded compression, profile-aware ranker training,
+resumable embedding caches, and full pool ablation are complete. The next implementation phase is
+confidence-calibrated rank-one promotion plus integrated execution/latency validation, not an
+unpaired model-size swap.

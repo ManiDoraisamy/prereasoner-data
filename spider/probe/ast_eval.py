@@ -170,6 +170,9 @@ def main():
         stats["phase6"] = collections.Counter()
     if proposal_model is not None:
         stats["profile_expansion"] = collections.Counter()
+        if rank_model is not None:
+            stats["profile_ranked"] = collections.Counter()
+            stats["profile_ranked_safe"] = collections.Counter()
     started = time.time()
 
     for index, example in enumerate(dev, 1):
@@ -241,6 +244,14 @@ def main():
                 profile_preserve_baseline_top=not args.allow_profile_top,
             )
         phase6 = rank_model.rerank(example["question"], phase5) if rank_model else ()
+        profile_ranked = ()
+        profile_ranked_safe = ()
+        if rank_model is not None and profile_candidates:
+            profile_ranked = rank_model.rerank(example["question"], profile_candidates)
+            fallback = profile_candidates[0]
+            profile_ranked_safe = (fallback,) + tuple(
+                candidate for candidate in profile_ranked if candidate.sql != fallback.sql
+            )
 
         con = build_mem_db(tables)
         gold_rows, gold_error = exec_sql_timed(con, example["query"])
@@ -254,6 +265,12 @@ def main():
                 _score(
                     stats["profile_expansion"], gold_rows, profile_candidates, con, args.top_k
                 )
+                if rank_model is not None:
+                    _score(stats["profile_ranked"], gold_rows, profile_ranked, con, args.top_k)
+                    _score(
+                        stats["profile_ranked_safe"], gold_rows, profile_ranked_safe,
+                        con, args.top_k,
+                    )
             if rank_model is not None:
                 _score(stats["phase6"], gold_rows, phase6, con, args.top_k)
         else:
@@ -287,6 +304,11 @@ def main():
         result["profile_expansion"] = _summary(
             stats["profile_expansion"], len(dev)
         )
+        if rank_model is not None:
+            result["profile_ranked"] = _summary(stats["profile_ranked"], len(dev))
+            result["profile_ranked_safe"] = _summary(
+                stats["profile_ranked_safe"], len(dev)
+            )
     print(json.dumps(result, indent=2))
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

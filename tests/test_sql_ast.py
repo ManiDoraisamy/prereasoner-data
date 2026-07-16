@@ -9,6 +9,8 @@ import sqlite3
 import sys
 import tempfile
 
+import numpy as np
+
 from engine.sql_ast import (
     ASTValidationError,
     Aggregate,
@@ -65,6 +67,7 @@ from spider.probe.build_ast_proposal_data import (
     extract_literal_targets,
     split_database_ids,
 )
+from spider.probe.train_ast_ranker import load_or_encode_question_vectors
 
 
 PEOPLE = {
@@ -411,11 +414,15 @@ def test_profile_expansion_caps_variants_and_penalizes_transformation():
         (profile_query(SelectQuery((SelectItem(age),), "people")).sketch_map,),
     )
     expanded = ProfileQueryExpander(
-        schema, signals, max_candidates=2, per_profile=2, generation_penalty=4.0
+        schema, signals, max_candidates=2, per_profile=2, generation_penalty=4.0,
+        binding_quality_weight=2.0,
     ).expand("show people details", [scaffold])
     assert 0 < len(expanded) <= 2
-    assert all(candidate.score <= scaffold.score - 4.0 for candidate in expanded)
+    assert all(candidate.score <= scaffold.score - 2.0 for candidate in expanded)
     assert all("profile_binding_quality" in dict(candidate.features) for candidate in expanded)
+    best_quality = max(dict(candidate.features)["profile_binding_quality"] for candidate in expanded)
+    best_score = max(candidate.score for candidate in expanded)
+    assert best_score == scaffold.score - 4.0 + 2.0 * best_quality
 
 
 def test_profile_expansion_preserves_hand_ranked_fallback_top():
@@ -1282,6 +1289,33 @@ def test_sql_proposer_artifact_round_trip_is_deterministic():
     assert loaded.score_column_roles("show name", question, "name", "text", candidate) == before
 
 
+def test_ranker_question_vector_cache_is_reused_and_fingerprinted():
+    class FakeEncoder:
+        def __init__(self):
+            self.calls = 0
+
+        def _encode(self, texts):
+            self.calls += 1
+            return np.asarray([[len(text), self.calls] for text in texts], dtype=np.float32)
+
+    examples = ({"question": "one"}, {"question": "three"}, {"question": "seven"})
+    with tempfile.TemporaryDirectory() as directory:
+        path = directory + "/questions.npz"
+        first = FakeEncoder()
+        expected = load_or_encode_question_vectors(first, examples, "abc", path, batch_size=2)
+        assert first.calls == 2
+        second = FakeEncoder()
+        actual = load_or_encode_question_vectors(second, examples, "abc", path, batch_size=2)
+        assert second.calls == 0
+        assert np.array_equal(actual, expected)
+        try:
+            load_or_encode_question_vectors(second, examples, "different", path, batch_size=2)
+        except ValueError as exc:
+            assert "does not match" in str(exc)
+        else:
+            raise AssertionError("stale question-vector cache was accepted")
+
+
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -1353,6 +1387,7 @@ TESTS = [
     test_ast_proposal_targets_keep_typed_filter_literals,
     test_ast_proposal_contrasts_cover_targeted_same_profile_families,
     test_sql_proposer_artifact_round_trip_is_deterministic,
+    test_ranker_question_vector_cache_is_reused_and_fingerprinted,
 ]
 
 
