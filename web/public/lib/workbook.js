@@ -214,6 +214,7 @@ function showRecalc(on){
 }
 function recalc(){                                            // re-run the last question on the edited data (auto-composed; no retyping)
   if(!SETTLED&&!FAILMSG) return;                             // one run at a time
+  syncInputsToSheets();                                      // serialize the edits INTO SHEETS before the run (recalc clears EDITED, so startTurn can't)
   showRecalc(false); EDITED=false;
   const q=LASTQ||question; if(!q) return;
   archiveTurn(); question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
