@@ -39,6 +39,7 @@ let BOOK=[],ACTIVE=null,AUTO=true;
 let CHAT=[],question=getQ();
 let J=null,VIEWS=[],RESOLVES=[],SETTLED=false,DONE=false,UNSUB=null,doneTimer=null,STATUS='Analyzing input…',FAILMSG=null,RUN=0;
 let SEEN=new Set(),SEEN_R=new Set();
+let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -107,8 +108,13 @@ function resultSummary(){
   if(r.rows.length===1) return {k:'result',v:r.columns.map((c,i)=>c+': '+fmt(r.rows[0][i])).join('  ·  '),big:false};
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
+function conv2html(t){ return esc(String(t||'')).replace(/\n/g,'<br>'); }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
+  if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // a clarify / non-data question, answered right here
+    if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
+    return h; }
+  if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
   const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
   if(refs.length)
@@ -124,6 +130,7 @@ function turnHtml(){                                          // the CURRENT (li
 function archiveTurn(){                                       // freeze the finished turn to a MINIMAL line (no dead links)
   let h;
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
+  else if(CONV) h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // freeze the conversational reply (drop the run button)
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
   CHAT.push({q:question, html:h});
@@ -179,14 +186,39 @@ function finalize(){
 }
 function renderFromJSON(j){
   if(SETTLED)return;
-  if(j.clarify){ goClarify(Object.assign({question:question},j)); return; }
+  if(j.clarify){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
   J=j; (j.views||[]).forEach(v=>appendView(v));
   DONE=true; finalize();
 }
 function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); }
-function goClarify(c){ settle();                              // record which page raised the clarify so the rephrase re-runs on the SAME endpoint
-  try{ c=Object.assign({from: WB.endpoint.indexOf('/api/world')>=0?'world':'reason'}, c); sessionStorage.setItem(SS.CLARIFY,JSON.stringify(c)); }catch(_){}; location.href='clarify'; }
+// Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Sonnet fallback
+// (POST /api/converse); if it isn't deployed yet or errors, degrade to a payload-based "did you mean".
+async function conversationalReply(c){
+  settle();                                                  // stop the reasoning stream for this turn
+  CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS='Thinking…'; renderRail();
+  let reply=null;
+  try{
+    const token=await window.ensureToken();
+    const res=await fetch(API_BASE+'/api/converse',{method:'POST',
+      headers:{'content-type':'application/json','Authorization':'Bearer '+token},
+      body:JSON.stringify({question:c.question,
+        clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null}:null,
+        error:c.error||null, tables:SHEETS, conversation_id:convId()})});
+    if(res.ok){ const j=await res.json().catch(()=>null); reply=j&&j.reply; }
+  }catch(_){}
+  CONVPENDING=false;
+  CONV=reply||clarifyFallbackText(c);
+  renderRail();
+}
+function clarifyFallbackText(c){
+  const p=(c&&c.proposed)||'';
+  let t = p ? ('Did you mean “'+p+'”? ') : 'I couldn’t map that to a query over your sheets. ';
+  t += 'Rephrase it as a question about your data — a total, count, average, or filter — or tap a step in the trace panel to see how a value was derived.';
+  return t;
+}
+function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); question=p;
+  try{ sessionStorage.setItem(SS.Q,p); }catch(_){}; resetRun(); paint(); startRun(); }
 
 async function startRun(){
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
@@ -249,6 +281,7 @@ function resetRun(){
   if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} clearTimeout(doneTimer);
   BOOK=BOOK.filter(s=>s.cls==='input');                       // the user's sheets stay; derived/reference sheets are the run's
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
+  CONV=null; CONVPENDING=false; CONVPROP=null;
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; ACTIVE=BOOK.length?BOOK[0].id:null;
 }

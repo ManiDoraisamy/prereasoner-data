@@ -101,6 +101,8 @@ class H(BaseHTTPRequestHandler):
             self._post_world()
         elif path == DIM_ROUTE:
             self._post_dimension()
+        elif path == "/api/converse":
+            self._post_converse()
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:
@@ -144,6 +146,29 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._send(400, json.dumps({"error": "target must be conversation | user | orphans"})); return
             self._send(200, json.dumps({"ok": True, **out}))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
+
+    # ---------------- /api/converse (Sonnet conversational fallback for the /reason rail) ----------------
+    def _post_converse(self):
+        """Answer a clarify / non-data question conversationally (Sonnet), so the rail replies in-chat
+        instead of redirecting. No model/Postgres — a single Anthropic call; the deterministic path is
+        unchanged. Firebase-auth'd like the reasoning routes; a missing key degrades to a clear 503."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                self._send(200, json.dumps({"error": "payload too large"})); return
+            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            from engine import converse
+            try:
+                text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
+                                      error=req.get("error"), tables=req.get("tables"))
+            except Exception as e:                           # noqa: BLE001 — no key / SDK / upstream: let the client fall back
+                self._send(503, json.dumps({"error": f"converse unavailable: {type(e).__name__}: {e}"})); return
+            self._send(200, json.dumps({"reply": text}))
         except Exception as e:                               # noqa: BLE001
             self._send(500, json.dumps({"error": str(e)}))
 

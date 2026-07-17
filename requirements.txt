@@ -12,6 +12,7 @@ peft>=0.13                      # loads the qwen_lora adapter onto the base Qwen
 numpy==1.26.4
 psycopg2-binary>=2.9            # live world Postgres (pgvector)
 firebase-admin>=6.5             # auth token verification + optional RTDB trace streaming
+anthropic>=0.40                 # Sonnet conversational fallback for /api/converse (clarify / non-data questions)
 spacy==3.8.13                   # entity-surface candidates for prompt resolution
 click>=8.1                      # spaCy 3.8's package init imports its CLI (spacy.cli), which needs click at runtime
 en_core_web_md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
