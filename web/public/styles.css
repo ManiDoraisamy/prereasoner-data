@@ -191,10 +191,14 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .convrun{margin-top:8px}
 .convrun button{all:unset;cursor:pointer;display:inline-block;padding:7px 14px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);border-radius:9999px;font:600 12px var(--disp)}
 .convrun button:hover{background:#eee9fc;border-color:var(--brand)}
-/* orchestrated (Sonnet assist): the rewritten question(s) + the mode badge */
-.asks{margin-top:8px;display:flex;flex-direction:column;gap:4px}
-.askline{padding:5px 10px;border-radius:8px;background:#f6f4ff;border:1px dashed #d8cdf5;color:#5b5273;font:12.5px/1.5 var(--disp)}
-.askline b{color:var(--brand);font-weight:600}
+/* orchestrated (Sonnet assist): the collapsible chain of thought + the mode badge */
+.cot{margin-top:7px}
+.cotbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:3px 4px;color:#9a93ad;font:12px var(--disp)}
+.cotbtn:hover{color:var(--brand)}
+.cotchev{display:inline-block;transition:transform .15s;font:600 13px var(--disp)}
+.cot.open .cotchev{transform:rotate(90deg)}
+.cotbody{margin-top:6px}
+.cotask{padding:5px 10px;margin-bottom:6px;border-radius:8px;background:#f6f4ff;border:1px dashed #d8cdf5;color:#5b5273;font:12.5px/1.5 var(--disp)}
 .modebadge{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;margin:0 0 10px;padding:3px 10px;border-radius:9999px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);font:600 11px var(--disp);cursor:default}
 
 /* chat input bar (rail bottom) */

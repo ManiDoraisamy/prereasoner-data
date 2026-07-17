@@ -125,23 +125,28 @@ function resultSummary(){
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
 function conv2html(t){ return esc(String(t||'')).replace(/\n/g,'<br>'); }
-// Orchestrated: show the REWRITTEN question(s) Sonnet actually sent to the engine ("How about germany?"
-// -> "total amount in Germany"), so the interpretation is visible and auditable.
-function asksHtml(){
-  if(!ORCH||!CALLS.length) return '';
-  return '<div class=asks>'+CALLS.map(c=>'<div class=askline>&#8618; read as <b>&ldquo;'+esc(c.question)+'&rdquo;</b></div>').join('')+'</div>';
-}
 function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>'):''; }
+function asksLine(){ return CALLS.length?('<div class=cotask>read as '+CALLS.map(c=>'&ldquo;'+esc(c.question)+'&rdquo;').join(', ')+'</div>'):''; }
+// The chain of thought — collapsed by default under a "how I got this" toggle. Holds the technical detail
+// (the rewritten question + the clickable steps that open each sheet, where the SQL lives) so the chat
+// bubble itself stays a plain, human answer. Toggling flips the DOM directly (no re-render needed post-settle).
+function cotHtml(){
+  if(!ORCH) return '';
+  const body=asksLine()+derivLinks();
+  if(!body) return '';
+  return '<div class=cot><button class=cotbtn onclick="toggleCot(this)"><span class=cotchev>&#8250;</span>how I got this</button><div class=cotbody hidden>'+body+'</div></div>';
+}
+function toggleCot(btn){ const wrap=btn.parentElement, body=wrap.querySelector('.cotbody'); if(!body)return;
+  const opening=body.hasAttribute('hidden'); if(opening)body.removeAttribute('hidden'); else body.setAttribute('hidden',''); wrap.classList.toggle('open',opening); }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
-  if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // a clarify / non-data question, answered right here
+  if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // the plain answer (or a clarify/meta reply), for the end user
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
-    if(ORCH) h+=asksHtml();                                 // orchestrated: the rewritten question(s)
-    if(PRESENT||ORCH) h+=derivLinks();                      // keep the derivation reachable from the rail (it lives in the panel)
+    if(ORCH) h+=cotHtml();                                  // technical detail (rewrite + steps + SQL) tucked behind "how I got this"
+    else if(PRESENT) h+=derivLinks();                       // present mode keeps the derivation reachable from the rail
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
-  if(ORCH) h+=asksHtml();                                   // show the rewrite live while the engine streams
   const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
   if(refs.length)
     h+='<div class=steps>'+refs.map(s=>'<button class="steplink refl'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>&#9707;</span><span class=stx>looked up '+esc(s.name)+'</span></button>').join('')+'</div>';
@@ -156,7 +161,7 @@ function turnHtml(){                                          // the CURRENT (li
 function archiveTurn(){                                       // freeze the finished turn to a MINIMAL line (no dead links)
   let h;
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
-  else if(CONV) h='<div class=convmsg>'+conv2html(CONV)+'</div>'+(ORCH?asksHtml():'');   // freeze the reply + the rewritten question(s)
+  else if(CONV) h='<div class=convmsg>'+conv2html(CONV)+'</div>'+(ORCH?('<div class=cot>'+asksLine()+'</div>'):'');   // freeze the reply + a muted "read as" (steps are gone)
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
   CHAT.push({q:question, html:h});
