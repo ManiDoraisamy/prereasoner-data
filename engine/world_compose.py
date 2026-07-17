@@ -119,6 +119,34 @@ class ComposedWorldQuery:
         except Exception:                                        # noqa: BLE001
             return True
 
+    # An emotional / opinion / first-person-worry cue. When a question IS a real data query (an answer gets
+    # computed) but is phrased like a human talking rather than a query spec, a bare number reads cold — we
+    # route the computed answer + derivation through Sonnet to PRESENT it in human words. Cheap lexical test;
+    # it fires only alongside a real answer, so an occasional false positive just means a warmer reply.
+    _HUMAN_CUE = frozenset({
+        "worried", "worry", "worrying", "concerned", "concern", "concerning", "hope", "hoping", "afraid",
+        "scared", "nervous", "anxious", "stressed", "feel", "feeling", "felt", "think", "thinking", "believe",
+        "guess", "wonder", "wondering", "curious", "love", "hate", "glad", "sad", "happy", "upset",
+        "frustrated", "excited", "surprised", "disappointed", "relieved", "great", "terrible", "awful",
+        "amazing", "wonderful", "okay", "ok", "normal", "healthy", "honestly", "frankly", "really",
+        "please", "confused", "struggling", "overwhelmed", "proud", "embarrassed"})
+    _HUMAN_RE = re.compile(
+        r"\b(i'?m|i am|we'?re|we are|i'?ve|should i|should we|do you think|what do you think|"
+        r"is (?:that|this|it) (?:an? )?(?:good|bad|ok|okay|normal|healthy|fine|concerning|"
+        r"problem|bad news)|too (?:high|low|expensive|cheap|slow|risky)|"
+        r"am i|are we|is my|is our)\b", re.I)
+
+    def _human_tone(self, question):
+        """True iff the phrasing carries an emotional / opinion / first-person cue — a cheap signal that a
+        computed answer should be PRESENTED in human words rather than shown as a bare table. Best-effort."""
+        try:
+            ql = (question or "").lower()
+            if self._HUMAN_RE.search(ql):
+                return True
+            return bool(set(re.findall(r"[a-z']+", ql)) & self._HUMAN_CUE)
+        except Exception:                                        # noqa: BLE001
+            return False
+
     # The analytical attributes of each resolved-entity TYPE: (source table, key column, [(world_col, exposed_name)]).
     # The bridge gives world_type + world_key (qid for a city, canonical name otherwise); we join the source table by
     # that key to expose the FULL resolved-entity row (population / atomic_number / mass / ...), not just country.

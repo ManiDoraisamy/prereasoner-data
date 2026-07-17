@@ -40,6 +40,7 @@ let CHAT=[],question=getQ();
 let J=null,VIEWS=[],RESOLVES=[],SETTLED=false,DONE=false,UNSUB=null,doneTimer=null,STATUS='Analyzing input…',FAILMSG=null,RUN=0;
 let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
+let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -113,6 +114,8 @@ function turnHtml(){                                          // the CURRENT (li
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
   if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // a clarify / non-data question, answered right here
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
+    if(PRESENT){ const derivs=BOOK.filter(s=>s.cls==='deriv');   // present mode: keep the derivation reachable from the rail (it lives in the panel)
+      if(derivs.length) h+='<div class=steps>'+derivs.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>'; }
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
@@ -183,33 +186,44 @@ function finalize(){
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS='Answered in '+n+' step'+(n===1?'':'s');
   paint();
+  if(PRESENT) enterPresent();                                 // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
+}
+// The answer is real and the derivation is now in the panel — route it through Sonnet to PRESENT in words.
+function enterPresent(){
+  if(CONV||CONVPENDING)return;                                // already presenting / presented
+  conversationalReply({question:question, present:true, answer:(J&&J.result)||null, sql:(J&&J.sql)||null});
 }
 function renderFromJSON(j){
   if(SETTLED)return;
   if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
   J=j; (j.views||[]).forEach(v=>appendView(v));
+  if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
 }
 function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); }
 // Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Sonnet fallback
 // (POST /api/converse); if it isn't deployed yet or errors, degrade to a payload-based "did you mean".
 async function conversationalReply(c){
+  const present=!!(c&&c.present);
   settle();                                                  // stop the reasoning stream for this turn
-  BOOK=BOOK.filter(s=>s.cls==='input'); ACTIVE=BOOK.length?BOOK[0].id:null;   // drop any abandoned reasoning sheets
-  CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS='Thinking…'; renderRail();
+  if(present){ PRESENT=true; }                               // present: KEEP the derivation sheets in the panel
+  else{ BOOK=BOOK.filter(s=>s.cls==='input'); ACTIVE=BOOK.length?BOOK[0].id:null; }   // fallback: drop abandoned reasoning sheets
+  CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS=present?'Putting it in context…':'Thinking…'; renderRail();
   let reply=null;
   try{
     const token=await window.ensureToken();
+    const body={question:c.question,
+      clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null}:null,
+      error:c.error||null, tables:SHEETS, conversation_id:convId()};
+    if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
       headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-      body:JSON.stringify({question:c.question,
-        clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null}:null,
-        error:c.error||null, tables:SHEETS, conversation_id:convId()})});
+      body:JSON.stringify(body)});
     if(res.ok){ const j=await res.json().catch(()=>null); reply=j&&j.reply; }
   }catch(_){}
   CONVPENDING=false;
-  CONV=reply||clarifyFallbackText(c);
+  CONV=reply||(present?null:clarifyFallbackText(c));         // present + Sonnet unavailable -> keep the raw result (CONV null shows the derivation summary)
   renderRail();
 }
 function clarifyFallbackText(c){
@@ -250,6 +264,7 @@ async function startRun(){
       onResult:r=>{ if(!live())return; J=J||{}; J.result=r; if(DONE)markDone(); },
       onClarify:c=>{ if(!live())return; conversationalReply(Object.assign({question:question,clarify:true},c)); },
       onLowConfidence:()=>{ if(!live())return; conversationalReply({question:question}); },
+      onPresent:()=>{ if(RUN!==myRun)return; PRESENT=true; if(SETTLED&&!CONV&&!CONVPENDING) enterPresent(); },   // real answer, human phrasing -> present it (fires on/after finalize)
       onError:e=>{ if(!live())return; fail(e||'the model reported an error'); settle(); },
     });
   }
@@ -283,7 +298,7 @@ function resetRun(){
   if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} clearTimeout(doneTimer);
   BOOK=BOOK.filter(s=>s.cls==='input');                       // the user's sheets stay; derived/reference sheets are the run's
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
-  CONV=null; CONVPENDING=false; CONVPROP=null;
+  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false;
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; ACTIVE=BOOK.length?BOOK[0].id:null;
 }

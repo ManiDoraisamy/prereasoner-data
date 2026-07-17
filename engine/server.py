@@ -165,7 +165,8 @@ class H(BaseHTTPRequestHandler):
             from engine import converse
             try:
                 text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
-                                      error=req.get("error"), tables=req.get("tables"))
+                                      error=req.get("error"), tables=req.get("tables"),
+                                      answer=req.get("answer"), sql=req.get("sql"))
             except Exception as e:                           # noqa: BLE001 — no key / SDK / upstream: let the client fall back
                 self._send(503, json.dumps({"error": f"converse unavailable: {type(e).__name__}: {e}"})); return
             self._send(200, json.dumps({"reply": text}))

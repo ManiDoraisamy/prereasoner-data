@@ -38,7 +38,18 @@ class WorldReasoner:
                         "model": "engine - conversational (not a data query)"}
         except Exception as e:                                              # noqa: BLE001 — never block a real query
             print("coverage pre-gate skipped:", e, flush=True)
-        return self.composed.serve(tables, question, sub, as_of=as_of, emit=emit)  # else delegate (no regression)
+        res = self.composed.serve(tables, question, sub, as_of=as_of, emit=emit)  # delegate (no regression)
+        # PRESENT signal: the answer is real, but the phrasing is emotional/human — flag it so the UI routes
+        # the computed answer + derivation through Sonnet to present it in words (derivation still shown in the
+        # panel). Only when signaled (human tone) — plain data queries stay raw, zero Sonnet cost. Best-effort.
+        try:
+            if (isinstance(res, dict) and res.get("result") and not res.get("clarify")
+                    and not res.get("error") and not res.get("low_confidence")
+                    and self.composed._human_tone(question)):
+                res["present"] = True
+        except Exception as e:                                              # noqa: BLE001 — never break the answer
+            print("present flag skipped:", e, flush=True)
+        return res
 
     def _ref_and_limit(self, question):
         q = question or ""

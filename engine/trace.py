@@ -66,6 +66,8 @@ def stream_final(emit, res):
         else:
             if res.get("result"):
                 emit("result", res["result"])
+            if res.get("present"):
+                emit("present", True)                         # real answer, human phrasing -> UI presents it via Sonnet
             emit("status", "done")
     except Exception:                                    # noqa: BLE001 — streaming is best-effort
         pass
