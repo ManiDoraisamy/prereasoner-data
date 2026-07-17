@@ -28,6 +28,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const viewsRef = ref(db, `runs/${uid}/${jobId}/views`);
   const resultRef = ref(db, `runs/${uid}/${jobId}/result`);
   const clarifyRef = ref(db, `runs/${uid}/${jobId}/clarify`);
+  const lowConfRef = ref(db, `runs/${uid}/${jobId}/low_confidence`);
   const errorRef = ref(db, `runs/${uid}/${jobId}/error`);
   const questionRef = ref(db, `runs/${uid}/${jobId}/question`);
   const uConv = onValue(convRef, s => { const v = s.val(); if (v != null && cb.onConversation) cb.onConversation(v); });
@@ -37,8 +38,9 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uResult = onValue(resultRef, s => { const v = s.val(); if (v && cb.onResult) cb.onResult(v); });
   const uQuestion = onValue(questionRef, s => { const v = s.val(); if (v != null && cb.onQuestion) cb.onQuestion(v); });
   const uClarify = onValue(clarifyRef, s => { const v = s.val(); if (v && cb.onClarify) cb.onClarify(v); });
+  const uLowConf = onValue(lowConfRef, s => { const v = s.val(); if (v && cb.onLowConfidence) cb.onLowConfidence(); });
   const uError = onValue(errorRef, s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
-  return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uError(); off(base); } catch(_){} };
+  return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uLowConf(); uError(); off(base); } catch(_){} };
 };
 
 // Google sign-in as a same-tab REDIRECT (no button, no popup blockers): completes a pending

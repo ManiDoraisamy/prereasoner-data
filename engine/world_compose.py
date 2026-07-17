@@ -75,6 +75,50 @@ class ComposedWorldQuery:
             print("compose gate failed, delegating:", e, flush=True)
             return False
 
+    # A question with a DATA-INTENT word, or that names a schema column/table, or whose token resolves to a
+    # world entity, is a query OVER THE DATA. A question with NONE of these ("how does this work?") is almost
+    # certainly conversational — route it to the Sonnet fallback instead of forcing a degenerate COUNT(*). This
+    # is the COVERAGE gate for wholly-non-data questions (the clarify gate still handles AMBIGUOUS data ones).
+    _DATA_INTENT = frozenset({
+        "total", "sum", "average", "avg", "mean", "count", "number", "list", "show", "give", "display",
+        "top", "most", "least", "largest", "smallest", "highest", "lowest", "biggest", "maximum", "minimum",
+        "max", "min", "per", "each", "group", "grouped", "sort", "sorted", "order", "ordered", "rank",
+        "ranked", "distinct", "unique", "where", "greater", "less", "between", "over", "under", "above",
+        "below", "fewer", "filter"})
+    _META_STOP = frozenset({
+        "how", "does", "this", "that", "it", "work", "works", "the", "a", "an", "is", "are", "was", "were",
+        "do", "did", "you", "your", "we", "our", "me", "i", "can", "could", "would", "should", "what", "why",
+        "when", "who", "explain", "tell", "about", "mean", "means", "help", "and", "or", "but", "so"})
+
+    def _has_data_signal(self, question, tables):
+        """True iff the question looks like a query over the DATA (a data-intent word, a schema column/table
+        mention, or a token that resolves to a world entity). False -> a conversational/meta question that the
+        fallback should answer, not a forced degenerate query. Best-effort; on any error it returns True (never
+        block a real query)."""
+        import re as _re
+        try:
+            ql = (question or "").lower()
+            if _re.search(r"\bhow\s+(?:many|much)\b", ql):
+                return True                                       # 'how many/much' is a data intent (not 'how does…')
+            toks = set(_re.findall(r"[a-z]+", ql))
+            if toks & self._DATA_INTENT:
+                return True
+            schw = set()
+            for t in (tables or []):
+                cols = t.get("columns") or [c.strip() for c in (str(t.get("data", "")).splitlines() or [""])[0].split(",")]
+                for nm in [t.get("name", "")] + list(cols):
+                    for part in _re.split(r"[^a-z0-9]+", str(nm).lower()):
+                        if len(part) > 1:
+                            schw.add(part); schw.add(part.rstrip("s"))
+            if toks & schw:
+                return True
+            content = [w for w in toks if len(w) > 2 and w not in self._META_STOP]
+            if content and self.qw._best_world_entity(content):
+                return True
+            return False
+        except Exception:                                        # noqa: BLE001
+            return True
+
     # The analytical attributes of each resolved-entity TYPE: (source table, key column, [(world_col, exposed_name)]).
     # The bridge gives world_type + world_key (qid for a city, canonical name otherwise); we join the source table by
     # that key to expose the FULL resolved-entity row (population / atomic_number / mass / ...), not just country.

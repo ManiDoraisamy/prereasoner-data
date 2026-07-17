@@ -186,7 +186,7 @@ function finalize(){
 }
 function renderFromJSON(j){
   if(SETTLED)return;
-  if(j.clarify){ conversationalReply(Object.assign({question:question},j)); return; }
+  if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
   J=j; (j.views||[]).forEach(v=>appendView(v));
   DONE=true; finalize();
@@ -196,6 +196,7 @@ function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();
 // (POST /api/converse); if it isn't deployed yet or errors, degrade to a payload-based "did you mean".
 async function conversationalReply(c){
   settle();                                                  // stop the reasoning stream for this turn
+  BOOK=BOOK.filter(s=>s.cls==='input'); ACTIVE=BOOK.length?BOOK[0].id:null;   // drop any abandoned reasoning sheets
   CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS='Thinking…'; renderRail();
   let reply=null;
   try{
@@ -247,7 +248,8 @@ async function startRun(){
       onResolve:(k,r)=>{ if(!live()||!r||typeof r!=='object'||!r.column||SEEN_R.has(k))return; SEEN_R.add(k); appendResolve(r); if(DONE)markDone(); },
       onView:(k,v)=>{ if(!live()||!v||SEEN.has(k))return; SEEN.add(k); appendView(v); if(DONE)markDone(); },
       onResult:r=>{ if(!live())return; J=J||{}; J.result=r; if(DONE)markDone(); },
-      onClarify:c=>{ if(!live())return; goClarify(Object.assign({question:question},c)); },
+      onClarify:c=>{ if(!live())return; conversationalReply(Object.assign({question:question,clarify:true},c)); },
+      onLowConfidence:()=>{ if(!live())return; conversationalReply({question:question}); },
       onError:e=>{ if(!live())return; fail(e||'the model reported an error'); settle(); },
     });
   }

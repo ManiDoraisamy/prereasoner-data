@@ -28,6 +28,16 @@ class WorldReasoner:
             r = self._nearby(question)
             if r:
                 return r                                                    # geo nearby handled (server emits its result)
+        # COVERAGE PRE-GATE: a question with no data-intent, no schema mention, and no resolvable entity is
+        # conversational ("how does this work?"), not a query. Short-circuit BEFORE reasoning (nothing garbage
+        # streams) with low_confidence -> the UI answers it in-chat via the Sonnet fallback. Best-effort.
+        try:
+            if not self.composed._has_data_signal(question, tables):
+                return {"question": question, "as_of": as_of, "low_confidence": True,
+                        "clarify": None, "error": None, "result": None,
+                        "model": "engine - conversational (not a data query)"}
+        except Exception as e:                                              # noqa: BLE001 — never block a real query
+            print("coverage pre-gate skipped:", e, flush=True)
         return self.composed.serve(tables, question, sub, as_of=as_of, emit=emit)  # else delegate (no regression)
 
     def _ref_and_limit(self, question):
