@@ -46,6 +46,20 @@ window.subscribeRun = (uid, jobId, cb) => {
   return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); off(base); } catch(_){} };
 };
 
+// Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Sonnet front-door announces each engine
+// call it makes (calls/{i} = {jobId, question}) so the browser can subscribe to that call's own live trace
+// via subscribeRun, plus the final `reply` (Sonnet's text) and terminal `status`. Same ownership rules as
+// subscribeRun (reads gated to auth.uid). Returns an unsubscribe fn.
+window.subscribeTurn = (uid, turnId, cb) => {
+  const base = ref(db, `runs/${uid}/${turnId}`);
+  const at = node => ref(db, `runs/${uid}/${turnId}/${node}`);
+  const uStatus = onValue(at('status'), s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
+  const uCalls = onChildAdded(at('calls'), s => { if (cb.onCall) cb.onCall(s.key, s.val()); });
+  const uReply = onValue(at('reply'), s => { const v = s.val(); if (v != null && cb.onReply) cb.onReply(v); });
+  const uError = onValue(at('error'), s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
+  return () => { try { uStatus(); uCalls(); uReply(); uError(); off(base); } catch(_){} };
+};
+
 // Google sign-in as a same-tab REDIRECT (no button, no popup blockers): completes a pending
 // redirect if we are returning from Google, otherwise starts one. Resolves to the uid when
 // signed in (also published as window.__uid), or null when the page is about to navigate away.

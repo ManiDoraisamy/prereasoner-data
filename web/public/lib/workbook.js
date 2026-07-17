@@ -42,6 +42,15 @@ let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
+// ---- orchestrated (Sonnet front-door) mode: WB.chat routes each turn through /chat (Sonnet + engine-MCP),
+// which resolves context ("How about germany?" -> "total amount in Germany") and can make several engine
+// calls per turn. Off by default -> the direct /api/reason path above is byte-identical. ----
+// ORCH default = WB.chat, overridable per-browser with localStorage 'pr_chat' ('1' on / '0' off) so the
+// orchestrated path can be exercised on the live site before it becomes the default. No redeploy needed.
+const ORCH = (()=>{ try{ const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false; }catch(_){} return !!WB.chat; })();
+const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
+let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
+let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -115,7 +124,7 @@ function turnHtml(){                                          // the CURRENT (li
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
   if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // a clarify / non-data question, answered right here
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
-    if(PRESENT){ const derivs=BOOK.filter(s=>s.cls==='deriv');   // present mode: keep the derivation reachable from the rail (it lives in the panel)
+    if(PRESENT||ORCH){ const derivs=BOOK.filter(s=>s.cls==='deriv');   // keep the derivation reachable from the rail (it lives in the panel)
       if(derivs.length) h+='<div class=steps>'+derivs.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>'; }
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
@@ -146,7 +155,7 @@ function renderRail(){
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
   // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps
   // send disabled until it lands — otherwise the follow-up would orphan into a fresh conversation.
-  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&convId())||FAILMSG);
+  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&(convId()||ORCH))||FAILMSG);   // ORCH keeps history client-side (no server conversation_id gate)
 }
 function paint(){ renderTabs(); renderSheet(); renderRail(); }
 function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed'; paint(); }
@@ -257,7 +266,75 @@ function clarifyFallbackText(c){
 function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); question=p;
   try{ sessionStorage.setItem(SS.Q,p); }catch(_){}; resetRun(); paint(); startRun(); }
 
+/* ---------------- orchestrated run (Sonnet front-door via /chat) ---------------- */
+// One turn = one POST /chat. Sonnet (with HISTORY) resolves context + decides the engine calls; each call is
+// announced on the turn's RTDB node with its REWRITTEN question, and the engine streams that call's trace
+// under its own jobId (rendered by the same appendView/appendResolve as the direct path). The turn's answer
+// is Sonnet's REPLY (shown in the rail); the derivation (every call's steps) stays in the panel.
+async function startTurn(){
+  const myRun=++RUN;
+  const live=()=>RUN===myRun&&!SETTLED;
+  let token;
+  try{ token=await window.ensureToken(); }
+  catch(e){ if(RUN===myRun) fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }
+  const uid=window.__uid;
+  const turnId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
+  const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text(); return (r.ok&&t.trim().charAt(0)==='{')?JSON.parse(t):null; }catch(_){ return null; } };
+  const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
+    headers:{'content-type':'application/json','Authorization':'Bearer '+token},
+    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId})}).then(parseBody).catch(()=>null);
+  // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams.
+  if(uid&&window.subscribeTurn){
+    UNSUB=window.subscribeTurn(uid,turnId,{
+      onStatus:st=>{ if(!live())return; if(st==='done') markTurnDone(); },
+      onCall:(k,c)=>{ if(!live()||!c||!c.jobId||SEEN_CALL.has(c.jobId))return; SEEN_CALL.add(c.jobId); addCall(uid,c); },
+      onReply:t=>{ if(RUN!==myRun)return; if(t){REPLY=t;} if(!SETTLED)renderRail(); },
+      onError:e=>{ if(!live())return; fail(e||'the assistant hit an error'); settle(); },
+    });
+  }
+  // (2) HTTP body is AUTHORITATIVE (blocking; returns {reply, traces, history}): update history, and if the
+  // stream produced nothing (RTDB off), render the traces from the body. Then finalize.
+  httpPromise.then(j=>{ if(RUN!==myRun)return;
+    if(j&&Array.isArray(j.history)) HISTORY=j.history;
+    if(!j){ if(!SETTLED&&!VIEWS.length) fail('the assistant did not respond — please try again'); return; }
+    if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
+    if(!VIEWS.length&&Array.isArray(j.traces)) renderTurnFromHTTP(j);   // no live stream -> render from the body
+    if(!REPLY&&j.reply) REPLY=j.reply;
+    if(!SETTLED) markTurnDone();
+  });
+  // (3) SAFETY NET: never hang forever.
+  setTimeout(()=>{ if(RUN!==myRun||SETTLED)return; if(!VIEWS.length&&!REPLY) fail('the assistant is taking too long — please try again in a moment'); }, 150000);
+}
+function addCall(uid,c){                                      // an engine call Sonnet made this turn — stream its trace into the panel
+  CALLS.push(c);
+  STATUS='Reading as: “'+c.question+'”…'; renderRail();
+  if(!uid||!window.subscribeRun)return;
+  const sub=window.subscribeRun(uid,c.jobId,{
+    onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; SEEN.add(id); appendView(v); },
+    onResolve:(k,r)=>{ if(!r||typeof r!=='object'||!r.column)return; const id=c.jobId+'/'+k; if(SEEN_R.has(id))return; SEEN_R.add(id); appendResolve(r); },
+    // reconcile this call's last view with its authoritative result rows (calls stream sequentially, so the
+    // most recent deriv sheet is this call's last step). The answer + any clarify are synthesized into REPLY.
+    onResult:r=>{ if(!r||!Array.isArray(r.rows))return; const last=BOOK.filter(s=>s.cls==='deriv').pop();
+      if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.result=true; if(last.id===ACTIVE)paint(); } },
+    onStatus:()=>{}, onClarify:()=>{}, onLowConfidence:()=>{}, onPresent:()=>{}, onError:()=>{},
+  });
+  callSubs.push(sub);
+}
+function renderTurnFromHTTP(j){                               // fallback: no RTDB -> build the derivation from the /chat body's traces
+  (j.traces||[]).forEach(t=>{ const eng=t.engine||{}; (eng.views||[]).forEach(v=>appendView(v)); });
+}
+function markTurnDone(){                                      // the turn finished: settle, show Sonnet's reply in the rail
+  if(SETTLED)return;
+  callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
+  settle();
+  CONV = REPLY || 'Done.';
+  const n=BOOK.filter(s=>s.cls==='deriv').length;
+  STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
+  renderRail();
+}
+
 async function startRun(){
+  if(ORCH) return startTurn();                                // orchestrated front-door (flag; direct path below is unchanged)
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
   let token;
@@ -327,6 +404,8 @@ function resetRun(){
   BOOK.forEach(s=>{ if(s.cls!=='input') s.stale=true; });
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
+  CALLS=[]; SEEN_CALL=new Set(); REPLY=null;                  // orchestrated turn state (HISTORY persists across turns)
+  callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
 }

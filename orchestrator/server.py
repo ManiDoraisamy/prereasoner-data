@@ -90,6 +90,7 @@ class H(BaseHTTPRequestHandler):
 
     # ---------- /chat ----------
     def _chat(self):
+        emit = None
         try:
             n = int(self.headers.get("Content-Length", 0))
             if n > MAX_BODY:
@@ -100,16 +101,36 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, json.dumps({"error": "no message"})); return
             tables = req.get("tables") or []
             history = req.get("history") or []
+            turn_id = (req.get("turnId") or "").strip() or None
             token = self._bearer()
+            # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME uid the browser subscribes to,
+            # derived from the VERIFIED token (never client-supplied). Each engine call is announced there and
+            # the engine streams its own /runs/{uid}/{jobId} trace. Best-effort; a no-op if RTDB/token is absent.
+            if turn_id and token:
+                try:
+                    from engine.auth import _verify_principal
+                    from engine.trace import emitter
+                    _sub, uid = _verify_principal(token)
+                    if uid:
+                        emit = emitter(uid, turn_id)
+                        emit("status", "running")
+                except Exception as e:                       # noqa: BLE001 — streaming must never block the answer
+                    print("orchestrator stream setup skipped:", e, flush=True)
             fut = asyncio.run_coroutine_threadsafe(
                 run_chat(message, tables, history,
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,
-                         api_key=config.anthropic_api_key(), model=config.ANTHROPIC_MODEL),
+                         api_key=config.anthropic_api_key(), model=config.ANTHROPIC_MODEL,
+                         turn_id=turn_id, emit=emit),
                 _LOOP,
             )
             res = fut.result(timeout=300)
             self._send(200, json.dumps(res))
         except Exception as e:  # noqa: BLE001
+            if emit:
+                try:
+                    emit("error", str(e)); emit("status", "error")
+                except Exception:                            # noqa: BLE001
+                    pass
             self._send(500, json.dumps({"error": str(e)}))
 
     # ---------- /api proxy ----------

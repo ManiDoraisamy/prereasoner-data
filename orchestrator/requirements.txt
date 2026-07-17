@@ -4,3 +4,7 @@
 anthropic>=0.69
 mcp>=1.2
 httpx>=0.27
+# firebase-admin: verify the caller's Firebase token to derive the uid for the LIVE trace stream, and write
+# the turn's RTDB nodes (/runs/{uid}/{turnId}). Optional at runtime — absent/misconfigured => the orchestrator
+# degrades to the non-streaming HTTP response (the browser renders the trace from the /chat body instead).
+firebase-admin>=6.5

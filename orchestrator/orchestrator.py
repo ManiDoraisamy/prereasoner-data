@@ -102,11 +102,27 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
 
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], *,
                    engine_base_url: str, bearer_token: str | None,
-                   api_key: str, model: str) -> dict[str, Any]:
+                   api_key: str, model: str, turn_id: str | None = None,
+                   emit=None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
-    session's inline CSVs. Returns {reply, traces, history}."""
+    session's inline CSVs. Returns {reply, traces, history}.
+
+    LIVE STREAMING (optional): when `turn_id` + `emit` are supplied, each `prereasoner_query` call runs
+    the engine under a DERIVABLE jobId `<turn_id>_<i>` and the call is ANNOUNCED on the turn's RTDB node
+    (`emit("calls/<i>", {jobId, question})`) BEFORE it runs — so the browser, subscribed to the turn node,
+    discovers each engine call and subscribes to its live `/runs/{uid}/{jobId}` trace. The engine streams
+    that trace exactly as on the direct path. The final Sonnet text + terminal status are emitted too.
+    `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
     client = AsyncAnthropic(api_key=api_key)
     traces: list[dict[str, Any]] = []
+    call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
+
+    def _emit(node, value):
+        if emit:
+            try:
+                emit(node, value)
+            except Exception:                                # noqa: BLE001 — never break the answer on a stream write
+                pass
 
     async with stdio_client(_mcp_params(engine_base_url, bearer_token)) as (read, write):
         async with ClientSession(read, write) as session:
@@ -141,8 +157,11 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                     if block.type != "tool_use":
                         continue
                     if block.name == "prereasoner_query":
-                        job_id = uuid.uuid4().hex
+                        # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
+                        job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
                         question = (block.input or {}).get("question", "")
+                        _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
+                        call_idx += 1
                         result = await session.call_tool(
                             "prereasoner_query",
                             {"question": question, "tables": tables, "job_id": job_id},
@@ -168,6 +187,9 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                 messages.append({"role": "user", "content": tool_results})
             else:
                 final_text = final_text or "I wasn't able to complete that within the step budget."
+
+    _emit("reply", final_text)                               # the Sonnet text for the rail
+    _emit("status", "done")                                  # terminal — the browser stops waiting
 
     # Lean cross-turn transcript: user + assistant final text only (avoids block-replay pitfalls; the
     # reasoning traces are returned separately and stored per-message by the browser).
