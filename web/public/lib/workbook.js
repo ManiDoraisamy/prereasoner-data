@@ -45,14 +45,14 @@ let HTTPJ=null;                                  // the atomic HTTP body (result
 // ---- orchestrated (Sonnet front-door) mode: WB.chat routes each turn through /chat (Sonnet + engine-MCP),
 // which resolves context ("How about germany?" -> "total amount in Germany") and can make several engine
 // calls per turn. Off by default -> the direct /api/reason path above is byte-identical. ----
-// ORCH default = WB.chat, overridable so the orchestrated path can be exercised on the live site before it
-// becomes the default. Toggle with the URL query ?chat=1 / ?chat=0 (works on any origin, no console) — it
-// persists to localStorage 'pr_chat' for later visits. No redeploy needed.
+// ORCH (Sonnet front-door) is the DEFAULT. Turn it OFF for a session with the URL query ?chat=0 (works on
+// any origin, no console; persists to localStorage 'pr_chat'), or set WB.chat=false on a page. ?chat=1
+// forces it on. This is the path that reads each message in context and rewrites it into a precise query.
 const ORCH = (()=>{ try{
   const p=new URLSearchParams(location.search).get('chat');
   if(p==='1'||p==='0'){ try{localStorage.setItem('pr_chat',p);}catch(_){} return p==='1'; }
   const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false;
-}catch(_){} return !!WB.chat; })();
+}catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
