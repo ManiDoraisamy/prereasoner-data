@@ -158,13 +158,22 @@ function seedInputs(){
     addSheet({id:'in'+i, cls:'input', name:s.name, cols:p.cols, rows:p.rows}); });
   ACTIVE=BOOK.length?BOOK[0].id:null; paint();
 }
+// This run just produced its OWN first sheet -> retire the previous turn's derivation/reference sheets that
+// resetRun kept around (so a conversational follow-up could still show them). A data query replaces them.
+function dropStale(){
+  if(!BOOK.some(s=>s.stale))return;
+  BOOK=BOOK.filter(s=>!s.stale);
+  if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
+}
 function appendView(v){
+  dropStale();
   VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
   const label=v.label||oplabel(v.op);                        // HUMAN name ("join orders + customers"), never v1/step_1
   STATUS=label+'…';
   addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
 }
 function appendResolve(r){
+  dropStale();
   RESOLVES.push(r);
   STATUS='Resolving '+(r.column||'')+'…';
   if(!r.unconnected&&r.columns)
@@ -214,7 +223,10 @@ async function conversationalReply(c){
   const present=!!(c&&c.present);
   settle();                                                  // stop the reasoning stream for this turn
   if(present){ PRESENT=true; }                               // present: KEEP the derivation sheets in the panel
-  else{ BOOK=BOOK.filter(s=>s.cls==='input'); ACTIVE=BOOK.length?BOOK[0].id:null; }   // fallback: drop abandoned reasoning sheets
+  else{                                                      // fallback: drop THIS turn's abandoned sheets, but KEEP the previous turn's
+    BOOK=BOOK.filter(s=>s.cls==='input'||s.stale);           // derivation (stale) — a meta/general question is usually ABOUT it
+    if(!BOOK.some(s=>s.id===ACTIVE)){ const last=BOOK.filter(s=>s.stale).pop(); ACTIVE=(last&&last.id)||(BOOK.length?BOOK[0].id:null); }
+  }
   CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS=present?'Putting it in context…':'Thinking…'; renderRail();
   let reply=null;
   try{
@@ -309,11 +321,14 @@ async function startRun(){
 /* ---------------- chat: follow-up questions re-run the workbook ---------------- */
 function resetRun(){
   if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} clearTimeout(doneTimer);
-  BOOK=BOOK.filter(s=>s.cls==='input');                       // the user's sheets stay; derived/reference sheets are the run's
+  // Keep the previous turn's derivation/reference sheets, marked "stale", rather than dropping them now: a
+  // data query retires them when it makes its own first sheet (dropStale); a conversational/meta follow-up
+  // (answered by Sonnet, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
+  BOOK.forEach(s=>{ if(s.cls!=='input') s.stale=true; });
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
-  STATUS='Analyzing input…'; ACTIVE=BOOK.length?BOOK[0].id:null;
+  STATUS='Analyzing input…'; if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
 }
 function sendChat(){
   const box=$('chatq'); const q=(box&&box.value||'').trim();
