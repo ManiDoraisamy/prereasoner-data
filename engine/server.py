@@ -29,6 +29,7 @@ from engine.auth import _verify_principal, _bearer, _slug
 from engine.tables import csv_table
 from engine.trace import emitter, stream_final, set_ctx
 from engine.conversations import resolve_conversation, list_conversations, get_conversation, NotOwned
+from engine import master
 from engine import admin
 
 MODEL = None                       # the ONE WorldReasoner, shared by /api/reason and /api/world
@@ -72,6 +73,8 @@ class H(BaseHTTPRequestHandler):
                                         "dimension": DIM_MODEL is not None}))
         elif path in ("/api/conversations", "/api/conversation"):
             self._get_conversations(path, parse_qs(u.query))
+        elif path == "/api/master":
+            self._get_master(parse_qs(u.query))
         elif path.startswith("/api/admin/"):
             self._get_admin(path, parse_qs(u.query))
         else:
@@ -95,6 +98,42 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                               # noqa: BLE001
             self._send(500, json.dumps({"error": str(e)}))
 
+    # ---------------- master data (per-user reference tables; auth required, uid-scoped) ----------------
+    def _get_master(self, qs):
+        """GET /api/master → the user's master tables (list). GET /api/master?name=X → one table's rows."""
+        try:
+            sub, _uid = _verify_principal(_bearer(self.headers, None))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            name = (qs.get("name") or [""])[0]
+            if name:
+                m = master.get_master(sub, name)
+                self._send(200 if m else 404, json.dumps(m or {"error": "not found"})); return
+            self._send(200, json.dumps({"tables": master.list_master(sub)}))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
+
+    def _post_master(self, path):
+        """POST /api/master {name, columns, rows} → create-or-replace a master table.
+        POST /api/master/delete {name} → drop it. Both uid-scoped to the verified subject."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                self._send(200, json.dumps({"error": "payload too large"})); return
+            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            if path == "/api/master/delete":
+                self._send(200, json.dumps(master.delete_master(sub, req.get("name", "")))); return
+            try:
+                out = master.save_master(sub, req.get("name", ""), req.get("columns") or [], req.get("rows") or [])
+            except ValueError as e:
+                self._send(400, json.dumps({"error": str(e)})); return
+            self._send(200, json.dumps(out))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
+
     def do_POST(self):
         path = self.path.rstrip("/")
         if path in WORLD_ROUTES:
@@ -103,6 +142,8 @@ class H(BaseHTTPRequestHandler):
             self._post_dimension()
         elif path == "/api/converse":
             self._post_converse()
+        elif path in ("/api/master", "/api/master/delete"):
+            self._post_master(path)
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:
