@@ -41,6 +41,7 @@ let J=null,VIEWS=[],RESOLVES=[],SETTLED=false,DONE=false,UNSUB=null,doneTimer=nu
 let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
+let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -186,12 +187,17 @@ function finalize(){
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS='Answered in '+n+' step'+(n===1?'':'s');
   paint();
-  if(PRESENT) enterPresent();                                 // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
+  if(PRESENT) tryPresent();                                   // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
 }
-// The answer is real and the derivation is now in the panel — route it through Sonnet to PRESENT in words.
-function enterPresent(){
-  if(CONV||CONVPENDING)return;                                // already presenting / presented
-  conversationalReply({question:question, present:true, answer:(J&&J.result)||null, sql:(J&&J.sql)||null});
+// Route a REAL answer through Sonnet to present it in words. RTDB delivers result/present/status on separate
+// nodes with NO cross-node ordering guarantee, so this is called from several triggers (onPresent, finalize,
+// onResult, the HTTP body) and only fires once BOTH the derivation has settled in the panel AND a concrete
+// answer is in hand — otherwise it no-ops and a later trigger retries. Never sends a null answer to Sonnet.
+function tryPresent(){
+  if(!PRESENT||CONV||CONVPENDING||!SETTLED)return;            // not flagged / already presenting / derivation not final yet
+  const ans=(J&&J.result)||(HTTPJ&&HTTPJ.result)||null;      // prefer the streamed result, fall back to the atomic HTTP body
+  if(!ans||!ans.columns)return;                              // no answer in hand yet -> a later trigger will retry
+  conversationalReply({question:question, present:true, answer:ans, sql:(J&&J.sql)||(HTTPJ&&HTTPJ.sql)||null});
 }
 function renderFromJSON(j){
   if(SETTLED)return;
@@ -223,7 +229,11 @@ async function conversationalReply(c){
     if(res.ok){ const j=await res.json().catch(()=>null); reply=j&&j.reply; }
   }catch(_){}
   CONVPENDING=false;
-  CONV=reply||(present?null:clarifyFallbackText(c));         // present + Sonnet unavailable -> keep the raw result (CONV null shows the derivation summary)
+  if(present&&!reply){                                        // present + Sonnet unavailable -> degrade to the raw result with a clean header
+    CONV=null; const n=BOOK.filter(s=>s.cls==='deriv').length; STATUS='Answered in '+n+' step'+(n===1?'':'s');
+  } else {
+    CONV=reply||clarifyFallbackText(c);
+  }
   renderRail();
 }
 function clarifyFallbackText(c){
@@ -251,6 +261,9 @@ async function startRun(){
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ try{ sessionStorage.setItem('pr_conversation_id', j.conversation_id); }catch(_){} renderRail(); } });
+  // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
+  // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
+  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; if(j.present) PRESENT=true; tryPresent(); });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
@@ -261,10 +274,10 @@ async function startRun(){
         else if(st==='done') markDone(); },
       onResolve:(k,r)=>{ if(!live()||!r||typeof r!=='object'||!r.column||SEEN_R.has(k))return; SEEN_R.add(k); appendResolve(r); if(DONE)markDone(); },
       onView:(k,v)=>{ if(!live()||!v||SEEN.has(k))return; SEEN.add(k); appendView(v); if(DONE)markDone(); },
-      onResult:r=>{ if(!live())return; J=J||{}; J.result=r; if(DONE)markDone(); },
+      onResult:r=>{ if(RUN!==myRun)return; J=J||{}; J.result=r; if(live()){ if(DONE)markDone(); } else if(PRESENT){ tryPresent(); } },   // keep late results for present (result node may arrive after settle)
       onClarify:c=>{ if(!live())return; conversationalReply(Object.assign({question:question,clarify:true},c)); },
       onLowConfidence:()=>{ if(!live())return; conversationalReply({question:question}); },
-      onPresent:()=>{ if(RUN!==myRun)return; PRESENT=true; if(SETTLED&&!CONV&&!CONVPENDING) enterPresent(); },   // real answer, human phrasing -> present it (fires on/after finalize)
+      onPresent:()=>{ if(RUN!==myRun)return; PRESENT=true; tryPresent(); },   // real answer, human phrasing -> present it (no-ops until settled + answer in hand)
       onError:e=>{ if(!live())return; fail(e||'the model reported an error'); settle(); },
     });
   }
@@ -298,7 +311,7 @@ function resetRun(){
   if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} clearTimeout(doneTimer);
   BOOK=BOOK.filter(s=>s.cls==='input');                       // the user's sheets stay; derived/reference sheets are the run's
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
-  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false;
+  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; ACTIVE=BOOK.length?BOOK[0].id:null;
 }

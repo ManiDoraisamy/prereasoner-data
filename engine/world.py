@@ -27,7 +27,7 @@ class WorldReasoner:
         if NEAR.search(question or ""):
             r = self._nearby(question)
             if r:
-                return r                                                    # geo nearby handled (server emits its result)
+                return self._tag_present(r, question, tables)               # geo nearby handled (server emits its result)
         # COVERAGE PRE-GATE: a question with no data-intent, no schema mention, and no resolvable entity is
         # conversational ("how does this work?"), not a query. Short-circuit BEFORE reasoning (nothing garbage
         # streams) with low_confidence -> the UI answers it in-chat via the Sonnet fallback. Best-effort.
@@ -39,13 +39,17 @@ class WorldReasoner:
         except Exception as e:                                              # noqa: BLE001 — never block a real query
             print("coverage pre-gate skipped:", e, flush=True)
         res = self.composed.serve(tables, question, sub, as_of=as_of, emit=emit)  # delegate (no regression)
-        # PRESENT signal: the answer is real, but the phrasing is emotional/human — flag it so the UI routes
-        # the computed answer + derivation through Sonnet to present it in words (derivation still shown in the
-        # panel). Only when signaled (human tone) — plain data queries stay raw, zero Sonnet cost. Best-effort.
+        return self._tag_present(res, question, tables)
+
+    def _tag_present(self, res, question, tables=None):
+        """PRESENT signal: the answer is real, but the phrasing is emotional/human — flag it so the UI routes
+        the computed answer + derivation through Sonnet to present it in words (derivation still shown in the
+        panel). Only when signaled (human tone) — plain data queries stay raw, zero Sonnet cost. Applied to
+        BOTH the geo path and the composed path. Best-effort — never breaks the answer."""
         try:
             if (isinstance(res, dict) and res.get("result") and not res.get("clarify")
                     and not res.get("error") and not res.get("low_confidence")
-                    and self.composed._human_tone(question)):
+                    and self.composed._human_tone(question, tables)):
                 res["present"] = True
         except Exception as e:                                              # noqa: BLE001 — never break the answer
             print("present flag skipped:", e, flush=True)

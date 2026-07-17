@@ -48,12 +48,16 @@ def _schema_text(tables):
 
 
 def _answer_text(answer, limit=40):
-    """A compact 'col, col | v, v; v, v' rendering of a computed result, capped so we never blow the prompt."""
+    """A compact 'col, col | v, v; v, v' rendering of a computed result, capped so we never blow the prompt.
+    An EMPTY result (zero rows) renders as an explicit sentinel — never a bare 'col | ' with no value, which
+    would leave Sonnet told to 'use the number' with no number in hand."""
     if not isinstance(answer, dict):
-        return ""
+        return "(no result)"
     cols = answer.get("columns") or []
     rows = answer.get("rows") or []
     head = ", ".join(str(c) for c in cols)
+    if not rows:
+        return f"columns: [{head}] — the query ran successfully and returned NO ROWS (an empty result set)."
     body = "; ".join(", ".join(str(v) for v in r) for r in rows[:limit])
     more = f" … (+{len(rows) - limit} more rows)" if len(rows) > limit else ""
     return f"{head} | {body}{more}"

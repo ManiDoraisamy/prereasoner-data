@@ -103,14 +103,7 @@ class ComposedWorldQuery:
             toks = set(_re.findall(r"[a-z]+", ql))
             if toks & self._DATA_INTENT:
                 return True
-            schw = set()
-            for t in (tables or []):
-                cols = t.get("columns") or [c.strip() for c in (str(t.get("data", "")).splitlines() or [""])[0].split(",")]
-                for nm in [t.get("name", "")] + list(cols):
-                    for part in _re.split(r"[^a-z0-9]+", str(nm).lower()):
-                        if len(part) > 1:
-                            schw.add(part); schw.add(part.rstrip("s"))
-            if toks & schw:
+            if toks & self._schema_tokens(tables):
                 return True
             content = [w for w in toks if len(w) > 2 and w not in self._META_STOP]
             if content and self.qw._best_world_entity(content):
@@ -119,31 +112,52 @@ class ComposedWorldQuery:
         except Exception:                                        # noqa: BLE001
             return True
 
+    def _schema_tokens(self, tables):
+        """The set of lowercased word-parts of every table/column name (plus a naive de-pluralized form)."""
+        import re as _re
+        schw = set()
+        for t in (tables or []):
+            cols = t.get("columns") or [c.strip() for c in (str(t.get("data", "")).splitlines() or [""])[0].split(",")]
+            for nm in [t.get("name", "")] + list(cols):
+                for part in _re.split(r"[^a-z0-9]+", str(nm).lower()):
+                    if len(part) > 1:
+                        schw.add(part); schw.add(part.rstrip("s"))
+        return schw
+
     # An emotional / opinion / first-person-worry cue. When a question IS a real data query (an answer gets
     # computed) but is phrased like a human talking rather than a query spec, a bare number reads cold — we
     # route the computed answer + derivation through Sonnet to PRESENT it in human words. Cheap lexical test;
     # it fires only alongside a real answer, so an occasional false positive just means a warmer reply.
+    # Deliberately EMOTIONAL words only. Generic adjectives that double as data values / status / intensifiers
+    # ("really", "okay", "ok", "normal", "healthy", "please", "fine") are excluded — they'd fire on plain
+    # queries ("rows where status = ok", "really big amounts"). Those still count as opinion INSIDE the
+    # "is that/this/it <X>" regex below, where the framing makes them evaluative rather than a data value.
     _HUMAN_CUE = frozenset({
         "worried", "worry", "worrying", "concerned", "concern", "concerning", "hope", "hoping", "afraid",
-        "scared", "nervous", "anxious", "stressed", "feel", "feeling", "felt", "think", "thinking", "believe",
-        "guess", "wonder", "wondering", "curious", "love", "hate", "glad", "sad", "happy", "upset",
+        "scared", "nervous", "anxious", "stressed", "feel", "feeling", "felt", "believe", "think", "thinking",
+        "wonder", "wondering", "curious", "love", "hate", "glad", "sad", "happy", "unhappy", "upset",
         "frustrated", "excited", "surprised", "disappointed", "relieved", "great", "terrible", "awful",
-        "amazing", "wonderful", "okay", "ok", "normal", "healthy", "honestly", "frankly", "really",
-        "please", "confused", "struggling", "overwhelmed", "proud", "embarrassed"})
+        "amazing", "wonderful", "honestly", "frankly", "confused", "struggling", "overwhelmed", "proud",
+        "embarrassed"})
     _HUMAN_RE = re.compile(
         r"\b(i'?m|i am|we'?re|we are|i'?ve|should i|should we|do you think|what do you think|"
         r"is (?:that|this|it) (?:an? )?(?:good|bad|ok|okay|normal|healthy|fine|concerning|"
         r"problem|bad news)|too (?:high|low|expensive|cheap|slow|risky)|"
         r"am i|are we|is my|is our)\b", re.I)
 
-    def _human_tone(self, question):
+    def _human_tone(self, question, tables=None):
         """True iff the phrasing carries an emotional / opinion / first-person cue — a cheap signal that a
-        computed answer should be PRESENTED in human words rather than shown as a bare table. Best-effort."""
+        computed answer should be PRESENTED in human words rather than shown as a bare table. A cue word that
+        is ALSO a schema column/table name ("show me the feeling column") is a DATA reference, not emotion, so
+        it doesn't count. The evaluative "is that/this/it <X>" framing counts regardless. Best-effort."""
         try:
             ql = (question or "").lower()
             if self._HUMAN_RE.search(ql):
                 return True
-            return bool(set(re.findall(r"[a-z']+", ql)) & self._HUMAN_CUE)
+            cues = set(re.findall(r"[a-z']+", ql)) & self._HUMAN_CUE
+            if not cues:
+                return False
+            return bool(cues - self._schema_tokens(tables))      # a cue that names a column is data, not tone
         except Exception:                                        # noqa: BLE001
             return False
 
