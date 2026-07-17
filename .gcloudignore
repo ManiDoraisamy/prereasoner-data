@@ -9,9 +9,11 @@
 .env
 docs/
 infra/
-tests/
 training/
 web/
 db/
 **/__pycache__/
 *.pyc
+# NOTE: tests/ is intentionally NOT ignored — the orchestrator build (cloudbuild.orchestrator.yaml) runs
+# tests.test_mcp / tests.test_orchestrator from the upload. It is not copied into the engine image
+# (the engine Dockerfile COPYs only engine/), so keeping it costs a tiny upload and nothing in the image.

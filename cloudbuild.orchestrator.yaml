@@ -18,7 +18,12 @@ steps:
       - |
         set -e
         pip install --no-cache-dir -r orchestrator/requirements.txt
-        RUN_ENGINE_TESTS=0 python -m tests.run_all
+        # Only the suites this LEAN image can run: the MCP contract (always) + the orchestrator routing
+        # discipline (self-skips unless ANTHROPIC_API_KEY is wired in as a substitution). The engine suites
+        # (test_sql_ast / test_world / ...) need torch/numpy/psycopg — absent here by design — and gate the
+        # engine build (cloudbuild.yaml) instead. A failing suite here still fails the build.
+        python -m tests.test_mcp
+        python -m tests.test_orchestrator
 
   - id: build
     name: gcr.io/cloud-builders/docker
