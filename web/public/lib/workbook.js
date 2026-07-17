@@ -173,7 +173,6 @@ function archiveTurn(){                                       // freeze the fini
 }
 function renderRail(){
   let h='';
-  if(ORCH) h+='<div class=modebadge title="Sonnet reads each message in context and rewrites it into a precise query before PreReasoner runs it. Turn off with ?chat=0">&#9889; Sonnet assist</div>';
   for(const t of CHAT) h+='<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
   h+='<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
