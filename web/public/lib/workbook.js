@@ -278,7 +278,7 @@ async function saveMaster(id){
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
     if(r.ok){ sh.saved=true; sh.dirty=false; }
   }catch(_){}
-  renderSheet();
+  paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
 }
 function addMasterCol(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
