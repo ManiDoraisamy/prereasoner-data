@@ -250,21 +250,21 @@ async function loadMaster(){                                  // pull the user's
     paint();
   }catch(_){}
 }
-// After a query, any TEXT input column that didn't resolve to the world model is a candidate for master data.
+// After a query, the engine marks each resolved column as connected (wtable) or NOT (unconnected:true).
+// The unconnected ones are exactly the private entities the world model can't enrich — surface each as a
+// master-data sheet pre-filled with its distinct values, for the user to enrich.
 function surfaceUnresolved(){
   try{
-    const resolved=new Set((RESOLVES||[]).map(r=>String(r.column||'').toLowerCase()));
-    BOOK.filter(s=>s.cls==='input').forEach(sh=>{
-      (sh.cols||[]).forEach((col,ci)=>{
-        const nm=String(col||'').trim(); const key=nm.toLowerCase();
-        if(!nm||MSEEN.has(key)||resolved.has(key))return;
-        // text column? (values mostly non-numeric)
-        const vals=(sh.rows||[]).map(r=>r[ci]).filter(v=>v!==''&&v!=null);
-        if(!vals.length||vals.filter(isNum).length>vals.length*0.4)return;   // numeric-ish -> not an entity to enrich
-        const distinct=[...new Set(vals.map(v=>String(v)))];
-        if(vals.length>5&&distinct.length>vals.length*0.9)return;            // near-unique -> a key/name, not a repeated entity worth a reference table
-        addMasterSheet(nm, [nm], distinct.slice(0,500).map(v=>[v]), false);  // empty master: one column (the name) + its distinct values
-      });
+    (RESOLVES||[]).forEach(r=>{
+      if(!r||!r.unconnected)return;                          // only columns the engine could NOT connect to the world
+      const nm=String(r.column||'').trim(), key=nm.toLowerCase();
+      if(!nm||MSEEN.has(key))return;                         // already surfaced or already a saved master table
+      let vals=[];                                           // its distinct values, from whichever input sheet has the column
+      for(const sh of BOOK.filter(s=>s.cls==='input')){
+        const ci=(sh.cols||[]).findIndex(c=>String(c).toLowerCase()===key);
+        if(ci>=0){ vals=[...new Set((sh.rows||[]).map(rw=>rw[ci]).filter(v=>v!==''&&v!=null).map(String))]; break; }
+      }
+      addMasterSheet(nm, [nm], vals.slice(0,500).map(v=>[v]), false);
     });
   }catch(_){}
 }
