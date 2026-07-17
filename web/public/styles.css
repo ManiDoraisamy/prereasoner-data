@@ -125,14 +125,19 @@ body.app{background:#fff}
 /* the active sheet */
 .sheetcard{flex:1;min-height:0;background:#fff;display:flex;flex-direction:column;overflow:hidden}
 .bandbar{height:3px;flex:0 0 auto}
-.band-input{background:#27b57e}.band-deriv{background:var(--brand)}.band-ref{background:#b9b3cf}
+.band-input{background:#27b57e}.band-deriv{background:var(--brand)}.band-ref{background:#b9b3cf}.band-master{background:#e0912a}
 .sheetband{flex:0 0 auto;display:flex;align-items:center;gap:10px;padding:9px 16px;border-bottom:1px solid #efeafa}
 .sheetband .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
 .sheetband .snm{font:600 13px var(--mono);color:var(--card-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sheetband .skind{font:600 9.5px var(--mono);letter-spacing:1.1px;text-transform:uppercase;padding:3px 9px;border-radius:9999px;flex:0 0 auto}
-.skind.input{background:#e2f6ec;color:#177a53}.skind.deriv{background:#eee9fc;color:var(--brand)}.skind.ref{background:#f0eef6;color:#6f6a87}
+.skind.input{background:#e2f6ec;color:#177a53}.skind.deriv{background:#eee9fc;color:var(--brand)}.skind.ref{background:#f0eef6;color:#6f6a87}.skind.master{background:#fbeed6;color:#a5651a}
 .sqlbtn{all:unset;cursor:pointer;font:600 10.5px var(--mono);letter-spacing:.8px;color:var(--brand);padding:4px 10px;border:1px solid #ddd4f5;border-radius:9999px;flex:0 0 auto}
 .sqlbtn:hover{background:#f3effd}
+.mbtn{all:unset;cursor:pointer;font:600 11px var(--disp);color:#8a6a2e;padding:4px 11px;border:1px solid #ead9bd;border-radius:9999px;flex:0 0 auto;margin-left:6px}
+.mbtn:hover{background:#fbeed6}
+.mbtn.msave.dirty{background:#e0912a;color:#fff;border-color:#e0912a}.mbtn.msave.dirty:hover{background:#cf8420}
+.masterhint{padding:9px 14px;font:12.5px/1.5 var(--disp);color:#8a6a2e;background:#fdf7ec;border-bottom:1px solid #f0e6d4}
+.masterhint b{color:#a5651a}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
@@ -161,7 +166,7 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .wtab:hover{background:#e6dff7}
 .wtab.active{background:#fff;color:var(--card-ink);margin-top:-1px;padding-top:1px}
 .wtab .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
-.dot.input{background:#27b57e}.dot.deriv{background:#8f7bf2}.dot.ref{background:#b9b3cf}
+.dot.input{background:#27b57e}.dot.deriv{background:#8f7bf2}.dot.ref{background:#b9b3cf}.dot.master{background:#e0912a}
 .wtab.active .dot.deriv{background:var(--brand)}
 
 /* right rail - the chat */

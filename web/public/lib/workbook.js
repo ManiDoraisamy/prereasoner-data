@@ -60,7 +60,7 @@ let HTTPHIST=false;                              // did the /chat body land (aut
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
-function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
+function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='master'); if(!passive&&AUTO) ACTIVE=m.id; if(passive&&!ACTIVE) ACTIVE=m.id; paint(); }
 
 /* ---------------- rendering: the sheet ---------------- */
 function isNum(v){return v!==''&&v!=null&&/^-?\$?[\d,]*\.?\d+%?$/.test(String(v).trim());}
@@ -69,16 +69,16 @@ function renderGrid(m){
   const cols=m.cols||[],rows=(m.rows||[]);
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
   const shown=rows.slice(0,MAX_RENDER_ROWS);
-  const edit=(m.cls==='input');                              // the user's own tables are editable ("what-if"); derived/reference are read-only
+  const edit=(m.cls==='input'||m.cls==='master');            // the user's own tables + master data are editable; derived/reference are read-only
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':'')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
   h+='</tr></thead><tbody>';
-  for(let ri=0;ri<shown.length;ri++){ h+='<tr><td class=rn>'+(ri+1)+'</td>';
+  for(let ri=0;ri<Math.max(shown.length,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>''); h+='<tr><td class=rn>'+(ri+1)+'</td>';
     for(let ci=0;ci<cols.length;ci++) h+='<td'+(numeric[ci]?' class=n':'')
-      +(edit?' contenteditable="true" spellcheck="false" data-si="'+m.si+'" data-r="'+ri+'" data-c="'+ci+'" oninput="editCell(this)" onkeydown="cellKey(event,this)"':'')
-      +'>'+esc(fmt(shown[ri][ci]))+'</td>';
+      +(edit?' contenteditable="true" spellcheck="false" data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" oninput="editCell(this)" onkeydown="cellKey(event,this)"':'')
+      +'>'+esc(fmt(row[ci]))+'</td>';
     h+='</tr>'; }
-  if(!rows.length) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
+  if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
   if(rows.length>MAX_RENDER_ROWS) h+='<div class=capnote>showing the first '+MAX_RENDER_ROWS+' of '+rows.length+' rows</div>';
   return h;
@@ -89,7 +89,7 @@ function tokCls(tk){const u=tk.toUpperCase();
   const m=tk.match(/^"([^"]+)"$/); if(m&&TABNAMES.includes(m[1].toLowerCase()))return 'tbl';
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
-const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Reference'};
+const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Reference',master:'Master data'};
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
@@ -97,7 +97,12 @@ function renderSheet(){
     +'<span class="dot '+m.cls+'"></span><span class=snm>'+esc(m.result?'Result':m.name)+'</span>'
     +'<span class="skind '+m.cls+'">'+(m.result?esc(m.name):KINDLBL[m.cls])+'</span>'
     +(m.sql?'<span class=spacer></span><button class=sqlbtn onclick=toggleSql()>SQL</button>':'')
+    +(m.cls==='master'?'<span class=spacer></span>'
+        +'<button class=mbtn onclick="addMasterCol(\''+m.id+'\')">+ Column</button>'
+        +'<button class=mbtn onclick="masterPaste(\''+m.id+'\')">Paste</button>'
+        +'<button class="mbtn msave'+(m.dirty||!m.saved?' dirty':'')+'" onclick="saveMaster(\''+m.id+'\')">'+(m.saved&&!m.dirty?'Saved':'Save')+'</button>':'')
     +'</div>';
+  if(m.cls==='master') h+='<div class=masterhint>Your reference data for <b>'+esc(m.name)+'</b> — add columns (category, price, region…) and fill them in. Saved to your account and reused across every conversation.</div>';
   if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
   h+=renderGrid(m);
   $('sheetcard').innerHTML=h;
@@ -105,10 +110,11 @@ function renderSheet(){
 function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
 function tabTxt(s){ const t=s.result?'Result':s.name; return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
-  // Reading order: your data -> the reference lookups it used -> the derivation steps.
-  const inputs=BOOK.filter(s=>s.cls==='input'), refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
-  const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+'</button>';
-  $('tabstrip').innerHTML=inputs.map(tab).join('')+refs.map(tab).join('')+derivs.map(tab).join('');
+  // Reading order: your data -> your master data -> the reference lookups it used -> the derivation steps.
+  const inputs=BOOK.filter(s=>s.cls==='input'), masters=BOOK.filter(s=>s.cls==='master'),
+        refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
+  const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?' •':'')+'</button>';
+  $('tabstrip').innerHTML=inputs.map(tab).join('')+masters.map(tab).join('')+refs.map(tab).join('')+derivs.map(tab).join('');
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
 }
@@ -191,11 +197,13 @@ function seedInputs(){
   ACTIVE=BOOK.length?BOOK[0].id:null; paint();
 }
 /* ---- editable input sheets (what-if): edit a cell -> offer Recalculate, which re-runs the last question ---- */
-function editCell(el){                                        // a keystroke in an input cell: update the model (no re-paint — that'd drop focus)
-  const si=+el.dataset.si, r=+el.dataset.r, c=+el.dataset.c;
-  const sh=BOOK.find(s=>s.cls==='input'&&s.si===si); if(!sh||!sh.rows[r])return;
+function editCell(el){                                        // a keystroke in an editable cell: update the model (no re-paint — that'd drop focus)
+  const sid=el.dataset.sid, r=+el.dataset.r, c=+el.dataset.c;
+  const sh=BOOK.find(s=>s.id===sid); if(!sh)return;
+  while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>''));   // typing into the blank trailing row grows the table
   sh.rows[r][c]=el.innerText.replace(/\n/g,' ');
-  if(!EDITED){ EDITED=true; showRecalc(true); }
+  if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } }
+  else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); }
 }
 function cellKey(ev,el){ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); } }   // Enter commits the cell, no newline
 function csvCell(v){ v=v==null?'':String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
@@ -218,6 +226,70 @@ function recalc(){                                            // re-run the last
   const q=LASTQ||question; if(!q) return;
   archiveTurn(); question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
   resetRun(); paint(); startRun();
+}
+
+/* ---- MASTER DATA: the user's own reference tables for private entities (product, rep, region...) that the
+   world model doesn't know. Stored per-user server-side (/api/master), so they're shared across every
+   conversation. Unresolved text columns surface here as empty sheets to fill; Phase 3 will join them. ---- */
+let MSEEN=new Set();                                          // master/unresolved names already surfaced (no dupes)
+function addMasterSheet(name,cols,rows,saved){
+  const id='m'+(BOOK.filter(s=>s.cls==='master').length)+'_'+Math.random().toString(36).slice(2,6);
+  addSheet({id, cls:'master', name, cols:cols&&cols.length?cols:[name], rows:rows||[], saved:!!saved, dirty:false});
+  MSEEN.add(String(name).toLowerCase());
+  return id;
+}
+async function loadMaster(){                                  // pull the user's existing master tables (shared across conversations)
+  try{ const tk=await window.ensureToken();
+    const r=await fetch(API_BASE+'/api/master',{headers:{Authorization:'Bearer '+tk}});
+    if(!r.ok)return; const j=await r.json();
+    for(const t of (j.tables||[])){
+      if(MSEEN.has(String(t.name).toLowerCase()))continue;
+      const full=await fetch(API_BASE+'/api/master?name='+encodeURIComponent(t.name),{headers:{Authorization:'Bearer '+tk}}).then(x=>x.ok?x.json():null).catch(()=>null);
+      if(full&&full.columns) addMasterSheet(full.name, full.columns, full.rows, true);
+    }
+    paint();
+  }catch(_){}
+}
+// After a query, any TEXT input column that didn't resolve to the world model is a candidate for master data.
+function surfaceUnresolved(){
+  try{
+    const resolved=new Set((RESOLVES||[]).map(r=>String(r.column||'').toLowerCase()));
+    BOOK.filter(s=>s.cls==='input').forEach(sh=>{
+      (sh.cols||[]).forEach((col,ci)=>{
+        const nm=String(col||'').trim(); const key=nm.toLowerCase();
+        if(!nm||MSEEN.has(key)||resolved.has(key))return;
+        // text column? (values mostly non-numeric)
+        const vals=(sh.rows||[]).map(r=>r[ci]).filter(v=>v!==''&&v!=null);
+        if(!vals.length||vals.filter(isNum).length>vals.length*0.4)return;   // numeric-ish -> not an entity to enrich
+        const distinct=[...new Set(vals.map(v=>String(v)))];
+        if(vals.length>5&&distinct.length>vals.length*0.9)return;            // near-unique -> a key/name, not a repeated entity worth a reference table
+        addMasterSheet(nm, [nm], distinct.slice(0,500).map(v=>[v]), false);  // empty master: one column (the name) + its distinct values
+      });
+    });
+  }catch(_){}
+}
+async function saveMaster(id){
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  const btn=document.querySelector('.msave'); if(btn){ btn.textContent='Saving…'; btn.disabled=true; }
+  try{ const tk=await window.ensureToken();
+    const rows=(sh.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''));   // drop blank trailing rows
+    const r=await fetch(API_BASE+'/api/master',{method:'POST',
+      headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
+      body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
+    if(r.ok){ sh.saved=true; sh.dirty=false; }
+  }catch(_){}
+  renderSheet();
+}
+function addMasterCol(id){
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  const nm=(prompt('New column name (e.g. category, price, region):')||'').trim(); if(!nm)return;
+  sh.cols.push(nm); sh.rows.forEach(r=>r.push('')); sh.dirty=true; renderSheet();
+}
+function masterPaste(id){
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  const txt=prompt('Paste rows (CSV — first line is the column headers):'); if(!txt)return;
+  const p=parseCSV(txt); if(!p.cols.length)return;
+  sh.cols=p.cols; sh.rows=p.rows; sh.dirty=true; renderSheet();
 }
 // This run just produced its OWN first sheet -> retire the previous turn's derivation/reference sheets that
 // resetRun kept around (so a conversational follow-up could still show them). A data query replaces them.
@@ -256,6 +328,7 @@ function finalize(){
   if(last){ last.result=true; if(AUTO) ACTIVE=last.id; }
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS='Answered in '+n+' step'+(n===1?'':'s');
+  surfaceUnresolved();                                        // offer master-data sheets for text columns not in the world model
   paint();
   if(PRESENT) tryPresent();                                   // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
 }
@@ -285,7 +358,7 @@ async function conversationalReply(c){
   settle();                                                  // stop the reasoning stream for this turn
   if(present){ PRESENT=true; }                               // present: KEEP the derivation sheets in the panel
   else{                                                      // fallback: drop THIS turn's abandoned sheets, but KEEP the previous turn's
-    BOOK=BOOK.filter(s=>s.cls==='input'||s.stale);           // derivation (stale) — a meta/general question is usually ABOUT it
+    BOOK=BOOK.filter(s=>s.cls==='input'||s.cls==='master'||s.stale);   // keep the user's tables + master data (drop the derivation, stale)
     if(!BOOK.some(s=>s.id===ACTIVE)){ const last=BOOK.filter(s=>s.stale).pop(); ACTIVE=(last&&last.id)||(BOOK.length?BOOK[0].id:null); }
   }
   CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS=present?'Putting it in context…':'Thinking…'; renderRail();
@@ -390,6 +463,7 @@ function markTurnDone(){                                      // the turn finish
   if(!HTTPHIST) HISTORY=HISTORY.concat([{role:'user',content:question},{role:'assistant',content:REPLY||''}]);
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
+  surfaceUnresolved();                                        // offer master-data sheets for unresolved text columns
   renderRail();
 }
 
@@ -462,7 +536,7 @@ function resetRun(){
   // Keep the previous turn's derivation/reference sheets, marked "stale", rather than dropping them now: a
   // data query retires them when it makes its own first sheet (dropStale); a conversational/meta follow-up
   // (answered by Sonnet, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
-  BOOK.forEach(s=>{ if(s.cls!=='input') s.stale=true; });
+  BOOK.forEach(s=>{ if(s.cls!=='input'&&s.cls!=='master') s.stale=true; });   // master data persists like the user's own tables
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
@@ -532,5 +606,5 @@ async function renderDrawer(){
   }
 }
 
-function run(){ wireChat(); setHeaderTitle(question); seedInputs(); startRun(); }
+function run(){ wireChat(); setHeaderTitle(question); seedInputs(); loadMaster(); startRun(); }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend
