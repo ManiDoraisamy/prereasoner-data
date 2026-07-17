@@ -963,6 +963,7 @@ class TableQuery:
                 "candidate_count": len(candidates),
                 "evidence": list(candidate.evidence) if candidate is not None else [],
                 "features": dict(candidate.features) if candidate is not None else {},
+                "planner_mode": mode,
                 "model": f"engine - deterministic typed SQL AST planner ({mode})",
             }
         slots, join, involved, _ = self.plan(question, sch, norm, fks)
@@ -986,6 +987,7 @@ class TableQuery:
                          if join else None),
                 "schema": [{"table": c["table"], "name": c["name"], "affinity": c["affinity"], "ace": c["ace"]} for c in sch],
                 "tokens": self.inspect_layers(norm, fks, sch, toks), "n_layers": self.nL,
+                "planner_mode": "legacy",
                 "model": "engine - Qwen encoder + relational model; deterministic FK + named-dim slot-filling -> multi-table SQL"}
 
 

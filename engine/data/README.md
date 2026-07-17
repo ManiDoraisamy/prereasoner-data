@@ -18,6 +18,7 @@ Everything the serving engine opens at runtime lives here (override the location
 | `primitives.npz` | 72 KB | The learned 10-primitive linear head (`W`, `prims`, `thr`) read by `engine.primitive_head.PrimitiveReader`. | no (gitignored, `*.npz`) |
 | `sql_ranker.json` | ~300 KB | Optional frozen SQL AST tree ranker. Inference uses `engine.sql_learned_rank` and does not import scikit-learn. The current artifact is experimental and is not loaded automatically because it did not pass the Spider dev promotion gate. | yes |
 | `sql_profile_ranker.json` | ~170 KB | Profile-aware deterministic tree ranker with a held-out 1.5-point strict-denotation promotion gate. Use through `DeterministicSQLPlanner`; it is not appropriate for lenient or scalar objectives. | yes |
+| `sql_profile_ranker_whole_db.json` | ~190 KB | Rejected all-table ranker ablation. It improved database-disjoint Spider-train validation but regressed Spider-dev strict top-1, so serving does not load it by default. Retained for reproducibility. | yes |
 | `sql_proposer.json` | ~5 MB | Frozen structured profile, table, and column-role proposer used by `ast_profile` and `ast_strict` live modes. Its SHA-256 is recorded in `spider/results/ast_proposer_ablation.json`. | yes |
 | `word_city.json` | 5 KB | World word-table metadata (key/concepts/filter attrs/links) for the meaning-graph planner. | yes |
 | `word_country.json` | 4 KB | ditto | yes |

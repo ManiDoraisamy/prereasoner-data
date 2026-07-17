@@ -27,6 +27,8 @@ def schema_descriptors(schema: SchemaGraph) -> tuple[dict[str, Any], ...]:
 class ProposalSignalProvider:
     """Build semantic signals while caching schema descriptor embeddings."""
 
+    DESCRIPTOR_CACHE_LIMIT = 4096
+
     def __init__(self, model: SQLProposalModel, encoder):
         self.model = model
         self.encoder = encoder
@@ -56,11 +58,20 @@ class ProposalSignalProvider:
                 name for name in dict.fromkeys(names)
                 if name not in self._descriptor_vectors
             ]
+            resolved = {
+                name: self._descriptor_vectors[name]
+                for name in dict.fromkeys(names)
+                if name in self._descriptor_vectors
+            }
             prefix = [] if question_vector is not None else [question]
             if prefix or missing:
                 vectors = self.encoder._encode(prefix + missing)
                 offset = len(prefix)
-                self._descriptor_vectors.update(zip(missing, vectors[offset:]))
+                resolved.update(zip(missing, vectors[offset:]))
+                for name in missing:
+                    self._descriptor_vectors[name] = resolved[name]
+                    while len(self._descriptor_vectors) > self.DESCRIPTOR_CACHE_LIMIT:
+                        self._descriptor_vectors.pop(next(iter(self._descriptor_vectors)))
                 current_question = (
                     np.asarray(question_vector, dtype=np.float32)
                     if question_vector is not None else vectors[0]
@@ -69,7 +80,7 @@ class ProposalSignalProvider:
                 current_question = np.asarray(question_vector, dtype=np.float32)
             return np.vstack([
                 current_question,
-                *(self._descriptor_vectors[name] for name in names),
+                *(resolved[name] for name in names),
             ])
 
         return semantic_signals_from_schema(

@@ -432,9 +432,14 @@ class WorldTableQuery:
             return {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
                     "error": r.get("error"), "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()},
                     "dims": coldims, "meaning_join": None, "provenance": None, "warnings": [],
+                    "planner": ({
+                        "mode": r.get("planner_mode"), "ast": r.get("ast"),
+                        "candidate_count": r.get("candidate_count"),
+                        "evidence": r.get("evidence", []), "features": r.get("features", {}),
+                    } if r.get("planner_mode") != "legacy" else None),
                     "debug": self._debug_input(norm, question, [],   # own-data path: no world table, no meaning plan
                         [{"col": f'{t["name"]}.{c}', "dims": coldims.get(c)} for t in norm for c in t["columns"] if coldims.get(c)], [], True),
-                    "model": "engine - own-data planner (own-data SQL; no world-knowledge join)"}
+                    "model": r.get("model", "engine - own-data planner (own-data SQL; no world-knowledge join)")}
         # ---- WORLD-KNOWLEDGE path — uploaded FK joins + the meaning joins, WHERE from the world filter (if any)
         # AND any own-sheet values the question also quoted ("GOLD customers in France") ----
         mtab = mf["csv_table"] if mf else wtarget["path"][0]["left_table"]   # the sheet holding the routed city column

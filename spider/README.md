@@ -18,7 +18,11 @@
 > ablation because it regressed top-1 and averaged 78.71 candidates. A profile-aware deterministic
 > ranker with a held-out 1.5-point promotion gate raises strict top-1 to 40.3% and top-10 strict
 > oracle to 52.3%; raw reranking remains unsafe and the gate is not used for lenient/scalar
-> objectives. These tools belong to the
+> objectives. On the realistic all-table configuration, the existing gate reaches 33.3% strict
+> top-1 with 51.4% pool recall. A separately trained all-table ranker improved Spider-train
+> validation but regressed dev to 30.6%, so it is retained only as a rejected ablation. The typed
+> planner is wired into live own-data serving behind `PREREASONER_SQL_PLANNER`; `legacy` remains
+> the default rollout mode. These tools belong to the
 > current AST planner work; the rest of this document preserves the earlier route diagnosis.
 
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.

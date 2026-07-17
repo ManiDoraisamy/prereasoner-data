@@ -71,7 +71,7 @@ def build_mem_db(tabs):
     return con
 
 
-def exec_sql_timed(con, sql, timeout=8.0):
+def exec_sql_timed(con, sql, timeout=8.0, max_rows=None):
     """Run sql on con, aborting after `timeout` seconds via Connection.interrupt() from a watchdog thread."""
     done = threading.Event()
     def watch():
@@ -80,7 +80,10 @@ def exec_sql_timed(con, sql, timeout=8.0):
     w = threading.Thread(target=watch, daemon=True); w.start()
     try:
         cur = con.execute(sql)
-        return [list(r) for r in cur.fetchall()], None
+        rows = cur.fetchall() if max_rows is None else cur.fetchmany(max_rows + 1)
+        if max_rows is not None and len(rows) > max_rows:
+            return None, f"ResultTooLarge: more than {max_rows} rows"
+        return [list(r) for r in rows], None
     except Exception as e:                       # noqa: BLE001
         return None, f"{type(e).__name__}: {e}"
     finally:

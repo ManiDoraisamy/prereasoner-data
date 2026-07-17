@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "artifact": {
     "path": "spider/data/sql_proposer.json",
     "sha256": "301f9f5e39b5bd2fdb8e2f4dccc5187d24f46fb5a1fa46720704121ae61fdd56",
@@ -181,9 +181,52 @@
       "pool_oracle_strict_pct": 53.5
     }
   },
+  "whole_database_ranker_ablation": {
+    "artifact": {
+      "path": "engine/data/sql_profile_ranker_whole_db.json",
+      "sha256": "47ac89a8672376814f904cfc9f498c2d69233383c7c56b209ed80216cf49e6ae",
+      "bytes": 194104,
+      "promoted": false
+    },
+    "training_validation": {
+      "examples": 1329,
+      "databases_disjoint": true,
+      "baseline_top1_correct": 430,
+      "baseline_top1_pct": 32.355,
+      "learned_top1_correct": 484,
+      "learned_top1_pct": 36.418,
+      "baseline_mrr": 0.363755,
+      "learned_mrr": 0.396168,
+      "promotion_margin": 0.5,
+      "calibration_promotions": 42,
+      "calibration_wins": 17,
+      "calibration_losses": 0
+    },
+    "spider_dev": {
+      "examples": 1034,
+      "raw_top1_strict_correct": 278,
+      "raw_top1_strict_pct": 26.9,
+      "safe_top1_strict_correct": 336,
+      "safe_top1_strict_pct": 32.5,
+      "promoted_top1_strict_correct": 316,
+      "promoted_top1_strict_pct": 30.6,
+      "unranked_top10_strict_correct": 489,
+      "safe_ranked_top10_strict_correct": 483,
+      "safe_ranked_top10_strict_pct": 46.7,
+      "pool_oracle_strict_correct": 531,
+      "pool_oracle_strict_pct": 51.4
+    },
+    "comparison_to_existing_ranker": {
+      "existing_promoted_top1_strict_correct": 344,
+      "existing_safe_ranked_top10_strict_correct": 500,
+      "top1_delta": -28,
+      "top10_delta": -17
+    },
+    "decision": "Rejected for serving: database-disjoint Spider-train calibration did not generalize to Spider dev distractor schemas."
+  },
   "decision": {
     "promotion_gate_passed": true,
     "reason": "A 1.5-point gate calibrated on databases excluded from the final ranker fit raises Spider-dev strict top-1 from 408 to 417 and top-10 strict oracle from 529 to 541. The gate is promoted only for strict-denotation ranking because lenient and scalar top-1 decline.",
-    "next_objective": "Run the gated profile planner through integrated execution and latency validation, then target the remaining gap between 417 top-1 and the 553-example strict-reachable pool."
+    "next_objective": "Keep the proven strict gate in live opt-in serving. Target schema-invariant role-binding and candidate-selection supervision; the all-table ranker ablation improved Spider-train validation but regressed Spider dev."
   }
 }

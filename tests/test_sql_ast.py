@@ -72,6 +72,7 @@ from spider.probe.build_ast_proposal_data import (
     split_database_ids,
 )
 from spider.probe.train_ast_ranker import (
+    build_training_groups,
     calibrate_promotion_gate,
     load_or_encode_question_vectors,
 )
@@ -1044,10 +1045,154 @@ def test_live_table_query_ast_mode_executes_typed_candidate():
     assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
     assert response["candidate_count"] > 0
     assert response["ast"].startswith("SelectQuery(")
+    assert response["planner_mode"] == "ast"
     assert response["model"].endswith("(ast)")
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
+
+
+def test_live_proposal_descriptor_cache_is_bounded():
+    from engine.sql_proposal_runtime import ProposalSignalProvider
+
+    class FakeModel:
+        hidden_size = 2
+        role_names = ("projection",)
+
+        @staticmethod
+        def score_table(question, question_vector, table, table_vector):
+            return 0.0
+
+        @staticmethod
+        def score_column_roles(question, question_vector, column, kind, column_vector):
+            return {"projection": 0.0}
+
+        @staticmethod
+        def propose_sketches(question_vector, limit):
+            return ()
+
+    class FakeEncoder:
+        @staticmethod
+        def _encode(texts):
+            return np.asarray([[float(index), 1.0] for index, _ in enumerate(texts)])
+
+    provider = ProposalSignalProvider(FakeModel(), FakeEncoder())
+    provider.DESCRIPTOR_CACHE_LIMIT = 2
+    descriptors = [
+        {"table": "items", "name": name, "affinity": "TEXT"}
+        for name in ("alpha", "beta", "gamma")
+    ]
+
+    first = provider.signals_from_descriptors("show items", descriptors)
+    second = provider.signals_from_descriptors("show items", descriptors)
+
+    assert len(first.column_roles["projection"]) == 3
+    assert len(second.column_roles["projection"]) == 3
+    assert len(provider._descriptor_vectors) == 2
+
+
+def test_live_profile_and_strict_modes_load_frozen_artifacts():
+    class HermeticArtifactTableQuery(TableQuery):
+        def _encode(self, texts):
+            return np.zeros((len(texts), 896), dtype=np.float32)
+
+        def schema(self, tables, fks):
+            columns = []
+            index = 0
+            for table in tables:
+                for name in table["columns"]:
+                    values = [row[table["columns"].index(name)] for row in table["rows"]]
+                    numeric = values and all(isinstance(value, (int, float)) for value in values)
+                    columns.append({
+                        "table": table["name"], "name": name, "idx": index,
+                        "struct": set(), "affinity": "INTEGER" if numeric else "TEXT",
+                        "ace": [], "is_date": False,
+                        "qvec": np.zeros(896, dtype=np.float32), "values": values,
+                    })
+                    index += 1
+            return columns, {}, {table["name"]: table for table in tables}
+
+    previous = os.environ.get("PREREASONER_SQL_PLANNER")
+    try:
+        for mode in ("ast_profile", "ast_strict"):
+            os.environ["PREREASONER_SQL_PLANNER"] = mode
+            response = HermeticArtifactTableQuery().serve([PEOPLE], "list person names")
+            assert response["valid"] is True
+            assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
+            assert response["candidate_count"] > 0
+            assert response["planner_mode"] == mode
+            assert response["model"].endswith(f"({mode})")
+    finally:
+        if previous is None:
+            os.environ.pop("PREREASONER_SQL_PLANNER", None)
+        else:
+            os.environ["PREREASONER_SQL_PLANNER"] = previous
+
+
+def test_world_own_data_route_preserves_ast_observability():
+    from engine.world_tables import WorldTableQuery
+
+    class FakeOwnPlanner:
+        @staticmethod
+        def ingest(tables):
+            return tables, []
+
+        @staticmethod
+        def schema(tables, fks):
+            return [], {}, {}
+
+        @staticmethod
+        def serve(tables, question):
+            return {
+                "sql": 'SELECT "Name" FROM "people"',
+                "result": {"columns": ["Name"], "rows": [["Alice"]]},
+                "error": None,
+                "planner_mode": "ast_profile",
+                "ast": "SelectQuery(...)",
+                "candidate_count": 7,
+                "evidence": ["phase5:projection"],
+                "features": {"projection": 1.0},
+                "model": "typed planner",
+            }
+
+    class HermeticWorldTableQuery(WorldTableQuery):
+        def __init__(self):
+            self.q11 = FakeOwnPlanner()
+
+        @staticmethod
+        def route(table):
+            return {}
+
+        @staticmethod
+        def column_dims(schema, table_name):
+            return {}
+
+        @staticmethod
+        def meaning_filter(question, routes):
+            return None
+
+        @staticmethod
+        def _own_value_matches(question, tables):
+            return []
+
+        @staticmethod
+        def world_target(question, routes):
+            return None
+
+        @staticmethod
+        def _debug_input(*args):
+            return {}
+
+    response = HermeticWorldTableQuery().serve([PEOPLE], "list person names")
+
+    assert response["planner"] == {
+        "mode": "ast_profile",
+        "ast": "SelectQuery(...)",
+        "candidate_count": 7,
+        "evidence": ["phase5:projection"],
+        "features": {"projection": 1.0},
+    }
+    assert response["model"] == "typed planner"
 
 
 def test_schema_graph_resolves_normalized_foreign_key_names():
@@ -1366,6 +1511,67 @@ def test_ranker_question_vector_cache_is_reused_and_fingerprinted():
             raise AssertionError("stale question-vector cache was accepted")
 
 
+def test_whole_db_ranker_training_reuses_database_runtime():
+    import spider.probe.train_ast_ranker as ranker_training
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "demo.sqlite")
+        con = sqlite3.connect(path)
+        con.execute('CREATE TABLE "people" ("Name" TEXT)')
+        con.executemany('INSERT INTO "people" VALUES (?)', [("Alice",), ("Bob",)])
+        con.commit()
+        con.close()
+        metadata = {"demo": {
+            "db_id": "demo",
+            "table_names_original": ["people"],
+            "column_names_original": [[-1, "*"], [0, "Name"]],
+            "column_types": ["text", "text"],
+            "foreign_keys": [],
+            "primary_keys": [],
+        }}
+        examples = [{
+            "db_id": "demo", "question": "list names",
+            "query": 'SELECT "Name" FROM "people"',
+        }] * 2
+        original = ranker_training.build_mem_db
+        calls = 0
+
+        def counted_build(tables):
+            nonlocal calls
+            calls += 1
+            return original(tables)
+
+        ranker_training.build_mem_db = counted_build
+        try:
+            groups, _ = build_training_groups(
+                examples, metadata, directory, "whole_db", 5000, 10, 5,
+                progress_every=0,
+            )
+        finally:
+            ranker_training.build_mem_db = original
+
+    assert calls == 1
+    assert len(groups) == 2
+
+
+def test_ranker_training_execution_caps_materialized_rows():
+    from spider.probe.evalutil import exec_sql_timed
+
+    con = sqlite3.connect(":memory:")
+    try:
+        rows, error = exec_sql_timed(
+            con,
+            "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3",
+            timeout=1.0,
+            max_rows=2,
+        )
+    finally:
+        con.close()
+
+    assert rows is None
+    assert error == "ResultTooLarge: more than 2 rows"
+
+
 def test_profile_promotion_gate_requires_calibrated_generated_margin():
     schema = SQLSearcher.from_tables([PEOPLE], []).schema
     name = next(column.ref for column in schema.columns if column.ref.name == "Name")
@@ -1473,6 +1679,9 @@ TESTS = [
     test_public_sql_facade_exposes_stable_planner_contract,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,
+    test_live_proposal_descriptor_cache_is_bounded,
+    test_live_profile_and_strict_modes_load_frozen_artifacts,
+    test_world_own_data_route_preserves_ast_observability,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
     test_ast_failure_profiles_share_structural_and_schema_vocabulary,
@@ -1483,6 +1692,8 @@ TESTS = [
     test_ast_proposal_contrasts_cover_targeted_same_profile_families,
     test_sql_proposer_artifact_round_trip_is_deterministic,
     test_ranker_question_vector_cache_is_reused_and_fingerprinted,
+    test_whole_db_ranker_training_reuses_database_runtime,
+    test_ranker_training_execution_caps_materialized_rows,
     test_profile_promotion_gate_requires_calibrated_generated_margin,
     test_promotion_gate_calibration_prefers_zero_loss_margin,
 ]

@@ -27,10 +27,10 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 try:
-    from .evalutil import build_mem_db, load_capped
+    from .evalutil import build_mem_db, exec_sql_timed, load_capped
     from .spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
 except ImportError:  # direct script execution
-    from evalutil import build_mem_db, load_capped
+    from evalutil import build_mem_db, exec_sql_timed, load_capped
     from spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
 
 from engine.sql_learned_rank import (
@@ -112,11 +112,8 @@ def load_or_encode_question_vectors(
     return vectors
 
 
-def _execute(con, sql: str):
-    try:
-        return [list(row) for row in con.execute(sql).fetchall()], None
-    except Exception as exc:  # noqa: BLE001 - failed candidates are ordinary negative labels
-        return None, f"{type(exc).__name__}: {exc}"
+def _execute(con, sql: str, timeout: float, row_limit: int):
+    return exec_sql_timed(con, sql, timeout=timeout, max_rows=row_limit)
 
 
 def build_training_groups(
@@ -134,12 +131,18 @@ def build_training_groups(
     profile_per_profile: int = 4,
     profile_generation_penalty: float = 5.0,
     profile_binding_quality_weight: float = 2.0,
+    execution_timeout: float = 1.0,
+    execution_row_limit: int = 10000,
     progress_every: int = 100,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Generate candidates, execute them, and retain positives plus hard negatives."""
     groups = []
     stats: Counter[str] = Counter()
     db_cache: dict[str, dict[str, dict[str, Any]]] = {}
+    active_db_id = None
+    active_connection = None
+    active_searcher = None
+    active_tables = None
     started = time.time()
     from engine.sql_profile_expansion import ProfileSearchConfig
 
@@ -154,79 +157,101 @@ def build_training_groups(
         from engine.sql_proposal_runtime import ProposalSignalProvider
 
         proposal_provider = ProposalSignalProvider(proposal_model, proposal_encoder)
-    for index, example in enumerate(examples, 1):
-        db_id = str(example["db_id"])
-        meta = metas.get(db_id)
-        db_path = os.path.join(dbs, db_id + ".sqlite")
-        if meta is None or not os.path.exists(db_path):
-            stats["missing_database"] += 1
-            continue
-        if db_id not in db_cache:
-            db_cache[db_id] = load_capped(db_path, cap)
-        capped = db_cache[db_id]
-        if config == "gold_tables":
-            names = [name.lower() for name in recursive_gold_table_names(example, metas)]
-            tables = [capped[name] for name in names if name in capped] or list(capped.values())
-        else:
-            tables = list(capped.values())
+    try:
+        for index, example in enumerate(examples, 1):
+            db_id = str(example["db_id"])
+            meta = metas.get(db_id)
+            db_path = os.path.join(dbs, db_id + ".sqlite")
+            if meta is None or not os.path.exists(db_path):
+                stats["missing_database"] += 1
+                continue
 
-        con = build_mem_db(tables)
-        gold_rows, gold_error = _execute(con, str(example["query"]))
-        if gold_error is not None:
-            con.close()
-            stats["gold_error"] += 1
-            continue
+            close_after_example = config == "gold_tables"
+            if close_after_example:
+                if db_id not in db_cache:
+                    db_cache[db_id] = load_capped(db_path, cap)
+                capped = db_cache[db_id]
+                names = [name.lower() for name in recursive_gold_table_names(example, metas)]
+                tables = [capped[name] for name in names if name in capped] or list(capped.values())
+                con = build_mem_db(tables)
+                searcher = SQLSearcher.from_tables(
+                    tables, spider_foreign_keys(meta), max_candidates=pool,
+                )
+            else:
+                if active_db_id != db_id:
+                    if active_connection is not None:
+                        active_connection.close()
+                    capped = load_capped(db_path, cap)
+                    active_tables = list(capped.values())
+                    active_connection = build_mem_db(active_tables)
+                    active_searcher = SQLSearcher.from_tables(
+                        active_tables, spider_foreign_keys(meta), max_candidates=pool,
+                    )
+                    active_db_id = db_id
+                tables = active_tables
+                con = active_connection
+                searcher = active_searcher
 
-        searcher = SQLSearcher.from_tables(
-            tables,
-            spider_foreign_keys(meta),
-            max_candidates=pool,
-        )
-        signals = None
-        if proposal_model is not None:
-            signals = proposal_provider.signals(
-                str(example["question"]), searcher.schema, question_vectors[index - 1]
+            gold_rows, gold_error = _execute(
+                con, str(example["query"]), execution_timeout, execution_row_limit
             )
-        candidates = searcher.search(
-            str(example["question"]),
-            semantic_signals=signals,
-            profile_config=profile_config,
-        )
-        records = []
-        positive_count = 0
-        for rank, candidate in enumerate(candidates):
-            rows, error = _execute(con, candidate.sql)
-            correct = bool(error is None and compare(gold_rows, rows).get("strict"))
-            positive_count += int(correct)
-            if rank < negative_pool or correct:
-                records.append({
-                    "sql": candidate.sql,
-                    "rank": rank,
-                    "correct": correct,
-                    "features": learned_feature_vector(
-                        str(example["question"]), candidate, rank, len(candidates)
-                    ),
-                })
-        con.close()
+            if gold_error is not None:
+                if close_after_example:
+                    con.close()
+                stats["gold_error"] += 1
+                continue
 
-        stats["examples"] += 1
-        stats["baseline_correct"] += int(bool(records and records[0]["correct"]))
-        stats["oracle_correct"] += int(positive_count > 0)
-        stats["positive_candidates"] += positive_count
-        groups.append({
-            "db_id": db_id,
-            "question": str(example["question"]),
-            "baseline_correct": bool(records and records[0]["correct"]),
-            "oracle_correct": positive_count > 0,
-            "candidates": records,
-        })
-        if progress_every and index % progress_every == 0:
-            elapsed = time.time() - started
-            print(
-                f"  generated {index}/{len(examples)} examples in {elapsed:.1f}s "
-                f"(oracle={stats['oracle_correct']})",
-                flush=True,
+            signals = None
+            if proposal_model is not None:
+                signals = proposal_provider.signals(
+                    str(example["question"]), searcher.schema, question_vectors[index - 1]
+                )
+            candidates = searcher.search(
+                str(example["question"]),
+                semantic_signals=signals,
+                profile_config=profile_config,
             )
+            records = []
+            positive_count = 0
+            for rank, candidate in enumerate(candidates):
+                rows, error = _execute(
+                    con, candidate.sql, execution_timeout, execution_row_limit
+                )
+                correct = bool(error is None and compare(gold_rows, rows).get("strict"))
+                positive_count += int(correct)
+                if rank < negative_pool or correct:
+                    records.append({
+                        "sql": candidate.sql,
+                        "rank": rank,
+                        "correct": correct,
+                        "features": learned_feature_vector(
+                            str(example["question"]), candidate, rank, len(candidates)
+                        ),
+                    })
+            if close_after_example:
+                con.close()
+
+            stats["examples"] += 1
+            stats["baseline_correct"] += int(bool(records and records[0]["correct"]))
+            stats["oracle_correct"] += int(positive_count > 0)
+            stats["positive_candidates"] += positive_count
+            groups.append({
+                "db_id": db_id,
+                "question": str(example["question"]),
+                "baseline_correct": bool(records and records[0]["correct"]),
+                "oracle_correct": positive_count > 0,
+                "candidates": records,
+            })
+            if progress_every and index % progress_every == 0:
+                elapsed = time.time() - started
+                print(
+                    f"  generated {index}/{len(examples)} examples in {elapsed:.1f}s "
+                    f"(oracle={stats['oracle_correct']})",
+                    flush=True,
+                )
+    finally:
+        if active_connection is not None:
+            active_connection.close()
     return groups, dict(stats)
 
 
@@ -639,6 +664,8 @@ def _cache_header(args, train_paths: Sequence[str]) -> dict[str, Any]:
         "profile_per_profile": args.profile_per_profile,
         "profile_generation_penalty": args.profile_generation_penalty,
         "profile_binding_quality_weight": args.profile_binding_quality_weight,
+        "execution_timeout": args.execution_timeout,
+        "execution_row_limit": args.execution_row_limit,
     }
 
 
@@ -688,6 +715,8 @@ def main() -> None:
     parser.add_argument("--profile-per-profile", type=int, default=4)
     parser.add_argument("--profile-generation-penalty", type=float, default=5.0)
     parser.add_argument("--profile-binding-quality-weight", type=float, default=2.0)
+    parser.add_argument("--execution-timeout", type=float, default=1.0)
+    parser.add_argument("--execution-row-limit", type=int, default=10000)
     parser.add_argument("--max-examples", type=int, default=0)
     parser.add_argument("--validation-ratio", type=float, default=0.2)
     parser.add_argument("--seed", type=int, default=1729)
@@ -705,6 +734,10 @@ def main() -> None:
         parser.error("profile candidate budgets must be positive")
     if args.profile_generation_penalty < 0 or args.profile_binding_quality_weight < 0:
         parser.error("profile weights must be nonnegative")
+    if args.execution_timeout <= 0:
+        parser.error("execution timeout must be positive")
+    if args.execution_row_limit < 1:
+        parser.error("execution row limit must be positive")
 
     train_paths = args.train or [
         os.path.join(data, "train_spider.json"),
@@ -751,6 +784,8 @@ def main() -> None:
             profile_per_profile=args.profile_per_profile,
             profile_generation_penalty=args.profile_generation_penalty,
             profile_binding_quality_weight=args.profile_binding_quality_weight,
+            execution_timeout=args.execution_timeout,
+            execution_row_limit=args.execution_row_limit,
         )
         if args.cache:
             save_cache(args.cache, header, groups)
@@ -777,6 +812,8 @@ def main() -> None:
         "profile_per_profile": args.profile_per_profile,
         "profile_generation_penalty": args.profile_generation_penalty,
         "profile_binding_quality_weight": args.profile_binding_quality_weight,
+        "execution_timeout": args.execution_timeout,
+        "execution_row_limit": args.execution_row_limit,
         "seed": args.seed,
         "train_examples": len(train_groups),
         "validation_examples": len(validation_groups),

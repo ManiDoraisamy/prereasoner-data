@@ -128,6 +128,34 @@ candidates = planner.search("list each customer name and total order amount")
 The promotion gate is trained for Spider strict denotation. Do not assume it improves
 lenient containment or scalar-only metrics.
 
+### Live serving
+
+`TableQuery.serve` and the Postgres own-data route use the same planner behind an
+explicit rollout setting:
+
+| `PREREASONER_SQL_PLANNER` | Runtime behavior |
+|---|---|
+| `legacy` | Existing slot-filling planner. This remains the default. |
+| `ast` | Typed AST search with hand ranking. |
+| `ast_profile` | Typed search plus the frozen structured proposer. Baseline top-1 is preserved. |
+| `ast_strict` | Profile search plus the held-out strict-denotation promotion gate. |
+
+The proposer and ranker default to `engine/data/sql_proposer.json` and
+`engine/data/sql_profile_ranker.json`. Override them with
+`PREREASONER_SQL_PROPOSER` and `PREREASONER_SQL_RANKER`. Artifacts are loaded lazily
+once per serving object; an invalid mode, missing artifact, or ungated strict ranker is
+reported in the normal serving error envelope.
+
+The own-data `/api/world` response keeps its existing SQL and result fields and adds a
+`planner` object for AST modes with `mode`, `ast`, `candidate_count`, `evidence`, and
+`features`. The proposal descriptor-vector cache is bounded to 4,096 entries on the
+long-lived serving object.
+
+For a conservative production rollout, start with `ast_profile`: it expands the
+candidate pool but protects the deterministic hand-ranked winner. Use `ast_strict`
+only when strict denotation is the product objective. The Spider-calibrated gate is not
+a general guarantee for containment or scalar-only evaluation.
+
 ## Search configuration
 
 `ProfileSearchConfig` is the single source of truth for profile expansion:
@@ -220,6 +248,32 @@ The strict gain is objective-specific. Gated promotion scores 48.4% lenient and 
 scalar, below the protected baseline's 49.8% and 56.9%. Keep baseline-top preservation
 for general use unless strict denotation is the explicit objective.
 
+### Whole-database serving baseline
+
+Gold tables are useful for isolating SQL construction, but live serving sees every table
+in the uploaded database. The corresponding all-table Spider dev run is:
+
+| Configuration | Strict top-1 | Strict top-10 | Strict pool oracle | Avg. candidates |
+|---|---:|---:|---:|---:|
+| Phase 5 typed search | 336 (32.5%) | 435 (42.1%) | 457 (44.2%) | 23.29 |
+| Compressed profile expansion | 336 (32.5%) | 489 (47.3%) | 531 (51.4%) | 36.56 |
+| Safeguarded learned ordering | 336 (32.5%) | 500 (48.4%) | 531 (51.4%) | 36.56 |
+| Existing-ranker promotion | **344 (33.3%)** | **500 (48.4%)** | 531 (51.4%) | 36.56 |
+| All-table-ranker safeguarded | 336 (32.5%) | 483 (46.7%) | 531 (51.4%) | 36.56 |
+| All-table-ranker promotion | 316 (30.6%) | 483 (46.7%) | 531 (51.4%) | 36.56 |
+
+The realistic pool loses only 22 reachable answers relative to the 553-example
+gold-table pool, while selected top-1 loses 73 answers relative to 417. This localizes
+the dominant live gap to ranking and role binding in the presence of distractor tables,
+not merely to candidate construction.
+
+Training directly on all-table candidate pools improves database-disjoint Spider-train
+validation from 430 to 484 top-1 answers (32.4% to 36.4%), but does not generalize to
+Spider dev. Its gated promotion drops dev strict top-1 from 336 to 316 and its safeguarded
+top-10 drops from 500 with the existing ranker to 483. The artifact is retained as a
+rejected ablation; live serving continues to use `sql_profile_ranker.json`. More data is
+not enough when the learned objective exploits database-specific distractor patterns.
+
 The current ceiling is candidate recall: 553 examples contain a strict-correct query,
 but only 417 select it first. Another 481 examples still have no strict-correct candidate.
 Determinism cannot recover an AST that search never constructs.
@@ -227,6 +281,8 @@ Determinism cannot recover an AST that search never constructs.
 Detailed records:
 
 - `spider/results/ast_profile_ranked.json`: final dev metrics;
+- `spider/results/ast_profile_ranked_whole_db.json`: realistic all-table baseline;
+- `spider/results/ast_profile_ranked_whole_db_ranker.json`: rejected all-table ranker;
 - `spider/results/ast_proposer_ablation.json`: experiment and promotion decisions;
 - `spider/results/ast_failure_analysis.json`: candidate-recall diagnosis;
 - `spider/results/ast_proposer.json`: proposer validation metrics.
@@ -248,8 +304,9 @@ python spider/probe/train_ast_proposer.py \
   --report spider/results/ast_proposer.json
 ```
 
-Train the profile-aware ranker. The question-vector and candidate caches are resumable
-and fingerprinted. Calibration databases must remain outside the final fit:
+Train the profile-aware ranker. Question-vector checkpoints are resumable and candidate
+caches are reusable; both are fingerprinted. Calibration databases must remain outside
+the final fit:
 
 ```bash
 python spider/probe/train_ast_ranker.py \
@@ -260,6 +317,12 @@ python spider/probe/train_ast_ranker.py \
   --cache spider/data/profile_ranker_cache.jsonl \
   --out engine/data/sql_profile_ranker.json
 ```
+
+The rejected whole-database ablation is reproduced with `--config whole_db`,
+`--execution-timeout 1`, and `--execution-row-limit 10000`. Those training-only bounds
+prevent pathological wrong joins from monopolizing hard-negative mining and are recorded
+in cache and model provenance. Whole-database training reuses one schema graph and
+in-memory SQLite database per Spider database.
 
 Evaluate the final path:
 
@@ -280,9 +343,9 @@ override is explicit. Frozen ranker inference does not require scikit-learn.
 python -m tests.test_sql_ast
 ```
 
-The 73 hermetic tests execute generated SQL against in-memory SQLite and cover AST
+The 79 hermetic tests execute generated SQL against in-memory SQLite and cover AST
 typing, rendering, joins, recursion, constraints, extrema, profiles, artifacts, cache
-provenance, promotion calibration, and deterministic ordering.
+provenance, promotion calibration, deterministic ordering, and all live AST modes.
 
 Run the repository aggregate suite with:
 
@@ -295,11 +358,10 @@ python -m tests.run_all
 The planner is coherent and deterministic, but Spider is not solved. The next work should
 be measured against the current bottlenecks:
 
-1. Integrate the profile-aware planner into the live execution path and measure latency.
-2. Close the gap between 417 selected and 553 strict-reachable examples.
-3. Add search rules or structured supervision for the 481 examples with no strict candidate.
-4. Improve whole-database table selection; the reported configuration uses gold tables.
-5. Treat larger encoders as controlled capacity experiments after objective and data changes.
+1. Close the ranking gap between selected and strict-reachable candidates.
+2. Add search rules or structured supervision for examples with no strict candidate.
+3. Calibrate promotion for the product's answer metric instead of reusing a strict-only gate.
+4. Treat larger encoders as controlled capacity experiments after objective and data changes.
 
 Historical Phase 1-6 names remain in evaluator output for ablation compatibility. They are
 not separate runtime architectures and should not drive new module boundaries.
