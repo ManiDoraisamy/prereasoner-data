@@ -160,6 +160,7 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                         # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
                         question = (block.input or {}).get("question", "")
+                        print(f"[chat] turn={turn_id} call={call_idx} rewrote -> {question!r}", flush=True)
                         _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
                         call_idx += 1
                         result = await session.call_tool(

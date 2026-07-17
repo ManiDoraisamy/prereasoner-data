@@ -45,9 +45,14 @@ let HTTPJ=null;                                  // the atomic HTTP body (result
 // ---- orchestrated (Sonnet front-door) mode: WB.chat routes each turn through /chat (Sonnet + engine-MCP),
 // which resolves context ("How about germany?" -> "total amount in Germany") and can make several engine
 // calls per turn. Off by default -> the direct /api/reason path above is byte-identical. ----
-// ORCH default = WB.chat, overridable per-browser with localStorage 'pr_chat' ('1' on / '0' off) so the
-// orchestrated path can be exercised on the live site before it becomes the default. No redeploy needed.
-const ORCH = (()=>{ try{ const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false; }catch(_){} return !!WB.chat; })();
+// ORCH default = WB.chat, overridable so the orchestrated path can be exercised on the live site before it
+// becomes the default. Toggle with the URL query ?chat=1 / ?chat=0 (works on any origin, no console) — it
+// persists to localStorage 'pr_chat' for later visits. No redeploy needed.
+const ORCH = (()=>{ try{
+  const p=new URLSearchParams(location.search).get('chat');
+  if(p==='1'||p==='0'){ try{localStorage.setItem('pr_chat',p);}catch(_){} return p==='1'; }
+  const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false;
+}catch(_){} return !!WB.chat; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
@@ -120,15 +125,23 @@ function resultSummary(){
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
 function conv2html(t){ return esc(String(t||'')).replace(/\n/g,'<br>'); }
+// Orchestrated: show the REWRITTEN question(s) Sonnet actually sent to the engine ("How about germany?"
+// -> "total amount in Germany"), so the interpretation is visible and auditable.
+function asksHtml(){
+  if(!ORCH||!CALLS.length) return '';
+  return '<div class=asks>'+CALLS.map(c=>'<div class=askline>&#8618; read as <b>&ldquo;'+esc(c.question)+'&rdquo;</b></div>').join('')+'</div>';
+}
+function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>'):''; }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
   if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // a clarify / non-data question, answered right here
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
-    if(PRESENT||ORCH){ const derivs=BOOK.filter(s=>s.cls==='deriv');   // keep the derivation reachable from the rail (it lives in the panel)
-      if(derivs.length) h+='<div class=steps>'+derivs.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>'; }
+    if(ORCH) h+=asksHtml();                                 // orchestrated: the rewritten question(s)
+    if(PRESENT||ORCH) h+=derivLinks();                      // keep the derivation reachable from the rail (it lives in the panel)
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
+  if(ORCH) h+=asksHtml();                                   // show the rewrite live while the engine streams
   const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
   if(refs.length)
     h+='<div class=steps>'+refs.map(s=>'<button class="steplink refl'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>&#9707;</span><span class=stx>looked up '+esc(s.name)+'</span></button>').join('')+'</div>';
@@ -143,13 +156,14 @@ function turnHtml(){                                          // the CURRENT (li
 function archiveTurn(){                                       // freeze the finished turn to a MINIMAL line (no dead links)
   let h;
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
-  else if(CONV) h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // freeze the conversational reply (drop the run button)
+  else if(CONV) h='<div class=convmsg>'+conv2html(CONV)+'</div>'+(ORCH?asksHtml():'');   // freeze the reply + the rewritten question(s)
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
   CHAT.push({q:question, html:h});
 }
 function renderRail(){
   let h='';
+  if(ORCH) h+='<div class=modebadge title="Sonnet reads each message in context and rewrites it into a precise query before PreReasoner runs it. Turn off with ?chat=0">&#9889; Sonnet assist</div>';
   for(const t of CHAT) h+='<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
   h+='<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
