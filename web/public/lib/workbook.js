@@ -56,6 +56,7 @@ const ORCH = (()=>{ try{
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
+let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); if(m.cls!=='ref'&&AUTO) ACTIVE=m.id; if(m.cls==='ref'&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -67,11 +68,14 @@ function renderGrid(m){
   const cols=m.cols||[],rows=(m.rows||[]);
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
   const shown=rows.slice(0,MAX_RENDER_ROWS);
-  let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+'"><thead><tr><th class=rn></th>';
+  const edit=(m.cls==='input');                              // the user's own tables are editable ("what-if"); derived/reference are read-only
+  let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':'')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
   h+='</tr></thead><tbody>';
   for(let ri=0;ri<shown.length;ri++){ h+='<tr><td class=rn>'+(ri+1)+'</td>';
-    for(let ci=0;ci<cols.length;ci++) h+='<td'+(numeric[ci]?' class=n':'')+'>'+esc(fmt(shown[ri][ci]))+'</td>';
+    for(let ci=0;ci<cols.length;ci++) h+='<td'+(numeric[ci]?' class=n':'')
+      +(edit?' contenteditable="true" spellcheck="false" data-si="'+m.si+'" data-r="'+ri+'" data-c="'+ci+'" oninput="editCell(this)" onkeydown="cellKey(event,this)"':'')
+      +'>'+esc(fmt(shown[ri][ci]))+'</td>';
     h+='</tr>'; }
   if(!rows.length) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -183,8 +187,36 @@ function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed'; pa
 const ENDPOINT=API_BASE+WB.endpoint;
 function seedInputs(){
   SHEETS.forEach((s,i)=>{ const p=parseCSV(s.data);
-    addSheet({id:'in'+i, cls:'input', name:s.name, cols:p.cols, rows:p.rows}); });
+    addSheet({id:'in'+i, cls:'input', si:i, name:s.name, cols:p.cols, rows:p.rows}); });
   ACTIVE=BOOK.length?BOOK[0].id:null; paint();
+}
+/* ---- editable input sheets (what-if): edit a cell -> offer Recalculate, which re-runs the last question ---- */
+function editCell(el){                                        // a keystroke in an input cell: update the model (no re-paint — that'd drop focus)
+  const si=+el.dataset.si, r=+el.dataset.r, c=+el.dataset.c;
+  const sh=BOOK.find(s=>s.cls==='input'&&s.si===si); if(!sh||!sh.rows[r])return;
+  sh.rows[r][c]=el.innerText.replace(/\n/g,' ');
+  if(!EDITED){ EDITED=true; showRecalc(true); }
+}
+function cellKey(ev,el){ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); } }   // Enter commits the cell, no newline
+function csvCell(v){ v=v==null?'':String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
+function syncInputsToSheets(){                                // serialize edited input sheets back to SHEETS (+ persist) before a run
+  BOOK.filter(s=>s.cls==='input').forEach(s=>{ if(s.si!=null&&SHEETS[s.si])
+    SHEETS[s.si].data=[s.cols.map(csvCell).join(',')].concat((s.rows||[]).map(r=>r.map(csvCell).join(','))).join('\n'); });
+  try{ sessionStorage.setItem(SS.TABLES, JSON.stringify(SHEETS)); }catch(_){}
+}
+function showRecalc(on){
+  let b=$('recalcbar');
+  if(!b){ b=document.createElement('div'); b.id='recalcbar'; b.className='recalcbar';
+    b.innerHTML='<span>&#9998; You changed your data.</span><button onclick="recalc()">Recalculate</button>';
+    document.body.appendChild(b); }
+  b.classList.toggle('show',!!on);
+}
+function recalc(){                                            // re-run the last question on the edited data (auto-composed; no retyping)
+  if(!SETTLED&&!FAILMSG) return;                             // one run at a time
+  showRecalc(false); EDITED=false;
+  const q=LASTQ||question; if(!q) return;
+  archiveTurn(); question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
+  resetRun(); paint(); startRun();
 }
 // This run just produced its OWN first sheet -> retire the previous turn's derivation/reference sheets that
 // resetRun kept around (so a conversational follow-up could still show them). A data query replaces them.
@@ -293,6 +325,7 @@ function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); qu
 async function startTurn(){
   const myRun=++RUN;
   const live=()=>RUN===myRun&&!SETTLED;
+  LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); }   // pick up any input-cell edits
   let token;
   try{ token=await window.ensureToken(); }
   catch(e){ if(RUN===myRun) fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }
@@ -356,6 +389,7 @@ async function startRun(){
   if(ORCH) return startTurn();                                // orchestrated front-door (flag; direct path below is unchanged)
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
+  LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); }   // pick up any input-cell edits
   let token;
   try{ token=await window.ensureToken(); }
   catch(e){ if(RUN===myRun) fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }

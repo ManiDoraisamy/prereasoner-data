@@ -200,6 +200,15 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .cotbody{margin-top:6px}
 .cotask{padding:5px 10px;margin-bottom:6px;border-radius:8px;background:#f6f4ff;border:1px dashed #d8cdf5;color:#5b5273;font:12.5px/1.5 var(--disp)}
 .modebadge{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;margin:0 0 10px;padding:3px 10px;border-radius:9999px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);font:600 11px var(--disp);cursor:default}
+/* editable input sheets (what-if) + the Recalculate bar */
+.wb.editable td[contenteditable]{cursor:text}
+.wb.editable td[contenteditable]:hover{background:#faf9ff}
+.wb.editable td[contenteditable]:focus{outline:2px solid var(--brand);outline-offset:-2px;background:#fff;border-radius:2px}
+.recalcbar{position:fixed;left:50%;bottom:26px;transform:translate(-50%,20px);z-index:60;display:none;align-items:center;gap:12px;padding:9px 10px 9px 16px;border-radius:9999px;background:#2b2440;color:#fff;box-shadow:0 8px 26px rgba(40,28,80,.32);font:13px var(--disp)}
+.recalcbar.show{display:inline-flex;animation:recalcin .18s ease-out}
+@keyframes recalcin{from{opacity:0;transform:translate(-50%,20px)}to{opacity:1;transform:translate(-50%,0)}}
+.recalcbar button{all:unset;cursor:pointer;padding:6px 15px;border-radius:9999px;background:var(--brand);color:#fff;font:600 12.5px var(--disp)}
+.recalcbar button:hover{background:#7c66ee}
 
 /* chat input bar (rail bottom) */
 .chatbar{flex:0 0 auto;display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid #efeafa}
