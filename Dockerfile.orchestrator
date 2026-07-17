@@ -14,13 +14,14 @@ ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 COPY orchestrator/requirements.txt /app/orchestrator/requirements.txt
 RUN pip install --no-cache-dir -r orchestrator/requirements.txt
 
-# engine/ is copied for engine.config only (the ONE config module); its heavy submodules are never
-# imported here and their deps are intentionally absent. mcp_server/ + orchestrator/ are the app.
-# web/ lets the container also serve the static chat UI (used locally; in prod Firebase Hosting serves it).
+# engine/ is copied for engine.config / auth / trace (config + Firebase token-verify + the RTDB trace
+# stream); its heavy submodules are never imported here and their deps are intentionally absent.
+# mcp_server/ + orchestrator/ are the app. web/ is NOT copied: in production Firebase Hosting serves the
+# static UI and rewrites only /chat + /api to this service, so the container never serves static files
+# (and web/ is excluded from the build upload by .gcloudignore). Local dev serves web/ from the repo tree.
 COPY engine/ /app/engine/
 COPY mcp_server/ /app/mcp_server/
 COPY orchestrator/ /app/orchestrator/
-COPY web/ /app/web/
 
 # Cloud Run injects PORT; the orchestrator binds ORCH_PORT. Map them so the container obeys Cloud Run.
 ENV ORCH_HOST=0.0.0.0 ORCH_PORT=8090
