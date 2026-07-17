@@ -31,6 +31,15 @@ data. Your past conversations are saved and reopenable from the menu. The answer
 value with a visible derivation — click back through the blue tabs to the grey facts and your
 green source rows.
 
+Not every message is a data query, though. Ask *"how does this work?"*, or *"did you mean revenue
+over $100?"*, or *"I'm worried our top region is too concentrated"*, and a lightweight
+**conversational layer** (Claude Sonnet) answers **in the same chat** — it explains, offers a
+one-tap rephrasing, or presents a computed answer in plain words — while the derivation stays in
+the panel. Crucially, **it never produces a number**: every figure still comes from SQL the engine
+ran. This layer is entirely optional (no Anthropic key ⇒ a graceful built-in fallback), and normal
+data questions never touch it — they stay fast, free, and fully deterministic. Details in
+[docs/ARCHITECTURE.md §10](docs/ARCHITECTURE.md#10-the-conversational-layer-sonnet).
+
 For example, over `customers.csv` + `orders.csv`, *"total amount in France"* becomes four visible
 steps and the answer **270** — with the France filter coming from a world-knowledge lookup of each
 city's country, not from the model guessing.

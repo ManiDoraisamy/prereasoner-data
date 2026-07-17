@@ -154,3 +154,28 @@ adapter (`base_model_name_or_path: Qwen/Qwen2.5-0.5B`).
   live `world."words"` rows carry a bare QID as `canonical`; the rephrase now drops the
   entity instead (the degenerate-query fallback applies). The words-table data gap itself
   is a db/sync concern (see docs/notes/db.md).
+
+## Conversational layer (2026-07-17)
+
+New subsystem — the engine side of the in-chat Sonnet fallback + answer presentation. Full design
+in docs/ARCHITECTURE.md §10; this note records the engine surface for maintainers.
+
+- **`engine/converse.py`** (new): `reply(question, clarify=, error=, tables=, answer=, sql=)` — one
+  short Sonnet message. Two modes selected by whether `answer` is supplied: PRESENT (wrap a computed
+  `{columns,rows}` verbatim; empty result renders an explicit "no rows" sentinel) and FALLBACK
+  (offer a clarify rephrasing / explain a meta question; never state an unseen number). Uses
+  `config.anthropic_api_key()` + `ANTHROPIC_MODEL`.
+- **`engine/server.py`**: `POST /api/converse` (`_post_converse`) — Firebase-auth'd like the reason
+  routes; forwards `answer`/`sql`; a missing key / SDK / upstream error is caught → **503** (logged)
+  so the browser degrades to its built-in fallback. This is the ONLY generative-LLM call in the
+  engine, and it is optional.
+- **`engine/world.py`** (`WorldReasoner.serve`): the COVERAGE PRE-GATE (`_has_data_signal` → return
+  `low_confidence` before reasoning) and `_tag_present` (apply the `present` flag when a real answer
+  is human-toned), applied across both the geo and composed paths.
+- **`engine/world_compose.py`**: the three cheap, schema-aware detectors — `_has_data_signal`
+  (fails OPEN), `_human_tone` (fails CLOSED), and the shared `_schema_tokens` (a cue word that names
+  a column is data, not tone). Lexicons: `_DATA_INTENT`, `_META_STOP`, `_HUMAN_CUE`, `_HUMAN_RE`.
+- **`engine/trace.py`** (`stream_final`): streams `low_confidence` and `present` alongside the
+  existing terminal nodes.
+- **`engine/config.py`**: `ANTHROPIC_API_KEY` is now OPTIONAL for the engine (was documented as
+  orchestrator-only) — it powers /api/converse; unset ⇒ graceful 503 degrade.

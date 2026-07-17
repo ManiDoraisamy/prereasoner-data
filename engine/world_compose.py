@@ -93,14 +93,13 @@ class ComposedWorldQuery:
     def _has_data_signal(self, question, tables):
         """True iff the question looks like a query over the DATA (a data-intent word, a schema column/table
         mention, or a token that resolves to a world entity). False -> a conversational/meta question that the
-        fallback should answer, not a forced degenerate query. Best-effort; on any error it returns True (never
-        block a real query)."""
-        import re as _re
+        fallback should answer, not a forced degenerate query. Best-effort; on any error it FAILS OPEN (returns
+        True — never block a real query). This is the OPPOSITE default from _human_tone, which fails closed."""
         try:
             ql = (question or "").lower()
-            if _re.search(r"\bhow\s+(?:many|much)\b", ql):
+            if re.search(r"\bhow\s+(?:many|much)\b", ql):
                 return True                                       # 'how many/much' is a data intent (not 'how does…')
-            toks = set(_re.findall(r"[a-z]+", ql))
+            toks = set(re.findall(r"[a-z]+", ql))
             if toks & self._DATA_INTENT:
                 return True
             if toks & self._schema_tokens(tables):
@@ -109,17 +108,16 @@ class ComposedWorldQuery:
             if content and self.qw._best_world_entity(content):
                 return True
             return False
-        except Exception:                                        # noqa: BLE001
+        except Exception:                                        # noqa: BLE001 — fail OPEN: never block a real query
             return True
 
     def _schema_tokens(self, tables):
         """The set of lowercased word-parts of every table/column name (plus a naive de-pluralized form)."""
-        import re as _re
         schw = set()
         for t in (tables or []):
             cols = t.get("columns") or [c.strip() for c in (str(t.get("data", "")).splitlines() or [""])[0].split(",")]
             for nm in [t.get("name", "")] + list(cols):
-                for part in _re.split(r"[^a-z0-9]+", str(nm).lower()):
+                for part in re.split(r"[^a-z0-9]+", str(nm).lower()):
                     if len(part) > 1:
                         schw.add(part); schw.add(part.rstrip("s"))
         return schw
@@ -145,11 +143,12 @@ class ComposedWorldQuery:
         r"problem|bad news)|too (?:high|low|expensive|cheap|slow|risky)|"
         r"am i|are we|is my|is our)\b", re.I)
 
-    def _human_tone(self, question, tables=None):
+    def _human_tone(self, question, tables):
         """True iff the phrasing carries an emotional / opinion / first-person cue — a cheap signal that a
         computed answer should be PRESENTED in human words rather than shown as a bare table. A cue word that
         is ALSO a schema column/table name ("show me the feeling column") is a DATA reference, not emotion, so
-        it doesn't count. The evaluative "is that/this/it <X>" framing counts regardless. Best-effort."""
+        it doesn't count. The evaluative "is that/this/it <X>" framing counts regardless. Best-effort; on any
+        error it FAILS CLOSED (returns False — never force a needless present). Opposite of _has_data_signal."""
         try:
             ql = (question or "").lower()
             if self._HUMAN_RE.search(ql):

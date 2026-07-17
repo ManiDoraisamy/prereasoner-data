@@ -22,16 +22,17 @@ window.ensureToken = () => getIdToken(auth.currentUser);
 // done / fallback. Reads are allowed only for uid === auth.uid (database.rules.json).
 window.subscribeRun = (uid, jobId, cb) => {
   const base = ref(db, `runs/${uid}/${jobId}`);
-  const convRef = ref(db, `runs/${uid}/${jobId}/conversation_id`);
-  const statusRef = ref(db, `runs/${uid}/${jobId}/status`);
-  const resolveRef = ref(db, `runs/${uid}/${jobId}/resolve`);
-  const viewsRef = ref(db, `runs/${uid}/${jobId}/views`);
-  const resultRef = ref(db, `runs/${uid}/${jobId}/result`);
-  const clarifyRef = ref(db, `runs/${uid}/${jobId}/clarify`);
-  const lowConfRef = ref(db, `runs/${uid}/${jobId}/low_confidence`);
-  const presentRef = ref(db, `runs/${uid}/${jobId}/present`);
-  const errorRef = ref(db, `runs/${uid}/${jobId}/error`);
-  const questionRef = ref(db, `runs/${uid}/${jobId}/question`);
+  const at = node => ref(db, `runs/${uid}/${jobId}/${node}`);   // one node under this run's trace path
+  const convRef = at('conversation_id');
+  const statusRef = at('status');
+  const resolveRef = at('resolve');
+  const viewsRef = at('views');
+  const resultRef = at('result');
+  const clarifyRef = at('clarify');
+  const lowConfRef = at('low_confidence');
+  const presentRef = at('present');
+  const errorRef = at('error');
+  const questionRef = at('question');
   const uConv = onValue(convRef, s => { const v = s.val(); if (v != null && cb.onConversation) cb.onConversation(v); });
   const uStatus = onValue(statusRef, s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
   const uResolve = onChildAdded(resolveRef, s => { if (cb.onResolve) cb.onResolve(s.key, s.val()); });

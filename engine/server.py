@@ -168,6 +168,7 @@ class H(BaseHTTPRequestHandler):
                                       error=req.get("error"), tables=req.get("tables"),
                                       answer=req.get("answer"), sql=req.get("sql"))
             except Exception as e:                           # noqa: BLE001 — no key / SDK / upstream: let the client fall back
+                print(f"/api/converse degraded (503): {type(e).__name__}: {e}", flush=True)  # missing key vs down vs rate-limit
                 self._send(503, json.dumps({"error": f"converse unavailable: {type(e).__name__}: {e}"})); return
             self._send(200, json.dumps({"reply": text}))
         except Exception as e:                               # noqa: BLE001

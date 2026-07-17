@@ -4,6 +4,11 @@ distance search), ADDITIVELY (it wraps, never modifies, the composed planner —
 A "near/around/closest <city>" question resolves the reference city to its lat/lng (public.settlement, the
 clean ~174k-row geo source) and returns the nearest world cities by haversine distance. Everything else
 delegates to ComposedWorldQuery unchanged (population ranking, aggregates, hybrid, clarify, composition).
+
+serve() also owns two signals for the conversational layer (docs/ARCHITECTURE.md §10): the COVERAGE PRE-GATE
+(a message with no data intent short-circuits with low_confidence, before reasoning) and the PRESENT tag
+(_tag_present flags a real answer whose phrasing is emotional/human, so the UI presents it in words). Both
+detectors live on ComposedWorldQuery; WorldReasoner applies them across the geo + composed paths.
 """
 from __future__ import annotations
 import re

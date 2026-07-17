@@ -16,7 +16,6 @@ const SS = {
   CSV: 'pr_world_csv',                // legacy single-table fallback (first sheet's CSV)
   NAME: 'pr_world_name',              // legacy single-table fallback (first sheet's name)
   Q: 'pr_world_q',                    // the question being asked
-  CLARIFY: 'pr_clarify',              // JSON clarify payload (reason/world -> clarify page)
   PENDING_SHEETS: 'pr_pending_sheets',// JSON [{name,data}] — Google Sheets import -> home
   PENDING_Q: 'pr_pending_q'           // the typed prompt preserved across the Sheets picker round-trip
 };

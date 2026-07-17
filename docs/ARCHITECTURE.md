@@ -20,9 +20,11 @@
 5. [How the model works](#5-how-the-model-works) ·
 6. [The layered query engine](#6-the-layered-query-engine) ·
 7. [World knowledge & the data model](#7-world-knowledge--the-data-model) ·
-8. [Multi-tenancy & auth](#8-multi-tenancy--auth) · 9. [Live trace streaming](#9-live-trace-streaming) ·
-10. [Data artifacts](#10-data-artifacts) · 11. [Key decisions](#11-key-decisions-adrs) ·
-12. [Glossary](#12-glossary) · 13. [Repository layout](#13-repository-layout)
+8. [Conversations, identity & isolation](#8-conversations-identity--isolation) ·
+9. [Live trace streaming](#9-live-trace-streaming) ·
+10. [The conversational layer (Sonnet)](#10-the-conversational-layer-sonnet) ·
+11. [Data artifacts](#11-data-artifacts) · 12. [Key decisions](#12-key-decisions-adrs) ·
+13. [Glossary](#13-glossary) · 14. [Repository layout](#14-repository-layout)
 
 ---
 
@@ -108,7 +110,11 @@ plus a health check. The static frontend (`web/`) calls it through a single `/ap
 - **`prereasoner-api`** — the model + planner + SQL executor, one HTTP service. Request limits:
   10 MB body, 8 sheets, 5,000 rows per sheet. `/api/reason` and `/api/world` share one
   `WorldReasoner` instance behind one lock; `/api/dimension` has its own stateless model and lock.
-  It also serves the conversation endpoints (`GET /api/conversations`, `GET /api/conversation`).
+  It also serves the conversation endpoints (`GET /api/conversations`, `GET /api/conversation`) and
+  the **conversational layer** `POST /api/converse` (§10) — one short Sonnet reply when a message
+  isn't a data query, or to present a computed answer in human words. This is the *only* place a
+  generative LLM is called, it is **optional** (no `ANTHROPIC_API_KEY` ⇒ a graceful in-chat
+  fallback), and it never produces a number — the deterministic engine still does all the math.
 - **Postgres `world`** — holds the shared `wikipedia` world DB, the `world` resolution/taxonomy
   index, a small `chat` schema (who owns which conversation), and one schema per conversation
   holding its tables + bridges (§8). Contract in [`db/README.md`](../db/README.md).
@@ -118,7 +124,8 @@ plus a health check. The static frontend (`web/`) calls it through a single `/ap
 
 All runtime configuration is environment variables, read in one place (`engine/config.py`):
 `HOST`/`PORT`, `WORLD_PG_HOST/PORT/DB/USER/PASSWORD/SSLMODE`, `RTDB_URL` (optional, §9),
-`PREREASONER_DATA_DIR` (artifact dir, §10), `DEVICE`, `BASE_MODEL_ID`, `WORLD_MODEL_ROUTE`, and
+`ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` (optional, the conversational layer, §10),
+`PREREASONER_DATA_DIR` (artifact dir, §11), `DEVICE`, `BASE_MODEL_ID`, `WORLD_MODEL_ROUTE`, and
 the test-only `AUTH_TEST_SUB` (§8).
 
 ---
@@ -214,6 +221,17 @@ interpretability claim made literal (see RESEARCH.md §1).
 Liveness, plus whether the models finished loading. Used by the frontend's warm-up ping: the
 service scales to zero, and the first cold hit must load the model, so the home page fires a
 warm-up GET and the client retries.
+
+### 4.5 `POST /api/converse` — the conversational layer
+
+Body `{question, tables, clarify?, error?, answer?, sql?}` + Bearer (same Firebase auth). Returns
+`{reply}` — **one short Sonnet message** to show in the chat rail. This is the system's only
+generative-LLM call, and it is deliberately narrow: it is invoked **only** when the deterministic
+engine has already decided a message is *not* a straight data query (a `clarify`/`low_confidence`
+result — "did you mean…?" / "how does this work?"), or to **present** an answer the engine already
+computed in warm human words when the phrasing is emotional. It never invents a number. If
+`ANTHROPIC_API_KEY` is unset (or the call fails), the endpoint returns **503** and the browser
+degrades to a payload-based reply — so the feature is fully optional. The full design is §10.
 
 ---
 
@@ -419,8 +437,11 @@ the resolution index, and the geo tables in one namespace.
 **The clarify gate (coverage).** A query that would silently drop part of the question — an
 entity that **resolved** but isn't filtered, or a measure word with **no aggregate** applied — is
 caught instead of answered wrong. The service returns a `clarify` response (a "did you mean?"
-rephrasing, rendered by `web/public/clarify.html`) rather than a degenerate query. Coverage is
-checked against the resolved **QID** in the QID-keyed SQL.
+rephrasing) rather than a degenerate query. Coverage is checked against the resolved **QID** in
+the QID-keyed SQL. The clarify is **answered in the chat rail** by the conversational layer (§10),
+not by a page redirect: the rail offers the rephrasing (with a one-tap **Run** button) in the same
+conversation. A sibling **coverage pre-gate** catches the opposite case — a message with *no* data
+intent at all ("how does this work?") — before any reasoning runs. Both are §10.
 
 ---
 
@@ -515,7 +536,9 @@ Browser (reason/world page)          prereasoner-api                Firebase RTD
 - **Stream schema** at `/runs/{uid}/{jobId}`: `conversation_id` (emitted first, so the browser
   learns it even if the HTTP body is lost to a proxy timeout — §8), `status`
   (`resolving|running|done|clarify|error`), `resolve/{cell}: qid`, `views/{i}:
-  {op,label,sql,columns,rows}`, `result: {columns,rows}`, `clarify`, `error`.
+  {op,label,sql,columns,rows}`, `result: {columns,rows}`, `clarify`, `low_confidence` (a
+  not-a-data-query signal → the conversational layer answers in the rail, §10), `present` (a real
+  answer to present in human words, §10), `error`.
 - **Security.** `web/database.rules.json` makes `/runs/{uid}` **read-only by its owner**
   (`auth.uid === $uid`); the client never writes (the admin SDK bypasses rules).
 - **Failure path.** A failed run streams a terminal `error` / `status: error`, so a client never
@@ -523,7 +546,94 @@ Browser (reason/world page)          prereasoner-api                Firebase RTD
 
 ---
 
-## 10. Data artifacts
+## 10. The conversational layer (Sonnet)
+
+Everything above is deterministic: a message becomes SQL, or it doesn't. But a chat rail invites
+messages that *aren't* data queries — "how does this work?", "did you mean revenue over $100?",
+or an emotional "I'm worried our top region is too concentrated." Forcing those into a degenerate
+query (or bouncing the user to a separate "did you mean" page) is the wrong answer. The
+**conversational layer** handles them **in the same conversation**, using a frozen Sonnet
+(`claude-sonnet-5`) as a thin **presentation / fallback** surface — **never as a calculator.**
+
+> **The one invariant: Sonnet never produces a number.** Every figure still comes from SQL the
+> deterministic engine ran. Sonnet only *phrases* — it either explains why a message wasn't run,
+> or wraps a value the engine already computed in human words. This is what keeps the "no
+> hallucinated numbers" guarantee intact even with an LLM in the loop.
+
+**It is entirely optional.** The layer lives behind `POST /api/converse` (§4.5) and needs
+`ANTHROPIC_API_KEY`. Unset it and the endpoint returns 503; the browser degrades to a
+payload-based "did you mean…?" line, and plain data answers are unaffected. Self-hosters get a
+working system with no Anthropic account at all — exactly like RTDB streaming (§9) is optional.
+
+### 10.1 When it fires — three signals from the deterministic engine
+
+The engine decides; the browser reacts. Three signals, all raised **by the deterministic path**
+before any LLM is involved:
+
+| Signal | Raised when | Engine site | UI reaction |
+|---|---|---|---|
+| **coverage pre-gate** (`low_confidence`, no result) | a message has **no** data intent, **no** schema-word, **no** resolvable entity — it's conversational, not a query ("how does this work?") | `WorldReasoner.serve` → `ComposedWorldQuery._has_data_signal` (short-circuits **before** reasoning, so nothing garbage streams) | conversational reply in the rail |
+| **clarify** (a proposed rephrasing, no result) | a query would **silently drop** part of the question — a resolved-but-unfiltered entity, or a measure with no aggregate (§7 clarify gate) | `WorldQuery._clarify` | conversational reply **+ a one-tap Run button** for the rephrasing |
+| **present** (`present: true`, **with** a real result) | the engine **did** compute an answer, but the phrasing is emotional/opinion/first-person ("*I'm worried* our churn is *too high*") | `WorldReasoner._tag_present` → `ComposedWorldQuery._human_tone` | Sonnet presents the **computed** value in human words; the derivation stays in the panel |
+
+Anything else — a normal data query — never touches this layer. **Plain queries stay raw, at zero
+LLM cost.** That "only when signaled" scoping is the whole point: the fast, free, deterministic
+path answers real questions; Sonnet is spent only on the messages that genuinely aren't one, plus
+the small set explicitly flagged for human presentation.
+
+The detectors are cheap and **schema-aware** (`engine/world_compose.py`): `_has_data_signal`
+(data-intent words, schema-token mentions, or a resolvable world entity), `_human_tone` (an
+emotional/opinion lexicon `_HUMAN_CUE` + an "is that too high / should we…" regex `_HUMAN_RE`),
+and the shared `_schema_tokens` helper — so a cue word that is actually a **column name** ("show
+me the *feeling* column") reads as data, not emotion, and doesn't trigger a needless Sonnet call.
+Every detector is best-effort: it fails **open** for real queries (`_has_data_signal` returns
+`True` on error → never blocks a query) and **closed** for tone (`_human_tone` returns `False` on
+error → never forces a present).
+
+### 10.2 The two Sonnet modes (`engine/converse.py`)
+
+`converse.reply()` has exactly two modes, chosen by whether an `answer` was supplied:
+
+- **PRESENT** — given the engine's `answer` (a `{columns, rows}` result) and its `sql`. Sonnet is
+  told to **use the value(s) verbatim** and wrap them warmly, never recomputing or inventing a
+  figure; an empty result renders as an explicit "returned no rows" sentinel so the model is never
+  told to "use the number" with no number in hand. *"Is that a good monthly revenue?"* →
+  *"Your total revenue comes to $48,213.50. Whether that's 'good' depends on your targets…"*
+- **FALLBACK** — given a `clarify` rephrasing or an `error` (no `answer`). Sonnet offers the
+  rephrasing ("Did you mean …? — tap Run") or, for a meta question, explains accurately (e.g. the
+  Wikidata resolution that turned the surface "germany" into the entity **Germany**), and is
+  instructed **never** to state a data value it wasn't given.
+
+### 10.3 The browser side (`web/public/lib/workbook.js`)
+
+```
+   engine result ──▶  data query?  ──yes──▶  render answer + derivation (no Sonnet)
+                          │no / signalled
+                          ▼
+        low_confidence / clarify ─▶ conversationalReply()  ─▶ POST /api/converse (FALLBACK)
+        present + result          ─▶ tryPresent()           ─▶ POST /api/converse (PRESENT)
+                          │
+                          ▼
+              Sonnet text in the chat rail   +   the derivation/reference sheets stay in the panel
+```
+
+Two UX rules make it feel like one conversation, not a redirect:
+
+- **The derivation persists.** When a follow-up is conversational (Sonnet answers, and builds no
+  sheets of its own), the **previous** turn's derivation and reference sheets stay on screen —
+  because a meta question ("how did you get that?") is usually *about* them. The prior sheets are
+  marked *stale* at the start of each turn and retired only when a new **data** query produces its
+  own first sheet (`dropStale`). A `present` answer keeps its own fresh derivation in the panel
+  and shows Sonnet's words in the rail.
+- **Race-free presentation.** `present`, `result`, and `status` stream on separate RTDB nodes with
+  no cross-node ordering guarantee, so `tryPresent()` is driven from every trigger (the `present`
+  signal, `result`, `finalize`, and the atomic HTTP body) and fires **once**, only after both the
+  derivation has settled **and** a concrete answer is in hand — it never sends a null answer to
+  Sonnet. If `/api/converse` is unavailable, present degrades to showing the raw computed result.
+
+---
+
+## 11. Data artifacts
 
 Everything the engine opens at runtime lives in `engine/data/` (override with
 `PREREASONER_DATA_DIR`). The authoritative per-file table — sizes, consumers, and which files are
@@ -547,7 +657,7 @@ world-facts data (words index, wikipedia tables, settlements) lives in Postgres,
 
 ---
 
-## 11. Key decisions (ADRs)
+## 12. Key decisions (ADRs)
 
 Each: *what we chose, the alternative, and why.*
 
@@ -586,10 +696,18 @@ Each: *what we chose, the alternative, and why.*
 9. **Scale-to-zero + warm-up retry, not always-on.** *Why:* idle cost ≈ $0; the first cold hit's
    model load + lazy fill is absorbed by a warm-up GET + client retry. (Deployment detail:
    `infra/README.md`.)
+10. **A conversational LLM only at the edges, only when signalled, never for arithmetic.** A chat
+    UI attracts non-data messages; the deterministic engine flags them (`low_confidence` /
+    `clarify` / `present`) and *only then* is Sonnet called, to explain or to phrase an
+    already-computed answer (§10). *Alternative:* route everything through the LLM (an agentic
+    text-to-SQL chatbot), or bounce non-queries to a separate page. *Why:* keeping the LLM off the
+    arithmetic path preserves the "no hallucinated numbers" guarantee; scoping it to signalled
+    turns keeps plain queries fast and free; answering in-chat (not via redirect) keeps one
+    coherent conversation. It is optional (no key ⇒ graceful fallback), exactly like streaming (#8).
 
 ---
 
-## 12. Glossary
+## 13. Glossary
 
 - **unit** — the atomic thing the model reads: one column name, one cell value, or one question
   token. Names and numbers are never split below this level.
@@ -622,7 +740,17 @@ Each: *what we chose, the alternative, and why.*
 - **search_path** — the Postgres setting `"<sub>", wikipedia, world, public` that lets one query
   see the user's tables, the world DB, and the resolution index together.
 - **clarify gate** — returns a "did you mean?" rephrasing when the SQL would silently drop part
-  of the question (a resolved-but-unfiltered entity, or a measure with no aggregate).
+  of the question (a resolved-but-unfiltered entity, or a measure with no aggregate). Answered in
+  the chat rail by the conversational layer (§10), not a page redirect.
+- **conversational layer** — the optional Sonnet surface behind `POST /api/converse` (§10) that
+  answers non-data messages and presents computed answers in words. It never emits a number.
+- **coverage pre-gate** — `ComposedWorldQuery._has_data_signal`: a message with no data intent, no
+  schema word, and no resolvable entity short-circuits with `low_confidence` before any reasoning,
+  so it's answered conversationally instead of forced into a degenerate query.
+- **present / human tone** — the "only when signalled" presentation path: `_human_tone` detects
+  emotional/opinion/first-person phrasing over a *real* answer, `_tag_present` sets `present:true`,
+  and the UI routes the computed answer + SQL through Sonnet to phrase it warmly — derivation still
+  in the panel, number still from SQL.
 - **view stacking** — the composition mechanism (`engine/compose.py`): a complex analytical
   question decomposes into a DAG of simple primitive views (filter / time-filter / group_agg /
   yoy / running / share / divide / having / top-N / sort) over a JOIN base + a WORLD base. Plain
@@ -632,7 +760,7 @@ Each: *what we chose, the alternative, and why.*
 
 ---
 
-## 13. Repository layout
+## 14. Repository layout
 
 ```
 engine/            the serving package: model, planner stack, SQL execution, HTTP server

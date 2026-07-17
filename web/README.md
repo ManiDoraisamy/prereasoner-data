@@ -40,11 +40,13 @@ index.html   home: attach data (+ Add data -> Excel/CSV file picker, or sheets.h
    ├─> sheets.html   Google Sheets import (drive.file scope + Picker) — returns to home with the sheet attached
    └─> reason.html   the workbook on POST /api/reason (sign-in happens here as a redirect)
           │
-          ├─> world.html    the same workbook on POST /api/world (world-knowledge joins)
-          └─> clarify.html  shown when the model is UNSURE: confirm/edit its proposed reading,
-                            then re-run on whichever page raised it
+          └─> world.html    the same workbook on POST /api/world (world-knowledge joins)
 404.html     Firebase default not-found page
 ```
+
+When the engine is unsure (a clarify) or the message isn't a data query at all (low_confidence),
+the workbook answers **in the chat rail** via the conversational layer (`POST /api/converse`,
+Sonnet) — it does not navigate to a separate page. See the engine's [ARCHITECTURE §10](../docs/ARCHITECTURE.md#10-the-conversational-layer-sonnet).
 
 Shared code lives in `public/lib/`:
 

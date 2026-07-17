@@ -207,3 +207,29 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   conversation's schema to gs://$GCS_BUCKET/conversations/<id>.sql.gz (pg_dump→gzip→GCS, optional
   DROP) and restores it (download→psql). Written + self-consistent; NOT yet E2E-tested against a
   live bucket.
+
+## Conversational layer: Sonnet fallback + presentation, in-chat (2026-07-17, live)
+
+The rail now answers NON-data messages IN the conversation instead of redirecting. Full design:
+docs/ARCHITECTURE.md §10.
+
+- **Backend.** New `POST /api/converse` (engine/server.py `_post_converse` → engine/converse.py
+  `reply()`) returns one short Sonnet reply. Two modes: FALLBACK (a clarify rephrasing or a meta
+  question) and PRESENT (wrap an already-computed answer in human words, verbatim, never a new
+  number). Optional: no `ANTHROPIC_API_KEY` ⇒ 503 ⇒ the client uses its built-in "did you mean"
+  text. Three engine signals drive it: the COVERAGE PRE-GATE (`low_confidence`, no data intent),
+  `clarify`, and `present` (real answer + emotional phrasing, `_human_tone`). RTDB streams
+  `low_confidence` and `present` alongside the existing terminal nodes (trace.py `stream_final`).
+- **Frontend (lib/workbook.js, lib/firebase-init.js).** `conversationalReply()` renders the Sonnet
+  reply in the rail; clarify adds a one-tap **Run** button. `tryPresent()` routes a computed
+  answer through /api/converse race-safely (present/result/status arrive on separate RTDB nodes)
+  and keeps the derivation in the panel. The previous turn's derivation/reference sheets are kept
+  ("stale") across a conversational follow-up and retired only when a new data query builds its own
+  (`dropStale`). subscribeRun added `onLowConfidence`/`onPresent`.
+- **clarify.html DELETED.** It was the old "did you mean" redirect target; nothing navigated to it
+  once clarify moved in-chat (no code set `SS.CLARIFY`). Removed the page + the dead `SS.CLARIFY`
+  key from lib/shared.js. The page map in web/README.md was corrected.
+- Verified: detector precision (12/12 clean data queries, 11/11 emotional fire, schema-word
+  collisions treated as data), the present race state machine (all trigger orderings present once
+  with a real answer, 0 Sonnet calls on plain queries), live Sonnet output uses the exact computed
+  number and never fabricates. Deployed: engine revision 00013-4k5, Firebase Hosting.

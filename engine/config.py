@@ -28,9 +28,11 @@ Env contract:
   PREREASONER_SQL_PROPOSER optional proposer artifact path
   PREREASONER_SQL_RANKER   optional strict ranker artifact path
 
-  --- MCP layer (v1: the Sonnet orchestrator + PreReasoner MCP server; see mcp-now.md) ---
-  ANTHROPIC_API_KEY    Anthropic key for the Sonnet orchestrator — REQUIRED to run the chat backend (no default)
-  ANTHROPIC_MODEL      Sonnet model id for the orchestrator          (default claude-sonnet-5)
+  --- Anthropic / Sonnet (the /api/converse conversational layer — ARCHITECTURE §10 — and the MCP orchestrator) ---
+  ANTHROPIC_API_KEY    Anthropic key. OPTIONAL for the engine: powers the /api/converse conversational fallback +
+                       answer presentation; unset ⇒ /api/converse 503s and the UI degrades gracefully. REQUIRED
+                       only to run the separate MCP orchestrator chat backend (mcp-now.md). No default.
+  ANTHROPIC_MODEL      Sonnet model id for /api/converse + the orchestrator   (default claude-sonnet-5)
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
   ORCH_PORT            port for the orchestrator chat server          (default 8090)
