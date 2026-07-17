@@ -56,6 +56,7 @@ const ORCH = (()=>{ try{
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
+let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
@@ -330,32 +331,36 @@ async function startTurn(){
   try{ token=await window.ensureToken(); }
   catch(e){ if(RUN===myRun) fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }
   const uid=window.__uid;
+  const streaming=!!(uid&&window.subscribeTurn);
   const turnId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
   const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text(); return (r.ok&&t.trim().charAt(0)==='{')?JSON.parse(t):null; }catch(_){ return null; } };
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
     body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId})}).then(parseBody).catch(()=>null);
-  // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams.
-  if(uid&&window.subscribeTurn){
+  // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
+  // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
+  // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
+  if(streaming){
     UNSUB=window.subscribeTurn(uid,turnId,{
-      onStatus:st=>{ if(!live())return; if(st==='done') markTurnDone(); },
+      onStatus:st=>{ if(!live())return; if(st==='done') markTurnDone(); if(st==='error') fail('the assistant hit an error'); },
       onCall:(k,c)=>{ if(!live()||!c||!c.jobId||SEEN_CALL.has(c.jobId))return; SEEN_CALL.add(c.jobId); addCall(uid,c); },
       onReply:t=>{ if(RUN!==myRun)return; if(t){REPLY=t;} if(!SETTLED)renderRail(); },
-      onError:e=>{ if(!live())return; fail(e||'the assistant hit an error'); settle(); },
+      onError:e=>{ if(!live())return; fail(e||'the assistant hit an error'); },
     });
   }
-  // (2) HTTP body is AUTHORITATIVE (blocking; returns {reply, traces, history}): update history, and if the
-  // stream produced nothing (RTDB off), render the traces from the body. Then finalize.
+  // (2) HTTP body (blocking; {reply, traces, history}): the authoritative HISTORY + the completion path when
+  // RTDB is off. On a null body (proxy 60s timeout on a cold engine) DO NOT fail while streaming — the RTDB
+  // 'done' will finish the turn; only fail here if there's no stream to fall back on.
   httpPromise.then(j=>{ if(RUN!==myRun)return;
-    if(j&&Array.isArray(j.history)) HISTORY=j.history;
-    if(!j){ if(!SETTLED&&!VIEWS.length) fail('the assistant did not respond — please try again'); return; }
+    if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
+    if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(!VIEWS.length&&Array.isArray(j.traces)) renderTurnFromHTTP(j);   // no live stream -> render from the body
     if(!REPLY&&j.reply) REPLY=j.reply;
     if(!SETTLED) markTurnDone();
   });
-  // (3) SAFETY NET: never hang forever.
-  setTimeout(()=>{ if(RUN!==myRun||SETTLED)return; if(!VIEWS.length&&!REPLY) fail('the assistant is taking too long — please try again in a moment'); }, 150000);
+  // (3) SAFETY NET: fail only if NOTHING arrived through either channel (covers a truly dead run / cold start).
+  setTimeout(()=>{ if(RUN!==myRun||SETTLED)return; if(!VIEWS.length&&!REPLY&&!CALLS.length) fail('the assistant is taking too long — please try again in a moment'); }, 180000);
 }
 function addCall(uid,c){                                      // an engine call Sonnet made this turn — stream its trace into the panel
   CALLS.push(c);
@@ -380,6 +385,9 @@ function markTurnDone(){                                      // the turn finish
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   settle();
   CONV = REPLY || 'Done.';
+  // If the /chat body was lost to the proxy timeout, the answer came via RTDB — reconstruct this turn's
+  // transcript client-side so the NEXT follow-up still has context.
+  if(!HTTPHIST) HISTORY=HISTORY.concat([{role:'user',content:question},{role:'assistant',content:REPLY||''}]);
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
   renderRail();
@@ -457,7 +465,7 @@ function resetRun(){
   BOOK.forEach(s=>{ if(s.cls!=='input') s.stale=true; });
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
-  CALLS=[]; SEEN_CALL=new Set(); REPLY=null;                  // orchestrated turn state (HISTORY persists across turns)
+  CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
