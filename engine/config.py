@@ -21,7 +21,10 @@ Env contract:
   DEVICE               torch device for the encoder                  (default cpu)
   BASE_MODEL_ID        Hugging Face id of the base encoder LM        (default Qwen/Qwen2.5-0.5B)
   WORLD_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
-  PREREASONER_SQL_PLANNER legacy | ast | ast_profile | ast_strict  (default legacy)
+  PREREASONER_SQL_PLANNER legacy | ast  (default legacy; production sets 'ast' = the deterministic, fully
+                          interpretable typed-AST planner. The ast_profile/ast_strict trained-proposer modes
+                          are research-only and were retired from serving; their code/artifacts remain for the
+                          Spider eval + training harness.)
   PREREASONER_SQL_PROPOSER optional proposer artifact path
   PREREASONER_SQL_RANKER   optional strict ranker artifact path
 
@@ -98,7 +101,7 @@ BASE_MODEL_ID = os.environ.get("BASE_MODEL_ID", "Qwen/Qwen2.5-0.5B")
 def sql_planner_mode():
     """Return the explicit own-data SQL serving mode."""
     mode = os.environ.get("PREREASONER_SQL_PLANNER", "legacy").strip().lower()
-    allowed = {"legacy", "ast", "ast_profile", "ast_strict"}
+    allowed = {"legacy", "ast"}
     if mode not in allowed:
         raise RuntimeError(
             f"invalid PREREASONER_SQL_PLANNER={mode!r}; expected one of {sorted(allowed)}"

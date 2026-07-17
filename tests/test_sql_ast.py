@@ -1091,44 +1091,6 @@ def test_live_proposal_descriptor_cache_is_bounded():
     assert len(provider._descriptor_vectors) == 2
 
 
-def test_live_profile_and_strict_modes_load_frozen_artifacts():
-    class HermeticArtifactTableQuery(TableQuery):
-        def _encode(self, texts):
-            return np.zeros((len(texts), 896), dtype=np.float32)
-
-        def schema(self, tables, fks):
-            columns = []
-            index = 0
-            for table in tables:
-                for name in table["columns"]:
-                    values = [row[table["columns"].index(name)] for row in table["rows"]]
-                    numeric = values and all(isinstance(value, (int, float)) for value in values)
-                    columns.append({
-                        "table": table["name"], "name": name, "idx": index,
-                        "struct": set(), "affinity": "INTEGER" if numeric else "TEXT",
-                        "ace": [], "is_date": False,
-                        "qvec": np.zeros(896, dtype=np.float32), "values": values,
-                    })
-                    index += 1
-            return columns, {}, {table["name"]: table for table in tables}
-
-    previous = os.environ.get("PREREASONER_SQL_PLANNER")
-    try:
-        for mode in ("ast_profile", "ast_strict"):
-            os.environ["PREREASONER_SQL_PLANNER"] = mode
-            response = HermeticArtifactTableQuery().serve([PEOPLE], "list person names")
-            assert response["valid"] is True
-            assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
-            assert response["candidate_count"] > 0
-            assert response["planner_mode"] == mode
-            assert response["model"].endswith(f"({mode})")
-    finally:
-        if previous is None:
-            os.environ.pop("PREREASONER_SQL_PLANNER", None)
-        else:
-            os.environ["PREREASONER_SQL_PLANNER"] = previous
-
-
 def test_world_own_data_route_preserves_ast_observability():
     from engine.world_tables import WorldTableQuery
 
@@ -1680,7 +1642,6 @@ TESTS = [
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,
     test_live_proposal_descriptor_cache_is_bounded,
-    test_live_profile_and_strict_modes_load_frozen_artifacts,
     test_world_own_data_route_preserves_ast_observability,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,

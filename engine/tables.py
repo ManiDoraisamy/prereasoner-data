@@ -667,44 +667,15 @@ class TableQuery:
             return rerank_with_promotion_gate(rank_model, question, candidates)
         return rank_model.rerank(question, candidates)
 
-    def _ast_models(self, mode):
-        """Load explicitly requested frozen artifacts once per TableQuery instance."""
-        cached = self._ast_runtime_models.get(mode)
-        if cached is not None:
-            return cached
-        from engine.config import sql_proposer_path, sql_ranker_path
-
-        proposer = ranker = None
-        if mode in {"ast_profile", "ast_strict"}:
-            from engine.sql_proposal import SQLProposalModel
-
-            path = sql_proposer_path()
-            if not path.exists():
-                raise RuntimeError(f"SQL proposer artifact not found: {path}")
-            proposer = SQLProposalModel.load(str(path))
-        if mode == "ast_strict":
-            from engine.sql_learned_rank import load_ranker_model
-
-            path = sql_ranker_path()
-            if not path.exists():
-                raise RuntimeError(f"SQL ranker artifact not found: {path}")
-            ranker = load_ranker_model(str(path))
-            if "promotion_gate" not in ranker.metadata:
-                raise RuntimeError("SQL strict ranker has no held-out promotion gate")
-        self._ast_runtime_models[mode] = (proposer, ranker)
-        return proposer, ranker
-
     def _serve_ast(self, question, norm, fks, sch, tablemap, mode):
-        from engine.sql_profile_expansion import ProfileSearchConfig
-
-        proposer, ranker = self._ast_models(mode)
+        # Production runs the pure DETERMINISTIC, fully-interpretable AST planner: bounded typed-AST search +
+        # hand-written inspectable ranking, no trained proposer / learned ranker. (The ast_profile/ast_strict
+        # proposer modes were retired from serving; their code + artifacts live on only for the eval/training
+        # harness — see engine.config.sql_planner_mode.)
         candidates = self.search_ast(
             question, sch, norm, fks,
-            max_candidates=180 if proposer is not None else 25,
+            max_candidates=25,
             use_semantic_signals=True,
-            proposal_model=proposer,
-            rank_model=ranker,
-            profile_config=ProfileSearchConfig() if proposer is not None else None,
         )
         if not candidates:
             return None, None, "planner: no valid AST candidate", ()
