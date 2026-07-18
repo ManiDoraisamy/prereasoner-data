@@ -216,8 +216,14 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .wb.editable td.wbc{cursor:cell;-webkit-user-select:none;user-select:none}
 .wb.editable td.wbc:hover{background:#faf9ff}
 .wb.editable td.wbc:focus{outline:none}
-.wb.editable td.wbc.sel{background:#f3effd;box-shadow:inset 0 0 0 2px var(--brand);position:relative;z-index:1}
+.wb.editable td.wbc.insel{background:#f0ebfb}                 /* a cell inside a multi-cell selection (the active cell gets .sel on top) */
+.wb.editable td.wbc.insel:hover{background:#ece5fa}
+.wb.editable td.wbc.sel{background:#e7dffa;box-shadow:inset 0 0 0 2px var(--brand);position:relative;z-index:1}
 .wb.editable td.wbc.editing{background:#fff;-webkit-user-select:text;user-select:text;box-shadow:inset 0 0 0 2px var(--brand);cursor:text;white-space:normal}
+.wb.editable tr.newrow td{background:#fbfaff;color:#b9b2cf}   /* the "new record" row (Access datasheet *) — type here to append */
+.wb.editable tr.newrow td.wbc:hover{background:#f6f3ff}
+.newstar{color:var(--brand);font-weight:700;font-size:14px;line-height:1}
+.wb.editable td.wbc[data-ph]:empty::before{content:attr(data-ph);color:#c4bdd6;font-style:italic;pointer-events:none}
 .wb.editable td.rn{position:relative}
 .rowdel{all:unset;cursor:pointer;position:absolute;right:2px;top:50%;transform:translateY(-50%);width:15px;height:15px;line-height:15px;text-align:center;border-radius:4px;color:#c9c3d8;font-size:14px;opacity:0}
 .wb.editable tbody tr:hover .rowdel{opacity:1}

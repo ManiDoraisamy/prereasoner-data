@@ -58,7 +58,9 @@ let HISTORY=[];                                  // lean cross-turn transcript f
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
-let SEL=null,INEDIT=false;                        // spreadsheet: the SELECTED cell {sid,r,c}, and whether it's in edit mode
+let SEL=null,ANCH=null,INEDIT=false;              // spreadsheet: the ACTIVE cell {sid,r,c}, the selection ANCHor {sid,r,c}, edit mode
+let UNDO=[],REDO=[],DRAG=false;                   // per-sheet undo/redo snapshots; mouse drag-select in progress
+const UNDOCAP=120;
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='master'); if(!passive&&AUTO) ACTIVE=m.id; if(passive&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -75,11 +77,14 @@ function renderGrid(m){
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
   h+='</tr></thead><tbody>';
   const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // one trailing blank row to type into
+  const rc=(edit&&SEL&&SEL.sid===m.id)?selRect():null;                      // the selection rectangle, if it's on this sheet
   for(let ri=0;ri<Math.max(nrows,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>'');
-    h+='<tr><td class=rn>'+(ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')+'</td>';
-    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]); const sel=(edit&&SEL&&SEL.sid===m.id&&SEL.r===ri&&SEL.c===ci)?' sel':'';
-      h+='<td class="'+(numeric[ci]?'n ':'')+(edit?'wbc'+sel:'')+'"'
-        +(edit?' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"':'')+' title="'+esc(val)+'">'+esc(val)+'</td>'; }
+    const isNew=edit&&ri===shown.length;                                    // the Access-style "new record" row, past the real data
+    h+='<tr'+(isNew?' class=newrow':'')+'><td class=rn>'+(isNew?'<span class=newstar title="New row — type here to add">&lowast;</span>':((ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')))+'</td>';
+    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
+      let mark=''; if(rc){ if(ri===SEL.r&&ci===SEL.c)mark=' sel'; else if(ri>=rc.r0&&ri<=rc.r1&&ci>=rc.c0&&ci<=rc.c1)mark=' insel'; }
+      h+='<td class="'+(numeric[ci]?'n ':'')+(edit?'wbc'+mark:'')+'"'
+        +(edit?' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"':'')+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+esc(val)+'">'+esc(val)+'</td>'; }
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -165,11 +170,13 @@ function turnHtml(){                                          // the CURRENT (li
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
-  const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
-  if(refs.length)
-    h+='<div class=steps>'+refs.map(s=>'<button class="steplink refl'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>&#9707;</span><span class=stx>looked up '+esc(s.name)+'</span></button>').join('')+'</div>';
-  if(derivs.length)
-    h+='<div class=steps>'+derivs.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>';
+  if(!ORCH){                                                  // orchestrated runs show a clean status while composing; the full,
+    const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');   // plain-English steps live in the "Reasoning steps" panel once the answer lands
+    if(refs.length)
+      h+='<div class=steps>'+refs.map(s=>'<button class="steplink refl'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>&#9707;</span><span class=stx>looked up '+esc(s.name)+'</span></button>').join('')+'</div>';
+    if(derivs.length)
+      h+='<div class=steps>'+derivs.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||s.name)+'</span></button>').join('')+'</div>';
+  }
   if(SETTLED){ const rs=resultSummary();
     if(rs) h+='<div class=resultline><div class=rk>'+esc(rs.k)+'</div><div class="rv'+(rs.big?'':' small')+'">'+esc(rs.v)+'</div></div>';
   }
@@ -201,27 +208,47 @@ const ENDPOINT=API_BASE+WB.endpoint;
 function seedInputs(){
   SHEETS.forEach((s,i)=>{ const p=parseCSV(s.data);
     addSheet({id:'in'+i, cls:'input', si:i, name:s.name, cols:p.cols, rows:p.rows}); });
+  stampBaseline();                                            // pristine baseline -> undo back to it clears the Recalculate nag
   ACTIVE=BOOK.length?BOOK[0].id:null; paint();
 }
 /* ---- editable sheets: a proper TWO-MODE spreadsheet (Excel / Google Sheets model). A cell is either
-   SELECTED (navigate mode — arrows move, a typed char overwrites, Enter/F2/double-click edits, Delete
-   clears, Ctrl+C/V copy/paste a range) or in EDIT mode (caret in the cell — Enter/Tab commit + move,
-   Escape cancels). Input sheets ("what-if" -> Recalculate) + master data are editable; the rest read-only. */
+   SELECTED (navigate mode — arrows move; Shift+arrows/drag/Shift+click extend a multi-cell range;
+   a typed char overwrites; Enter/F2/double-click edits; Delete clears the range; Ctrl+C/X/V copy/cut/
+   paste ranges; Ctrl+D/R fill down/right; Ctrl+A select all; Ctrl+Z/Y undo/redo) or in EDIT mode
+   (caret in the cell — Enter/Tab commit + move, Escape cancels). Input sheets ("what-if" -> Recalculate)
+   + master data are editable; the rest read-only. */
 function cellEl(sid,r,c){ return document.querySelector('#sheetcard td.wbc[data-sid="'+sid+'"][data-r="'+r+'"][data-c="'+c+'"]'); }
 function markDirtySheet(sh){ if(!sh)return; if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); } }
-function clearSelHi(){ document.querySelectorAll('#sheetcard td.wbc.sel').forEach(x=>x.classList.remove('sel')); }
-function selCell(sid,r,c){                                    // select a cell (navigate mode); commits any open edit first
+function lastDataRow(sh){ return Math.max(0,(sh.rows||[]).length-1); }   // ranges/fills stop here; the trailing "new record" row is never multi-selected
+function cellVal(sh,r,c){ return (sh.rows[r]&&sh.rows[r][c]!=null)?sh.rows[r][c]:''; }
+// The Recalculate bar reflects whether input data differs from what was last computed. markDirtySheet sets it on a
+// forward edit; refreshDirty recomputes it after undo/redo so returning to the pristine baseline clears the nag.
+function inputSig(sh){ return JSON.stringify([sh.cols||[], sh.rows||[]]); }   // boundary-unambiguous signature for the dirty check
+function stampBaseline(){ BOOK.forEach(s=>{ if(s.cls==='input') s._base=inputSig(s); }); }
+function refreshDirty(){ const inputs=BOOK.filter(s=>s.cls==='input'); if(inputs.length&&inputs.every(s=>s._base!=null)){ const ch=inputs.some(s=>inputSig(s)!==s._base); EDITED=ch; showRecalc(ch); } }
+function selRect(){ if(!SEL)return null; const a=(ANCH&&ANCH.sid===SEL.sid)?ANCH:SEL;   // the normalized selection rectangle on SEL's sheet
+  return {sid:SEL.sid, r0:Math.min(SEL.r,a.r), r1:Math.max(SEL.r,a.r), c0:Math.min(SEL.c,a.c), c1:Math.max(SEL.c,a.c)}; }
+function applySelHi(){                                        // repaint the highlight in place (no full re-render) — for fast arrow/drag select
+  document.querySelectorAll('#sheetcard td.wbc.sel,#sheetcard td.wbc.insel').forEach(x=>x.classList.remove('sel','insel'));
+  if(!SEL)return; const rc=selRect();
+  for(let r=rc.r0;r<=rc.r1;r++)for(let c=rc.c0;c<=rc.c1;c++){ const el=cellEl(rc.sid,r,c); if(el) el.classList.add((r===SEL.r&&c===SEL.c)?'sel':'insel'); }
+}
+function focusActive(){ if(!SEL)return; const el=cellEl(SEL.sid,SEL.r,SEL.c); if(el){ el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest',inline:'nearest'}); } }
+function selCell(sid,r,c,extend){                            // set the ACTIVE cell (navigate mode); extend=true keeps the anchor -> a range
   commitEdit();
-  const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=(sh.cols||[]).length;
+  const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=(sh.cols||[]).length; if(nc===0)return;
   if(c<0)c=0; if(c>=nc)c=nc-1; if(r<0)r=0;
-  SEL={sid:sid,r:r,c:c};
-  let el=cellEl(sid,r,c);
-  if(!el){ while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>'')); paint(); el=cellEl(sid,r,c); }   // grow into a new row
-  else{ clearSelHi(); el.classList.add('sel'); }
+  if(extend&&SEL&&SEL.sid===sid){ const maxr=lastDataRow(sh); if(r>maxr)r=maxr; SEL={sid:sid,r:r,c:c}; if(!ANCH||ANCH.sid!==sid)ANCH={sid:sid,r:r,c:c}; }   // a RANGE never spans the new-record row
+  else { SEL={sid:sid,r:r,c:c}; ANCH={sid:sid,r:r,c:c}; }
+  let el=cellEl(sid,SEL.r,SEL.c);
+  if(!el){ while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); paint(); el=cellEl(sid,SEL.r,SEL.c); }   // grow into a new row
+  else applySelHi();
   if(el){ el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest',inline:'nearest'}); }
 }
-function beginEdit(ch){                                       // enter edit mode on the selected cell (ch = typed char overwrites)
-  if(!SEL)return; const el=cellEl(SEL.sid,SEL.r,SEL.c); if(!el)return;
+function beginEdit(ch){                                       // enter edit mode on the active cell (ch = typed char overwrites)
+  if(!SEL)return; ANCH={sid:SEL.sid,r:SEL.r,c:SEL.c};         // editing collapses any range to the active cell
+  document.querySelectorAll('#sheetcard td.wbc.insel').forEach(x=>x.classList.remove('insel'));
+  const el=cellEl(SEL.sid,SEL.r,SEL.c); if(!el)return;
   el.dataset.orig=el.textContent; el.contentEditable='true'; el.classList.add('editing'); INEDIT=true;
   if(ch!=null) el.textContent=ch;
   el.focus();
@@ -230,59 +257,151 @@ function beginEdit(ch){                                       // enter edit mode
 function commitEdit(){                                        // write the edit to the model + leave edit mode
   if(!INEDIT||!SEL)return; INEDIT=false; const el=cellEl(SEL.sid,SEL.r,SEL.c), sh=BOOK.find(s=>s.id===SEL.sid);
   if(!el)return; el.contentEditable='false'; el.classList.remove('editing');
-  if(sh){ while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); const v=(el.textContent||'').replace(/\n/g,' ');
-    if(sh.rows[SEL.r][SEL.c]!==v){ sh.rows[SEL.r][SEL.c]=v; markDirtySheet(sh); } el.title=v; }
+  if(sh){ const v=(el.textContent||'').replace(/\n/g,' ');
+    const grew=SEL.r>=sh.rows.length;                          // typing into the trailing "new record" row appends a real row
+    const old=(sh.rows[SEL.r]&&sh.rows[SEL.r][SEL.c]!=null)?sh.rows[SEL.r][SEL.c]:'';
+    if(old!==v){ pushUndo(SEL.sid); while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); sh.rows[SEL.r][SEL.c]=v; markDirtySheet(sh);
+      if(grew) paint(); }                                      // re-render so a fresh new-record row appears below (Access datasheet behavior)
+    el.title=v; }
 }
 function cancelEdit(){                                        // discard the edit, restore the original
   if(!INEDIT||!SEL)return; INEDIT=false; const el=cellEl(SEL.sid,SEL.r,SEL.c);
   if(el){ el.textContent=el.dataset.orig!=null?el.dataset.orig:''; el.contentEditable='false'; el.classList.remove('editing'); el.focus(); }
 }
-function clearCell(){ if(!SEL)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(sh&&sh.rows[SEL.r]){ sh.rows[SEL.r][SEL.c]=''; markDirtySheet(sh); const el=cellEl(SEL.sid,SEL.r,SEL.c); if(el){ el.textContent=''; el.title=''; } } }
+/* ---- undo / redo: a bounded stack of per-sheet row snapshots (these tables are small). Each mutating op
+   calls pushUndo(sid) with the PRE-state; undo swaps in that state and banks the current one for redo. */
+function snap(sid){ const sh=BOOK.find(s=>s.id===sid); if(!sh)return null; return {sid:sid, rows:sh.rows.map(r=>r.slice()), sel:SEL&&{sid:SEL.sid,r:SEL.r,c:SEL.c}, anch:ANCH&&{sid:ANCH.sid,r:ANCH.r,c:ANCH.c}}; }
+function pushUndo(sid){ const s=snap(sid); if(s){ UNDO.push(s); if(UNDO.length>UNDOCAP)UNDO.shift(); REDO.length=0; } }
+function applyState(s){ const sh=BOOK.find(x=>x.id===s.sid); if(!sh)return; sh.rows=s.rows.map(r=>r.slice()); ACTIVE=s.sid; AUTO=false;
+  SEL=s.sel?{sid:s.sel.sid,r:s.sel.r,c:s.sel.c}:null; ANCH=s.anch?{sid:s.anch.sid,r:s.anch.r,c:s.anch.c}:(SEL&&{sid:SEL.sid,r:SEL.r,c:SEL.c});
+  if(sh.cls==='master') markDirtySheet(sh); else refreshDirty(); }   // recompute the recalc bar from baseline so undo-to-pristine clears it
+function undo(){ if(!UNDO.length)return; const s=UNDO.pop(); REDO.push(snap(s.sid)); applyState(s); paint(); focusActive(); }
+function redo(){ if(!REDO.length)return; const s=REDO.pop(); UNDO.push(snap(s.sid)); applyState(s); paint(); focusActive(); }
+function clearRange(){                                        // Delete/Backspace -> blank every cell in the selection
+  if(!SEL)return; const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+  let changed=false;                                          // scan first (read-only) so undo snapshots the true pre-state
+  for(let r=rc.r0;r<=rc.r1&&!changed;r++){ if(!sh.rows[r])continue; for(let c=rc.c0;c<=rc.c1;c++){ if(sh.rows[r][c]!==''&&sh.rows[r][c]!=null){ changed=true; break; } } }
+  if(!changed)return; pushUndo(rc.sid);
+  for(let r=rc.r0;r<=rc.r1;r++){ if(!sh.rows[r])continue; for(let c=rc.c0;c<=rc.c1;c++) sh.rows[r][c]=''; }
+  markDirtySheet(sh); paint(); focusActive();
+}
+function fillDown(){ const rc=selRect(); if(!rc||rc.r1===rc.r0)return; const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+  const rmax=Math.min(rc.r1,lastDataRow(sh)); if(rmax<=rc.r0)return;        // never grow past real data (no phantom row)
+  let changed=false; for(let c=rc.c0;c<=rc.c1&&!changed;c++){ const src=cellVal(sh,rc.r0,c); for(let r=rc.r0+1;r<=rmax;r++)if(cellVal(sh,r,c)!==src){changed=true;break;} }
+  if(!changed)return; pushUndo(rc.sid);                                     // no-op fills must not push undo / wipe redo
+  for(let c=rc.c0;c<=rc.c1;c++){ const src=cellVal(sh,rc.r0,c); for(let r=rc.r0+1;r<=rmax;r++)sh.rows[r][c]=src; }
+  markDirtySheet(sh); paint(); focusActive(); }
+function fillRight(){ const rc=selRect(); if(!rc||rc.c1===rc.c0)return; const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+  const rmax=Math.min(rc.r1,lastDataRow(sh));
+  let changed=false; for(let r=rc.r0;r<=rmax&&!changed;r++){ const src=cellVal(sh,r,rc.c0); for(let c=rc.c0+1;c<=rc.c1;c++)if(c<sh.cols.length&&cellVal(sh,r,c)!==src){changed=true;break;} }
+  if(!changed)return; pushUndo(rc.sid);
+  for(let r=rc.r0;r<=rmax;r++){ if(!sh.rows[r])continue; const src=cellVal(sh,r,rc.c0); for(let c=rc.c0+1;c<=rc.c1;c++)if(c<sh.cols.length)sh.rows[r][c]=src; }
+  markDirtySheet(sh); paint(); focusActive(); }
+function selectAll(){ if(!SEL)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; ANCH={sid:SEL.sid,r:0,c:0}; SEL={sid:SEL.sid,r:lastDataRow(sh),c:(sh.cols||[]).length-1}; applySelHi(); focusActive(); }
+function selectRow(){ if(!SEL)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; ANCH={sid:SEL.sid,r:SEL.r,c:0}; SEL={sid:SEL.sid,r:SEL.r,c:(sh.cols||[]).length-1}; applySelHi(); focusActive(); }
+function selectCol(){ if(!SEL)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; ANCH={sid:SEL.sid,r:0,c:SEL.c}; SEL={sid:SEL.sid,r:lastDataRow(sh),c:SEL.c}; applySelHi(); focusActive(); }
 function sheetKey(ev){                                        // the mode controller (fires when a grid cell has focus)
   if(!SEL)return; const a=document.activeElement; if(!a||!a.classList||!a.classList.contains('wbc'))return;
   const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; const k=ev.key;
+  const altgr=!!(ev.getModifierState&&ev.getModifierState('AltGraph'));      // AltGr (Ctrl+Alt on Windows) makes @ { } [ ] € etc. — NOT a shortcut
+  const ctrl=(ev.ctrlKey||ev.metaKey)&&!ev.altKey&&!altgr;
   if(INEDIT){
     if(k==='Enter'&&!ev.shiftKey){ ev.preventDefault(); commitEdit(); selCell(SEL.sid,SEL.r+1,SEL.c); }
     else if(k==='Tab'){ ev.preventDefault(); commitEdit(); selCell(SEL.sid,SEL.r,SEL.c+(ev.shiftKey?-1:1)); }
     else if(k==='Escape'){ ev.preventDefault(); cancelEdit(); }
     return;                                                  // everything else edits the text (caret keys, etc.)
   }
-  if(k==='ArrowUp'){ ev.preventDefault(); selCell(SEL.sid,SEL.r-1,SEL.c); }
-  else if(k==='ArrowDown'){ ev.preventDefault(); selCell(SEL.sid,SEL.r+1,SEL.c); }
-  else if(k==='ArrowLeft'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c-1); }
-  else if(k==='ArrowRight'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c+1); }
+  if(ctrl){                                                  // command shortcuts (Ctrl+C/X/V ride their own clipboard events)
+    const lk=k.toLowerCase();
+    if(lk==='z'&&!ev.shiftKey){ ev.preventDefault(); undo(); return; }
+    if(lk==='y'||(lk==='z'&&ev.shiftKey)){ ev.preventDefault(); redo(); return; }
+    if(lk==='a'){ ev.preventDefault(); selectAll(); return; }
+    if(lk==='d'){ ev.preventDefault(); fillDown(); return; }
+    if(lk==='r'){ ev.preventDefault(); fillRight(); return; }
+    if(k===' '){ ev.preventDefault(); selectCol(); return; }
+    return;                                                  // leave Ctrl+C/X/V for the copy/cut/paste handlers
+  }
+  if(k==='ArrowUp'){ ev.preventDefault(); selCell(SEL.sid,SEL.r-1,SEL.c,ev.shiftKey); }
+  else if(k==='ArrowDown'){ ev.preventDefault(); selCell(SEL.sid,SEL.r+1,SEL.c,ev.shiftKey); }
+  else if(k==='ArrowLeft'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c-1,ev.shiftKey); }
+  else if(k==='ArrowRight'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c+1,ev.shiftKey); }
+  else if(k===' '&&ev.shiftKey){ ev.preventDefault(); selectRow(); }
   else if(k==='Tab'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c+(ev.shiftKey?-1:1)); }
   else if(k==='Enter'||k==='F2'){ ev.preventDefault(); beginEdit(); }
-  else if(k==='Delete'||k==='Backspace'){ ev.preventDefault(); clearCell(); }
-  else if(k==='Escape'){ SEL=null; clearSelHi(); }
-  else if(k.length===1&&!ev.ctrlKey&&!ev.metaKey&&!ev.altKey){ ev.preventDefault(); beginEdit(k); }   // type to overwrite
+  else if(k==='Delete'||k==='Backspace'){ ev.preventDefault(); clearRange(); }
+  else if(k==='Escape'){ SEL=null; ANCH=null; document.querySelectorAll('#sheetcard td.wbc.sel,#sheetcard td.wbc.insel').forEach(x=>x.classList.remove('sel','insel')); }
+  else if(k.length===1&&!(ev.altKey&&!ev.ctrlKey)){ ev.preventDefault(); beginEdit(k); }   // type to overwrite (AltGr chars pass; plain Alt+key doesn't)
 }
-function cellCopy(ev){ if(!SEL||INEDIT)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh||!sh.rows[SEL.r])return;
-  const v=sh.rows[SEL.r][SEL.c]; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', v==null?'':String(v)); ev.preventDefault(); } }
-function cellPasteEvent(ev){                                  // paste a TSV/CSV block -> fills a RANGE from the selected cell
-  if(!SEL)return; const cd=ev.clipboardData||window.clipboardData; const txt=cd&&cd.getData('text'); if(!txt)return;
-  if(INEDIT&&!/[\t\n]/.test(txt))return;                     // single value while editing -> normal paste
-  ev.preventDefault(); const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; INEDIT=false;
-  const grid=txt.replace(/\r/g,'').replace(/\n$/,'').split('\n').map(line=>line.indexOf('\t')>=0?line.split('\t'):parseCsvLine(line));
-  grid.forEach((cells,ri)=>{ const r=SEL.r+ri; while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>''));
-    cells.forEach((v,ci)=>{ const c=SEL.c+ci; if(c<sh.cols.length) sh.rows[r][c]=String(v); }); });
-  markDirtySheet(sh); paint(); selCell(SEL.sid,SEL.r,SEL.c);
+function serializeRange(){ const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return '';   // selection -> TSV (Excel/Sheets paste-in format)
+  const lines=[]; for(let r=rc.r0;r<=rc.r1;r++){ const cells=[]; for(let c=rc.c0;c<=rc.c1;c++)cells.push((sh.rows[r]&&sh.rows[r][c]!=null)?String(sh.rows[r][c]):''); lines.push(cells.join('\t')); } return lines.join('\n'); }
+function cellCopy(ev){ if(!SEL||INEDIT)return; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', serializeRange()); ev.preventDefault(); } }
+function cellCut(ev){ if(!SEL||INEDIT)return; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', serializeRange()); ev.preventDefault(); clearRange(); } }
+// Excel, Google Sheets and this grid's own copy all put TSV on the clipboard (TAB = column, NEWLINE = row); a cell
+// containing a tab/newline/quote is wrapped in double quotes, with "" for a literal quote. Parse in ONE quote-aware
+// pass so an in-cell line break isn't torn into two rows, and a literal comma stays literal (never a delimiter).
+function parseClipboard(txt){
+  txt=txt.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  const rows=[]; let row=[],cur='',q=false,any=false;
+  for(let i=0;i<txt.length;i++){ const ch=txt[i];
+    if(q){ if(ch==='"'){ if(txt[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+    else if(ch==='"'){ q=true; any=true; }
+    else if(ch==='\t'){ row.push(cur); cur=''; any=true; }
+    else if(ch==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; any=false; }
+    else { cur+=ch; any=true; }
+  }
+  if(any||cur!==''||row.length){ row.push(cur); rows.push(row); }
+  return rows;
 }
-function parseCsvLine(line){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
-  if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
-  else if(ch==='"')q=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out; }
+function cellPasteEvent(ev){                                  // paste a TSV block from Excel/Sheets -> REPLACES the selected cells
+  if(!SEL)return; const cd=ev.clipboardData||window.clipboardData; const txt=cd&&cd.getData('text'); if(txt==null||txt==='')return;
+  if(INEDIT&&!/[\t\n]/.test(txt))return;                     // single value while editing -> let the browser paste into the caret
+  ev.preventDefault(); if(INEDIT)cancelEdit(); INEDIT=false;
+  const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+  const grid=parseClipboard(txt); if(!grid.length)return;
+  const single=grid.length===1&&grid[0].length===1;
+  const blockW=single?(rc.c1-rc.c0+1):grid.reduce((m,g)=>Math.max(m,g.length),0);
+  const needCols=single?(rc.c1+1):(rc.c0+blockW);            // grow columns to fit rather than silently dropping the overflow
+  let changed=false;                                         // no-op guard: a paste that changes nothing must not push undo / wipe redo / nag Recalculate
+  if(single){ const v=String(grid[0][0]); for(let r=rc.r0;r<=rc.r1&&!changed;r++)for(let c=rc.c0;c<=rc.c1;c++){ if(r>=sh.rows.length||cellVal(sh,r,c)!==v){changed=true;break;} } }
+  else { for(let ri=0;ri<grid.length&&!changed;ri++)for(let ci=0;ci<grid[ri].length;ci++){ const r=rc.r0+ri,c=rc.c0+ci; if(r>=sh.rows.length||c>=sh.cols.length||cellVal(sh,r,c)!==String(grid[ri][ci])){changed=true;break;} } }
+  if(!changed)return;
+  pushUndo(rc.sid);
+  while(sh.cols.length<needCols){ sh.cols.push('column '+(sh.cols.length+1)); sh.rows.forEach(rw=>{ while(rw.length<sh.cols.length)rw.push(''); }); }
+  if(single){                                                // one value pasted over a range -> fill the whole selection with it
+    const v=String(grid[0][0]);
+    for(let r=rc.r0;r<=rc.r1;r++){ while(sh.rows.length<=r)sh.rows.push(sh.cols.map(()=>'')); for(let c=rc.c0;c<=rc.c1;c++)sh.rows[r][c]=v; }
+  } else {                                                   // a block -> anchor at the top-left of the selection, replacing outward
+    grid.forEach((cells,ri)=>{ const r=rc.r0+ri; while(sh.rows.length<=r)sh.rows.push(sh.cols.map(()=>''));
+      cells.forEach((v,ci)=>{ const c=rc.c0+ci; if(c<sh.cols.length)sh.rows[r][c]=String(v); }); });
+    ANCH={sid:rc.sid,r:rc.r0,c:rc.c0}; SEL={sid:rc.sid,r:rc.r0+grid.length-1,c:Math.min(sh.cols.length-1,rc.c0+blockW-1)};   // select the pasted block
+  }
+  markDirtySheet(sh); paint(); focusActive();
+}
 function delRow(sid,r){
   const sh=BOOK.find(s=>s.id===sid); if(!sh||!sh.rows[r])return;
-  sh.rows.splice(r,1); markDirtySheet(sh); if(SEL&&SEL.sid===sid&&SEL.r>=sh.rows.length)SEL.r=Math.max(0,sh.rows.length-1); paint();
+  pushUndo(sid); sh.rows.splice(r,1); markDirtySheet(sh);
+  if(SEL&&SEL.sid===sid){                                     // keep the selection rectangle, shifted up for the removed row (Excel behavior)
+    if(SEL.r>r)SEL.r--; SEL.r=Math.min(SEL.r,Math.max(0,sh.rows.length-1));
+    if(ANCH&&ANCH.sid===sid){ if(ANCH.r>r)ANCH.r--; ANCH.r=Math.min(ANCH.r,Math.max(0,sh.rows.length-1)); }
+    else ANCH={sid:sid,r:SEL.r,c:SEL.c};
+  }                                                           // SEL on another sheet -> leave it (and ANCH) untouched
+  paint(); focusActive();                                     // restore grid focus so keyboard nav / copy-paste keep working
 }
 function wireGrid(){                                          // one delegated set of listeners on the (stable) sheet container
   const sc=$('sheetcard'); if(!sc||sc._wired)return; sc._wired=true;
   sc.addEventListener('mousedown', ev=>{ const td=ev.target.closest('td.wbc'); if(!td)return;
     if(INEDIT&&SEL&&td===cellEl(SEL.sid,SEL.r,SEL.c))return;  // click inside the editing cell -> place caret
-    selCell(td.dataset.sid,+td.dataset.r,+td.dataset.c); });
+    const ext=ev.shiftKey&&SEL&&SEL.sid===td.dataset.sid;
+    selCell(td.dataset.sid,+td.dataset.r,+td.dataset.c,ext);
+    if(!INEDIT)DRAG=true;                                     // begin a drag-select
+  });
+  sc.addEventListener('mouseover', ev=>{ if(!DRAG||INEDIT)return; const td=ev.target.closest('td.wbc'); if(!td||td.dataset.sid!==SEL.sid)return;
+    selCell(td.dataset.sid,+td.dataset.r,+td.dataset.c,true); });
+  document.addEventListener('mouseup', ()=>{ DRAG=false; });
   sc.addEventListener('dblclick', ev=>{ const td=ev.target.closest('td.wbc'); if(td){ selCell(td.dataset.sid,+td.dataset.r,+td.dataset.c); beginEdit(); } });
   sc.addEventListener('keydown', sheetKey);
   sc.addEventListener('copy', cellCopy);
+  sc.addEventListener('cut', cellCut);
   sc.addEventListener('paste', cellPasteEvent);
   sc.addEventListener('focusout', ev=>{ if(INEDIT){ const to=ev.relatedTarget; if(!to||!to.classList||!to.classList.contains('wbc')) commitEdit(); } });
 }
@@ -302,7 +421,7 @@ function showRecalc(on){
 function recalc(){                                            // re-run the last question on the edited data (auto-composed; no retyping)
   if(!SETTLED&&!FAILMSG) return;                             // one run at a time
   syncInputsToSheets();                                      // serialize the edits INTO SHEETS before the run (recalc clears EDITED, so startTurn can't)
-  showRecalc(false); EDITED=false;
+  showRecalc(false); EDITED=false; stampBaseline();          // the data we're about to compute becomes the new pristine baseline
   const q=LASTQ||question; if(!q) return;
   archiveTurn(); question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
   resetRun(); paint(); startRun();
@@ -426,17 +545,28 @@ function stepDesc(v){
   if(op==='divide'){ return 'Computed the ratio between the two measures.'; }
   return lbl||stepLabel(v);
 }
+function stepStatus(v){                                       // a friendly, plain-English "working…" line (no internal step names)
+  switch(v&&v.op){
+    case 'join': return 'Combining your tables…';
+    case 'world_join': return 'Looking up world facts…';
+    case 'world_filter': case 'filter': case 'having': return 'Filtering the rows…';
+    case 'group_agg': return 'Crunching the numbers…';
+    case 'order': case 'sort': return 'Sorting the results…';
+    case 'divide': return 'Working out the ratio…';
+    default: return 'Working it out…';
+  }
+}
 function appendView(v){
   dropStale();
   VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
   const label=stepLabel(v);                                  // short logical name (never v1/step_1/b2)
-  STATUS=label+'…';
+  STATUS=stepStatus(v);
   addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
 }
 function appendResolve(r){
   dropStale();
   RESOLVES.push(r);
-  STATUS='Resolving '+(r.column||'')+'…';
+  STATUS='Looking up '+(r.column||'the world')+'…';
   if(!r.unconnected&&r.columns)
     addSheet({id:'r'+RUN+'_'+RESOLVES.length, cls:'ref', name:(r.wtable||'world'), cols:r.columns||[], rows:r.rows||[]});   // just "city", not "city (wikipedia)"
   else paint();
@@ -527,7 +657,7 @@ function runProposed(){ if(!CONVPROP)return; const p=CONVPROP; archiveTurn(); qu
 async function startTurn(){
   const myRun=++RUN;
   const live=()=>RUN===myRun&&!SETTLED;
-  LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); }   // pick up any input-cell edits
+  LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
   let token;
   try{ token=await window.ensureToken(); }
   catch(e){ if(RUN===myRun) fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }
@@ -602,7 +732,7 @@ async function startRun(){
   if(ORCH) return startTurn();                                // orchestrated front-door (flag; direct path below is unchanged)
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
-  LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); }   // pick up any input-cell edits
+  LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
   let token;
   try{ token=await window.ensureToken(); }
   catch(e){ if(RUN===myRun) fail('sign-in required to run on your data: '+(e&&e.message||e)); return; }
