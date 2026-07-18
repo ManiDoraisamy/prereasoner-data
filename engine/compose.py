@@ -206,7 +206,7 @@ class ComposeEngine:
                  if c.lower() in toks]
         return (named[0], named[1]) if len(named) >= 2 else None
 
-    def plan(self, question, table, prims=None):
+    def plan(self, question, table, prims=None, used=None):
         """question + one table -> ordered list of primitive steps (the view DAG), in the canonical analytics pipeline
         order: filters (exclusion, temporal) -> aggregate (+ a derive: yoy / running / share / divide) -> having
         -> rank (top-N / sort). `prims` is the primitive SET from the learned head; the newer primitives + all
@@ -256,11 +256,13 @@ class ComposeEngine:
                    "SORT": sort_desc is not None}
         has["SORT"] = has["SORT"] and not has["TOPN"]       # rank is top-N XOR sort
 
-        steps = []; src = table["name"]; vi = 0
+        steps = []; src = table["name"]
+        if used is None:
+            used = set()
 
         def add(step, label):
-            nonlocal vi, src
-            vi += 1; step.update(out=f"v{vi}", src=src, label=label); steps.append(step); src = step["out"]
+            nonlocal src
+            step.update(out=self._vname(step["op"], used), src=src, label=label); steps.append(step); src = step["out"]
 
         if has["EXCL"] and excl_val:                        # 1. categorical row exclusion
             add({"op": "filter", "conds": [(excl_val[0], "<>", excl_val[1])]},
@@ -346,6 +348,19 @@ class ComposeEngine:
             con.execute(ins, [self._coerce(r[ci], typ[cols[ci]]) for ci in range(len(cols))])
         con.commit()
 
+    # Logical, self-describing view names (so the generated SQL reads "FROM filtered" not "FROM b2" — easier to
+    # debug). Deduped with a numeric suffix when an op repeats (two filters -> filtered, filtered_2).
+    _VNAME = {"join": "combined", "world_join": "wikipedia_lookup", "world_filter": "filtered",
+              "filter": "filtered", "time_filter": "date_filtered", "having": "filtered", "group_agg": "total",
+              "topn": "top_results", "sort": "sorted", "yoy": "year_over_year", "running": "running_total",
+              "divide": "ratio", "share": "share"}
+
+    def _vname(self, op, used):
+        base = self._VNAME.get(op, "step"); n = base; i = 2
+        while n in used:
+            n = f"{base}_{i}"; i += 1
+        used.add(n); return n
+
     def _materialize(self, con, name, sql, op, label):
         """create a view, execute it, and return its trace dict (name, op, label, sql, columns, rows)."""
         con.execute(f'CREATE VIEW {q(name)} AS {sql}')
@@ -410,29 +425,28 @@ class ComposeEngine:
                 self._load(con, t)
             if world is not None:
                 self._load(con, world)
-            base = []; vb = 0; cur = tables[0]
+            base = []; used = set(); cur = tables[0]
             if len(tables) > 1:                              # base A: FK join of the uploaded tables
                 jp = join_plan(tables, discover_fks(tables))
                 if jp:
-                    fact, joins = jp; vb += 1
-                    cur = self._materialize(con, f"b{vb}", join_view(fact, joins), "join",
+                    fact, joins = jp
+                    cur = self._materialize(con, self._vname("join", used), join_view(fact, joins), "join",
                                             "join " + " + ".join([fact] + [d for d, *_ in joins]))
                     base.append(cur)
             if world is not None:                            # base B: world-meaning join (+ optional filter on a world dim)
                 wf = self._world_link(low, cur, world)
                 if wf:
-                    link, wkey, keep, wcol, value = wf; vb += 1
-                    cur = self._materialize(con, f"b{vb}", world_join_view(cur["name"], link, world["name"], wkey, keep),
+                    link, wkey, keep, wcol, value = wf
+                    cur = self._materialize(con, self._vname("world_join", used), world_join_view(cur["name"], link, world["name"], wkey, keep),
                                             "world_join", f"join {cur['name']} to the world on {link}")
                     base.append(cur)
                     if wcol and value is not None:           # a world VALUE was named -> filter; else attribute-only join
-                        vb += 1
-                        cur = self._materialize(con, f"b{vb}", filter_view(cur["name"], [(wcol, "=", value)]),
+                        cur = self._materialize(con, self._vname("world_filter", used), filter_view(cur["name"], [(wcol, "=", value)]),
                                                 "world_filter", f"where {wcol} = {value!r}")
                         base.append(cur)
             table = {"name": cur["name"], "columns": cur["columns"], "rows": cur["rows"]}
             prims = self.reader.present(question) if self.reader else None   # learned readout (or None=heuristic)
-            steps = self.plan(question, table, prims)
+            steps = self.plan(question, table, prims, used)
             views = list(base)
             for s in steps:
                 views.append(self._materialize(con, s["out"], self._sql(s), s["op"], s.get("label")))
