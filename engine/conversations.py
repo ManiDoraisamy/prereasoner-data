@@ -130,6 +130,61 @@ def list_conversations(user_id, limit=50):
         conn.close()
 
 
+def delete_conversation(user_id, conversation_id):
+    """Delete a conversation the user OWNS: its metadata + its data schema. Ownership-checked (no IDOR);
+    conversation_id is validated to the strict c_<32 hex> shape before it reaches SQL/DROP SCHEMA."""
+    if not _ID_RE.match(conversation_id or ""):
+        raise NotOwned("bad conversation id")
+    conn = _pg()
+    try:
+        try:
+            cur = conn.cursor()
+            _ensure(cur)
+            cur.execute('SELECT 1 FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
+                        (conversation_id, user_id))
+            if not cur.fetchone():
+                raise NotOwned("conversation not found")       # not yours OR absent — same answer
+            cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
+                        (conversation_id, user_id))
+            cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (conversation_id,))
+            cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % conversation_id)   # validated c_<32hex> above
+            conn.commit()
+            return {"deleted": conversation_id}
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:                                  # noqa: BLE001
+                pass
+            raise
+    finally:
+        conn.close()
+
+
+def delete_all_conversations(user_id):
+    """Delete ALL of a user's conversations (bulk cleanup). Only touches rows owned by user_id."""
+    conn = _pg()
+    try:
+        try:
+            cur = conn.cursor()
+            _ensure(cur)
+            cur.execute('SELECT conversation_id FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
+            ids = [r[0] for r in cur.fetchall() if _ID_RE.match(r[0] or "")]
+            for cid in ids:
+                cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s', (cid, user_id))
+                cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
+                cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % cid)
+            conn.commit()
+            return {"deleted": len(ids)}
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:                                  # noqa: BLE001
+                pass
+            raise
+    finally:
+        conn.close()
+
+
 def get_conversation(user_id, conversation_id):
     """One conversation's opening prompt + stored tables, for re-opening it — after the same
     ownership check. Raises NotOwned if it isn't this user's conversation."""

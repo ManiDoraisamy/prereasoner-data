@@ -58,6 +58,7 @@ let HISTORY=[];                                  // lean cross-turn transcript f
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
+let SEL=null,INEDIT=false;                        // spreadsheet: the SELECTED cell {sid,r,c}, and whether it's in edit mode
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='master'); if(!passive&&AUTO) ACTIVE=m.id; if(passive&&!ACTIVE) ACTIVE=m.id; paint(); }
@@ -73,12 +74,12 @@ function renderGrid(m){
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':'')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
   h+='</tr></thead><tbody>';
-  for(let ri=0;ri<Math.max(shown.length,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>'');
+  const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // one trailing blank row to type into
+  for(let ri=0;ri<Math.max(nrows,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>'');
     h+='<tr><td class=rn>'+(ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')+'</td>';
-    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
-      h+='<td'+(numeric[ci]?' class=n':'')+' title="'+esc(val)+'"'
-        +(edit?' contenteditable="true" spellcheck="false" data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" onfocus="this.dataset.orig=this.innerText" oninput="editCell(this)" onkeydown="cellKey(event,this)" onpaste="cellPaste(event,this)"':'')
-        +'>'+esc(val)+'</td>'; }
+    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]); const sel=(edit&&SEL&&SEL.sid===m.id&&SEL.r===ri&&SEL.c===ci)?' sel':'';
+      h+='<td class="'+(numeric[ci]?'n ':'')+(edit?'wbc'+sel:'')+'"'
+        +(edit?' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"':'')+' title="'+esc(val)+'">'+esc(val)+'</td>'; }
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -142,19 +143,18 @@ function resultSummary(){
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
 function conv2html(t){ return esc(String(t||'')).replace(/\n/g,'<br>'); }
-function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.name)+'</span></button>').join('')+'</div>'):''; }
+function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||s.name)+'</span></button>').join('')+'</div>'):''; }
 function asksLine(){ return CALLS.length?('<div class=cotask>read as '+CALLS.map(c=>'&ldquo;'+esc(c.question)+'&rdquo;').join(', ')+'</div>'):''; }
-// The chain of thought — collapsed by default under a "how I got this" toggle. Holds the technical detail
-// (the rewritten question + the clickable steps that open each sheet, where the SQL lives) so the chat
-// bubble itself stays a plain, human answer. Toggling flips the DOM directly (no re-render needed post-settle).
+// The chain of thought — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
+// re-render (e.g. clicking a step to open its sheet) doesn't snap it shut.
+let COTOPEN=false;
 function cotHtml(){
   if(!ORCH) return '';
   const body=asksLine()+derivLinks();
   if(!body) return '';
-  return '<div class=cot><button class=cotbtn onclick="toggleCot(this)"><span class=cotchev>&#8250;</span>Reasoning steps</button><div class=cotbody hidden>'+body+'</div></div>';
+  return '<div class="cot'+(COTOPEN?' open':'')+'"><button class=cotbtn onclick="toggleCot()"><span class=cotchev>&#8250;</span>Reasoning steps</button><div class=cotbody'+(COTOPEN?'':' hidden')+'>'+body+'</div></div>';
 }
-function toggleCot(btn){ const wrap=btn.parentElement, body=wrap.querySelector('.cotbody'); if(!body)return;
-  const opening=body.hasAttribute('hidden'); if(opening)body.removeAttribute('hidden'); else body.setAttribute('hidden',''); wrap.classList.toggle('open',opening); }
+function toggleCot(){ COTOPEN=!COTOPEN; renderRail(); }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
   if(CONV){ let h='';
@@ -203,66 +203,88 @@ function seedInputs(){
     addSheet({id:'in'+i, cls:'input', si:i, name:s.name, cols:p.cols, rows:p.rows}); });
   ACTIVE=BOOK.length?BOOK[0].id:null; paint();
 }
-/* ---- editable input sheets (what-if): edit a cell -> offer Recalculate, which re-runs the last question ---- */
-function editCell(el){                                        // a keystroke in an editable cell: update the model (no re-paint — that'd drop focus)
-  const sid=el.dataset.sid, r=+el.dataset.r, c=+el.dataset.c;
-  const sh=BOOK.find(s=>s.id===sid); if(!sh)return;
-  while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>''));   // typing into the blank trailing row grows the table
-  sh.rows[r][c]=el.innerText.replace(/\n/g,' ');
-  if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } }
-  else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); }
+/* ---- editable sheets: a proper TWO-MODE spreadsheet (Excel / Google Sheets model). A cell is either
+   SELECTED (navigate mode — arrows move, a typed char overwrites, Enter/F2/double-click edits, Delete
+   clears, Ctrl+C/V copy/paste a range) or in EDIT mode (caret in the cell — Enter/Tab commit + move,
+   Escape cancels). Input sheets ("what-if" -> Recalculate) + master data are editable; the rest read-only. */
+function cellEl(sid,r,c){ return document.querySelector('#sheetcard td.wbc[data-sid="'+sid+'"][data-r="'+r+'"][data-c="'+c+'"]'); }
+function markDirtySheet(sh){ if(!sh)return; if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); } }
+function clearSelHi(){ document.querySelectorAll('#sheetcard td.wbc.sel').forEach(x=>x.classList.remove('sel')); }
+function selCell(sid,r,c){                                    // select a cell (navigate mode); commits any open edit first
+  commitEdit();
+  const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=(sh.cols||[]).length;
+  if(c<0)c=0; if(c>=nc)c=nc-1; if(r<0)r=0;
+  SEL={sid:sid,r:r,c:c};
+  let el=cellEl(sid,r,c);
+  if(!el){ while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>'')); paint(); el=cellEl(sid,r,c); }   // grow into a new row
+  else{ clearSelHi(); el.classList.add('sel'); }
+  if(el){ el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest',inline:'nearest'}); }
 }
-function focusCell(sid,r,c){                                  // focus a cell + drop the caret at its end
-  const el=document.querySelector('#sheetcard td[data-sid="'+sid+'"][data-r="'+r+'"][data-c="'+c+'"]');
-  if(!el)return false; el.focus();
+function beginEdit(ch){                                       // enter edit mode on the selected cell (ch = typed char overwrites)
+  if(!SEL)return; const el=cellEl(SEL.sid,SEL.r,SEL.c); if(!el)return;
+  el.dataset.orig=el.textContent; el.contentEditable='true'; el.classList.add('editing'); INEDIT=true;
+  if(ch!=null) el.textContent=ch;
+  el.focus();
   try{ const rg=document.createRange(); rg.selectNodeContents(el); rg.collapse(false); const s=getSelection(); s.removeAllRanges(); s.addRange(rg); }catch(_){}
-  return true;
 }
-function caretEdge(el){                                       // is the caret at the very start / end of the cell text?
-  const s=getSelection(); if(!s.rangeCount)return {start:true,end:true};
-  const rg=s.getRangeAt(0), len=(el.textContent||'').length;
-  return {start:rg.startOffset===0&&rg.endOffset===0, end:rg.startOffset===len&&rg.endOffset===len};
+function commitEdit(){                                        // write the edit to the model + leave edit mode
+  if(!INEDIT||!SEL)return; INEDIT=false; const el=cellEl(SEL.sid,SEL.r,SEL.c), sh=BOOK.find(s=>s.id===SEL.sid);
+  if(!el)return; el.contentEditable='false'; el.classList.remove('editing');
+  if(sh){ while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); const v=(el.textContent||'').replace(/\n/g,' ');
+    if(sh.rows[SEL.r][SEL.c]!==v){ sh.rows[SEL.r][SEL.c]=v; markDirtySheet(sh); } el.title=v; }
 }
-// Excel-style keyboard navigation for editable cells: Enter = down, Tab/Shift-Tab = right/left (wraps),
-// arrows move between cells (Up/Down always; Left/Right only at the text edge so you can still edit within a
-// cell). Moving down past the last row grows the sheet, so you keep adding rows by typing + Enter.
-function cellKey(ev,el){
-  const sid=el.dataset.sid, r=+el.dataset.r, c=+el.dataset.c;
-  const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=sh.cols.length;
-  if(ev.key==='Escape'){ ev.preventDefault(); const o=el.dataset.orig!=null?el.dataset.orig:''; el.innerText=o; if(sh.rows[r])sh.rows[r][c]=o; el.blur(); return; }
-  const move=(dr,dc)=>{ let tr=r+dr, tc=c+dc;
-    if(tc<0){ tc=nc-1; tr--; } else if(tc>=nc){ tc=0; tr++; }
-    if(tr<0||tc<0)return;
-    if(tr>=Math.min(sh.rows.length,MAX_RENDER_ROWS)){ while(sh.rows.length<=tr) sh.rows.push(sh.cols.map(()=>'')); if(tr<MAX_RENDER_ROWS) paint(); }
-    if(!focusCell(sid,tr,tc)){ paint(); focusCell(sid,tr,tc); } };
-  if(ev.key==='Enter'){ ev.preventDefault(); move(1,0); return; }
-  if(ev.key==='Tab'){ ev.preventDefault(); move(0,ev.shiftKey?-1:1); return; }
-  if(ev.key==='ArrowUp'){ ev.preventDefault(); move(-1,0); return; }
-  if(ev.key==='ArrowDown'){ ev.preventDefault(); move(1,0); return; }
-  const e=caretEdge(el);
-  if(ev.key==='ArrowLeft'&&e.start){ ev.preventDefault(); move(0,-1); return; }
-  if(ev.key==='ArrowRight'&&e.end){ ev.preventDefault(); move(0,1); return; }
+function cancelEdit(){                                        // discard the edit, restore the original
+  if(!INEDIT||!SEL)return; INEDIT=false; const el=cellEl(SEL.sid,SEL.r,SEL.c);
+  if(el){ el.textContent=el.dataset.orig!=null?el.dataset.orig:''; el.contentEditable='false'; el.classList.remove('editing'); el.focus(); }
 }
-// Paste a block (Excel/Sheets copy = TSV; also CSV) starting at the active cell — fills a RANGE, not one cell.
-function cellPaste(ev,el){
-  const txt=(ev.clipboardData||window.clipboardData)&&(ev.clipboardData||window.clipboardData).getData('text');
-  if(!txt||!/[\t\n,]/.test(txt))return;                      // single value -> let the default paste happen
-  ev.preventDefault();
-  const sid=el.dataset.sid, r0=+el.dataset.r, c0=+el.dataset.c, sh=BOOK.find(s=>s.id===sid); if(!sh)return;
+function clearCell(){ if(!SEL)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(sh&&sh.rows[SEL.r]){ sh.rows[SEL.r][SEL.c]=''; markDirtySheet(sh); const el=cellEl(SEL.sid,SEL.r,SEL.c); if(el){ el.textContent=''; el.title=''; } } }
+function sheetKey(ev){                                        // the mode controller (fires when a grid cell has focus)
+  if(!SEL)return; const a=document.activeElement; if(!a||!a.classList||!a.classList.contains('wbc'))return;
+  const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; const k=ev.key;
+  if(INEDIT){
+    if(k==='Enter'&&!ev.shiftKey){ ev.preventDefault(); commitEdit(); selCell(SEL.sid,SEL.r+1,SEL.c); }
+    else if(k==='Tab'){ ev.preventDefault(); commitEdit(); selCell(SEL.sid,SEL.r,SEL.c+(ev.shiftKey?-1:1)); }
+    else if(k==='Escape'){ ev.preventDefault(); cancelEdit(); }
+    return;                                                  // everything else edits the text (caret keys, etc.)
+  }
+  if(k==='ArrowUp'){ ev.preventDefault(); selCell(SEL.sid,SEL.r-1,SEL.c); }
+  else if(k==='ArrowDown'){ ev.preventDefault(); selCell(SEL.sid,SEL.r+1,SEL.c); }
+  else if(k==='ArrowLeft'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c-1); }
+  else if(k==='ArrowRight'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c+1); }
+  else if(k==='Tab'){ ev.preventDefault(); selCell(SEL.sid,SEL.r,SEL.c+(ev.shiftKey?-1:1)); }
+  else if(k==='Enter'||k==='F2'){ ev.preventDefault(); beginEdit(); }
+  else if(k==='Delete'||k==='Backspace'){ ev.preventDefault(); clearCell(); }
+  else if(k==='Escape'){ SEL=null; clearSelHi(); }
+  else if(k.length===1&&!ev.ctrlKey&&!ev.metaKey&&!ev.altKey){ ev.preventDefault(); beginEdit(k); }   // type to overwrite
+}
+function cellCopy(ev){ if(!SEL||INEDIT)return; const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh||!sh.rows[SEL.r])return;
+  const v=sh.rows[SEL.r][SEL.c]; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', v==null?'':String(v)); ev.preventDefault(); } }
+function cellPasteEvent(ev){                                  // paste a TSV/CSV block -> fills a RANGE from the selected cell
+  if(!SEL)return; const cd=ev.clipboardData||window.clipboardData; const txt=cd&&cd.getData('text'); if(!txt)return;
+  if(INEDIT&&!/[\t\n]/.test(txt))return;                     // single value while editing -> normal paste
+  ev.preventDefault(); const sh=BOOK.find(s=>s.id===SEL.sid); if(!sh)return; INEDIT=false;
   const grid=txt.replace(/\r/g,'').replace(/\n$/,'').split('\n').map(line=>line.indexOf('\t')>=0?line.split('\t'):parseCsvLine(line));
-  grid.forEach((cells,ri)=>{ const r=r0+ri; while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>''));
-    cells.forEach((v,ci)=>{ const c=c0+ci; if(c<sh.cols.length) sh.rows[r][c]=String(v); }); });
-  if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; }
-  paint(); focusCell(sid,r0,c0);
+  grid.forEach((cells,ri)=>{ const r=SEL.r+ri; while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>''));
+    cells.forEach((v,ci)=>{ const c=SEL.c+ci; if(c<sh.cols.length) sh.rows[r][c]=String(v); }); });
+  markDirtySheet(sh); paint(); selCell(SEL.sid,SEL.r,SEL.c);
 }
 function parseCsvLine(line){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
   if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
   else if(ch==='"')q=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out; }
 function delRow(sid,r){
   const sh=BOOK.find(s=>s.id===sid); if(!sh||!sh.rows[r])return;
-  sh.rows.splice(r,1);
-  if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; }
-  paint();
+  sh.rows.splice(r,1); markDirtySheet(sh); if(SEL&&SEL.sid===sid&&SEL.r>=sh.rows.length)SEL.r=Math.max(0,sh.rows.length-1); paint();
+}
+function wireGrid(){                                          // one delegated set of listeners on the (stable) sheet container
+  const sc=$('sheetcard'); if(!sc||sc._wired)return; sc._wired=true;
+  sc.addEventListener('mousedown', ev=>{ const td=ev.target.closest('td.wbc'); if(!td)return;
+    if(INEDIT&&SEL&&td===cellEl(SEL.sid,SEL.r,SEL.c))return;  // click inside the editing cell -> place caret
+    selCell(td.dataset.sid,+td.dataset.r,+td.dataset.c); });
+  sc.addEventListener('dblclick', ev=>{ const td=ev.target.closest('td.wbc'); if(td){ selCell(td.dataset.sid,+td.dataset.r,+td.dataset.c); beginEdit(); } });
+  sc.addEventListener('keydown', sheetKey);
+  sc.addEventListener('copy', cellCopy);
+  sc.addEventListener('paste', cellPasteEvent);
+  sc.addEventListener('focusout', ev=>{ if(INEDIT){ const to=ev.relatedTarget; if(!to||!to.classList||!to.classList.contains('wbc')) commitEdit(); } });
 }
 function csvCell(v){ v=v==null?'':String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 function syncInputsToSheets(){                                // serialize edited input sheets back to SHEETS (+ persist) before a run
@@ -387,12 +409,29 @@ function stepLabel(v){
     if(/\bcount\b/.test(s))return 'count'; if(/\bavg\b|average/.test(s))return 'average'; if(/\bmin\b|\bmax\b/.test(s))return 'extremes'; return 'total'; }
   return (v&&SHORTLBL[v.op])||(v&&v.label)||oplabel(v&&v.op);
 }
+// A plain-English sentence for what a step does — shown in the Reasoning steps (the short name labels the tab).
+function humanCond(c){ return String(c||'').replace(/\s*<>\s*/,' is not ').replace(/\s*=\s*/,' is ').replace(/'/g,'').trim(); }
+function stepDesc(v){
+  const lbl=(v&&v.label)||'', op=v&&v.op;
+  if(op==='join'){ const t=lbl.replace(/^join\s+/i,'').replace(/\s*\+\s*/g,' and '); return 'Combined '+(t||'your tables')+' into one table.'; }
+  if(op==='world_join'){ const m=lbl.match(/on\s+(.+)$/i); return 'Looked up world facts for each '+(m?m[1].trim():'entity')+' — country, currency, population and more — from Wikipedia.'; }
+  if(op==='world_filter'||op==='filter'||op==='having'){ const m=lbl.match(/where\s+(.+)$/i); return m?('Kept only the rows where '+humanCond(m[1])+'.'):'Filtered to the matching rows.'; }
+  if(op==='time_filter'){ return 'Kept only the rows in that time period.'; }
+  if(op==='group_agg'){ return ({count:'Counted the rows.',average:'Averaged the values.',extremes:'Found the highest and lowest values.'})[stepLabel(v)]||'Added up the values to get the total.'; }
+  if(op==='topn'){ return 'Kept just the top-ranked results.'; }
+  if(op==='sort'){ return 'Sorted the results in order.'; }
+  if(op==='yoy'){ return 'Computed the year-over-year change.'; }
+  if(op==='running'){ return 'Computed a running (cumulative) total.'; }
+  if(op==='share'){ return 'Computed each row’s share of the total.'; }
+  if(op==='divide'){ return 'Computed the ratio between the two measures.'; }
+  return lbl||stepLabel(v);
+}
 function appendView(v){
   dropStale();
   VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
   const label=stepLabel(v);                                  // short logical name (never v1/step_1/b2)
   STATUS=label+'…';
-  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
+  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
 }
 function appendResolve(r){
   dropStale();
@@ -653,7 +692,9 @@ function wireChat(){
   const t=$('tabstrip'); if(t) t.addEventListener('scroll',updateTabArrows);
   window.addEventListener('resize',updateTabArrows);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
-  const cl=$('convlist'); if(cl) cl.addEventListener('click',e=>{ const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
+  const cl=$('convlist'); if(cl) cl.addEventListener('click',e=>{
+    const del=e.target.closest('.convdel'); if(del){ e.stopPropagation(); deleteConv(del.dataset.del); return; }
+    const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
 }
 
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */
@@ -703,11 +744,28 @@ async function renderDrawer(){
   // Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
   // id/question come from the server and must not be interpolated into markup or an inline handler.
   for(const c of convs){
-    const b=document.createElement('button'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
+    const b=document.createElement('div'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
     const q=document.createElement('div'); q.className='cq'; q.textContent=c.question||'(untitled)'; b.appendChild(q);
     if(c.ts){ const t=document.createElement('div'); t.className='ct'; t.textContent=prettyTs(c.ts); b.appendChild(t); }
+    const x=document.createElement('button'); x.className='convdel'; x.dataset.del=c.id; x.title='Delete conversation'; x.textContent='×'; b.appendChild(x);
     list.appendChild(b);
   }
+  const clr=document.createElement('button'); clr.className='convclear'; clr.textContent='Clear all conversations'; clr.onclick=clearAllConvs;
+  list.appendChild(clr);
+}
+async function deleteConv(id){
+  const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.style.opacity='.4';
+  try{ const tk=await window.ensureToken();
+    await fetch(API_BASE+'/api/conversation/delete',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({id})});
+  }catch(_){}
+  if(id===convId()) newConversation(); else renderDrawer();   // deleting the open one -> start fresh
+}
+async function clearAllConvs(){
+  if(!confirm('Delete ALL your conversations? This cannot be undone.'))return;
+  try{ const tk=await window.ensureToken();
+    await fetch(API_BASE+'/api/conversation/delete-all',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:'{}'});
+  }catch(_){}
+  newConversation();
 }
 
 async function run(){
@@ -726,7 +784,7 @@ async function run(){
     }catch(_){}
   }
   try{ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } }catch(_){}   // restore ORCH context on reload
-  wireChat(); setHeaderTitle(question); seedInputs(); loadMaster();
+  wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); loadMaster();
   window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
   startRun();
 }
