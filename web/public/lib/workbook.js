@@ -73,10 +73,12 @@ function renderGrid(m){
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':'')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
   h+='</tr></thead><tbody>';
-  for(let ri=0;ri<Math.max(shown.length,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>''); h+='<tr><td class=rn>'+(ri+1)+'</td>';
-    for(let ci=0;ci<cols.length;ci++) h+='<td'+(numeric[ci]?' class=n':'')
-      +(edit?' contenteditable="true" spellcheck="false" data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" oninput="editCell(this)" onkeydown="cellKey(event,this)"':'')
-      +'>'+esc(fmt(row[ci]))+'</td>';
+  for(let ri=0;ri<Math.max(shown.length,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>'');
+    h+='<tr><td class=rn>'+(ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')+'</td>';
+    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
+      h+='<td'+(numeric[ci]?' class=n':'')+' title="'+esc(val)+'"'
+        +(edit?' contenteditable="true" spellcheck="false" data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" onfocus="this.dataset.orig=this.innerText" oninput="editCell(this)" onkeydown="cellKey(event,this)" onpaste="cellPaste(event,this)"':'')
+        +'>'+esc(val)+'</td>'; }
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -105,6 +107,7 @@ function renderSheet(){
     +'<button class=mlink onclick="addMasterCol(\''+m.id+'\')">+ column</button>'
     +'<button class=mlink onclick="masterPaste(\''+m.id+'\')">paste</button>'
     +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">upload CSV</button>'
+    +(m.saved?'':'<button class=mlink onclick="dismissMaster(\''+m.id+'\')">dismiss</button>')
     +'</span></div>';
   if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
   h+=renderGrid(m);
@@ -226,6 +229,7 @@ function caretEdge(el){                                       // is the caret at
 function cellKey(ev,el){
   const sid=el.dataset.sid, r=+el.dataset.r, c=+el.dataset.c;
   const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=sh.cols.length;
+  if(ev.key==='Escape'){ ev.preventDefault(); const o=el.dataset.orig!=null?el.dataset.orig:''; el.innerText=o; if(sh.rows[r])sh.rows[r][c]=o; el.blur(); return; }
   const move=(dr,dc)=>{ let tr=r+dr, tc=c+dc;
     if(tc<0){ tc=nc-1; tr--; } else if(tc>=nc){ tc=0; tr++; }
     if(tr<0||tc<0)return;
@@ -238,6 +242,27 @@ function cellKey(ev,el){
   const e=caretEdge(el);
   if(ev.key==='ArrowLeft'&&e.start){ ev.preventDefault(); move(0,-1); return; }
   if(ev.key==='ArrowRight'&&e.end){ ev.preventDefault(); move(0,1); return; }
+}
+// Paste a block (Excel/Sheets copy = TSV; also CSV) starting at the active cell — fills a RANGE, not one cell.
+function cellPaste(ev,el){
+  const txt=(ev.clipboardData||window.clipboardData)&&(ev.clipboardData||window.clipboardData).getData('text');
+  if(!txt||!/[\t\n,]/.test(txt))return;                      // single value -> let the default paste happen
+  ev.preventDefault();
+  const sid=el.dataset.sid, r0=+el.dataset.r, c0=+el.dataset.c, sh=BOOK.find(s=>s.id===sid); if(!sh)return;
+  const grid=txt.replace(/\r/g,'').replace(/\n$/,'').split('\n').map(line=>line.indexOf('\t')>=0?line.split('\t'):parseCsvLine(line));
+  grid.forEach((cells,ri)=>{ const r=r0+ri; while(sh.rows.length<=r) sh.rows.push(sh.cols.map(()=>''));
+    cells.forEach((v,ci)=>{ const c=c0+ci; if(c<sh.cols.length) sh.rows[r][c]=String(v); }); });
+  if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; }
+  paint(); focusCell(sid,r0,c0);
+}
+function parseCsvLine(line){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const ch=line[i];
+  if(q){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=ch; }
+  else if(ch==='"')q=true; else if(ch===','){ out.push(cur); cur=''; } else cur+=ch; } out.push(cur); return out; }
+function delRow(sid,r){
+  const sh=BOOK.find(s=>s.id===sid); if(!sh||!sh.rows[r])return;
+  sh.rows.splice(r,1);
+  if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; }
+  paint();
 }
 function csvCell(v){ v=v==null?'':String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 function syncInputsToSheets(){                                // serialize edited input sheets back to SHEETS (+ persist) before a run
@@ -319,6 +344,12 @@ async function saveMaster(id){
     if(r.ok){ sh.saved=true; sh.dirty=false; }
   }catch(_){}
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
+}
+function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  BOOK=BOOK.filter(s=>s.id!==id); if(sh.name) MSEEN.add(String(sh.name).toLowerCase());
+  if(ACTIVE===id) ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
+  paint();
 }
 function addMasterCol(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
@@ -521,6 +552,7 @@ function markTurnDone(){                                      // the turn finish
   // If the /chat body was lost to the proxy timeout, the answer came via RTDB — reconstruct this turn's
   // transcript client-side so the NEXT follow-up still has context.
   if(!HTTPHIST) HISTORY=HISTORY.concat([{role:'user',content:question},{role:'assistant',content:REPLY||''}]);
+  try{ sessionStorage.setItem('pr_orch_history', JSON.stringify(HISTORY)); }catch(_){}   // survive a reload of THIS conversation
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
   surfaceUnresolved();                                        // offer master-data sheets for unresolved text columns
@@ -611,6 +643,7 @@ function sendChat(){
   box.value='';
   question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
   resetRun(); paint();
+  if(box) box.focus();                                        // keep the cursor in the chat box for rapid follow-ups
   startRun();
 }
 function wireChat(){
@@ -645,17 +678,19 @@ async function listConversations(){
   }catch(_){ return []; }
 }
 async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt) at its own URL
+  const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.classList.add('loading');
   try{ const tk=await window.ensureToken();
     const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+tk}});
-    if(!r.ok){ closeDrawer(); return; }
+    if(!r.ok){ if(it){ it.classList.remove('loading'); it.classList.add('err'); } return; }
     const j=await r.json();
+    sessionStorage.removeItem('pr_orch_history');            // a different conversation -> fresh context
     sessionStorage.setItem('pr_conversation_id', j.conversation_id);
     sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
     sessionStorage.setItem(SS.Q, j.question||'');
     location.href='/reason/'+j.conversation_id;              // deep-linkable per-conversation URL
-  }catch(_){ closeDrawer(); }
+  }catch(_){ if(it){ it.classList.remove('loading'); it.classList.add('err'); } }
 }
-function newConversation(){ try{ ['pr_conversation_id',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
+function newConversation(){ try{ ['pr_conversation_id','pr_orch_history',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
 function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
 function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
 async function renderDrawer(){
@@ -690,6 +725,9 @@ async function run(){
       }
     }catch(_){}
   }
-  wireChat(); setHeaderTitle(question); seedInputs(); loadMaster(); startRun();
+  try{ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } }catch(_){}   // restore ORCH context on reload
+  wireChat(); setHeaderTitle(question); seedInputs(); loadMaster();
+  window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
+  startRun();
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend
