@@ -89,7 +89,7 @@ function tokCls(tk){const u=tk.toUpperCase();
   const m=tk.match(/^"([^"]+)"$/); if(m&&TABNAMES.includes(m[1].toLowerCase()))return 'tbl';
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
-const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Reference',master:'Master data'};
+const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Wikipedia data',master:'Master data'};
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
@@ -98,11 +98,14 @@ function renderSheet(){
     +'<span class="skind '+m.cls+'">'+(m.result?esc(m.name):KINDLBL[m.cls])+'</span>'
     +(m.sql?'<span class=spacer></span><button class=sqlbtn onclick=toggleSql()>SQL</button>':'')
     +(m.cls==='master'?'<span class=spacer></span>'
-        +'<button class=mbtn onclick="addMasterCol(\''+m.id+'\')">+ Column</button>'
-        +'<button class=mbtn onclick="masterPaste(\''+m.id+'\')">Paste</button>'
         +'<button class="mbtn msave'+(m.dirty||!m.saved?' dirty':'')+'" onclick="saveMaster(\''+m.id+'\')">'+(m.saved&&!m.dirty?'Saved':'Save')+'</button>':'')
     +'</div>';
-  if(m.cls==='master') h+='<div class=masterhint>Your reference data for <b>'+esc(m.name)+'</b> — add columns (category, price, region…) and fill them in. Saved to your account and reused across every conversation.</div>';
+  if(m.cls==='master') h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>'
+    +'<span class=mactions>'
+    +'<button class=mlink onclick="addMasterCol(\''+m.id+'\')">+ column</button>'
+    +'<button class=mlink onclick="masterPaste(\''+m.id+'\')">paste</button>'
+    +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">upload CSV</button>'
+    +'</span></div>';
   if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
   h+=renderGrid(m);
   $('sheetcard').innerHTML=h;
@@ -110,11 +113,11 @@ function renderSheet(){
 function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
 function tabTxt(s){ const t=s.result?'Result':s.name; return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
-  // Reading order: your data -> your master data -> the reference lookups it used -> the derivation steps.
-  const inputs=BOOK.filter(s=>s.cls==='input'), masters=BOOK.filter(s=>s.cls==='master'),
-        refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');
+  // Reading order: your data -> the world (wikipedia) it resolved -> your master data (the unresolved rest) -> steps.
+  const inputs=BOOK.filter(s=>s.cls==='input'), refs=BOOK.filter(s=>s.cls==='ref'),
+        masters=BOOK.filter(s=>s.cls==='master'), derivs=BOOK.filter(s=>s.cls==='deriv');
   const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?' •':'')+'</button>';
-  $('tabstrip').innerHTML=inputs.map(tab).join('')+masters.map(tab).join('')+refs.map(tab).join('')+derivs.map(tab).join('');
+  $('tabstrip').innerHTML=inputs.map(tab).join('')+refs.map(tab).join('')+masters.map(tab).join('')+derivs.map(tab).join('');
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
 }
@@ -145,16 +148,17 @@ function cotHtml(){
   if(!ORCH) return '';
   const body=asksLine()+derivLinks();
   if(!body) return '';
-  return '<div class=cot><button class=cotbtn onclick="toggleCot(this)"><span class=cotchev>&#8250;</span>how I got this</button><div class=cotbody hidden>'+body+'</div></div>';
+  return '<div class=cot><button class=cotbtn onclick="toggleCot(this)"><span class=cotchev>&#8250;</span>Reasoning steps</button><div class=cotbody hidden>'+body+'</div></div>';
 }
 function toggleCot(btn){ const wrap=btn.parentElement, body=wrap.querySelector('.cotbody'); if(!body)return;
   const opening=body.hasAttribute('hidden'); if(opening)body.removeAttribute('hidden'); else body.setAttribute('hidden',''); wrap.classList.toggle('open',opening); }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
-  if(CONV){ let h='<div class=convmsg>'+conv2html(CONV)+'</div>';   // the plain answer (or a clarify/meta reply), for the end user
+  if(CONV){ let h='';
+    if(ORCH) h+=cotHtml();                                  // "Reasoning steps" ABOVE the answer (part of THIS turn, not floating near the next prompt)
+    h+='<div class=convmsg>'+conv2html(CONV)+'</div>';       // the plain answer (or a clarify/meta reply), for the end user
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
-    if(ORCH) h+=cotHtml();                                  // technical detail (rewrite + steps + SQL) tucked behind "how I got this"
-    else if(PRESENT) h+=derivLinks();                       // present mode keeps the derivation reachable from the rail
+    if(!ORCH&&PRESENT) h+=derivLinks();                      // present mode keeps the derivation reachable from the rail
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
@@ -172,7 +176,7 @@ function turnHtml(){                                          // the CURRENT (li
 function archiveTurn(){                                       // freeze the finished turn to a MINIMAL line (no dead links)
   let h;
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
-  else if(CONV) h='<div class=convmsg>'+conv2html(CONV)+'</div>'+(ORCH?('<div class=cot>'+asksLine()+'</div>'):'');   // freeze the reply + a muted "read as" (steps are gone)
+  else if(CONV) h=(ORCH?('<div class=cot>'+asksLine()+'</div>'):'')+'<div class=convmsg>'+conv2html(CONV)+'</div>';   // frozen: the "read as" ABOVE the reply (steps are gone)
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
   CHAT.push({q:question, html:h});
@@ -238,27 +242,34 @@ function addMasterSheet(name,cols,rows,saved){
   MSEEN.add(String(name).toLowerCase());
   return id;
 }
-async function loadMaster(){                                  // pull the user's existing master tables (shared across conversations)
+let MDATA={};                                                // cache of the user's saved master tables (name-lc -> {name,cols,rows})
+function inputColumns(){                                      // {lc colname -> original} across the user's input sheets
+  const m={}; BOOK.filter(s=>s.cls==='input').forEach(sh=>(sh.cols||[]).forEach(c=>{ const k=String(c||'').trim().toLowerCase(); if(k)m[k]=c; })); return m;
+}
+async function loadMaster(){                                  // cache the user's master tables; SHOW only the ones relevant to THIS data
   try{ const tk=await window.ensureToken();
     const r=await fetch(API_BASE+'/api/master',{headers:{Authorization:'Bearer '+tk}});
     if(!r.ok)return; const j=await r.json();
     for(const t of (j.tables||[])){
-      if(MSEEN.has(String(t.name).toLowerCase()))continue;
       const full=await fetch(API_BASE+'/api/master?name='+encodeURIComponent(t.name),{headers:{Authorization:'Bearer '+tk}}).then(x=>x.ok?x.json():null).catch(()=>null);
-      if(full&&full.columns) addMasterSheet(full.name, full.columns, full.rows, true);
+      if(full&&full.columns) MDATA[String(full.name).toLowerCase()]={name:full.name,cols:full.columns,rows:full.rows};
     }
+    const cols=inputColumns();                                // a saved master shows only if its name matches a column in this conversation's data (skip unrelated like "product")
+    Object.keys(MDATA).forEach(k=>{ if(cols[k]&&!MSEEN.has(k)){ const d=MDATA[k]; addMasterSheet(d.name,d.cols,d.rows,true); } });
     paint();
   }catch(_){}
 }
 // After a query, the engine marks each resolved column as connected (wtable) or NOT (unconnected:true).
-// The unconnected ones are exactly the private entities the world model can't enrich — surface each as a
-// master-data sheet pre-filled with its distinct values, for the user to enrich.
+// The unconnected ones are the private entities the world model can't enrich — surface each as a master
+// sheet (its saved data if any, else its distinct values) for the user to enrich.
 function surfaceUnresolved(){
   try{
     (RESOLVES||[]).forEach(r=>{
       if(!r||!r.unconnected)return;                          // only columns the engine could NOT connect to the world
       const nm=String(r.column||'').trim(), key=nm.toLowerCase();
-      if(!nm||MSEEN.has(key))return;                         // already surfaced or already a saved master table
+      if(!nm||MSEEN.has(key))return;                         // already shown or already surfaced
+      const saved=MDATA[key];
+      if(saved){ addMasterSheet(saved.name,saved.cols,saved.rows,true); return; }
       let vals=[];                                           // its distinct values, from whichever input sheet has the column
       for(const sh of BOOK.filter(s=>s.cls==='input')){
         const ci=(sh.cols||[]).findIndex(c=>String(c).toLowerCase()===key);
@@ -291,6 +302,14 @@ function masterPaste(id){
   const p=parseCSV(txt); if(!p.cols.length)return;
   sh.cols=p.cols; sh.rows=p.rows; sh.dirty=true; renderSheet();
 }
+function masterUpload(id){
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='.csv,.tsv,.txt,text/csv';
+  inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f)return; const rd=new FileReader();
+    rd.onload=()=>{ const p=parseCSV(String(rd.result||'')); if(p.cols.length){ sh.cols=p.cols; sh.rows=p.rows; sh.dirty=true; renderSheet(); } };
+    rd.readAsText(f); };
+  inp.click();
+}
 // This run just produced its OWN first sheet -> retire the previous turn's derivation/reference sheets that
 // resetRun kept around (so a conversational follow-up could still show them). A data query replaces them.
 function dropStale(){
@@ -298,10 +317,20 @@ function dropStale(){
   BOOK=BOOK.filter(s=>!s.stale);
   if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
 }
+// Short, logical step names (by op) — readable at a glance ("combined", "wikipedia lookup", "filtered",
+// "total") instead of the engine's verbose "join orders + customers" / "where country = 'France'".
+const SHORTLBL={join:'combined',world_join:'wikipedia lookup',world_filter:'filtered',filter:'filtered',
+  time_filter:'date filter',having:'filtered',group_agg:'total',yoy:'year-over-year',running:'running total',
+  divide:'ratio',share:'share',topn:'top results',sort:'sorted'};
+function stepLabel(v){
+  if(v&&v.op==='group_agg'){ const s=String((v.sql||'')+' '+(v.label||'')).toLowerCase();
+    if(/\bcount\b/.test(s))return 'count'; if(/\bavg\b|average/.test(s))return 'average'; if(/\bmin\b|\bmax\b/.test(s))return 'extremes'; return 'total'; }
+  return (v&&SHORTLBL[v.op])||(v&&v.label)||oplabel(v&&v.op);
+}
 function appendView(v){
   dropStale();
   VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
-  const label=v.label||oplabel(v.op);                        // HUMAN name ("join orders + customers"), never v1/step_1
+  const label=stepLabel(v);                                  // short logical name (never v1/step_1/b2)
   STATUS=label+'…';
   addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
 }
@@ -310,7 +339,7 @@ function appendResolve(r){
   RESOLVES.push(r);
   STATUS='Resolving '+(r.column||'')+'…';
   if(!r.unconnected&&r.columns)
-    addSheet({id:'r'+RUN+'_'+RESOLVES.length, cls:'ref', name:(r.wtable||'world')+' (wikipedia)', cols:r.columns||[], rows:r.rows||[]});
+    addSheet({id:'r'+RUN+'_'+RESOLVES.length, cls:'ref', name:(r.wtable||'world'), cols:r.columns||[], rows:r.rows||[]});   // just "city", not "city (wikipedia)"
   else paint();
 }
 function markDone(){ if(SETTLED)return; DONE=true; clearTimeout(doneTimer); doneTimer=setTimeout(finalize,400); }

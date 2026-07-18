@@ -136,8 +136,12 @@ body.app{background:#fff}
 .mbtn{all:unset;cursor:pointer;font:600 11px var(--disp);color:#8a6a2e;padding:4px 11px;border:1px solid #ead9bd;border-radius:9999px;flex:0 0 auto;margin-left:6px}
 .mbtn:hover{background:#fbeed6}
 .mbtn.msave.dirty{background:#e0912a;color:#fff;border-color:#e0912a}.mbtn.msave.dirty:hover{background:#cf8420}
-.masterhint{padding:9px 14px;font:12.5px/1.5 var(--disp);color:#8a6a2e;background:#fdf7ec;border-bottom:1px solid #f0e6d4}
+.masterhint{display:flex;align-items:center;gap:14px;padding:8px 14px;font:12.5px/1.5 var(--disp);color:#8a6a2e;background:#fdf7ec;border-bottom:1px solid #f0e6d4}
+.masterhint>span:first-child{flex:1;min-width:0}
 .masterhint b{color:#a5651a}
+.mactions{display:flex;gap:4px;flex:0 0 auto}
+.mlink{all:unset;cursor:pointer;font:600 11.5px var(--disp);color:#a5651a;padding:3px 9px;border-radius:9999px}
+.mlink:hover{background:#f6ead2}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
