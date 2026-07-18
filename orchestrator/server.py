@@ -102,6 +102,7 @@ class H(BaseHTTPRequestHandler):
             tables = req.get("tables") or []
             history = req.get("history") or []
             turn_id = (req.get("turnId") or "").strip() or None
+            conversation_id = (req.get("conversation_id") or "").strip() or None
             token = self._bearer()
             # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME uid the browser subscribes to,
             # derived from the VERIFIED token (never client-supplied). Each engine call is announced there and
@@ -120,7 +121,7 @@ class H(BaseHTTPRequestHandler):
                 run_chat(message, tables, history,
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,
                          api_key=config.anthropic_api_key(), model=config.ANTHROPIC_MODEL,
-                         turn_id=turn_id, emit=emit),
+                         turn_id=turn_id, emit=emit, conversation_id=conversation_id),
                 _LOOP,
             )
             res = fut.result(timeout=300)

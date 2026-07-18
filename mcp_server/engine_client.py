@@ -61,10 +61,14 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
                 out[k] = j.get(k)
         # trace coordinates: the browser knows its own uid; we return the jobId the engine streamed under.
         out["trace"] = {"jobId": job_id}
+        if j.get("conversation_id"):
+            out["conversation_id"] = j["conversation_id"]    # so the orchestrator reuses ONE conversation for the whole session (no per-call minting)
     elif status == "clarify":
         out["clarify"] = {k: j.get(k) for k in ("proposed", "dropped", "bindings", "original_sql")
                           if j.get(k) is not None}
         out["trace"] = {"jobId": job_id}
+        if j.get("conversation_id"):
+            out["conversation_id"] = j["conversation_id"]
     else:  # error
         out["error"] = str(j.get("error") or "the engine returned no answer")
 
@@ -72,12 +76,14 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
 
 
 def call_query(question: str, tables: list[dict], job_id: str | None = None,
+               conversation_id: str | None = None,
                *, base_url: str | None = None, token: str | None = None,
                timeout: float | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
-    """
+    `conversation_id`, when given, keeps every call on ONE conversation schema (else the engine mints a fresh
+    one per call — the orchestrated-mode conversation-spam bug)."""
     base = (base_url or _engine_base_url()).rstrip("/")
     tok = token if token is not None else _bearer_token()
     headers = {"content-type": "application/json"}
@@ -86,6 +92,8 @@ def call_query(question: str, tables: list[dict], job_id: str | None = None,
     body: dict[str, Any] = {"tables": tables, "question": question}
     if job_id:
         body["jobId"] = job_id
+    if conversation_id:
+        body["conversation_id"] = conversation_id
     try:
         r = httpx.post(f"{base}/api/reason", json=body, headers=headers,
                        timeout=timeout or DEFAULT_TIMEOUT)

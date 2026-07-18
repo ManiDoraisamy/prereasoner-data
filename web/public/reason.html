@@ -3,7 +3,7 @@
 <title>Prereasoner · workbook</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css?v=12">
+<link rel=stylesheet href="/styles.css?v=13">
 </head><body class=app>
 <!-- The read-only WORKBOOK (shared logic: lib/workbook.js; shared styles: styles.css).
      Green sheets = the user's tables (the AI never writes here). Blue sheets = one per
@@ -41,15 +41,15 @@
     </div>
   </div>
 </div>
-<script src="lib/shared.js"></script>
+<script src="/lib/shared.js"></script>
 <script>
 window.WB_CONFIG = { endpoint: '/api/reason' };   // reason: composition over the uploaded sheets (+world joins)
 </script>
-<script src="lib/workbook.js"></script>
+<script src="/lib/workbook.js"></script>
 <script type="module">
 // ensureSignedIn resolves the uid, resolves null when redirecting to Google, and THROWS when a
 // redirect came back without a session (the loop-breaker) — show that instead of looping.
-import { ensureSignedIn } from "./lib/firebase-init.js";
+import { ensureSignedIn } from "/lib/firebase-init.js";
 try { if (await ensureSignedIn()) run(); }
 catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }
 </script></body></html>

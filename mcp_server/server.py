@@ -18,9 +18,10 @@ mcp = FastMCP("prereasoner")
 
 
 @mcp.tool(description=QUERY_DESC)
-def prereasoner_query(question: str, tables: list, job_id: str | None = None) -> str:
+def prereasoner_query(question: str, tables: list, job_id: str | None = None,
+                      conversation_id: str | None = None) -> str:
     """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id)."""
-    return json.dumps(engine_client.call_query(question, tables or [], job_id))
+    return json.dumps(engine_client.call_query(question, tables or [], job_id, conversation_id))
 
 
 @mcp.tool(description=DESCRIBE_DESC)

@@ -209,7 +209,36 @@ function editCell(el){                                        // a keystroke in 
   if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } }
   else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); }
 }
-function cellKey(ev,el){ if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); } }   // Enter commits the cell, no newline
+function focusCell(sid,r,c){                                  // focus a cell + drop the caret at its end
+  const el=document.querySelector('#sheetcard td[data-sid="'+sid+'"][data-r="'+r+'"][data-c="'+c+'"]');
+  if(!el)return false; el.focus();
+  try{ const rg=document.createRange(); rg.selectNodeContents(el); rg.collapse(false); const s=getSelection(); s.removeAllRanges(); s.addRange(rg); }catch(_){}
+  return true;
+}
+function caretEdge(el){                                       // is the caret at the very start / end of the cell text?
+  const s=getSelection(); if(!s.rangeCount)return {start:true,end:true};
+  const rg=s.getRangeAt(0), len=(el.textContent||'').length;
+  return {start:rg.startOffset===0&&rg.endOffset===0, end:rg.startOffset===len&&rg.endOffset===len};
+}
+// Excel-style keyboard navigation for editable cells: Enter = down, Tab/Shift-Tab = right/left (wraps),
+// arrows move between cells (Up/Down always; Left/Right only at the text edge so you can still edit within a
+// cell). Moving down past the last row grows the sheet, so you keep adding rows by typing + Enter.
+function cellKey(ev,el){
+  const sid=el.dataset.sid, r=+el.dataset.r, c=+el.dataset.c;
+  const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=sh.cols.length;
+  const move=(dr,dc)=>{ let tr=r+dr, tc=c+dc;
+    if(tc<0){ tc=nc-1; tr--; } else if(tc>=nc){ tc=0; tr++; }
+    if(tr<0||tc<0)return;
+    if(tr>=Math.min(sh.rows.length,MAX_RENDER_ROWS)){ while(sh.rows.length<=tr) sh.rows.push(sh.cols.map(()=>'')); if(tr<MAX_RENDER_ROWS) paint(); }
+    if(!focusCell(sid,tr,tc)){ paint(); focusCell(sid,tr,tc); } };
+  if(ev.key==='Enter'){ ev.preventDefault(); move(1,0); return; }
+  if(ev.key==='Tab'){ ev.preventDefault(); move(0,ev.shiftKey?-1:1); return; }
+  if(ev.key==='ArrowUp'){ ev.preventDefault(); move(-1,0); return; }
+  if(ev.key==='ArrowDown'){ ev.preventDefault(); move(1,0); return; }
+  const e=caretEdge(el);
+  if(ev.key==='ArrowLeft'&&e.start){ ev.preventDefault(); move(0,-1); return; }
+  if(ev.key==='ArrowRight'&&e.end){ ev.preventDefault(); move(0,1); return; }
+}
 function csvCell(v){ v=v==null?'':String(v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v; }
 function syncInputsToSheets(){                                // serialize edited input sheets back to SHEETS (+ persist) before a run
   BOOK.filter(s=>s.cls==='input').forEach(s=>{ if(s.si!=null&&SHEETS[s.si])
@@ -438,7 +467,7 @@ async function startTurn(){
   const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text(); return (r.ok&&t.trim().charAt(0)==='{')?JSON.parse(t):null; }catch(_){ return null; } };
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId})}).then(parseBody).catch(()=>null);
+    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId, conversation_id:convId()})}).then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
   // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
@@ -447,6 +476,7 @@ async function startTurn(){
       onStatus:st=>{ if(!live())return; if(st==='done') markTurnDone(); if(st==='error') fail('the assistant hit an error'); },
       onCall:(k,c)=>{ if(!live()||!c||!c.jobId||SEEN_CALL.has(c.jobId))return; SEEN_CALL.add(c.jobId); addCall(uid,c); },
       onReply:t=>{ if(RUN!==myRun)return; if(t){REPLY=t;} if(!SETTLED)renderRail(); },
+      onConversation:cid=>{ if(RUN===myRun) setConversation(cid); },   // stable conversation id -> persist + reflect in the URL
       onError:e=>{ if(!live())return; fail(e||'the assistant hit an error'); },
     });
   }
@@ -454,6 +484,7 @@ async function startTurn(){
   // RTDB is off. On a null body (proxy 60s timeout on a cold engine) DO NOT fail while streaming — the RTDB
   // 'done' will finish the turn; only fail here if there's no stream to fall back on.
   httpPromise.then(j=>{ if(RUN!==myRun)return;
+    if(j&&j.conversation_id) setConversation(j.conversation_id);
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
@@ -597,6 +628,15 @@ function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.t
 
 /* ---- conversations drawer (backed by the engine's chat schema; ownership-scoped) ---- */
 function convId(){ try{ return sessionStorage.getItem('pr_conversation_id')||null; }catch(_){ return null; } }
+function urlConvId(){ const m=(location.pathname||'').match(/\/reason\/(c_[0-9a-f]{32})/i); return m?m[1]:null; }
+// Give the live conversation a stable, shareable URL: /reason/<conversationId>. Persists the id + rewrites the
+// address bar in place (no reload) so refresh, back/forward, and copy-link all land on THIS conversation.
+function setConversation(cid){
+  if(!cid||typeof cid!=='string') return;
+  try{ sessionStorage.setItem('pr_conversation_id', cid); }catch(_){}
+  if(urlConvId()!==cid){ try{ history.replaceState({}, '', '/reason/'+cid); }catch(_){} }
+  const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&(convId()||ORCH))||FAILMSG);
+}
 function prettyTs(iso){ if(!iso)return ''; try{ return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } }
 async function listConversations(){
   try{ const tk=await window.ensureToken();
@@ -604,7 +644,7 @@ async function listConversations(){
     if(!r.ok) return []; const j=await r.json(); return j.conversations||[];
   }catch(_){ return []; }
 }
-async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt), then reload
+async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt) at its own URL
   try{ const tk=await window.ensureToken();
     const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+tk}});
     if(!r.ok){ closeDrawer(); return; }
@@ -612,7 +652,7 @@ async function openConversation(id){                          // re-hydrate a pa
     sessionStorage.setItem('pr_conversation_id', j.conversation_id);
     sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
     sessionStorage.setItem(SS.Q, j.question||'');
-    location.reload();
+    location.href='/reason/'+j.conversation_id;              // deep-linkable per-conversation URL
   }catch(_){ closeDrawer(); }
 }
 function newConversation(){ try{ ['pr_conversation_id',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
@@ -635,5 +675,21 @@ async function renderDrawer(){
   }
 }
 
-function run(){ wireChat(); setHeaderTitle(question); seedInputs(); loadMaster(); startRun(); }
+async function run(){
+  // Deep link: landing on /reason/<id> in a session that isn't that conversation -> load it, then reload so
+  // the module-level SHEETS/question pick it up. (A normal home->reason flow has no id in the URL.)
+  const ucid=urlConvId();
+  if(ucid&&ucid!==convId()){
+    try{ const tk=await window.ensureToken();
+      const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(ucid),{headers:{Authorization:'Bearer '+tk}});
+      if(r.ok){ const j=await r.json();
+        sessionStorage.setItem('pr_conversation_id', j.conversation_id);
+        sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
+        sessionStorage.setItem(SS.Q, j.question||'');
+        location.reload(); return;
+      }
+    }catch(_){}
+  }
+  wireChat(); setHeaderTitle(question); seedInputs(); loadMaster(); startRun();
+}
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

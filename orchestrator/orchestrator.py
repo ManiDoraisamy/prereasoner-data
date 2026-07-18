@@ -103,9 +103,12 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], *,
                    engine_base_url: str, bearer_token: str | None,
                    api_key: str, model: str, turn_id: str | None = None,
-                   emit=None) -> dict[str, Any]:
+                   emit=None, conversation_id: str | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
-    session's inline CSVs. Returns {reply, traces, history}.
+    session's inline CSVs. Returns {reply, traces, history, conversation_id}.
+
+    `conversation_id` keeps every engine call on ONE conversation schema; the FIRST call mints one if none
+    was passed and we capture + reuse it for the rest of the session (and return it to the browser).
 
     LIVE STREAMING (optional): when `turn_id` + `emit` are supplied, each `prereasoner_query` call runs
     the engine under a DERIVABLE jobId `<turn_id>_<i>` and the call is ANNOUNCED on the turn's RTDB node
@@ -116,6 +119,7 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
     client = AsyncAnthropic(api_key=api_key)
     traces: list[dict[str, Any]] = []
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
+    conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
     def _emit(node, value):
         if emit:
@@ -163,11 +167,13 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                         print(f"[chat] turn={turn_id} call={call_idx} rewrote -> {question!r}", flush=True)
                         _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
                         call_idx += 1
-                        result = await session.call_tool(
-                            "prereasoner_query",
-                            {"question": question, "tables": tables, "job_id": job_id},
-                        )
+                        args = {"question": question, "tables": tables, "job_id": job_id}
+                        if conv:
+                            args["conversation_id"] = conv
+                        result = await session.call_tool("prereasoner_query", args)
                         shaped = json.loads(_tool_text(result))
+                        if not conv and shaped.get("conversation_id"):
+                            conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
                         tool_results.append({
                             "type": "tool_result", "tool_use_id": block.id,
@@ -197,4 +203,5 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
     new_history = list(history or [])
     new_history.append({"role": "user", "content": user_message})
     new_history.append({"role": "assistant", "content": final_text})
-    return {"reply": final_text, "traces": traces, "history": new_history}
+    _emit("conversation_id", conv or "")                     # stream it so the browser can persist + put it in the URL
+    return {"reply": final_text, "traces": traces, "history": new_history, "conversation_id": conv}

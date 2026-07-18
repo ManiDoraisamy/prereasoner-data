@@ -15,7 +15,9 @@
       {
         "source": "/api/**",
         "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
-      }
+      },
+      { "source": "/reason/**", "destination": "/reason.html" },
+      { "source": "/world/**", "destination": "/world.html" }
     ],
     "headers": [
       {

@@ -56,8 +56,9 @@ window.subscribeTurn = (uid, turnId, cb) => {
   const uStatus = onValue(at('status'), s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
   const uCalls = onChildAdded(at('calls'), s => { if (cb.onCall) cb.onCall(s.key, s.val()); });
   const uReply = onValue(at('reply'), s => { const v = s.val(); if (v != null && cb.onReply) cb.onReply(v); });
+  const uConv = onValue(at('conversation_id'), s => { const v = s.val(); if (v && cb.onConversation) cb.onConversation(v); });
   const uError = onValue(at('error'), s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
-  return () => { try { uStatus(); uCalls(); uReply(); uError(); off(base); } catch(_){} };
+  return () => { try { uStatus(); uCalls(); uReply(); uConv(); uError(); off(base); } catch(_){} };
 };
 
 // Google sign-in as a same-tab REDIRECT (no button, no popup blockers): completes a pending
