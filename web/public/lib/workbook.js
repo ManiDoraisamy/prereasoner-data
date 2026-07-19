@@ -186,13 +186,17 @@ function turnHtml(){                                          // the CURRENT (li
   ((J&&J.warnings)||[]).forEach(w=>{ h+='<div class=warn>&#9888; '+esc(String(w))+'</div>'; });
   return h;
 }
+function turnReply(){                                         // the current turn's plain answer text (for the persisted snapshot)
+  if(CONV) return CONV;
+  const rs=resultSummary(); return rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):'';
+}
 function archiveTurn(){                                       // freeze the finished turn to a MINIMAL line (no dead links)
-  let h;
+  let h; const reply=turnReply();
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
   else if(CONV) h=(ORCH?('<div class=cot>'+asksLine()+'</div>'):'')+'<div class=convmsg>'+conv2html(CONV)+'</div>';   // frozen: the "read as" ABOVE the reply (steps are gone)
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
-  CHAT.push({q:question, html:h});
+  CHAT.push({q:question, html:h, reply:reply});
 }
 function renderRail(){
   let h='';
@@ -499,6 +503,7 @@ async function saveMaster(id){
     }
   }catch(_){}
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
+  saveConvState();                                           // fold the saved master into the conversation snapshot
 }
 function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
@@ -603,6 +608,7 @@ function finalize(){
   surfaceUnresolved();                                        // offer master-data sheets for text columns not in the world model
   paint();
   if(PRESENT) tryPresent();                                   // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
+  else saveConvState();                                       // (present path re-saves once Sonnet's reply lands) persist a restorable snapshot
 }
 // Route a REAL answer through Sonnet to present it in words. RTDB delivers result/present/status on separate
 // nodes with NO cross-node ordering guarantee, so this is called from several triggers (onPresent, finalize,
@@ -653,6 +659,7 @@ async function conversationalReply(c){
     CONV=reply||clarifyFallbackText(c);
   }
   renderRail();
+  saveConvState();                                            // persist the presented/clarified answer so a reload restores it
 }
 function clarifyFallbackText(c){
   const p=(c&&c.proposed)||'';
@@ -740,6 +747,7 @@ function markTurnDone(){                                      // the turn finish
   STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
   surfaceUnresolved();                                        // offer master-data sheets for unresolved text columns
   renderRail();
+  saveConvState();                                            // persist a renderable snapshot so a reload restores this turn
 }
 
 async function startRun(){
@@ -872,10 +880,11 @@ async function openConversation(id){                          // re-hydrate a pa
     sessionStorage.setItem('pr_conversation_id', j.conversation_id);
     sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
     sessionStorage.setItem(SS.Q, j.question||'');
+    try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}   // restore the snapshot (else run() re-runs)
     location.href='/reason/'+j.conversation_id;              // deep-linkable per-conversation URL
   }catch(_){ if(it){ it.classList.remove('loading'); it.classList.add('err'); } }
 }
-function newConversation(){ try{ ['pr_conversation_id','pr_orch_history',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
+function newConversation(){ try{ ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
 function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
 function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
 async function renderDrawer(){
@@ -912,6 +921,52 @@ async function clearAllConvs(){
   newConversation();
 }
 
+/* ---- conversation snapshot: persist a RENDERABLE view of the conversation (turns + derived sheets + result +
+   history) so a reload RESTORES what the user saw instead of re-running the model from scratch. Input sheets come
+   from the stored `tables`; master (per-user) reloads via loadMaster; only the derivation + rail are snapshotted. */
+function convSnapshot(){
+  const turns=CHAT.map(t=>({q:t.q, reply:t.reply||''}));
+  if(SETTLED && turnReply()) turns.push({q:question, reply:turnReply()});   // the live (settled) turn isn't archived yet
+  if(!turns.length) return null;
+  const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||s.cls==='master').map(s=>({
+    id:s.id, cls:s.cls, name:s.name, cols:s.cols||[], rows:(s.rows||[]).slice(0,MAX_RENDER_ROWS),
+    sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved }));
+  return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY};
+}
+let _saveStateT=null;
+function saveConvState(){                                     // persist the snapshot after a turn settles
+  const cid=convId(); if(!cid) return;
+  const st=convSnapshot(); if(!st||st.cid!==cid) return;
+  const body=JSON.stringify({id:cid, state:st});
+  if(body.length>3000000) return;                            // don't persist an oversized snapshot (server also caps)
+  try{ sessionStorage.setItem('pr_conv_state', body.length?JSON.stringify(st):''); }catch(_){}   // IMMEDIATE: a same-tab refresh restores the latest
+  clearTimeout(_saveStateT);
+  _saveStateT=setTimeout(async ()=>{                         // DEBOUNCED: durable server persist (survives a fresh session / other device)
+    try{ const tk=await window.ensureToken();
+      await fetch(API_BASE+'/api/conversation/state',{method:'POST',
+        headers:{'content-type':'application/json','Authorization':'Bearer '+tk}, body});
+    }catch(_){}
+  }, 700);
+}
+function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
+  if(!st||st.v!==1||!Array.isArray(st.turns)||!st.turns.length) return false;
+  if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
+  (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
+      rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:false});
+    if(s.cls==='master'&&s.name) MSEEN.add(String(s.name).toLowerCase()); });   // don't let loadMaster duplicate it
+  const turns=st.turns.slice(), last=turns.pop();
+  CHAT=turns.map(t=>({q:t.q, reply:t.reply||'', html:'<div class=convmsg>'+conv2html(t.reply||'')+'</div>'}));
+  if(last){ question=last.q; try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
+  if(Array.isArray(st.history)) HISTORY=st.history;
+  SETTLED=true; DONE=true; STATUS='';
+  ACTIVE=(st.active && BOOK.some(s=>s.id===st.active)) ? st.active
+        : ((BOOK.filter(s=>s.cls==='deriv').pop()||BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null);
+  AUTO=false;
+  setHeaderTitle(CHAT.length?CHAT[0].q:question);
+  paint();
+  const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&convId())||FAILMSG);   // follow-ups allowed (conversation exists)
+  return true;
+}
 async function run(){
   // Deep link: landing on /reason/<id> in a session that isn't that conversation -> load it, then reload so
   // the module-level SHEETS/question pick it up. (A normal home->reason flow has no id in the URL.)
@@ -923,6 +978,7 @@ async function run(){
         sessionStorage.setItem('pr_conversation_id', j.conversation_id);
         sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
         sessionStorage.setItem(SS.Q, j.question||'');
+        try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}
         location.reload(); return;
       }
     }catch(_){}
@@ -930,6 +986,10 @@ async function run(){
   try{ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } }catch(_){}   // restore ORCH context on reload
   wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); loadMaster();
   window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
-  startRun();
+  // RESTORE the saved snapshot (turns + derived sheets + result) instead of re-running the model. Only when it
+  // belongs to THIS conversation; otherwise fall through to a fresh run (a brand-new conversation, or no snapshot yet).
+  let restored=false;
+  try{ const s=sessionStorage.getItem('pr_conv_state'); if(s){ const st=JSON.parse(s); if(st&&st.cid&&st.cid===convId()) restored=restoreConvState(st); } }catch(_){}
+  if(!restored) startRun();
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

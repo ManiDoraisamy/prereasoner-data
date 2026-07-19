@@ -29,7 +29,7 @@ from engine.auth import _verify_principal, _bearer, _slug
 from engine.tables import csv_table
 from engine.trace import emitter, stream_final, set_ctx
 from engine.conversations import (resolve_conversation, list_conversations, get_conversation,
-                                   delete_conversation, delete_all_conversations, NotOwned)
+                                   delete_conversation, delete_all_conversations, save_state, NotOwned)
 from engine import master
 from engine import admin
 
@@ -135,6 +135,24 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                               # noqa: BLE001
             self._send(500, json.dumps({"error": str(e)}))
 
+    def _post_conv_state(self):
+        """POST /api/conversation/state {id, state} -> persist the client's renderable snapshot so a reload
+        restores the conversation instead of re-running. uid-scoped; `state` is opaque display JSON."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                self._send(200, json.dumps({"error": "payload too large"})); return
+            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            try:
+                self._send(200, json.dumps(save_state(sub, req.get("id", ""), req.get("state"))))
+            except NotOwned:
+                self._send(404, json.dumps({"error": "conversation not found"}))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
+
     def _post_conv_delete(self, path):
         """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
         try:
@@ -164,6 +182,8 @@ class H(BaseHTTPRequestHandler):
             self._post_master(path)
         elif path in ("/api/conversation/delete", "/api/conversation/delete-all"):
             self._post_conv_delete(path)
+        elif path == "/api/conversation/state":
+            self._post_conv_state()
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:

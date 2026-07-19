@@ -33,7 +33,10 @@ _CHAT_DDL = (
     ' conversation_id text PRIMARY KEY,'
     ' initial_prompt text,'
     ' tables jsonb,'
+    ' state jsonb,'                                           # renderable snapshot: turns + derived sheets + result + history
     ' created_at timestamptz NOT NULL DEFAULT now())',
+    # a conversation table from before `state` existed needs the column backfilled (idempotent)
+    'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS state jsonb',
     'CREATE TABLE IF NOT EXISTS "chat"."user_conversation" ('
     ' user_id text NOT NULL REFERENCES "chat"."user_profile"(user_id),'
     ' conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id),'
@@ -186,21 +189,52 @@ def delete_all_conversations(user_id):
 
 
 def get_conversation(user_id, conversation_id):
-    """One conversation's opening prompt + stored tables, for re-opening it — after the same
-    ownership check. Raises NotOwned if it isn't this user's conversation."""
+    """One conversation's opening prompt + stored tables + the last renderable snapshot (state), for
+    re-opening it — after the same ownership check. Raises NotOwned if it isn't this user's conversation.
+    `state` lets the client RESTORE what the user saw (turns, derived sheets, result) instead of re-running."""
     if not _ID_RE.match(conversation_id or ""):
         raise NotOwned("bad conversation id")
     conn = _pg()
     try:
         cur = conn.cursor()
         _ensure(cur)
-        cur.execute('SELECT c.initial_prompt, c.tables FROM "chat"."conversation" c '
+        cur.execute('SELECT c.initial_prompt, c.tables, c.state FROM "chat"."conversation" c '
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                     'WHERE uc.user_id = %s AND c.conversation_id = %s', (user_id, conversation_id))
         row = cur.fetchone()
         conn.commit()
         if not row:
             raise NotOwned("conversation not found")
-        return {"conversation_id": conversation_id, "question": row[0] or "", "tables": row[1] or []}
+        return {"conversation_id": conversation_id, "question": row[0] or "", "tables": row[1] or [],
+                "state": row[2] or None}
+    finally:
+        conn.close()
+
+
+def save_state(user_id, conversation_id, state):
+    """Persist a RENDERABLE snapshot of the conversation (the client's own turns + derived sheets + result +
+    history) so a reload restores what the user saw instead of re-running the model. Ownership-checked; the
+    snapshot is opaque display JSON — it is NEVER used as SQL, an identifier, or a schema name."""
+    if not _ID_RE.match(conversation_id or ""):
+        raise NotOwned("bad conversation id")
+    conn = _pg()
+    try:
+        try:
+            cur = conn.cursor()
+            _ensure(cur)
+            cur.execute('SELECT 1 FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
+                        (conversation_id, user_id))
+            if not cur.fetchone():
+                raise NotOwned("conversation not found")       # not yours OR absent
+            cur.execute('UPDATE "chat"."conversation" SET state = %s WHERE conversation_id = %s',
+                        (json.dumps(state), conversation_id))
+            conn.commit()
+            return {"saved": conversation_id}
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:                                  # noqa: BLE001
+                pass
+            raise
     finally:
         conn.close()
