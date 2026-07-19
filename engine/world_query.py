@@ -645,6 +645,25 @@ class WorldQuery(EncoderQuery, EntityQuery):
             return None
         return {"proposed": proposed.strip(), "bindings": bindings}
 
+    def _country_name_for_qid(self, qid):
+        """A resolved country comes back as a QID (world.words stores qids), but the connected bridge's `country`
+        column holds the canonical country NAME (canon_country). Map qid -> name so the hybrid filter and the city
+        context-disambiguation compare name-vs-name. Returns None if the qid isn't a known country."""
+        import re
+        if not qid:
+            return None
+        if not re.match(r"^Q\d+$", str(qid)):
+            return qid                                                # already a name (defensive) -> pass through
+        try:
+            cur = self._rconn().cursor()
+            cur.execute('SELECT canonical FROM world."words" WHERE type=\'country\' AND qid=%s '
+                        'AND canonical IS NOT NULL LIMIT 1', (qid,))
+            row = cur.fetchone()
+            return row[0] if row and row[0] else None
+        except Exception as e:                                        # noqa: BLE001 — a lookup miss must not hard-fail the world path
+            print(f"[world_query] country name lookup failed for {qid!r}: {e}", flush=True)
+            return None
+
     def serve(self, tables, question, as_of=None, schema=None):
         """Hybrid structured+semantic retrieval when the question has a free-text predicate AND the data has a
         free-text column AND it is not an aggregate; otherwise delegate to EntityQuery (which uses the unified
@@ -660,13 +679,19 @@ class WorldQuery(EncoderQuery, EntityQuery):
             except Exception as e:                                    # noqa: BLE001 — fall through to the geo/delegate path
                 import traceback
                 print(f"[world_query] non-geo world serve failed, falling through: {e!r}", flush=True); traceback.print_exc()
-        cr = None if is_agg else self._resolve(question, "country")   # ("France", sim, surface) | None — resolved ONCE
+        cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
         pred = "" if is_agg else self._semantic_predicate(question, [cr[2]] if cr else [])
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
         if plan and pred and schema:
             try:
+                # _resolve returns a country QID, but the connected bridge stores + filters/disambiguates on the
+                # country NAME (canon_country). Map qid -> canonical name here; otherwise "in France" compares
+                # 'Q142' against 'France' and the EXISTS matches nothing (silent empty result).
+                cname = self._country_name_for_qid(cr[0]) if cr else None
+                if cr and not cname:
+                    cname = cr[2]                                      # last resort: the surface the user typed
                 return self._serve_hybrid(norm, fks, sch, question, pred, plan,
-                                          cr[0] if cr else None, as_of, schema)
+                                          cname, as_of, schema)
             except Exception as e:                                   # noqa: BLE001 — never hard-fail the world path
                 import traceback
                 print("hybrid serve failed, delegating to EntityQuery:", e, flush=True)

@@ -84,7 +84,7 @@ function renderGrid(m){
     for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
       let mark=''; if(rc){ if(ri===SEL.r&&ci===SEL.c)mark=' sel'; else if(ri>=rc.r0&&ri<=rc.r1&&ci>=rc.c0&&ci<=rc.c1)mark=' insel'; }
       h+='<td class="'+(numeric[ci]?'n ':'')+(edit?'wbc'+mark:'')+'"'
-        +(edit?' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"':'')+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+esc(val)+'">'+esc(val)+'</td>'; }
+        +(edit?' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"':'')+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val)+'">'+esc(val)+'</td>'; }
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -148,7 +148,10 @@ function resultSummary(){
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
 function conv2html(t){ return esc(String(t||'')).replace(/\n/g,'<br>'); }
-function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||s.name)+'</span></button>').join('')+'</div>'):''; }
+// Only THIS turn's derivation is "Reasoning steps". Stale sheets (kept from the previous turn so a conversational
+// follow-up's workbook isn't empty) must NOT render here — else an empty/no-data turn ("chennai?" with no Chennai
+// rows) would show the PRIOR turn's steps (e.g. France's world_join/world_filter) under the new question's header.
+function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||s.name)+'</span></button>').join('')+'</div>'):''; }
 function asksLine(){ return CALLS.length?('<div class=cotask>read as '+CALLS.map(c=>'&ldquo;'+esc(c.question)+'&rdquo;').join(', ')+'</div>'):''; }
 // The chain of thought — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
 // re-render (e.g. clicking a step to open its sheet) doesn't snap it shut.
@@ -196,9 +199,11 @@ function renderRail(){
   for(const t of CHAT) h+='<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
   h+='<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
-  // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps
-  // send disabled until it lands — otherwise the follow-up would orphan into a fresh conversation.
-  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&(convId()||ORCH))||FAILMSG);   // ORCH keeps history client-side (no server conversation_id gate)
+  // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps send
+  // disabled until it lands — otherwise the follow-up would POST conversation_id:null and orphan into a fresh
+  // server conversation (splitting the thread + never updating the /reason/<id> URL). ORCH is NOT exempt:
+  // its history is client-side, but server-side grouping + the shareable URL still need the id threaded.
+  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&convId())||FAILMSG);
 }
 function paint(){ renderTabs(); renderSheet(); renderRail(); }
 function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed'; paint(); }
@@ -450,7 +455,12 @@ async function loadMaster(){                                  // cache the user'
       if(full&&full.columns) MDATA[String(full.name).toLowerCase()]={name:full.name,cols:full.columns,rows:full.rows};
     }
     const cols=inputColumns();                                // a saved master shows only if its name matches a column in this conversation's data (skip unrelated like "product")
-    Object.keys(MDATA).forEach(k=>{ if(cols[k]&&!MSEEN.has(k)){ const d=MDATA[k]; addMasterSheet(d.name,d.cols,d.rows,true); } });
+    Object.keys(MDATA).forEach(k=>{ if(!cols[k])return; const d=MDATA[k];
+      const existing=BOOK.find(s=>s.cls==='master'&&String(s.name||'').toLowerCase()===k);
+      if(existing){                                           // surfaceUnresolved won the race and showed a BLANK shadow -> upgrade it in place with the saved data
+        if(!existing.saved&&!existing.dirty){ if(d.cols&&d.cols.length)existing.cols=d.cols; existing.rows=(d.rows||[]).map(r=>r.slice()); existing.saved=true; }
+      } else if(!MSEEN.has(k)){ addMasterSheet(d.name,d.cols,d.rows,true); }   // (if the user already edited the shadow, leave their edits — a Save will overwrite the server intentionally)
+    });
     paint();
   }catch(_){}
 }
@@ -477,12 +487,16 @@ function surfaceUnresolved(){
 async function saveMaster(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   const btn=document.querySelector('.msave'); if(btn){ btn.textContent='Saving…'; btn.disabled=true; }
+  const masterSig=s=>JSON.stringify({cols:s.cols, rows:(s.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''))});
   try{ const tk=await window.ensureToken();
     const rows=(sh.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''));   // drop blank trailing rows
+    const sentSig=masterSig(sh);                             // exactly what this POST persists (guards against an edit landing mid-flight)
     const r=await fetch(API_BASE+'/api/master',{method:'POST',
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
-    if(r.ok){ sh.saved=true; sh.dirty=false; }
+    if(r.ok){ sh.saved=true;
+      if(masterSig(sh)===sentSig) sh.dirty=false;            // only clear dirty if nothing changed during the save — else keep it (beforeunload guard stays armed)
+    }
   }catch(_){}
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
 }
@@ -807,7 +821,7 @@ function resetRun(){
 }
 function sendChat(){
   const box=$('chatq'); const q=(box&&box.value||'').trim();
-  if(!q||(!SETTLED&&!FAILMSG))return;                         // one run at a time
+  if(!q||!((SETTLED&&convId())||FAILMSG))return;              // one run at a time; a follow-up needs the conversation_id (else it orphans) — mirrors the send-button gate
   archiveTurn();
   box.value='';
   question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
@@ -839,7 +853,7 @@ function setConversation(cid){
   if(!cid||typeof cid!=='string') return;
   try{ sessionStorage.setItem('pr_conversation_id', cid); }catch(_){}
   if(urlConvId()!==cid){ try{ history.replaceState({}, '', '/reason/'+cid); }catch(_){} }
-  const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&(convId()||ORCH))||FAILMSG);
+  const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&convId())||FAILMSG);   // now that the id landed, a follow-up can safely attach to this conversation
 }
 function prettyTs(iso){ if(!iso)return ''; try{ return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } }
 async function listConversations(){

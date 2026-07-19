@@ -23,6 +23,14 @@
       {
         "source": "**/*.@(html|css|svg|js)",
         "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]
+      },
+      {
+        "source": "**",
+        "headers": [
+          { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        ]
       }
     ]
   },

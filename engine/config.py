@@ -90,8 +90,17 @@ RTDB_URL = os.environ.get("RTDB_URL") or None
 
 def auth_test_sub():
     """TEST-ONLY bypass: when AUTH_TEST_SUB is set, auth returns this fixed principal without verifying a
-    token. Read at call time so a test can set it before spawning the server."""
-    return os.environ.get("AUTH_TEST_SUB") or None
+    token. Read at call time so a test can set it before spawning the server.
+
+    HARD PROD GUARD: the bypass is refused on Cloud Run (K_SERVICE is always set there) so a stray
+    --set-env-vars or a copy-paste from docker-compose can never disable authentication in production —
+    the code no longer trusts operator discipline alone. Local/CI (no K_SERVICE) is unaffected."""
+    sub = os.environ.get("AUTH_TEST_SUB") or None
+    if sub and os.environ.get("K_SERVICE"):                  # running on Cloud Run -> never honor a test bypass
+        print("SECURITY: AUTH_TEST_SUB is set on Cloud Run (K_SERVICE=%s) — IGNORING it; real token "
+              "verification stays enforced." % os.environ.get("K_SERVICE"), flush=True)
+        return None
+    return sub
 
 
 # ---------- model / data ----------

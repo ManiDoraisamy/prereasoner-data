@@ -135,6 +135,10 @@ class PgQuery(WorldTableQuery):
 
     def ambiguities(self, table, routed_col, wt):
         w = self.words[wt]; key = w["key"]; haskind = "country" in w.get("columns", [])
+        # Match the uploaded value against the entity NAME column, not the key. For qid-keyed tables (city,
+        # country, state) the key is the opaque QID, so `WHERE lower(qid)=<name>` never matched and NO
+        # ambiguity was ever flagged. The name column is what the uploaded string actually corresponds to.
+        name_col = "name" if "name" in w.get("columns", []) else key
         vals = [str(dict(zip(table["columns"], r)).get(routed_col)) for r in table["rows"]]
         vals = [v for v in vals if v and v != "None"]
         if not vals:
@@ -147,12 +151,12 @@ class PgQuery(WorldTableQuery):
                 continue
             seen.add(vl)
             if haskind:
-                cur.execute(f'SELECT DISTINCT country FROM {qident(wt)} WHERE lower({qident(key)})=%s', (vl,))
+                cur.execute(f'SELECT DISTINCT country FROM {qident(wt)} WHERE lower({qident(name_col)})=%s', (vl,))
                 opts = [r[0] for r in cur.fetchall()]
                 if len(opts) > 1:
                     warns.append(f"'{v}' is ambiguous in {wt}: {', '.join(sorted(opts))}")
             else:
-                cur.execute(f'SELECT COUNT(*) FROM {qident(wt)} WHERE lower({qident(key)})=%s', (vl,))
+                cur.execute(f'SELECT COUNT(*) FROM {qident(wt)} WHERE lower({qident(name_col)})=%s', (vl,))
                 if cur.fetchone()[0] > 1:
                     warns.append(f"'{v}' is ambiguous in {wt}: multiple rows")
         conn.close()

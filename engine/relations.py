@@ -47,8 +47,11 @@ def dedup(t):
 
 
 def is_key(values):
+    # A join/FK TARGET must be EXACTLY unique — a 0.98 tolerance let a column with a few duplicate keys become
+    # an FK target, so a fact row matched multiple parent rows and the join fanned out (inflating SUM/COUNT/AVG).
+    # This mirrors the strict uniqueness check in joins.discover_fks (the compose/SQLite path).
     nn = [_norm(v) for v in values if _norm(v) is not None]
-    return len(nn) >= 2 and len(nn) == len(values) and len(set(nn)) / len(nn) >= 0.98   # unique, no nulls
+    return len(nn) >= 2 and len(nn) == len(values) and len(set(nn)) == len(nn)   # unique (exact), no nulls
 
 
 def _name_boost(ax, bname, by):

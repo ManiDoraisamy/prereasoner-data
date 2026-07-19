@@ -8,7 +8,11 @@
 // service, not to localhost — so to test against a locally running engine, run once
 // in the browser console:  localStorage.setItem('pr_api_base','http://localhost:8080')
 // (the engine sends permissive CORS). Remove the key to return to same-origin.
-const API_BASE = localStorage.getItem('pr_api_base') || '';
+// SECURITY: the override is honored ONLY on localhost. In production the destination is always
+// same-origin, so a signed-in user's Firebase ID token can never be redirected to an off-origin
+// host by a stray localStorage write (mirrors the dev-host gate in firebase-init.js / config.js).
+const API_BASE = ((location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  && localStorage.getItem('pr_api_base')) || '';
 
 // sessionStorage keys — the only state handed between pages (tables, question, clarify payload).
 const SS = {
@@ -20,8 +24,11 @@ const SS = {
   PENDING_Q: 'pr_pending_q'           // the typed prompt preserved across the Sheets picker round-trip
 };
 
-// HTML-escape (also used on attribute-free text nodes only — keep using it everywhere).
+// HTML-escape for TEXT NODES (& < >). NOT safe inside an attribute value — use escAttr there.
 function esc(s){return (s==null?'':s+'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
+// HTML-escape for a double-quoted ATTRIBUTE value: also neutralize " (and ') so a crafted cell/name
+// can't break out of e.g. title="…" and inject an event handler (attribute-injection XSS).
+function escAttr(s){return esc(s).replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 // Quote-aware CSV parse: "Dominguez, Mcmillan and Donovan" is ONE cell.
 function parseCSV(t){

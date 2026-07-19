@@ -104,17 +104,25 @@ class H(BaseHTTPRequestHandler):
             turn_id = (req.get("turnId") or "").strip() or None
             conversation_id = (req.get("conversation_id") or "").strip() or None
             token = self._bearer()
-            # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME uid the browser subscribes to,
-            # derived from the VERIFIED token (never client-supplied). Each engine call is announced there and
-            # the engine streams its own /runs/{uid}/{jobId} trace. Best-effort; a no-op if RTDB/token is absent.
-            if turn_id and token:
+            # AUTH GATE (required): run_chat drives PAID Sonnet inference on the owner's key, so demand a verified
+            # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
+            # AUTH_TEST_SUB makes _verify_principal accept without a token, so this is a no-op there; in prod it
+            # requires a real Firebase token. The browser always sends Authorization: Bearer <token> to /chat.
+            try:
+                from engine.auth import _verify_principal
+                sub, uid = _verify_principal(token)
+            except Exception as e:                           # noqa: BLE001
+                print("orchestrator auth verify failed:", e, flush=True)
+                sub, uid = None, None
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME verified uid the browser subscribes
+            # to (never client-supplied). Each engine call is announced there. Best-effort; a no-op if RTDB is absent.
+            if turn_id and uid:
                 try:
-                    from engine.auth import _verify_principal
                     from engine.trace import emitter
-                    _sub, uid = _verify_principal(token)
-                    if uid:
-                        emit = emitter(uid, turn_id)
-                        emit("status", "running")
+                    emit = emitter(uid, turn_id)
+                    emit("status", "running")
                 except Exception as e:                       # noqa: BLE001 — streaming must never block the answer
                     print("orchestrator stream setup skipped:", e, flush=True)
             fut = asyncio.run_coroutine_threadsafe(

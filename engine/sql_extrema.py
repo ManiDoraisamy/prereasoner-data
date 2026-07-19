@@ -167,11 +167,15 @@ class ExtremaQueryExpander(ExpansionSupport):
                 if base_terms:
                     where_options.append((None, -1.25))
 
+                # Never let a NULL ordering value BE the extreme: SQLite sorts NULLs FIRST under ASC, so
+                # "lowest price" over a nullable column would return the NULL row as the minimum. Guard ASC
+                # extrema with IS NOT NULL (no-op when there are no NULLs). DESC sorts NULLs last -> safe.
+                null_guard = Comparison(target.column, "IS NOT", Literal(None)) if target.direction == "ASC" else None
                 for where, where_bonus in where_options:
                     transformed = replace(
                         query,
                         select=projection,
-                        where=where,
+                        where=and_predicates((where, null_guard)),
                         group_by=(),
                         having=None,
                         order_by=(OrderTerm(target.column, target.direction),),
@@ -331,8 +335,9 @@ class ExtremaQueryExpander(ExpansionSupport):
                     query = replace(
                         shell,
                         select=projection,
-                        where=and_predicates(filters),
-                        order_by=(OrderTerm(target.column, target.direction),),
+                        where=and_predicates([*filters, *([Comparison(target.column, "IS NOT", Literal(None))]
+                                                           if target.direction == "ASC" else [])]),
+                        order_by=(OrderTerm(target.column, target.direction),),   # ASC: exclude NULL ordering values (SQLite sorts NULLs first)
                         limit=limit,
                         distinct=_explicit_distinct(tokens),
                     )
