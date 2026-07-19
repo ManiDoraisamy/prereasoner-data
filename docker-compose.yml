@@ -72,6 +72,8 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
       ENGINE_BASE_URL: http://engine:8080
+      AUTH_TEST_SUB: localdev         # /chat requires a verified identity; local dev has no Google sign-in, so
+                                      # the orchestrator uses the same bypass as the engine (refused on Cloud Run)
       ORCH_HOST: 0.0.0.0
       ORCH_PORT: "8090"
     depends_on:

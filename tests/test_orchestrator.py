@@ -107,6 +107,7 @@ def _test_server(key, model, engine_base):
     os.environ["ANTHROPIC_MODEL"] = model
     os.environ["ENGINE_BASE_URL"] = engine_base
     os.environ["ORCH_PORT"] = "8813"
+    os.environ.setdefault("AUTH_TEST_SUB", "localdev")   # /chat now requires a verified identity; local/test mode uses the bypass (as in docker-compose + real local dev)
     # reimport config so ENGINE_BASE_URL/ORCH_PORT take effect
     import importlib
     from engine import config as _cfg
