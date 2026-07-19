@@ -213,12 +213,14 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .cotask{padding:5px 10px;margin-bottom:6px;border-radius:8px;background:#f6f4ff;border:1px dashed #d8cdf5;color:#5b5273;font:12.5px/1.5 var(--disp)}
 .modebadge{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;margin:0 0 10px;padding:3px 10px;border-radius:9999px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);font:600 11px var(--disp);cursor:default}
 /* editable input sheets (what-if) + the Recalculate bar */
-.wb.editable td.wbc{cursor:cell;-webkit-user-select:none;user-select:none}
-.wb.editable td.wbc:hover{background:#faf9ff}
-.wb.editable td.wbc:focus{outline:none}
-.wb.editable td.wbc.insel{background:#f0ebfb}                 /* a cell inside a multi-cell selection (the active cell gets .sel on top) */
-.wb.editable td.wbc.insel:hover{background:#ece5fa}
-.wb.editable td.wbc.sel{background:#e7dffa;box-shadow:inset 0 0 0 2px var(--brand);position:relative;z-index:1}
+/* Navigation UX (cell select, arrows, range highlight, copy) applies to EVERY sheet — read-only ones too. */
+.wb td.wbc{cursor:cell;-webkit-user-select:none;user-select:none}
+.wb td.wbc:hover{background:#faf9ff}
+.wb td.wbc:focus{outline:none}
+.wb td.wbc.insel{background:#f0ebfb}                          /* a cell inside a multi-cell selection (the active cell gets .sel on top) */
+.wb td.wbc.insel:hover{background:#ece5fa}
+.wb td.wbc.sel{background:#e7dffa;box-shadow:inset 0 0 0 2px var(--brand);position:relative;z-index:1}
+/* Editing-only affordances stay scoped to editable sheets. */
 .wb.editable td.wbc.editing{background:#fff;-webkit-user-select:text;user-select:text;box-shadow:inset 0 0 0 2px var(--brand);cursor:text;white-space:normal}
 .wb.editable tr.newrow td{background:#fbfaff;color:#b9b2cf}   /* the "new record" row (Access datasheet *) — type here to append */
 .wb.editable tr.newrow td.wbc:hover{background:#f6f3ff}

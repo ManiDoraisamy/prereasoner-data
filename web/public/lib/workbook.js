@@ -72,19 +72,19 @@ function renderGrid(m){
   const cols=m.cols||[],rows=(m.rows||[]);
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
   const shown=rows.slice(0,MAX_RENDER_ROWS);
-  const edit=(m.cls==='input'||m.cls==='master');            // the user's own tables + master data are editable; derived/reference are read-only
-  let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':'')+'"><thead><tr><th class=rn></th>';
+  const edit=(m.cls==='input'||m.cls==='master');            // input + master are EDITABLE; derived/reference are read-only but STILL navigable
+  let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
   h+='</tr></thead><tbody>';
-  const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // one trailing blank row to type into
-  const rc=(edit&&SEL&&SEL.sid===m.id)?selRect():null;                      // the selection rectangle, if it's on this sheet
+  const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // editable: one trailing blank "new record" row
+  const rc=(SEL&&SEL.sid===m.id)?selRect():null;                           // the selection rectangle if the selection is on THIS sheet (any sheet)
   for(let ri=0;ri<Math.max(nrows,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>'');
-    const isNew=edit&&ri===shown.length;                                    // the Access-style "new record" row, past the real data
+    const isNew=edit&&ri===shown.length;                                    // the Access-style "new record" row (editable only)
     h+='<tr'+(isNew?' class=newrow':'')+'><td class=rn>'+(isNew?'<span class=newstar title="New row — type here to add">&lowast;</span>':((ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')))+'</td>';
     for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
       let mark=''; if(rc){ if(ri===SEL.r&&ci===SEL.c)mark=' sel'; else if(ri>=rc.r0&&ri<=rc.r1&&ci>=rc.c0&&ci<=rc.c1)mark=' insel'; }
-      h+='<td class="'+(numeric[ci]?'n ':'')+(edit?'wbc'+mark:'')+'"'
-        +(edit?' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"':'')+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val)+'">'+esc(val)+'</td>'; }
+      h+='<td class="'+(numeric[ci]?'n ':'')+'wbc'+mark+'"'   // EVERY cell is a navigable wbc; only editable sheets accept edits/paste/new-row
+        +' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"'+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val)+'">'+esc(val)+'</td>'; }
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -227,6 +227,7 @@ function seedInputs(){
    (caret in the cell — Enter/Tab commit + move, Escape cancels). Input sheets ("what-if" -> Recalculate)
    + master data are editable; the rest read-only. */
 function cellEl(sid,r,c){ return document.querySelector('#sheetcard td.wbc[data-sid="'+sid+'"][data-r="'+r+'"][data-c="'+c+'"]'); }
+function sheetEditable(sid){ const sh=BOOK.find(s=>s.id===sid); return !!(sh&&(sh.cls==='input'||sh.cls==='master')); }   // read-only sheets navigate + copy, but never edit
 function markDirtySheet(sh){ if(!sh)return; if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); } }
 function lastDataRow(sh){ return Math.max(0,(sh.rows||[]).length-1); }   // ranges/fills stop here; the trailing "new record" row is never multi-selected
 function cellVal(sh,r,c){ return (sh.rows[r]&&sh.rows[r][c]!=null)?sh.rows[r][c]:''; }
@@ -246,16 +247,18 @@ function focusActive(){ if(!SEL)return; const el=cellEl(SEL.sid,SEL.r,SEL.c); if
 function selCell(sid,r,c,extend){                            // set the ACTIVE cell (navigate mode); extend=true keeps the anchor -> a range
   commitEdit();
   const sh=BOOK.find(s=>s.id===sid); if(!sh)return; const nc=(sh.cols||[]).length; if(nc===0)return;
+  const editable=(sh.cls==='input'||sh.cls==='master');
   if(c<0)c=0; if(c>=nc)c=nc-1; if(r<0)r=0;
+  if(!editable){ const maxr=lastDataRow(sh); if(r>maxr)r=maxr; }   // read-only: never move past (or grow) the existing data
   if(extend&&SEL&&SEL.sid===sid){ const maxr=lastDataRow(sh); if(r>maxr)r=maxr; SEL={sid:sid,r:r,c:c}; if(!ANCH||ANCH.sid!==sid)ANCH={sid:sid,r:r,c:c}; }   // a RANGE never spans the new-record row
   else { SEL={sid:sid,r:r,c:c}; ANCH={sid:sid,r:r,c:c}; }
   let el=cellEl(sid,SEL.r,SEL.c);
-  if(!el){ while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); paint(); el=cellEl(sid,SEL.r,SEL.c); }   // grow into a new row
+  if(!el&&editable){ while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); paint(); el=cellEl(sid,SEL.r,SEL.c); }   // grow into a new row (editable only)
   else applySelHi();
   if(el){ el.focus({preventScroll:true}); el.scrollIntoView({block:'nearest',inline:'nearest'}); }
 }
 function beginEdit(ch){                                       // enter edit mode on the active cell (ch = typed char overwrites)
-  if(!SEL)return; ANCH={sid:SEL.sid,r:SEL.r,c:SEL.c};         // editing collapses any range to the active cell
+  if(!SEL||!sheetEditable(SEL.sid))return; ANCH={sid:SEL.sid,r:SEL.r,c:SEL.c};   // read-only sheets are never editable
   document.querySelectorAll('#sheetcard td.wbc.insel').forEach(x=>x.classList.remove('insel'));
   const el=cellEl(SEL.sid,SEL.r,SEL.c); if(!el)return;
   el.dataset.orig=el.textContent; el.contentEditable='true'; el.classList.add('editing'); INEDIT=true;
@@ -287,20 +290,20 @@ function applyState(s){ const sh=BOOK.find(x=>x.id===s.sid); if(!sh)return; sh.r
 function undo(){ if(!UNDO.length)return; const s=UNDO.pop(); REDO.push(snap(s.sid)); applyState(s); paint(); focusActive(); }
 function redo(){ if(!REDO.length)return; const s=REDO.pop(); UNDO.push(snap(s.sid)); applyState(s); paint(); focusActive(); }
 function clearRange(){                                        // Delete/Backspace -> blank every cell in the selection
-  if(!SEL)return; const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+  if(!SEL||!sheetEditable(SEL.sid))return; const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
   let changed=false;                                          // scan first (read-only) so undo snapshots the true pre-state
   for(let r=rc.r0;r<=rc.r1&&!changed;r++){ if(!sh.rows[r])continue; for(let c=rc.c0;c<=rc.c1;c++){ if(sh.rows[r][c]!==''&&sh.rows[r][c]!=null){ changed=true; break; } } }
   if(!changed)return; pushUndo(rc.sid);
   for(let r=rc.r0;r<=rc.r1;r++){ if(!sh.rows[r])continue; for(let c=rc.c0;c<=rc.c1;c++) sh.rows[r][c]=''; }
   markDirtySheet(sh); paint(); focusActive();
 }
-function fillDown(){ const rc=selRect(); if(!rc||rc.r1===rc.r0)return; const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+function fillDown(){ const rc=selRect(); if(!rc||rc.r1===rc.r0||!sheetEditable(rc.sid))return; const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
   const rmax=Math.min(rc.r1,lastDataRow(sh)); if(rmax<=rc.r0)return;        // never grow past real data (no phantom row)
   let changed=false; for(let c=rc.c0;c<=rc.c1&&!changed;c++){ const src=cellVal(sh,rc.r0,c); for(let r=rc.r0+1;r<=rmax;r++)if(cellVal(sh,r,c)!==src){changed=true;break;} }
   if(!changed)return; pushUndo(rc.sid);                                     // no-op fills must not push undo / wipe redo
   for(let c=rc.c0;c<=rc.c1;c++){ const src=cellVal(sh,rc.r0,c); for(let r=rc.r0+1;r<=rmax;r++)sh.rows[r][c]=src; }
   markDirtySheet(sh); paint(); focusActive(); }
-function fillRight(){ const rc=selRect(); if(!rc||rc.c1===rc.c0)return; const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
+function fillRight(){ const rc=selRect(); if(!rc||rc.c1===rc.c0||!sheetEditable(rc.sid))return; const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
   const rmax=Math.min(rc.r1,lastDataRow(sh));
   let changed=false; for(let r=rc.r0;r<=rmax&&!changed;r++){ const src=cellVal(sh,r,rc.c0); for(let c=rc.c0+1;c<=rc.c1;c++)if(c<sh.cols.length&&cellVal(sh,r,c)!==src){changed=true;break;} }
   if(!changed)return; pushUndo(rc.sid);
@@ -344,7 +347,7 @@ function sheetKey(ev){                                        // the mode contro
 function serializeRange(){ const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return '';   // selection -> TSV (Excel/Sheets paste-in format)
   const lines=[]; for(let r=rc.r0;r<=rc.r1;r++){ const cells=[]; for(let c=rc.c0;c<=rc.c1;c++)cells.push((sh.rows[r]&&sh.rows[r][c]!=null)?String(sh.rows[r][c]):''); lines.push(cells.join('\t')); } return lines.join('\n'); }
 function cellCopy(ev){ if(!SEL||INEDIT)return; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', serializeRange()); ev.preventDefault(); } }
-function cellCut(ev){ if(!SEL||INEDIT)return; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', serializeRange()); ev.preventDefault(); clearRange(); } }
+function cellCut(ev){ if(!SEL||INEDIT||!sheetEditable(SEL.sid))return; if(ev.clipboardData){ ev.clipboardData.setData('text/plain', serializeRange()); ev.preventDefault(); clearRange(); } }
 // Excel, Google Sheets and this grid's own copy all put TSV on the clipboard (TAB = column, NEWLINE = row); a cell
 // containing a tab/newline/quote is wrapped in double quotes, with "" for a literal quote. Parse in ONE quote-aware
 // pass so an in-cell line break isn't torn into two rows, and a literal comma stays literal (never a delimiter).
@@ -362,7 +365,7 @@ function parseClipboard(txt){
   return rows;
 }
 function cellPasteEvent(ev){                                  // paste a TSV block from Excel/Sheets -> REPLACES the selected cells
-  if(!SEL)return; const cd=ev.clipboardData||window.clipboardData; const txt=cd&&cd.getData('text'); if(txt==null||txt==='')return;
+  if(!SEL||!sheetEditable(SEL.sid))return; const cd=ev.clipboardData||window.clipboardData; const txt=cd&&cd.getData('text'); if(txt==null||txt==='')return;
   if(INEDIT&&!/[\t\n]/.test(txt))return;                     // single value while editing -> let the browser paste into the caret
   ev.preventDefault(); if(INEDIT)cancelEdit(); INEDIT=false;
   const rc=selRect(); const sh=BOOK.find(s=>s.id===rc.sid); if(!sh)return;
@@ -387,7 +390,7 @@ function cellPasteEvent(ev){                                  // paste a TSV blo
   markDirtySheet(sh); paint(); focusActive();
 }
 function delRow(sid,r){
-  const sh=BOOK.find(s=>s.id===sid); if(!sh||!sh.rows[r])return;
+  const sh=BOOK.find(s=>s.id===sid); if(!sh||!sh.rows[r]||!sheetEditable(sid))return;
   pushUndo(sid); sh.rows.splice(r,1); markDirtySheet(sh);
   if(SEL&&SEL.sid===sid){                                     // keep the selection rectangle, shifted up for the removed row (Excel behavior)
     if(SEL.r>r)SEL.r--; SEL.r=Math.min(SEL.r,Math.max(0,sh.rows.length-1));
