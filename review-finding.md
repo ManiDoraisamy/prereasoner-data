@@ -19,10 +19,18 @@
 Severity: **P0** exploitable/security or data-loss · **P1** wrong results/crash in normal use · **P2** wrong behavior in edge cases · **P3** hygiene/robustness
 
 ### Fix status
-- **FIXED (code, pending deploy):** A-1, A-2, B-1, B-2, B-3, D-1, D-3, D-4, D-5, D-7, D-8. (11 of 13.)
-- **NEEDS USER ACTION:** D-2 — rotate the live API keys + DB password (I can't issue/revoke credentials).
-- **DEFERRED (risky infra change):** D-6 — RTDB IAM has no data-plane-only permission; a naive custom role breaks trace streaming. Documented; needs a tested rollout, not a blind edit.
-- **REVIEW GAPS (re-running):** SQL subsystem (all 5 dims), engine-core (4 dims), security SQLi dim — findings from these will be appended + fixed as they land.
+- **DEPLOYED + validated live:**
+  - **A-1** (orchestrator `prereasoner-chat-00007-f98`) — anonymous `POST /chat` → **401** (curl); signed-in still works (740).
+  - **D-1** XSS (frontend) — breakout payload creates no `onmouseover` attr and does not fire.
+  - **D-7** `pr_api_base` — `API_BASE=''` on prod even with the key set to an evil origin.
+  - **D-8** headers — `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, `Referrer-Policy` all present.
+  - **D-3, D-4, D-5** (frontend) — shipped with the Hosting deploy (code-tested).
+- **FIXED + committed + TEST-validated, engine deploy DEFERRED:** A-2, B-1, B-2, B-3, C-1.
+  - Validated by the passing DB suites (`test_world`/`test_geo`/`test_world_joins`/`test_nongeo`/`test_route_wired` all green — France sum 180, 2-hop 220, top-N correct) + `test_sql_ast` 78/0 (C-1 verified in sqlite: lowest→Banana) + `is_key` unit check.
+  - **Engine build is deferred** because the working tree currently holds a *concurrent local session's* uncommitted `engine/compose.py` (+ `tests/`) — a `gcloud builds submit` would ship it. My engine fixes are committed (`f7e16ee`); build once that work is committed/coordinated.
+- **NEEDS USER ACTION:** D-2 — rotate the live API keys + Cloud SQL password (credential issuance/revocation; I can't do it).
+- **DEFERRED (risky infra change):** D-6 — RTDB IAM has no data-plane-only permission; a naive custom role breaks trace streaming. Needs a tested rollout.
+- **REVIEW GAPS (hit the hard session limit — resets 11:00 Europe/Paris):** SQL `ast-serialization` dim + several SQL verifies, engine-core 4 dims (`compose-aggregate`, `trace-fidelity`, `crashes-robustness`, `state-resource`), security `sql-injection` dim. **Not yet reviewed** — re-run when the quota resets.
 
 ---
 
