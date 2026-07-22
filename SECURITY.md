@@ -7,7 +7,7 @@ for security reports. You should receive a response within a few days.
 
 ## Security model (summary)
 
-- `/api/reason` and `/api/world` require a Firebase ID token; the per-user Postgres schema is
+- `/api/reason` and `/api/knowledge` require a Firebase ID token; the per-user Postgres schema is
   always derived from the **verified** token subject, never from client input. The verification
   helpers in `engine/auth.py` are deliberately small and unforked — review them first.
 - `/api/dimension` is stateless and unauthenticated by design (no user data is stored).

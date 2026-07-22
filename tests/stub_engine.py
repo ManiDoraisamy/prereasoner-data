@@ -21,25 +21,25 @@ _FRANCE = {
     "sql": ("SELECT SUM(orders.amount) AS total FROM customers "
             "JOIN orders ON orders.customer_id = customers.customer_id "
             "JOIN \"customers connected to wikipedia\" b ON b.column='city' AND lower(b.value)=lower(customers.city) "
-            "JOIN wikipedia.\"city\" ON wikipedia.\"city\".qid = b.world_key "
-            "WHERE wikipedia.\"city\".country = 'Q142'"),
+            "JOIN knowledgebase.\"city\" ON knowledgebase.\"city\".qid = b.world_key "
+            "WHERE knowledgebase.\"city\".country = 'Q142'"),
     "result": {"columns": ["total"], "rows": [[270]]},
     "views": [
         {"name": "base", "op": "world_join",
-         "label": "join customers.city → wikipedia.\"city\"",
-         "sql": "JOIN wikipedia.\"city\" ON qid = b.world_key",
+         "label": "join customers.city → knowledgebase.\"city\"",
+         "sql": "JOIN knowledgebase.\"city\" ON qid = b.world_key",
          "columns": ["city", "country"],
          "rows": [["Paris", "Q142"], ["Lyon", "Q142"], ["Berlin", "Q183"]]},
         {"name": "filter", "op": "filter",
          "label": "filter country = France (Q142)",
-         "sql": "WHERE wikipedia.\"city\".country = 'Q142'",
+         "sql": "WHERE knowledgebase.\"city\".country = 'Q142'",
          "columns": ["city", "amount"], "rows": [["Paris", 120], ["Lyon", 150]]},
         {"name": "agg", "op": "group_agg",
          "label": "SUM(amount)",
          "sql": "SELECT SUM(amount) AS total",
          "columns": ["total"], "rows": [[270]]},
     ],
-    "meaning_join": "customers.city → wikipedia.\"city\".country = France (Q142)",
+    "meaning_join": "customers.city → knowledgebase.\"city\".country = France (Q142)",
     "model": "engine - composed view stack (STUB)",
     "error": None,
 }
@@ -90,7 +90,7 @@ class H(BaseHTTPRequestHandler):
         if self.path.rstrip("/") in ("/healthz", "/api/healthz"):
             self._send(200, {"ok": True, "reason": True, "world": True, "dimension": True, "stub": True})
         else:
-            self._send(200, {"stub": "POST /api/reason | /api/world | /api/dimension"})
+            self._send(200, {"stub": "POST /api/reason | /api/knowledge | /api/dimension"})
 
     def do_POST(self):
         n = int(self.headers.get("Content-Length", 0))
@@ -99,7 +99,7 @@ class H(BaseHTTPRequestHandler):
         except ValueError:
             self._send(200, {"error": "bad json"}); return
         path = self.path.rstrip("/")
-        if path in ("/api/reason", "/api/world"):
+        if path in ("/api/reason", "/api/knowledge"):
             self._send(200, _answer(req.get("question", "")))
         elif path == "/api/dimension":
             self._send(200, {
@@ -111,7 +111,7 @@ class H(BaseHTTPRequestHandler):
                 "model": "engine - dimension readout (STUB)",
             })
         else:
-            self._send(404, {"error": "POST /api/reason | /api/world | /api/dimension"})
+            self._send(404, {"error": "POST /api/reason | /api/knowledge | /api/dimension"})
 
 
 def main():

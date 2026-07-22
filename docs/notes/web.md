@@ -2,13 +2,13 @@
 
 How `web/` was produced from the private `prereasoner-inference` repo (2026-07-04), for the
 open-source release. The backend counterpart: all Cloud Run services consolidated into ONE
-service `prereasoner-api` exposing `POST /api/reason`, `POST /api/world`, `POST /api/dimension`,
+service `prereasoner-api` exposing `POST /api/reason`, `POST /api/knowledge`, `POST /api/dimension`,
 `GET /healthz`, reached via a single Firebase Hosting rewrite `/api/**`. RTDB streaming paths
 (`/runs/{uid}/{jobId}`) and the request/response JSON schemas are UNCHANGED.
 
 ## Kept / dropped
 
-KEPT (in `web/public/`): `index.html`, `reason.html`, `world.html`, `clarify.html`,
+KEPT (in `web/public/`): `index.html`, `reason.html`, `knowledge.html`, `clarify.html`,
 `sheets.html`, `404.html`, `styles.css`, `login_logo.svg`, `interpretable.svg`.
 
 DROPPED and why:
@@ -30,10 +30,10 @@ kept page calls it — its only caller was the dropped `dimension.html`.
 
 ## Endpoint rename
 
-`/infer-runtime20reason` → `/api/reason`, `/infer-runtime20w` → `/api/world`, in:
+`/infer-runtime20reason` → `/api/reason`, `/infer-runtime20w` → `/api/knowledge`, in:
 
 - `reason.html` — `ENDPOINT` (POST + fallback retries) and the pre-warm `GET`
-- `world.html` — same
+- `knowledge.html` — same
 - `index.html` — the pre-warm `GET` fired on the home page
 - `tests/regression.js` — the POST per test case
 
@@ -46,7 +46,7 @@ kept page calls it — its only caller was the dropped `dimension.html`.
 | `public/lib/config.js` | ES module | reason/world/sheets inline module scripts (3 copies of the Firebase config; Picker key was inline in sheets) | `firebaseConfig` (apiKey, authDomain, projectId, appId, databaseURL), `PICKER_API_KEY`, `PICKER_APP_ID` — with a comment block stating these are public client identifiers, not secrets, and what self-hosters replace |
 | `public/lib/shared.js` | classic script | index/reason/world/clarify | `esc`, `parseCSV`, `slug`, `sqlTokens`, `OPLBL`/`oplabel`, `SS.*` sessionStorage key constants, `PLAY`/`PAUSE`/`SPINNER` UI constants, `API_BASE` ('' = same-origin `/api/**`; settable for local engines) |
 | `public/lib/firebase-init.js` | ES module | reason/world (2 near-identical copies) + sheets init | `initializeApp` from `config.js`, exports `app`/`auth`/`db`, publishes `window.ensureToken` + `window.subscribeRun` (the RTDB `/runs/{uid}/{jobId}` trace subscription), exports `ensureSignedIn()` (redirect sign-in flow) |
-| `public/lib/table-render.js` | classic script | reason/world (2 diverged copies of `tableBubble`) | unified `tableBubble(cols, rows, label, opts)` with `opts.hlcol` (resolution highlight), `opts.thExtra` (world.html's dimension-tag hover popup), `opts.maxRows` |
+| `public/lib/table-render.js` | classic script | reason/world (2 diverged copies of `tableBubble`) | unified `tableBubble(cols, rows, label, opts)` with `opts.hlcol` (resolution highlight), `opts.thExtra` (knowledge.html's dimension-tag hover popup), `opts.maxRows` |
 
 Script-loading pattern per page (module/classic split preserved):
 
@@ -62,7 +62,7 @@ Script-loading pattern per page (module/classic split preserved):
 Deliberate small behavior changes (parity notes):
 
 1. `tableBubble` now always renders non-integer numbers to ≤3 decimals. reason.html already did
-   this; world.html previously did not (its table cells are almost always CSV strings, so this
+   this; knowledge.html previously did not (its table cells are almost always CSV strings, so this
    only affects numeric cells in streamed views — cosmetic).
 2. sheets.html now pulls in the RTDB SDK module via `firebase-init.js` even though it doesn't
    use it (one shared init > a second init variant; ~40KB extra on that page only).
@@ -125,7 +125,7 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
 
 ## Post-E2E fixes (2026-07-04, verified in real Chrome against a local engine + live Cloud SQL)
 
-- **Early JSON fallback** (reason.html, world.html): the POST body is parsed once
+- **Early JSON fallback** (reason.html, knowledge.html): the POST body is parsed once
   (`parseBody`) and raced against the stream — if the body lands and the stream shows no
   life for 3 s, `renderFromJSON` fires immediately instead of waiting for the 90 s safety
   net (which remains, with its cold-start retries, now consuming the same parsed promise).
@@ -150,13 +150,13 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   hosting-connected domains (third-party-storage partitioning made cross-domain redirects lose
   the pending sign-in -> infinite account chooser, reported on prereasoner.com), plus loop
   breakers in firebase-init.ensureSignedIn and sheets.html (a returned-but-signed-out redirect
-  shows a retry UI instead of re-redirecting). world.html/reason.html catch the throw.
+  shows a retry UI instead of re-redirecting). knowledge.html/reason.html catch the throw.
 
 ## World workbook + shared lib + local dev server flow (2026-07-11, live)
 
 - The workbook is now SHARED CODE: lib/workbook.js (logic, parameterized by window.WB_CONFIG:
   endpoint/status strings/demo data) + the workbook styles moved into styles.css (?v=10).
-  reason.html and world.html are thin shells — /world's trace-player UI is gone.
+  reason.html and knowledge.html are thin shells — /world's trace-player UI is gone.
 - Local dev via the orchestrator (localhost:8090): its static server now emulates Firebase
   Hosting cleanUrls (/reason -> reason.html; was {"error":"not found"}), and ensureSignedIn
   auto-detects the orchestrator's GET /config authMode "test" on localhost — the home-page

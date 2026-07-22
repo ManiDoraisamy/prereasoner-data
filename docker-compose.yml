@@ -1,14 +1,14 @@
 # PreReasoner local stack: Postgres (pgvector) + the serving engine.
 #
-#   cp .env.example .env            # set WORLD_PG_PASSWORD (defaults to "devpassword" if unset)
+#   cp .env.example .env            # set KB_PG_PASSWORD (defaults to "devpassword" if unset)
 #   docker compose up --build       # db + engine on http://localhost:8080
 #
 # AUTH_TEST_SUB=localdev is set on the engine so reviewers can call /api/reason and
-# /api/world WITHOUT a Firebase ID token (test-only bypass; never set it in production).
+# /api/knowledge WITHOUT a Firebase ID token (test-only bypass; never set it in production).
 # RTDB_URL is deliberately NOT set: trace streaming no-ops and responses carry full JSON.
 #
 # One-time database seed (~15-45 min, mostly Wikidata Query Service calls) — the engine
-# resolves nothing until world."words"/"types" etc. are populated. db/ is excluded from
+# resolves nothing until knowledgebase."words"/"types" etc. are populated. db/ is excluded from
 # the image by .dockerignore, so the dedicated `seed` service below bind-mounts ./db and
 # reuses the engine image (its Python stack already satisfies db/sync/requirements.txt:
 # psycopg2-binary, numpy, torch, transformers). Run it once after `up`:
@@ -26,7 +26,7 @@ services:
     image: pgvector/pgvector:pg16   # ships vector + pg_trgm (contrib) — all init.sql needs
     environment:
       POSTGRES_DB: world
-      POSTGRES_PASSWORD: ${WORLD_PG_PASSWORD:-devpassword}
+      POSTGRES_PASSWORD: ${KB_PG_PASSWORD:-devpassword}
     ports:
       - "5432:5432"
     volumes:
@@ -45,12 +45,12 @@ services:
     ports:
       - "8080:8080"
     environment:
-      WORLD_PG_HOST: db
-      WORLD_PG_PORT: "5432"
-      WORLD_PG_DB: world
-      WORLD_PG_USER: postgres
-      WORLD_PG_PASSWORD: ${WORLD_PG_PASSWORD:-devpassword}
-      WORLD_PG_SSLMODE: prefer        # docker Postgres has no SSL; prefer falls back cleanly
+      KB_PG_HOST: db
+      KB_PG_PORT: "5432"
+      KB_PG_DB: world
+      KB_PG_USER: postgres
+      KB_PG_PASSWORD: ${KB_PG_PASSWORD:-devpassword}
+      KB_PG_SSLMODE: prefer        # docker Postgres has no SSL; prefer falls back cleanly
       AUTH_TEST_SUB: localdev         # local-only Firebase auth bypass — see header comment
       DEVICE: cpu
       # RTDB_URL intentionally unset — streaming no-ops locally.
@@ -88,12 +88,12 @@ services:
     entrypoint: []
     working_dir: /app
     environment:
-      WORLD_PG_HOST: db
-      WORLD_PG_PORT: "5432"
-      WORLD_PG_DB: world
-      WORLD_PG_USER: postgres
-      WORLD_PG_PASSWORD: ${WORLD_PG_PASSWORD:-devpassword}
-      WORLD_PG_SSLMODE: prefer
+      KB_PG_HOST: db
+      KB_PG_PORT: "5432"
+      KB_PG_DB: world
+      KB_PG_USER: postgres
+      KB_PG_PASSWORD: ${KB_PG_PASSWORD:-devpassword}
+      KB_PG_SSLMODE: prefer
       HF_HOME: /hf                    # persist the bge-small-en-v1.5 download between runs
     volumes:
       - ./db:/app/db                  # rw: sync_types.py refreshes db/sync/data/p279_cache.json

@@ -1,10 +1,10 @@
-"""world_sync.py — LAZY Wikidata fill for the faithful world tables, used at serving time.
+"""knowledge_sync.py — LAZY Wikidata fill for the faithful world tables, used at serving time.
 
 The world DB mirrors Wikidata EXACTLY: for a taxonomy type (qid) the table's columns are the type's ACTUAL
 Wikidata properties (property-frequency schema discovery), not hand-picked friendly names. At serving time a
-CSV cell that didn't resolve in world."words" is looked up in Wikidata (search API + a cheap SPARQL ASK type
-check), its faithful row is fetched and inserted into wikipedia."<exact label>" (qid PK + qid FKs), and the
-entity is registered in world."words" so it resolves next time. Idempotent, best-effort — a sync miss never
+CSV cell that didn't resolve in knowledgebase."words" is looked up in Wikidata (search API + a cheap SPARQL ASK type
+check), its faithful row is fetched and inserted into knowledgebase."<exact label>" (qid PK + qid FKs), and the
+entity is registered in knowledgebase."words" so it resolves next time. Idempotent, best-effort — a sync miss never
 blocks the query.
 """
 from __future__ import annotations
@@ -147,8 +147,8 @@ def fetch_one(eqid, props):
 
 
 def wlabel(cur, type_qid):
-    """the EXACT Wikidata label = the wikipedia table name for a type qid (world.\"types\".label)."""
-    cur.execute('SELECT label FROM world."types" WHERE qid=%s', (type_qid,))
+    """the EXACT Wikidata label = the wikipedia table name for a type qid (knowledgebase.\"types\".label)."""
+    cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
     r = cur.fetchone()
     return (str(r[0]) if r and r[0] else type_qid)[:63]
 
@@ -157,15 +157,15 @@ def ensure_table(cur, label, props):
     """the faithful wikipedia table (exact-label name, qid PK + qid-FK columns); created on demand if a type was
     never mirrored. (The offline schema build pre-creates the known ones; this covers the long tail.)"""
     coldefs = ['"qid" TEXT PRIMARY KEY', '"name" TEXT'] + [f'"{c}" TEXT' for _p, c, _l, _t in props]
-    cur.execute(f'CREATE TABLE IF NOT EXISTS wikipedia."{label}" ({", ".join(coldefs)})')
+    cur.execute(f'CREATE TABLE IF NOT EXISTS knowledgebase."{label}" ({", ".join(coldefs)})')
 
 
 _PROPS_CACHE = {}                                        # type_qid -> discovered props (avoid re-discovery per entity)
 
 
 def ensure_entity(eqid, type_qid, value=None):
-    """Lazy sync: make sure entity `eqid` exists in wikipedia.\"<exact label>\" (fetch the faithful row from
-    Wikidata + INSERT, qid PK + qid FKs) and is registered in world.\"words\" (so it resolves next time). Used
+    """Lazy sync: make sure entity `eqid` exists in knowledgebase.\"<exact label>\" (fetch the faithful row from
+    Wikidata + INSERT, qid PK + qid FKs) and is registered in knowledgebase.\"words\" (so it resolves next time). Used
     both when a cell resolves to a qid that isn't in the (empty) table yet AND from lazy_resolve. Returns the
     qid. Idempotent."""
     from engine.embeddings import Embedder, pgvector_literal, normalize_surface
@@ -175,28 +175,28 @@ def ensure_entity(eqid, type_qid, value=None):
     if props is None:
         props = _PROPS_CACHE[type_qid] = discover(type_qid)
     ensure_table(cur, wl, props)
-    cur.execute(f'SELECT 1 FROM wikipedia."{wl}" WHERE qid=%s', (eqid,))
+    cur.execute(f'SELECT 1 FROM knowledgebase."{wl}" WHERE qid=%s', (eqid,))
     if cur.fetchone():
         return eqid                                                          # already synced
     row = fetch_one(eqid, props) or {"qid": eqid, "name": value or eqid}
-    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='wikipedia' "
+    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_schema='knowledgebase' "
                 "AND table_name=%s", (wl,))
     existing = {r[0] for r in cur.fetchall()}                                # insert only into columns that exist
     cols = [c for c in (["qid", "name"] + [c for _p, c, _l, _t in props]) if c in existing]
-    cur.execute(f'INSERT INTO wikipedia."{wl}" ({", ".join(chr(34)+c+chr(34) for c in cols)}) '
+    cur.execute(f'INSERT INTO knowledgebase."{wl}" ({", ".join(chr(34)+c+chr(34) for c in cols)}) '
                 f'VALUES ({", ".join(["%s"]*len(cols))}) ON CONFLICT (qid) DO NOTHING',
                 [str(row.get(c)) if row.get(c) is not None else None for c in cols])
     nm = row.get("name") or value or eqid
     vec = Embedder.get().encode([nm])[0]
-    cur.execute('INSERT INTO world."words"(surface,canonical,type,norm,embedding,qid) VALUES (%s,%s,%s,%s,%s::vector,%s) '
+    cur.execute('INSERT INTO knowledgebase."words"(surface,canonical,type,norm,embedding,qid) VALUES (%s,%s,%s,%s,%s::vector,%s) '
                 'ON CONFLICT DO NOTHING', (value or nm, nm, wl, normalize_surface(nm), pgvector_literal(vec), eqid))
-    print(f'  lazy: synced {nm!r} ({eqid}) -> wikipedia."{wl}"', flush=True)
+    print(f'  lazy: synced {nm!r} ({eqid}) -> knowledgebase."{wl}"', flush=True)
     return eqid
 
 
 def lazy_resolve(value, type_qid, label=None):
     """A CSV cell that didn't resolve in world.words -> find it in Wikidata (search+ASK), then ensure_entity
-    syncs the faithful row into wikipedia."<exact label>". `label` is ignored (the wikipedia table name comes
+    syncs the faithful row into knowledgebase."<exact label>". `label` is ignored (the wikipedia table name comes
     from the type qid). Returns the qid or None."""
     eqid = find_entity(value, type_qid)
     if not eqid:

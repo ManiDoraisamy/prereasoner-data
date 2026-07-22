@@ -33,12 +33,12 @@ Retraining is only needed to (a) verify the paper's numbers from scratch, (b) ch
 ```
 HF_TOKEN            Hugging Face token (Qwen/Qwen2.5-0.5B download) — read from env, never hardcoded
 RUNPOD_API_KEY      only for tools/runpod_api.py (GPU pod driver)
-WORLD_PG_HOST       Postgres world DB host (default localhost; a /path is treated as a Cloud SQL unix socket)
-WORLD_PG_PORT       default 5432
-WORLD_PG_DB         default world
-WORLD_PG_USER       default postgres
-WORLD_PG_PASSWORD   required for any DB step (corpus build, world provisioning, route grounding)
-WORLD_PG_SSLMODE    default require (use disable for a local dev Postgres)
+KB_PG_HOST       Postgres world DB host (default localhost; a /path is treated as a Cloud SQL unix socket)
+KB_PG_PORT       default 5432
+KB_PG_DB         default world
+KB_PG_USER       default postgres
+KB_PG_PASSWORD   required for any DB step (corpus build, world provisioning, route grounding)
+KB_PG_SSLMODE    default require (use disable for a local dev Postgres)
 DEVICE              cuda | cpu (default: cuda when available)
 BASE_MODEL_ID       default Qwen/Qwen2.5-0.5B
 CSV_CORPUS_DIR      raw CSV corpus for the discovery/clustering phase (default training/data/csv_corpus)

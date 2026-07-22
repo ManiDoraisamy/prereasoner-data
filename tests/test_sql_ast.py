@@ -1092,7 +1092,7 @@ def test_live_proposal_descriptor_cache_is_bounded():
 
 
 def test_world_own_data_route_preserves_ast_observability():
-    from engine.world_tables import WorldTableQuery
+    from engine.knowledge_tables import KnowledgeTableQuery
 
     class FakeOwnPlanner:
         @staticmethod
@@ -1117,7 +1117,7 @@ def test_world_own_data_route_preserves_ast_observability():
                 "model": "typed planner",
             }
 
-    class HermeticWorldTableQuery(WorldTableQuery):
+    class HermeticKnowledgeTableQuery(KnowledgeTableQuery):
         def __init__(self):
             self.q11 = FakeOwnPlanner()
 
@@ -1145,7 +1145,7 @@ def test_world_own_data_route_preserves_ast_observability():
         def _debug_input(*args):
             return {}
 
-    response = HermeticWorldTableQuery().serve([PEOPLE], "list person names")
+    response = HermeticKnowledgeTableQuery().serve([PEOPLE], "list person names")
 
     assert response["planner"] == {
         "mode": "ast_profile",

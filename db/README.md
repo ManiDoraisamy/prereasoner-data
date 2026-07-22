@@ -9,11 +9,11 @@ The database holds four kinds of state:
 |---|---|---|---|
 | `public` | raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, `entity_label`) | `init.sql` | `sync/sync_wikidata.py` (bulk) |
 | `world` | serving tables: `"words"` (pgvector entity-resolution index, HNSW), `"types"` (type taxonomy), friendly tables `"Cities"`/`"Countries"`/`"Places"`/`"Elements"`/`"Continents"`/`"States"` + `"... in the World"` views | `init.sql` | `sync/build_world.py`, `sync/build_words.py`, `sync/sync_types.py` |
-| `wikipedia` | qid-keyed faithful Wikidata tables, one per type, named by the **exact Wikidata label** (`wikipedia."city"`, `wikipedia."hospital"`, ...) | lazily by the engine (or `sync/mirror_schema.py` + `sync/build_wikipedia.py` up front) | **lazily at query time**, one entity per miss |
+| `wikipedia` | qid-keyed faithful Wikidata tables, one per type, named by the **exact Wikidata label** (`knowledgebase."city"`, `knowledgebase."hospital"`, ...) | lazily by the engine (or `sync/mirror_schema.py` + `sync/build_wikipedia.py` up front) | **lazily at query time**, one entity per miss |
 | `"<google-sub>"` | per-user schemas: uploaded CSV tables + the bridge tables `"<t> connected to wikipedia"` / `"<t> unconnected to wikipedia"` | **by the engine at request time** | by the engine |
 
-Connection config is env-var only (no hardcoded hosts): `WORLD_PG_HOST`, `WORLD_PG_PORT`,
-`WORLD_PG_DB`, `WORLD_PG_USER`, `WORLD_PG_PASSWORD` (+ optional `WORLD_PG_SSLMODE`,
+Connection config is env-var only (no hardcoded hosts): `KB_PG_HOST`, `KB_PG_PORT`,
+`KB_PG_DB`, `KB_PG_USER`, `KB_PG_PASSWORD` (+ optional `KB_PG_SSLMODE`,
 default `prefer`). See `sync/_conn.py`. The engine's role needs `CREATE` on the
 database (it creates per-user schemas); the scripts assume the default `postgres` role.
 
@@ -37,8 +37,8 @@ docker run -d --name prereasoner-pg \
 # apply the schema (idempotent)
 docker exec -i prereasoner-pg psql -U postgres -d world < db/init.sql
 
-export WORLD_PG_HOST=localhost WORLD_PG_PORT=5432 WORLD_PG_DB=world \
-       WORLD_PG_USER=postgres WORLD_PG_PASSWORD=devpassword
+export KB_PG_HOST=localhost KB_PG_PORT=5432 KB_PG_DB=world \
+       KB_PG_USER=postgres KB_PG_PASSWORD=devpassword
 ```
 
 ### b) Cloud SQL (GCP)
@@ -56,8 +56,8 @@ gcloud sql databases create world --instance=prereasoner-world
 # connect (public IP + SSL, or Cloud SQL Auth Proxy) and apply the schema
 psql "host=<INSTANCE_IP> dbname=world user=postgres sslmode=require" -f db/init.sql
 
-export WORLD_PG_HOST=<INSTANCE_IP> WORLD_PG_SSLMODE=require WORLD_PG_PASSWORD="$PW"
-# On Cloud Run, use the unix socket instead: WORLD_PG_HOST=/cloudsql/<PROJECT>:<REGION>:prereasoner-world
+export KB_PG_HOST=<INSTANCE_IP> KB_PG_SSLMODE=require KB_PG_PASSWORD="$PW"
+# On Cloud Run, use the unix socket instead: KB_PG_HOST=/cloudsql/<PROJECT>:<REGION>:prereasoner-world
 ```
 
 `CREATE EXTENSION vector / pg_trgm` in `init.sql` works as the `postgres` user on
@@ -67,7 +67,7 @@ Cloud SQL (it is granted `cloudsqlsuperuser`).
 
 **Lazy (automatic, nothing to run):**
 
-- `wikipedia."<type>"` tables — created **on demand** by the engine
+- `knowledgebase."<type>"` tables — created **on demand** by the engine
   (`ensure_entity`/`ensure_table` in the lazy sync) and filled **one entity at a
   time** from live Wikidata whenever an uploaded CSV cell resolves to a qid that
   isn't stored yet. This covers the entire non-geo world (hospitals, software,
@@ -76,15 +76,15 @@ Cloud SQL (it is granted `cloudsqlsuperuser`).
 
 **Must be pre-synced (the engine cannot answer without them):**
 
-- `world."words"` — the pgvector resolution index. *Every* entity resolution
+- `knowledgebase."words"` — the pgvector resolution index. *Every* entity resolution
   ("cities in US", value-membership column routing, the cell bridge) does an exact
   `norm` match and/or an HNSW `<=>` search here. Empty index ⇒ nothing resolves,
   and even the lazy path is gated on words/types lookups.
-- `world."types"` — the taxonomy; the lazy sync derives the `wikipedia` table
+- `knowledgebase."types"` — the taxonomy; the lazy sync derives the `wikipedia` table
   name for a type from `types.label`, and qid taxonomy walks read it.
 - `public.settlement` (with lat/lng) — the geo NEARBY primitive
   ("big cities near Paris") reads it directly.
-- `world."Cities"/"Countries"/...` — the planner's friendly world tables/views.
+- `knowledgebase."Cities"/"Countries"/...` — the planner's friendly world tables/views.
 
 ## 3. Sync workflow
 
@@ -98,7 +98,7 @@ psql ... -f db/init.sql                              # schema (idempotent)
 python db/sync/sync_wikidata.py --reset --high-only  # countries/currencies/elements + cities pop>=100k
 python db/sync/build_world.py                        # friendly world tables from public.*
 python db/sync/build_words.py --cities               # the pgvector words index (+HNSW)
-python db/sync/sync_types.py                         # taxonomy -> world."types" + type words
+python db/sync/sync_types.py                         # taxonomy -> knowledgebase."types" + type words
 python db/sync/unify_words_qid.py                    # verify the qid walk (optional health check)
 ```
 
@@ -113,7 +113,7 @@ python db/sync/sync_wikidata.py --reset              # settlements down to pop>=
 python db/sync/build_world.py
 python db/sync/build_words.py --cities --city-aliases   # ~213k word rows incl. Wikidata aliases ("Bombay"->Mumbai)
 python db/sync/sync_types.py
-python db/sync/mirror_schema.py                      # optional: pre-create world."<leaf>" mirror schemas
+python db/sync/mirror_schema.py                      # optional: pre-create knowledgebase."<leaf>" mirror schemas
 python db/sync/build_wikipedia.py                    # optional: pre-create empty qid-PK wikipedia tables
 ```
 

@@ -16,7 +16,7 @@ The training+release path, every step reading training/data only:
 
 TRANSACTION: snapshots ALL artifacts (CSVs, npz, thresholds, encoder.pt / encoder_meta.pt) to data/.bak FIRST and
 restores them on ANY step failure — so a half-finished anchor/calibrate can never leave a model/artifact mismatch on
-disk. DB steps are skipped (not failed) when WORLD_PG_PASSWORD is absent.
+disk. DB steps are skipped (not failed) when KB_PG_PASSWORD is absent.
 
   $env:PYTHONUTF8=1; python -m training.tools.pipeline
 """
@@ -50,8 +50,8 @@ def main():
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONPATH": str(ROOT)}
     try:
         for mod, args, needs_db in STEPS:
-            if needs_db and not env.get("WORLD_PG_PASSWORD"):
-                print(f"\n=== SKIP {mod} (no WORLD_PG_PASSWORD) ===", flush=True)
+            if needs_db and not env.get("KB_PG_PASSWORD"):
+                print(f"\n=== SKIP {mod} (no KB_PG_PASSWORD) ===", flush=True)
                 continue
             print(f"\n=== {mod} {' '.join(args)} ===", flush=True)
             if subprocess.run([sys.executable, "-m", mod, *args], env=env, cwd=str(ROOT)).returncode != 0:

@@ -1,9 +1,9 @@
 """World-model-join tier — the product's differentiator (resolve a value to Wikidata, join the world DB).
 
-Needs a seeded world Postgres (WORLD_PG_PASSWORD + world/wikipedia schemas — the real db/sync seed; a
+Needs a seeded world Postgres (KB_PG_PASSWORD + world/wikipedia schemas — the real db/sync seed; a
 hermetic mini-seed for fast CI is a documented follow-up, see regress/README.md). Two parts, both gated on Postgres:
 
-  * CURATED goldens run through the LIVE WorldReasoner.serve (the /api/reason entry) — the canonical
+  * CURATED goldens run through the LIVE KnowledgeReasoner.serve (the /api/reason entry) — the canonical
     customers+orders "total amount in France" = 270 (the README flagship) and the France customer count.
   * the existing maintained oracle suites in tests/ (test_world, test_world_joins, test_route_wired,
     test_nongeo) — reused rather than re-authored so expectations stay in one place.
@@ -46,9 +46,9 @@ def _scalar(res):
 
 def run():
     failed = []
-    from engine.world import WorldReasoner
+    from engine.knowledge import KnowledgeReasoner
     sub = os.environ.get("AUTH_TEST_SUB", "regress_world")
-    Q = WorldReasoner()
+    Q = KnowledgeReasoner()
     for c in CURATED:
         try:
             res = Q.serve([dict(t) for t in c["tables"]], c["question"], sub)

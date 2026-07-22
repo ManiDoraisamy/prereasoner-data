@@ -1,13 +1,13 @@
-"""ComposedWorldQuery: the view-stacking COMPOSITION reasoner wired onto the live world path.
+"""ComposedKnowledgeQuery: the view-stacking COMPOSITION reasoner wired onto the live world path.
 
 A world question with composition DEPTH (year-over-year, top-N, share, cumulative, ratio, sort) or more than
 one uploaded table is answered by a STACK of views — the analytical primitives composed by depth
 (engine.compose) over a BASE relation that is the uploaded FK join + the world-meaning join. A plain
-aggregate / hybrid-semantic / clarify query DELEGATES to WorldQuery unchanged. So composition ADDS depth
+aggregate / hybrid-semantic / clarify query DELEGATES to KnowledgeQuery unchanged. So composition ADDS depth
 without regressing anything.
 
 Reuse, not reinvention:
-  * the WORLD lookup (city -> country) comes from WorldQuery's world schema (world."words"); the uploaded data
+  * the WORLD lookup (city -> country) comes from KnowledgeQuery's world schema (knowledgebase."words"); the uploaded data
     is already in the request, so the only thing Postgres provides for the composed path is the meaning lookup.
   * the analytical DAG is the deterministic ComposeEngine (filter/time/group/yoy/running/share/divide/having/
     top-N/sort), driven by the LEARNED 10-primitive head on the SAME unified encoder.
@@ -21,15 +21,15 @@ import re
 
 from engine.tables import qident
 from engine.entities import WORLD_TABLE_TYPE
-from engine.world_query import WorldQuery
+from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
 from engine.compose import ComposeEngine
 
 
-class ComposedWorldQuery:
-    """Composition over the live multi-table + world base; delegates non-composed queries to WorldQuery."""
+class ComposedKnowledgeQuery:
+    """Composition over the live multi-table + world base; delegates non-composed queries to KnowledgeQuery."""
 
-    # The composition primitives this layer ADDS over the delegate (WorldQuery already does plain aggregate +
+    # The composition primitives this layer ADDS over the delegate (KnowledgeQuery already does plain aggregate +
     # FK/world joins + list-vs-aggregate). A row COUNT is read separately off read_op_model (it is an operator, not
     # a head dim) because the delegate's count+world path is weak.
     # These composition primitives gate to the ENGINE (the view-stack reasoner) — its whole product value.
@@ -46,7 +46,7 @@ class ComposedWorldQuery:
     DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
 
     def __init__(self):
-        self.qw = WorldQuery()                            # resolution + world DB + auth + bridge machinery
+        self.qw = KnowledgeQuery()                            # resolution + world DB + auth + bridge machinery
         self.reader = PrimitiveReader(encoder=self.qw)    # the learned 10-primitive head on the SAME unified encoder
         self.reason = ComposeEngine(reader=self.reader)   # the deterministic composition engine
 
@@ -59,7 +59,7 @@ class ComposedWorldQuery:
         """LEARNED compose gate (no lexical DEPTH regex): route to the engine when the unified encoder READS a
         composition primitive (the head) or a COUNT intent (read_op_model), OR the question names a distinctive world
         MEASURE the delegate can't expose (population / atomic number). Plain SUM/AVG, bare group-by, list, and
-        hybrid-semantic queries (no such readout) delegate to WorldQuery — which itself distinguishes list from
+        hybrid-semantic queries (no such readout) delegate to KnowledgeQuery — which itself distinguishes list from
         aggregate. So whether a question needs composition is mostly a MODEL readout, not a keyword list."""
         if self.WORLD_MEASURES.search(question or ""):
             return True
@@ -68,7 +68,7 @@ class ComposedWorldQuery:
             # entity-count fix: "total/how many <entity> [in <place>]" -> COUNT via the qid world join), and a
             # spurious COUNT readout on a PROJECTION ("which continent is Kyoto in") would otherwise hijack it into
             # the engine's count. Counts WITH composition depth still gate via the DEPTH_PRIMS arm (e.g. top-N by
-            # count); a plain count delegates to the fixed WorldQuery, and serve() still re-expresses a clean
+            # count); a plain count delegates to the fixed KnowledgeQuery, and serve() still re-expresses a clean
             # world-filtered scalar as the view stack (guarded by _same_answer) so the reasoning is still shown.
             return bool(self.reader.present(question) & self.DEPTH_PRIMS)
         except Exception as e:                            # noqa: BLE001 — the gate must never break the world path
@@ -163,7 +163,7 @@ class ComposedWorldQuery:
     # The analytical attributes of each resolved-entity TYPE: (source table, key column, [(world_col, exposed_name)]).
     # The bridge gives world_type + world_key (qid for a city, canonical name otherwise); we join the source table by
     # that key to expose the FULL resolved-entity row (population / atomic_number / mass / ...), not just country.
-    # Entities that have a country are additionally chained country -> continent + currency (world."Countries").
+    # Entities that have a country are additionally chained country -> continent + currency (knowledgebase."Countries").
     ENTITY_ATTRS = {
         "city":    ("Cities",    "qid",  [("country", "country"), ("population", "population")]),
         "state":   ("States",    "name", [("country", "country"), ("population", "population"), ("level", "level")]),
@@ -206,7 +206,7 @@ class ComposedWorldQuery:
                             if country and "country" not in d:
                                 d["country"] = country
                         geocol = col
-                        # Stream ONE 'Resolving <col>' slide (this column's wikipedia."<type>" rows) LIVE, ahead of the
+                        # Stream ONE 'Resolving <col>' slide (this column's knowledgebase."<type>" rows) LIVE, ahead of the
                         # view stack. Reads the persisted bridge, so it fires fresh OR cached; uses the server's emit
                         # CONTEXT (set under its LOCK), so _world_lookup needn't thread `emit` through.
                         self._emit_resolve_slide(cur, t["name"], col, col_rows, _ridx)
@@ -224,7 +224,7 @@ class ComposedWorldQuery:
         return result
 
     def _emit_resolve_slide(self, cur, table, column, col_rows, ridx):
-        """Stream ONE resolution slide for a CONNECTED string column: the wikipedia."<type>" rows (qid + the faithful
+        """Stream ONE resolution slide for a CONNECTED string column: the knowledgebase."<type>" rows (qid + the faithful
         Wikidata columns it lazy-filled) for the entities this column resolved to. The client renders <table> with
         <column> highlighted above this world table, whose `name` column is highlighted to match. Best-effort."""
         try:
@@ -236,11 +236,11 @@ class ComposedWorldQuery:
             wtable = wt                                                     # wikipedia table = the EXACT Wikidata label
             tq = getattr(self.qw, "TYPE_QID", {}).get(wt)
             if tq:
-                cur.execute('SELECT label FROM world."types" WHERE qid=%s', (tq,))
+                cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (tq,))
                 _r = cur.fetchone()
                 if _r and _r[0]:
                     wtable = str(_r[0])[:63]
-            cur.execute(f'SELECT * FROM wikipedia.{qident(wtable)} WHERE qid = ANY(%s) ORDER BY qid LIMIT 30', (qids,))
+            cur.execute(f'SELECT * FROM knowledgebase.{qident(wtable)} WHERE qid = ANY(%s) ORDER BY qid LIMIT 30', (qids,))
             allcols = [d[0] for d in cur.description]
             allrows = [list(r) for r in cur.fetchall()]
             if not allrows:                                                # nothing synced yet -> skip the (empty) slide
@@ -293,7 +293,7 @@ class ComposedWorldQuery:
             table, keycol, cols = cfg
             sel = ", ".join([f'"{keycol}"'] + [f'"{wc}"' for wc, _ in cols])
             try:
-                cur.execute(f'SELECT {sel} FROM world."{table}" WHERE "{keycol}" = ANY(%s)', (keys,))
+                cur.execute(f'SELECT {sel} FROM knowledgebase."{table}" WHERE "{keycol}" = ANY(%s)', (keys,))
                 by_key = {row[0]: row[1:] for row in cur.fetchall()}
             except Exception as e:                        # noqa: BLE001
                 print(f"entity attrs skipped ({table}):", e, flush=True); continue
@@ -304,7 +304,7 @@ class ComposedWorldQuery:
         countries = sorted({d["country"] for d in ent.values() if d.get("country")})
         if countries:
             try:
-                cur.execute('SELECT name, continent, currency_name FROM world."Countries" WHERE name = ANY(%s)',
+                cur.execute('SELECT name, continent, currency_name FROM knowledgebase."Countries" WHERE name = ANY(%s)',
                             (countries,))
                 cc = {n: (co, cu) for n, co, cu in cur.fetchall()}
             except Exception as e:                        # noqa: BLE001
@@ -379,7 +379,7 @@ class ComposedWorldQuery:
         """Composed (composition primitives / COUNT / world MEASURE) -> the view stack. A plain world-FILTERED
         scalar aggregate ('total amount in France') is ALSO re-expressed as the view stack so the demo SHOWS the
         reasoning (resolve -> world join -> filter -> aggregate) instead of jumping to the number. The delegate
-        (WorldQuery) stays AUTHORITATIVE for clarify / list / hybrid / non-geo / no-filter; the re-expression only
+        (KnowledgeQuery) stays AUTHORITATIVE for clarify / list / hybrid / non-geo / no-filter; the re-expression only
         stands when it reproduces the delegate's answer. Everything else delegates unchanged."""
         if self._composed(tables, question):
             try:
@@ -408,7 +408,7 @@ class ComposedWorldQuery:
                     return er
             except Exception as e:                        # noqa: BLE001 — never hard-fail; fall back to delegate
                 import traceback
-                print("composed serve failed, delegating to WorldQuery:", e, flush=True)
+                print("composed serve failed, delegating to KnowledgeQuery:", e, flush=True)
                 traceback.print_exc()
             return self.qw.serve(tables, question, as_of=as_of, schema=sub)
         # Not gated to the engine: the delegate owns clarify / list / hybrid / non-geo / plain answers.

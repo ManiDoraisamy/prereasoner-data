@@ -146,7 +146,7 @@ The proposer and ranker default to `engine/data/sql_proposer.json` and
 once per serving object; an invalid mode, missing artifact, or ungated strict ranker is
 reported in the normal serving error envelope.
 
-The own-data `/api/world` response keeps its existing SQL and result fields and adds a
+The own-data `/api/knowledge` response keeps its existing SQL and result fields and adds a
 `planner` object for AST modes with `mode`, `ast`, `candidate_count`, `evidence`, and
 `features`. The proposal descriptor-vector cache is bounded to 4,096 entries on the
 long-lived serving object.

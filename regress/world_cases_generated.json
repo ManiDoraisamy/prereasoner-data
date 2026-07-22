@@ -76,7 +76,7 @@
   "expected_kind": "scalar",
   "expected_value": "180",
   "prediction": "breaks",
-  "derivation": "Intended: Japan/India/China are continent Asia -> 100+50+30 = 180. Actual (verified live): ComposedWorldQuery crashes in ComposeEngine._load ('duplicate column name: country' \u2014 _world_lookup emits geocol 'country' AND an enriched 'country' attr), falls back to the delegate, which emits SQL joining ON lower(country.qid)=lower(__bridge0.canon) where canon is the NAME 'Japan' (never equals a QID) -> zero matching rows -> SUM = [['']] (empty).",
+  "derivation": "Intended: Japan/India/China are continent Asia -> 100+50+30 = 180. Actual (verified live): ComposedKnowledgeQuery crashes in ComposeEngine._load ('duplicate column name: country' \u2014 _world_lookup emits geocol 'country' AND an enriched 'country' attr), falls back to the delegate, which emits SQL joining ON lower(country.qid)=lower(__bridge0.canon) where canon is the NAME 'Japan' (never equals a QID) -> zero matching rows -> SUM = [['']] (empty).",
   "reason": "ARCHITECTURAL (B1): country is qid-keyed but resolved by name -> empty join. Deferred; see CAPABILITY_MAP.md."
  },
  {
@@ -251,9 +251,9 @@
   "question": "What is the average population of these cities?",
   "expected_kind": "scalar",
   "expected_value": "6447834.67",
-  "derivation": "AVG over the canonical (max-population) resolution of each name: Tokyo 14264798, Osaka 2751862, Nagoya 2326844 -> sum 19343504 / 3 = 6447834.666... Queried world.\"Cities\" ORDER BY population DESC LIMIT 1 per name.",
+  "derivation": "AVG over the canonical (max-population) resolution of each name: Tokyo 14264798, Osaka 2751862, Nagoya 2326844 -> sum 19343504 / 3 = 6447834.666... Queried knowledgebase.\"Cities\" ORDER BY population DESC LIMIT 1 per name.",
   "prediction": "works",
-  "reason": "WORLD_MEASURES regex (world_compose.py:51) matches 'population' -> _composed True. _world_link keeps population in `keep` (numeric, joined into base). _operator reads AVG ('average'); _pick_measure selects `population` (single non-id numeric of the joined base beside `amount` \u2014 here the encoder cosine or the OR-of-named picks population when the question names it; note `amount` is also numeric so this depends on the measure readout landing on population). serve() returns the engine answer via the WORLD_MEASURES arm (line 291) even without a composition view. Risk: if the measure readout lands on `amount` instead of `population` the number is wrong, but the population MEASURE path itself is supported."
+  "reason": "WORLD_MEASURES regex (knowledge_compose.py:51) matches 'population' -> _composed True. _world_link keeps population in `keep` (numeric, joined into base). _operator reads AVG ('average'); _pick_measure selects `population` (single non-id numeric of the joined base beside `amount` \u2014 here the encoder cosine or the OR-of-named picks population when the question names it; note `amount` is also numeric so this depends on the measure readout landing on population). serve() returns the engine answer via the WORLD_MEASURES arm (line 291) even without a composition view. Risk: if the measure readout lands on `amount` instead of `population` the number is wrong, but the population MEASURE path itself is supported."
  },
  {
   "label": "total-population-measure",
@@ -267,7 +267,7 @@
   "question": "What is the total population of these cities combined?",
   "expected_kind": "scalar",
   "expected_value": "19343504",
-  "derivation": "SUM of canonical populations: 14264798 + 2751862 + 2326844 = 19343504 (world.\"Cities\" max-pop row per name).",
+  "derivation": "SUM of canonical populations: 14264798 + 2751862 + 2326844 = 19343504 (knowledgebase.\"Cities\" max-pop row per name).",
   "prediction": "works",
   "reason": "Same gate + join as avg case; _operator defaults/reads SUM ('total'). population is available as a measure column in the joined base and aggregated. Supported (numeric world attr as measure)."
  },
@@ -299,9 +299,9 @@
   "question": "What is the average atomic mass of these metals?",
   "expected_kind": "scalar",
   "expected_value": "105.4525",
-  "derivation": "world.\"Elements\": Iron 55.845, Copper 63.546, Gold 196.96657. AVG = (55.845+63.546+196.96657)/3 = 105.4525233...",
+  "derivation": "knowledgebase.\"Elements\": Iron 55.845, Copper 63.546, Gold 196.96657. AVG = (55.845+63.546+196.96657)/3 = 105.4525233...",
   "prediction": "works",
-  "reason": "WORLD_MEASURES matches 'atomic ... mass'. ENTITY_ATTRS['element'] (world_compose.py:81) exposes mass; _enrich joins world.\"Elements\" by name and mass lands in `keep` as a numeric measure. _operator AVG, _pick_measure -> mass. Supported."
+  "reason": "WORLD_MEASURES matches 'atomic ... mass'. ENTITY_ATTRS['element'] (knowledge_compose.py:81) exposes mass; _enrich joins knowledgebase.\"Elements\" by name and mass lands in `keep` as a numeric measure. _operator AVG, _pick_measure -> mass. Supported."
  },
  {
   "label": "total-atomic-number-measure",
@@ -315,7 +315,7 @@
   "question": "What is the sum of the atomic numbers of these elements?",
   "expected_kind": "scalar",
   "expected_value": "134",
-  "derivation": "Iron 26 + Copper 29 + Gold 79 = 134 (world.\"Elements\".atomic_number).",
+  "derivation": "Iron 26 + Copper 29 + Gold 79 = 134 (knowledgebase.\"Elements\".atomic_number).",
   "prediction": "works",
   "reason": "WORLD_MEASURES matches 'atomic number'. atomic_number exposed via ENTITY_ATTRS['element'], joined as numeric measure, SUM aggregated. Supported."
  },
@@ -365,7 +365,7 @@
   "expected_value": "260",
   "prediction": "works",
   "reason": "The city column routes (11/11 cells resolve >=0.80). Each city resolves to its primary qid, Cities.qid->country name, _enrich chains Countries.name->continent (text 'Asia'). 'Asia' is named in the question and continent is a TEXT column, so _world_link makes it a world FILTER (world_join -> world_filter continent='Asia'), then SUM(sales). This is a clean world-filtered scalar: the delegate answers it and serve() re-expresses it as the view stack (guarded by _same_answer). Tokyo(Japan)+Mumbai(India)+Shanghai(China) = 120+80+60.",
-  "derivation": "Resolve each city to primary/highest-pop qid, join Cities.qid->country, Countries.name->continent. Asia cities: Tokyo(Japan,Q17), Mumbai(India), Shanghai(China). SUM(sales where continent='Asia') = 120+80+60 = 260. Continent labels + canon_country verified via world.\"Countries\" and world.\"words\"."
+  "derivation": "Resolve each city to primary/highest-pop qid, join Cities.qid->country, Countries.name->continent. Asia cities: Tokyo(Japan,Q17), Mumbai(India), Shanghai(China). SUM(sales where continent='Asia') = 120+80+60 = 260. Continent labels + canon_country verified via knowledgebase.\"Countries\" and knowledgebase.\"words\"."
  },
  {
   "label": "2-hop group: sales BY continent over a CITY column (open-ended 2-hop group)",
@@ -380,8 +380,8 @@
   "expected_kind": "contains",
   "expected_value": "Asia=260; Europe=120; North America=70; Oceania=90; Africa=60",
   "prediction": "breaks",
-  "reason": "No world VALUE is named (no 'Asia'/'Europe'), so _world_link returns an ATTRIBUTE-ONLY join (no world_filter) and the plan is a bare GROUP by the continent text column -> plan collapses to [world_join, group_agg] with NO composition view. ComposedWorldQuery.serve requires a _COMPOSITION_VIEWS op or a WORLD_MEASURE to stand on the engine; a plain group has neither, so it falls through to the WorldQuery delegate. The delegate has no dedicated 2-hop city->continent GROUP path (it does named-value world FILTERS, not open group-by over a chained world attr), so the correct 5-row grouped table is not reliably produced. High risk of an ungrouped total or a clarify.",
-  "derivation": "SUM(sales) grouped by resolved continent: Asia=Tokyo120+Mumbai80+Shanghai60=260; Europe=Paris50+Berlin40+Madrid30=120; North America=Toronto70; Oceania=Sydney90; Africa=Cairo20+Lagos15+Nairobi25=60. Continents verified in world.\"Countries\"."
+  "reason": "No world VALUE is named (no 'Asia'/'Europe'), so _world_link returns an ATTRIBUTE-ONLY join (no world_filter) and the plan is a bare GROUP by the continent text column -> plan collapses to [world_join, group_agg] with NO composition view. ComposedKnowledgeQuery.serve requires a _COMPOSITION_VIEWS op or a WORLD_MEASURE to stand on the engine; a plain group has neither, so it falls through to the KnowledgeQuery delegate. The delegate has no dedicated 2-hop city->continent GROUP path (it does named-value world FILTERS, not open group-by over a chained world attr), so the correct 5-row grouped table is not reliably produced. High risk of an ungrouped total or a clarify.",
+  "derivation": "SUM(sales) grouped by resolved continent: Asia=Tokyo120+Mumbai80+Shanghai60=260; Europe=Paris50+Berlin40+Madrid30=120; North America=Toronto70; Oceania=Sydney90; Africa=Cairo20+Lagos15+Nairobi25=60. Continents verified in knowledgebase.\"Countries\"."
  },
  {
   "label": "2-hop currency: total spend in euros over a CITY column (city->country->currency filter)",
@@ -397,7 +397,7 @@
   "expected_value": "120",
   "prediction": "works",
   "reason": "_enrich chains country->currency (currency_name), a TEXT column in the world table. 'euros'/'euro' is a named world value, so it becomes a world_filter currency='euro', giving a scalar the delegate answers and serve() re-expresses. Paris/Berlin/Madrid all resolve to euro-zone countries (France/Germany/Spain), so SUM=50+40+30. (Depends on the surface form 'euros' normalizing/embedding to currency_name 'euro'; exact-name match on 'euro' is the reliable path \u2014 a plural/synonym could miss, hence not 'works' if the filter value fails to resolve, but the euro-country arithmetic is fixed.)",
-  "derivation": "currency_name from world.\"Countries\": France/Germany/Spain -> 'euro'. Euro cities: Paris50, Berlin40, Madrid30. SUM=120. Japan->yen, India->indian rupee, China->renminbi are excluded."
+  "derivation": "currency_name from knowledgebase.\"Countries\": France/Germany/Spain -> 'euro'. Euro cities: Paris50, Berlin40, Madrid30. SUM=120. Japan->yen, India->indian rupee, China->renminbi are excluded."
  },
  {
   "label": "Single-hop over a COUNTRY column: total in Asia (country->continent)",
@@ -413,7 +413,7 @@
   "expected_value": "160",
   "prediction": "works",
   "reason": "Country column routes as type=country; _enrich reads Countries.name->continent directly (one hop, no city bridge). 'Asia' named -> world_filter continent='Asia' -> scalar SUM. Japan+India = 100+60. Simpler and more robust than the city 2-hop because it skips the city->qid disambiguation step.",
-  "derivation": "continent per country (world.\"Countries\"): Japan=Asia, India=Asia, France=Europe, Germany=Europe, Kenya=Africa, Nigeria=Africa. SUM(amount where continent='Asia') = 100+60 = 160."
+  "derivation": "continent per country (knowledgebase.\"Countries\"): Japan=Asia, India=Asia, France=Europe, Germany=Europe, Kenya=Africa, Nigeria=Africa. SUM(amount where continent='Asia') = 100+60 = 160."
  },
  {
   "label": "Robustness: mixed column, 5 real cities + 1 garbage cell, total in Asia",
@@ -445,7 +445,7 @@
   "expected_value": "200",
   "prediction": "works",
   "reason": "Real cities are 2/4 = 0.50 < 0.80, so value-membership routing does NOT fire on the column as a whole via the deterministic path; however the composed _world_lookup still resolves the cells that DO match (Tokyo, Mumbai) through the city bridge and drops the two fictional cities (verified: 'Wakanda'/'Atlantis City' have no norm membership -> no bridge row). If the column fails to route entirely, the world join yields no rows for those cells anyway. Either way the fictional-city amounts (500,300) are excluded; the Asia scalar is Tokyo+Mumbai. Marked works for the ARITHMETIC (fictional rows never contribute); note routing is borderline at 0.50 so the whole column could fail to route and the query degrade to a non-world/clarify answer \u2014 the one risk here is routing, not wrong inclusion.",
-  "derivation": "'Wakanda' and 'Atlantis City' verified absent from world.\"words\" (empty membership). Only Tokyo(Asia)+Mumbai(Asia) contribute. SUM=120+80=200; fictional cities' 500+300 excluded."
+  "derivation": "'Wakanda' and 'Atlantis City' verified absent from knowledgebase.\"words\" (empty membership). Only Tokyo(Asia)+Mumbai(Asia) contribute. SUM=120+80=200; fictional cities' 500+300 excluded."
  },
  {
   "label": "Out-of-model entity type: a PRODUCT column (no world type)",
@@ -461,7 +461,7 @@
   "expected_value": "no world join possible; cannot filter by continent",
   "prediction": "unsupported",
   "reason": "The product values resolve to NO world type (verified empty norm-membership for all four), so value-membership routing fails (0/4 < 0.80) and the model-fallback routing has no city/country/continent to attach. _world_lookup finds no connected column -> world table is None -> no continent attribute exists to filter on. 'Asia' cannot bind. The engine either returns a plain (non-world) aggregate ignoring 'Asia' or the delegate clarifies. There is no world attribute the upload never had to join, so the world-QA premise is unsupported for this column.",
-  "derivation": "All four product tokens verified absent from world.\"words\". No continent can be derived; the 'in Asia' filter has nothing to bind to. Correct behavior is unsupported / clarify, not a number."
+  "derivation": "All four product tokens verified absent from knowledgebase.\"words\". No continent can be derived; the 'in Asia' filter has nothing to bind to. Correct behavior is unsupported / clarify, not a number."
  },
  {
   "label": "Plain non-world aggregate control (no world join needed)",
@@ -476,7 +476,7 @@
   "expected_kind": "scalar",
   "expected_value": "100",
   "prediction": "works",
-  "reason": "'region' values (North/South/East/West) don't resolve to any world type, so no world join fires; _composed gate finds no WORLD_MEASURE and no DEPTH primitive, so it delegates to WorldQuery, which does a plain SUM(amount). No continent/currency chain involved. Pure control confirming the world machinery stays out of the way for a non-world question.",
+  "reason": "'region' values (North/South/East/West) don't resolve to any world type, so no world join fires; _composed gate finds no WORLD_MEASURE and no DEPTH primitive, so it delegates to KnowledgeQuery, which does a plain SUM(amount). No continent/currency chain involved. Pure control confirming the world machinery stays out of the way for a non-world question.",
   "derivation": "SUM(amount) = 10+20+30+40 = 100. No world lookup; direct single-table aggregate."
  },
  {
@@ -491,9 +491,9 @@
   "question": "What is the total sales by currency?",
   "expected_kind": "contains",
   "expected_value": "yen=100000; indian rupee=50000; euro=14000 (Paris 8000 + Berlin 6000); pound sterling=7000; united states dollar=9000",
-  "derivation": "Resolve each city -> country -> world.\"Countries\".currency_name (live-verified): Tokyo->yen, Mumbai->indian rupee, Paris/Berlin->euro, London->pound sterling, NYC->united states dollar. Group amount by currency_name: SELECT currency_name, SUM(amount) GROUP BY currency_name over the resolved rows => {yen:100000, indian rupee:50000, euro:14000, pound sterling:7000, united states dollar:9000}.",
+  "derivation": "Resolve each city -> country -> knowledgebase.\"Countries\".currency_name (live-verified): Tokyo->yen, Mumbai->indian rupee, Paris/Berlin->euro, London->pound sterling, NYC->united states dollar. Group amount by currency_name: SELECT currency_name, SUM(amount) GROUP BY currency_name over the resolved rows => {yen:100000, indian rupee:50000, euro:14000, pound sterling:7000, united states dollar:9000}.",
   "prediction": "unsupported",
-  "reason": "The upload has no 'currency' column. Currency is only synthesized in the COMPOSED path (_enrich chains country->currency_name). But the compose gate _composed() only fires on DEPTH_PRIMS or WORLD_MEASURES; a bare group-by is neither, so this delegates to WorldQuery. WorldQuery/EntityQuery resolve only country/city/continent/state (world_query.py:512) and expose no currency dimension, so it cannot GROUP BY currency at all. Result: currency grouping never materializes -> unsupported (at best a currency-blind total or a clarify, never the per-currency breakdown)."
+  "reason": "The upload has no 'currency' column. Currency is only synthesized in the COMPOSED path (_enrich chains country->currency_name). But the compose gate _composed() only fires on DEPTH_PRIMS or WORLD_MEASURES; a bare group-by is neither, so this delegates to KnowledgeQuery. KnowledgeQuery/EntityQuery resolve only country/city/continent/state (knowledge_query.py:512) and expose no currency dimension, so it cannot GROUP BY currency at all. Result: currency grouping never materializes -> unsupported (at best a currency-blind total or a clarify, never the per-currency breakdown)."
  },
  {
   "label": "sales_where_currency_is_euro (single-word currency filter)",
@@ -509,7 +509,7 @@
   "expected_value": "14000",
   "derivation": "Euro-country cities are Paris(France) and Berlin(Germany) \u2014 both currency_name='euro' (live-verified). SUM(amount) WHERE currency_name='euro' = 8000 + 6000 = 14000. The other cities (yen/indian rupee/pound sterling/usd) are excluded.",
   "prediction": "breaks",
-  "reason": "Correct answer is 14000, but the engine will not produce it. _composed() does not fire ('euro' is not a DEPTH_PRIM and not a WORLD_MEASURE), so it delegates to WorldQuery. WorldQuery cannot resolve 'euro' as a geo entity (it only knows country/city/continent/state; _best_world_entity only checks country/city NN). So no currency filter binds. Note the composed path COULD in principle filter: _world_link builds toks=set(re.findall(r'[a-z]+',low)) and 'euro' IS a single token that equals the currency world-value 'euro' (compose.py:367-374) \u2014 but that path is never entered because the gate doesn't fire. Net: the currency filter is silently dropped; the delegate returns a currency-blind total (180000) or a clarify, not 14000."
+  "reason": "Correct answer is 14000, but the engine will not produce it. _composed() does not fire ('euro' is not a DEPTH_PRIM and not a WORLD_MEASURE), so it delegates to KnowledgeQuery. KnowledgeQuery cannot resolve 'euro' as a geo entity (it only knows country/city/continent/state; _best_world_entity only checks country/city NN). So no currency filter binds. Note the composed path COULD in principle filter: _world_link builds toks=set(re.findall(r'[a-z]+',low)) and 'euro' IS a single token that equals the currency world-value 'euro' (compose.py:367-374) \u2014 but that path is never entered because the gate doesn't fire. Net: the currency filter is silently dropped; the delegate returns a currency-blind total (180000) or a clarify, not 14000."
  },
  {
   "label": "sales_where_currency_is_pound_sterling (multi-word currency filter)",

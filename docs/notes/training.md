@@ -16,7 +16,7 @@ Destination: `training/` — self-contained, version-free names, banned strings 
 | `runtime20/embed16.py` | `lib/embedder.py` | bge-small retrieval embedder + `normalize_surface` |
 | `runtime20/route19.py` | `lib/router.py` | column Router (needed by calibrate/validate); ROOT depth fixed |
 | `runtime20/build_world_wdqs.py` (client part only) | `lib/wdqs.py` | trimmed to `wdqs/V/qid_of/parse_point/ENDPOINT/UA`; the bulk geo fetchers + `build_world_pg` dep were NOT carried (serving-side world import). UA contact now env `WIKIMEDIA_CONTACT` |
-| `runtime20/query14.py` (`_pg` only) | `lib/pg.py` | new module; fully env-driven (`WORLD_PG_HOST` default `localhost`, `_PORT`, `_DB`, `_USER`, `_SSLMODE`) |
+| `runtime20/query14.py` (`_pg` only) | `lib/pg.py` | new module; fully env-driven (`KB_PG_HOST` default `localhost`, `_PORT`, `_DB`, `_USER`, `_SSLMODE`) |
 
 ### Pipeline scripts
 | old | new |
@@ -110,7 +110,7 @@ Prose uses `genN` for the internal iteration numbers (README explains).
 
 - **No embedded HF tokens anywhere** in the source (verified by regex); HF auth was always env/.env based
   (`csv7/scripts/runpod_api.py` reads `HF_TOKEN` from repo-root `.env` and injects it into the pod env).
-- The hardcoded Cloud SQL IP `34.123.19.176` appeared as the `WORLD_PG_HOST` **default** in build_from_entity,
+- The hardcoded Cloud SQL IP `34.123.19.176` appeared as the `KB_PG_HOST` **default** in build_from_entity,
   build20, validate_route19, query14, build_world_pg → all carried copies now default to `localhost`;
   dbname/user/port/sslmode are env-driven too (`lib/pg.py` documents the full contract).
 - `capped.entity` (build_from_entity's input) is loaded by a separate Cloud Run job (`capped1/` in the research

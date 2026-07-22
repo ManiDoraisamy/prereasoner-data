@@ -1,9 +1,9 @@
-"""The retrieval embedder used to build/extend world."words" (standalone copy of the
+"""The retrieval embedder used to build/extend knowledgebase."words" (standalone copy of the
 engine's embed16 module, so db/ needs no engine import).
 
 bge-small-en-v1.5 sentence embedding = the [CLS] token of last_hidden_state,
 L2-normalized (per the model card), so cosine similarity == dot product. 384-dim,
-CPU-fine (33M params). world."words".embedding is declared vector(384) to match.
+CPU-fine (33M params). knowledgebase."words".embedding is declared vector(384) to match.
 
 normalize_surface() is the deterministic exact-match key stored in words.norm:
 'the U.S.A.' -> 'usa', 'the United States' -> 'unitedstates', 'New York' -> 'newyork'.

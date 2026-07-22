@@ -1,11 +1,11 @@
 """World-model eval — the ORACLE joins the world tables, PreReasoner runs its own path, compare.
 
 For each case: build the uploaded table(s) as SQL CTE(s), run the case's oracle SQL (which JOINs the upload
-against world."Countries"/"Cities"/"Elements") to get the EXPECTED rows straight from the world DB; then run
-the live WorldReasoner (the /api/reason path) on the same upload+question and compare. Reports scalar / lenient
+against knowledgebase."Countries"/"Cities"/"Elements") to get the EXPECTED rows straight from the world DB; then run
+the live KnowledgeReasoner (the /api/reason path) on the same upload+question and compare. Reports scalar / lenient
 / strict like the Spider eval, so the two suites read on the same yardstick.
 
-  WORLD_PG_PASSWORD must be set (autoloaded from .env). Loads the model ONCE.
+  KB_PG_PASSWORD must be set (autoloaded from .env). Loads the model ONCE.
   python world_eval/run.py
 """
 from __future__ import annotations
@@ -59,12 +59,12 @@ def _rowset(rows):
 
 def main():
     import engine.config  # noqa: F401 — autoloads .env
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("WORLD_PG_PASSWORD not set — cannot run the world model"); sys.exit(2)
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("KB_PG_PASSWORD not set — cannot run the world model"); sys.exit(2)
     from engine.pg import _pg
-    from engine.world import WorldReasoner
-    print("loading WorldReasoner (encoder + bge + spaCy + live PG)...", flush=True)
-    Q = WorldReasoner()
+    from engine.knowledge import KnowledgeReasoner
+    print("loading KnowledgeReasoner (encoder + bge + spaCy + live PG)...", flush=True)
+    Q = KnowledgeReasoner()
     sub = os.environ.get("AUTH_TEST_SUB", "world_eval")
     conn = _pg(); conn.autocommit = True; cur = conn.cursor()
 

@@ -2,7 +2,7 @@
 # PreReasoner serving engine.
 #
 #   docker build -t prereasoner-engine .
-#   docker run -p 8080:8080 -e WORLD_PG_HOST=... -e WORLD_PG_PASSWORD=... prereasoner-engine
+#   docker run -p 8080:8080 -e KB_PG_HOST=... -e KB_PG_PASSWORD=... prereasoner-engine
 #
 # Two-stage build: the builder stage installs the (large, CPU-only) Python stack into a
 # self-contained venv; the runtime stage copies just the venv + the engine package. This

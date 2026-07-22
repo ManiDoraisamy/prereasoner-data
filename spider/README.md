@@ -33,7 +33,7 @@
 > the results of a probe suite that was **built and run** — see [`results/RESULTS.md`](results/RESULTS.md).
 >
 > **Code wins where this doc disagrees.** Every architectural claim here was checked against
-> `engine/compose.py`, `engine/tables.py`, `engine/world_query.py`, `engine/world_compose.py`,
+> `engine/compose.py`, `engine/tables.py`, `engine/knowledge_query.py`, `engine/knowledge_compose.py`,
 > `engine/router.py`, `engine/primitive_head.py`, `engine/encoder_overlay.py`, `engine/taxonomy.py`.
 
 ---
@@ -50,7 +50,7 @@ question over uploaded tables it:
    country a city is in, population, …). This is the product's differentiator.
 3. **Answers as a stack of SQL views** it can show the user.
 
-There are **two SQL generators** and a router between them (`engine/world_compose.py :: _composed`):
+There are **two SQL generators** and a router between them (`engine/knowledge_compose.py :: _composed`):
 
 | Path | File | Emits | Executes on |
 |---|---|---|---|
@@ -59,8 +59,8 @@ There are **two SQL generators** and a router between them (`engine/world_compos
 
 Routing: a question whose **learned primitive head** fires a *depth* primitive
 (`EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING`) → **Compose**; everything else → the delegate
-(→ slot-filler for a self-contained table). The live full stack (`WorldReasoner → ComposedWorldQuery →
-WorldQuery`) additionally does world resolution + a **clarify gate**, and executes on **Postgres**.
+(→ slot-filler for a self-contained table). The live full stack (`KnowledgeReasoner → ComposedKnowledgeQuery →
+KnowledgeQuery`) additionally does world resolution + a **clarify gate**, and executes on **Postgres**.
 
 **Neither legacy generator has a nested-subquery primitive, a set-operation
 (`INTERSECT/UNION/EXCEPT`) primitive, or a self-join.** Those were hard ceilings for the two routes
@@ -72,7 +72,7 @@ measured by this diagnostic. They are not ceilings of the newer AST planner.
 
 The v1 spec said "reproduce the 12%." Do that **only if** the same stack can run; otherwise the
 discrepancy is itself finding #0. In *this* environment the full live number **cannot** be reproduced:
-the live path is **Postgres-gated** (`world_pg_password()` raises without a seeded world DB; the seed is
+the live path is **Postgres-gated** (`kb_pg_password()` raises without a seeded world DB; the seed is
 a 15–45 min Wikidata sync), and `sentence_transformers`/`pgvector` are absent. So we do **not** fabricate
 a "12%." Instead we run the parts that *are* faithful and Postgres-free:
 

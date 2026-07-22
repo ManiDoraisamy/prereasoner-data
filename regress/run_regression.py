@@ -3,7 +3,7 @@
 Two tiers, run together:
   * OFFLINE (always): the non-world text-to-SQL golden cases (regress/offline_cases.py), executed through the
     REAL engine (live routing: compose view-stack vs slot-filler) on in-memory SQLite. No Postgres needed.
-  * WORLD (iff WORLD_PG_PASSWORD): the world-model-join golden cases (regress/world_cases.py) against a seeded
+  * WORLD (iff KB_PG_PASSWORD): the world-model-join golden cases (regress/world_cases.py) against a seeded
     world Postgres — the product's differentiator (city->country resolution, "total amount in France"=270).
 
 Exit non-zero if ANY case regresses. Designed to be the test step in cloudbuild.yaml (runs inside the built
@@ -20,7 +20,7 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-# live routing gate — mirrors engine.world_compose.ComposedWorldQuery.DEPTH_PRIMS
+# live routing gate — mirrors engine.knowledge_compose.ComposedKnowledgeQuery.DEPTH_PRIMS
 DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "SHARE", "HAVING", "DIVIDE", "RUNNING"})
 _COMPOSITION_VIEWS = {"topn", "yoy", "running", "share", "divide", "having", "time_filter", "sort"}
 
@@ -159,8 +159,8 @@ def run_offline(eng):
 
 
 def run_world():
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("\n=== WORLD tier: SKIPPED (no WORLD_PG_PASSWORD) ===")
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("\n=== WORLD tier: SKIPPED (no KB_PG_PASSWORD) ===")
         print("  NOTE: a deploy gate MUST run this against a seeded world Postgres (db/sync seed, or a")
         print("        hermetic mini-seed — a documented follow-up, see regress/README.md). Skipped != passed.")
         return [], True

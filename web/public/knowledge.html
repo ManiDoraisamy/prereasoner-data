@@ -5,7 +5,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
 <link rel=stylesheet href="/styles.css?v=13">
 </head><body class=app>
-<!-- The read-only WORKBOOK on the /api/world path (unified-encoder world joins / hybrid
+<!-- The read-only WORKBOOK on the /api/knowledge path (unified-encoder world joins / hybrid
      semantic SQL). Same shell as /reason: shared logic in lib/workbook.js, styles in styles.css. -->
 <div class=screen>
   <div class=hdr>
@@ -43,7 +43,7 @@
 <script src="/lib/shared.js"></script>
 <script>
 window.WB_CONFIG = {
-  endpoint: '/api/world',                             // world path: resolution + world-knowledge joins
+  endpoint: '/api/knowledge',                             // world path: resolution + world-knowledge joins
   runningMsg: 'Joining to world knowledge…',
   warmupMsg: 'Warming up the model (~1 min on first use)…',
   demoQ: 'which of these cities are in France?',

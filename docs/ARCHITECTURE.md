@@ -87,7 +87,7 @@ plus a health check. The static frontend (`web/`) calls it through a single `/ap
            |   +---------------------------+--------+
   verify   +---+  prereasoner-api  (engine/server.py)|   ONE service; encoder-only
   ID token     |  POST /api/reason                   |   model runs on CPU;
-               |  POST /api/world                    |   stateless per request
+               |  POST /api/knowledge                    |   stateless per request
                |  POST /api/dimension                |
                |  GET  /healthz                      |
                +------+--------------------+---------+
@@ -108,8 +108,8 @@ plus a health check. The static frontend (`web/`) calls it through a single `/ap
 - **Firebase Auth (Google)** — identifies the user; the verified identity is what authorizes
   access to a conversation's data (§8).
 - **`prereasoner-api`** — the model + planner + SQL executor, one HTTP service. Request limits:
-  10 MB body, 8 sheets, 5,000 rows per sheet. `/api/reason` and `/api/world` share one
-  `WorldReasoner` instance behind one lock; `/api/dimension` has its own stateless model and lock.
+  10 MB body, 8 sheets, 5,000 rows per sheet. `/api/reason` and `/api/knowledge` share one
+  `KnowledgeReasoner` instance behind one lock; `/api/dimension` has its own stateless model and lock.
   It also serves the conversation endpoints (`GET /api/conversations`, `GET /api/conversation`) and
   the **conversational layer** `POST /api/converse` (§10) — one short Sonnet reply when a message
   isn't a data query, or to present a computed answer in human words. This is the *only* place a
@@ -119,13 +119,13 @@ plus a health check. The static frontend (`web/`) calls it through a single `/ap
   index, a small `chat` schema (who owns which conversation), and one schema per conversation
   holding its tables + bridges (§8). Contract in [`db/README.md`](../db/README.md).
 - **Wikidata (WDQS)** — the world tables start empty and **lazy-sync** rows from Wikidata on
-  demand (`engine/world_sync.py: ensure_entity`), the first time a resolved QID is needed. Not a
+  demand (`engine/knowledge_sync.py: ensure_entity`), the first time a resolved QID is needed. Not a
   bulk offline import on the hot path.
 
 All runtime configuration is environment variables, read in one place (`engine/config.py`):
-`HOST`/`PORT`, `WORLD_PG_HOST/PORT/DB/USER/PASSWORD/SSLMODE`, `RTDB_URL` (optional, §9),
+`HOST`/`PORT`, `KB_PG_HOST/PORT/DB/USER/PASSWORD/SSLMODE`, `RTDB_URL` (optional, §9),
 `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` (optional, the conversational layer, §10),
-`PREREASONER_DATA_DIR` (artifact dir, §11), `DEVICE`, `BASE_MODEL_ID`, `WORLD_MODEL_ROUTE`, and
+`PREREASONER_DATA_DIR` (artifact dir, §11), `DEVICE`, `BASE_MODEL_ID`, `KB_MODEL_ROUTE`, and
 the test-only `AUTH_TEST_SUB` (§8).
 
 ---
@@ -146,24 +146,24 @@ query like this one is delegated down to the world planner.
    server-side; `_verify_principal` returns both the Google `sub` (the Postgres schema name) and
    the Firebase `uid` (the trace-stream path). No/invalid token → **401**. The schema is *always*
    this server-verified `sub` — never anything the client sent.
-3. **Route to the planner.** `ComposedWorldQuery` (the view-stacking reasoner,
-   `engine/world_compose.py`) sees no composition primitive (no yoy/top-N/share/…) and
-   **delegates** the plain world join to `WorldQuery` (`engine/world_query.py`). Each *unit* —
+3. **Route to the planner.** `ComposedKnowledgeQuery` (the view-stacking reasoner,
+   `engine/knowledge_compose.py`) sees no composition primitive (no yoy/top-N/share/…) and
+   **delegates** the plain world join to `KnowledgeQuery` (`engine/knowledge_query.py`). Each *unit* —
    every column name, every cell value, every question token — is encoded by the unified encoder
    (Qwen2.5-0.5B + the `qwen_lora` adapter), its subtokens mean-pooled into one vector; the
    vectors pass through the trained relational model; named dimensions are read off. From these:
    - **Typing/routing:** FK discovery finds `orders.customer_id → customers.customer_id`
      (deterministic, `engine/relations.py`). `engine/router.py: Router` types `customers.city`
      from its taxonomy dims → the Wikidata leaf `city` (QID `Q515`) → the table
-     `wikipedia."city"`. The word "France" is recognized as a world filter.
-4. **Resolve cells to world QIDs.** Each `city` value is resolved through `world."words"` (exact
+     `knowledgebase."city"`. The word "France" is recognized as a world filter.
+4. **Resolve cells to world QIDs.** Each `city` value is resolved through `knowledgebase."words"` (exact
    normalized match first, else bge-small pgvector cosine nearest-neighbor ≥ threshold) → a city
-   QID (Paris → `Q90`, Lyon → `Q456`, Berlin → `Q64`). If `wikipedia."city"` has no row for that
+   QID (Paris → `Q90`, Lyon → `Q456`, Berlin → `Q64`). If `knowledgebase."city"` has no row for that
    QID yet, `ensure_entity(qid, type_qid)` lazily fetches the faithful Wikidata row from WDQS
    (item-property columns kept as QIDs — `city.country` = the country's QID) and INSERTs it. The
    resolved column→value→QID mapping is persisted in the per-user bridge
    `"customers connected to wikipedia"`.
-5. **Assemble SQL** — JOIN the user table to `wikipedia."city"` ON `qid` via the bridge, filter
+5. **Assemble SQL** — JOIN the user table to `knowledgebase."city"` ON `qid` via the bridge, filter
    on the **QID foreign key** (`city.country = 'Q142'` is France), aggregate (operator `SUM`
    chosen from the model's intent dims):
    ```sql
@@ -172,10 +172,10 @@ query like this one is delegated down to the world planner.
    JOIN orders ON orders.customer_id = customers.customer_id
    JOIN "customers connected to wikipedia" b
         ON b.column = 'city' AND lower(b.value) = lower(customers.city)
-   JOIN wikipedia."city" ON wikipedia."city".qid = b.world_key
-   WHERE wikipedia."city".country = 'Q142';   -- Q142 = France
+   JOIN knowledgebase."city" ON knowledgebase."city".qid = b.world_key
+   WHERE knowledgebase."city".country = 'Q142';   -- Q142 = France
    ```
-6. **Execute** (Postgres). `SET search_path TO "<sub>", wikipedia, world, public`; the upload
+6. **Execute** (Postgres). `SET search_path TO "<sub>", knowledgebase, public`; the upload
    tables + bridges are (re)created from the request. A **SELECT-only guard** rejects anything
    but a read. `SUM` over Paris+Lyon customers' orders = **270** (Berlin resolves to a German
    city → `country = 'Q183'` → excluded).
@@ -190,20 +190,20 @@ primitive views (`filter`, `time-filter`, `group_agg`, `yoy`, `running`, `share`
 `having`, `top-N`, `sort`) stacked over the FK + world base, each view streamed as it
 materializes. A **composition-view gate** decides when the reasoner stands on its own result:
 only for a genuine composition view or a world measure. A plain aggregate, count, or group-by
-that merely misfired the primitive detector defers to the `WorldQuery` delegate — composition
+that merely misfired the primitive detector defers to the `KnowledgeQuery` delegate — composition
 adds depth without regressing the simple paths.
 
-### 4.2 `POST /api/world` — the world join
+### 4.2 `POST /api/knowledge` — the world join
 
 Same auth, same request shape, same trace contract as `/api/reason` (the two routes share one
-`WorldReasoner` instance). This is the world path run directly: route → resolve → JOIN to the
+`KnowledgeReasoner` instance). This is the world path run directly: route → resolve → JOIN to the
 `wikipedia` QID schema → QID-FK filter → aggregate, re-expressed as a streamable view stack.
 Two extras live at this layer:
 
-- **Geo NEARBY** (`engine/world.py: WorldReasoner`): "big cities near Paris" resolves the
+- **Geo NEARBY** (`engine/knowledge.py: KnowledgeReasoner`): "big cities near Paris" resolves the
   reference city to lat/lng (`public.settlement`) and ranks world cities by haversine distance —
   computed in plain SQL, no PostGIS.
-- **Hybrid structured + semantic queries** (`engine/world_query.py`): "who complained about *bad
+- **Hybrid structured + semantic queries** (`engine/knowledge_query.py`): "who complained about *bad
   delivery* in France" combines an exact world filter (`country = France` via the resolved QID)
   with a pgvector cosine predicate over the free-text bridge — both sides embedded by the *same*
   unified encoder, so the `<=>` cosine is a valid same-space comparison.
@@ -249,7 +249,7 @@ question + CSV(s)
   → read the NAMED dimensions (93 content dims, alloc.json)   (anchored readout, calibrated per-dim thresholds)
   → read intent dims off question tokens → operator           (SUM/COUNT/AVG without a keyword list)
   → Router types each string column → a taxonomy leaf QID     (engine/router.py)
-  → deterministic Python assembles SQL clauses                (engine/world_query.py / engine/compose.py)
+  → deterministic Python assembles SQL clauses                (engine/knowledge_query.py / engine/compose.py)
   → SELECT-only guard → execute (Postgres / SQLite)
 ```
 
@@ -276,7 +276,7 @@ leaves). After a forward pass you can literally read what each unit is:
 
 Instead of a flat hand-named "*city* neuron", a value lights up its **whole ancestor path**
 through the Wikidata `P279` (subclass-of) tree, so typing is grounded in a real, navigable
-taxonomy — and the leaf dim maps directly to a `wikipedia."<type>"` world table.
+taxonomy — and the leaf dim maps directly to a `knowledgebase."<type>"` world table.
 
 **Anchoring on clean instances.** The taxonomy readout was re-anchored on clean Wikidata `P31`
 instances (6,665 instances over 46 non-geo leaves) after the initial noisy CSV-derived targets
@@ -293,7 +293,7 @@ dim at full weight, ancestors decaying toward the root — gated by per-leaf cal
 inconsistently). Two more calibration artifacts back the served model: `dim_thresholds.json`
 (the per-dim `/api/dimension` thresholds, from `training/calibrate/calibrate_dims.py`) and the
 served-model routing gate (`training/calibrate/validate_route.py`), tested through the deployed
-grounding path. Set `WORLD_MODEL_ROUTE=0` to fall back to value-membership routing without the
+grounding path. Set `KB_MODEL_ROUTE=0` to fall back to value-membership routing without the
 model.
 
 **Operator-from-intent.** The `intent_agg_{sum,count,avg}` dims are read off the question tokens
@@ -327,21 +327,21 @@ whole stack:
 ```
 engine/tables.py          TableQuery          base: CSV parsing, SQL identifier/literal quoting,
                                               the anchored-readout planner over the user's own tables
-engine/world_tables.py    WorldTableQuery     the implicit world word-tables + meaning graph
+engine/knowledge_tables.py    KnowledgeTableQuery     the implicit world word-tables + meaning graph
                                               (word_*.json metadata; SQLite fallback for offline use)
 engine/pg.py              PgQuery             Postgres execution: connections, per-user schema
                                               loading, type affinity (INTEGER→BIGINT, NUMERIC→py)
 engine/resolve_base.py    RoutedQuery         generalized routing + country aliases + states/elements
-engine/entities.py        EntityQuery         embedding entity resolution: world."words" exact-norm
+engine/entities.py        EntityQuery         embedding entity resolution: knowledgebase."words" exact-norm
                                               match then pgvector cosine NN; cell bridges; lazy city fill
 engine/encoder_overlay.py EncoderQuery        the unified-encoder overlay: loads encoder_meta.pt /
                                               encoder.pt / qwen_lora (load_encoder — the single loader)
                                               and shares the model onto the layers below
-engine/world_query.py     WorldQuery          the live world path: route → resolve → QID join →
+engine/knowledge_query.py     KnowledgeQuery          the live world path: route → resolve → QID join →
                                               QID-FK filter → aggregate; hybrid semantic SQL; clarify
-engine/world_compose.py   ComposedWorldQuery  view-stacking composition over the world base;
-                                              delegates non-composed queries to WorldQuery
-engine/world.py           WorldReasoner       + geo NEARBY (haversine over public.settlement);
+engine/knowledge_compose.py   ComposedKnowledgeQuery  view-stacking composition over the world base;
+                                              delegates non-composed queries to KnowledgeQuery
+engine/knowledge.py           KnowledgeReasoner       + geo NEARBY (haversine over public.settlement);
                                               wraps, never modifies, the composed planner
 engine/dimension.py       DimensionModel      the stateless /api/dimension readout (EncoderQuery subclass)
 ```
@@ -352,7 +352,7 @@ executes the primitive DAG on SQLite), `engine/primitives.py` (pure SQL view bui
 encoder), `engine/joins.py` (offline FK discovery for the compose engine), `engine/bridge.py`
 (the bridge predicate machinery), `engine/embeddings.py` (the bge-small retrieval embedder +
 surface normalization), `engine/taxonomy.py` (the P279 taxonomy constants, loaded from
-`taxonomy.csv`), `engine/world_sync.py` (the lazy Wikidata client: `ensure_entity`,
+`taxonomy.csv`), `engine/knowledge_sync.py` (the lazy Wikidata client: `ensure_entity`,
 `lazy_resolve`, WDQS access), `engine/trace.py` (§9), `engine/auth.py` (§8), and
 `engine/config.py` (the one env-var reader).
 
@@ -382,15 +382,15 @@ the engine's view of it.
 
 **How a value reaches the world DB — the concept picks the table, the QID picks the row.**
 
-1. `Router` **types** a column to its taxonomy leaf → a `wikipedia."<type>"` table (e.g. `city`).
-2. Each cell **resolves** to a world **QID** via `world."words"`: exact normalized match first,
+1. `Router` **types** a column to its taxonomy leaf → a `knowledgebase."<type>"` table (e.g. `city`).
+2. Each cell **resolves** to a world **QID** via `knowledgebase."words"`: exact normalized match first,
    then bge-small pgvector **cosine NN ≥ threshold**. (This is the metric-space half of the
    unified encoder doing entity resolution.) The type is looked up by the **exact Wikidata
-   label** (from `world."types"`), the same key `ensure_entity` inserts under.
-3. If `wikipedia."<type>"` has no row for that QID, `engine/world_sync.py: ensure_entity(qid,
+   label** (from `knowledgebase."types"`), the same key `ensure_entity` inserts under.
+3. If `knowledgebase."<type>"` has no row for that QID, `engine/knowledge_sync.py: ensure_entity(qid,
    type_qid)` **lazily fetches** the faithful row from WDQS — item-property columns kept as
    **QIDs** — and INSERTs it.
-4. The join is then **exact equality on the QID FK** — `JOIN wikipedia."city" ON qid =
+4. The join is then **exact equality on the QID FK** — `JOIN knowledgebase."city" ON qid =
    bridge.world_key`, `WHERE city.country = 'Q142'` — no string match, no similarity search at
    join time. A 2-hop world fact ("total amount in Europe") is just two QID FK hops:
    `city.country` → `country.continent = 'Q46'`.
@@ -400,20 +400,20 @@ the engine's view of it.
 | Schema | Holds | Built by |
 |---|---|---|
 | **`public`** | the raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, …) — read directly for geo NEARBY | `db/init.sql` + `db/sync` (bulk) |
-| **`wikipedia`** | the world meaning DB: **one table per Wikidata type, named by the EXACT Wikidata label** (`wikipedia."city"`, `wikipedia."hospital"`, …), faithful Wikidata property columns, **`qid` PRIMARY KEY**; item-property columns hold the related entity's **QID (a true FK)**. Tables start **empty** and **lazy-sync** on demand. | `db/sync/build_wikipedia.py` (empty qid-PK tables); `engine/world_sync.py: ensure_entity` (fills) |
-| **`world`** | the resolution + taxonomy index: `world."words"` (bge-small pgvector HNSW index: `norm → qid + type + embedding`) and `world."types"` (the P279 taxonomy: `qid → label`), plus the friendly geo tables the planner's population ranking reads | `db/sync/build_words.py`, `sync_types.py`, `build_world.py` |
+| **`wikipedia`** | the world meaning DB: **one table per Wikidata type, named by the EXACT Wikidata label** (`knowledgebase."city"`, `knowledgebase."hospital"`, …), faithful Wikidata property columns, **`qid` PRIMARY KEY**; item-property columns hold the related entity's **QID (a true FK)**. Tables start **empty** and **lazy-sync** on demand. | `db/sync/build_wikipedia.py` (empty qid-PK tables); `engine/knowledge_sync.py: ensure_entity` (fills) |
+| **`world`** | the resolution + taxonomy index: `knowledgebase."words"` (bge-small pgvector HNSW index: `norm → qid + type + embedding`) and `knowledgebase."types"` (the P279 taxonomy: `qid → label`), plus the friendly geo tables the planner's population ranking reads | `db/sync/build_words.py`, `sync_types.py`, `build_world.py` |
 | **`"<google-sub>"`** | per user: one table per uploaded CSV + two persisted **bridges** (below), created per request | the engine, at request time |
 
 ```text
 -- schema `wikipedia` (qid-keyed; one table per Wikidata type, exact Wikidata labels)
-   wikipedia."city"     ( qid PK, label, country  <FK→country.qid>, population, … )
-   wikipedia."country"  ( qid PK, label, continent <FK→continent.qid>, currency <FK→…>, … )
-   wikipedia."hospital" ( qid PK, label, country  <FK→country.qid>, … )
+   knowledgebase."city"     ( qid PK, label, country  <FK→country.qid>, population, … )
+   knowledgebase."country"  ( qid PK, label, continent <FK→continent.qid>, currency <FK→…>, … )
+   knowledgebase."hospital" ( qid PK, label, country  <FK→country.qid>, … )
    … all qid-PK, item-property columns are qids …
 
 -- schema `world` (resolution + taxonomy index)
-   world."words"  ( norm, qid, type, embedding vector(384) )   -- exact match, then pgvector cosine NN
-   world."types"  ( qid, label, parent_qid, is_leaf, … )        -- the P279 taxonomy
+   knowledgebase."words"  ( norm, qid, type, embedding vector(384) )   -- exact match, then pgvector cosine NN
+   knowledgebase."types"  ( qid, label, parent_qid, is_leaf, … )        -- the P279 taxonomy
 
 -- schema "<google-sub>" (per request): the uploaded sheets + two bridges
    "<sub>"."customers"                              -- the upload, re-created from the request
@@ -424,13 +424,13 @@ the engine's view of it.
 **The two per-user bridges.**
 
 - **`"<csv> connected to wikipedia"`** — the resolved-cell table, keyed by column / value /
-  world_key (QID). It is what the world join reads: `JOIN wikipedia."<type>" ON qid =
+  world_key (QID). It is what the world join reads: `JOIN knowledgebase."<type>" ON qid =
   bridge.world_key`. Persisting the resolution means re-runs don't re-resolve.
 - **`"<csv> unconnected to wikipedia"`** — a unified-encoder **vector per free-text cell**,
   backing the semantic predicate (the pgvector `<=>` cosine path, for hybrid queries like "who
   complained about *bad delivery*").
 
-**How the layers link.** Each request runs `SET search_path TO "<sub>", wikipedia, world,
+**How the layers link.** Each request runs `SET search_path TO "<sub>", knowledgebase,
 public`, so one query resolves the user's upload tables, the shared `wikipedia` world tables,
 the resolution index, and the geo tables in one namespace.
 
@@ -447,7 +447,7 @@ intent at all ("how does this work?") — before any reasoning runs. Both are §
 
 ## 8. Conversations, identity & isolation
 
-`/api/reason` and `/api/world` execute on live Postgres, gated by Firebase Google auth.
+`/api/reason` and `/api/knowledge` execute on live Postgres, gated by Firebase Google auth.
 `/api/dimension` is unauthenticated by design — it is stateless and stores nothing.
 
 **A conversation owns a schema.** Each conversation gets its own Postgres schema (named by a
@@ -572,16 +572,16 @@ before any LLM is involved:
 
 | Signal | Raised when | Engine site | UI reaction |
 |---|---|---|---|
-| **coverage pre-gate** (`low_confidence`, no result) | a message has **no** data intent, **no** schema-word, **no** resolvable entity — it's conversational, not a query ("how does this work?") | `WorldReasoner.serve` → `ComposedWorldQuery._has_data_signal` (short-circuits **before** reasoning, so nothing garbage streams) | conversational reply in the rail |
-| **clarify** (a proposed rephrasing, no result) | a query would **silently drop** part of the question — a resolved-but-unfiltered entity, or a measure with no aggregate (§7 clarify gate) | `WorldQuery._clarify` | conversational reply **+ a one-tap Run button** for the rephrasing |
-| **present** (`present: true`, **with** a real result) | the engine **did** compute an answer, but the phrasing is emotional/opinion/first-person ("*I'm worried* our churn is *too high*") | `WorldReasoner._tag_present` → `ComposedWorldQuery._human_tone` | Sonnet presents the **computed** value in human words; the derivation stays in the panel |
+| **coverage pre-gate** (`low_confidence`, no result) | a message has **no** data intent, **no** schema-word, **no** resolvable entity — it's conversational, not a query ("how does this work?") | `KnowledgeReasoner.serve` → `ComposedKnowledgeQuery._has_data_signal` (short-circuits **before** reasoning, so nothing garbage streams) | conversational reply in the rail |
+| **clarify** (a proposed rephrasing, no result) | a query would **silently drop** part of the question — a resolved-but-unfiltered entity, or a measure with no aggregate (§7 clarify gate) | `KnowledgeQuery._clarify` | conversational reply **+ a one-tap Run button** for the rephrasing |
+| **present** (`present: true`, **with** a real result) | the engine **did** compute an answer, but the phrasing is emotional/opinion/first-person ("*I'm worried* our churn is *too high*") | `KnowledgeReasoner._tag_present` → `ComposedKnowledgeQuery._human_tone` | Sonnet presents the **computed** value in human words; the derivation stays in the panel |
 
 Anything else — a normal data query — never touches this layer. **Plain queries stay raw, at zero
 LLM cost.** That "only when signaled" scoping is the whole point: the fast, free, deterministic
 path answers real questions; Sonnet is spent only on the messages that genuinely aren't one, plus
 the small set explicitly flagged for human presentation.
 
-The detectors are cheap and **schema-aware** (`engine/world_compose.py`): `_has_data_signal`
+The detectors are cheap and **schema-aware** (`engine/knowledge_compose.py`): `_has_data_signal`
 (data-intent words, schema-token mentions, or a resolvable world entity), `_human_tone` (an
 emotional/opinion lexicon `_HUMAN_CUE` + an "is that too high / should we…" regex `_HUMAN_RE`),
 and the shared `_schema_tokens` helper — so a cue word that is actually a **column name** ("show
@@ -675,7 +675,7 @@ Each: *what we chose, the alternative, and why.*
 4. **Taxonomy-path dims instead of flat hand-named type dims.** Each entity value fires its
    **whole Wikidata `P279` ancestor path** (root→leaf), not one hand-named neuron. *Why:* typing
    is grounded in a real, navigable taxonomy, and the leaf dim maps directly to a
-   `wikipedia."<type>"` table.
+   `knowledgebase."<type>"` table.
 5. **Re-anchor the readout on clean Wikidata instances.** Noisy embedding-mapped CSV cells made
    non-geo dims non-discriminative; the non-geo pool was replaced with clean `P31` instances and
    only the relational readout re-trained (encoder frozen, geo spine skipped). *Why:* a `street`
@@ -687,7 +687,7 @@ Each: *what we chose, the alternative, and why.*
    a full bulk import.
 7. **One serving process, three endpoints.** *Alternative:* one service per endpoint. *Why:* the
    endpoints share one model and one code path; a single `prereasoner-api` service means one
-   deploy, one warm-up, one lock discipline (`/api/reason` + `/api/world` share the model;
+   deploy, one warm-up, one lock discipline (`/api/reason` + `/api/knowledge` share the model;
    `/api/dimension` is independent).
 8. **Streaming out-of-band, HTTP as fallback.** *Alternative:* hold the HTTP response open (or
    chunk it) for the whole computation. *Why:* proxy timeouts break long geo queries; an optional
@@ -732,19 +732,19 @@ Each: *what we chose, the alternative, and why.*
   `sort_*`, `limit`); what turns the readout into SQL.
 - **Router** — types a column to its taxonomy leaf (QID + `wikipedia` table) from the anchored
   taxonomy dims, choosing the world table to join (`engine/router.py`).
-- **ensure_entity** — `engine/world_sync.py: ensure_entity(qid, type_qid)`: lazily fetches a
-  QID's faithful row from WDQS into `wikipedia."<type>"` the first time it's needed.
+- **ensure_entity** — `engine/knowledge_sync.py: ensure_entity(qid, type_qid)`: lazily fetches a
+  QID's faithful row from WDQS into `knowledgebase."<type>"` the first time it's needed.
 - **bridge** — a per-user table: `"<csv> connected to wikipedia"` (resolved cell → QID, backs
   the join) and `"<csv> unconnected to wikipedia"` (encoder vector per free-text cell, backs the
   semantic predicate).
-- **search_path** — the Postgres setting `"<sub>", wikipedia, world, public` that lets one query
+- **search_path** — the Postgres setting `"<sub>", knowledgebase, public` that lets one query
   see the user's tables, the world DB, and the resolution index together.
 - **clarify gate** — returns a "did you mean?" rephrasing when the SQL would silently drop part
   of the question (a resolved-but-unfiltered entity, or a measure with no aggregate). Answered in
   the chat rail by the conversational layer (§10), not a page redirect.
 - **conversational layer** — the optional Sonnet surface behind `POST /api/converse` (§10) that
   answers non-data messages and presents computed answers in words. It never emits a number.
-- **coverage pre-gate** — `ComposedWorldQuery._has_data_signal`: a message with no data intent, no
+- **coverage pre-gate** — `ComposedKnowledgeQuery._has_data_signal`: a message with no data intent, no
   schema word, and no resolvable entity short-circuits with `low_confidence` before any reasoning,
   so it's answered conversationally instead of forced into a degenerate query.
 - **present / human tone** — the "only when signalled" presentation path: `_human_tone` detects

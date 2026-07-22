@@ -1,4 +1,4 @@
-"""auth.py — Firebase (Google) token verification, shared by /api/reason and /api/world.
+"""auth.py — Firebase (Google) token verification, shared by /api/reason and /api/knowledge.
 
 The per-user Postgres schema is ALWAYS the verified Google sub (never client-supplied), and the RTDB stream
 key is the verified Firebase uid — a client cannot choose another user's schema OR another user's stream.

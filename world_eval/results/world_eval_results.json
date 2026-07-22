@@ -95,7 +95,7 @@
       "verdict": "PASS",
       "passed": true,
       "lenient": true,
-      "pred_sql": "SELECT SUM( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"sales connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"sales\".\"country\" JOIN (SELECT DISTINCT ON (lower(\"canonical\")) lower(\"canonical\") AS cn, \"qid\" FROM world.\"words\" WHERE \"type\"='country' AND \"qid\" IS NOT NULL ORDER BY lower(\"canonical\"), \"qid\") __bridge0_w ON __bridge0_w.cn = lower(__bridge0.canon) JOIN \"country\" ON \"country\".\"qid\" = __bridge0_w.\"qid\" WHERE \"country\".\"continent\" = 'Q48'",
+      "pred_sql": "SELECT SUM( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"sales connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"sales\".\"country\" JOIN (SELECT DISTINCT ON (lower(\"canonical\")) lower(\"canonical\") AS cn, \"qid\" FROM knowledgebase.\"words\" WHERE \"type\"='country' AND \"qid\" IS NOT NULL ORDER BY lower(\"canonical\"), \"qid\") __bridge0_w ON __bridge0_w.cn = lower(__bridge0.canon) JOIN \"country\" ON \"country\".\"qid\" = __bridge0_w.\"qid\" WHERE \"country\".\"continent\" = 'Q48'",
       "error": null
     },
     {

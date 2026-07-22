@@ -2,14 +2,14 @@
 gen20 — sync the taxonomy TYPE hierarchy into the live world DB, so the expanded world model knows EVERY accepted/
 added type + its P279 parents to root, keyed by qid (the join + routing primary key).
 
-  world."types"  (qid PK, label, parent_qid, is_leaf, world_table, depth)  — the type DAG (one row per node)
-  world."words"  type='type' rows                                          — each type label embedded (bge) + qid,
+  knowledgebase."types"  (qid PK, label, parent_qid, is_leaf, world_table, depth)  — the type DAG (one row per node)
+  knowledgebase."words"  type='type' rows                                          — each type label embedded (bge) + qid,
                                                                              so a TYPE mention / column type resolves.
 
 Grounded: reuses rollup_taxonomy.lpath(wd, qid) = the SAME clean qid+label P279 path the taxonomy is built from (glue/
 country-bound intermediates dropped, capped at category_9) — never re-derived.
 
-  $env:WORLD_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-world-pg-password --project prereasoner-inference)
+  $env:KB_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-kb-pg-password --project prereasoner-inference)
   $env:PYTHONUTF8=1; python -m training.world.sync_world_types
 """
 from __future__ import annotations
@@ -44,24 +44,24 @@ def main():
         return 0 if (not p or p not in nodes or q in seen) else 1 + depth(p, seen + (q,))
 
     cn = _pg(); cur = cn.cursor()
-    cur.execute('DROP TABLE IF EXISTS world."types"')
-    cur.execute('CREATE TABLE world."types" (qid text PRIMARY KEY, label text, parent_qid text, '
+    cur.execute('DROP TABLE IF EXISTS knowledgebase."types"')
+    cur.execute('CREATE TABLE knowledgebase."types" (qid text PRIMARY KEY, label text, parent_qid text, '
                 'is_leaf boolean, world_table text, depth int)')
     for q, n in nodes.items():
-        cur.execute('INSERT INTO world."types" VALUES (%s,%s,%s,%s,%s,%s)',
+        cur.execute('INSERT INTO knowledgebase."types" VALUES (%s,%s,%s,%s,%s,%s)',
                     (q, n["label"], n["parent"], q in leaves, NODE_TABLE.get(q), depth(q)))
-    cur.execute('CREATE INDEX ix_types_parent ON world."types"(parent_qid)')
-    cur.execute('CREATE INDEX ix_types_leaf ON world."types"(is_leaf)')
+    cur.execute('CREATE INDEX ix_types_parent ON knowledgebase."types"(parent_qid)')
+    cur.execute('CREATE INDEX ix_types_leaf ON knowledgebase."types"(is_leaf)')
     cn.commit()
 
     # sync type labels into world.words (type='type') so a type mention / column type resolves by exact norm or bge NN
     emb = Embedder()
     items = list(nodes.items())
     vecs = emb.encode([n["label"] for _, n in items])
-    cur.execute("DELETE FROM world.\"words\" WHERE type='type'")
+    cur.execute("DELETE FROM knowledgebase.\"words\" WHERE type='type'")
     for (q, n), v in zip(items, vecs):
         lit = "[" + ",".join(f"{x:.6f}" for x in v) + "]"
-        cur.execute('INSERT INTO world."words" (surface,canonical,type,norm,qid,embedding) '
+        cur.execute('INSERT INTO knowledgebase."words" (surface,canonical,type,norm,qid,embedding) '
                     'VALUES (%s,%s,%s,%s,%s,%s)', (n["label"], n["label"], "type",
                                                    normalize_surface(n["label"]), q, lit))
     cn.commit()

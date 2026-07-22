@@ -1,6 +1,6 @@
 """Probe D+ (headline): reproduce the PreReasoner system's text-to-SQL on Spider, fully OFFLINE.
 
-The live stack routes each question (ComposedWorldQuery._composed):
+The live stack routes each question (ComposedKnowledgeQuery._composed):
   * a question whose LEARNED primitive head fires a DEPTH primitive
     (EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING) -> the ComposeEngine view stack;
   * everything else -> the delegate, whose SQL for a self-contained (no-world) table is the tables.py
@@ -42,7 +42,7 @@ from spider_eval import (
 )
 
 DIFFS = ["easy", "medium", "hard", "extra"]
-# Mirrors the LIVE routing gate — keep in sync with engine.world_compose.ComposedWorldQuery.DEPTH_PRIMS.
+# Mirrors the LIVE routing gate — keep in sync with engine.knowledge_compose.ComposedKnowledgeQuery.DEPTH_PRIMS.
 # The Spider-only trim of TOPN/SORT/TIME was REVERTED: it lifted the benchmark but broke live composite view
 # stacks (test_geo). This mirror tracks the live gate, so the Spider number here reflects real behavior.
 DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
@@ -142,12 +142,12 @@ def compose_predict(eng, tabs, question):
             "plan": res.get("plan"), "primitives": res.get("primitives")}
 
 
-# the DEPTH composition views — mirrors engine.world_compose.ComposedWorldQuery, SPLIT by whether the slot-filler
+# the DEPTH composition views — mirrors engine.knowledge_compose.ComposedKnowledgeQuery, SPLIT by whether the slot-filler
 # can also express them. ENGINE_ONLY (yoy/running/share/divide/having) the slot-filler cannot do -> always stand on
 # compose. SLOT_OVERLAP (topn/sort/time_filter) the slot-filler ALSO does WITH projection+WHERE -> stand on compose
 # only when a WORLD join is in the plan (world_join/world_filter). On Spider world=None, so a world join NEVER
 # appears -> SLOT_OVERLAP always falls to the slot-filler (recovering the projection/sort losses), while the live
-# world composites (world join present) still stand. Keep in sync with world_compose.py.
+# world composites (world join present) still stand. Keep in sync with knowledge_compose.py.
 _ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
 _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 

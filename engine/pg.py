@@ -1,7 +1,7 @@
 """LIVE multi-tenant Postgres serving.
 
-Reuses the WorldTableQuery PLANNER **unchanged** (route/meaning-graph/SQL assembly) and only swaps EXECUTION:
-the generated SQL runs against live Postgres in `search_path = "<schema>", wikipedia, world, public` instead
+Reuses the KnowledgeTableQuery PLANNER **unchanged** (route/meaning-graph/SQL assembly) and only swaps EXECUTION:
+the generated SQL runs against live Postgres in `search_path = "<schema>", knowledgebase, public` instead
 of in-memory SQLite + ATTACH words.db. `<schema>` = the caller's VERIFIED Google sub (per-user, set by the
 server from a verified Firebase token — never client-supplied). Uploaded CSVs are loaded into that schema as
 real tables (persisted). The shared world/wikipedia schemas are built by the db/sync pipeline.
@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import psycopg2
 
-from engine.config import (WORLD_PG_DB, WORLD_PG_HOST, WORLD_PG_PORT, WORLD_PG_SSLMODE, WORLD_PG_USER,
-                           world_pg_password)
+from engine.config import (KB_PG_DB, KB_PG_HOST, KB_PG_PORT, KB_PG_SSLMODE, KB_PG_USER,
+                           kb_pg_password)
 from engine.tables import TableQuery, qident
-from engine.world_tables import WorldTableQuery
+from engine.knowledge_tables import KnowledgeTableQuery
 
 # SQLite affinities -> WIDER Postgres types: SQLite INTEGER is 64-bit and REAL is 8-byte, but Postgres INTEGER
 # is 32-bit (overflows on large SKUs/IDs) and REAL is 4-byte. Map to BIGINT / double precision to match SQLite.
@@ -43,11 +43,11 @@ psycopg2.extensions.register_type(psycopg2.extensions.new_type((1700,), "NUMERIC
 
 def _pg():
     """Connect to the Postgres world DB (unix socket on Cloud Run, host:port + SSL over TCP)."""
-    kw = dict(host=WORLD_PG_HOST, dbname=WORLD_PG_DB, user=WORLD_PG_USER,
-              password=world_pg_password(), connect_timeout=30)
-    if not WORLD_PG_HOST.startswith("/"):
-        kw["port"] = WORLD_PG_PORT
-        kw["sslmode"] = WORLD_PG_SSLMODE
+    kw = dict(host=KB_PG_HOST, dbname=KB_PG_DB, user=KB_PG_USER,
+              password=kb_pg_password(), connect_timeout=30)
+    if not KB_PG_HOST.startswith("/"):
+        kw["port"] = KB_PG_PORT
+        kw["sslmode"] = KB_PG_SSLMODE
     return psycopg2.connect(**kw)
 
 
@@ -58,7 +58,7 @@ def _load_user_schema(cur, schema, sch, tablemap):
     # user schema + world FIRST (they own every table the planner names); `public` LAST so the pgvector `vector`
     # type and its `<=>` operator (installed in public) resolve for the embedding bridge. No shadowing:
     # uploads live in <schema>, world tables/views in world; public holds only the raw Wikidata import + pgvector.
-    cur.execute(f'SET search_path TO {qident(schema)}, wikipedia, world, public')   # wikipedia FIRST: bare world-table names (city/country) resolve to the qid-keyed wikipedia schema
+    cur.execute(f'SET search_path TO {qident(schema)}, knowledgebase, public')   # wikipedia FIRST: bare world-table names (city/country) resolve to the qid-keyed wikipedia schema
     by_t = {}
     for c in sch:
         by_t.setdefault(c["table"], []).append(c)
@@ -70,11 +70,11 @@ def _load_user_schema(cur, schema, sch, tablemap):
         ins = f'INSERT INTO {qident(schema)}.{qident(tname)} VALUES (' + ",".join(["%s"] * len(cols)) + ')'
         for r in t["rows"]:
             rd = dict(zip(t["columns"], r))
-            cur.execute(ins, [WorldTableQuery._coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
+            cur.execute(ins, [KnowledgeTableQuery._coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
 
 
 class _PgCon:
-    """Quacks like the slice of sqlite3.Connection that WorldTableQuery.serve() uses: .execute(sql) -> cursor
+    """Quacks like the slice of sqlite3.Connection that KnowledgeTableQuery.serve() uses: .execute(sql) -> cursor
     with .description/.fetchall(). The answer SQL inlines its literals via qlit, so there are no '?' to translate."""
     def __init__(self, conn):
         self.conn = conn
@@ -105,8 +105,8 @@ class _TableQueryPg(TableQuery):
             conn.close()
 
 
-class PgQuery(WorldTableQuery):
-    """WorldTableQuery planner + Postgres execution, scoped to a per-request verified schema."""
+class PgQuery(KnowledgeTableQuery):
+    """KnowledgeTableQuery planner + Postgres execution, scoped to a per-request verified schema."""
 
     def __init__(self, deploy_dir):
         super().__init__(deploy_dir)
@@ -143,7 +143,7 @@ class PgQuery(WorldTableQuery):
         vals = [v for v in vals if v and v != "None"]
         if not vals:
             return []
-        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO wikipedia, world")
+        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO knowledgebase")
         warns, seen = [], set()
         for v in vals:
             vl = v.lower()
@@ -163,7 +163,7 @@ class PgQuery(WorldTableQuery):
         return warns
 
     def _world_rows(self, joins, seed_values, cap=12):
-        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO wikipedia, world")
+        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO knowledgebase")
         out, seeds = [], [str(v).lower() for v in seed_values if v not in (None, "")]
         for idx, j in enumerate(joins):
             wt, key, w = j["right_table"], j["right_col"], self.words[j["right_table"]]

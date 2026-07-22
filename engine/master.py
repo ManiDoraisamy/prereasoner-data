@@ -2,7 +2,7 @@
 Wikidata doesn't know (their products, reps, regions, SKUs...). It's stored in a per-user Postgres schema
 `m_<hash(sub)>` in the same `world` database as the wikipedia/world schemas, so it persists across ALL of
 that user's conversations and (Phase 3) a query's search_path can span
-`"<conversation>", "<master>", wikipedia, world, public` — joining private + public data in one query.
+`"<conversation>", "<master>", knowledgebase, public` — joining private + public data in one query.
 
 Security mirrors engine.conversations: the user_id is ALWAYS the verified token subject (engine.auth), never
 client-supplied. The schema name is DERIVED from it (md5), so a user can only ever read/write their own

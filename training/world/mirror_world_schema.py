@@ -1,12 +1,12 @@
 """
 gen20 — FULL SCHEMA MIRROR (Mani: "full mirror of schema, data lazy"). For every CONCRETE accepted/added taxonomy
-leaf, discover its real Wikidata property schema and CREATE world."<type>" (columns = the type's Wikidata properties).
+leaf, discover its real Wikidata property schema and CREATE knowledgebase."<type>" (columns = the type's Wikidata properties).
 Data is NOT bulk-loaded — it fills lazily via sync_wikidata_world.lazy_resolve when a CSV cell misses in world.words.
 
 Abstract leaves (legal form, taxonomic rank, anthroponym, "person or organization", macrofamily, administrative
 territorial entity, a recurring-time-interval class, a specific species) are SKIPPED — they aren't world-entity tables.
 
-  $env:WORLD_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-world-pg-password --project prereasoner-inference)
+  $env:KB_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-kb-pg-password --project prereasoner-inference)
   $env:PYTHONUTF8=1; python -m training.world.mirror_world_schema
 """
 from __future__ import annotations

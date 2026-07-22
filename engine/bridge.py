@@ -17,7 +17,7 @@ cross-space garbage — which is exactly why the encoder is unified.
 
 This module is a SELF-CONTAINED LOCAL demonstration (SQLite + numpy cosine) of the hybrid query shape.
 PRODUCTION wires the same shape onto the live world Postgres + pgvector (`<=>` operator, the bge/altLabel
-resolver for the connected FKs) — see engine.world_query. The serving path imports STOP (the shared
+resolver for the connected FKs) — see engine.knowledge_query. The serving path imports STOP (the shared
 predicate stopword list) from here.
 """
 from __future__ import annotations

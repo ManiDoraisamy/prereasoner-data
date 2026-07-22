@@ -1,4 +1,4 @@
-"""EXPANDED geo test suite (LIVE world Postgres). Covers the two geo capabilities of WorldReasoner end to end,
+"""EXPANDED geo test suite (LIVE world Postgres). Covers the two geo capabilities of KnowledgeReasoner end to end,
 plus the canonical regressions and composite view-stacks, with ORACLE-checked expectations computed directly off
 the live `world`/`wikipedia`/`public` schemas (so the numbers are derived, not hard-coded guesses):
 
@@ -11,7 +11,7 @@ the live `world`/`wikipedia`/`public` schemas (so the numbers are derived, not h
 The (A)/(B) ORACLES are recomputed here in SQL from the SAME live tables the serve path reads, then the model's
 served answer is checked against them. Geo lazy-fill can be slow on first hit -> per-call retry with backoff.
 
-  Needs a synced world Postgres (docker-compose + db/sync) and WORLD_PG_* env vars set.
+  Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_geo
 """
 from __future__ import annotations
@@ -71,7 +71,7 @@ def _norm(s):
 
 
 def oracle_nearby(cur, ref, big, limit=5):
-    """Replicate WorldReasoner._nearby exactly: resolve the reference in public.settlement (highest population),
+    """Replicate KnowledgeReasoner._nearby exactly: resolve the reference in public.settlement (highest population),
     then the haversine-ordered nearest `limit` settlements with population > (150000 if big else 1), excluding the
     exact ref name. -> (ref_name, ref_qid, [(name, country, population, km_float)]) or (None, None, [])."""
     cur.execute("SELECT name,lat,lng,qid FROM public.settlement WHERE lower(name)=lower(%s) "
@@ -81,7 +81,7 @@ def oracle_nearby(cur, ref, big, limit=5):
         return None, None, []
     name, lat, lng, qid = row
     minpop = 150000 if big else 1
-    # MIRROR WorldReasoner._nearby exactly (incl. the bugfix exclusions): drop the reference's own administrative
+    # MIRROR KnowledgeReasoner._nearby exactly (incl. the bugfix exclusions): drop the reference's own administrative
     # subdivisions (admin_qid = ref qid) + arrondissement-named rows + QID-string/null names, so the oracle and the
     # served result stay byte-identical.
     sql = (f"SELECT p.name, p.country, p.population, round(({HAVERSINE})::numeric,0) AS km "
@@ -99,25 +99,25 @@ def oracle_nearby(cur, ref, big, limit=5):
 def oracle_city_pop(cur, city):
     """Resolve a city cell -> qid (world.words, is_primary then population), then its world.Cities population. The
     exact pick() the compose/entity layers use for the population view stack. -> (qid, population) or (None, None)."""
-    cur.execute("SELECT qid, is_primary, (props->>'population')::bigint FROM world.\"words\" "
+    cur.execute("SELECT qid, is_primary, (props->>'population')::bigint FROM knowledgebase.\"words\" "
                 "WHERE type='city' AND qid IS NOT NULL AND norm=%s", (_norm(city),))
     cands = cur.fetchall()
     if not cands:
         return None, None
     qid = sorted(cands, key=lambda x: (x[1] or 0, x[2] or 0), reverse=True)[0][0]
-    cur.execute('SELECT population FROM world."Cities" WHERE qid=%s', (qid,))
+    cur.execute('SELECT population FROM knowledgebase."Cities" WHERE qid=%s', (qid,))
     r = cur.fetchone()
     return qid, (r[0] if r else None)
 
 
 # --------------------------------------------------------------------------------------------------------------
 def main():
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("WORLD_PG_PASSWORD not set — skipping (live world Postgres)")
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("KB_PG_PASSWORD not set — skipping (live world Postgres)")
         return
     from engine.pg import _pg
-    from engine.world_compose import ComposedWorldQuery
-    from engine.world import WorldReasoner
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine.knowledge import KnowledgeReasoner
 
     sub = os.environ.get("GEO_TEST_SUB", "geotest")
     cn = _pg()
@@ -128,15 +128,15 @@ def main():
     CUST = {"name": "customers", "columns": ["name", "city", "amount"],
             "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
 
-    # ONE model instance (like production: the server loads a single WorldReasoner). wr wraps a ComposedWorldQuery
+    # ONE model instance (like production: the server loads a single KnowledgeReasoner). wr wraps a ComposedKnowledgeQuery
     # at wr.composed; routing every composed call through wr.composed (instead of a SEPARATE instance) keeps a SINGLE set of
     # per-schema connections. Two instances against the SAME `sub` schema DEADLOCK: instance A leaves its bridge build
     # idle-in-transaction holding a lock on "<sub>.customers connected to wikipedia", and instance B's
-    # `ALTER TABLE … ADD COLUMN world_qid` (world_query._persist_connected) then blocks forever on that relation lock.
-    print("loading WorldReasoner (LoRA Qwen + bge + spaCy; slow on CPU)…", flush=True)
+    # `ALTER TABLE … ADD COLUMN world_qid` (knowledge_query._persist_connected) then blocks forever on that relation lock.
+    print("loading KnowledgeReasoner (LoRA Qwen + bge + spaCy; slow on CPU)…", flush=True)
     t0 = time.time()
-    wr = WorldReasoner()
-    qc = wr.composed                                                # the SAME ComposedWorldQuery wr delegates to (one connection set)
+    wr = KnowledgeReasoner()
+    qc = wr.composed                                                # the SAME ComposedKnowledgeQuery wr delegates to (one connection set)
     print(f"  models loaded in {time.time() - t0:.0f}s\n", flush=True)
 
     # ============================================================ (A) NEARBY by lat/lng ==========================
@@ -323,7 +323,7 @@ def main():
     print("\n== (D) delegation sanity ==", flush=True)
     rd = wr.serve([CUST], "total amount in France", sub)
     dv = (((rd.get("result") or rd.get("answer") or {}).get("rows") or [[None]])[0] or [None])[0]
-    ok("delegate: WorldReasoner passes the France aggregate through unchanged (=180)", dv == 180, f"got={dv}")
+    ok("delegate: KnowledgeReasoner passes the France aggregate through unchanged (=180)", dv == 180, f"got={dv}")
 
     # ============================================================ (E) CONCURRENCY — no bridge deadlock ===========
     # Regression guard. Two service instances handling concurrent requests for the SAME per-user sub (the normal
@@ -345,8 +345,8 @@ def main():
 
     base_pids = _world_pids()                                    # baseline: everything alive BEFORE instance B / the race
     t1 = time.time()
-    print("  building a 2nd ComposedWorldQuery instance (own connection set)…", flush=True)
-    qc_b = ComposedWorldQuery()                                 # instance B: separate _rconn, separate bridge writer
+    print("  building a 2nd ComposedKnowledgeQuery instance (own connection set)…", flush=True)
+    qc_b = ComposedKnowledgeQuery()                                 # instance B: separate _rconn, separate bridge writer
     print(f"    built in {time.time() - t1:.0f}s", flush=True)
     results, errors = {}, {}
 

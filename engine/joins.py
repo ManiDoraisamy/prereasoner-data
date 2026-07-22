@@ -1,7 +1,7 @@
 """Deterministic many-to-one FK discovery for the multi-table JOIN base of the composition engine (the
 offline analog of engine.relations / the live world resolution). A child.col is an FK to parent.key when
 parent.key is UNIQUE and every child value is contained in it (an inclusion dependency), with a name/shape
-compatibility check. The live serving path (engine.world_compose) uses the world resolution instead; this
+compatibility check. The live serving path (engine.knowledge_compose) uses the world resolution instead; this
 keeps the composition engine testable in plain SQLite.
 """
 from __future__ import annotations

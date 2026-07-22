@@ -1,9 +1,9 @@
-"""Build world."types" — the type-taxonomy DAG (qid PK) — from db/sync/data/taxonomy.csv,
-and register every type label in world."words" (type='type') so a TYPE mention or a
+"""Build knowledgebase."types" — the type-taxonomy DAG (qid PK) — from db/sync/data/taxonomy.csv,
+and register every type label in knowledgebase."words" (type='type') so a TYPE mention or a
 column type resolves by exact norm or bge nearest-neighbour.
 
-  world."types"  (qid PK, label, parent_qid, is_leaf, world_table, depth, resolver_type)
-  world."words"  type='type' rows (one embedded label per node, qid-linked)
+  knowledgebase."types"  (qid PK, label, parent_qid, is_leaf, world_table, depth, resolver_type)
+  knowledgebase."words"  type='type' rows (one embedded label per node, qid-linked)
 
 Node lineage (root -> leaf, with per-node qids) is derived from the real Wikidata P279
 chain (walked via the Wikidata API, cached in db/sync/data/p279_cache.json so re-runs —
@@ -11,11 +11,11 @@ and typically the first run — need no network). resolver_type links the legacy
 words.type strings to their node ('city' -> Q515), which the engine's qid taxonomy walk
 uses (see unify_words_qid.py for the original in-place migration + verification).
 
-Read by the engine: sync-on-demand table naming (wikipedia."<exact label>"), world17
+Read by the engine: sync-on-demand table naming (knowledgebase."<exact label>"), world17
 _resolve_world_qid, route19 taxonomy walk.
 
 Run (after build_words.py):
-  export WORLD_PG_HOST=... WORLD_PG_PASSWORD=...        # see db/sync/_conn.py
+  export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/sync_types.py
 """
 from __future__ import annotations
@@ -133,24 +133,24 @@ def main():
         return 0 if (not p or p not in nodes or q in seen) else 1 + depth(p, seen + (q,))
 
     cn = connect(); cur = cn.cursor()
-    cur.execute('TRUNCATE world."types"')                                  # table created by init.sql
+    cur.execute('TRUNCATE knowledgebase."types"')                                  # table created by init.sql
     for q, n in nodes.items():
-        cur.execute('INSERT INTO world."types" (qid,label,parent_qid,is_leaf,world_table,depth) '
+        cur.execute('INSERT INTO knowledgebase."types" (qid,label,parent_qid,is_leaf,world_table,depth) '
                     'VALUES (%s,%s,%s,%s,%s,%s)',
                     (q, n["label"], n["parent"], q in leaves, NODE_TABLE.get(q), depth(q)))
     # link the legacy resolver type strings onto their nodes ('city' -> Q515 ...)
     for s, q in RESOLVER_QID.items():
-        cur.execute('UPDATE world."types" SET "resolver_type"=%s WHERE qid=%s', (s, q))
+        cur.execute('UPDATE knowledgebase."types" SET "resolver_type"=%s WHERE qid=%s', (s, q))
     cn.commit()
 
     # sync type labels into world.words (type='type') so a type mention / column type resolves
     emb = Embedder.get()
     items = list(nodes.items())
     vecs = emb.encode([n["label"] for _, n in items])
-    cur.execute("DELETE FROM world.\"words\" WHERE type='type'")
+    cur.execute("DELETE FROM knowledgebase.\"words\" WHERE type='type'")
     for (q, n), v in zip(items, vecs):
         lit = "[" + ",".join(f"{x:.6f}" for x in v) + "]"
-        cur.execute('INSERT INTO world."words" (surface,canonical,type,norm,qid,embedding) '
+        cur.execute('INSERT INTO knowledgebase."words" (surface,canonical,type,norm,qid,embedding) '
                     'VALUES (%s,%s,%s,%s,%s,%s)', (n["label"], n["label"], "type",
                                                    normalize_surface(n["label"]), q, lit))
     cn.commit()

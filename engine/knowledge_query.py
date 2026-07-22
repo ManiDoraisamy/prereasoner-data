@@ -1,4 +1,4 @@
-"""WorldQuery — the UNIFIED ENCODER wired into the LIVE /api/world path, end to end.
+"""KnowledgeQuery — the UNIFIED ENCODER wired into the LIVE /api/knowledge path, end to end.
 
 This realizes the unified-encoder objective in production (not just /api/dimension analyze):
   * OPERATOR + OPERAND from the metric space  — inherited EncoderQuery.read_op_all (no MEASURE_NOUNS/table_noun);
@@ -14,8 +14,8 @@ This realizes the unified-encoder objective in production (not just /api/dimensi
     The predicate vector and the stored column vectors come from the SAME unified encoder (EncoderQuery._encode),
     so `<=>` is a valid same-space cosine — the reason the encoder had to be unified first.
 
-Class graph:  WorldQuery(EncoderQuery, EntityQuery)
-  MRO = [WorldQuery, EncoderQuery, EntityQuery, RoutedQuery, PgQuery, WorldTableQuery, TableQuery, …] so:
+Class graph:  KnowledgeQuery(EncoderQuery, EntityQuery)
+  MRO = [KnowledgeQuery, EncoderQuery, EntityQuery, RoutedQuery, PgQuery, KnowledgeTableQuery, TableQuery, …] so:
     - read_op_all / read_op_model / _is_id  resolve to EncoderQuery (the metric-space operator), NOT keywords.
     - serve / meaning_filter / _world_joins / route / _resolve  resolve to EntityQuery (the world machinery + bge).
     - schema / _encode / _layers  resolve to TableQuery, but run on the UNIFIED qwen (overlaid in __init__).
@@ -25,9 +25,9 @@ import os
 
 import numpy as np
 
-from engine.config import DATA_DIR, world_model_route_enabled
+from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.tables import qident, qlit
-from engine.world_tables import WorldTableQuery
+from engine.knowledge_tables import KnowledgeTableQuery
 from engine.pg import _pg, _PGTYPE
 from engine.entities import EntityQuery, WORLD_TABLE_TYPE, TYPE_TO_FRIENDLY
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
@@ -53,8 +53,8 @@ def _is_num(v):
         return False
 
 
-class WorldQuery(EncoderQuery, EntityQuery):
-    """Live /api/world served by the unified encoder: bge for connected entity resolution, the unified encoder
+class KnowledgeQuery(EncoderQuery, EntityQuery):
+    """Live /api/knowledge served by the unified encoder: bge for connected entity resolution, the unified encoder
     for the anchored readout + operator + the unconnected free-text bridge. Persists the two bridge tables per
     user and answers the hybrid structured+semantic query; delegates aggregates / plain world joins to
     EntityQuery."""
@@ -96,14 +96,14 @@ class WorldQuery(EncoderQuery, EntityQuery):
 
     def _grounds(self, cells, wtype):
         """does the column GROUND? i.e. do enough of its cells resolve to real `wtype` entities? Cheap exact-
-        normalized membership over world."words" (the bridge does the fuzzy remainder later). The MODEL decides
+        normalized membership over knowledgebase."words" (the bridge does the fuzzy remainder later). The MODEL decides
         the TYPE; this only confirms the cells belong to the world — so a loose city false-positive on a name
         column (cells don't ground) is dropped (null), not joined. Returns True iff grounded."""
         norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
         if len(norms) < 2:
             return False
         cur = self._rconn().cursor()
-        cur.execute('SELECT COUNT(DISTINCT norm) FROM world."words" WHERE type=%s AND norm = ANY(%s)', (wtype, norms))
+        cur.execute('SELECT COUNT(DISTINCT norm) FROM knowledgebase."words" WHERE type=%s AND norm = ANY(%s)', (wtype, norms))
         hit = cur.fetchone()[0]
         return hit >= max(2, self.GROUND_FRAC * len(norms))
 
@@ -112,7 +112,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
         the world join + the world_qid FK (NOT value-membership). The model decides the TYPE; a typed column
         only JOINS if its cells GROUND to that type (_grounds) — so a loose false-positive (name->city) is
         dropped because the names don't resolve, never a wrong answer. super()'s value-membership routing fills
-        ONLY columns the model leaves untyped (coverage). Any model failure (or WORLD_MODEL_ROUTE=0) falls back
+        ONLY columns the model leaves untyped (coverage). Any model failure (or KB_MODEL_ROUTE=0) falls back
         to pure value-membership so the live demo can never hard-break."""
         import hashlib
         sig = (table["name"], tuple(table["columns"]),
@@ -121,7 +121,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
         if sig in cache:                                                   # per (schema,values), not on every query
             return dict(cache[sig])
         routes = {}
-        if world_model_route_enabled():
+        if kb_model_route_enabled():
             try:
                 r = self._router()
                 for ci, col in enumerate(table["columns"]):
@@ -139,7 +139,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
                         routes[(table["name"], col)] = friendly
             except Exception as e:                                         # NEVER silent: log loudly so a degradation
                 import traceback                                           # to value-membership is visible in the logs
-                print(f"[world_query] !! MODEL ROUTING FAILED -> value-membership fallback: {e!r}", flush=True)
+                print(f"[knowledge_query] !! MODEL ROUTING FAILED -> value-membership fallback: {e!r}", flush=True)
                 traceback.print_exc()
                 routes = {}
         for k, v in super().route(table).items():
@@ -150,41 +150,41 @@ class WorldQuery(EncoderQuery, EntityQuery):
         return routes
 
     # ---------------- NON-GEO world join + LAZY fill ----------------
-    # The faithful Wikidata tables (world."hospital"/"software"/...) join like the geo ones: resolve the uploaded
-    # cell -> the type's qid (world.words, type=<leaf>), JOIN world."<leaf>" ON qid, filter by a world attribute
+    # The faithful Wikidata tables (knowledgebase."hospital"/"software"/...) join like the geo ones: resolve the uploaded
+    # cell -> the type's qid (world.words, type=<leaf>), JOIN knowledgebase."<leaf>" ON qid, filter by a world attribute
     # (country), aggregate the uploaded metric. Cells not in words are LAZY-filled from Wikidata first.
     def _resolve_world_qid(self, value, label, type_qid):
-        """value -> the world qid. world.words.type stores the EXACT Wikidata label (what world_sync's
+        """value -> the world qid. world.words.type stores the EXACT Wikidata label (what knowledge_sync's
         ensure_entity inserts), NOT the snake routing leaf — so look it up by that exact label, else a lazy-filled
         multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path forever. Exact
         norm match, then bge NN, then LAZY Wikidata fill on a miss."""
         cur = self._rconn().cursor()
-        cur.execute('SELECT label FROM world."types" WHERE qid=%s', (type_qid,))
+        cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
         _r = cur.fetchone()
         wl = (str(_r[0]) if _r and _r[0] else label)                  # the exact label, matching the lazy insert
         n = normalize_surface(value)
-        cur.execute('SELECT qid FROM world."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL LIMIT 1', (wl, n))
+        cur.execute('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL LIMIT 1', (wl, n))
         row = cur.fetchone()
         if row:
             return row[0]
         vec = pgvector_literal(Embedder.get().encode([value])[0])
-        cur.execute('SELECT qid, 1-(embedding <=> %s::vector) FROM world."words" WHERE type=%s AND qid IS NOT NULL '
+        cur.execute('SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" WHERE type=%s AND qid IS NOT NULL '
                     'ORDER BY embedding <=> %s::vector LIMIT 1', (vec, wl, vec))
         row = cur.fetchone()
         if row and row[1] is not None and row[1] >= 0.85:
             return row[0]
         try:                                                              # LAZY: pull this one entity from Wikidata
-            from engine.world_sync import lazy_resolve
+            from engine.knowledge_sync import lazy_resolve
             return lazy_resolve(value, type_qid, label)
         except Exception as e:                                            # noqa: BLE001
-            print(f"[world_query] lazy_resolve failed for {value!r}/{label}: {e}", flush=True); return None
+            print(f"[knowledge_query] lazy_resolve failed for {value!r}/{label}: {e}", flush=True); return None
 
     def _world_type_map(self):
         """{snake(leaf label) -> type qid} for the mirrored non-geo tables, from taxonomy.csv. Cached."""
         m = getattr(self, "_wtmap", None)
         if m is None:
             import csv as _csv
-            from engine.world_sync import snake
+            from engine.knowledge_sync import snake
             m = {}
             try:
                 for r in _csv.DictReader(open(DATA_DIR / "taxonomy.csv", encoding="utf-8")):
@@ -203,7 +203,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
         it: Router.route non-geo leaves by their DIRECT leaf-dim firing (the path-decay router mis-picks because
         broad ancestors like 'organization' are shared — a hospital column fires the hospital dim 0.197 >
         street/sports_team); Wikidata selects by the DIRECT leaf dim. No column-header heuristic."""
-        if not world_model_route_enabled():
+        if not kb_model_route_enabled():
             return None
         import re as _re
         cr = self._resolve(question, "country")
@@ -229,17 +229,17 @@ class WorldQuery(EncoderQuery, EntityQuery):
                     # so a person-name column (which grounds as 'writer') can't hijack the plain geo aggregate.
                     if not any(_re.search(r"\b" + w + r"s?\b", ql) for w in lf.split("_") if len(w) > 3):
                         continue
-                    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='world' "
+                    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' "
                                 "AND table_name=%s AND column_name='country'", (lf,))
                     if not cur.fetchone():
-                        continue                                          # need world."<lf>".country to filter
+                        continue                                          # need knowledgebase."<lf>".country to filter
                     return {"table": t, "col": col, "label": lf, "qid": tmap[lf], "country": cr[0], "cells": cells}
         return None
 
     def _serve_world_type(self, norm, question, sch, plan, schema):
         """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
         e.g. hospitals.csv(hospital, beds) + 'total beds for hospitals in United States' -> resolve each hospital to
-        world.\"hospital\" (lazy-fill from Wikidata on miss), keep those whose .country = 'United States', SUM(beds)."""
+        knowledgebase.\"hospital\" (lazy-fill from Wikidata on miss), keep those whose .country = 'United States', SUM(beds)."""
         t = plan["table"]; col = plan["label"]; label = plan["label"]; country = plan["country"]
         ci = t["columns"].index(plan["col"])
         op = (self.read_op_model([t], question)[0]) or "COUNT"
@@ -268,17 +268,17 @@ class WorldQuery(EncoderQuery, EntityQuery):
             pairs.append((wq, mv))
 
         cur = self._rconn().cursor()
-        cur.execute('SELECT label FROM world."types" WHERE qid=%s', (plan["qid"],))
+        cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
         _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # wikipedia table = the EXACT Wikidata label
         qids = sorted({wq for wq, _ in pairs})
-        try:                                                              # LAZY-SYNC the resolved entities into wikipedia."<wl>"
-            from engine.world_sync import ensure_entity                   # (qid PK + country qid FK) so the join below hits
+        try:                                                              # LAZY-SYNC the resolved entities into knowledgebase."<wl>"
+            from engine.knowledge_sync import ensure_entity                   # (qid PK + country qid FK) so the join below hits
             for q in qids:
                 ensure_entity(q, plan["qid"])
         except Exception as e:                                            # noqa: BLE001 — never block on a sync miss
-            print(f"[world_query] non-geo lazy-fill failed: {e}", flush=True)
+            print(f"[knowledge_query] non-geo lazy-fill failed: {e}", flush=True)
         # country filter is qid = qid (plan["country"] is a country QID; w."country" is the country's qid FK)
-        cur.execute(f'SELECT qid FROM wikipedia."{wl}" WHERE qid = ANY(%s) AND lower("country") = lower(%s)', (qids, country))
+        cur.execute(f'SELECT qid FROM knowledgebase."{wl}" WHERE qid = ANY(%s) AND lower("country") = lower(%s)', (qids, country))
         keep = {r[0] for r in cur.fetchall()}
         hit = [(wq, mv) for wq, mv in pairs if wq in keep]
         if op == "COUNT":
@@ -290,11 +290,11 @@ class WorldQuery(EncoderQuery, EntityQuery):
             val = round(sum(mvs) / len(mvs), 2) if mvs else 0
         val = int(val) if isinstance(val, float) and val == int(val) else val
         disp = f'{op}({measure})' if measure else 'COUNT(*)'
-        sql = (f'SELECT {disp} FROM "{t["name"]}" u JOIN wikipedia."{wl}" w ON w.qid = resolve(u."{plan["col"]}") '
+        sql = (f'SELECT {disp} FROM "{t["name"]}" u JOIN knowledgebase."{wl}" w ON w.qid = resolve(u."{plan["col"]}") '
                f'WHERE w."country" = {qlit(country)}')
         return {"question": question, "as_of": None, "sql": sql,
                 "result": {"columns": [disp], "rows": [[val]]},          # "columns" (NOT "cols") — the client render +
-                "model": f'engine - non-geo world join (wikipedia."{wl}", lazy-filled)'}  # geo path both use .columns
+                "model": f'engine - non-geo world join (knowledgebase."{wl}", lazy-filled)'}  # geo path both use .columns
 
     # ---------------- connected / unconnected split ----------------
     def _avglen(self, table, col):
@@ -381,10 +381,10 @@ class WorldQuery(EncoderQuery, EntityQuery):
         keys = sorted({k for _, k in pairs if k})
         country = {}
         if keys and wtype == "city":
-            cur.execute('SELECT qid, canon_country FROM world."words" WHERE type=\'city\' AND qid = ANY(%s)', (keys,))
+            cur.execute('SELECT qid, canon_country FROM knowledgebase."words" WHERE type=\'city\' AND qid = ANY(%s)', (keys,))
             country = {q: cc for q, cc in cur.fetchall()}
         elif keys:
-            cur.execute('SELECT canonical, canon_country FROM world."words" WHERE type=%s AND canonical = ANY(%s)',
+            cur.execute('SELECT canonical, canon_country FROM knowledgebase."words" WHERE type=%s AND canonical = ANY(%s)',
                         (wtype, keys))
             country = {c: (cc or c) for c, cc in cur.fetchall()}
             if wtype == "country":
@@ -440,7 +440,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
         cur.execute(f'CREATE TABLE {qident(schema)}.{qident(tn)} ({", ".join(coldefs)})')
         ins = f'INSERT INTO {qident(schema)}.{qident(tn)} VALUES (' + ",".join(["%s"] * (len(cols) + 1)) + ')'
         for pk, r in enumerate(rows):
-            cur.execute(ins, [pk] + [WorldTableQuery._coerce(r[ci], affof.get(cols[ci], "TEXT")) for ci in range(len(cols))])
+            cur.execute(ins, [pk] + [KnowledgeTableQuery._coerce(r[ci], affof.get(cols[ci], "TEXT")) for ci in range(len(cols))])
         un = f"{tn} unconnected to wikipedia"
         cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(un)}')
         cur.execute(f'CREATE TABLE {qident(schema)}.{qident(un)} '
@@ -504,11 +504,11 @@ class WorldQuery(EncoderQuery, EntityQuery):
 
     # ---------------- clarify: detect a query that dropped part of the question + propose a rephrasing ----------------
     def _word_qid(self, w):
-        """the world qid a single content word resolves to (exact normalized match in world.\"words\" across the geo
+        """the world qid a single content word resolves to (exact normalized match in knowledgebase.\"words\" across the geo
         entity types), so _uncovered can tell a word is COVERED when its QID appears in the qid-keyed wikipedia SQL."""
         try:
             cur = self._rconn().cursor()
-            cur.execute('SELECT qid FROM world."words" WHERE norm=%s AND qid IS NOT NULL '
+            cur.execute('SELECT qid FROM knowledgebase."words" WHERE norm=%s AND qid IS NOT NULL '
                         "AND type IN ('country','continent','city','state') LIMIT 1", (normalize_surface(w),))
             r = cur.fetchone()
             return r[0] if r else None
@@ -656,12 +656,12 @@ class WorldQuery(EncoderQuery, EntityQuery):
             return qid                                                # already a name (defensive) -> pass through
         try:
             cur = self._rconn().cursor()
-            cur.execute('SELECT canonical FROM world."words" WHERE type=\'country\' AND qid=%s '
+            cur.execute('SELECT canonical FROM knowledgebase."words" WHERE type=\'country\' AND qid=%s '
                         'AND canonical IS NOT NULL LIMIT 1', (qid,))
             row = cur.fetchone()
             return row[0] if row and row[0] else None
         except Exception as e:                                        # noqa: BLE001 — a lookup miss must not hard-fail the world path
-            print(f"[world_query] country name lookup failed for {qid!r}: {e}", flush=True)
+            print(f"[knowledge_query] country name lookup failed for {qid!r}: {e}", flush=True)
             return None
 
     def serve(self, tables, question, as_of=None, schema=None):
@@ -678,7 +678,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
                     return self._serve_world_type(norm, question, sch, ngp, schema)
             except Exception as e:                                    # noqa: BLE001 — fall through to the geo/delegate path
                 import traceback
-                print(f"[world_query] non-geo world serve failed, falling through: {e!r}", flush=True); traceback.print_exc()
+                print(f"[knowledge_query] non-geo world serve failed, falling through: {e!r}", flush=True); traceback.print_exc()
         cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
         pred = "" if is_agg else self._semantic_predicate(question, [cr[2]] if cr else [])
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
@@ -699,7 +699,7 @@ class WorldQuery(EncoderQuery, EntityQuery):
         # Delegate the aggregate / plain-world-join path to EntityQuery EXPLICITLY (not super()): in this MRO
         # TableQuery precedes EntityQuery (EncoderQuery pulls TableQuery in early), so super().serve would hit the
         # 2-arg TableQuery.serve. EntityQuery.serve's own super() is relative to EntityQuery and correctly chains
-        # RoutedQuery->PgQuery->WorldTableQuery (skipping TableQuery). read_op_all inside that chain still resolves
+        # RoutedQuery->PgQuery->KnowledgeTableQuery (skipping TableQuery). read_op_all inside that chain still resolves
         # to EncoderQuery's metric-space operator via MRO.
         res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema)
         # Clarify gate (COVERAGE): if the query silently DROPPED part of the question — a degenerate SELECT *
@@ -725,11 +725,11 @@ class WorldQuery(EncoderQuery, EntityQuery):
 
 
 def _demo():
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("set WORLD_PG_PASSWORD to run the live world-DB demo"); return
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("set KB_PG_PASSWORD to run the live world-DB demo"); return
     schema = os.environ.get("AUTH_TEST_SUB", "world_demo")
-    Q = WorldQuery()
-    print(f"loaded WorldQuery (hdim={Q.hdim}); schema={schema}\n")
+    Q = KnowledgeQuery()
+    print(f"loaded KnowledgeQuery (hdim={Q.hdim}); schema={schema}\n")
     CUST = {"name": "customers", "columns": ["name", "city", "remarks"], "rows": [
         ["Ada", "Paris", "package arrived late and damaged, terrible delivery"],
         ["Lin", "Lyon", "great product, very happy with the quality"],

@@ -39,8 +39,8 @@ class Router:
     decayed, confidence} or None. Importing this module needs no torch — the model loads on first route()."""
 
     def __init__(self, shared=None):
-        # shared = (qwen, tok, model) from an already-loaded world encoder (engine.world_query). When given, the
-        # router REUSES it (one Qwen in memory) instead of loading its own — so /api/world runs a SINGLE model.
+        # shared = (qwen, tok, model) from an already-loaded world encoder (engine.knowledge_query). When given, the
+        # router REUSES it (one Qwen in memory) instead of loading its own — so /api/knowledge runs a SINGLE model.
         self._shared = shared
         alloc = json.load(open(DATA_DIR / "alloc.json"))
         self.nc = alloc["n_content"]

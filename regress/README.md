@@ -3,7 +3,7 @@
 One command that runs **both** halves of what PreReasoner does and fails on any regression:
 
 ```
-python -m regress.run_regression            # offline tier + world tier (world runs iff WORLD_PG_PASSWORD)
+python -m regress.run_regression            # offline tier + world tier (world runs iff KB_PG_PASSWORD)
 python -m regress.run_regression --offline  # offline tier only (no Postgres)
 python -m regress.run_regression --require-world   # fail (not skip) if the world tier can't run
 ```
@@ -23,7 +23,7 @@ breaks the other is caught before deploy.
 |---|---|---|---|
 | **unit invariants** | `run_regression.py::run_unit_checks` | weights only | `engine.joins` FK discovery (compose path): relationship-named FKs resolve; the child's self-id does *not* spuriously join |
 | **offline** (non-world) | `offline_cases.py` | torch + weights | routing (compose vs slot), COUNT/SUM, projection, value/year `WHERE`, multi-sheet slot join — run through the real engine on in-memory SQLite |
-| **world** (world-model-join) | `world_cases.py` | seeded world **Postgres** | the `city→country` world join (`total amount in France`=270, France customer count) via live `WorldReasoner`, plus the maintained oracle suites in `tests/` |
+| **world** (world-model-join) | `world_cases.py` | seeded world **Postgres** | the `city→country` world join (`total amount in France`=270, France customer count) via live `KnowledgeReasoner`, plus the maintained oracle suites in `tests/` |
 
 Each `regress`-flagged offline case encodes a regression that must stay fixed. Cases are golden: expected
 scalar / contains / min-rows / forbidden-value assertions on the executed denotation.
@@ -32,7 +32,7 @@ scalar / contains / min-rows / forbidden-value assertions on the executed denota
 
 - **cloudbuild.yaml** runs the **offline tier inside the freshly-built image** (real weights, no Postgres)
   right after `build`; a failure blocks the image push. See the `regress-offline` step.
-- The **world tier** needs the seeded Cloud SQL + `WORLD_PG_PASSWORD` (Secret Manager) + `tests/` in the
+- The **world tier** needs the seeded Cloud SQL + `KB_PG_PASSWORD` (Secret Manager) + `tests/` in the
   image; wire it with a Cloud SQL proxy step running `--require-world`, or run it pre-deploy against a
   seeded dev/staging DB. **A skipped world tier is not a pass** (`--require-world` enforces this).
 - **GitHub CI** (`.github/workflows/ci.yml`) can only compile-check — torch + the gitignored weights are

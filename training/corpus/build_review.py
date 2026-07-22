@@ -9,10 +9,10 @@ the real Wikidata P279 (subclass-of) hierarchy. So every named dim is an actual 
                        Source, Token, Example, Category, category_1..N (readable), <struct>, <NODE dims>, <intent>
                      NODE dims = one 0/1 per REAL P279 node, co-firing down the token's path (a city ->
                      geographical_feature=1 ... populated_place=1 ... city=1). The walker assigns targets: a value ->
-                     leaf via world."words" / the discovery cache (Wikidata P31); a header -> leaf via a lexical alias.
+                     leaf via knowledgebase."words" / the discovery cache (Wikidata P31); a header -> leaf via a lexical alias.
   inference.csv    — the same rows + dim columns left EMPTY (to be filled by the model probe) + Accuracy, R2, PASS.
 
-  $env:WORLD_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-world-pg-password --project prereasoner-inference)
+  $env:KB_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-kb-pg-password --project prereasoner-inference)
   $env:PYTHONUTF8=1; python -m training.corpus.build_review
 """
 from __future__ import annotations
@@ -155,7 +155,7 @@ SQL_EX_TE = [
     ("average score sorted descending",
      [("average", "SQL_kw", ["intent_agg_avg"]), ("score", "column_name", []), ("sorted", "SQL_kw", ["intent_sort_desc"])]),
 ]
-# world."words" type -> real leaf label (the States table is keyed to Q35657 'U.S. state' -> leaf u_s_state).
+# knowledgebase."words" type -> real leaf label (the States table is keyed to Q35657 'U.S. state' -> leaf u_s_state).
 WWORD = {"city": "city", "country": "country", "state": "u_s_state", "element": "chemical_element",
          "continent": "continent"}
 # resolved-P31 QID -> leaf. Base = the taxonomy's own leaf QIDs; the rest are SUBTYPE qids cell values resolve to.
@@ -224,7 +224,7 @@ def leaf_of_values(vals, cur, cache):
     uq = sorted({n for n in norms.values() if n})
     word = {}
     if uq:
-        cur.execute("SELECT norm, type FROM world.\"words\" WHERE norm = ANY(%s) "
+        cur.execute("SELECT norm, type FROM knowledgebase.\"words\" WHERE norm = ANY(%s) "
                     "AND type IN ('city','country','state','element','continent')", (uq,))
         for n, t in cur.fetchall():
             word.setdefault(n, WWORD.get(t))
@@ -307,7 +307,7 @@ for _t in TAX:                                                             # eve
 
 
 # the GEO SPINE — leaves whose P279 path passes through any of these are geo (city/country/state + their settlement /
-# administrative ancestors+siblings). Their data is NOT replaced: it comes from world."words" and already routes
+# administrative ancestors+siblings). Their data is NOT replaced: it comes from knowledgebase."words" and already routes
 # correctly, and swapping a settlement ancestor (geographical_feature/municipality) for clean Wikidata instances that
 # AREN'T cities collapses the city PATH's co-firing (city read -0.03 after the first pass). Only NON-geo leaves are
 # replaced — that is where the noise was (a 'referral' column mapped to `hospital`; proper-noun columns taught `street`).
@@ -332,7 +332,7 @@ def _prefer_clean_instances(by_leaf):
     inst = json.load(open(ti, encoding="utf-8"))
     n, skipped = 0, 0
     for lf, vals in inst.items():
-        if lf not in LEAF_PATH or _is_geo_leaf(lf):                     # keep the geo spine's working world."words" data
+        if lf not in LEAF_PATH or _is_geo_leaf(lf):                     # keep the geo spine's working knowledgebase."words" data
             skipped += 1
             continue
         clean = [v for v in vals if name_like(v) and printable(v)]

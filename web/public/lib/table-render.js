@@ -1,5 +1,5 @@
 // table-render.js — the shared "table in a bubble" renderer (the .bubble/.rtab markup used by
-// reason.html and world.html for inputs, resolution slides, streamed views and the result).
+// reason.html and knowledge.html for inputs, resolution slides, streamed views and the result).
 // CLASSIC script; requires lib/shared.js (esc) to be loaded first.
 
 // tableBubble(cols, rows, label, opts)
@@ -8,7 +8,7 @@
 //   label  : optional small-caps label above the table ('' / null = none)
 //   opts   : { hlcol   : column NAME to highlight (resolution slides),
 //              thExtra : fn(colName) -> extra HTML appended inside the <th>
-//                        (world.html uses it for the hover dimension-tag popup),
+//                        (knowledge.html uses it for the hover dimension-tag popup),
 //              maxRows : row cap (default 14) }
 // Numeric columns are right-aligned; non-integer numbers render to <=3 decimals.
 function tableBubble(cols,rows,label,opts){

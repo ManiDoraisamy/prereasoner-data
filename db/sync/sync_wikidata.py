@@ -11,7 +11,7 @@ too heavy for WDQS's 60s timeout is bisected by population; the low-population
 long tail is pulled per-country (the P17 index keeps each query bounded).
 
 Run (after `psql -f db/init.sql`):
-  export WORLD_PG_HOST=... WORLD_PG_PASSWORD=...        # see db/sync/_conn.py
+  export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/sync_wikidata.py --reset               # full (pop>=1000), hours
   python db/sync/sync_wikidata.py --reset --high-only   # fast seed (pop>=100000), ~minutes
 """

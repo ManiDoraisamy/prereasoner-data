@@ -40,7 +40,7 @@ implicit Wikidata "world" knowledge DB. The model is a small encoder with named,
 dimensions; the named dims *are the product* — they drive the typing, the operator choice, and
 the entity resolution that assemble the query. Concretely, "total amount in France" over
 `customers + orders` becomes
-`… JOIN wikipedia."city" ON "city".qid = bridge.world_key WHERE "city".country = 'Q142'`
+`… JOIN knowledgebase."city" ON "city".qid = bridge.world_key WHERE "city".country = 'Q142'`
 and computes **270** — no autoregressive generation anywhere in the loop.
 
 **Scope, stated honestly.** This is valuable and shippable for the **declarative** slice
@@ -76,7 +76,7 @@ hand-built graph prior — so we don't claim that.
 
 > Terminology bridge: "metadata attention" = the `same_col` edge (a value ↔ its column name);
 > "relational attention" = the `fk` edge (order → customer; a city value → its row in
-> `wikipedia."city"`). Both are *given*, then weighted.
+> `knowledgebase."city"`). Both are *given*, then weighted.
 
 ---
 
@@ -101,7 +101,7 @@ stack collapses into one exact query. RAG searches; this queries.*
 **One honest caveat.** There is a single learned, *soft* step: **type classification + entity
 resolution** — which world table a column routes to (via its anchored taxonomy dims, gated by
 per-leaf calibrated thresholds, `engine/data/route_thresholds.json` /
-`dim_thresholds.json`) and which world entity a cell resolves to (`world."words"` exact-norm
+`dim_thresholds.json`) and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
 match first, then a bge-small cosine nearest-neighbour above threshold). Both steps are
 interpretable, and they are *classification / resolution*, not answer-generation; once the cell
 is resolved to a **QID**, the row match and the computation that follow are exact equality joins.
@@ -146,13 +146,13 @@ routing, not a side-probe).
 A named dimension (e.g. the taxonomy leaf `city` or `hospital`) is the **type tag** that routes a
 column to a world table; the join itself is then a normal SQL foreign-key join. This is literal,
 not analogy: the `wikipedia` schema is **QID-keyed end to end** — every table
-(`wikipedia."city"`, `wikipedia."country"`, `wikipedia."hospital"`, …) has **`qid` as PRIMARY
+(`knowledgebase."city"`, `knowledgebase."country"`, `knowledgebase."hospital"`, …) has **`qid` as PRIMARY
 KEY**, and item-valued property columns hold the related entity's **QID as a true FOREIGN KEY**
 (`city.country` = the country's QID; `country.continent` = the continent's QID). So "named
 dimensions act as foreign keys into the world model" is accurate twice over: the anchored leaf
 dim picks the *table*, and the resolved cell QID is the *key* that joins to it. A 2-hop world
 fact ("orders in Europe") is just following two QID FKs — `city.country` then
-`country.continent = 'Q46'`. The `wikipedia."<type>"` naming (the exact Wikidata label) also
+`country.continent = 'Q46'`. The `knowledgebase."<type>"` naming (the exact Wikidata label) also
 keeps these world tables from clashing with the user's own table names.
 
 ---

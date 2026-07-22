@@ -46,7 +46,7 @@ steps:
       - --offline
   # WORLD tier (the world-model-join goldens + tests/ oracle suites) needs the seeded world Postgres. Wire it
   # by connecting Cloud SQL (add the cloud-sql-proxy sidecar or _CLOUDSQL substitution) and passing
-  # WORLD_PG_PASSWORD from Secret Manager, then run `python -m regress.run_regression --require-world`
+  # KB_PG_PASSWORD from Secret Manager, then run `python -m regress.run_regression --require-world`
   # (tests/ must also be added to the image / .gcloudignore for the reused oracle suites). Until wired, the
   # world tier must be run pre-deploy against a seeded DB (dev or staging). Skipped != passed.
 

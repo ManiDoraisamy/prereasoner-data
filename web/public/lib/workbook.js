@@ -2,7 +2,7 @@
 // AFTER lib/shared.js and after an inline <script> that sets window.WB_CONFIG. The page's module
 // block (firebase-init.js) calls run() once signed in, or fail(msg) when sign-in fails.
 //
-// WB_CONFIG: { endpoint:   engine route ('/api/reason' | '/api/world'),
+// WB_CONFIG: { endpoint:   engine route ('/api/reason' | '/api/knowledge'),
 //              runningMsg: status line while decomposing,
 //              warmupMsg:  status line on the cold-start retry path,
 //              demoQ, demoTables: what to show when arriving with an empty session }

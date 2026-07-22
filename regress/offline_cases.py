@@ -2,7 +2,7 @@
 
 Each case carries its own sample sheets + a plain-English question + an expected-denotation assertion, run
 through the REAL engine (live routing: compose view-stack vs slot-filler) on in-memory SQLite. These guard the
-shared engine code (engine/joins.py, engine/tables.py, engine/world_compose.py routing) that the Spider tier-1
+shared engine code (engine/joins.py, engine/tables.py, engine/knowledge_compose.py routing) that the Spider tier-1
 fixes touched — including two regressions those fixes SHIPPED, encoded here as cases that must go from red to green.
 
 Assertion keys (any subset): expect_scalar, forbid_scalar, expect_contains (all must appear in the answer's

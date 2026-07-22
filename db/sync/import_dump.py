@@ -19,7 +19,7 @@ in public.import_ckpt (resumable). Chunks are cached under $CHUNK_DIR (default: 
 temp dir); only one chunk lives on disk at a time.
 
 Run (after `psql -f db/init.sql`):
-  export WORLD_PG_HOST=... WORLD_PG_PASSWORD=...        # see db/sync/_conn.py
+  export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/import_dump.py [--max-chunks N] [--start I] [--pop-min P]
 """
 from __future__ import annotations

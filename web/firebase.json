@@ -17,7 +17,11 @@
         "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
       },
       { "source": "/reason/**", "destination": "/reason.html" },
-      { "source": "/world/**", "destination": "/world.html" }
+      { "source": "/knowledge/**", "destination": "/knowledge.html" }
+    ],
+    "redirects": [
+      { "source": "/world", "destination": "/knowledge", "type": 301 },
+      { "source": "/world/**", "destination": "/knowledge", "type": 301 }
     ],
     "headers": [
       {

@@ -1,6 +1,6 @@
 """Probe D (the crown-jewel): run the PreReasoner COMPOSITION CORE end-to-end on Spider, Postgres-free.
 
-The live serving stack (WorldReasoner -> ComposedWorldQuery -> WorldQuery) is Postgres-gated and cannot run
+The live serving stack (KnowledgeReasoner -> ComposedKnowledgeQuery -> KnowledgeQuery) is Postgres-gated and cannot run
 here. BUT the reasoning core it delegates to — ComposeEngine + the LEARNED 10-primitive head
 (PrimitiveReader) + the unified Qwen/LoRA encoder (EncoderQuery.read_op_model / _encode) — executes on
 in-memory SQLite with `world=None`. For self-contained Spider DBs `world` IS None (no world knowledge), so

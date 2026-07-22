@@ -10,7 +10,7 @@ conversation_id, `c_<32 hex>`; see engine/conversations.py), so the schema IS th
 The `chat` metadata (chat.conversation / chat.user_conversation) is NOT dropped on archive — the
 conversation stays listable and re-openable; restore re-materializes its data schema on demand.
 
-Env: WORLD_PG_HOST/PORT/DB/USER/PASSWORD (same as the engine; see .env.example) and
+Env: KB_PG_HOST/PORT/DB/USER/PASSWORD (same as the engine; see .env.example) and
 GCS_BUCKET. Requires pg_dump + psql on PATH, and either the `google-cloud-storage` package or
 `gsutil`. Standalone (no engine import), like the rest of db/sync.
 
@@ -46,16 +46,16 @@ def _env(k, default=None, required=False):
 
 
 def _pg_env():
-    """A libpq environment for pg_dump/psql from the WORLD_PG_* vars (no password on the CLI)."""
-    host = _env("WORLD_PG_HOST", "localhost")
+    """A libpq environment for pg_dump/psql from the KB_PG_* vars (no password on the CLI)."""
+    host = _env("KB_PG_HOST", "localhost")
     e = dict(os.environ)
     e["PGHOST"] = host
-    e["PGDATABASE"] = _env("WORLD_PG_DB", "world")
-    e["PGUSER"] = _env("WORLD_PG_USER", "postgres")
-    e["PGPASSWORD"] = _env("WORLD_PG_PASSWORD", "", required=True)
+    e["PGDATABASE"] = _env("KB_PG_DB", "world")
+    e["PGUSER"] = _env("KB_PG_USER", "postgres")
+    e["PGPASSWORD"] = _env("KB_PG_PASSWORD", "", required=True)
     if not host.startswith("/"):                              # unix socket (Cloud SQL) needs no port/ssl
-        e["PGPORT"] = str(_env("WORLD_PG_PORT", "5432"))
-        e["PGSSLMODE"] = _env("WORLD_PG_SSLMODE", "prefer")
+        e["PGPORT"] = str(_env("KB_PG_PORT", "5432"))
+        e["PGSSLMODE"] = _env("KB_PG_SSLMODE", "prefer")
     return e
 
 

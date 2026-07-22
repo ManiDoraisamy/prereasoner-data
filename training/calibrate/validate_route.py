@@ -29,7 +29,7 @@ R19 = Path(__file__).resolve().parent.parent / "data"
 WORLD_LEAVES = [lf for lf in ("city", "country", "u_s_state")
                 if lf in {d["name"] for d in json.load(open(R19 / "alloc.json"))["dims"]}]
 COLSIZE = 8
-_WTYPE = {"city": "city", "country": "country", "u_s_state": "state"}        # leaf -> world."words" type
+_WTYPE = {"city": "city", "country": "country", "u_s_state": "state"}        # leaf -> knowledgebase."words" type
 
 
 def _try_conn():
@@ -37,12 +37,12 @@ def _try_conn():
     name column the city dim loosely fires on). The DEPLOYED world path ALWAYS grounds (world17._grounds, spec item 3),
     so when the DB is reachable we test THAT (the real served path), not router in isolation."""
     import os
-    if not os.environ.get("WORLD_PG_PASSWORD"):
+    if not os.environ.get("KB_PG_PASSWORD"):
         return None
     try:
         import psycopg2
-        host = os.environ.get("WORLD_PG_HOST", "localhost")
-        kw = dict(host=host, dbname=os.environ.get("WORLD_PG_DB", "world"), user=os.environ.get("WORLD_PG_USER", "postgres"), password=os.environ["WORLD_PG_PASSWORD"], connect_timeout=30)
+        host = os.environ.get("KB_PG_HOST", "localhost")
+        kw = dict(host=host, dbname=os.environ.get("KB_PG_DB", "world"), user=os.environ.get("KB_PG_USER", "postgres"), password=os.environ["KB_PG_PASSWORD"], connect_timeout=30)
         if not host.startswith("/"):
             kw["port"] = 5432; kw["sslmode"] = "require"
         return psycopg2.connect(**kw)
@@ -52,7 +52,7 @@ def _try_conn():
 
 
 def _grounds(cells, leaf, cur):
-    """spec item 3, mirrors world17._grounds: >=80% of cells are real `leaf` entities in world."words". A loose
+    """spec item 3, mirrors world17._grounds: >=80% of cells are real `leaf` entities in knowledgebase."words". A loose
     city-fire on a name column is dropped here (names don't ground)."""
     from training.lib.embedder import normalize_surface
     wtype = _WTYPE.get(leaf)
@@ -61,7 +61,7 @@ def _grounds(cells, leaf, cur):
     norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
     if len(norms) < 2:
         return False
-    cur.execute('SELECT COUNT(DISTINCT norm) FROM world."words" WHERE type=%s AND norm = ANY(%s)', (wtype, norms))
+    cur.execute('SELECT COUNT(DISTINCT norm) FROM knowledgebase."words" WHERE type=%s AND norm = ANY(%s)', (wtype, norms))
     return cur.fetchone()[0] >= max(2, 0.8 * len(norms))
 
 

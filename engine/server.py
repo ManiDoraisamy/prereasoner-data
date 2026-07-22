@@ -4,8 +4,8 @@
                         derives the verified user; the working Postgres schema is the CONVERSATION (owned
                         by that user, see engine.conversations) + live reasoning-trace streaming to RTDB
                         (/runs/{uid}/{jobId}) when RTDB_URL is configured.
-  POST /api/world     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth +
-                        conversation + trace contract; both routes share ONE WorldReasoner instance.
+  POST /api/knowledge     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth +
+                        conversation + trace contract; both routes share ONE KnowledgeReasoner instance.
   POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, no auth).
   GET  /api/conversations       — the signed-in user's conversations (drawer list; ownership-scoped).
   GET  /api/conversation?id=…   — one conversation's opening prompt + stored tables (re-open).
@@ -33,7 +33,7 @@ from engine.conversations import (resolve_conversation, list_conversations, get_
 from engine import master
 from engine import admin
 
-MODEL = None                       # the ONE WorldReasoner, shared by /api/reason and /api/world
+MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
 WORLD_LOCK = threading.Lock()      # one request at a time through the shared world model (set_ctx is per-request)
 DIM_LOCK = threading.Lock()        # one request at a time through the dimension model
@@ -41,7 +41,7 @@ MAX_BODY = 10 * 1024 * 1024
 MAX_SHEETS = 8
 MAX_ROWS = 5000
 
-WORLD_ROUTES = ("/api/reason", "/api/world")
+WORLD_ROUTES = ("/api/reason", "/api/knowledge")
 DIM_ROUTE = "/api/dimension"
 
 
@@ -79,7 +79,7 @@ class H(BaseHTTPRequestHandler):
         elif path.startswith("/api/admin/"):
             self._get_admin(path, parse_qs(u.query))
         else:
-            self._send(200, "prereasoner engine - POST /api/reason | /api/world {tables, question} + Bearer "
+            self._send(200, "prereasoner engine - POST /api/reason | /api/knowledge {tables, question} + Bearer "
                             "Firebase token; POST /api/dimension {data, mode:'analyze'}",
                        "text/plain; charset=utf-8")
 
@@ -187,7 +187,7 @@ class H(BaseHTTPRequestHandler):
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:
-            self._send(404, json.dumps({"error": "POST /api/reason | /api/world | /api/dimension"}))
+            self._send(404, json.dumps({"error": "POST /api/reason | /api/knowledge | /api/dimension"}))
 
     # ---------------- admin dashboard (email-allowlisted; reads via GET, deletes via POST) ----------------
     def _require_admin(self, body=None):
@@ -255,7 +255,7 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                               # noqa: BLE001
             self._send(500, json.dumps({"error": str(e)}))
 
-    # ---------------- /api/reason + /api/world (Firebase auth + RTDB trace stream) ----------------
+    # ---------------- /api/reason + /api/knowledge (Firebase auth + RTDB trace stream) ----------------
     def _post_world(self):
         emit = None                                          # so the except can stream a terminal error to RTDB
         try:
@@ -339,11 +339,11 @@ class H(BaseHTTPRequestHandler):
 
 def main():
     global MODEL, DIM_MODEL
-    from engine.world import WorldReasoner
+    from engine.knowledge import KnowledgeReasoner
     from engine.dimension import DimensionModel
     print("loading world reasoner (composition engine + unified Qwen + bge resolver + spaCy; LIVE Postgres)...",
           flush=True)
-    MODEL = WorldReasoner()
+    MODEL = KnowledgeReasoner()
     try:
         from engine.embeddings import Embedder
         Embedder.get().encode(["warmup"])               # load bge weights at startup, not on first request
@@ -352,7 +352,7 @@ def main():
         print("warmup note:", e, flush=True)
     print("loading dimension model (taxonomy unified Qwen + LoRA + relational readout)...", flush=True)
     DIM_MODEL = DimensionModel()
-    print(f"engine ready: http://{HOST}:{PORT}  (POST /api/reason /api/world /api/dimension)", flush=True)
+    print(f"engine ready: http://{HOST}:{PORT}  (POST /api/reason /api/knowledge /api/dimension)", flush=True)
     ThreadingHTTPServer((HOST, PORT), H).serve_forever()
 
 

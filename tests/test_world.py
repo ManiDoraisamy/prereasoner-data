@@ -1,7 +1,7 @@
 """Expanded world test suite (LIVE world Postgres). Covers the expanded world model: the synced type hierarchy,
 the column router, population ranking, aggregates, and the lat/lng NEARBY geo primitive + composite views.
 
-  Needs a synced world Postgres (docker-compose + db/sync) and WORLD_PG_* env vars set.
+  Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_world
 """
 from __future__ import annotations
@@ -21,23 +21,23 @@ def ok(name, cond, detail=""):
 
 
 def main():
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("WORLD_PG_PASSWORD not set — skipping (live world Postgres)"); return
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("KB_PG_PASSWORD not set — skipping (live world Postgres)"); return
     from engine.pg import _pg
-    from engine.world_compose import ComposedWorldQuery
-    from engine.world import WorldReasoner
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine.knowledge import KnowledgeReasoner
 
     # --- (A) expanded type hierarchy synced ---
     cn = _pg(); cur = cn.cursor()
-    cur.execute('SELECT count(*) FILTER (WHERE is_leaf), count(*) FROM world."types"')
+    cur.execute('SELECT count(*) FILTER (WHERE is_leaf), count(*) FROM knowledgebase."types"')
     nleaf, ntot = cur.fetchone()
     ok("types: >=60 leaves synced", nleaf >= 60, f"leaves={nleaf}")
     ok("types: ancestors to root present", ntot > nleaf + 30, f"total={ntot}")
-    cur.execute('SELECT world_table FROM world."types" WHERE qid=%s', ("Q515",))
+    cur.execute('SELECT world_table FROM knowledgebase."types" WHERE qid=%s', ("Q515",))
     ok("city -> Cities world_table", (cur.fetchone() or [None])[0] == "Cities")
-    cur.execute('SELECT parent_qid FROM world."types" WHERE qid=%s', ("Q16917",))
+    cur.execute('SELECT parent_qid FROM knowledgebase."types" WHERE qid=%s', ("Q16917",))
     ok("hospital has a parent chain", bool((cur.fetchone() or [None])[0]))
-    cur.execute("SELECT count(*) FROM world.\"words\" WHERE type='type'")
+    cur.execute("SELECT count(*) FROM knowledgebase.\"words\" WHERE type='type'")
     ok("type labels in words", cur.fetchone()[0] >= 60)
     cn.close()
 
@@ -53,8 +53,8 @@ def main():
     sub = f"test_world_{int(time.time())}"
     CUST = {"name": "customers", "columns": ["name", "city", "amount"],
             "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
-    qc = ComposedWorldQuery()
-    wr = WorldReasoner()
+    qc = ComposedKnowledgeQuery()
+    wr = KnowledgeReasoner()
 
     # --- (C) aggregate baseline (world join) ---
     ra = qc.serve([CUST], "total amount in France", sub)
@@ -81,7 +81,7 @@ def main():
     # --- (F) non-nearby delegates unchanged ---
     rd = wr.serve([CUST], "total amount in France", sub)
     dv = (((rd.get("answer") or rd.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
-    ok("delegate: WorldReasoner passes aggregates through", dv == 180, f"got={dv}")
+    ok("delegate: KnowledgeReasoner passes aggregates through", dv == 180, f"got={dv}")
 
     print(f"\n{P}/{P+F} passed" + ("" if not F else f"  ({F} FAILED)"))
     sys.exit(1 if F else 0)

@@ -2,7 +2,7 @@
 faithful world table, filtered by country, aggregating the uploaded metric; entities not in world.words are
 lazy-filled from Wikidata first. Live world Postgres.
 
-  Needs a synced world Postgres (docker-compose + db/sync) and WORLD_PG_* env vars set.
+  Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_nongeo
 """
 from __future__ import annotations
@@ -25,10 +25,10 @@ def _scalar(res):
 
 
 def main():
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("set WORLD_PG_PASSWORD"); return 1
-    from engine.world_query import WorldQuery
-    Q = WorldQuery()
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("set KB_PG_PASSWORD"); return 1
+    from engine.knowledge_query import KnowledgeQuery
+    Q = KnowledgeQuery()
     schema = os.environ.get("AUTH_TEST_SUB", "nongeo_test")
     fails = []
     # SUM the uploaded metric over US hospitals (lazy-fills the ones not already in words)

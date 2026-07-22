@@ -26,11 +26,11 @@ There is no `runtime20/` directory (an old internal name). The serving code is t
 | Method + path | Handler | Auth | Purpose |
 |---|---|---|---|
 | `POST /api/reason` | `_post_world` | Firebase | The compositional reasoner (view-stacking). **This is the tool's target.** |
-| `POST /api/world`  | `_post_world` | Firebase | The world-join path. Same handler, same contract; shares one model with `/api/reason`. |
+| `POST /api/knowledge`  | `_post_world` | Firebase | The world-join path. Same handler, same contract; shares one model with `/api/reason`. |
 | `POST /api/dimension` | `_post_dimension` | none | Stateless per-column/per-cell named-dimension readout. No Postgres. |
 | `GET /healthz`, `GET /api/healthz` | — | none | Liveness; `ok:true` only once both models finished loading. |
 
-`/api/reason` and `/api/world` share **one** `WorldReasoner` behind **one** `threading.Lock` — the engine
+`/api/reason` and `/api/knowledge` share **one** `KnowledgeReasoner` behind **one** `threading.Lock` — the engine
 serves **one reasoning request at a time per instance**. This matters for the orchestrator: sequence
 multi-hop calls, don't fan them out in parallel (they'd just queue on the lock).
 
@@ -56,7 +56,7 @@ that takes a `dataset_id` would be inventing an API the engine doesn't have. (Se
 
 ### 0.3 The response shape (this is exact — build against it)
 
-The body is whatever `WorldReasoner.serve(...)` returned, `json.dumps`'d. It is **not one fixed shape** —
+The body is whatever `KnowledgeReasoner.serve(...)` returned, `json.dumps`'d. It is **not one fixed shape** —
 different internal paths return slightly different key sets. Group them into three outcomes:
 
 **(a) Answer.** Always present: `question`, `result` (`{"columns": [...], "rows": [[...]]}` — the key is
@@ -120,7 +120,7 @@ playback works with or without RTDB** — live-streamed in prod, rebuilt from th
 
 All runtime knobs are env vars read in [`engine/config.py`](engine/config.py): `HOST`/`PORT` (default
 `0.0.0.0:8080`), `WORLD_PG_*`, `RTDB_URL` (optional), `AUTH_TEST_SUB` (test-only), `DEVICE`,
-`BASE_MODEL_ID` (the *local Qwen encoder* — unrelated to the orchestrator's model), `WORLD_MODEL_ROUTE`,
+`BASE_MODEL_ID` (the *local Qwen encoder* — unrelated to the orchestrator's model), `KB_MODEL_ROUTE`,
 `PREREASONER_DATA_DIR`. A sibling process reaches the engine at `http://localhost:8080` (host) or
 `http://engine:8080` (docker-compose network).
 
@@ -201,7 +201,7 @@ free-text / numeric." Input: `tables` (inline). Output: the `columns`/`rows` dim
 
 > **Honest scope limit:** `/api/dimension` tells you what each column *types to*, not which cells actually
 > *resolved* to world entities (that needs the router + live world Postgres). A fuller "world-coverage"
-> describe — which columns ground to which `wikipedia."<type>"` tables and at what fraction — is a scoped
+> describe — which columns ground to which `knowledgebase."<type>"` tables and at what fraction — is a scoped
 > engine addition (the routing state already exists inside `serve`; it just isn't serialized). v1 ships the
 > `/api/dimension`-backed version and labels the limit.
 
@@ -376,10 +376,10 @@ PreReasoner MCP server  ──HTTP (Authorization: Bearer)──▶  engine (pre
   adaptive thinking. It is an MCP client of the PreReasoner MCP server, exposes a streaming `/chat`
   endpoint to the browser, generates a `jobId` per `prereasoner_query` call, and ships the
   routing-discipline system prompt. New config (add to `engine/config.py`'s one-place pattern):
-  `ANTHROPIC_API_KEY` (call-time helper, mirrors `world_pg_password()`), `ANTHROPIC_MODEL`
+  `ANTHROPIC_API_KEY` (call-time helper, mirrors `kb_pg_password()`), `ANTHROPIC_MODEL`
   (default `claude-sonnet-5`), `ENGINE_BASE_URL`.
 - **Deploy** — one new Cloud Run service (`prereasoner-chat`) alongside `prereasoner-api`; the Anthropic
-  key as a new Secret Manager secret injected like `WORLD_PG_PASSWORD`
+  key as a new Secret Manager secret injected like `KB_PG_PASSWORD`
   ([`infra/orchestrator.tf`](infra/orchestrator.tf)); the image built by
   [`cloudbuild.orchestrator.yaml`](cloudbuild.orchestrator.yaml) (tests-gated); and a sibling Firebase
   Hosting rewrite (`/chat` → `prereasoner-chat`) *above* the `/api/**` block

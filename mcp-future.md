@@ -48,9 +48,9 @@ The decomposition v2 exposes is **not new work to invent** — it is already com
   `filter_view`, `group_agg_view`, `yoy_view`, `topn_view`, `share_view`, `divide_view`, `running_view`,
   `join_view`, `world_join_view`. Op names: `filter`, `group_agg`, `yoy`, `running`, `share`, `divide`,
   `having`, `topn`, `sort`, plus the `join`/`world_join` base.
-- **`engine/world_compose.py` → `ComposedWorldQuery`** stacks those views over the world base and
+- **`engine/knowledge_compose.py` → `ComposedKnowledgeQuery`** stacks those views over the world base and
   **streams each one** to the trace as `views/{i}: {op, label, sql, columns, rows}` (see `mcp-now.md`
-  §0.5). It delegates non-composed queries to `WorldQuery`.
+  §0.5). It delegates non-composed queries to `KnowledgeQuery`.
 
 So the derived DAG is already: computed (`ComposeEngine`), executed (on SQLite via the view builders, and
 re-expressed over live Postgres in the world path), and **already emitted step-by-step** as the `views`
@@ -151,7 +151,7 @@ below before committing** and pick one primary format (the other is a secondary 
 2. **Tokenizer coverage** for the current serving tokenizer: check each format's characteristic tokens
    (Mermaid `-->`, `[...]`, `flowchart TD`; Datalog `:-`, `.`-terminated rules, capitalized vars) tokenize
    cleanly (few tokens/construct, no pathological byte-splitting).
-3. **Legibility test:** hand-render 5–10 of your actual view DAGs (use real ones from `world_compose`'s
+3. **Legibility test:** hand-render 5–10 of your actual view DAGs (use real ones from `knowledge_compose`'s
    `views` output) in each format. Which reads more clearly *as a reasoning trace a non-expert can follow*?
 4. **Dependency-structure fit:** confirm the chosen format expresses your DAG's **non-sequential data
    dependencies** (a step consuming another step's output). Mermaid edges must capture this; if some

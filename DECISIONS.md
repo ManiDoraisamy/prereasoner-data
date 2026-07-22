@@ -8,10 +8,10 @@ don't have to reverse-engineer the reasoning.
 ## One service, not three
 
 The backend previously ran as three Cloud Run services (dimension / reason / world). The reason
-and world services loaded the **same** model stack (`WorldReasoner`); splitting them meant paying
+and world services loaded the **same** model stack (`KnowledgeReasoner`); splitting them meant paying
 for identical weights in two containers, three sets of logs, three cold-start paths. The split
 was historical, not architectural. The consolidated server (`engine/server.py`) serves
-`/api/reason`, `/api/world`, `/api/dimension`, and `/healthz` from one process with one shared
+`/api/reason`, `/api/knowledge`, `/api/dimension`, and `/healthz` from one process with one shared
 model instance. The stateless dimension endpoint keeps its own model and lock, preserving the
 original concurrency semantics exactly.
 
@@ -19,7 +19,7 @@ original concurrency semantics exactly.
 
 Internal names carried generation numbers (`query14`, `server18`, `Query19World`,
 `runtime20_model.pt`). All public names are functional: modules like `pg.py`, `entities.py`,
-`world.py`; classes like `PgQuery`, `EntityQuery`, `WorldReasoner`; artifacts like `encoder.pt`.
+`world.py`; classes like `PgQuery`, `EntityQuery`, `KnowledgeReasoner`; artifacts like `encoder.pt`.
 The complete old→new map is in [docs/notes/engine.md](docs/notes/engine.md). Class renames are
 safe because all model artifacts are plain `state_dict`s, not pickled modules (verified by
 loading the shipped weights into the renamed classes).
@@ -43,7 +43,7 @@ same repo and was updated in the same change; keeping aliases would only preserv
 
 The old code defaulted to a hardcoded Cloud SQL IP and a hardcoded Firebase RTDB URL. All
 connection and behavior config now flows through `engine/config.py` from environment variables
-(see `.env.example`). Two deliberate deltas: `WORLD_PG_SSLMODE` defaults to `prefer` so local
+(see `.env.example`). Two deliberate deltas: `KB_PG_SSLMODE` defaults to `prefer` so local
 Postgres works (set `require` for Cloud SQL public IP), and trace streaming is a clean no-op
 when `RTDB_URL` is unset (the frontend already falls back to full-JSON responses), so the
 system runs without any Firebase RTDB at all.

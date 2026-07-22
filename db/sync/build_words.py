@@ -1,4 +1,4 @@
-"""Build world."words" — THE pgvector entity-resolution index (engine: query16/world17).
+"""Build knowledgebase."words" — THE pgvector entity-resolution index (engine: query16/world17).
 
 Each row is a SURFACE form (a string someone might type) -> its CANONICAL world entity:
   (surface, canonical, type, props, norm, embedding vector(384), qid, canon_country, is_primary)
@@ -8,7 +8,7 @@ Each row is a SURFACE form (a string someone might type) -> its CANONICAL world 
 for the fuzzy <=> nearest-neighbour fallback (typos / novel forms).
 
 Phases (all in one run):
-  1. canonical labels from world."Countries"/"States"/"Elements"/"Continents" (+ "Cities" with --cities)
+  1. canonical labels from knowledgebase."Countries"/"States"/"Elements"/"Continents" (+ "Cities" with --cities)
   2. country altLabels from Wikidata (mapped to OUR canonical name by QID via public.country)
   3. KEY the rows: qid / canon_country / is_primary backfilled from public.settlement/admin/country
      (enables the qid-keyed cell bridge + same-name disambiguation)
@@ -18,7 +18,7 @@ Requires: db/init.sql applied; sync_wikidata.py + build_world.py run first; torc
 installed (bge-small-en-v1.5 downloads on first use); network for query.wikidata.org.
 
 Run:
-  export WORLD_PG_HOST=... WORLD_PG_PASSWORD=...        # see db/sync/_conn.py
+  export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/build_words.py --cities --city-aliases  # full index (~200k city labels; minutes on CPU)
   python db/sync/build_words.py --cities                 # minimal seed (skip the alias crawl)
 """
@@ -44,7 +44,7 @@ MIN_POP = 100000                     # cities at/above this get altLabels (~7.4k
 
 # keying: qid + country + global is_primary backfilled from the raw public.* import
 UPD_CITY = '''
-UPDATE world."words" w SET qid = s.qid,
+UPDATE knowledgebase."words" w SET qid = s.qid,
        canon_country = w.props->>'country',
        is_primary = COALESCE((w.props->>'is_primary')::boolean, false)
 FROM public.settlement s
@@ -53,12 +53,12 @@ WHERE w.type='city' AND w.surface = s.name
   AND (w.props->>'population')::bigint IS NOT DISTINCT FROM s.population;
 '''
 UPD_STATE = '''
-UPDATE world."words" w SET qid = a.qid, canon_country = w.props->>'country', is_primary = true
+UPDATE knowledgebase."words" w SET qid = a.qid, canon_country = w.props->>'country', is_primary = true
 FROM public.admin a
 WHERE w.type='state' AND w.surface = a.name AND w.props->>'country' IS NOT DISTINCT FROM a.country;
 '''
 UPD_COUNTRY = '''
-UPDATE world."words" w SET qid = c.qid, is_primary = true
+UPDATE knowledgebase."words" w SET qid = c.qid, is_primary = true
 FROM public.country c WHERE w.type='country' AND w.canonical = c.name;
 '''
 
@@ -71,7 +71,7 @@ def _insert(cur, emb, rows, chunk=2000):
         vecs = emb.encode([r[0] for r in part])
         data = [(s, c, t, Json(p), normalize_surface(s), pgvector_literal(v))
                 for (s, c, t, p), v in zip(part, vecs)]
-        execute_values(cur, 'INSERT INTO world."words" (surface,canonical,type,props,norm,embedding) VALUES %s',
+        execute_values(cur, 'INSERT INTO knowledgebase."words" (surface,canonical,type,props,norm,embedding) VALUES %s',
                        data, template='(%s,%s,%s,%s,%s,%s::vector)')
         n += len(part)
         if len(rows) > chunk:
@@ -80,7 +80,7 @@ def _insert(cur, emb, rows, chunk=2000):
 
 
 def canonical_rows(cur, type_, table, label_col):
-    cur.execute(f'SELECT "{label_col}" AS w, row_to_json(t) AS p FROM world."{table}" t WHERE "{label_col}" IS NOT NULL')
+    cur.execute(f'SELECT "{label_col}" AS w, row_to_json(t) AS p FROM knowledgebase."{table}" t WHERE "{label_col}" IS NOT NULL')
     return [(r[0], r[0], type_, r[1]) for r in cur.fetchall()]   # surface == canonical
 
 
@@ -137,7 +137,7 @@ def import_city_altlabels(cur, emb):
         vecs = emb.encode([r[0] for r in part])
         data = [(s, cn, cc, qid, prim, "city", pr, normalize_surface(s), pgvector_literal(v))
                 for (s, cn, cc, qid, prim, pr), v in zip(part, vecs)]
-        execute_values(cur, 'INSERT INTO world."words" '
+        execute_values(cur, 'INSERT INTO knowledgebase."words" '
                        '(surface,canonical,canon_country,qid,is_primary,type,props,norm,embedding) VALUES %s',
                        data, template='(%s,%s,%s,%s,%s,%s,%s,%s,%s::vector)')
     return len(rows)
@@ -152,7 +152,7 @@ def main():
     emb = Embedder.get()
     cn = connect(); cur = cn.cursor()
     # rebuild from scratch; drop the HNSW index during the bulk load (recreate after — much faster)
-    cur.execute('TRUNCATE world."words"')
+    cur.execute('TRUNCATE knowledgebase."words"')
     cur.execute('DROP INDEX IF EXISTS world.ix_words_hnsw'); cn.commit()
 
     for type_, table, col in SMALL:
@@ -176,11 +176,11 @@ def main():
 
     # HNSW cosine index (pgvector defaults m=16, ef_construction=64) + the exact-match btrees (init.sql set)
     print("  building HNSW index...")
-    cur.execute('CREATE INDEX IF NOT EXISTS ix_words_hnsw ON world."words" USING hnsw (embedding vector_cosine_ops)')
+    cur.execute('CREATE INDEX IF NOT EXISTS ix_words_hnsw ON knowledgebase."words" USING hnsw (embedding vector_cosine_ops)')
     cn.commit()
-    cur.execute('SELECT type, count(*) FROM world."words" GROUP BY type ORDER BY 2 DESC')
+    cur.execute('SELECT type, count(*) FROM knowledgebase."words" GROUP BY type ORDER BY 2 DESC')
     print("  totals by type:", dict(cur.fetchall()))
-    cur.execute("SELECT count(*) FROM world.\"words\" WHERE type='city' AND qid IS NOT NULL")
+    cur.execute("SELECT count(*) FROM knowledgebase.\"words\" WHERE type='city' AND qid IS NOT NULL")
     print("  city rows with qid:", cur.fetchone()[0])
     cn.close()
 

@@ -130,7 +130,7 @@ class EncoderQuery(TableQuery):
           - the COUNT table and the SUM/AVG measure column are chosen by COSINE in the contrastive space
             (the reason the encoder is unified: 'sell'/'earn'/'revenue'/'amount' land together), restricted to
             non-id numeric columns. An explicitly-named column/table wins; a single measure is taken directly.
-        Returns (fn, table, col) | ("COUNT", table|None, None) | None, the format WorldTableQuery.serve() expects."""
+        Returns (fn, table, col) | ("COUNT", table|None, None) | None, the format KnowledgeTableQuery.serve() expects."""
         import numpy as _np
         # rebuild tables from sch (incl. per-column `values` when the rich planner sch carries them) so ingest()'s
         # inclusion-dependency FK discovery runs — the fk edges shift the intent readout (the high COUNT threshold
@@ -186,7 +186,7 @@ class EncoderQuery(TableQuery):
         if tm:
             return (op, tm["table"], tm["name"])
         tt = token_table()                                   # "total CUSTOMERS …" names the ENTITY, not a measure col ->
-        if tt:                                               # COUNT that sheet's rows (matches WorldTableQuery.read_op_all);
+        if tt:                                               # COUNT that sheet's rows (matches KnowledgeTableQuery.read_op_all);
             return ("COUNT", tt, None)                       # an FK-reachable measure (orders.amount) must NOT hijack -> SUM
         if not nonid_num:                                    # nothing to sum -> it's a row count ("total customers")
             t = token_table() or (max(tnames, key=lambda t: cos(qv, tvec[t])) if tnames else None)

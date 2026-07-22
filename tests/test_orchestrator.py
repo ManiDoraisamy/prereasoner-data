@@ -2,7 +2,7 @@
 in-process STUB engine so the whole browser->orchestrator->MCP->engine loop is exercised without a seeded
 world Postgres.
 
-GATED on ANTHROPIC_API_KEY (mirrors how the engine tests gate on WORLD_PG_PASSWORD): absent => the suite
+GATED on ANTHROPIC_API_KEY (mirrors how the engine tests gate on KB_PG_PASSWORD): absent => the suite
 self-skips with exit 0 rather than failing, so CI without a key stays green. It loads the repo .env if the
 key isn't already in the environment.
 

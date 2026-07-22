@@ -9,7 +9,7 @@ A filter value that is ABSENT from the upload ("cities in US") is resolved like 
 No alias list, no lower(), no string matching. "US"/"USA"/"UK"/"Deutschland" resolve by meaning; the preposition
 "in" and non-entities ("Indiana") stay below threshold and fall through.
 
-This overrides ONLY value resolution (WorldTableQuery._find_value) plus the cell-side bridge (uploaded city
+This overrides ONLY value resolution (KnowledgeTableQuery._find_value) plus the cell-side bridge (uploaded city
 values -> world PK via a per-upload bridge). Everything else — routing, joins, SQL assembly, multi-table FK,
 the analyze view — is inherited unchanged from the layers below.
 """
@@ -19,10 +19,10 @@ import re
 from engine.config import DATA_DIR
 from engine.resolve_base import RoutedQuery
 from engine.pg import _pg
-from engine.world_tables import qident, qlit
+from engine.knowledge_tables import qident, qlit
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 
-# filter attr (as named in word_*.json) -> the entity `type` it is matched against in world."words"
+# filter attr (as named in word_*.json) -> the entity `type` it is matched against in knowledgebase."words"
 ENTITY_TYPES = {"country": "country", "nation": "country", "continent": "continent",
                 "state": "state", "american_state": "state", "province": "state", "region": "state",
                 "element": "element", "city": "city", "municipality": "city"}
@@ -30,12 +30,12 @@ ENTITY_TYPES = {"country": "country", "nation": "country", "continent": "contine
 # would reject them anyway, but "in"->India 0.68 etc. is noise we skip up front).
 STOP = {"in", "the", "of", "a", "an", "for", "to", "by", "on", "at", "with", "and", "or", "is", "are",
         "how", "many", "much", "total", "sum", "average", "count", "number", "all", "each", "per", "their"}
-# wikipedia table (exact Wikidata label) -> the `type` its rows carry in world."words" (cell-side bridge resolution).
-# The tables are the qid-keyed wikipedia."city"/"country" (via WORLD_NAMES); the planner resolves both the cell
+# wikipedia table (exact Wikidata label) -> the `type` its rows carry in knowledgebase."words" (cell-side bridge resolution).
+# The tables are the qid-keyed knowledgebase."city"/"country" (via WORLD_NAMES); the planner resolves both the cell
 # bridge and the filter to QIDS, so every world join + filter is qid PK/FK.
-# Route value -> the `type` its cells carry in world."words" (for cell-side bridge resolution).
-# city/country use the qid-keyed wikipedia."<type>" tables; u_s_state uses the aggregate qid-keyed
-# world."u_s_state" (its cells resolve as type='state'; see db/sync/build_u_s_state.py). element/etc. remain
+# Route value -> the `type` its cells carry in knowledgebase."words" (for cell-side bridge resolution).
+# city/country use the qid-keyed knowledgebase."<type>" tables; u_s_state uses the aggregate qid-keyed
+# knowledgebase."u_s_state" (its cells resolve as type='state'; see db/sync/build_u_s_state.py). element/etc. remain
 # on the friendly name-keyed family (routed by the value-membership fallback). See docs/notes/naming.md.
 WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state"}
 TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # 'state' -> 'u_s_state' (the qid-keyed table)
@@ -64,7 +64,7 @@ class EntityQuery(RoutedQuery):
         # AUTOCOMMIT: this cached connection issues many independent read SELECTs (resolution / routing / grounding)
         # interleaved with idempotent bridge writes. Without autocommit psycopg2 opens an implicit transaction on the
         # first statement and leaves it "idle in transaction" until an explicit commit — holding read locks on
-        # world."words"/the bridge tables. Two service instances serving the SAME per-user sub then wedge each other
+        # knowledgebase."words"/the bridge tables. Two service instances serving the SAME per-user sub then wedge each other
         # (a concurrent ALTER TABLE on the bridge blocks ~indefinitely on that relation lock; a measured 833s stall).
         # Every write here is idempotent (CREATE/ADD COLUMN IF NOT EXISTS, DELETE+INSERT refresh, ensure_entity ON
         # CONFLICT DO NOTHING), so per-statement autocommit is safe and the explicit .commit() calls become no-ops.
@@ -98,7 +98,7 @@ class EntityQuery(RoutedQuery):
     def _nn(self, vec, type_):
         lit = pgvector_literal(vec)
         cur = self._rconn().cursor()
-        cur.execute('SELECT qid, 1-(embedding <=> %s::vector) AS sim FROM world."words" '            # QID, not the name —
+        cur.execute('SELECT qid, 1-(embedding <=> %s::vector) AS sim FROM knowledgebase."words" '            # QID, not the name —
                     'WHERE type=%s AND qid IS NOT NULL ORDER BY embedding <=> %s::vector LIMIT 1', (lit, type_, lit))
         r = cur.fetchone()
         return (r[0], float(r[1])) if r else (None, -1.0)                                            # the resolved qid
@@ -118,7 +118,7 @@ class EntityQuery(RoutedQuery):
         uniq = sorted({n for n in norms.values() if n})
         by_type = {}                                              # norm -> {type: {canonical}} across ALL types
         if uniq:
-            cur.execute('SELECT norm, type, qid FROM world."words" WHERE norm = ANY(%s) AND qid IS NOT NULL', (uniq,))
+            cur.execute('SELECT norm, type, qid FROM knowledgebase."words" WHERE norm = ANY(%s) AND qid IS NOT NULL', (uniq,))
             for nm, ty, q_ in cur.fetchall():
                 by_type.setdefault(nm, {}).setdefault(ty, set()).add(q_)      # collect QIDS — resolve to qid, not name
         for c in sorted(cands, key=lambda x: -len(x)):           # (1) exact match of the requested type, longest first
@@ -176,7 +176,7 @@ class EntityQuery(RoutedQuery):
             uniq = sorted({n for n in norms if n})
             if not uniq:
                 continue
-            cur.execute('SELECT DISTINCT norm, type FROM world."words" WHERE norm = ANY(%s) '
+            cur.execute('SELECT DISTINCT norm, type FROM knowledgebase."words" WHERE norm = ANY(%s) '
                         "AND type IN ('city','country','state','element','continent')", (uniq,))
             ntypes = {}
             for nm, ty in cur.fetchall():
@@ -204,7 +204,7 @@ class EntityQuery(RoutedQuery):
     def _cell_bridge_sql(self, norm, mtab, route_col, wtype, ctx_country=None):
         """Build the bridge as ONE SQL subquery yielding (cell, canon). Exact normalized matches are a cheap batch
         lookup; the FUZZY remainder is resolved by a SET-BASED in-SQL nearest-neighbour join — the cell vectors are
-        materialized into the query and POSTGRES does the `<=>` similarity search over world."words" (HNSW), with
+        materialized into the query and POSTGRES does the `<=>` similarity search over knowledgebase."words" (HNSW), with
         the threshold as a distance filter. Python only turns cell text into a bge vector; the search + join run in
         Postgres. COALESCE keeps unmatched cells as identity (== the old lower()=lower() behaviour). When
         `ctx_country` is set (the query filters to a country), BOTH exact and fuzzy resolution are constrained to
@@ -222,7 +222,7 @@ class EntityQuery(RoutedQuery):
         ctx_sql = f" AND w.props->>'country' = {qlit(ctx_country)}" if ctx_country else ""
         exact = {}
         if uniq:                                                  # one batch query, NOT per-cell
-            q = ('SELECT w.norm, w.canonical FROM world."words" w WHERE w.type=%s AND w.norm = ANY(%s)' + ctx_sql)
+            q = ('SELECT w.norm, w.canonical FROM knowledgebase."words" w WHERE w.type=%s AND w.norm = ANY(%s)' + ctx_sql)
             cur.execute(q, (wtype, uniq))
             tmp = {}
             for nm, cn_ in cur.fetchall():
@@ -242,7 +242,7 @@ class EntityQuery(RoutedQuery):
             parts.append(
                 f'SELECT fv.cell, COALESCE(nn.canonical, fv.cell) '
                 f'FROM (VALUES {vlits}) AS fv(cell, vec) '
-                f'LEFT JOIN LATERAL (SELECT w.canonical FROM world."words" w '
+                f'LEFT JOIN LATERAL (SELECT w.canonical FROM knowledgebase."words" w '
                 f'WHERE w.type={qlit(wtype)}{ctx_sql} AND (w.embedding <=> fv.vec) <= {maxd} '
                 f'ORDER BY w.embedding <=> fv.vec LIMIT 1) nn ON true')
         return " UNION ALL ".join(parts) if parts else None
@@ -268,7 +268,7 @@ class EntityQuery(RoutedQuery):
         cand = {}                                                 # norm -> [(qid, country, is_primary, population)]
         if uniq:
             cur.execute("SELECT norm, qid, canon_country, is_primary, (props->>'population')::bigint "
-                        "FROM world.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s)", (uniq,))
+                        "FROM knowledgebase.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s)", (uniq,))
             for nm, qid, co, prim, pop in cur.fetchall():
                 cand.setdefault(nm, []).append((qid, co, bool(prim), pop or 0))
 
@@ -280,15 +280,15 @@ class EntityQuery(RoutedQuery):
         for c in cells:
             q = pick(c)
             (exact_rows.append((c, q)) if q else fuzzy.append(c))
-        if exact_rows:                                            # LAZY-SYNC the resolved cities into wikipedia."city"
+        if exact_rows:                                            # LAZY-SYNC the resolved cities into knowledgebase."city"
             try:                                                  # (tables start empty; fill the qids we just resolved)
-                from engine.world_sync import ensure_entity
+                from engine.knowledge_sync import ensure_entity
                 qids = [q for _c, q in exact_rows]
                 for q in qids:
-                    ensure_entity(q, "Q515")                      # city type = Q515 -> wikipedia."city" (qid PK + qid FKs)
-                cur.execute('SELECT DISTINCT country FROM wikipedia."city" WHERE qid = ANY(%s) AND country IS NOT NULL', (qids,))
+                    ensure_entity(q, "Q515")                      # city type = Q515 -> knowledgebase."city" (qid PK + qid FKs)
+                cur.execute('SELECT DISTINCT country FROM knowledgebase."city" WHERE qid = ANY(%s) AND country IS NOT NULL', (qids,))
                 for (cq,) in cur.fetchall():                      # cascade the FK: fill each city's COUNTRY so 2-hop
-                    ensure_entity(cq, "Q6256")                    # filters (continent) can join wikipedia."country"
+                    ensure_entity(cq, "Q6256")                    # filters (continent) can join knowledgebase."country"
             except Exception as e:                                # noqa: BLE001 — never block the query on a sync miss
                 print(f"[entities] city lazy-fill failed: {e}", flush=True)
         parts = []
@@ -302,7 +302,7 @@ class EntityQuery(RoutedQuery):
             ctx_sql = f" AND w.canon_country = {qlit(ctx_country)}" if ctx_country else ""
             parts.append(
                 f'SELECT fv.cell, nn.qid FROM (VALUES {vlits}) AS fv(cell, vec) '
-                f'JOIN LATERAL (SELECT w.qid FROM world."words" w WHERE w.type=\'city\' AND w.qid IS NOT NULL'
+                f'JOIN LATERAL (SELECT w.qid FROM knowledgebase."words" w WHERE w.type=\'city\' AND w.qid IS NOT NULL'
                 f'{ctx_sql} AND (w.embedding <=> fv.vec) <= {maxd} ORDER BY w.embedding <=> fv.vec LIMIT 1) nn ON true')
         return " UNION ALL ".join(parts) if parts else None
 
@@ -311,7 +311,7 @@ class EntityQuery(RoutedQuery):
         BOTH a city column and a country column to separate its two 'Paris' rows). Resolve each (city, country) PAIR
         to the city qid whose canon_country matches THAT row's country (then is_primary, population), and yield
         (cell, ctx, qid) so the join pins BOTH the city name AND its row-country. This is the qid-keyed replacement
-        for the old name-vs-name disambiguator join: wikipedia."city".country is a country QID ('Q142'), not 'France',
+        for the old name-vs-name disambiguator join: knowledgebase."city".country is a country QID ('Q142'), not 'France',
         so the inherited lower(up.country)=lower(city.country) never matched -> empty SUM. -> SQL | None."""
         t = next((x for x in norm if x["name"] == mtab), None)
         if not t or route_col not in t["columns"] or disamb_col not in t["columns"]:
@@ -327,7 +327,7 @@ class EntityQuery(RoutedQuery):
         cand = {}                                                 # norm -> [(qid, canon_country, is_primary, pop)]
         if uniq:
             cur.execute("SELECT norm, qid, canon_country, is_primary, (props->>'population')::bigint "
-                        "FROM world.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s)", (uniq,))
+                        "FROM knowledgebase.\"words\" WHERE type='city' AND qid IS NOT NULL AND norm = ANY(%s)", (uniq,))
             for nm, qid, co, prim, pop in cur.fetchall():
                 cand.setdefault(nm, []).append((qid, (co or ""), bool(prim), pop or 0))
         rows = []
@@ -340,11 +340,11 @@ class EntityQuery(RoutedQuery):
         if not rows:
             return None
         try:                                                      # LAZY-SYNC the resolved cities + their countries
-            from engine.world_sync import ensure_entity           # (qid PK + country qid FK) so 2-hop joins hit
+            from engine.knowledge_sync import ensure_entity           # (qid PK + country qid FK) so 2-hop joins hit
             qids = [q for _c, _x, q in rows]
             for q in qids:
                 ensure_entity(q, "Q515")
-            cur.execute('SELECT DISTINCT country FROM wikipedia."city" WHERE qid = ANY(%s) AND country IS NOT NULL', (qids,))
+            cur.execute('SELECT DISTINCT country FROM knowledgebase."city" WHERE qid = ANY(%s) AND country IS NOT NULL', (qids,))
             for (cq,) in cur.fetchall():
                 ensure_entity(cq, "Q6256")
         except Exception as e:                                    # noqa: BLE001 — never block the query on a sync miss
@@ -353,8 +353,8 @@ class EntityQuery(RoutedQuery):
         return f"SELECT * FROM (VALUES {vals}) AS ex(cell, ctx, qid)"
 
     def _labelize_qids(self, result):
-        """Resolve entity QIDs in the FIRST projected column to canonical labels via world."words" (the qid->canonical
-        index; world."types" holds only the taxonomy, not entity labels). So a projected world entity-attribute column
+        """Resolve entity QIDs in the FIRST projected column to canonical labels via knowledgebase."words" (the qid->canonical
+        index; knowledgebase."types" holds only the taxonomy, not entity labels). So a projected world entity-attribute column
         ('which continent is Kyoto in' -> country.continent = 'Q48') reads 'Asia', not the bare qid. Non-qid values
         (a plain text projection) pass through unchanged."""
         import re as _re
@@ -364,7 +364,7 @@ class EntityQuery(RoutedQuery):
             return
         try:
             cur = self._rconn().cursor()
-            cur.execute('SELECT qid, canonical FROM world."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL', (qids,))
+            cur.execute('SELECT qid, canonical FROM knowledgebase."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL', (qids,))
             lbl = {q: c for q, c in cur.fetchall()}
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
             print(f"[entities] qid->label resolve failed: {e}", flush=True); return
@@ -405,16 +405,16 @@ class EntityQuery(RoutedQuery):
                 b = "__bridge0"
                 fw += f' JOIN ({name_bridge}) AS {b}(cell, canon) ON {b}.cell = {qident(mtab)}.{qident(route_col)}'
                 if j["right_col"] == "qid":
-                    # QID-KEYED world table (wikipedia."country" migrated to qid keys): the name bridge yields the
+                    # QID-KEYED world table (knowledgebase."country" migrated to qid keys): the name bridge yields the
                     # canonical NAME, but the table joins on `qid`, so a name/qid join returned 0 rows — every
-                    # country-column world join was empty. Map canon -> qid through world."words" (the SAME index the
+                    # country-column world join was empty. Map canon -> qid through knowledgebase."words" (the SAME index the
                     # bridge resolved through) and join on qid. Robust to official-vs-common name mismatch
                     # (China's canon 'China' -> Q148 -> wikipedia.country.qid Q148), which a name-join silently drops.
-                    # world."words" has MANY rows per entity (one per altLabel), all sharing the qid, so DISTINCT ON
+                    # knowledgebase."words" has MANY rows per entity (one per altLabel), all sharing the qid, so DISTINCT ON
                     # (canonical) collapses to ONE qid per name — else the aggregate fans out by the altLabel count.
                     w = f"{b}_w"
                     fw += (f' JOIN (SELECT DISTINCT ON (lower({qident("canonical")})) lower({qident("canonical")}) AS cn, '
-                           f'{qident("qid")} FROM world."words" WHERE {qident("type")}={qlit(wtype)} '
+                           f'{qident("qid")} FROM knowledgebase."words" WHERE {qident("type")}={qlit(wtype)} '
                            f'AND {qident("qid")} IS NOT NULL ORDER BY lower({qident("canonical")}), {qident("qid")}) '
                            f'{w} ON {w}.cn = lower({b}.canon)')
                     fw += f' JOIN {qident(R)} ON {qident(R)}.{qident("qid")} = {w}.{qident("qid")}'

@@ -3,15 +3,15 @@ types the uploaded column to its world table; the planner joins it + filters/agg
 the upload never had.
 
 The independently-routed joins, with the world-table name each column routes to (all qid-keyed now; see
-docs/notes/naming.md). city/country use the exact-label wikipedia."<type>" tables; u_s_state uses the
-aggregate qid-keyed world."u_s_state" (built by db/sync/build_u_s_state.py) — name-join, but country/continent
+docs/notes/naming.md). city/country use the exact-label knowledgebase."<type>" tables; u_s_state uses the
+aggregate qid-keyed knowledgebase."u_s_state" (built by db/sync/build_u_s_state.py) — name-join, but country/continent
 are qid FKs so the filter is exact:
   city      -> "city"       (wikipedia.city;    filter by country / continent)
   country   -> "country"    (wikipedia.country; filter by continent)
   u_s_state -> "u_s_state"  (world.u_s_state;   filter by country — Lombardy/Sicily in Italy)
 Runs against the LIVE world Postgres on the consolidated single-model path.
 
-  Needs a synced world Postgres (docker-compose + db/sync) and WORLD_PG_* env vars set.
+  Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_world_joins
 """
 from __future__ import annotations
@@ -49,10 +49,10 @@ def _scalar(res):
 
 
 def main():
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("set WORLD_PG_PASSWORD to run"); return 1
-    from engine.world_query import WorldQuery
-    Q = WorldQuery()
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("set KB_PG_PASSWORD to run"); return 1
+    from engine.knowledge_query import KnowledgeQuery
+    Q = KnowledgeQuery()
     schema = os.environ.get("AUTH_TEST_SUB", "joins_test")
     npass = 0
     for label, tbl, exp_table, q, exp in CASES:

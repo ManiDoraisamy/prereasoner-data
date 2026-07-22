@@ -18,8 +18,8 @@ Probes built in `spider/probe/`, run on **Spider dev (1034 examples, 20 DBs)**. 
 
 ## §0 — Reproduction gate (finding #0)
 
-The live full stack (`WorldReasoner → ComposedWorldQuery → WorldQuery`) is **Postgres-gated**: it needs a
-seeded world-knowledge DB (`world_pg_password()` raises otherwise; the seed is a 15–45 min Wikidata sync),
+The live full stack (`KnowledgeReasoner → ComposedKnowledgeQuery → KnowledgeQuery`) is **Postgres-gated**: it needs a
+seeded world-knowledge DB (`kb_pg_password()` raises otherwise; the seed is a 15–45 min Wikidata sync),
 and `sentence_transformers` / `pgvector` are not installed here. **So the live "12%" cannot be reproduced
 in this environment, and we do not fabricate it.**
 
@@ -110,7 +110,7 @@ onto leaves like `car_model`, `breed`, `language`, `song`, `power_station`. Worl
 on `city` and 15 on `country`**.
 
 **But read this correctly (guard against over-claiming):** the live path does **not** join on the router
-alone — it gates the world join on **grounding** (`WorldQuery._grounds`: ≥80% of a column's cells must
+alone — it gates the world join on **grounding** (`KnowledgeQuery._grounds`: ≥80% of a column's cells must
 resolve to real world entities in Postgres). A `Name` column that mis-routes to `city` will *not* ground,
 so the join is dropped. That gate needs the seeded Postgres (unavailable here), so we can't measure how
 many of the 52% over-reaches survive it — but by design most should. So Probe C shows the router is a poor
@@ -205,7 +205,7 @@ deficit, out-of-taxonomy column typing — not SQL-generation, not architecture.
   tables share a column name — pervasive in Spider (`Name`, `Location`, `ID`). Joins are 37.5% of the
   reachable set; this bug turns a large share of them into hard errors. **Not** a linking gap — a
   qualify/alias fix.
-- **Mis-routing (a top lever, measured):** the depth-primitive gate (`ComposedWorldQuery._composed`)
+- **Mis-routing (a top lever, measured):** the depth-primitive gate (`ComposedKnowledgeQuery._composed`)
   over-fires `SORT`/`TOPN` on "ordered by", "most", etc., routing **59% of queries to compose**, which
   scores **8.4%** vs the slot-filler's **50.6%**. Projection/filter/superlative questions the slot-filler
   handles (it *did* bind `WHERE Country='France'` and `WHERE weight>10`, and does `ORDER BY`) are lost to
@@ -262,7 +262,7 @@ and the full 1034-example eval re-run (`--tag tier1`; baseline artifacts kept as
 1. **Join-flatten fix** (`engine/joins.py`): the `endswith("id")` FK arm now requires the id column's
    stem to name the parent (kills spurious id-range inclusions like `concert_ID ⊆ Stadium_ID`);
    `join_plan` joins each parent **once** (best-named FK wins) and prunes output-name collisions.
-2. **Routing fix** (`engine/world_compose.py`): `DEPTH_PRIMS` trimmed to
+2. **Routing fix** (`engine/knowledge_compose.py`): `DEPTH_PRIMS` trimmed to
    `{EXCL, RATIO, SHARE, HAVING, DIVIDE, RUNNING}` — `TOPN/SORT/TIME` no longer gate to compose (the
    slot planner does order/limit/argmax/year filters *with* projection + WHERE). Plus a
    **harness-faithfulness fix**: the baseline harness lacked the live `serve()` fallback (stand on
@@ -312,7 +312,7 @@ benchmark; its value is on the live product (relationship-named FK joins), guard
 
 **Honest notes:** (a) the routing gain is bundled with the harness-faithfulness fallback — the clean
 separation would need another baseline run with only the fallback added; the join fix (−79 hard
-errors) and COUNT fix are cleanly attributable. (b) `engine/world_compose.py` / `engine/joins.py` /
+errors) and COUNT fix are cleanly attributable. (b) `engine/knowledge_compose.py` / `engine/joins.py` /
 `engine/tables.py` changes affect the **live product**; the e2e suites in `tests/` need the seeded
 Postgres and should be run before deploying. (c) Predicted Tier-1 yield was +15–29 lenient; measured
 **+14.8** — at the low edge, because compose's residual 156 routed queries (HAVING/RATIO head fires
@@ -378,7 +378,7 @@ bucket (the biggest scalar-miss cause) is a **routing** defect, not model capaci
 weight of an 8-cyl car in 1974", "top 3 heaviest cars") lands on the aggregating engine and comes back wrong,
 where the slot-filler would project + filter + order it correctly.
 
-**The fix — world-gated stand-on (`engine/world_compose.py`, mirrored in `full_eval.py`).** Don't change the
+**The fix — world-gated stand-on (`engine/knowledge_compose.py`, mirrored in `full_eval.py`).** Don't change the
 gate; change what the engine STANDS on. Split the composition views: `ENGINE_ONLY` (yoy/running/share/divide/
 having — the slot-filler can't do these) always stand; `SLOT_OVERLAP` (topn/sort/time_filter — the slot-filler
 also does these, WITH projection+WHERE) stand **only when a WORLD join is in the stack**. A bare non-world

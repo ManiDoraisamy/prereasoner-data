@@ -182,21 +182,21 @@ resource "google_cloud_run_v2_service" "api" {
         mount_path = "/cloudsql"
       }
 
-      # A WORLD_PG_HOST starting with "/" makes the engine use the unix socket (no port/ssl).
+      # A KB_PG_HOST starting with "/" makes the engine use the unix socket (no port/ssl).
       env {
-        name  = "WORLD_PG_HOST"
+        name  = "KB_PG_HOST"
         value = "/cloudsql/${google_sql_database_instance.world.connection_name}"
       }
       env {
-        name  = "WORLD_PG_DB"
+        name  = "KB_PG_DB"
         value = google_sql_database.world.name
       }
       env {
-        name  = "WORLD_PG_USER"
+        name  = "KB_PG_USER"
         value = google_sql_user.postgres.name
       }
       env {
-        name = "WORLD_PG_PASSWORD"
+        name = "KB_PG_PASSWORD"
         value_source {
           secret_key_ref {
             secret  = google_secret_manager_secret.db_password.secret_id
@@ -238,7 +238,7 @@ resource "google_cloud_run_v2_service" "api" {
 }
 
 # Unauthenticated invocations are intentional: authentication happens at the APPLICATION
-# layer (engine/auth.py verifies Firebase ID tokens on /api/reason and /api/world;
+# layer (engine/auth.py verifies Firebase ID tokens on /api/reason and /api/knowledge;
 # /api/dimension is stateless and public by design). Firebase Hosting's /api/** rewrite
 # also requires the service to accept unauthenticated calls.
 resource "google_cloud_run_v2_service_iam_member" "invoker" {

@@ -77,12 +77,12 @@ terraform apply -var project_id=<PROJECT> \
 
 Outputs: `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`.
 
-The service will deploy but return errors on `/api/reason`/`/api/world` until the
+The service will deploy but return errors on `/api/reason`/`/api/knowledge` until the
 database is seeded (next step) — `/healthz` and `/api/dimension` work immediately.
 
 ### 3. Seed the world database (one-time, ~15–45 min)
 
-The engine resolves nothing until `world."words"`, `world."types"`, the friendly world
+The engine resolves nothing until `knowledgebase."words"`, `knowledgebase."types"`, the friendly world
 tables and `public.settlement` are populated (`db/README.md` §2). Run the seed from
 **Cloud Shell** (or any machine) via `cloud-sql-proxy`:
 
@@ -92,8 +92,8 @@ curl -Lo cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/clo
 chmod +x cloud-sql-proxy
 ./cloud-sql-proxy "$(cd infra && terraform output -raw sql_connection_name)" &
 
-export WORLD_PG_HOST=127.0.0.1 WORLD_PG_PORT=5432 WORLD_PG_DB=world WORLD_PG_USER=postgres
-export WORLD_PG_PASSWORD="$(gcloud secrets versions access latest --secret=prereasoner-api-db-password)"
+export KB_PG_HOST=127.0.0.1 KB_PG_PORT=5432 KB_PG_DB=world KB_PG_USER=postgres
+export KB_PG_PASSWORD="$(gcloud secrets versions access latest --secret=prereasoner-api-db-password)"
 
 pip install -r db/sync/requirements.txt        # torch-cpu + transformers, ~2 GB — fits Cloud Shell
 
@@ -129,7 +129,7 @@ URL=$(cd infra && terraform output -raw service_url)
 curl "$URL/healthz"          # {"ok": true, ...} once models are loaded
 curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
      -d '{"data": "Paris", "mode": "analyze"}'
-# /api/reason & /api/world need a Firebase ID token — use the hosted web UI.
+# /api/reason & /api/knowledge need a Firebase ID token — use the hosted web UI.
 ```
 
 ## Teardown

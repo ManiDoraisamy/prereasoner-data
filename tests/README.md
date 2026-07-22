@@ -13,7 +13,7 @@ tests — they oracle-check the served answers against SQL recomputed from the s
 
 1. Postgres with pgvector running and synced (docker-compose service + `db/sync`).
 2. Environment (see `.env.example`):
-   - `WORLD_PG_HOST` / `WORLD_PG_PORT` / `WORLD_PG_DB` / `WORLD_PG_USER` / `WORLD_PG_PASSWORD` (required — every
+   - `KB_PG_HOST` / `KB_PG_PORT` / `KB_PG_DB` / `KB_PG_USER` / `KB_PG_PASSWORD` (required — every
      suite skips or exits early without the password)
    - `AUTH_TEST_SUB` (optional) — the per-user schema the world tests write bridges into; each suite has its own
      default test schema.

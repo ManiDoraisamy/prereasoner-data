@@ -7,7 +7,7 @@ scores 0 on Spider by construction (no Spider query needs world knowledge).
 ## Method — the gold is derived from the world DB, not hand-labelled
 
 Each case is an uploaded CSV (or two) + a natural-language question + an **oracle SQL**. The oracle computes
-the expected answer by **joining the upload against the clean world tables** (`world."Countries"` /
+the expected answer by **joining the upload against the clean world tables** (`knowledgebase."Countries"` /
 `"Cities"` / `"Elements"`) at eval time — so the gold is ground truth from the world DB, and stays correct if
 the data changes. PreReasoner runs its own resolve→route→view-stack path on the same upload+question, and
 `run.py` compares (scalar / lenient / strict, the Spider yardstick).
@@ -19,9 +19,9 @@ the data changes. PreReasoner runs its own resolve→route→view-stack path on 
   `world.Elements`(name, mass) are the clean joinable tables (the `wikipedia.*` per-type tables are the
   resolver's internal path; the oracle uses the clean tables as an independent check).
 
-Run: `python world_eval/run.py` (needs `WORLD_PG_PASSWORD` from `.env`; loads the model once).
+Run: `python world_eval/run.py` (needs `KB_PG_PASSWORD` from `.env`; loads the model once).
 
-## Results (live WorldReasoner + seeded Postgres) — 6/8 exact (75%)
+## Results (live KnowledgeReasoner + seeded Postgres) — 6/8 exact (75%)
 
 | case | capability | oracle | PreReasoner | verdict |
 |---|---|---|---|---|

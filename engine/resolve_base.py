@@ -14,15 +14,15 @@ from __future__ import annotations
 import json
 import re
 
-from engine import world_tables as _wt          # module — we extend its WORLD_COL_SYN in place
+from engine import knowledge_tables as _wt          # module — we extend its WORLD_COL_SYN in place
 from engine.config import DATA_DIR
 from engine.pg import PgQuery, _pg
-from engine.world_tables import WORLD_NAMES, csv_table  # noqa: F401  (csv_table re-exported)
+from engine.knowledge_tables import WORLD_NAMES, csv_table  # noqa: F401  (csv_table re-exported)
 
 DATA = DATA_DIR
 
 # friendly names for the extra world tables (mirrors WORLD_NAMES for the originals)
-# word_state -> the qid-keyed world."u_s_state" (migrated; docs/notes/naming.md). element/continent remain
+# word_state -> the qid-keyed knowledgebase."u_s_state" (migrated; docs/notes/naming.md). element/continent remain
 # on the friendly name-keyed family.
 FRIENDLY15 = {"word_element": "Elements in the World", "word_state": "u_s_state",
               "word_continent": "Continents in the World"}
@@ -53,7 +53,7 @@ ROUTE_CONCEPTS = {
 GENERIC_CITY = {"location", "place", "region", "district", "geographical_area", "area",
                 "geographic_point", "point", "settlement"}
 
-# teach the world-column SELECT path (WorldTableQuery.world_target) about element + state properties, so a
+# teach the world-column SELECT path (KnowledgeTableQuery.world_target) about element + state properties, so a
 # question can ask for them ("atomic number of …", "the symbol of …"). WORLD_COL_SYN is a process-global the
 # planner reads; extending it here only affects the world service.
 _wt.WORLD_COL_SYN.update({
@@ -84,14 +84,14 @@ class RoutedQuery(PgQuery):
         return PgQuery._world_aff(col)
 
     def _country_alias_map(self):
-        """Lazy-load the world."Country Aliases" NORMALIZATION TABLE (alias -> canonical country name = the world
+        """Lazy-load the knowledgebase."Country Aliases" NORMALIZATION TABLE (alias -> canonical country name = the world
         model's key), cached for the instance. Data-driven (canonical self-map + curated safe aliases), not a
         hardcoded dict. Falls back to {} (generic match only) if the table is absent."""
         if self._caliases is None:
             m = {}
             try:
                 cn = _pg(); cur = cn.cursor()
-                cur.execute('SELECT lower(alias), name FROM world."Country Aliases"')
+                cur.execute('SELECT lower(alias), name FROM knowledgebase."Country Aliases"')
                 for a, n in cur.fetchall():
                     if a and n:
                         m[a] = n

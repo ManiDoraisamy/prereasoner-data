@@ -4,14 +4,14 @@ Runs each suite as a subprocess and aggregates exit codes. Suites self-skip when
 present, so this is safe to run anywhere:
   - test_mcp            always runs (in-process stub; no external deps)
   - test_orchestrator   runs iff ANTHROPIC_API_KEY is set (else SKIP, exit 0)
-  - test_world/geo/...  run iff WORLD_PG_PASSWORD is set (else SKIP, exit 0) — the real engine tests
+  - test_world/geo/...  run iff KB_PG_PASSWORD is set (else SKIP, exit 0) — the real engine tests
 
 The PRE-DEPLOY gate is `regress.run_regression` (offline text-to-SQL goldens + world-model-join goldens);
 its world tier reuses these engine suites. cloudbuild.yaml runs the offline tier in the built image; run
 this (or `regress.run_regression --require-world`) against a seeded Postgres for the full world suite.
 
 Run:  python -m tests.run_all
-Env:  RUN_ENGINE_TESTS=0 skips the live-Postgres engine suites even if WORLD_PG_PASSWORD is set.
+Env:  RUN_ENGINE_TESTS=0 skips the live-Postgres engine suites even if KB_PG_PASSWORD is set.
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ import os
 import subprocess
 import sys
 
-import engine.config  # noqa: F401 — autoloads repo .env so WORLD_PG_PASSWORD/ANTHROPIC_API_KEY reach the
+import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/ANTHROPIC_API_KEY reach the
 # spawned suites; without it the world suites silently SKIP (or return 1) and the gate falsely looks green.
 
 SUITES = ["tests.test_sql_ast", "tests.test_compose", "tests.test_mcp", "tests.test_orchestrator"]

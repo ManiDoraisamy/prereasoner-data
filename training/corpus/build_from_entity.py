@@ -52,8 +52,8 @@ def ok(v):
 
 
 def main():
-    cn = psycopg2.connect(host=os.environ.get("WORLD_PG_HOST", "localhost"), dbname=os.environ.get("WORLD_PG_DB", "world"), user=os.environ.get("WORLD_PG_USER", "postgres"),
-                          password=os.environ["WORLD_PG_PASSWORD"], connect_timeout=30)
+    cn = psycopg2.connect(host=os.environ.get("KB_PG_HOST", "localhost"), dbname=os.environ.get("KB_PG_DB", "world"), user=os.environ.get("KB_PG_USER", "postgres"),
+                          password=os.environ["KB_PG_PASSWORD"], connect_timeout=30)
     cur = cn.cursor()
 
     # 1. leaves + tree paths from gen20 taxonomy.csv (the curated single-path, glue-dropped lineage)

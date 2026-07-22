@@ -12,7 +12,7 @@
 | Area | Scope | Status |
 |---|---|---|
 | A. Security & Auth | engine auth/server/conversations/master/admin/pg, orchestrator server, mcp_server, firebase rules | ⚠️ 2 confirmed (both FIXED); SQLi dimension rate-limited → **re-run pending** |
-| B. Engine Core | compose, world_query/compose/tables, tables, converse, bridge, trace, router, joins, entities, resolve | ⚠️ 3 confirmed (1 dim done); 4 dims rate-limited → **re-run pending** |
+| B. Engine Core | compose, knowledge_query/compose/tables, tables, converse, bridge, trace, router, joins, entities, resolve | ⚠️ 3 confirmed (1 dim done); 4 dims rate-limited → **re-run pending** |
 | C. SQL Subsystem | sql_*.py (17 files, ~8k lines) | ⏳ rate-limited (empty) → **re-run pending** |
 | D. Frontend & Infra | web/public (workbook.js, shared.js, html, css), db/sync, Dockerfiles, cloudbuild, terraform, firebase.json | ✅ done — 8 confirmed |
 
@@ -56,14 +56,14 @@ _more to come_
 _Only 1 of 5 dimensions completed before rate-limiting (resolution-joins); compose-aggregate, trace-fidelity, crashes-robustness, state-resource were rate-limited and are being re-run. 3 confirmed so far._
 
 ### B-1 · P1 · Hybrid country filter compares a country QID against a country NAME → every country-filtered hybrid query returns ZERO rows
-- **File:** `engine/world_query.py:483` (filter emit), with `:663-669` (serve passes `cr[0]`), `entities.py:104/127` (`_resolve` returns a **QID** post-migration), `build_words.py:48` / `build_world.py:40` (bridge `country` column stores the country **NAME**).
+- **File:** `engine/knowledge_query.py:483` (filter emit), with `:663-669` (serve passes `cr[0]`), `entities.py:104/127` (`_resolve` returns a **QID** post-migration), `build_words.py:48` / `build_world.py:40` (bridge `country` column stores the country **NAME**).
 - **Scenario:** Ask "who complained about bad delivery in France" over `{name, city, remarks}`. `_resolve(question,"country")` now returns `'Q142'` (qid), which `_serve_hybrid` puts into `AND c."country" = 'Q142'` — but the connected bridge's `country` column holds `'France'` (a name). The `EXISTS` never matches → **empty result** instead of the France customers. Fails silently (well-formed WHERE, truthy country → no fallback). The stale comment at `:663` (`# ("France", sim, surface)`) documents the pre-migration name-return assumption `_serve_hybrid` still relies on. Same QID-as-context also defeats `_city_bridge_sql` disambiguation (`entities.py:277`).
-- **Fix:** Map `cr[0]` (qid) back to the canonical country **name** before passing into `_serve_hybrid` (look up `world."words"` for the qid) so the filter compares `'France' = 'France'`; or store the qid in the bridge `country` column and keep qid-vs-qid. Also fix `_city_bridge_sql` `pick()` (`entities.py:277`) to compare against the country name. **This is the flagship hybrid demo path — high priority.**
+- **Fix:** Map `cr[0]` (qid) back to the canonical country **name** before passing into `_serve_hybrid` (look up `knowledgebase."words"` for the qid) so the filter compares `'France' = 'France'`; or store the qid in the bridge `country` column and keep qid-vs-qid. Also fix `_city_bridge_sql` `pick()` (`entities.py:277`) to compare against the country name. **This is the flagship hybrid demo path — high priority.**
 
 ### B-2 · P2 · `ambiguities()` matches the uploaded value against the qid key column → same-name world entities never flagged ambiguous
 - **File:** `engine/pg.py:150` (and `:155` non-country branch); `entities.py:381` caller; `word_city.json:3` (`key='qid'`).
 - **Scenario:** A city question with an ambiguous value (e.g. "Springfield") + no disambiguator. `ambiguities()` runs `... WHERE lower("qid") = 'springfield'` — comparing a city name to the qid column, which never matches → `opts` always empty → **no ambiguity warning ever emitted**. The system silently picks highest-population and presents it confidently. Misrepresents the warnings/trace the product promises.
-- **Fix:** Match on the entity **name** column for qid-keyed tables (`WHERE lower("name")=%s`), or count distinct qids per normalized name via `world."words"` and flag when >1. Apply to both branches (`:150`, `:155`). `word_state` (key already `name`) needs no change.
+- **Fix:** Match on the entity **name** column for qid-keyed tables (`WHERE lower("name")=%s`), or count distinct qids per normalized name via `knowledgebase."words"` and flag when >1. Apply to both branches (`:150`, `:155`). `word_state` (key already `name`) needs no change.
 
 ### B-3 · P2 · `is_key()` accepts a non-unique column as an FK target (0.98 tolerance) → join fan-out inflates SUM/COUNT
 - **File:** `engine/relations.py:51`.
@@ -90,7 +90,7 @@ _8 confirmed (1 false-positive rejected: a claimed stale-RTDB-replay race in add
 
 ### D-2 · P1 · Live, self-documented-as-compromised secrets in plaintext `.env`, unrotated
 - **File:** `.env:3-16` (gitignored + in `.dockerignore`/`.gcloudignore`, so NOT shipped into images — but the live-secret exposure stands).
-- **Scenario:** `.env` holds real active creds: `HF_TOKEN`, `RUNPOD_API_KEY`, `ANTHROPIC_API_KEY`, and a **production** Cloud SQL credential `WORLD_PG_HOST=34.123.19.176` (public IP) + `WORLD_PG_PASSWORD=…`. The file's own header says these "sat in plaintext in the old repo" and must be rotated — i.e. already exposed in old git history AND still active. This matches the pre-publish key-rotation item in memory ([[prereasoner-oss-consolidation]]).
+- **Scenario:** `.env` holds real active creds: `HF_TOKEN`, `RUNPOD_API_KEY`, `ANTHROPIC_API_KEY`, and a **production** Cloud SQL credential `KB_PG_HOST=34.123.19.176` (public IP) + `KB_PG_PASSWORD=…`. The file's own header says these "sat in plaintext in the old repo" and must be rotated — i.e. already exposed in old git history AND still active. This matches the pre-publish key-rotation item in memory ([[prereasoner-oss-consolidation]]).
 - **Fix:** Rotate the three API keys **now** (treat as leaked; revoke old), rotate the Cloud SQL password and pull it from Secret Manager at use time, and confirm old-repo history is purged. (DB password is network-guarded by zero authorized networks per `infra/main.tf`, so lower urgency than the API keys.)
 
 ### D-3 · P1 · `saveMaster` clears `sh.dirty` for edits made during the in-flight POST → silent lost update

@@ -1,19 +1,19 @@
-"""WorldReasoner = ComposedWorldQuery (composition + world + aggregates) PLUS a geo NEARBY primitive (lat/lng
+"""KnowledgeReasoner = ComposedKnowledgeQuery (composition + world + aggregates) PLUS a geo NEARBY primitive (lat/lng
 distance search), ADDITIVELY (it wraps, never modifies, the composed planner — no regression risk).
 
 A "near/around/closest <city>" question resolves the reference city to its lat/lng (public.settlement, the
 clean ~174k-row geo source) and returns the nearest world cities by haversine distance. Everything else
-delegates to ComposedWorldQuery unchanged (population ranking, aggregates, hybrid, clarify, composition).
+delegates to ComposedKnowledgeQuery unchanged (population ranking, aggregates, hybrid, clarify, composition).
 
 serve() also owns two signals for the conversational layer (docs/ARCHITECTURE.md §10): the COVERAGE PRE-GATE
 (a message with no data intent short-circuits with low_confidence, before reasoning) and the PRESENT tag
 (_tag_present flags a real answer whose phrasing is emotional/human, so the UI presents it in words). Both
-detectors live on ComposedWorldQuery; WorldReasoner applies them across the geo + composed paths.
+detectors live on ComposedKnowledgeQuery; KnowledgeReasoner applies them across the geo + composed paths.
 """
 from __future__ import annotations
 import re
 
-from engine.world_compose import ComposedWorldQuery
+from engine.knowledge_compose import ComposedKnowledgeQuery
 from engine.pg import _pg
 
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
@@ -23,10 +23,10 @@ HAVERSINE = ("6371*acos(greatest(-1,least(1, cos(radians(%s))*cos(radians(p.lat)
              "+sin(radians(%s))*sin(radians(p.lat)))))")
 
 
-class WorldReasoner:
+class KnowledgeReasoner:
     def __init__(self):
-        self.composed = ComposedWorldQuery()
-        self.qw = self.composed.qw                                              # expose WorldQuery (server warmup: MODEL.qw._spacy())
+        self.composed = ComposedKnowledgeQuery()
+        self.qw = self.composed.qw                                              # expose KnowledgeQuery (server warmup: MODEL.qw._spacy())
 
     def serve(self, tables, question, sub, as_of=None, emit=None):
         if NEAR.search(question or ""):
@@ -112,9 +112,9 @@ class WorldReasoner:
 
 def main():
     import os
-    if not os.environ.get("WORLD_PG_PASSWORD"):
-        print("set WORLD_PG_PASSWORD"); return
-    q = WorldReasoner()
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("set KB_PG_PASSWORD"); return
+    q = KnowledgeReasoner()
     r = q._nearby("big cities near Paris")
     if r:
         print("ref:", r["reference"]["name"], r["reference"]["qid"])

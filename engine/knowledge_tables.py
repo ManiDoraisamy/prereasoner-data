@@ -39,10 +39,10 @@ AGG_CUES = {"COUNT": {"count", "counts", "number", "many"}, "SUM": {"sum", "tota
 STALE_DAYS = 730                                          # a fact last verified > ~2y before the decision = stale
 
 # the world-knowledge tables in the generated SQL are the qid-keyed `wikipedia` schema, named by the EXACT Wikidata
-# label (wikipedia."city" / wikipedia."country"). The planner's logical slugs (word_city/word_country) remap here; the
+# label (knowledgebase."city" / knowledgebase."country"). The planner's logical slugs (word_city/word_country) remap here; the
 # place hierarchy is dropped (no faithful Wikidata "place" type). search_path includes `wikipedia` so the bare names resolve.
-# word_city/word_country -> qid-keyed wikipedia."<type>" tables. word_state -> the aggregate qid-keyed
-# world."u_s_state" (built by db/sync/build_u_s_state.py; state qid PK, country/continent qid FKs) — so a
+# word_city/word_country -> qid-keyed knowledgebase."<type>" tables. word_state -> the aggregate qid-keyed
+# knowledgebase."u_s_state" (built by db/sync/build_u_s_state.py; state qid PK, country/continent qid FKs) — so a
 # state column joins qid-keyed and filters by country/continent, same as city/country. word_element still
 # uses the friendly name-keyed family. The naming families are documented in docs/notes/naming.md.
 WORLD_NAMES = {"word_city": "city", "word_country": "country", "word_state": "u_s_state"}
@@ -65,7 +65,7 @@ def load_word_tables():
     return out
 
 
-class WorldTableQuery:
+class KnowledgeTableQuery:
     def __init__(self, deploy_dir=DATA_DIR):
         self.q11 = TableQuery(deploy_dir)         # the anchored readout planner (encoder overlaid by the world layer)
         self.words = load_word_tables()           # metadata only (key/concept/filter_attrs/filter_values/links/parent)

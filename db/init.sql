@@ -1,20 +1,20 @@
 -- ============================================================================
 -- PreReasoner world database — bootstrap for a FRESH Postgres instance.
 --
---   psql "$WORLD_PG_URL" -f db/init.sql        (or via docker exec, see db/README.md)
+--   psql "$KB_PG_URL" -f db/init.sql        (or via docker exec, see db/README.md)
 --
 -- Creates every extension, schema, static table and index the engine expects.
 -- Idempotent: safe to re-run. Population is done by the scripts in db/sync/
 -- (bulk) and by the engine's lazy sync at query time (see db/README.md).
 --
 -- The engine connects as a single role (typically `postgres`) named by
--- WORLD_PG_USER; it CREATEs per-user schemas at request time, so the role
+-- KB_PG_USER; it CREATEs per-user schemas at request time, so the role
 -- needs CREATE on the database. No other roles/grants are assumed.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
 -- 0. Extensions
---    vector  : pgvector — world."words".embedding vector(384) + HNSW <=> search
+--    vector  : pgvector — knowledgebase."words".embedding vector(384) + HNSW <=> search
 --              (engine: query16 entity resolution, world17 hybrid semantic rank)
 --    pg_trgm : trigram GIN index on public.entity_label for fuzzy value match
 --              (legacy value matcher; kept because init creates entity_label)
@@ -26,17 +26,18 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 
 -- ----------------------------------------------------------------------------
 -- 1. Schemas
---    public    : raw Wikidata import (geo hierarchy + small clean types)
---    world     : shared serving schema — words index, type taxonomy, friendly
---                world tables + "... in the World" views
---    wikipedia : qid-keyed faithful Wikidata tables (one per taxonomy leaf,
---                exact Wikidata label as table name; lazily filled)
+--    public        : raw Wikidata import (geo hierarchy + small clean types)
+--    knowledgebase : THE shared serving schema — the "words" resolution index,
+--                    the "types" taxonomy, the qid-keyed faithful Wikidata tables
+--                    (one per taxonomy leaf, exact Wikidata label as table name,
+--                    lazily filled), and the friendly name-keyed tables + views.
+--                    (Named "knowledgebase" — NOT "world" — because "world model"
+--                    means a learned dynamics model in ML; this is a lookup KB.)
 --    "<google-sub>" per-user schemas are created BY THE ENGINE at request time
 --    (query14._load_user_schema): uploads + the two bridge tables
 --    "<t> connected to wikipedia" / "<t> unconnected to wikipedia".
 -- ----------------------------------------------------------------------------
-CREATE SCHEMA IF NOT EXISTS world;
-CREATE SCHEMA IF NOT EXISTS wikipedia;
+CREATE SCHEMA IF NOT EXISTS knowledgebase;
 
 -- ----------------------------------------------------------------------------
 -- 2. public — raw Wikidata world model
@@ -136,7 +137,7 @@ CREATE INDEX IF NOT EXISTS ix_label_kind          ON public.entity_label(kind);
 CREATE INDEX IF NOT EXISTS ix_label_trgm          ON public.entity_label USING gin (lower(label) gin_trgm_ops);
 
 -- ----------------------------------------------------------------------------
--- 3. world."words" — THE entity-resolution index (pgvector).
+-- 3. knowledgebase."words" — THE entity-resolution index (pgvector).
 --    One row per SURFACE form (label or alias) -> canonical entity + qid.
 --    embedding = bge-small-en-v1.5 [CLS], L2-normalized, 384-dim; cosine via <=>.
 --    Populated by db/sync/build_words.py; single rows appended by the engine's
@@ -144,7 +145,7 @@ CREATE INDEX IF NOT EXISTS ix_label_trgm          ON public.entity_label USING g
 --    Read by: query16 (_nn/_resolve/value-membership routing, cell bridges),
 --    world17 (grounding, _resolve_world_qid, qid->label), world18 (lookup).
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS world."words" (
+CREATE TABLE IF NOT EXISTS knowledgebase."words" (
   id            bigserial PRIMARY KEY,
   surface       text,                 -- what someone types ("US", "Bombay")
   canonical     text,                 -- the canonical entity label ("United States")
@@ -157,22 +158,22 @@ CREATE TABLE IF NOT EXISTS world."words" (
   is_primary    boolean               -- global most-populous-per-name flag
 );
 
-CREATE INDEX IF NOT EXISTS ix_words_type_norm  ON world."words"(type, norm);
-CREATE INDEX IF NOT EXISTS ix_words_type_qid   ON world."words"(type, qid);
-CREATE INDEX IF NOT EXISTS ix_words_city_norm  ON world."words"(norm) WHERE type = 'city';
+CREATE INDEX IF NOT EXISTS ix_words_type_norm  ON knowledgebase."words"(type, norm);
+CREATE INDEX IF NOT EXISTS ix_words_type_qid   ON knowledgebase."words"(type, qid);
+CREATE INDEX IF NOT EXISTS ix_words_city_norm  ON knowledgebase."words"(norm) WHERE type = 'city';
 -- HNSW cosine index (pgvector defaults: m=16, ef_construction=64) — the source
 -- created it with no explicit parameters, so defaults are the contract.
-CREATE INDEX IF NOT EXISTS ix_words_hnsw       ON world."words" USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX IF NOT EXISTS ix_words_hnsw       ON knowledgebase."words" USING hnsw (embedding vector_cosine_ops);
 
 -- ----------------------------------------------------------------------------
--- 4. world."types" — the type taxonomy DAG (one row per node, qid-keyed).
+-- 4. knowledgebase."types" — the type taxonomy DAG (one row per node, qid-keyed).
 --    Populated by db/sync/sync_types.py from db/sync/data/taxonomy.csv.
 --    resolver_type links legacy words.type strings ('city') to the node qid
 --    (Q515) — set by db/sync/unify_words_qid.py (or sync_types.py).
 --    Read by: sync_entity.wlabel (wikipedia table naming), world17
 --    (_resolve_world_qid), route19 taxonomy walk.
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS world."types" (
+CREATE TABLE IF NOT EXISTS knowledgebase."types" (
   qid           text PRIMARY KEY,
   label         text,
   parent_qid    text,
@@ -182,9 +183,9 @@ CREATE TABLE IF NOT EXISTS world."types" (
   resolver_type text                  -- legacy words.type string this node resolves ('city' -> Q515)
 );
 
-CREATE INDEX IF NOT EXISTS ix_types_parent   ON world."types"(parent_qid);
-CREATE INDEX IF NOT EXISTS ix_types_leaf     ON world."types"(is_leaf);
-CREATE INDEX IF NOT EXISTS ix_types_resolver ON world."types"("resolver_type");
+CREATE INDEX IF NOT EXISTS ix_types_parent   ON knowledgebase."types"(parent_qid);
+CREATE INDEX IF NOT EXISTS ix_types_leaf     ON knowledgebase."types"(is_leaf);
+CREATE INDEX IF NOT EXISTS ix_types_resolver ON knowledgebase."types"("resolver_type");
 
 -- ----------------------------------------------------------------------------
 -- 5. world friendly tables + "... in the World" views.
@@ -193,7 +194,7 @@ CREATE INDEX IF NOT EXISTS ix_types_resolver ON world."types"("resolver_type");
 --    db/sync/build_world.py. The views exist because generated SQL uses the
 --    "<X> in the World" spelling.
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS world."Cities" (
+CREATE TABLE IF NOT EXISTS knowledgebase."Cities" (
   name        text,
   country     text,
   population  bigint,
@@ -203,7 +204,7 @@ CREATE TABLE IF NOT EXISTS world."Cities" (
   qid         text                    -- stable key (world18 joins Cities by qid)
 );
 
-CREATE TABLE IF NOT EXISTS world."Countries" (
+CREATE TABLE IF NOT EXISTS knowledgebase."Countries" (
   name           text,
   currency       text,
   currency_name  text,
@@ -214,7 +215,7 @@ CREATE TABLE IF NOT EXISTS world."Countries" (
   source         text
 );
 
-CREATE TABLE IF NOT EXISTS world."Places" (
+CREATE TABLE IF NOT EXISTS knowledgebase."Places" (
   name        text,
   kind        text,                   -- 'city' | 'country'
   lat         double precision,
@@ -225,7 +226,7 @@ CREATE TABLE IF NOT EXISTS world."Places" (
   source      text
 );
 
-CREATE TABLE IF NOT EXISTS world."Elements" (
+CREATE TABLE IF NOT EXISTS knowledgebase."Elements" (
   name           text,
   symbol         text,
   atomic_number  int,
@@ -234,13 +235,13 @@ CREATE TABLE IF NOT EXISTS world."Elements" (
   source         text
 );
 
-CREATE TABLE IF NOT EXISTS world."Continents" (
+CREATE TABLE IF NOT EXISTS knowledgebase."Continents" (
   name        text,
   updated_at  text,
   source      text
 );
 
-CREATE TABLE IF NOT EXISTS world."States" (
+CREATE TABLE IF NOT EXISTS knowledgebase."States" (
   name        text,
   country     text,
   population  bigint,
@@ -250,33 +251,33 @@ CREATE TABLE IF NOT EXISTS world."States" (
 );
 
 -- curated alias -> canonical country name (legacy normalization table;
--- superseded by world."words" but still created by the build scripts)
-CREATE TABLE IF NOT EXISTS world."Country Aliases" (
+-- superseded by knowledgebase."words" but still created by the build scripts)
+CREATE TABLE IF NOT EXISTS knowledgebase."Country Aliases" (
   alias  text,
   name   text
 );
 
-CREATE INDEX IF NOT EXISTS ix_world_cities_lname     ON world."Cities"(lower(name));
-CREATE INDEX IF NOT EXISTS ix_cities_qid             ON world."Cities"(qid);
-CREATE INDEX IF NOT EXISTS ix_world_countries_lname  ON world."Countries"(lower(name));
-CREATE INDEX IF NOT EXISTS ix_world_places_lname     ON world."Places"(lower(name));
-CREATE INDEX IF NOT EXISTS ix_world_elements_lname   ON world."Elements"(lower(name));
-CREATE INDEX IF NOT EXISTS ix_world_elements_lsym    ON world."Elements"(lower(symbol));
-CREATE INDEX IF NOT EXISTS ix_world_continents_lname ON world."Continents"(lower(name));
-CREATE INDEX IF NOT EXISTS ix_world_states_lname     ON world."States"(lower(name));
-CREATE INDEX IF NOT EXISTS ix_world_calias           ON world."Country Aliases"(alias);
+CREATE INDEX IF NOT EXISTS ix_world_cities_lname     ON knowledgebase."Cities"(lower(name));
+CREATE INDEX IF NOT EXISTS ix_cities_qid             ON knowledgebase."Cities"(qid);
+CREATE INDEX IF NOT EXISTS ix_world_countries_lname  ON knowledgebase."Countries"(lower(name));
+CREATE INDEX IF NOT EXISTS ix_world_places_lname     ON knowledgebase."Places"(lower(name));
+CREATE INDEX IF NOT EXISTS ix_world_elements_lname   ON knowledgebase."Elements"(lower(name));
+CREATE INDEX IF NOT EXISTS ix_world_elements_lsym    ON knowledgebase."Elements"(lower(symbol));
+CREATE INDEX IF NOT EXISTS ix_world_continents_lname ON knowledgebase."Continents"(lower(name));
+CREATE INDEX IF NOT EXISTS ix_world_states_lname     ON knowledgebase."States"(lower(name));
+CREATE INDEX IF NOT EXISTS ix_world_calias           ON knowledgebase."Country Aliases"(alias);
 
-CREATE OR REPLACE VIEW world."Cities in the World"     AS SELECT * FROM world."Cities";
-CREATE OR REPLACE VIEW world."Countries in the World"  AS SELECT * FROM world."Countries";
-CREATE OR REPLACE VIEW world."Places in the World"     AS SELECT * FROM world."Places";
-CREATE OR REPLACE VIEW world."Elements in the World"   AS SELECT * FROM world."Elements";
-CREATE OR REPLACE VIEW world."Continents in the World" AS SELECT * FROM world."Continents";
-CREATE OR REPLACE VIEW world."States in the World"     AS SELECT * FROM world."States";
+CREATE OR REPLACE VIEW knowledgebase."Cities in the World"     AS SELECT * FROM knowledgebase."Cities";
+CREATE OR REPLACE VIEW knowledgebase."Countries in the World"  AS SELECT * FROM knowledgebase."Countries";
+CREATE OR REPLACE VIEW knowledgebase."Places in the World"     AS SELECT * FROM knowledgebase."Places";
+CREATE OR REPLACE VIEW knowledgebase."Elements in the World"   AS SELECT * FROM knowledgebase."Elements";
+CREATE OR REPLACE VIEW knowledgebase."Continents in the World" AS SELECT * FROM knowledgebase."Continents";
+CREATE OR REPLACE VIEW knowledgebase."States in the World"     AS SELECT * FROM knowledgebase."States";
 
 -- ----------------------------------------------------------------------------
 -- 6. wikipedia — qid-keyed faithful Wikidata tables. INTENTIONALLY EMPTY HERE.
---    Tables are named by the EXACT Wikidata type label (e.g. wikipedia."city",
---    wikipedia."hospital") with columns = the type's discovered Wikidata
+--    Tables are named by the EXACT Wikidata type label (e.g. knowledgebase."city",
+--    knowledgebase."hospital") with columns = the type's discovered Wikidata
 --    properties (all text) + qid PRIMARY KEY + name. They are created:
 --      * lazily at query time by the engine (sync_entity.ensure_table via
 --        ensure_entity/lazy_resolve — the normal path), or
@@ -296,7 +297,7 @@ CREATE OR REPLACE VIEW world."States in the World"     AS SELECT * FROM world."S
 --          ("__pk" bigint, "column" text, "value" text,
 --           "embedding" vector(896))                  -- unified-encoder dim
 --    Queries run with:
---      SET search_path TO "<sub>", wikipedia, world, public
+--      SET search_path TO "<sub>", knowledgebase, public
 -- ----------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------

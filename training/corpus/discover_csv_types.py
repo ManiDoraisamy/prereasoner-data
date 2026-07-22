@@ -4,7 +4,7 @@ gen20 — DATA-DRIVEN world-type discovery. Scan the downloaded CSV corpus (trai
 of") of its values — NOT by the header (header-ACE is unreliable; values are ground truth). Aggregate across the
 corpus to rank the entity TYPES actually present, excluding the ones already in the world model (city / country /
 state / element / continent). The output (training/data/discovered_types.json) is the work-list for materialization:
-each ranked type becomes a candidate world."<Type>" table fetched from Wikidata.
+each ranked type becomes a candidate knowledgebase."<Type>" table fetched from Wikidata.
 
   $env:PYTHONUTF8=1; python -m training.corpus.discover_csv_types
 """

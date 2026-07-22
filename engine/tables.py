@@ -6,7 +6,7 @@ Per-token readout is read PER LAYER through the SAME anchored model, so a JOIN's
 fires is_field + the FK edge to `"customers"."customer_id"`.
 
 TableQuery does NOT load its own encoder: in the serving closure it is always composed under the unified
-encoder overlay (engine.world_query.load_encoder shares alloc/nc/dims/sid/thr/model/nL/tok/qwen/hdim onto
+encoder overlay (engine.knowledge_query.load_encoder shares alloc/nc/dims/sid/thr/model/nL/tok/qwen/hdim onto
 it), so the ONE trained model drives every path.
 """
 from __future__ import annotations
@@ -147,7 +147,7 @@ def csv_table(csv_text, name):
 
 class TableQuery:
     def __init__(self, deploy_dir=DATA_DIR):
-        # DEFERRED encoder: the serving closure never runs TableQuery standalone — engine.world_query's
+        # DEFERRED encoder: the serving closure never runs TableQuery standalone — engine.knowledge_query's
         # load_encoder OVERLAYS the trained encoder onto this instance right after construction (shared refs:
         # alloc/nc/dims/sid/thr/model/nL/tok/qwen/hdim — ONE model in memory). Nothing model-shaped is loaded
         # here, so startup does not pay for weights that would be immediately replaced.
@@ -177,7 +177,7 @@ class TableQuery:
     def _encode(self, texts):
         if self.qwen is None:
             raise RuntimeError("no encoder loaded — TableQuery must be overlaid with the trained encoder "
-                               "(engine.world_query.load_encoder / engine.encoder_overlay.EncoderQuery)")
+                               "(engine.knowledge_query.load_encoder / engine.encoder_overlay.EncoderQuery)")
         out = np.zeros((len(texts), self.hdim), np.float32)
         for i in range(0, len(texts), 64):
             chunk = texts[i:i + 64]

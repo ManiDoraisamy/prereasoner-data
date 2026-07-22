@@ -2,25 +2,25 @@
 
 Every knob is an env var so the same image runs locally (docker-compose Postgres, no RTDB) and on Cloud Run
 (Cloud SQL + Firebase). Values that must be able to change between test runs (AUTH_TEST_SUB) or that are
-security-sensitive (WORLD_PG_PASSWORD) are read at call time via the helper functions; everything else is
+security-sensitive (KB_PG_PASSWORD) are read at call time via the helper functions; everything else is
 resolved once at import.
 
 Env contract:
   HOST                 bind address for the HTTP server              (default 0.0.0.0)
   PORT                 port for the HTTP server                      (default 8080)
-  WORLD_PG_HOST        Postgres host (or a unix-socket dir path)     (default localhost)
-  WORLD_PG_PORT        Postgres port                                 (default 5432)
-  WORLD_PG_DB          Postgres database name                        (default world)
-  WORLD_PG_USER        Postgres user                                 (default postgres)
-  WORLD_PG_PASSWORD    Postgres password — REQUIRED when connecting  (no default)
-  WORLD_PG_SSLMODE     libpq sslmode for TCP connections             (default prefer)
+  KB_PG_HOST        Postgres host (or a unix-socket dir path)     (default localhost)
+  KB_PG_PORT        Postgres port                                 (default 5432)
+  KB_PG_DB          Postgres database name                        (default world)
+  KB_PG_USER        Postgres user                                 (default postgres)
+  KB_PG_PASSWORD    Postgres password — REQUIRED when connecting  (no default)
+  KB_PG_SSLMODE     libpq sslmode for TCP connections             (default prefer)
   RTDB_URL             Firebase RTDB url for live trace streaming — OPTIONAL. Unset => streaming is a
                        clean no-op; the HTTP response still carries the full JSON answer.
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
   DEVICE               torch device for the encoder                  (default cpu)
   BASE_MODEL_ID        Hugging Face id of the base encoder LM        (default Qwen/Qwen2.5-0.5B)
-  WORLD_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
+  KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
   PREREASONER_SQL_PLANNER legacy | ast  (default legacy; production sets 'ast' = the deterministic, fully
                           interpretable typed-AST planner. The ast_profile/ast_strict trained-proposer modes
                           are research-only and were retired from serving; their code/artifacts remain for the
@@ -68,19 +68,19 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8080"))
 
 # ---------- world Postgres ----------
-WORLD_PG_HOST = os.environ.get("WORLD_PG_HOST", "localhost")
-WORLD_PG_PORT = int(os.environ.get("WORLD_PG_PORT", "5432"))
-WORLD_PG_DB = os.environ.get("WORLD_PG_DB", "world")
-WORLD_PG_USER = os.environ.get("WORLD_PG_USER", "postgres")
-WORLD_PG_SSLMODE = os.environ.get("WORLD_PG_SSLMODE", "prefer")
+KB_PG_HOST = os.environ.get("KB_PG_HOST", "localhost")
+KB_PG_PORT = int(os.environ.get("KB_PG_PORT", "5432"))
+KB_PG_DB = os.environ.get("KB_PG_DB", "world")
+KB_PG_USER = os.environ.get("KB_PG_USER", "postgres")
+KB_PG_SSLMODE = os.environ.get("KB_PG_SSLMODE", "prefer")
 
 
-def world_pg_password():
+def kb_pg_password():
     """The Postgres password, read at connect time. REQUIRED for any world-DB path; a clear error beats a
     psycopg2 auth stack trace."""
-    pw = os.environ.get("WORLD_PG_PASSWORD")
+    pw = os.environ.get("KB_PG_PASSWORD")
     if not pw:
-        raise RuntimeError("WORLD_PG_PASSWORD is not set — the world Postgres connection needs it")
+        raise RuntimeError("KB_PG_PASSWORD is not set — the world Postgres connection needs it")
     return pw
 
 
@@ -128,15 +128,15 @@ def sql_ranker_path() -> Path:
     return Path(os.environ.get("PREREASONER_SQL_RANKER") or DATA_DIR / "sql_profile_ranker.json")
 
 
-def world_model_route_enabled():
+def kb_model_route_enabled():
     """Model-driven column routing (the trained router types columns). "0" falls back to pure value
     membership so the live demo can never hard-break on a model regression."""
-    return os.environ.get("WORLD_MODEL_ROUTE", "1") != "0"
+    return os.environ.get("KB_MODEL_ROUTE", "1") != "0"
 
 
 # ---------- MCP layer: Sonnet orchestrator + PreReasoner MCP server (mcp-now.md) ----------
 # Static knobs resolve at import (mirrors BASE_MODEL_ID); the security-sensitive key is call-time
-# (mirrors world_pg_password) so a clear error beats an anthropic auth stack trace.
+# (mirrors kb_pg_password) so a clear error beats an anthropic auth stack trace.
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
 # The engine's own port (8080 by default) — NOT the orchestrator's PORT. Kept literal so a launcher that
 # injects PORT for the orchestrator process (e.g. a dev-server manager) can't accidentally point the MCP
@@ -152,7 +152,7 @@ ORCH_AUTH_MODE = os.environ.get("ORCH_AUTH_MODE") or (
 
 
 def anthropic_api_key():
-    """The Anthropic API key, read at connect time (security-sensitive; mirrors world_pg_password)."""
+    """The Anthropic API key, read at connect time (security-sensitive; mirrors kb_pg_password)."""
     k = os.environ.get("ANTHROPIC_API_KEY")
     if not k:
         raise RuntimeError("ANTHROPIC_API_KEY is not set — the Sonnet orchestrator needs it")

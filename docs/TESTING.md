@@ -25,7 +25,7 @@ unset RTDB_URL                         # optional: no Firebase at all (JSON resp
 python -m engine.server                # serves :8080, loads models in ~10 s
 ```
 
-`AUTH_TEST_SUB` makes `/api/reason` and `/api/world` accept any bearer token and use the
+`AUTH_TEST_SUB` makes `/api/reason` and `/api/knowledge` accept any bearer token and use the
 fixed principal you name (its own isolated Postgres schema). Never set it in production.
 
 ## 1. API tests (curl)
@@ -41,7 +41,7 @@ curl -s localhost:8080/api/reason -X POST \
        "question":"which city has the largest population?"}'
 
 # World-knowledge filtering:
-curl -s localhost:8080/api/world -X POST \
+curl -s localhost:8080/api/knowledge -X POST \
   -H "Content-Type: application/json" -H "Authorization: Bearer dev" \
   -d '{"tables":[{"name":"cities","data":"city,visitors\nParis,500\nBerlin,300"}],
        "question":"which of these cities are in France?"}'

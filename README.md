@@ -68,8 +68,8 @@ Three ideas do the work:
 1. **Interpretable column typing.** A small trained encoder labels each column with *named*
    dimensions (city, country, currency, amount, …) instead of opaque features — so routing a
    question to the right column is itself inspectable.
-2. **World knowledge as a database.** Values resolve to Wikidata entities and join against a
-   shared world-knowledge Postgres schema (which country a city is in, a currency, a population),
+2. **World knowledge as a database.** Values resolve to Wikidata entities and join against the
+   shared `knowledgebase` Postgres schema (which country a city is in, a currency, a population),
    filled from Wikidata on demand. That's how PreReasoner answers questions your spreadsheet alone
    can't.
 3. **Reasoning as SQL views.** The engine decomposes the question into a small stack of simple
@@ -86,9 +86,9 @@ from RAG / agentic text-to-SQL is in **[docs/RESEARCH.md](docs/RESEARCH.md)**.
 
 | Path | What it is |
 |---|---|
-| `engine/` | The reasoning engine — one Python service: `POST /api/reason`, `/api/world`, `/api/dimension`, plus conversation endpoints and `/healthz`. |
+| `engine/` | The reasoning engine — one Python service: `POST /api/reason`, `/api/knowledge`, `/api/dimension`, plus conversation endpoints and `/healthz`. |
 | `web/` | The workbook frontend — static pages on Firebase Hosting; no build step. |
-| `db/` | The world-knowledge Postgres: `init.sql` schema contract + Wikidata sync scripts. |
+| `db/` | The knowledge-base Postgres (the `knowledgebase` schema): `init.sql` schema contract + Wikidata sync scripts. |
 | `training/` | Reproduce the trained encoder and LoRA adapter from scratch (GPU). |
 | `infra/` | Terraform to stand the whole thing up on your own GCP project. |
 | `tests/` | End-to-end suites against a live, seeded database. |

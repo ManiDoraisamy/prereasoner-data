@@ -1,7 +1,7 @@
 """FULL SCHEMA MIRROR — for every concrete accepted/added taxonomy leaf, discover its
 real Wikidata property schema and CREATE the empty faithful table in the `wikipedia`
 schema. Data is NOT bulk-loaded — it fills lazily via sync_entity.lazy_resolve /
-ensure_entity when a CSV cell misses in world."words".
+ensure_entity when a CSV cell misses in knowledgebase."words".
 
 OPTIONAL: ensure_entity creates missing tables on demand anyway; running this just
 pre-creates them (and warms the property discovery) so first queries are faster.
@@ -10,7 +10,7 @@ Abstract leaves (legal form, taxonomic rank, "person or organization", ...) are
 SKIPPED — they aren't world-entity tables.
 
 Run (after sync_types.py):
-  export WORLD_PG_HOST=... WORLD_PG_PASSWORD=...        # see db/sync/_conn.py
+  export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/mirror_schema.py
 """
 from __future__ import annotations

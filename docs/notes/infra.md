@@ -41,7 +41,7 @@ the *choices* and what could/couldn't be verified on this machine.
   `/docker-entrypoint-initdb.d` (applies on first start of an empty volume); pg_isready
   healthcheck gates the engine.
 - `engine`: `AUTH_TEST_SUB=localdev` so reviewers hit `/api/reason` without Firebase;
-  `RTDB_URL` unset (streaming no-ops); password `${WORLD_PG_PASSWORD:-devpassword}` so
+  `RTDB_URL` unset (streaming no-ops); password `${KB_PG_PASSWORD:-devpassword}` so
   `docker compose up` works with zero config but respects `.env`.
 - **Seeding**: a `seed` service under `profiles: ["seed"]` (excluded from `up`), reusing
   the engine image with `entrypoint: []` (seeding needs no model weights, so it must not
@@ -61,7 +61,7 @@ the *choices* and what could/couldn't be verified on this machine.
   `prereasoner-api`/`us-central1` because `web/firebase.json`'s `/api/**` rewrite
   hardcodes them (variables carry that warning).
 - **Cloud SQL over unix socket, NOT a VPC connector.** The engine treats a
-  `WORLD_PG_HOST` starting with `/` as a unix socket, so the Cloud Run `cloudsql` volume
+  `KB_PG_HOST` starting with `/` as a unix socket, so the Cloud Run `cloudsql` volume
   (`/cloudsql/<connection_name>`) is the zero-extra-cost path. The instance keeps a
   public IP with **zero authorized networks** — unreachable over TCP, connector/proxy
   (IAM-authenticated) only. A private-IP instance would add a VPC connector (~$10/mo)

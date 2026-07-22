@@ -9,7 +9,7 @@ It is plain HTML/CSS/JS (no build step, no framework) served by **Firebase Hosti
 
 - **Auth**: Firebase Authentication (Google sign-in, same-tab redirect).
 - **Engine**: one Cloud Run service (`prereasoner-api`) reached via the Hosting rewrite
-  `/api/**` → Cloud Run. Endpoints the pages use: `POST /api/reason`, `POST /api/world`, and the
+  `/api/**` → Cloud Run. Endpoints the pages use: `POST /api/reason`, `POST /api/knowledge`, and the
   conversation endpoints `GET /api/conversations` / `GET /api/conversation` (plus `GET` pings to
   pre-warm the scale-to-zero service, and `GET /healthz`).
 - **Live trace**: Firebase Realtime Database. The engine streams the reasoning trace to
@@ -19,7 +19,7 @@ It is plain HTML/CSS/JS (no build step, no framework) served by **Firebase Hosti
 
 ## The workbook
 
-`reason.html` and `world.html` are the same **workbook**, differing only in which engine endpoint
+`reason.html` and `knowledge.html` are the same **workbook**, differing only in which engine endpoint
 they call. Its logic is one shared module, `lib/workbook.js`:
 
 - The left side is the spreadsheet — a sheet with a Google-Sheets-style bottom tab bar. Sheets are
@@ -40,7 +40,7 @@ index.html   home: attach data (+ Add data -> Excel/CSV file picker, or sheets.h
    ├─> sheets.html   Google Sheets import (drive.file scope + Picker) — returns to home with the sheet attached
    └─> reason.html   the workbook on POST /api/reason (sign-in happens here as a redirect)
           │
-          └─> world.html    the same workbook on POST /api/world (world-knowledge joins)
+          └─> knowledge.html    the same workbook on POST /api/knowledge (world-knowledge joins)
 404.html     Firebase default not-found page
 ```
 

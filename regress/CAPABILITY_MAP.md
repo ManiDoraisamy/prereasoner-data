@@ -1,7 +1,7 @@
 # World-model capability map
 
 35 DB-grounded CSV+question cases (designed by the `world-model-capability-suite` workflow, expected values
-computed from the live world DB) run end-to-end through the live `WorldReasoner` against the seeded Cloud SQL.
+computed from the live world DB) run end-to-end through the live `KnowledgeReasoner` against the seeded Cloud SQL.
 Run: `AUTH_TEST_SUB=cap_probe python -m regress.world_capability`. Raw: `world_capability_results.json`.
 
 Prediction accuracy (designer vs reality): **28/35**. The map below is what the world model *actually* does.
@@ -21,14 +21,14 @@ Prediction accuracy (designer vs reality): **28/35**. The map below is what the 
 ### ✅ Fixed — verified live, no regression, full deploy suite green (7/7 engine suites, test_world_joins 6/6)
 | # | bug | fix | verified |
 |---|---|---|---|
-| B1 | **All `country`-column world joins empty** (`lower(country.qid)=lower(name)` → 0 rows) | `entities.py` `_world_joins`: for qid-keyed tables, map the resolved canonical → qid via `world."words"` (`DISTINCT ON (canonical)` to avoid altLabel fan-out) and join on `qid`. Type-aware (keyed on `right_col=="qid"`, so `u_s_state` name-join is untouched) — **completes the qid migration**. | country→Asia=80/Europe=150; China-robust (Asia=180/Europe=90) ✓ |
-| B1b | composed country path crashed `duplicate column name: country` | `world_compose.py`: drop an enriched attr colliding with the geo column | no crash ✓ |
-| B3 | **Entity-noun clarify gate** ("cities in France" → clarify though the SQL was correct) | `world_query.py` `_uncovered`: exclude entity-type nouns + schema-word plurals from the dropped-word set | "cities in France"=180, no clarify ✓ |
+| B1 | **All `country`-column world joins empty** (`lower(country.qid)=lower(name)` → 0 rows) | `entities.py` `_world_joins`: for qid-keyed tables, map the resolved canonical → qid via `knowledgebase."words"` (`DISTINCT ON (canonical)` to avoid altLabel fan-out) and join on `qid`. Type-aware (keyed on `right_col=="qid"`, so `u_s_state` name-join is untouched) — **completes the qid migration**. | country→Asia=80/Europe=150; China-robust (Asia=180/Europe=90) ✓ |
+| B1b | composed country path crashed `duplicate column name: country` | `knowledge_compose.py`: drop an enriched attr colliding with the geo column | no crash ✓ |
+| B3 | **Entity-noun clarify gate** ("cities in France" → clarify though the SQL was correct) | `knowledge_query.py` `_uncovered`: exclude entity-type nouns + schema-word plurals from the dropped-word set | "cities in France"=180, no clarify ✓ |
 
 ### ✅ Fixed (architectural — planner routing/composition, verified live, full suite green)
 | # | bug | fix | verified |
 |---|---|---|---|
-| B4 | **Group-BY a world attribute** — "total sales **by continent**" / "per country" → empty | (1) `world_compose.py`: add `GROUP` to `DEPTH_PRIMS` so a "by X" aggregation gates to the engine; (2) `serve()` STANDS on a genuine world group-by (world_join + a *grouped* agg, cols≥2, non-empty) instead of discarding it; (3) `compose.py`: `has["GROUP"] |= bool(dims)` so a named grouping dim fires GROUP even when the head misfires TIME on "continent". Scalar aggregates still defer to the delegate. | by continent = {Europe:190, Asia:140}; per country = {France:120,…}; scalars unchanged ✓ |
+| B4 | **Group-BY a world attribute** — "total sales **by continent**" / "per country" → empty | (1) `knowledge_compose.py`: add `GROUP` to `DEPTH_PRIMS` so a "by X" aggregation gates to the engine; (2) `serve()` STANDS on a genuine world group-by (world_join + a *grouped* agg, cols≥2, non-empty) instead of discarding it; (3) `compose.py`: `has["GROUP"] |= bool(dims)` so a named grouping dim fires GROUP even when the head misfires TIME on "continent". Scalar aggregates still defer to the delegate. | by continent = {Europe:190, Asia:140}; per country = {France:120,…}; scalars unchanged ✓ |
 | B5 | **Superlative over a world group** — "which continent has the most sales" | now groups + ranks via the B4 fixes (returns the continent breakdown sorted desc). Nit: "the most" still returns top-3, not top-1 — a small `_topn` "most/least→n=1" tweak remains. | grouped+ranked ✓ (argmax nit open) |
 
 ### ⏭ Deferred — architectural

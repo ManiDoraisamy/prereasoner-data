@@ -6,7 +6,7 @@ out-fires `hospital` on "Mayo Clinic"). For each leaf qid we pull real instance 
 NOTABLE ones (sitelink-ordered) so the set overlaps real demo data and what the frozen Qwen already knows.
 
 Geo leaves (city/country/u_s_state/continent/chemical_element) are SKIPPED — their clean values already come from
-world."words". Output: training/data/type_instances.json = {leaf: [label, ...]}. Resumable (skips leaves already
+knowledgebase."words". Output: training/data/type_instances.json = {leaf: [label, ...]}. Resumable (skips leaves already
 present); re-run to top up. build_review.build_from_mapped prefers these over the mapped cell values.
 
   $env:PYTHONUTF8=1; python -m training.corpus.fetch_type_instances
@@ -24,7 +24,7 @@ from training.corpus.build_review import LEAF_QID, LEAF_PATH               # noq
 
 OUT = ROOT / "training/data"
 DEST = OUT / "type_instances.json"
-# clean geo/struct-backed leaves come from world."words"; skip them (and `human`, where a bare personal name can't be
+# clean geo/struct-backed leaves come from knowledgebase."words"; skip them (and `human`, where a bare personal name can't be
 # typed to a profession — that ambiguity is expected, not a label to teach).
 SKIP = {"city", "country", "u_s_state", "continent", "chemical_element", "human"}
 WANT = 220                                                                    # distinct instance labels / leaf (enough to anchor)
