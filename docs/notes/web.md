@@ -1,63 +1,46 @@
-# web/ — frontend consolidation notes
+# web/ — frontend notes
 
-How `web/` was produced from the private `prereasoner-inference` repo (2026-07-04), for the
-open-source release. The backend counterpart: all Cloud Run services consolidated into ONE
-service `prereasoner-api` exposing `POST /api/reason`, `POST /api/knowledge`, `POST /api/dimension`,
-`GET /healthz`, reached via a single Firebase Hosting rewrite `/api/**`. RTDB streaming paths
-(`/runs/{uid}/{jobId}`) and the request/response JSON schemas are UNCHANGED.
+`web/` is the static Firebase Hosting frontend. It talks to the engine (ONE Cloud Run service,
+`prereasoner-api`) through a single Hosting rewrite `/api/**`, exposing `POST /api/reason`,
+`POST /api/knowledge`, `POST /api/dimension`, `POST /api/converse`, `GET /healthz`. RTDB streaming
+paths (`/runs/{uid}/{jobId}`) carry the live trace. This note records the page/lib structure and the
+deployment identifiers self-hosters need to change.
 
-## Kept / dropped
+## Pages
 
-KEPT (in `web/public/`): `index.html`, `reason.html`, `knowledge.html`, `clarify.html`,
-`sheets.html`, `404.html`, `styles.css`, `login_logo.svg`, `interpretable.svg`.
+In `web/public/`: `index.html`, `reason.html`, `knowledge.html`, `sheets.html`, `404.html`,
+`styles.css`, `login_logo.svg`, `interpretable.svg`. `reason.html` and `knowledge.html` are thin
+shells over the shared workbook (`lib/workbook.js`); `index.html` is the home/demo page;
+`sheets.html` is the Google Sheets import flow.
 
-DROPPED and why:
+`/api/dimension` is exposed by the backend but no kept page calls it (it is used programmatically /
+for the dimension model directly).
 
-| item | reason |
-|---|---|
-| `public/analyze.html` | unreachable (nothing links to it), called dead endpoints |
-| `public/dimension.html` | unreachable, called the retired `/infer-runtime20` dimension endpoint directly |
-| `public/result.html` | unreachable dead-end page from an earlier flow |
-| `firebase.json` rewrites `/infer-runtime10`, `/infer-runtime11` | pointed at retired Cloud Run services (`prereasoner-runtime10/11`) |
-| `firebase.json` rewrites `/infer-runtime20`, `/infer-runtime20reason`, `/infer-runtime20w` | replaced by the single `/api/**` -> `prereasoner-api` rewrite |
-| `functions/` (entire dir) | unused Cloud Functions stub + a committed Python venv; the engine is Cloud Run, not Functions |
-| `firebase_serve.log`, `serve5000.log` | stray local logs |
-| `.firebaserc` | intentionally NOT copied — self-hosters bind their own project with `firebase use <project-id>` (documented in `web/README.md`) |
-| `public/regression20.js` | moved OUT of the deployed tree to `web/tests/regression.js` (updated, see below) |
+## Endpoints
 
-Note: `/api/dimension` (was `/infer-runtime20`) is exposed by the consolidated backend but no
-kept page calls it — its only caller was the dropped `dimension.html`.
+Pages call the same-origin `/api/**` routes: `reason.html` and `knowledge.html` POST to
+`/api/reason` / `/api/knowledge` (with fallback retries) and fire a pre-warm `GET`; `index.html`
+fires the pre-warm `GET` on the home page; `tests/regression.js` POSTs per test case.
 
-## Endpoint rename
-
-`/infer-runtime20reason` → `/api/reason`, `/infer-runtime20w` → `/api/knowledge`, in:
-
-- `reason.html` — `ENDPOINT` (POST + fallback retries) and the pre-warm `GET`
-- `knowledge.html` — same
-- `index.html` — the pre-warm `GET` fired on the home page
-- `tests/regression.js` — the POST per test case
-
-`grep -r "infer-runtime\|runtime20\|runtime1" web/` → zero hits (verified).
-
-## lib/ extraction map (~200 duplicated lines removed)
+## lib/ extraction map (shared frontend code)
 
 | new file | kind | pulled out of | contents |
 |---|---|---|---|
-| `public/lib/config.js` | ES module | reason/world/sheets inline module scripts (3 copies of the Firebase config; Picker key was inline in sheets) | `firebaseConfig` (apiKey, authDomain, projectId, appId, databaseURL), `PICKER_API_KEY`, `PICKER_APP_ID` — with a comment block stating these are public client identifiers, not secrets, and what self-hosters replace |
-| `public/lib/shared.js` | classic script | index/reason/world/clarify | `esc`, `parseCSV`, `slug`, `sqlTokens`, `OPLBL`/`oplabel`, `SS.*` sessionStorage key constants, `PLAY`/`PAUSE`/`SPINNER` UI constants, `API_BASE` ('' = same-origin `/api/**`; settable for local engines) |
-| `public/lib/firebase-init.js` | ES module | reason/world (2 near-identical copies) + sheets init | `initializeApp` from `config.js`, exports `app`/`auth`/`db`, publishes `window.ensureToken` + `window.subscribeRun` (the RTDB `/runs/{uid}/{jobId}` trace subscription), exports `ensureSignedIn()` (redirect sign-in flow) |
-| `public/lib/table-render.js` | classic script | reason/world (2 diverged copies of `tableBubble`) | unified `tableBubble(cols, rows, label, opts)` with `opts.hlcol` (resolution highlight), `opts.thExtra` (knowledge.html's dimension-tag hover popup), `opts.maxRows` |
+| `public/lib/config.js` | ES module | reason/knowledge/sheets inline module scripts | `firebaseConfig` (apiKey, authDomain, projectId, appId, databaseURL), `PICKER_API_KEY`, `PICKER_APP_ID` — with a comment block stating these are public client identifiers, not secrets, and what self-hosters replace |
+| `public/lib/shared.js` | classic script | index/reason/knowledge | `esc`, `parseCSV`, `slug`, `sqlTokens`, `OPLBL`/`oplabel`, `SS.*` sessionStorage key constants, `PLAY`/`PAUSE`/`SPINNER` UI constants, `API_BASE` ('' = same-origin `/api/**`; settable for local engines) |
+| `public/lib/firebase-init.js` | ES module | reason/knowledge + sheets init | `initializeApp` from `config.js`, exports `app`/`auth`/`db`, publishes `window.ensureToken` + `window.subscribeRun` (the RTDB `/runs/{uid}/{jobId}` trace subscription), exports `ensureSignedIn()` (redirect sign-in flow) |
+| `public/lib/table-render.js` | classic script | reason/knowledge | unified `tableBubble(cols, rows, label, opts)` with `opts.hlcol` (resolution highlight), `opts.thExtra` (knowledge.html's dimension-tag hover popup), `opts.maxRows` |
 
-Script-loading pattern per page (module/classic split preserved):
+Script-loading pattern per page (module/classic split):
 
-- classic `<script src="lib/shared.js">` (+ `lib/table-render.js` on reason/world) loads BEFORE
+- classic `<script src="lib/shared.js">` (+ `lib/table-render.js` on reason/knowledge) loads BEFORE
   the page's inline classic script; top-level `const`/`function` in classic scripts are visible
   to later classic scripts and to modules.
-- the pages' `<script type="module">` shrank to `import { ensureSignedIn } from
-  "./lib/firebase-init.js"; if (await ensureSignedIn()) run();` (reason/world). `run()` is a
+- the pages' `<script type="module">` is `import { ensureSignedIn } from
+  "./lib/firebase-init.js"; if (await ensureSignedIn()) run();` (reason/knowledge). `run()` is a
   classic-script global, callable from the module. sheets.html imports `auth` from
   `firebase-init.js` and the Picker constants from `config.js` and keeps its own picker flow.
-- index.html and clarify.html have NO firebase at all (unchanged) — they only load `shared.js`.
+- index.html has NO firebase — it only loads `shared.js`.
 
 Deliberate small behavior changes (parity notes):
 
@@ -69,27 +52,21 @@ Deliberate small behavior changes (parity notes):
 3. Every page's redundant `subscribeRun`/`ensureToken` copy is gone; behavior is byte-identical.
 4. `qBubble()` (defined but unused in both players) kept as-is in the pages.
 
-## firebase.json changes
+## firebase.json
 
-Old → new:
+- ONE Hosting → Cloud Run rewrite:
+  `{"source": "/api/**", "run": {"serviceId": "prereasoner-api", "region": "us-central1"}}`.
+- Cache-Control no-cache header glob is `**/*.@(html|css|svg|js)` so `lib/*.js` can't go stale
+  behind Hosting's default 1h cache.
+- An `emulators` block (hosting 5000 / auth 9099 / database 9000 / UI) for local dev.
+- `hosting.public`, `cleanUrls: true`, ignore list, `database.rules`.
+- `database.rules.json`: admin writes bypass rules; a signed-in user may read only
+  `/runs/{own uid}`; clients never write.
 
-- `functions` block (python313 codebase, venv ignores): **removed entirely**.
-- 5 per-service rewrites (`/infer-runtime{10,11,20,20reason,20w}` → `prereasoner-runtime*`):
-  **replaced by one**: `{"source": "/api/**", "run": {"serviceId": "prereasoner-api", "region": "us-central1"}}`.
-  Region `us-central1` read from the old firebase.json (all old services were us-central1).
-- top-level `"auth": {"providers": {}}` (non-functional stray key): dropped.
-- Cache-Control no-cache header glob widened from `**/*.@(html|css|svg)` to
-  `**/*.@(html|css|svg|js)` so `lib/*.js` can't go stale behind Hosting's default 1h cache.
-- Added an `emulators` block (hosting 5000 / auth 9099 / database 9000 / UI) for local dev.
-- `hosting.public`, `cleanUrls: true`, ignore list, `database.rules` → unchanged.
-- `database.rules.json` copied byte-for-byte (admin writes bypass rules; a signed-in user may
-  read only `/runs/{own uid}`; clients never write).
+## Current deployment identifiers (all public)
 
-## Current deployment identifiers (for reference; all public)
-
-- Firebase/GCP project id: **`prereasoner-inference`** (from the old `.firebaserc`, which was
-  deliberately not copied) — project number `271377281957`.
-- Cloud Run region: **`us-central1`**; consolidated service: **`prereasoner-api`**.
+- Firebase/GCP project id: **`prereasoner-inference`** — project number `271377281957`.
+- Cloud Run region: **`us-central1`**; service: **`prereasoner-api`**.
 - Auth domain: `chat.prereasoner.com`; RTDB: `https://prereasoner-inference-default-rtdb.firebaseio.com`.
 - Picker API key (referrer-restricted) + project number: in `lib/config.js`.
 
@@ -107,21 +84,17 @@ Everything is in two files, plus one CLI command (details in `web/README.md`):
 
 ## Regression suite
 
-`web/tests/regression.js` (from `public/regression20.js`): endpoint → `/api/reason`, globals
-renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegression`, `__REG20`→`__REG`,
-`eq20`/`judge20`→`eq`/`judge`; new header documents that it is auto-generated (generator
-`build_regression20.py` lives in the training/tools area) and how to run it (browser console on
-/reason while signed in, `await runRegression()`). Moved outside `public/` so it is not deployed.
+`web/tests/regression.js` — POSTs test cases against `/api/reason`. Its header documents that it is
+auto-generated (the generator lives in `training/tools`) and how to run it (browser console on
+`/reason` while signed in, `await runRegression()`). It lives outside `public/` so it is not deployed.
 
-## Verification performed
+## Verification
 
-- `grep -r "infer-runtime|runtime20|runtime1" web/` → zero hits.
-- Internal links between kept pages: `/`, `reason`, `world`, `clarify`, `sheets` only — no page
-  references analyze/dimension/result.
-- No page re-defines anything now in `lib/` (grepped for every extracted symbol); the Firebase
-  config literal appears only in `lib/config.js`.
+- Internal links only reference kept pages (`/`, `reason`, `knowledge`, `sheets`).
+- No page re-defines anything now in `lib/`; the Firebase config literal appears only in
+  `lib/config.js`.
 - `node --check` passes on both classic libs, both ES-module libs, every inline script of every
-  page (classic and module extracted and parsed separately), and `tests/regression.js`.
+  page (classic and module parsed separately), and `tests/regression.js`.
 
 ## Post-E2E fixes (2026-07-04, verified in real Chrome against a local engine + live Cloud SQL)
 
@@ -135,7 +108,7 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
 - **Auth bypass for local testing** (`sessionStorage pr_test_auth`, firebase-init.js) is
   gated to localhost hostnames and pairs with the engine's `AUTH_TEST_SUB`.
 - E2E verified: index demo (France = 270 with full join→world→filter→aggregate trace),
-  world page (France cities), clarify flow, info panel, 404, sheets (up to Google Picker).
+  knowledge page (France cities), clarify flow, info panel, 404, sheets (up to Google Picker).
 
 ## Workbook redesign + sign-in loop fix (2026-07-11, live)
 
@@ -152,27 +125,26 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   breakers in firebase-init.ensureSignedIn and sheets.html (a returned-but-signed-out redirect
   shows a retry UI instead of re-redirecting). knowledge.html/reason.html catch the throw.
 
-## World workbook + shared lib + local dev server flow (2026-07-11, live)
+## Shared workbook lib + local dev server flow
 
-- The workbook is now SHARED CODE: lib/workbook.js (logic, parameterized by window.WB_CONFIG:
-  endpoint/status strings/demo data) + the workbook styles moved into styles.css (?v=10).
-  reason.html and knowledge.html are thin shells — /world's trace-player UI is gone.
-- Local dev via the orchestrator (localhost:8090): its static server now emulates Firebase
-  Hosting cleanUrls (/reason -> reason.html; was {"error":"not found"}), and ensureSignedIn
-  auto-detects the orchestrator's GET /config authMode "test" on localhost — the home-page
-  click-through works with no console flags. (orchestrator/server.py fix is in the working
-  tree; that file is owned by the MCP session and still untracked.)
-- Verified: localhost:8090 home -> arrow -> /reason workbook (France demo, 270) and /world
-  workbook (cities demo, Lyon+Paris), plus live chat.prereasoner.com/world with real auth +
-  streaming (4 steps + wikipedia reference sheet, 270).
+- The workbook is SHARED CODE: `lib/workbook.js` (logic, parameterized by `window.WB_CONFIG`:
+  endpoint/status strings/demo data) + the workbook styles in `styles.css`. `reason.html` and
+  `knowledge.html` are thin shells.
+- Local dev via the orchestrator (localhost:8090): its static server emulates Firebase Hosting
+  cleanUrls (`/reason` -> `reason.html`), and `ensureSignedIn` auto-detects the orchestrator's
+  `GET /config` authMode "test" on localhost — the home-page click-through works with no console
+  flags.
+- Verified: localhost:8090 home -> arrow -> `/reason` workbook (France demo, 270) and `/knowledge`
+  workbook (cities demo), plus live `chat.prereasoner.com/knowledge` with real auth + streaming
+  (4 steps + a reference sheet, 270).
 
 ## Chat rail + workbook UX pass (2026-07-11, live)
 
 - The rail IS a chat now: turns (user bubble right-aligned, no speaker labels — ChatGPT-minimal),
   an "Ask a follow-up…" input; each follow-up archives the previous turn to one answer line and
   re-runs the workbook on the same attached tables (derived/reference sheets replaced, green
-  sheets untouched; RUN-guard supersedes stale async callbacks). The Sonnet/MCP chat surface
-  (chat.html + orchestrator /chat) is separate and untouched.
+  sheets untouched; RUN-guard supersedes stale async callbacks). The separate Sonnet/MCP chat
+  surface (served by the `orchestrator/`) is independent of the workbook rail.
 - Tabs are Excel-style: attached under the square-bottomed sheet card, rounded DOWN.
 - Sheet order everywhere = input -> Reference (collapsed) -> steps.
 - Human names only: tabs/band/steps use the step label ("join orders + customers"), never
@@ -198,8 +170,8 @@ renamed `CASES20`→`CASES`, `CSVS20`→`CSVS`, `runRegression20`→`runRegressi
   conversation_id is honored ONLY after chat.user_conversation confirms ownership, else 403.
   A malformed/injection id fails the c_<32hex> shape guard. Verified: cross-user POST→403,
   cross-user GET→404, "chat; DROP TABLE"→403.
-- Engine API: POST reason/world accept+echo conversation_id; GET /api/conversations (drawer
-  list, ownership-scoped) and GET /api/conversation?id= (re-open: opening prompt + stored tables).
+- Engine API: POST /api/reason and /api/knowledge accept+echo conversation_id; GET /api/conversations
+  (drawer list, ownership-scoped) and GET /api/conversation?id= (re-open: opening prompt + stored tables).
 - Frontend: header shows the conversation's opening question (truncates); hamburger drawer lists
   past conversations and opens them (rehydrates stored tables + reloads); a query from home or
   "+ New" starts a fresh conversation. conversation_id round-trips via sessionStorage.

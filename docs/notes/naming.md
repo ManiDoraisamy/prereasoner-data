@@ -16,41 +16,46 @@
 
 | Family | Example table names | Key | Where the tables live | Which columns route here |
 |---|---|---|---|---|
-| **qid-keyed wikipedia** | `city`, `country` | `qid` (PK/FK) | `knowledgebase."<type>"` (exact Wikidata label), on `search_path` | `city`, `country` |
-| **friendly, name-keyed** | `Cities in the World`, `Countries in the World`, `States in the World`, `Elements in the World` | `name` (mostly) | `knowledgebase."<Friendly>"` (+ base `knowledgebase."Cities"` etc.) | `u_s_state`, `element`, and the value-membership fallback for everything |
+| **qid-keyed** | `city`, `country`, `u_s_state` | `qid` (PK/FK) | `knowledgebase."<type>"` (exact Wikidata label; `u_s_state` is the aggregate), on `search_path` | `city`, `country`, `u_s_state` |
+| **friendly, name-keyed** | `Cities in the World`, `Countries in the World`, `States in the World`, `Elements in the World` | `name` (mostly) | `knowledgebase."<Friendly>"` (+ base `knowledgebase."Cities"` etc.) | `element`, and the value-membership fallback for everything |
 
-Both families exist in the live DB today (e.g. `knowledgebase."city"` **and** `knowledgebase."Cities in the World"` are
+Both families exist in the live DB (e.g. `knowledgebase."city"` **and** `knowledgebase."Cities in the World"` are
 both present and populated) — that is the source of the confusion, not a missing table.
 
 ## Why the split exists (root cause)
 
-The monorepo consolidation (`ade1c0b`) moved **city and country** onto the qid-keyed `knowledgebase."<type>"`
-schema — see [ARCHITECTURE.md](../ARCHITECTURE.md) ADR #6 ("QID-keyed `wikipedia` schema, lazy-synced"):
-homonym-free joins on `qid`, and 2-hop world filters (`city.country.continent`). **State, element, and the
-other families were *not* migrated** — they remain on the older friendly, name-keyed `knowledgebase."<Friendly>"`
-tables (e.g. `knowledgebase."States in the World"`, joined on `name`).
+**City and country** were moved onto the qid-keyed `knowledgebase."<type>"` schema first — see
+[ARCHITECTURE.md](../ARCHITECTURE.md) ADR #6 ("QID-keyed schema, lazy-synced"): homonym-free joins on `qid`,
+and 2-hop world filters (`city.country.continent`). **`u_s_state` was migrated later** (an aggregate qid-keyed
+table — see below). **Element and the remaining families were *not* migrated** — they remain on the older
+friendly, name-keyed `knowledgebase."<Friendly>"` tables (e.g. `knowledgebase."Elements in the World"`, joined
+on `name`).
 
-The naming for each family is set in **different files**, which is why they disagree:
+The naming for each family is set in **different places**, which is why the route values can look
+inconsistent:
 
-- **`engine/knowledge_tables.py:44`** — `WORLD_NAMES = {"word_city": "city", "word_country": "country"}`.
-  `load_word_tables()` remaps only these two logical slugs to the wikipedia exact-label names. `word_state`
-  / `word_element` are **not** in `WORLD_NAMES`, so they are **not** remapped here.
-- **`engine/resolve_base.py:25,30`** — `FRIENDLY15` + `ROUTE_ORDER` (`"Cities in the World"`, …). The
-  **value-membership fallback** routes to these friendly names.
-- **`engine/entities.py:36`** — `WORLD_TABLE_TYPE = {"city": "city", "country": "country"}` and
-  `TYPE_TO_FRIENDLY = {v: k …}` (an identity map). This is the **downstream contract**: a route value only
-  works on the qid-keyed join path if it is a key of `WORLD_TABLE_TYPE` (i.e. `city`/`country`).
+- **`engine/knowledge_tables.py`** — `WORLD_NAMES = {"word_city": "city", "word_country": "country",
+  "word_state": "u_s_state"}`. `load_word_tables()` remaps these logical slugs to the qid-keyed table names.
+  `word_element` is **not** in `WORLD_NAMES`, so it is not remapped here.
+- **`engine/resolve_base.py`** — `FRIENDLY15` + `ROUTE_ORDER` (`"Cities in the World"`, `u_s_state`,
+  `"Elements in the World"`, …). The **value-membership fallback** routes to these names.
+- **`engine/entities.py`** — `WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state"}`
+  and `TYPE_TO_FRIENDLY = {v: k …}`. This is the **downstream contract**: a route value only works on the
+  qid-keyed join path if it is a key of `WORLD_TABLE_TYPE` (i.e. `city`/`country`/`u_s_state`).
 
 ## How `route()` picks a name
 
 `engine/knowledge_query.py:route()` runs two paths and the model path wins (`setdefault`, never overridden):
 
-1. **Model-driven** (the trained router types the column): for `city`/`country` it emits the **wikipedia
-   name** (`friendly = TYPE_TO_FRIENDLY.get(wtype)` → `"city"`, and `"city" in self.words` because
-   `WORLD_NAMES` put it there). For `u_s_state` the wtype is `state`, which is **not** in
-   `TYPE_TO_FRIENDLY`, so the model path skips it.
-2. **Value-membership fallback** (`resolve_base.route`): fills columns the model didn't type, using the
-   **friendly names** (`States in the World`, …).
+1. **Model-driven** (`engine/router.py`): the trained property model DECODES a *family* for the column by
+   schema.org-property consensus (see docs/TRAINING.md — nothing is anchored as a "type"; the family emerges
+   from which distinctive properties fire). A geo family then GROUNDS its cells against the qid-keyed geo types
+   (`city`/`country`/`state`, gated by `_grounds`): a grounded column routes to
+   `TYPE_TO_FRIENDLY.get(wtype)` — `"city"` / `"country"` / `"u_s_state"` — all of which are in `self.words`
+   (via `WORLD_NAMES`). A column whose best family fires below the abstain threshold (a literal — amount/id) is
+   left untyped.
+2. **Value-membership fallback** (`resolve_base.route`): fills columns the model left untyped, using the
+   **friendly names** (`Elements in the World`, …).
 
 **Net result — the current contract:**
 
@@ -65,11 +70,11 @@ before, because the tests expected the pre-migration friendly names for city/cou
 
 ## What was actually broken vs. correct
 
-- **The engine was correct.** No engine change was needed; the route values match the join paths
-  (`city`/`country` → qid-keyed join; `States in the World` → friendly join).
+- **The engine was correct.** No engine change was needed for the city/country split; the route values match
+  the join paths (`city`/`country` → qid-keyed join; `Elements in the World` → friendly join).
 - **The tests were stale.** `tests/test_route_wired.py` and `tests/test_world_joins.py` asserted
-  `"Cities in the World"` / `"Countries in the World"` for city/country — the pre-migration names. They were
-  updated to assert `"city"` / `"country"` (u_s_state stays `"States in the World"`).
+  `"Cities in the World"` / `"Countries in the World"` for city/country — the pre-migration names. They now
+  assert `"city"` / `"country"`; `u_s_state` asserts `"u_s_state"` after its later migration.
 
 ## u_s_state migration (done)
 
