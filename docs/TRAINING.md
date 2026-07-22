@@ -3,10 +3,10 @@
 This document explains how the schema.org-**property** typing model is trained, and gives a validated,
 step-by-step runbook for adding a new entity type (worked example: **software / SoftwareApplication**).
 
-> Status: the training pipeline currently lives in the private `prereasoner-flat-data` repo
-> (`runtime21/` orchestration + `runtime20/` model/trainer). **Vendoring it into this repo is a tracked
-> open-source-independence task** — see [Independence](#independence--what-must-be-vendored). The runbook
-> below is validated against the real pipeline; the encoder-train step needs a GPU.
+> Status: the property pipeline is **vendored** into this repo at [`training/props/`](../training/props/) — it
+> rebuilds the shipped model standalone. [`training/props/pipeline.md`](../training/props/pipeline.md) is the
+> operational contract (per-stage consumes/produces, external inputs, exact command order); this doc is the
+> conceptual walkthrough + the add-a-type runbook. The encoder-train step (Stage 3) needs a GPU.
 
 ## What the model does (the architecture, in one paragraph)
 
@@ -15,40 +15,50 @@ The router (`engine/router.py`) does **superposition-decode**: ONE trained encod
 column's **family** is decoded by *consensus* — the fraction of a family's DISTINCTIVE properties that fire,
 calibrated by per-property Youden-J thresholds. Nothing is anchored as a "type"; the type **emerges** from the
 properties. A column that fires no family's distinctive props (a literal — amount/id/status) **abstains**.
-There are currently **8 families** (film, music, org, organism, person, place, product, publication) over a
-**67-property / 86-content-dim** basis.
+The shipped model has **8 families** (film, music, org, organism, person, place, product, publication) over a
+**67-property / 86-content-dim** basis: `alloc.json` is **nc=86 = 9 struct + 67 property + 10 intent**. (Adding a
+type grows the basis — the worked software example below rebuilds it to **71 property dims / nc=90**.)
 
 ## The artifacts the engine loads (`engine/data/`)
 
 | Artifact | What it is | Produced by |
 |---|---|---|
-| `alloc.json` | the dim allocation (names/families/ids), nc=86 | `runtime21/build_from_props.py` |
-| `encoder.pt` | `RelationalModel` state_dict | `runtime20/scripts/train_props_gpu.py` |
-| `encoder_meta.pt` | `{alloc, cfg}` (constructor config) | `train_props_gpu.py` |
-| `qwen_lora/` | the fine-tuned LoRA adapter | `train_props_gpu.py` |
-| `props_thr.json` | per-property Youden-J firing thresholds | `runtime21/calibrate_props.py` |
-| `families.json` | family → distinctive props + join tables | `runtime21/build_families.py` |
-| `anchor_assignment.npz` | per-dim thresholds for the `/api/dimension` readout (legacy; **not** used by the property router) | `runtime20/scripts/anchor_assignment.py` |
+| `alloc.json` | the dim allocation (names/families/ids), nc=86 (9 struct + 67 property + 10 intent) | `training/props/build_from_props.py` |
+| `encoder.pt` | RelBlock readout state_dict — the property fine-tune of the gen20 RelBlock | `training/props/train_props_gpu.py` |
+| `encoder_meta.pt` | `{alloc, cfg}` (constructor config) | `training/props/train_props_gpu.py` |
+| `qwen_lora/` | the fine-tuned LoRA adapter — the property fine-tune of the gen20 LoRA | `training/props/train_props_gpu.py` |
+| `props_thr.json` | per-property Youden-J firing thresholds | `training/props/calibrate_props.py` |
+| `families.json` | family → distinctive props + join tables | `training/props/build_families.py` |
+| `anchor_assignment.npz` | per-dim thresholds for the legacy `/api/dimension` readout (**not** used by the property router) | gen20 `anchor/anchor_head.py` |
+
+> On-disk detail: in `alloc.json` the 67 property dims carry the internal `family` tag `"taxonomy"` — a
+> warm-start/harness-compatibility label inherited from the gen20 lineage (`build_from_props.py` keeps it so the
+> trainer runs unchanged; `build_families.py` selects the props via `family == "taxonomy"`). The router keys on the
+> property **name**, not this tag, so the literal on-disk label differs harmlessly from the "property" term used here.
 
 ## The pipeline (DAG)
 
+The runnable, parameterized pipeline lives at [`training/props/`](../training/props/); see
+[`training/props/pipeline.md`](../training/props/pipeline.md) for the full per-stage contract. In outline:
+
 ```
-build_type_property_matrix.py ─► type_property_matrix.csv   (schema.org candidate props)
-build_assignment_pg.py        ─► pg_per_instance.jsonl      (per-instance props from Postgres capped.entity)
-build_assignment21_v2.py      ─► alloc21_dims.json          (◄ THE 67-prop basis is selected here: a prop
-                                                              becomes a dim iff ≥25 training instances carry it)
-build_from_props.py           ─► runtime20/data/{alloc.json (nc), units_*.jsonl, assignment.csv}
-   ── cp alloc.json → alloc20.json  (the trainer reads alloc20.json) ──
-train_props_gpu.py  (GPU)     ─► encoder_props{,_meta}.pt, qwen_lora_props/   (un-freezes + fine-tunes the LoRA)
-calibrate_props.py            ─► props_thr.json      build_families.py ─► families.json
+build_assignment_pg.py    ─► data/pg_per_instance.jsonl   (per-instance props from Postgres capped.entity)
+build_assignment21_v2.py  ─► data/alloc21_dims.json       (◄ THE property basis is selected here: a prop
+                                                            becomes a dim iff ≥25 training instances carry it)
+build_from_props.py       ─► data/{alloc.json (nc), units_{train,test}.jsonl, assignment.csv, inference.csv}
+   ── cp data/alloc.json data/alloc20.json  (the trainer reads alloc20.json) ──
+train_props_gpu.py  (GPU) ─► data/{encoder_props.pt, encoder_props_meta.pt, qwen_lora_props/}   (un-freezes + fine-tunes the gen20 LoRA)
+build_families.py  ─► data/families.json + engine/data/families.json
+calibrate_props.py ─► data/props_thr.json + engine/data/props_thr.json
 ```
 
 ## Where the property basis is selected
 
-`runtime21/build_assignment21_v2.py` (~L126–130): a schema.org prop becomes a model dim **iff ≥25 training
-instances carry it** (`MIN_SUPPORT=25`). Instances (with their properties) come from Postgres `capped.entity`,
-mapped Wikidata-P-id → schema.org name via `bridge_prop.csv`. **Which types are pulled** is controlled by the
-`TYPES` map (`build_assignment21_v2.py:37–41`, Wikidata qid → coarse family).
+`training/props/build_assignment21_v2.py` (`PER_TYPE, MIN_SUPPORT = 250, 25`; dim-selection ~L130–132): a
+schema.org prop becomes a model dim **iff ≥25 training instances carry it** (`MIN_SUPPORT=25`). Instances (with
+their properties) come from Postgres `capped.entity`, mapped Wikidata-P-id → schema.org name via `bridge_prop.csv`
+(committed at [`training/props/bridge_prop.csv`](../training/props/bridge_prop.csv)). **Which types are pulled** is
+controlled by the `TYPES` map (`build_assignment21_v2.py:41–46`, Wikidata qid → coarse family).
 
 ## Runbook: add a new type (worked example — software) — VALIDATED on CPU
 
@@ -66,38 +76,42 @@ mapped Wikidata-P-id → schema.org name via `bridge_prop.csv`. **Which types ar
 **Blockers to running it:**
 1. **GPU** — `train_props_gpu.py` back-props through Qwen-0.5B (~600 steps). CPU is a multi-hour job; use a
    GPU box (e.g. RunPod). Every other step is CPU/Postgres and is **done**.
-2. ~~`bridge_prop.csv` is missing~~ — **RESOLVED**: it is now vendored at
-   [`training/props/bridge_prop.csv`](../training/props/bridge_prop.csv) (182 rows) with the 5 software P-ids
-   mapped (`P306`→operatingSystem, `P277`→programmingLanguage, `P348`→softwareVersion, `P178`→author,
-   `P400`→runtimePlatform).
-3. **Two Postgres DBs**: `WORLD_PG_PASSWORD`/`KB_PG_PASSWORD` (env) for `capped.entity` + `knowledgebase`.
+2. **Two Postgres DBs**: `WORLD_PG_PASSWORD` for `capped.entity`, `KB_PG_PASSWORD` for `knowledgebase.*` (env).
 
 **Steps (1–4 done, 5–8 remaining):**
-1. ✅ Code edits: added `"Q7397": "software"` to `TYPES` (`build_assignment21_v2.py:42`); ensured the software
-   P-ids are in `bridge_prop.csv`. Still TODO for step 6: make software its own family in `build_families.py`
-   (`"software":"software"` + `FAM_SCHEMATYPES["software"]=["SoftwareApplication"]`).
-2. ✅ `build_assignment_pg` → `build_assignment21_v2` — basis grew to **71 props**; the software props appear in
-   `alloc21_dims.json`.
-3. ✅ `build_from_props` — corpus written to `runtime20/data/units_{train,test}.jsonl` (nc=90, ~1.1 MB).
-4. ✅ `cp runtime20/data/alloc.json runtime20/data/alloc20.json` (the trainer reads `alloc20.json`).
-5. **(GPU — REMAINING)** `python -m runtime20.scripts.train_props_gpu --steps 600 --lr 2e-4`.
-6. Stage `encoder_props*.pt` + `qwen_lora_props/` into `runtime21/data/props_model/`, then
-   `python -m runtime21.build_families` + `python -m runtime21.calibrate_props`.
-7. Copy into `engine/data/`: `encoder_props.pt`→`encoder.pt`, `encoder_props_meta.pt`→`encoder_meta.pt`,
-   `qwen_lora_props/*`→`qwen_lora/`, `runtime20/data/alloc.json`→`alloc.json`.
-   (`families.json` + `props_thr.json` are written to `engine/data/` by step 6.) Do **not** touch
-   `anchor_assignment.npz` (legacy, unused by the router).
-8. Verify: `python -m tests.test_world` + `python -m tests.test_geo` — the software assertion must pass, with no
-   regression on the other 76 assertions.
+1. ✅ Code edits: added `"Q7397": "software"` to `TYPES` (`training/props/build_assignment21_v2.py`); the 5
+   software P-ids are mapped in `training/props/bridge_prop.csv` (`P306`→operatingSystem, `P277`→programmingLanguage,
+   `P348`→softwareVersion, `P178`→author, `P400`→runtimePlatform). Also done: software is its own family in
+   `training/props/build_families.py` (`TYPE_FAM["software"]="software"` +
+   `FAM_SCHEMATYPES["software"]=["SoftwareApplication"]`, moved out of `product`).
+2. ✅ `python -m training.props.build_assignment_pg` → `python -m training.props.build_assignment21_v2` — basis
+   grew **67 → 71** props; the software props appear in `data/alloc21_dims.json`.
+3. ✅ `python -m training.props.build_from_props` — corpus written to `data/units_{train,test}.jsonl`
+   (**nc=90** = 9 struct + 71 prop + 10 intent, ~1.1 MB).
+4. ✅ `cp training/props/data/alloc.json training/props/data/alloc20.json` (the trainer reads `alloc20.json`).
+5. **(GPU — REMAINING)** `python -m training.props.train_props_gpu --steps 600 --lr 2e-4`.
+6. `python -m training.props.build_families` + `python -m training.props.calibrate_props` (both stage their
+   outputs into `engine/data/`; override with `PREREASONER_ENGINE_DATA`).
+7. Copy the GPU-train (`train_props_gpu`) outputs into `engine/data/` under the engine's names:
+   `encoder_props.pt`→`encoder.pt`, `encoder_props_meta.pt`→`encoder_meta.pt`, `qwen_lora_props/*`→`qwen_lora/`,
+   `data/alloc.json`→`alloc.json`. (`families.json` + `props_thr.json` are written to `engine/data/` by step 6.)
+   Do **not** touch `anchor_assignment.npz` (legacy, unused by the router).
+8. Verify: `python -m tests.test_world` + `python -m tests.test_geo` — the software assertion (`test_world.py:50`)
+   must flip from `None` to a routed family, with no regression on the other assertions.
 
-## Independence — what must be vendored
+## Independence — what is vendored, what stays external
 
-For this repo to build the model standalone, the training pipeline must move in from `flat-data`. Progress +
-the hard cross-repo couplings that remain:
-- ✅ `bridge_prop.csv` is committed here at `training/props/bridge_prop.csv` (first piece vendored).
-- `runtime21/{build_assignment_pg,build_assignment21_v2,build_from_props,build_families,calibrate_props}.py` +
-  `runtime20/{model11.py, scripts/train_props_gpu.py}` (the model + trainer) must be vendored into
-  `training/props/`, with their hardcoded `SP`/`ROOT`/`DATA` paths parameterized.
-- `runtime21/build_families.py:18` and `runtime21/calibrate_props.py:35` write directly into `engine/data` —
-  keep that as an explicit `--out engine/data` flag once vendored.
-- The two Postgres DBs are training-time inputs; document a from-scratch build (or ship the corpus).
+The property pipeline **is vendored** into [`training/props/`](../training/props/) — the repo builds the shipped
+model standalone (`build_assignment_pg`, `build_assignment21_v2`, `build_from_props`, `train_props_gpu`,
+`build_families`, `calibrate_props`, plus `bridge_prop.csv`). All the old hardcoded `runtime20`/`runtime21` paths
+were collapsed onto one `training/props/data/` dir (`PREREASONER_TRAIN_DIR`); `build_families` and
+`calibrate_props` write to `engine/data/` (`PREREASONER_ENGINE_DATA`). The remaining external inputs — not
+committed because they are large and/or upstream-owned — are:
+- **`columns.csv`** (Stage 1) and **`type_table_map.csv`** (Stage 4), dropped into `training/props/data/`.
+- The **two Postgres DBs**: `world` (`capped.entity` etc.) and `knowledgebase` (`human`, `taxon`).
+- The **gen20 warm-start artifacts** (Stage 3 resumes from them): the base LoRA + RelBlock, which ship in
+  `engine/data/` as `qwen_lora/`, `encoder.pt`, `encoder_meta.pt`. This is the one hard dependency on the legacy
+  gen20 pipeline — kept as a prebuilt input, not rebuilt here.
+- **HF weights** — `Qwen/Qwen2.5-0.5B` (downloaded by `transformers`; `HF_TOKEN` if gated).
+
+See [`training/props/pipeline.md`](../training/props/pipeline.md) for the full external-input list and env vars.

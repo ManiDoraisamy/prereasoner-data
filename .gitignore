@@ -17,6 +17,10 @@ engine/data/*.npz
 engine/data/qwen_lora/
 !engine/data/README.md
 
+# training/props pipeline scratch — generated corpus + weights (rebuild via training/props/pipeline.md)
+training/props/data/*
+!training/props/data/.gitkeep
+
 # Logs & local state
 *.log
 .firebase/
