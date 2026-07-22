@@ -407,7 +407,9 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         country = {}
         if keys and wtype == "city":
             cur.execute('SELECT qid, canon_country FROM knowledgebase."words" WHERE type=\'city\' AND qid = ANY(%s)', (keys,))
-            country = {q: cc for q, cc in cur.fetchall()}
+            for q, cc in cur.fetchall():                      # words has DUPLICATE rows per qid, some with a NULL
+                if cc and not country.get(q):                 # canon_country; keep the first NON-NULL so a real
+                    country[q] = cc                           # country isn't clobbered by a later NULL row (last-wins)
         elif keys:
             cur.execute('SELECT canonical, canon_country FROM knowledgebase."words" WHERE type=%s AND canonical = ANY(%s)',
                         (wtype, keys))
