@@ -1,0 +1,323 @@
+{
+ "families": {
+  "film": {
+   "distinctive": [
+    "countryOfOrigin",
+    "uploadDate",
+    "color",
+    "director",
+    "genre",
+    "actor",
+    "timeRequired",
+    "producer",
+    "contentLocation",
+    "productionCompany",
+    "aggregateRating",
+    "asin",
+    "award",
+    "isBasedOn"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "Movie",
+     "qid": "Q11424",
+     "table": "film"
+    }
+   ],
+   "n_train_cells": 40
+  },
+  "music": {
+   "distinctive": [
+    "genre",
+    "byArtist",
+    "uploadDate",
+    "previousItem",
+    "foundingLocation",
+    "lyricist",
+    "hasPart"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "MusicGroup",
+     "qid": "Q215380",
+     "table": "musical group"
+    },
+    {
+     "schema_type": "MusicAlbum",
+     "qid": "Q108346082",
+     "table": "release group"
+    },
+    {
+     "schema_type": "MusicComposition",
+     "qid": "Q105543609",
+     "table": "musical work/composition"
+    },
+    {
+     "schema_type": "MusicRecording",
+     "qid": "Q7302866",
+     "table": "audio track"
+    }
+   ],
+   "n_train_cells": 80
+  },
+  "org": {
+   "distinctive": [
+    "addressCountry",
+    "dateCreated",
+    "logo",
+    "dissolutionDate",
+    "memberOf",
+    "founder"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "Organization",
+     "qid": "Q43229",
+     "table": "organization"
+    },
+    {
+     "schema_type": "Corporation",
+     "qid": "Q167037",
+     "table": "corporation"
+    },
+    {
+     "schema_type": "NGO",
+     "qid": "Q79913",
+     "table": "non-governmental organization"
+    },
+    {
+     "schema_type": "PoliticalParty",
+     "qid": "Q7278",
+     "table": "political party"
+    },
+    {
+     "schema_type": "BankOrCreditUnion",
+     "qid": "Q730038",
+     "table": "credit institution"
+    }
+   ],
+   "n_train_cells": 80
+  },
+  "organism": {
+   "distinctive": [
+    "parentTaxon",
+    "taxonName",
+    "taxonRank",
+    "birthDate"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "Taxon",
+     "qid": "Q16521",
+     "table": "taxon"
+    }
+   ],
+   "n_train_cells": 80
+  },
+  "person": {
+   "distinctive": [
+    "hasOccupation",
+    "gender",
+    "nationality",
+    "birthDate"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "Person",
+     "qid": "Q5",
+     "table": "human"
+    }
+   ],
+   "n_train_cells": 40
+  },
+  "place": {
+   "distinctive": [
+    "addressCountry",
+    "GeoCoordinates",
+    "image",
+    "postalCode"
+   ],
+   "geo": true,
+   "tables": [
+    {
+     "schema_type": "City",
+     "qid": "Q515",
+     "table": "city"
+    },
+    {
+     "schema_type": "Country",
+     "qid": "Q6256",
+     "table": "country"
+    },
+    {
+     "schema_type": "AdministrativeArea",
+     "qid": "Q56061",
+     "table": "administrative territorial entity"
+    },
+    {
+     "schema_type": "Hospital",
+     "qid": "Q16917",
+     "table": "hospital"
+    },
+    {
+     "schema_type": "School",
+     "qid": "Q3914",
+     "table": "school"
+    },
+    {
+     "schema_type": "CollegeOrUniversity",
+     "qid": "Q38723",
+     "table": "higher education institution"
+    },
+    {
+     "schema_type": "LandmarksOrHistoricalBuildings",
+     "qid": "Q51369558",
+     "table": "historic geographical object"
+    },
+    {
+     "schema_type": "Place",
+     "qid": "Q17334923",
+     "table": "physical location"
+    }
+   ],
+   "n_train_cells": 320
+  },
+  "product": {
+   "distinctive": [
+    "provider",
+    "brand",
+    "distance",
+    "width"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "Product",
+     "qid": "Q2424752",
+     "table": "product"
+    },
+    {
+     "schema_type": "SoftwareApplication",
+     "qid": "Q166142",
+     "table": "application software"
+    },
+    {
+     "schema_type": "Vehicle",
+     "qid": "Q42889",
+     "table": "vehicle"
+    },
+    {
+     "schema_type": "WebSite",
+     "qid": "Q35127",
+     "table": "website"
+    }
+   ],
+   "n_train_cells": 120
+  },
+  "publication": {
+   "distinctive": [
+    "inLanguage",
+    "issn",
+    "countryOfOrigin",
+    "publisher",
+    "about",
+    "editor",
+    "license"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "Periodical",
+     "qid": "Q1002697",
+     "table": "periodical"
+    },
+    {
+     "schema_type": "Book",
+     "qid": "Q571",
+     "table": "book"
+    },
+    {
+     "schema_type": "CreativeWork",
+     "qid": "Q17537576",
+     "table": "creative work"
+    }
+   ],
+   "n_train_cells": 40
+  }
+ },
+ "props": [
+  "GeoCoordinates",
+  "about",
+  "actor",
+  "address",
+  "addressCountry",
+  "affiliation",
+  "aggregateRating",
+  "asin",
+  "award",
+  "birthDate",
+  "brand",
+  "byArtist",
+  "character",
+  "color",
+  "connectedTo",
+  "contentLocation",
+  "countryOfOrigin",
+  "dateCreated",
+  "director",
+  "dissolutionDate",
+  "distance",
+  "editor",
+  "email",
+  "founder",
+  "foundingLocation",
+  "gender",
+  "genre",
+  "hasOccupation",
+  "hasPart",
+  "height",
+  "image",
+  "inLanguage",
+  "isBasedOn",
+  "isPartOf",
+  "issn",
+  "leiCode",
+  "license",
+  "location",
+  "locationCreated",
+  "logo",
+  "lyricist",
+  "mainEntityOfPage",
+  "memberOf",
+  "name",
+  "nationality",
+  "numberOfEmployees",
+  "owns",
+  "parentOrganization",
+  "parentTaxon",
+  "partOfSeries",
+  "postalCode",
+  "previousItem",
+  "producer",
+  "productionCompany",
+  "provider",
+  "publisher",
+  "servesCuisine",
+  "startTime",
+  "subOrganization",
+  "taxonName",
+  "taxonRank",
+  "telephone",
+  "timeRequired",
+  "uploadDate",
+  "video",
+  "weight",
+  "width"
+ ],
+ "note": "superposition-decode: family = argmax mean-firing over its distinctive props; place=geo path"
+}

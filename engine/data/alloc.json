@@ -1,5 +1,5 @@
 {
- "n_content": 93,
+ "n_content": 86,
  "dims": [
   {
    "name": "is_str",
@@ -47,427 +47,392 @@
    "dim_id": 8
   },
   {
-   "name": "academic_discipline",
+   "name": "GeoCoordinates",
    "family": "taxonomy",
    "dim_id": 9
   },
   {
-   "name": "academic_journal",
+   "name": "about",
    "family": "taxonomy",
    "dim_id": 10
   },
   {
-   "name": "administrative_territorial_entity",
+   "name": "actor",
    "family": "taxonomy",
    "dim_id": 11
   },
   {
-   "name": "bank",
+   "name": "address",
    "family": "taxonomy",
    "dim_id": 12
   },
   {
-   "name": "baryonic_matter",
+   "name": "addressCountry",
    "family": "taxonomy",
    "dim_id": 13
   },
   {
-   "name": "borough",
+   "name": "affiliation",
    "family": "taxonomy",
    "dim_id": 14
   },
   {
-   "name": "breed",
+   "name": "aggregateRating",
    "family": "taxonomy",
    "dim_id": 15
   },
   {
-   "name": "car_model",
+   "name": "asin",
    "family": "taxonomy",
    "dim_id": 16
   },
   {
-   "name": "chemical_compound",
+   "name": "award",
    "family": "taxonomy",
    "dim_id": 17
   },
   {
-   "name": "chemical_entity",
+   "name": "birthDate",
    "family": "taxonomy",
    "dim_id": 18
   },
   {
-   "name": "chemical_substance",
+   "name": "brand",
    "family": "taxonomy",
    "dim_id": 19
   },
   {
-   "name": "chess_opening",
+   "name": "byArtist",
    "family": "taxonomy",
    "dim_id": 20
   },
   {
-   "name": "city",
+   "name": "character",
    "family": "taxonomy",
    "dim_id": 21
   },
   {
-   "name": "class",
+   "name": "color",
    "family": "taxonomy",
    "dim_id": 22
   },
   {
-   "name": "common_matter",
+   "name": "connectedTo",
    "family": "taxonomy",
    "dim_id": 23
   },
   {
-   "name": "conceptual_system",
+   "name": "contentLocation",
    "family": "taxonomy",
    "dim_id": 24
   },
   {
-   "name": "country",
+   "name": "countryOfOrigin",
    "family": "taxonomy",
    "dim_id": 25
   },
   {
-   "name": "creative_work",
+   "name": "dateCreated",
    "family": "taxonomy",
    "dim_id": 26
   },
   {
-   "name": "cryptocurrency",
+   "name": "director",
    "family": "taxonomy",
    "dim_id": 27
   },
   {
-   "name": "educational_institution",
+   "name": "dissolutionDate",
    "family": "taxonomy",
    "dim_id": 28
   },
   {
-   "name": "equus_caballus",
+   "name": "distance",
    "family": "taxonomy",
    "dim_id": 29
   },
   {
-   "name": "facility",
+   "name": "editor",
    "family": "taxonomy",
    "dim_id": 30
   },
   {
-   "name": "federated_state",
+   "name": "email",
    "family": "taxonomy",
    "dim_id": 31
   },
   {
-   "name": "film",
+   "name": "founder",
    "family": "taxonomy",
    "dim_id": 32
   },
   {
-   "name": "geographic_entity",
+   "name": "foundingLocation",
    "family": "taxonomy",
    "dim_id": 33
   },
   {
-   "name": "geographical_feature",
+   "name": "gender",
    "family": "taxonomy",
    "dim_id": 34
   },
   {
-   "name": "geolocatable_entity",
+   "name": "genre",
    "family": "taxonomy",
    "dim_id": 35
   },
   {
-   "name": "group",
+   "name": "hasOccupation",
    "family": "taxonomy",
    "dim_id": 36
   },
   {
-   "name": "group_or_class_of_living_things",
+   "name": "hasPart",
    "family": "taxonomy",
    "dim_id": 37
   },
   {
-   "name": "group_or_class_of_physical_objects",
+   "name": "height",
    "family": "taxonomy",
    "dim_id": 38
   },
   {
-   "name": "hospital",
+   "name": "image",
    "family": "taxonomy",
    "dim_id": 39
   },
   {
-   "name": "human_geographic_territorial_entity",
+   "name": "inLanguage",
    "family": "taxonomy",
    "dim_id": 40
   },
   {
-   "name": "industry",
+   "name": "isBasedOn",
    "family": "taxonomy",
    "dim_id": 41
   },
   {
-   "name": "information_resource",
+   "name": "isPartOf",
    "family": "taxonomy",
    "dim_id": 42
   },
   {
-   "name": "infrastructure",
+   "name": "issn",
    "family": "taxonomy",
    "dim_id": 43
   },
   {
-   "name": "intellectual_work",
+   "name": "leiCode",
    "family": "taxonomy",
    "dim_id": 44
   },
   {
-   "name": "language",
+   "name": "license",
    "family": "taxonomy",
    "dim_id": 45
   },
   {
-   "name": "legal_form",
+   "name": "location",
    "family": "taxonomy",
    "dim_id": 46
   },
   {
-   "name": "matter",
+   "name": "locationCreated",
    "family": "taxonomy",
    "dim_id": 47
   },
   {
-   "name": "municipality",
+   "name": "logo",
    "family": "taxonomy",
    "dim_id": 48
   },
   {
-   "name": "musical_group",
+   "name": "lyricist",
    "family": "taxonomy",
    "dim_id": 49
   },
   {
-   "name": "musician",
+   "name": "mainEntityOfPage",
    "family": "taxonomy",
    "dim_id": 50
   },
   {
-   "name": "neighborhood",
+   "name": "memberOf",
    "family": "taxonomy",
    "dim_id": 51
   },
   {
-   "name": "ordinary_matter",
+   "name": "name",
    "family": "taxonomy",
    "dim_id": 52
   },
   {
-   "name": "organization",
+   "name": "nationality",
    "family": "taxonomy",
    "dim_id": 53
   },
   {
-   "name": "person_or_organization",
+   "name": "numberOfEmployees",
    "family": "taxonomy",
    "dim_id": 54
   },
   {
-   "name": "physical_substance",
+   "name": "owns",
    "family": "taxonomy",
    "dim_id": 55
   },
   {
-   "name": "political_party",
+   "name": "parentOrganization",
    "family": "taxonomy",
    "dim_id": 56
   },
   {
-   "name": "polymer",
+   "name": "parentTaxon",
    "family": "taxonomy",
    "dim_id": 57
   },
   {
-   "name": "power_station",
+   "name": "partOfSeries",
    "family": "taxonomy",
    "dim_id": 58
   },
   {
-   "name": "programming_language",
+   "name": "postalCode",
    "family": "taxonomy",
    "dim_id": 59
   },
   {
-   "name": "region",
+   "name": "previousItem",
    "family": "taxonomy",
    "dim_id": 60
   },
   {
-   "name": "restaurant",
+   "name": "producer",
    "family": "taxonomy",
    "dim_id": 61
   },
   {
-   "name": "school",
+   "name": "productionCompany",
    "family": "taxonomy",
    "dim_id": 62
   },
   {
-   "name": "service_provider",
+   "name": "provider",
    "family": "taxonomy",
    "dim_id": 63
   },
   {
-   "name": "set",
+   "name": "publisher",
    "family": "taxonomy",
    "dim_id": 64
   },
   {
-   "name": "ski_resort",
+   "name": "servesCuisine",
    "family": "taxonomy",
    "dim_id": 65
   },
   {
-   "name": "software",
+   "name": "startTime",
    "family": "taxonomy",
    "dim_id": 66
   },
   {
-   "name": "song",
+   "name": "subOrganization",
    "family": "taxonomy",
    "dim_id": 67
   },
   {
-   "name": "source_entity",
+   "name": "taxonName",
    "family": "taxonomy",
    "dim_id": 68
   },
   {
-   "name": "source_of_information",
+   "name": "taxonRank",
    "family": "taxonomy",
    "dim_id": 69
   },
   {
-   "name": "sports_organization",
+   "name": "telephone",
    "family": "taxonomy",
    "dim_id": 70
   },
   {
-   "name": "sports_team",
+   "name": "timeRequired",
    "family": "taxonomy",
    "dim_id": 71
   },
   {
-   "name": "street",
+   "name": "uploadDate",
    "family": "taxonomy",
    "dim_id": 72
   },
   {
-   "name": "structure",
+   "name": "video",
    "family": "taxonomy",
    "dim_id": 73
   },
   {
-   "name": "system",
+   "name": "weight",
    "family": "taxonomy",
    "dim_id": 74
   },
   {
-   "name": "taxon",
+   "name": "width",
    "family": "taxonomy",
    "dim_id": 75
   },
   {
-   "name": "taxonomic_rank",
-   "family": "taxonomy",
-   "dim_id": 76
-  },
-  {
-   "name": "territory",
-   "family": "taxonomy",
-   "dim_id": 77
-  },
-  {
-   "name": "third_level_administrative_division",
-   "family": "taxonomy",
-   "dim_id": 78
-  },
-  {
-   "name": "university",
-   "family": "taxonomy",
-   "dim_id": 79
-  },
-  {
-   "name": "website",
-   "family": "taxonomy",
-   "dim_id": 80
-  },
-  {
-   "name": "work",
-   "family": "taxonomy",
-   "dim_id": 81
-  },
-  {
-   "name": "youtube_channel",
-   "family": "taxonomy",
-   "dim_id": 82
-  },
-  {
    "name": "intent_agg_count",
    "family": "intent",
-   "dim_id": 83
+   "dim_id": 76
   },
   {
    "name": "intent_agg_sum",
    "family": "intent",
-   "dim_id": 84
+   "dim_id": 77
   },
   {
    "name": "intent_agg_avg",
    "family": "intent",
-   "dim_id": 85
+   "dim_id": 78
   },
   {
    "name": "intent_filter_eq",
    "family": "intent",
-   "dim_id": 86
+   "dim_id": 79
   },
   {
    "name": "intent_filter_gt",
    "family": "intent",
-   "dim_id": 87
+   "dim_id": 80
   },
   {
    "name": "intent_filter_lt",
    "family": "intent",
-   "dim_id": 88
+   "dim_id": 81
   },
   {
    "name": "intent_group",
    "family": "intent",
-   "dim_id": 89
+   "dim_id": 82
   },
   {
    "name": "intent_sort_desc",
    "family": "intent",
-   "dim_id": 90
+   "dim_id": 83
   },
   {
    "name": "intent_sort_asc",
    "family": "intent",
-   "dim_id": 91
+   "dim_id": 84
   },
   {
    "name": "intent_limit",
    "family": "intent",
-   "dim_id": 92
+   "dim_id": 85
   }
  ],
- "warm_from_alloc19": {
+ "warm_from_alloc": {
   "is_str": 0,
   "is_num": 1,
   "num_frac": 2,
@@ -477,89 +442,15 @@
   "is_key": 6,
   "is_ref": 7,
   "currency": 8,
-  "academic_discipline": 9,
-  "academic_journal": 10,
-  "administrative_territorial_entity": 11,
-  "bank": 16,
-  "baryonic_matter": 17,
-  "borough": 19,
-  "breed": 20,
-  "car_model": 21,
-  "chemical_compound": 23,
-  "chemical_entity": 24,
-  "chemical_substance": 25,
-  "chess_opening": 26,
-  "city": 28,
-  "class": 29,
-  "common_matter": 30,
-  "conceptual_system": 31,
-  "country": 32,
-  "creative_work": 34,
-  "cryptocurrency": 36,
-  "educational_institution": 38,
-  "equus_caballus": 39,
-  "facility": 40,
-  "federated_state": 41,
-  "film": 42,
-  "geographic_entity": 43,
-  "geographical_feature": 44,
-  "geolocatable_entity": 45,
-  "group": 46,
-  "group_or_class_of_living_things": 47,
-  "group_or_class_of_physical_objects": 48,
-  "hospital": 49,
-  "human_geographic_territorial_entity": 50,
-  "industry": 53,
-  "information_resource": 54,
-  "infrastructure": 55,
-  "intellectual_work": 56,
-  "language": 57,
-  "legal_form": 59,
-  "matter": 63,
-  "municipality": 64,
-  "musical_group": 65,
-  "musician": 66,
-  "neighborhood": 67,
-  "ordinary_matter": 69,
-  "organization": 71,
-  "person_or_organization": 73,
-  "physical_substance": 74,
-  "political_party": 76,
-  "polymer": 79,
-  "power_station": 81,
-  "programming_language": 82,
-  "region": 84,
-  "restaurant": 85,
-  "school": 86,
-  "service_provider": 87,
-  "set": 88,
-  "ski_resort": 89,
-  "software": 90,
-  "song": 91,
-  "source_entity": 92,
-  "source_of_information": 93,
-  "sports_organization": 94,
-  "sports_team": 95,
-  "street": 96,
-  "structure": 97,
-  "system": 99,
-  "taxon": 100,
-  "taxonomic_rank": 101,
-  "territory": 102,
-  "third_level_administrative_division": 103,
-  "university": 106,
-  "website": 110,
-  "work": 111,
-  "youtube_channel": 113,
-  "intent_agg_count": 114,
-  "intent_agg_sum": 115,
-  "intent_agg_avg": 116,
-  "intent_filter_eq": 117,
-  "intent_filter_gt": 118,
-  "intent_filter_lt": 119,
-  "intent_group": 120,
-  "intent_sort_desc": 121,
-  "intent_sort_asc": 122,
-  "intent_limit": 123
+  "intent_agg_count": 83,
+  "intent_agg_sum": 84,
+  "intent_agg_avg": 85,
+  "intent_filter_eq": 86,
+  "intent_filter_gt": 87,
+  "intent_filter_lt": 88,
+  "intent_group": 89,
+  "intent_sort_desc": 90,
+  "intent_sort_asc": 91,
+  "intent_limit": 92
  }
 }

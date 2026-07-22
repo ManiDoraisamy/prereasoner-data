@@ -130,13 +130,14 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
                         continue
                     if self._avglen(table, col) > self.FREETEXT_MIN_AVGLEN:  # free-text (remarks/notes) is NEVER a world
                         continue                                            # entity + slow to encode -> skip (perf + sense)
-                    o = r.route(cells, header=col, world_only=True)        # model types -> {city,country,u_s_state} or None
-                    if not (o and o["leaf"] in self._LEAF_WTYPE):
+                    o = r.route(cells, header=col)                         # property consensus -> family (None = abstain/literal)
+                    if not o:
                         continue
-                    wtype = self._LEAF_WTYPE[o["leaf"]]
-                    friendly = TYPE_TO_FRIENDLY.get(wtype)
-                    if friendly in self.words and self._grounds(cells, wtype):  # MODEL types + cells GROUND
-                        routes[(table["name"], col)] = friendly
+                    for wtype in ("city", "country", "state"):             # GEO: an entity column that GROUNDS to a geo type
+                        friendly = TYPE_TO_FRIENDLY.get(wtype)             # (the family primed entity-vs-literal; grounding is decisive)
+                        if friendly in self.words and self._grounds(cells, wtype):
+                            routes[(table["name"], col)] = friendly
+                            break
             except Exception as e:                                         # NEVER silent: log loudly so a degradation
                 import traceback                                           # to value-membership is visible in the logs
                 print(f"[knowledge_query] !! MODEL ROUTING FAILED -> value-membership fallback: {e!r}", flush=True)
@@ -221,20 +222,41 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
                 cells = [str(rw[ci]) for rw in t["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
                 if len(cells) < 3:                                        # entity names are long but model+grounding gate
                     continue
-                o = r.route(cells, header=col, world_only=False, min_fire=0.12)   # the MODEL types the column
-                for lf in ([o["leaf"]] if o else []):
-                    if lf in self._LEAF_WTYPE or lf not in tmap:         # geo handled by the planner; need a faithful table
-                        continue
-                    # the QUESTION must name this type ('...for hospitals...') — 'total amount in France' names no type,
-                    # so a person-name column (which grounds as 'writer') can't hijack the plain geo aggregate.
-                    if not any(_re.search(r"\b" + w + r"s?\b", ql) for w in lf.split("_") if len(w) > 3):
-                        continue
-                    cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' "
-                                "AND table_name=%s AND column_name='country'", (lf,))
-                    if not cur.fetchone():
-                        continue                                          # need knowledgebase."<lf>".country to filter
-                    return {"table": t, "col": col, "label": lf, "qid": tmap[lf], "country": cr[0], "cells": cells}
+                o = r.route(cells, header=col)                            # property consensus (family) — None=abstain
+                if not o:                                                 # any ENTITY column; _dominant_nongeo_type excludes
+                    continue                                              # the geo types, so a city column finds nothing here
+                wl, tqid = self._dominant_nongeo_type(cells)             # FINE type = dominant knowledgebase.words type the cells resolve to
+                if not (wl and tqid):
+                    continue
+                # the QUESTION must name this type ('...for hospitals...') — 'total amount in France' names no type,
+                # so a person-name column (which grounds as some entity type) can't hijack the plain geo aggregate.
+                if not any(_re.search(r"\b" + w + r"s?\b", ql) for w in wl.replace("_", " ").split() if len(w) > 3):
+                    continue
+                cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' "
+                            "AND table_name=%s AND column_name='country'", (wl,))
+                if not cur.fetchone():
+                    continue                                             # need knowledgebase."<wl>".country to filter
+                return {"table": t, "col": col, "label": wl, "qid": tqid, "country": cr[0], "cells": cells}
         return None
+
+    def _dominant_nongeo_type(self, cells):
+        """FINE type of a non-geo entity column = the dominant knowledgebase.words `type` its cells resolve to (exact
+        norm; excludes the geo types). The model gives the coarse FAMILY; the fine type + its qid come from RESOLUTION
+        (the two-tier design). Returns (exact-Wikidata-label, type-qid) or (None, None). Requires >=GROUND_FRAC of the
+        cells to resolve to ONE non-geo type in words."""
+        norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
+        if len(norms) < 2:
+            return None, None
+        cur = self._rconn().cursor()
+        cur.execute("SELECT type, COUNT(DISTINCT norm) FROM knowledgebase.\"words\" WHERE norm = ANY(%s) "
+                    "AND type NOT IN ('city','country','state','type') GROUP BY type ORDER BY 2 DESC LIMIT 1", (norms,))
+        row = cur.fetchone()
+        if not row or row[1] < max(2, self.GROUND_FRAC * len(norms)):
+            return None, None
+        wl = row[0]
+        cur.execute('SELECT qid FROM knowledgebase."types" WHERE label=%s LIMIT 1', (wl,))
+        q = cur.fetchone()
+        return (wl, q[0]) if q else (None, None)
 
     def _serve_world_type(self, norm, question, sch, plan, schema):
         """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
