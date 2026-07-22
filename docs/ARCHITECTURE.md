@@ -1,45 +1,44 @@
 # PreReasoner — Architecture
 
-> **Read this to understand how the system works.** It is top-down: each section zooms in one
-> level, and you can stop at any depth and still have a coherent picture.
+> **Read this to understand how the whole system fits together.** It is top-down: each section zooms
+> in one level, and you can stop at any depth and still have a coherent picture. Every claim is
+> anchored to a file path and, where it helps, the function that does the work.
 >
-> Sibling docs (kept separate on purpose): **[RESEARCH.md](RESEARCH.md)** = why the approach is
-> novel (the research claims and their caveats). **[../db/README.md](../db/README.md)** = the
-> world-database contract and how to bootstrap it. **[../web/README.md](../web/README.md)** = the
-> frontend. **[../training/README.md](../training/README.md)** = how the model was trained and how
-> to reproduce it. Deployment specifics (Cloud Run, Firebase Hosting, secrets) live in
-> `infra/README.md`.
+> Sibling docs (kept separate on purpose): **[RESEARCH.md](RESEARCH.md)** = why the approach is novel
+> (the research claims and their caveats). **[SQL_AST.md](SQL_AST.md)** = the deterministic typed-AST
+> SQL planner and its Spider numbers. **[TRAINING.md](TRAINING.md)** = how the models were trained and
+> how to reproduce them. **[../db/README.md](../db/README.md)** = the knowledgebase-database contract
+> and how to bootstrap it. **[../web/README.md](../web/README.md)** = the frontend.
 >
-> The code in this repository was consolidated from an iterative research codebase into one
-> package with functional names; the internal iteration numbering does not appear here.
+> The code in this repository was consolidated from an iterative research codebase into one set of
+> packages with functional names; the internal iteration numbering does not appear here.
 
 ## Contents
 
 1. [What it is](#1-what-it-is) · 2. [The one big idea](#2-the-one-big-idea) ·
-3. [System overview](#3-system-overview) · 4. [A request, end to end](#4-a-request-end-to-end) ·
-5. [How the model works](#5-how-the-model-works) ·
-6. [The layered query engine](#6-the-layered-query-engine) ·
-7. [World knowledge & the data model](#7-world-knowledge--the-data-model) ·
-8. [Conversations, identity & isolation](#8-conversations-identity--isolation) ·
-9. [Live trace streaming](#9-live-trace-streaming) ·
-10. [The conversational layer (Sonnet)](#10-the-conversational-layer-sonnet) ·
-11. [Data artifacts](#11-data-artifacts) · 12. [Key decisions](#12-key-decisions-adrs) ·
-13. [Glossary](#13-glossary) · 14. [Repository layout](#14-repository-layout)
+3. [Serving topology](#3-serving-topology) · 4. [A question, end to end](#4-a-question-end-to-end) ·
+5. [The engine request flow](#5-the-engine-request-flow) ·
+6. [Column typing — property superposition-decode](#6-column-typing--property-superposition-decode) ·
+7. [SQL generation over your own data](#7-sql-generation-over-your-own-data) ·
+8. [The knowledge-join path](#8-the-knowledge-join-path) · 9. [The data model](#9-the-data-model) ·
+10. [Auth & multi-tenancy](#10-auth--multi-tenancy) · 11. [Live trace streaming](#11-live-trace-streaming) ·
+12. [The conversational layer (Sonnet)](#12-the-conversational-layer-sonnet) ·
+13. [Model artifacts & training](#13-model-artifacts--training) · 14. [Glossary](#14-glossary) ·
+15. [Repository layout](#15-repository-layout)
 
 ---
 
 ## 1. What it is
 
-**The problem.** AI chatbots can't be trusted with real numbers. Paste a spreadsheet into a
-chatbot and ask for a total and it may *guess* — and you can't tell whether it did the math or
-made it up. For a business decision, "probably right" isn't good enough.
+**The problem.** AI chatbots can't be trusted with real numbers. Paste a spreadsheet into a chatbot
+and ask for a total and it may *guess* — and you can't tell whether it did the math or made it up. For
+a business decision, "probably right" isn't good enough.
 
-**What PreReasoner does.** You attach one or more CSVs and ask a plain-English question. It
-**writes a precise SQL query, runs it on your actual data, and shows you both the answer and the
-query.** When the question needs a fact you didn't upload (e.g. "in *France*" when your sheet
-only lists cities), it joins your data to an implicit **Wikidata world database**. Because the
-answer comes from executing SQL — not from a language model generating text — a wrong answer is a
-*traceable query*, never a hallucination.
+**What PreReasoner does.** You attach one or more CSVs and ask a plain-English question. It **writes a
+precise SQL query, runs it on your actual data, and shows you both the answer and the query.** When the
+question needs a fact you didn't upload (e.g. "in *France*" when your sheet only lists cities), it joins
+your data to an implicit **Wikidata knowledgebase**. Because the answer comes from *executing SQL* — not
+from a language model generating text — a wrong answer is a *traceable query*, never a hallucination.
 
 **One sentence.** PreReasoner is an interpretable query-planning layer that turns *question +
 spreadsheet(s)* into a *deterministic SQL query*, using a frozen LLM only as an encoder (never a
@@ -49,729 +48,722 @@ generator) and a small trained model whose hidden dimensions are named.
 
 ## 2. The one big idea
 
-A normal "ask your data" tool built on RAG embeds everything into anonymous vectors and
-*approximately* retrieves the nearest ones, then lets an LLM write the answer. PreReasoner does
-the opposite: it **names** the dimensions of its representation (this cell is a *city*; that one
-is a *hospital*) and then **queries them exactly** with SQL. Naming is what makes precision
-possible — you cannot write `WHERE dim_247 = 'city'` against an anonymous embedding. (The full
-argument, and why this is *not* RAG, is in [RESEARCH.md](RESEARCH.md). Here we only build on it.)
+A normal "ask your data" tool built on RAG embeds everything into anonymous vectors and *approximately*
+retrieves the nearest ones, then lets an LLM write the answer. PreReasoner does the opposite: it
+**names** the dimensions of its representation (this column reads as a *place*; that one is a *literal
+amount*) and then **queries them exactly** with SQL. (The full argument, and why this is *not* RAG, is
+in [RESEARCH.md](RESEARCH.md).)
 
 Two consequences shape the whole architecture:
 
-- **No generation at inference.** The query is *assembled* by deterministic templates and
-  *executed*. There is no decoder anywhere.
-- **The structure is split in two** (remember this — it recurs below): *what each cell is* is
-  **learned but readable** (named dimensions, anchored to real Wikidata taxonomy nodes); *how the
-  tables relate* (the joins) is **computed by a deterministic algorithm**, not learned. The model
-  never invents which tables join — it is handed that and only weights it.
+- **No generation at inference in the engine.** The query is *assembled* by deterministic templates (or
+  searched as a typed AST) and *executed*. The engine holds Qwen only as an **encoder** — it is run
+  forward for hidden states, never `.generate()`d (`engine/tables.py: TableQuery._encode`).
+- **The structure is split in two.** *What each column is* is **learned but readable** (named property
+  dimensions read off one trained model, §6); *how the tables relate* (the joins) is **computed by a
+  deterministic algorithm**, not learned (`engine/relations.py`). The model never invents which tables
+  join — it is handed that and only weights it.
+
+A conversational LLM (Sonnet) *does* exist in the system, but only at two edges — an optional chat
+orchestrator in front of the engine (§3), and an optional in-rail "present / clarify" surface (§12).
+Neither ever produces a number.
 
 ---
 
-## 3. System overview
+## 3. Serving topology
 
-One serving process (`engine/server.py`, the `prereasoner-api` service) exposes three endpoints
-plus a health check. The static frontend (`web/`) calls it through a single `/api/**` rewrite.
+Production is **four tiers**, deployed as two Cloud Run services behind Firebase Hosting, over one
+Postgres knowledgebase on Cloud SQL.
 
 ```
-                +------------------------------------+
-   User ------> |  Browser app  (web/public/)        |   static pages: index, reason,
-                |  attach CSV(s) + ask a question    |   world, clarify, sheets
-                +---------+----------------^---------+
-                          |                |
-        Google sign-in    | POST /api/...  |  live trace: subscribe
-        (redirect)        | + Bearer token |  /runs/{uid}/{jobId}
-   +---------------+      |                |
-   | Firebase Auth |      |        +-------+----------------+
-   +-------^-------+      |        | Firebase Realtime DB   |  (OPTIONAL — see §9)
-           |              v        +-------^----------------+
-           |   +---------------------------+--------+
-  verify   +---+  prereasoner-api  (engine/server.py)|   ONE service; encoder-only
-  ID token     |  POST /api/reason                   |   model runs on CPU;
-               |  POST /api/knowledge                    |   stateless per request
-               |  POST /api/dimension                |
-               |  GET  /healthz                      |
-               +------+--------------------+---------+
-                      | run SQL            | lazy ensure_entity(qid)
-                      v                    v
-            +------------------+   +----------------+
-            | Postgres `world` |   | Wikidata (WDQS)|
-            | conversation     |   | fills world    |
-            | schemas + chat + |   | rows on demand |
-            | wikipedia world  |   +----------------+
-            | DB + resolution  |
-            +------------------+
+                 +-----------------------------------------------+
+    User ------> |  Browser app   (web/public/, Firebase Hosting)|  static pages: index, reason,
+                 |  attach CSV(s) + chat / ask a question         |  knowledge, chatui, sheets, admin
+                 +----+--------------------------------^----------+
+                      |                                 |
+   Google sign-in     |  POST /chat  (chat UI)          |  live trace: subscribe
+   (Firebase Auth)    |  POST /api/reason (reason page) |  /runs/{uid}/{jobId | turnId}
+                      |  + Bearer <Firebase ID token>   |
+                      |                                 |          +------------------------+
+                      |                       (best-effort writes) |  Firebase Realtime DB  | (OPTIONAL, §11)
+   ============ Firebase Hosting rewrites (web/firebase.json) ==== +-----------^------------+
+        /chat  -> prereasoner-chat        /api/** -> prereasoner-api          |
+                      |                                 |                      |
+          +-----------v-----------+                     |                      |
+          |  ORCHESTRATOR         |  Cloud Run          |                      |
+          |  prereasoner-chat     |  (orchestrator/)    |                      |
+          |  Sonnet tool-loop     |                     |                      |
+          +-----------+-----------+                     |                      |
+                      | spawns per session (stdio)      |                      |
+          +-----------v-----------+                     |                      |
+          |  MCP SERVER           |  subprocess         |                      |
+          |  prereasoner_query    |  (mcp_server/)      |                      |
+          |  prereasoner_describe |                     |                      |
+          +-----------+-----------+                     |                      |
+                      |  HTTP POST /api/reason           |                      |
+                      +-----------------+----------------+                      |
+                                        v                                       |
+                            +-----------------------+   emit(node,value) -------+
+                            |  ENGINE               |  Cloud Run (engine/)
+                            |  prereasoner-api      |  python http.server; encoder-only
+                            |  /api/reason etc.     |  model on CPU; stateless per request
+                            +-----------+-----------+
+                                        | SQL (SELECT-only) + lazy ensure_entity(qid)
+                            +-----------v-----------+       +-----------------+
+                            | Postgres knowledgebase|<----->| Wikidata (WDQS) |
+                            | (Cloud SQL)           |       | fills rows on   |
+                            | knowledgebase / public|       | demand          |
+                            | / chat / per-conv / m_|       +-----------------+
+                            +-----------------------+
 ```
 
-- **Browser app** (`web/`) — the **workbook**: the user's tables and every reasoning step appear
-  as spreadsheet tabs, with a chat rail for follow-ups and saved conversations (§8). Plain
-  HTML/JS, no build step. It renders the reasoning trace live as it streams (§9).
-- **Firebase Auth (Google)** — identifies the user; the verified identity is what authorizes
-  access to a conversation's data (§8).
-- **`prereasoner-api`** — the model + planner + SQL executor, one HTTP service. Request limits:
-  10 MB body, 8 sheets, 5,000 rows per sheet. `/api/reason` and `/api/knowledge` share one
-  `KnowledgeReasoner` instance behind one lock; `/api/dimension` has its own stateless model and lock.
-  It also serves the conversation endpoints (`GET /api/conversations`, `GET /api/conversation`) and
-  the **conversational layer** `POST /api/converse` (§10) — one short Sonnet reply when a message
-  isn't a data query, or to present a computed answer in human words. This is the *only* place a
-  generative LLM is called, it is **optional** (no `ANTHROPIC_API_KEY` ⇒ a graceful in-chat
-  fallback), and it never produces a number — the deterministic engine still does all the math.
-- **Postgres `world`** — holds the shared `wikipedia` world DB, the `world` resolution/taxonomy
-  index, a small `chat` schema (who owns which conversation), and one schema per conversation
-  holding its tables + bridges (§8). Contract in [`db/README.md`](../db/README.md).
-- **Wikidata (WDQS)** — the world tables start empty and **lazy-sync** rows from Wikidata on
-  demand (`engine/knowledge_sync.py: ensure_entity`), the first time a resolved QID is needed. Not a
-  bulk offline import on the hot path.
+**The two paths into the engine.** The reason/knowledge *pages* (`web/public/reason.html`,
+`knowledge.html`) POST directly to `/api/reason` on the engine — this is the classic single-question
+demo. The *chat UI* (`web/public/chatui.html`) POSTs to `/chat` on the **orchestrator**, which runs a
+Sonnet tool-loop that decides when to call the engine and rewrites shorthand into standalone questions.
+Both ultimately reach the same engine endpoint and stream the same reasoning trace.
 
-All runtime configuration is environment variables, read in one place (`engine/config.py`):
-`HOST`/`PORT`, `KB_PG_HOST/PORT/DB/USER/PASSWORD/SSLMODE`, `RTDB_URL` (optional, §9),
-`ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` (optional, the conversational layer, §10),
-`PREREASONER_DATA_DIR` (artifact dir, §11), `DEVICE`, `BASE_MODEL_ID`, `KB_MODEL_ROUTE`, and
-the test-only `AUTH_TEST_SUB` (§8).
+**The four tiers.**
+
+- **Browser app** (`web/`) — the **workbook**: the user's tables and every reasoning step appear as
+  spreadsheet tabs, with a chat rail. Plain HTML/JS, no build step. It renders the reasoning trace live
+  as it streams (§11). Served by Firebase Hosting, which rewrites `/chat` → `prereasoner-chat` and
+  `/api/**` → `prereasoner-api` (`web/firebase.json`).
+- **Orchestrator** (`orchestrator/`, service `prereasoner-chat`) — the chat backend. `orchestrator/
+  server.py` handles `POST /chat`; `orchestrator/orchestrator.py: run_chat` runs a **manual Anthropic
+  tool loop** (Sonnet, `claude-sonnet-5` by default) over the PreReasoner MCP tools. It is deliberately
+  a manual loop, not the SDK tool-runner, so it can mint a per-call `jobId`, inject the session `tables`
+  (kept out of the LLM's context — the model only ever sees the `question`), and keep the full `views`
+  stack for the reasoning player while feeding the model only a trimmed result. `orchestrator/server.py`
+  also proxies `/api/**` straight to the engine and, in local dev, serves the static UI from one origin.
+- **MCP server** (`mcp_server/`) — a **stdio** MCP server (`mcp_server/server.py`, `FastMCP`) exposing
+  two tools, `prereasoner_query` and `prereasoner_describe` (`mcp_server/descriptions.py`). The
+  orchestrator spawns one per chat session over stdio, injecting the user's Firebase token into the
+  subprocess env (`ENGINE_BEARER_TOKEN`) — identity passthrough, never a tool argument.
+  `mcp_server/engine_client.py` makes the actual HTTP call to the engine and shapes the response to a
+  stable `{status: answered|clarify|error, answer, sql, ...}`. There is no separate MCP Cloud Run
+  service: the MCP server ships **inside the orchestrator image** and runs as its subprocess.
+- **Engine** (`engine/`, service `prereasoner-api`) — the model + planner + SQL executor. `engine/
+  server.py` is a plain `http.server.ThreadingHTTPServer` (no web framework). Encoder-only model on CPU,
+  stateless per request. Request limits: 10 MB body, 8 sheets, 5,000 rows/sheet.
+
+**Postgres knowledgebase** (Cloud SQL) holds the shared serving schema `knowledgebase`, the raw geo
+import `public`, the `chat` ownership schema, one schema per conversation (`c_<32hex>`), and one master
+schema per user (`m_<md5(sub)>`) — see §9. Contract in [`db/README.md`](../db/README.md).
+
+**Wikidata (WDQS).** The faithful entity tables start empty and **lazy-sync** rows from Wikidata on
+demand (`engine/knowledge_sync.py: ensure_entity` / `lazy_resolve`), the first time a resolved QID is
+needed — not a bulk offline import on the hot path.
+
+All runtime configuration is environment variables, read in one place (`engine/config.py`): `HOST`/
+`PORT`, `KB_PG_HOST/PORT/DB/USER/PASSWORD/SSLMODE` (the knowledgebase Postgres), `RTDB_URL` (optional,
+§11), `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` (Sonnet, §12), `ENGINE_BASE_URL`/`ORCH_HOST`/`ORCH_PORT`/
+`MCP_SERVER_CMD`/`ENGINE_BEARER_TOKEN` (the MCP tier), `PREREASONER_DATA_DIR` (artifacts, §13), `DEVICE`,
+`BASE_MODEL_ID`, `KB_MODEL_ROUTE`, `PREREASONER_SQL_PLANNER`, and the test-only `AUTH_TEST_SUB` (§10).
 
 ---
 
-## 4. A request, end to end
+## 4. A question, end to end
 
-### 4.1 `POST /api/reason` — the compositional reasoner (the France = 270 trace)
+The canonical demo: tables `customers.csv` + `orders.csv`, question **"total amount in France"**.
+`customers` has a `city` column (Paris/Lyon/Berlin) but no country. The answer is **270** (Paris + Lyon
+orders; Berlin resolves to a German city and is excluded).
 
-The whole machine, moving once, for the default demo: tables `customers.csv` + `orders.csv`,
-question **"total amount in France"**. (`customers` has a `city` column — Paris/Lyon/Berlin — but
-no country.) The home page submits to the reason player, which calls `/api/reason`; a plain world
-query like this one is delegated down to the world planner.
+Below is the *direct* path (reason page → engine). The chat path is the same, wrapped in a Sonnet loop:
+§4.7.
 
-1. **Upload.** The browser saves the sheets + question, signs the user in (Google redirect),
-   gets a fresh ID token, and does `POST /api/reason` with `Authorization: Bearer <token>` and
-   body `{tables, question, jobId}`.
-2. **Auth gate** (`engine/server.py` + `engine/auth.py`). Firebase Admin verifies the ID token
-   server-side; `_verify_principal` returns both the Google `sub` (the Postgres schema name) and
-   the Firebase `uid` (the trace-stream path). No/invalid token → **401**. The schema is *always*
-   this server-verified `sub` — never anything the client sent.
-3. **Route to the planner.** `ComposedKnowledgeQuery` (the view-stacking reasoner,
-   `engine/knowledge_compose.py`) sees no composition primitive (no yoy/top-N/share/…) and
-   **delegates** the plain world join to `KnowledgeQuery` (`engine/knowledge_query.py`). Each *unit* —
-   every column name, every cell value, every question token — is encoded by the unified encoder
-   (Qwen2.5-0.5B + the `qwen_lora` adapter), its subtokens mean-pooled into one vector; the
-   vectors pass through the trained relational model; named dimensions are read off. From these:
-   - **Typing/routing:** FK discovery finds `orders.customer_id → customers.customer_id`
-     (deterministic, `engine/relations.py`). `engine/router.py: Router` types `customers.city`
-     from its taxonomy dims → the Wikidata leaf `city` (QID `Q515`) → the table
-     `knowledgebase."city"`. The word "France" is recognized as a world filter.
-4. **Resolve cells to world QIDs.** Each `city` value is resolved through `knowledgebase."words"` (exact
-   normalized match first, else bge-small pgvector cosine nearest-neighbor ≥ threshold) → a city
-   QID (Paris → `Q90`, Lyon → `Q456`, Berlin → `Q64`). If `knowledgebase."city"` has no row for that
-   QID yet, `ensure_entity(qid, type_qid)` lazily fetches the faithful Wikidata row from WDQS
-   (item-property columns kept as QIDs — `city.country` = the country's QID) and INSERTs it. The
-   resolved column→value→QID mapping is persisted in the per-user bridge
-   `"customers connected to wikipedia"`.
-5. **Assemble SQL** — JOIN the user table to `knowledgebase."city"` ON `qid` via the bridge, filter
-   on the **QID foreign key** (`city.country = 'Q142'` is France), aggregate (operator `SUM`
-   chosen from the model's intent dims):
-   ```sql
-   SELECT SUM(orders.amount) AS total
-   FROM customers
-   JOIN orders ON orders.customer_id = customers.customer_id
-   JOIN "customers connected to wikipedia" b
-        ON b.column = 'city' AND lower(b.value) = lower(customers.city)
-   JOIN knowledgebase."city" ON knowledgebase."city".qid = b.world_key
-   WHERE knowledgebase."city".country = 'Q142';   -- Q142 = France
-   ```
-6. **Execute** (Postgres). `SET search_path TO "<sub>", knowledgebase, public`; the upload
-   tables + bridges are (re)created from the request. A **SELECT-only guard** rejects anything
-   but a read. `SUM` over Paris+Lyon customers' orders = **270** (Berlin resolves to a German
-   city → `country = 'Q183'` → excluded).
-7. **Respond + stream.** The service returns the answer rows **and the SQL it ran**. In parallel
-   the backend has been **streaming the trace** as each stage completed (`status: resolving` →
-   each `resolve/{cell}: qid` → each `views/{i}` → `result` → `done`), so the browser fills the
-   slides in live rather than waiting on the HTTP body (§9).
+1. **Upload + submit.** The browser saves the sheets + question, signs the user in (Firebase Google),
+   gets a fresh ID token, generates a `jobId`, and does `POST /api/reason` with `Authorization: Bearer
+   <token>` and body `{tables, question, jobId, conversation_id?}`. It renders the Input slide instantly
+   and subscribes to `/runs/{uid}/{jobId}` for the live trace (§11).
+2. **Auth gate** (`engine/server.py: _post_world` → `engine/auth.py: _verify_principal`). Firebase Admin
+   verifies the ID token server-side and returns both the Google `sub` (identity) and the Firebase `uid`
+   (trace-stream key). No/invalid token → **401**.
+3. **Resolve the working schema** (`engine/conversations.py: resolve_conversation`). The working Postgres
+   schema is the **conversation**, not the user. A client-supplied `conversation_id` is honored *only
+   after* an ownership check against `chat.user_conversation`; otherwise a fresh `c_<32hex>` conversation
+   is minted for the verified user (§10). The `conversation_id` is streamed to RTDB immediately, so the
+   browser learns it even if the HTTP body is later lost to a proxy timeout.
+4. **Serve** (`engine/knowledge.py: KnowledgeReasoner.serve`, under a process-wide `WORLD_LOCK`). This is
+   the one shared model instance. It first checks the **coverage pre-gate** (is this even a data query?
+   §12), then delegates down the planner stack (§5). For "total amount in France":
+   - **Typing/routing.** FK discovery finds `orders.customer_id → customers.customer_id`
+     (deterministic, `engine/relations.py`). The property router (`engine/router.py: Router`) reads
+     `customers.city` and decodes the **place** family; grounding then confirms the cells resolve as
+     cities (`engine/knowledge_query.py: KnowledgeQuery.route` / `_grounds`, §6). The word "France" is
+     recognized as a country filter (`engine/entities.py: _resolve`).
+   - **Operator from the model.** `intent_agg_*` dims read off the question tokens give `SUM`
+     (`engine/encoder_overlay.py: read_op_model` / `read_op_all`) — no keyword list.
+5. **Resolve cells to QIDs + persist the bridge.** Each city cell resolves through `knowledgebase.
+   "words"` (exact normalized match first, else bge-small pgvector cosine NN) to a city QID (Paris →
+   Q90, Lyon → Q456, Berlin → Q64). If `knowledgebase."city"` has no row yet, `ensure_entity(qid, "Q515")`
+   lazily fetches the faithful Wikidata row (item-property columns kept as QIDs — `city.country` is the
+   country's QID) and INSERTs it, cascading the country fill. The resolved column→value→QID mapping is
+   persisted in the per-conversation bridge `"customers connected to wikipedia"`
+   (`engine/entities.py: _city_bridge_sql`, `engine/knowledge_query.py: _persist_connected`).
+6. **Assemble + execute SQL** (Postgres, `search_path = "<conv>", knowledgebase, public`). JOIN the
+   upload to `knowledgebase."city"` via the bridge, filter on the **QID foreign key**
+   (`city.country = 'Q142'` = France), aggregate `SUM(orders.amount)`. A **SELECT-only guard** rejects
+   anything but a read. Result = **270**.
+7. **Re-express as a view stack + respond + stream.** A clean world-filtered scalar is re-expressed as
+   the composed view stack so the demo *shows* the steps (resolve → world join → filter → aggregate)
+   rather than jumping to the number (`engine/knowledge_compose.py: ComposedKnowledgeQuery.serve`). The
+   HTTP body carries the answer + the SQL; in parallel each stage was streamed to RTDB as it completed
+   (§11).
 
-A question *with* composition depth — *"top 3 cities by total amount"*, *"total amount in Europe
-by city"* — is instead decomposed by `ComposeEngine` (`engine/compose.py`) into a DAG of simple
-primitive views (`filter`, `time-filter`, `group_agg`, `yoy`, `running`, `share`, `divide`,
-`having`, `top-N`, `sort`) stacked over the FK + world base, each view streamed as it
-materializes. A **composition-view gate** decides when the reasoner stands on its own result:
-only for a genuine composition view or a world measure. A plain aggregate, count, or group-by
-that merely misfired the primitive detector defers to the `KnowledgeQuery` delegate — composition
-adds depth without regressing the simple paths.
+**A question *with* composition depth** — *"top 3 cities by total amount"*, *"total amount in Europe by
+city"*, year-over-year, share, running total — is instead decomposed by `ComposeEngine`
+(`engine/compose.py`) into a DAG of simple primitive views over the FK + knowledge base, each streamed
+as it materializes (§7).
 
-### 4.2 `POST /api/knowledge` — the world join
+### 4.1–4.6 The engine endpoints
 
-Same auth, same request shape, same trace contract as `/api/reason` (the two routes share one
-`KnowledgeReasoner` instance). This is the world path run directly: route → resolve → JOIN to the
-`wikipedia` QID schema → QID-FK filter → aggregate, re-expressed as a streamable view stack.
-Two extras live at this layer:
+`engine/server.py` routes these (all under one `ThreadingHTTPServer`):
 
-- **Geo NEARBY** (`engine/knowledge.py: KnowledgeReasoner`): "big cities near Paris" resolves the
-  reference city to lat/lng (`public.settlement`) and ranks world cities by haversine distance —
-  computed in plain SQL, no PostGIS.
-- **Hybrid structured + semantic queries** (`engine/knowledge_query.py`): "who complained about *bad
-  delivery* in France" combines an exact world filter (`country = France` via the resolved QID)
-  with a pgvector cosine predicate over the free-text bridge — both sides embedded by the *same*
-  unified encoder, so the `<=>` cosine is a valid same-space comparison.
+| Endpoint | Method | Auth | What it does |
+|---|---|---|---|
+| `/api/reason` | POST | Firebase | The composition reasoner on the live path (the §4 walk-through). |
+| `/api/knowledge` | POST | Firebase | The knowledge-join path run directly (§8). Shares the **one** `KnowledgeReasoner` + `WORLD_LOCK` with `/api/reason`. |
+| `/api/dimension` | POST | none | Stateless per-column / per-cell named-dimension readout (`engine/dimension.py: DimensionModel.analyze`). No Postgres, nothing persisted; its own model + `DIM_LOCK`. |
+| `/api/converse` | POST | Firebase | The Sonnet conversational fallback / presentation (§12). One Anthropic call; 503 if `ANTHROPIC_API_KEY` is unset. |
+| `/api/conversations`, `/api/conversation?id=` | GET | Firebase | The signed-in user's conversation list / re-open one (ownership-scoped, §10). |
+| `/api/conversation/state`, `/delete`, `/delete-all` | POST | Firebase | Persist a renderable snapshot so a reload restores the conversation without re-running; delete conversations (§10). |
+| `/api/master`, `/api/master/delete` | GET/POST | Firebase | Per-user master (reference) tables (`engine/master.py`, §9). |
+| `/api/admin/*` | GET/POST | admin allowlist | Admin dashboard (`engine/admin.py`): list/delete users, conversations, orphan schemas. |
+| `/healthz`, `/api/healthz` | GET | none | Liveness + whether both models finished loading. The frontend fires a warm-up GET because the service scales to zero and the first cold hit must load the model. |
 
-### 4.3 `POST /api/dimension` — the interpretability readout
+### 4.7 The chat path (orchestrator wrapping)
 
-Body `{data, mode: "analyze"}`. Stateless — no Postgres, no auth, nothing persisted. Runs the
-same encoder + relational readout (`engine/dimension.py: DimensionModel`) and returns the
-per-column / per-cell **named-dimension activations**, walking the anchored taxonomy layer by
-layer. This is the view that lets you *inspect what the model believes each cell is* — the
-interpretability claim made literal (see RESEARCH.md §1).
+For the chat UI, `POST /chat` → `orchestrator/orchestrator.py: run_chat`:
 
-### 4.4 `GET /healthz`
-
-Liveness, plus whether the models finished loading. Used by the frontend's warm-up ping: the
-service scales to zero, and the first cold hit must load the model, so the home page fires a
-warm-up GET and the client retries.
-
-### 4.5 `POST /api/converse` — the conversational layer
-
-Body `{question, tables, clarify?, error?, answer?, sql?}` + Bearer (same Firebase auth). Returns
-`{reply}` — **one short Sonnet message** to show in the chat rail. This is the system's only
-generative-LLM call, and it is deliberately narrow: it is invoked **only** when the deterministic
-engine has already decided a message is *not* a straight data query (a `clarify`/`low_confidence`
-result — "did you mean…?" / "how does this work?"), or to **present** an answer the engine already
-computed in warm human words when the phrasing is emotional. It never invents a number. If
-`ANTHROPIC_API_KEY` is unset (or the call fails), the endpoint returns **503** and the browser
-degrades to a payload-based reply — so the feature is fully optional. The full design is §10.
+1. Auth-gate on the same Firebase token (paid Sonnet inference must not be anonymous — denial-of-wallet).
+2. Spawn the MCP server over stdio with the token in its env.
+3. Run the Sonnet tool loop (`MAX_TOOL_ROUNDS = 8`). The system prompt (`orchestrator/system_prompt.py`)
+   and the tool descriptions (`mcp_server/descriptions.py`) both carry the **routing discipline**: *any*
+   factual number must come from a `prereasoner_query` call — never Sonnet's own arithmetic or memory;
+   follow-on math is another call; a `clarify` result is surfaced verbatim, not filled in.
+4. For each `prereasoner_query` tool call, the orchestrator mints a derivable `jobId` (`<turnId>_<i>`),
+   announces it on the turn's RTDB node *before* running, injects the session `tables`, and calls the MCP
+   tool (→ `engine_client.call_query` → `POST /api/reason`). It keeps **one** conversation for the whole
+   session (captured from the first call's `conversation_id`), returns the trimmed value to Sonnet, and
+   keeps the full trace for the browser.
+5. Returns `{reply, traces, history, conversation_id}`; Sonnet's plain-English reply is the only thing
+   the user reads.
 
 ---
 
-## 5. How the model works
+## 5. The engine request flow
 
-The inference path is **encoder-only — there is no decoder, no `.generate()`, no autoregression
-anywhere.** Qwen is loaded but only ever run forward for hidden states.
+The planner is a **class chain** — every layer adds one capability over the one below, and each is
+independently readable. The serving entry points compose the whole stack, and (crucially) **the encoder
+is loaded once and shared across every layer** (one Qwen in memory).
 
 ```
-question + CSV(s)
-  → deterministic ingest: dedup + foreign-key discovery       (engine/relations.py — NO model)
-  → unified encoder: Qwen2.5-0.5B + LoRA adapter              (a unit = one column name / one cell value / one question token)
-  → mean-pool the unit's subtokens → ONE vector per unit      ("never split a name/number" is honored here)
-  → 10-layer bidirectional relational transformer             (engine/encoder_model.py: RelationalModel, weights in encoder.pt)
-  → read the NAMED dimensions (93 content dims, alloc.json)   (anchored readout, calibrated per-dim thresholds)
-  → read intent dims off question tokens → operator           (SUM/COUNT/AVG without a keyword list)
-  → Router types each string column → a taxonomy leaf QID     (engine/router.py)
-  → deterministic Python assembles SQL clauses                (engine/knowledge_query.py / engine/compose.py)
-  → SELECT-only guard → execute (Postgres / SQLite)
+engine/tables.py            TableQuery          base: CSV parse, SQL identifier/literal quoting, the
+                                                named-dim slot-filling planner + the typed-AST planner
+                                                over the user's own tables (SQLite for the local path)
+engine/knowledge_tables.py  KnowledgeTableQuery  the implicit knowledgebase word-tables + meaning graph
+engine/pg.py                PgQuery             Postgres execution: per-user/conversation schema load,
+                                                type affinity (INTEGER->BIGINT, NUMERIC->py), SELECT-only
+engine/resolve_base.py      RoutedQuery         generalized routing + country aliases + states/elements
+engine/entities.py          EntityQuery         embedding entity resolution: knowledgebase."words"
+                                                exact-norm match then pgvector cosine NN; cell bridges;
+                                                lazy city fill
+engine/encoder_overlay.py   EncoderQuery        the unified-encoder overlay: loads encoder_meta.pt /
+                                                encoder.pt / qwen_lora (load_encoder — the ONE loader),
+                                                operator-from-intent, shares the model onto every layer
+engine/knowledge_query.py   KnowledgeQuery      the live knowledge path: route -> resolve -> QID join ->
+                                                QID-FK filter -> aggregate; hybrid semantic SQL; clarify
+engine/knowledge_compose.py ComposedKnowledgeQuery  view-stacking composition over the knowledge base;
+                                                delegates non-composed queries to KnowledgeQuery
+engine/knowledge.py         KnowledgeReasoner   + geo NEARBY (haversine over public.settlement); the
+                                                coverage pre-gate + the present tag; the top serve()
+engine/dimension.py         DimensionModel      the stateless /api/dimension readout (EncoderQuery subclass)
 ```
 
-**One unified encoder, trained three ways at once.** The encoder is a **frozen-base Qwen2.5-0.5B
-+ a LoRA adapter** (`engine/data/qwen_lora/`) feeding the trained 10-layer bidirectional
-`RelationalModel`. It was trained jointly with three losses (reproduction in
-[`training/`](../training/README.md)):
+**How a question becomes an answer** (`KnowledgeReasoner.serve` → down the chain):
 
-- **contrastive InfoNCE** on Wikidata altLabel pairs → a **metric geometry** where close entity
-  names sit near each other (this is what powers embedding-based entity resolution at serve time);
-- **MSE anchoring** of named dims on a column-graph corpus → the **typing** (what a cell/column is);
-- reused **SQL/join graphs** → the **operator/intent** dims.
+1. **Ingest** (`TableQuery.ingest` → `engine/relations.py: relate`): dedup rows + **deterministic FK
+   discovery** (inclusion-dependency ≥90%, many-to-one cardinality, name/type heuristics, a confidence
+   gate). No model.
+2. **Schema + column typing** (`TableQuery.schema`, `engine/router.py: Router`): encode each unit (a
+   column name / a cell value / a question token) with the shared LoRA-Qwen, mean-pool its subtokens to
+   one vector, run the relational readout, read the named dims. Datatype affinity (INTEGER/REAL/TEXT) and
+   the **property family** are read here (§6).
+3. **Plan** — one of two routes (§7):
+   - the **compose engine** view-stacks (`engine/compose.py: ComposeEngine`) for composition depth or a
+     multi-table/knowledge base, driven by the learned primitive head; or
+   - the **named-dim slot-filler** (`TableQuery.plan` / `assemble`) or the **typed-AST planner**
+     (`TableQuery.search_ast`, `PREREASONER_SQL_PLANNER=ast`) for general single-relation questions.
+4. **Resolve + join to the knowledgebase** where the question names a place/type the sheet lacks (§8).
+5. **Guard + execute** (`TableQuery.guard` SELECT-only; `engine/pg.py` on Postgres for the live path,
+   in-memory SQLite for the local/compose path) → `{columns, rows}`.
+6. **Trace** each step to RTDB as it completes (§11), and return the answer + the SQL + the step stack.
 
-All anchoring is **MSE on RAW activations** (no BCE, no sigmoid).
+`TableQuery` on its own loads **no** model weights — the encoder overlay (`engine/encoder_overlay.py:
+load_encoder`) supplies the one shipped model to the whole stack, so the process holds a single Qwen used
+by routing, resolution, and the intent readout alike.
 
-**The dimension allocation — 93 content dims** (`engine/data/alloc.json`; 42 live entity
-leaves). After a forward pass you can literally read what each unit is:
+Supporting modules: `engine/primitives.py` (pure SQL view builders), `engine/primitive_head.py`
+(`PrimitiveReader`, the learned 10-primitive head on the same encoder), `engine/embeddings.py` (the
+bge-small retrieval embedder + surface normalization), `engine/bridge.py` (bridge predicate machinery),
+`engine/fk_edges.py` + `engine/graph_walk.py` (the relational edge graph), `engine/knowledge_sync.py`
+(the lazy Wikidata client), `engine/trace.py` (§11), `engine/auth.py` (§10), `engine/config.py` (env).
+
+---
+
+## 6. Column typing — property superposition-decode
+
+> This is the recent rewrite. It **replaces** the older taxonomy-leaf typing (which anchored one hidden
+> dim per Wikidata `P279` node and read a column's type off the leaf that fired). That taxonomy-path
+> readout is gone; nothing is anchored as a "type" any more. **The type now emerges from properties.**
+
+**The idea (Mani's thesis: an interpretable model is a database of properties).** The one trained model
+reads **schema.org PROPERTY dimensions** per column — a *superposition* of property activations — and the
+entity **family** is **decoded by column consensus** over that firing: the fraction of a family's
+*distinctive* properties that fire, calibrated by per-property **Youden-J thresholds**. A column that
+fires no family's distinctive properties above a floor is a **literal** (an amount / id / status) and
+**abstains** — no type is forced onto it.
+
+**The encoder is one model, shared everywhere** (`engine/encoder_overlay.py: load_encoder`):
+
+- a **frozen-base Qwen2.5-0.5B + a LoRA adapter** (`engine/data/qwen_lora/`, `BASE_MODEL_ID =
+  Qwen/Qwen2.5-0.5B`, hidden size 896), producing one mean-pooled vector per unit
+  (`TableQuery._encode`); feeding
+- the trained **`RelationalModel`** (`engine/encoder_model.py`) — a 10-layer bidirectional relational-
+  attention transformer whose **named dimensions** are read off the last `nc` hidden coordinates. Weights
+  ship as a plain `state_dict` (`encoder.pt`) plus `{alloc, cfg}` (`encoder_meta.pt`), so loading never
+  depends on pickled class paths.
+
+**The dimension allocation — 86 content dims** (`engine/data/alloc.json`):
 
 | Group | Count | What it names |
-|---|---|---|
-| **struct** | 9 | `is_str` / `is_num` / `num_frac` / `is_time` / … (the datatype shape) |
-| **taxonomy** | 74 | one 0/1 dim per **real Wikidata P279 node**, co-firing **down a token's root→leaf path**: a city fires `geolocatable_entity` … `populated_place` … `city`; 42 live entity leaves |
-| **intent** | 10 | `intent_agg_{sum,count,avg}`, `filter_{eq,gt,lt}`, `group`, `sort_{desc,asc}`, `limit` |
+|---|---:|---|
+| **struct** | 9 | `is_str` / `is_num` / `num_frac` / `is_time` / `is_bool` / `is_enum` / `is_key` / `is_ref` / `currency` (the datatype shape) |
+| **taxonomy** | 67 | one 0/1 dim per **schema.org property** (`director`, `birthDate`, `taxonName`, `addressCountry`, `byArtist`, …) — the property superposition a column fires |
+| **intent** | 10 | `intent_agg_{sum,count,avg}`, `filter_{eq,gt,lt}`, `group`, `sort_{desc,asc}`, `limit` — the query's operation |
 
-Instead of a flat hand-named "*city* neuron", a value lights up its **whole ancestor path**
-through the Wikidata `P279` (subclass-of) tree, so typing is grounded in a real, navigable
-taxonomy — and the leaf dim maps directly to a `knowledgebase."<type>"` world table.
+(The `family="taxonomy"` group name is a historical artifact of the dim-allocation schema; those 67 dims
+now hold **properties**, not taxonomy nodes.)
 
-**Anchoring on clean instances.** The taxonomy readout was re-anchored on clean Wikidata `P31`
-instances (6,665 instances over 46 non-geo leaves) after the initial noisy CSV-derived targets
-made non-geo dims non-discriminative; the re-anchor trained **only the relational readout**
-(encoder frozen) and moved taxonomy AUC **0.886 → 1.0**. The full story — and why it is the
-clearest evidence that anchoring does real work — is in [RESEARCH.md §6](RESEARCH.md); the
-pipeline is `training/corpus/fetch_type_instances.py` → `training/anchor/reanchor.py`, gated by
-`training/calibrate/validate_data.py` and `training/calibrate/validate_route.py`.
+**The router** (`engine/router.py: Router`). For a column it builds a units graph (header + up to 40
+value units, `same_col` edges) → encodes with the shared LoRA-Qwen → relational content readout → **means
+the per-dim readout over the value units** = the column's *property profile*. Then `_consensus` scores
+each family = the fraction of its distinctive props (from `families.json`) that fire above their
+`props_thr.json` threshold. `route()` returns the argmax family, or **None** (abstain) when the best
+family fires `< 0.40` of its distinctive props. It reuses the already-loaded encoder+readout — one Qwen
+for operator, bridge, *and* typing.
 
-**Routing.** `engine/router.py: Router` types an uploaded column to its taxonomy leaf (a QID +
-the matching `wikipedia` table) by scoring each candidate leaf over its root→leaf path — the leaf
-dim at full weight, ancestors decaying toward the root — gated by per-leaf calibrated thresholds
-(`route_thresholds.json`). Routing reads cell **values**, not headers (column names fire
-inconsistently). Two more calibration artifacts back the served model: `dim_thresholds.json`
-(the per-dim `/api/dimension` thresholds, from `training/calibrate/calibrate_dims.py`) and the
-served-model routing gate (`training/calibrate/validate_route.py`), tested through the deployed
-grounding path. Set `KB_MODEL_ROUTE=0` to fall back to value-membership routing without the
-model.
+**The 8 families** (`engine/data/families.json`): `place` (geo=true; grounds to `city` / `country` /
+`administrative territorial entity` / `hospital` / `school` / …), `person` (`human`), `org`
+(`organization` / `corporation` / `NGO` / `political party` / `credit institution`), `film` (`Movie`),
+`music` (`MusicGroup` / `MusicAlbum` / `MusicComposition` / `MusicRecording`), `publication` (`periodical`
+/ `book` / `creative work`), `product` (`product` / `application software` / `vehicle` / `website`),
+`organism` (`taxon`). Each family carries its distinctive property list, a `geo` flag, and the candidate
+world tables.
 
-**Operator-from-intent.** The `intent_agg_{sum,count,avg}` dims are read off the question tokens
-— the reader takes the max activation across non-operand question tokens and gates against the
-calibrated threshold — so "how much did we sell" yields `SUM` without any keyword list. ("Total
-*customers*" — a count noun with no measure — maps to a row COUNT, not a SUM of a foreign key.)
-Keyword heuristics survive only as the encoder-free fallback so the composition engine stays
-testable without a model.
+**Two-tier by design.** The router gives the **coarse family** — that is what gates *entity-vs-literal*
+and primes the resolver. The **fine table + QID** come from cell resolution against the knowledgebase
+(`engine/knowledge_query.py: _dominant_nongeo_type` picks the dominant `knowledgebase."words"` type the
+cells actually resolve to). So the model proposes; grounding decides. A city false-positive on a
+first-name column (short names like Ada/Bo/Sam are real cities and can fire the place family) is dropped
+because the *names* don't ground — never a wrong answer. Grounding uses `GROUND_FRAC = 0.8` for geo types
+(`KnowledgeQuery._grounds`).
 
-**The relational structure (the deterministic, auditable part).** The relationships between
-units are built **outside** the network and injected as a fixed prior; the network only learns
-*how strongly* to weight each one:
+Set `KB_MODEL_ROUTE=0` to disable model routing entirely and fall back to pure value-membership routing
+(`engine/entities.py: _value_membership_routes`), so the live demo can never hard-break on a model
+regression. On any router exception the code logs loudly and falls back the same way.
 
-- Edges `same_col`, `same_row`, `same_cell`, and the cross-table `fk` form an integer adjacency
-  matrix built by plain Python (`engine/fk_edges.py`, graphs assembled by `engine/graph_walk.py`).
-- Foreign keys are discovered deterministically (`engine/relations.py`): inclusion-dependency
-  (≥90% of a column's values contained in a key) + many-to-one cardinality + name/type heuristics
-  + a confidence gate.
-- The model's *only* relational parameter is a per-edge-type × per-head additive attention bias
-  (`att = att + eb[edges]`). It learns how much to attend along a *given* edge — never *which*
-  units relate.
+**Operator from intent** (`engine/encoder_overlay.py: read_op_model`). The `intent_agg_{sum,count,avg}`
+dims are read off the *question* tokens (operand tokens — column names + cell values — excluded), gated
+against calibrated thresholds (`load_encoder` sets SUM/AVG at 0.30, COUNT at 0.05), so "how much did we
+sell" yields `SUM` without any keyword list. Keyword heuristics survive only as an encoder-free fallback
+so the compose engine stays testable without a model (`engine/compose.py`, `TableQuery.plan`'s
+`AGG_CUES`).
+
+**The relational structure (the deterministic, auditable part).** Relationships between units are built
+**outside** the network and injected as a fixed prior; the network only learns *how strongly* to weight
+each one. Edge types `same_col` / `same_row` / `same_cell` / `self` / the query/SQL edges / and the
+cross-table `fk` edge form an integer adjacency matrix (`engine/fk_edges.py: edges`, 10 edge types). The
+model's *only* relational parameter is a per-edge-type × per-head additive attention bias
+(`RelBlock: att = att + eb[edges]`, `engine/encoder_model.py`). It learns how much to attend along a
+*given* edge — never *which* units relate.
 
 ---
 
-## 6. The layered query engine
+## 7. SQL generation over your own data
 
-The planner is a stack of layers, each adding one capability over the one below. In code this is
-a class chain — every layer is independently readable, and the serving entry points compose the
-whole stack:
+Two routes assemble SQL over the uploaded tables. Both are deterministic; neither samples SQL tokens.
+
+### 7.1 The compose engine (view stacking)
+
+`engine/compose.py: ComposeEngine` decomposes an analytical question into a **DAG of simple primitive
+views**, each materialized as a SQL view, stacked over a base relation (the uploaded FK join + the
+knowledge-meaning join). The primitives:
 
 ```
-engine/tables.py          TableQuery          base: CSV parsing, SQL identifier/literal quoting,
-                                              the anchored-readout planner over the user's own tables
-engine/knowledge_tables.py    KnowledgeTableQuery     the implicit world word-tables + meaning graph
-                                              (word_*.json metadata; SQLite fallback for offline use)
-engine/pg.py              PgQuery             Postgres execution: connections, per-user schema
-                                              loading, type affinity (INTEGER→BIGINT, NUMERIC→py)
-engine/resolve_base.py    RoutedQuery         generalized routing + country aliases + states/elements
-engine/entities.py        EntityQuery         embedding entity resolution: knowledgebase."words" exact-norm
-                                              match then pgvector cosine NN; cell bridges; lazy city fill
-engine/encoder_overlay.py EncoderQuery        the unified-encoder overlay: loads encoder_meta.pt /
-                                              encoder.pt / qwen_lora (load_encoder — the single loader)
-                                              and shares the model onto the layers below
-engine/knowledge_query.py     KnowledgeQuery          the live world path: route → resolve → QID join →
-                                              QID-FK filter → aggregate; hybrid semantic SQL; clarify
-engine/knowledge_compose.py   ComposedKnowledgeQuery  view-stacking composition over the world base;
-                                              delegates non-composed queries to KnowledgeQuery
-engine/knowledge.py           KnowledgeReasoner       + geo NEARBY (haversine over public.settlement);
-                                              wraps, never modifies, the composed planner
-engine/dimension.py       DimensionModel      the stateless /api/dimension readout (EncoderQuery subclass)
+EXCL   categorical row exclusion ("excluding returns")
+RATIO  year-over-year growth
+TOPN   top-N
+SHARE  share of total (percentage/proportion)
+TIME   time-window filter
+HAVING post-aggregate predicate
+SORT   ranking (rank XOR top-N)
+DIVIDE ratio of two measures
+RUNNING cumulative / running total
+GROUP  group-by a dimension
 ```
 
-Supporting modules: `engine/compose.py` (`ComposeEngine`, the deterministic composition engine —
-executes the primitive DAG on SQLite), `engine/primitives.py` (pure SQL view builders),
-`engine/primitive_head.py` (`PrimitiveReader`, the learned 10-primitive head on the same
-encoder), `engine/joins.py` (offline FK discovery for the compose engine), `engine/bridge.py`
-(the bridge predicate machinery), `engine/embeddings.py` (the bge-small retrieval embedder +
-surface normalization), `engine/taxonomy.py` (the P279 taxonomy constants, loaded from
-`taxonomy.csv`), `engine/knowledge_sync.py` (the lazy Wikidata client: `ensure_entity`,
-`lazy_resolve`, WDQS access), `engine/trace.py` (§9), `engine/auth.py` (§8), and
-`engine/config.py` (the one env-var reader).
+Which primitives are present is read off the **learned 10-primitive head** (`engine/primitive_head.py:
+PrimitiveReader.present`) on the **same** unified encoder, OR'd with cheap lexical/operand cues for rare
+synonyms (`ComposeEngine._decompose`). `engine/primitives.py` holds the pure SQL view builders; the DAG
+runs on SQLite for the composed path, joined to the in-memory knowledge-meaning table
+(`ComposedKnowledgeQuery._world_lookup`). `ComposedKnowledgeQuery.DEPTH_PRIMS` is the set that gates a
+question to the engine; `serve()` **stands on** the engine's result only when it actually built a genuine
+composition or knowledge composite (`_ENGINE_ONLY_VIEWS` always stand; `_SLOT_OVERLAP_VIEWS` — top-N /
+sort / time-filter — stand only when a knowledge join is in the stack), otherwise it defers to the
+authoritative delegate. This context-aware routing is what keeps live knowledge composites working
+without regressing the simple slot-filler paths.
 
-`TableQuery` on its own does not load model weights — the encoder overlay supplies the one
-shipped model to the whole stack, so the process holds a single Qwen in memory shared by routing,
-resolution, and the intent readout.
+### 7.2 The deterministic typed-AST planner
+
+For general single-relation questions, `TableQuery.search_ast` exposes a **typed AST planner** that
+searches a bounded space of valid SQL abstract syntax trees rather than filling slots. It is selected by
+`PREREASONER_SQL_PLANNER=ast` (production); `legacy` (the default) uses the named-dim slot-filler
+(`TableQuery.plan`/`assemble`).
+
+Pipeline: `engine/sql_schema.py` builds the typed FK graph → `engine/sql_search.py` runs bounded search →
+capability modules add recursive queries, constraints, extrema, and set operations (`engine/
+sql_recursive.py`, `sql_constraints.py`, `sql_extrema.py`, `sql_expansion.py`) → candidate ASTs are
+scored by deterministic features and a **learned ranker** (`engine/sql_rank.py`, `sql_learned_rank.py`)
+→ only validated ASTs (`engine/sql_ast.py`) are rendered to SQL. `engine/sql.py` is the public facade.
+
+A profile-based trained proposer + a strict-denotation promotion gate (`engine/sql_proposal.py`,
+`sql_profile.py`, `sql_profile_expansion.py`, `sql_proposal_runtime.py`) exist for research: the
+`ast_profile`/`ast_strict` modes were **retired from serving** but their code + artifacts remain for the
+Spider eval + training harness (`engine/config.py: sql_planner_mode`). On the realistic whole-database
+Spider dev set, the deterministic typed search lands **strict top-1 ≈ 32.5%** (gated promotion 33.3%);
+full numbers, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
 
 ---
 
-### Typed SQL planner
+## 8. The knowledge-join path
 
-For general relational questions, `TableQuery.search_ast` also exposes the typed deterministic SQL
-planner. Its public facade is `engine/sql.py`; `engine/sql_schema.py` owns the typed foreign-key
-graph, `engine/sql_search.py` owns bounded search, and capability modules add recursive queries,
-constraints, extrema, and set operations. Complete trees are validated by `engine/sql_ast.py` before rendering. The
-planner is available alongside the established slot and compose routes during rollout. See
-[`docs/SQL_AST.md`](SQL_AST.md) for its API, capability map, tests, and Spider results.
+This is how text columns resolve to Wikidata entities and join — the machinery behind "total amount in
+France". Two halves cooperate: the **words index** (metric resolution) and the **property router**
+(typing, §6).
+
+**How a value reaches the knowledgebase — the family picks the table, the QID picks the row.**
+
+1. **Type** the column to a family, gated by grounding, giving a world type + its `knowledgebase."<type>"`
+   table (`engine/knowledge_query.py: route` / `_dominant_nongeo_type`, §6).
+2. **Resolve** each cell to a **QID** via `knowledgebase."words"`: exact normalized match first, then
+   bge-small pgvector **cosine NN** (`engine/entities.py: _resolve` / `_nn`; the cell-side bridge
+   `_cell_bridge_sql` / `_city_bridge_sql` runs the fuzzy remainder as an in-Postgres `<=>` LATERAL NN so
+   the similarity search happens in the database). Cities resolve with same-name disambiguation
+   (context country → global `is_primary` → population), and a per-row country column disambiguates two
+   "Paris" rows (`_city_bridge_disamb_sql`).
+3. **Lazy-fill** the row if missing: `engine/knowledge_sync.py: ensure_entity(qid, type_qid)` fetches the
+   faithful Wikidata row from WDQS (item-property columns kept as **QIDs**) and INSERTs it, cascading the
+   `country` FK so 2-hop filters work. `lazy_resolve` handles a value not yet in `words` at all.
+4. **Join on the QID FK** — `JOIN knowledgebase."city" ON qid = bridge.world_key`,
+   `WHERE city.country = 'Q142'` — exact equality, no string match at join time. A 2-hop knowledge fact
+   ("total amount in Europe") is two QID FK hops: `city.country` → `country.continent = 'Q46'`.
+
+The resolved mapping is persisted per conversation in **`"<table> connected to wikipedia"`** (column /
+value / world_type / world_key / country / world_qid) so re-runs don't re-resolve
+(`KnowledgeQuery._persist_connected`). A second bridge **`"<table> unconnected to wikipedia"`** holds a
+unified-encoder `vector(896)` per free-text cell, backing the semantic predicate.
+
+**Two extras live at this layer:**
+
+- **Geo NEARBY** (`engine/knowledge.py: KnowledgeReasoner._nearby`): "big cities near Paris" resolves the
+  reference city to lat/lng (`public.settlement`) and ranks knowledge cities by **haversine distance in
+  plain SQL** — no PostGIS.
+- **Hybrid structured + semantic queries** (`engine/knowledge_query.py: _serve_hybrid`): "who complained
+  about *bad delivery* in France" combines an exact knowledge filter (`country = France` via the resolved
+  QID, read from the connected bridge) with a pgvector cosine predicate over the free-text unconnected
+  bridge — both sides embedded by the *same* unified encoder, so the `<=>` cosine is a valid same-space
+  comparison. This is why the encoder had to be unified.
+
+**The clarify gate** (`engine/knowledge_query.py: _uncovered` / `_clarify`). A query that would silently
+drop part of the question — an entity that **resolved** but isn't filtered, or a measure word with **no
+aggregate** applied — is caught instead of answered wrong, and the engine returns a `clarify` response (a
+best-guess rephrasing from the model's sub-threshold signals). Coverage is checked against the resolved
+**QID** in the QID-keyed SQL. The clarify is answered in the chat rail by the conversational layer (§12),
+not a page redirect. A sibling **coverage pre-gate** (`ComposedKnowledgeQuery._has_data_signal`, applied
+in `KnowledgeReasoner.serve`) catches the opposite case — a message with *no* data intent at all ("how
+does this work?") — before any reasoning runs.
 
 ---
 
-## 7. World knowledge & the data model
+## 9. The data model
 
-The world DB is the **`wikipedia` Postgres schema: `qid` PRIMARY KEY / `qid` FOREIGN KEY
-everywhere, lazy-synced from Wikidata.** The full database contract — schemas, DDL, indexes,
-extensions, bootstrap scripts — is owned by [`db/README.md`](../db/README.md); this section is
-the engine's view of it.
-
-**How a value reaches the world DB — the concept picks the table, the QID picks the row.**
-
-1. `Router` **types** a column to its taxonomy leaf → a `knowledgebase."<type>"` table (e.g. `city`).
-2. Each cell **resolves** to a world **QID** via `knowledgebase."words"`: exact normalized match first,
-   then bge-small pgvector **cosine NN ≥ threshold**. (This is the metric-space half of the
-   unified encoder doing entity resolution.) The type is looked up by the **exact Wikidata
-   label** (from `knowledgebase."types"`), the same key `ensure_entity` inserts under.
-3. If `knowledgebase."<type>"` has no row for that QID, `engine/knowledge_sync.py: ensure_entity(qid,
-   type_qid)` **lazily fetches** the faithful row from WDQS — item-property columns kept as
-   **QIDs** — and INSERTs it.
-4. The join is then **exact equality on the QID FK** — `JOIN knowledgebase."city" ON qid =
-   bridge.world_key`, `WHERE city.country = 'Q142'` — no string match, no similarity search at
-   join time. A 2-hop world fact ("total amount in Europe") is just two QID FK hops:
-   `city.country` → `country.continent = 'Q46'`.
-
-**The data model (one Postgres database `world`, four schema families):**
+**One Postgres database** (`KB_PG_DB`, default `world`) holds four schema families. DDL + bootstrap in
+[`db/init.sql`](../db/init.sql) and the [`db/sync`](../db/README.md) pipeline.
 
 | Schema | Holds | Built by |
 |---|---|---|
-| **`public`** | the raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, …) — read directly for geo NEARBY | `db/init.sql` + `db/sync` (bulk) |
-| **`wikipedia`** | the world meaning DB: **one table per Wikidata type, named by the EXACT Wikidata label** (`knowledgebase."city"`, `knowledgebase."hospital"`, …), faithful Wikidata property columns, **`qid` PRIMARY KEY**; item-property columns hold the related entity's **QID (a true FK)**. Tables start **empty** and **lazy-sync** on demand. | `db/sync/build_wikipedia.py` (empty qid-PK tables); `engine/knowledge_sync.py: ensure_entity` (fills) |
-| **`world`** | the resolution + taxonomy index: `knowledgebase."words"` (bge-small pgvector HNSW index: `norm → qid + type + embedding`) and `knowledgebase."types"` (the P279 taxonomy: `qid → label`), plus the friendly geo tables the planner's population ranking reads | `db/sync/build_words.py`, `sync_types.py`, `build_world.py` |
-| **`"<google-sub>"`** | per user: one table per uploaded CSV + two persisted **bridges** (below), created per request | the engine, at request time |
+| **`public`** | the raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, `entity_label`) — read directly for geo NEARBY | `db/init.sql` + `db/sync/sync_wikidata.py` / `import_dump.py` |
+| **`knowledgebase`** | THE shared serving schema — the resolution index, the taxonomy, the qid-keyed faithful Wikidata tables, and the friendly geo tables/views | `db/sync/build_words.py`, `sync_types.py`, `build_world.py`, `build_wikipedia.py`; filled lazily by `engine/knowledge_sync.py` |
+| **`chat`** | conversation identity + ownership: `user_profile`, `conversation`, `user_conversation` | `engine/conversations.py` (idempotent at runtime) + `db/init.sql` |
+| **`c_<32hex>` / `m_<md5(sub)>`** | per **conversation**: uploaded CSVs + the two bridges. per **user**: master (reference) tables | the engine, at request time (`engine/pg.py`, `engine/master.py`) |
+
+> **Naming note.** The shared schema is called **`knowledgebase`**, *not* `world` or `wikipedia` — because
+> "world model" means a learned dynamics model in ML, and this is a lookup KB. Older names (`world`,
+> `wikipedia`, `/api/world`) are gone; the DB schema and all tables use `knowledgebase`.
+
+Inside `knowledgebase`:
 
 ```text
--- schema `wikipedia` (qid-keyed; one table per Wikidata type, exact Wikidata labels)
-   knowledgebase."city"     ( qid PK, label, country  <FK→country.qid>, population, … )
-   knowledgebase."country"  ( qid PK, label, continent <FK→continent.qid>, currency <FK→…>, … )
-   knowledgebase."hospital" ( qid PK, label, country  <FK→country.qid>, … )
-   … all qid-PK, item-property columns are qids …
+-- resolution + taxonomy index
+knowledgebase."words"  ( surface, canonical, type, props jsonb, norm, embedding vector(384),
+                         qid, canon_country, is_primary )   -- exact-norm match, then pgvector cosine NN (HNSW)
+knowledgebase."types"  ( qid PK, label, parent_qid, is_leaf, world_table, depth, resolver_type )
 
--- schema `world` (resolution + taxonomy index)
-   knowledgebase."words"  ( norm, qid, type, embedding vector(384) )   -- exact match, then pgvector cosine NN
-   knowledgebase."types"  ( qid, label, parent_qid, is_leaf, … )        -- the P279 taxonomy
+-- qid-keyed faithful Wikidata tables — one per type, named by the EXACT Wikidata label,
+-- created + filled LAZILY (start empty). Item-property columns hold related-entity QIDs (true FKs).
+knowledgebase."city"     ( qid PK, name, country <FK->country.qid>, population, … )
+knowledgebase."country"  ( qid PK, name, continent, currency, … )
+knowledgebase."hospital" ( qid PK, name, country <FK->country.qid>, … )
+… all qid-PK …
 
--- schema "<google-sub>" (per request): the uploaded sheets + two bridges
-   "<sub>"."customers"                              -- the upload, re-created from the request
-   "<sub>"."customers connected to wikipedia"       -- resolved cell → world qid (column / value / world_key)
-   "<sub>"."customers unconnected to wikipedia"     -- a unified-encoder vector(896) per free-text cell
+-- friendly denormalized geo tables + "… in the World" views (population ranking, ENTITY_ATTRS enrichment)
+knowledgebase."Cities" / "Countries" / "Places" / "Elements" / "Continents" / "States"
 ```
 
-**The two per-user bridges.**
+Per-request namespace (`engine/pg.py: _load_user_schema`):
 
-- **`"<csv> connected to wikipedia"`** — the resolved-cell table, keyed by column / value /
-  world_key (QID). It is what the world join reads: `JOIN knowledgebase."<type>" ON qid =
-  bridge.world_key`. Persisting the resolution means re-runs don't re-resolve.
-- **`"<csv> unconnected to wikipedia"`** — a unified-encoder **vector per free-text cell**,
-  backing the semantic predicate (the pgvector `<=>` cosine path, for hybrid queries like "who
-  complained about *bad delivery*").
+```text
+"<conv>"."customers"                            -- the upload, re-created from the request
+"<conv>"."customers connected to wikipedia"     -- resolved cell -> world qid (column/value/world_type/world_key/country/world_qid)
+"<conv>"."customers unconnected to wikipedia"   -- a unified-encoder vector(896) per free-text cell
+SET search_path TO "<conv>", knowledgebase, public   -- one query sees upload + knowledgebase + geo
+```
 
-**How the layers link.** Each request runs `SET search_path TO "<sub>", knowledgebase,
-public`, so one query resolves the user's upload tables, the shared `wikipedia` world tables,
-the resolution index, and the geo tables in one namespace.
-
-**The clarify gate (coverage).** A query that would silently drop part of the question — an
-entity that **resolved** but isn't filtered, or a measure word with **no aggregate** applied — is
-caught instead of answered wrong. The service returns a `clarify` response (a "did you mean?"
-rephrasing) rather than a degenerate query. Coverage is checked against the resolved **QID** in
-the QID-keyed SQL. The clarify is **answered in the chat rail** by the conversational layer (§10),
-not by a page redirect: the rail offers the rephrasing (with a one-tap **Run** button) in the same
-conversation. A sibling **coverage pre-gate** catches the opposite case — a message with *no* data
-intent at all ("how does this work?") — before any reasoning runs. Both are §10.
+**The `db/sync` pipeline** bootstraps the shared data: `sync_wikidata.py` (bulk geo import into `public`)
+→ `build_world.py` / `build_words.py` / `sync_types.py` / `unify_words_qid.py` (build the `knowledgebase`
+resolution index + taxonomy + friendly tables) → `build_wikipedia.py` / `mirror_schema.py` (optional
+empty qid-PK type tables). `sync_entity.py` (`ensure_entity`) is the lazy per-entity filler the engine
+calls at query time. `archive_conversation.py` `pg_dump`s a conversation schema to GCS (§10).
 
 ---
 
-## 8. Conversations, identity & isolation
+## 10. Auth & multi-tenancy
 
-`/api/reason` and `/api/knowledge` execute on live Postgres, gated by Firebase Google auth.
-`/api/dimension` is unauthenticated by design — it is stateless and stores nothing.
+`/api/reason`, `/api/knowledge`, `/api/converse`, and the conversation/master/admin routes are gated by
+Firebase Google auth. `/api/dimension` is unauthenticated **by design** — it is stateless and stores
+nothing.
 
-**A conversation owns a schema.** Each conversation gets its own Postgres schema (named by a
-random `conversation_id`, `c_<32 hex>`) that holds that conversation's uploaded tables and derived
-data. So a conversation is self-contained — inspectable on its own, and archivable as a unit (§8.2).
-The engine module `engine/conversations.py` owns this; the DDL is in [`db/init.sql`](../db/init.sql).
+**Identity is always the verified token subject** (`engine/auth.py: _verify_principal` returns the
+Google `sub` + the Firebase `uid`) — never anything the client sends. `AUTH_TEST_SUB` is a test-only
+bypass that pins a fixed principal without verifying a token; it is **refused on Cloud Run** (a hard
+guard on `K_SERVICE` in `engine/config.py: auth_test_sub`), so a stray env var can never disable auth in
+production.
 
-**Who a conversation belongs to lives in a small `chat` schema:**
+**A conversation owns a schema.** Each conversation gets its own Postgres schema (`c_<32hex>`, validated
+against a strict regex before it ever reaches SQL / `DROP SCHEMA`), holding that conversation's uploads +
+bridges. So a conversation is self-contained — inspectable on its own and archivable as a unit
+(`engine/conversations.py`; `chat` metadata in three tables: `user_profile`, `conversation`,
+`user_conversation`).
 
-| table | holds |
-|---|---|
-| `chat.user_profile` | the signed-in identity — the verified Google `sub`. |
-| `chat.conversation` | `conversation_id`, the opening question, the uploaded tables (so it re-opens self-contained), a timestamp. |
-| `chat.user_conversation` | the ownership link — which user owns which conversation. |
+**Why this isn't an IDOR.** A request may carry a `conversation_id`, but it is honored **only after** an
+ownership check against `chat.user_conversation`; otherwise the engine mints a fresh conversation
+(`resolve_conversation`). A `conversation_id` that isn't yours (or doesn't exist) returns the same "not
+found" either way — no enumeration.
 
-### 8.1 The security model (why this isn't an IDOR)
+- **Isolation is application-enforced.** The working schema comes from the authorized conversation;
+  `search_path` scopes queries to it + the shared `knowledgebase`/`public`; generated SQL is SELECT-only
+  with quoted identifiers. One Postgres role, separation by schema.
+- **No concurrent-request deadlock.** The bridge read connection is `autocommit=True` (`entities.py:
+  _rconn`), and the one `ACCESS EXCLUSIVE` bridge migration is guarded by an `information_schema` check so
+  steady state takes no exclusive lock.
 
-The identity is **always the verified token subject** (`engine/auth.py: _verify_principal`
-returns the Google `sub` + the Firebase `uid`) — never anything the client sends. A request may
-carry a `conversation_id`, but it is honored **only after** an ownership check against
-`chat.user_conversation` confirms it belongs to the verified user; otherwise the engine mints a
-fresh conversation. A `conversation_id` that isn't yours (or doesn't exist) returns the same "not
-found" either way — no enumeration. And because a `conversation_id` doubles as a schema name, it
-is validated against the strict `c_<32 hex>` shape before it ever reaches SQL, so it can't inject.
+**Master data** (`engine/master.py`) is a per-user schema `m_<md5(sub)>` in the same database, holding
+the private reference entities Wikidata doesn't know (products, reps, regions). The schema name is
+*derived* from the verified sub, so a user can only ever read/write their own master data — no
+client-controlled schema path.
 
-- **Isolation** is application-enforced: the working schema comes from the (authorized)
-  conversation, `search_path` scopes queries to it plus the shared `wikipedia`/`world` schemas,
-  and generated SQL is SELECT-only with quoted identifiers. One Postgres role; separation by schema.
-- **Sign-in is a same-tab redirect** (not a popup). The frontend sets `authDomain` to the domain
-  you're actually on so the redirect result survives browser storage partitioning, with a
-  loop-breaker that shows a retry instead of bouncing forever (details in
-  [`web/README.md`](../web/README.md)).
-- **No concurrent-request deadlock.** The bridge read connection is `autocommit=True`, and the
-  one `ACCESS EXCLUSIVE` migration (adding a bridge column) is guarded by an `information_schema`
-  check so it fires only when genuinely needed — steady state takes no exclusive lock.
-- **Test bypass.** `AUTH_TEST_SUB` skips token verification and pins a fixed user — local harness
-  only; never on a live service.
+**Archiving** (optional). Because a conversation is one self-contained schema, an idle one can be
+`pg_dump`ed to `gs://$GCS_BUCKET/conversations/<id>.sql.gz` and restored with `psql`
+(`db/sync/archive_conversation.py`); the `chat` metadata stays so it remains listed. Operator tooling; the
+restore bucket is a trust boundary.
 
-Note: the engine initializes firebase-admin (Application Default Credentials) for token
-verification even when trace streaming is off, so the authenticated routes need Google
-credentials unless `AUTH_TEST_SUB` is set.
-
-### 8.2 Archiving a conversation (optional)
-
-Because a conversation is one self-contained schema, an idle one can be serialized to Cloud
-Storage and restored on demand: `db/sync/archive_conversation.py` `pg_dump`s the schema to
-`gs://$GCS_BUCKET/conversations/<id>.sql.gz` (optionally dropping it to free the database) and
-restores it with `psql`. The `chat` metadata stays, so the conversation remains listed and
-re-openable. (Operator tooling; the restore bucket is a trust boundary — lock it down.)
+Note: the engine initializes firebase-admin (Application Default Credentials) for token verification even
+when trace streaming is off, so the authenticated routes need Google credentials unless `AUTH_TEST_SUB`
+is set locally.
 
 ---
 
-## 9. Live trace streaming
+## 11. Live trace streaming
 
-The reasoning trace is **streamed live as the backend computes it**, and the browser subscribes
-and renders slides as they arrive. This **decouples rendering from the HTTP response**: a slow
-2-hop geo query that would exceed a ~60 s HTTP proxy timeout streams to the answer anyway, and
-"watch how the model reasons" becomes literal — each resolved QID and each view appears as it is
-produced, not reconstructed afterward.
+The reasoning trace is **streamed live as the backend computes it**, decoupling rendering from the HTTP
+response: a slow 2-hop geo query that would exceed a ~60 s proxy timeout still streams to the answer, and
+"watch how the model reasons" becomes literal.
 
 ```
-Browser (reason/world page)          prereasoner-api                Firebase RTDB /runs/{uid}/{jobId}
+Browser (reason page / chat UI)      engine (or orchestrator)      Firebase RTDB /runs/{uid}/{jobId|turnId}
    | generate jobId; render Input slide instantly
-   |-- POST {tables, question, jobId} + Bearer  -->|  (fire-and-forget)
-   |-- subscribe /runs/{uid}/{jobId} --------------------------------->|
-   |                                    | _verify_principal → (sub, uid)
-   |                                    |-- status: resolving --------->|
-   |                                    |-- resolve/{cell}: qid ... --->|
+   |-- POST {tables, question, jobId} + Bearer -->|  (fire-and-forget)
+   |-- subscribe /runs/{uid}/{jobId} ------------------------------------->|
+   |                                    | _verify_principal -> (sub, uid)
+   |                                    |-- conversation_id ------------->| (early, survives a proxy timeout)
+   |                                    |-- status: resolving ----------->|
+   |                                    |-- resolve/{i}: {table,column,…}>|
    |                                    |-- views/{0..n}: {op,label,sql,columns,rows} -->|
-   |                                    |-- result: {columns,rows}; status: done ------->|
-   |<------------------- each write pushed → render slide -------------|
+   |                                    |-- result / present / clarify / low_confidence / error -->|
+   |<------------------ each write pushed -> render slide ----------------|
    |<-- HTTP body still returns (full-response fallback) --|
 ```
 
-- **Backend.** `engine/trace.py` exposes `emitter(uid, jobId) → emit(node, value)` (and
-  `stream_final`); the server emits `status` and the terminal `result`/`clarify`/`error`/`done`,
-  while the compose engine emits `status: resolving` and each `views/{i}` as it is built.
-  firebase-admin (already present for auth) does the writes. Every write is best-effort —
-  streaming must never break the answer.
-- **RTDB is OPTIONAL.** Streaming is driven by the `RTDB_URL` env var. Unset ⇒ the emitter
-  functions become clean no-ops, firebase-admin still initializes for auth, and the frontend
-  falls back to the full-JSON HTTP response. Self-hosters get a working system with no Realtime
-  Database at all.
-- **Keyed on the Firebase `uid`, not the schema `sub`.** The stream lives under the
-  authenticated user's node; a client cannot choose another user's stream (§8).
-- **Stream schema** at `/runs/{uid}/{jobId}`: `conversation_id` (emitted first, so the browser
-  learns it even if the HTTP body is lost to a proxy timeout — §8), `status`
-  (`resolving|running|done|clarify|error`), `resolve/{cell}: qid`, `views/{i}:
-  {op,label,sql,columns,rows}`, `result: {columns,rows}`, `clarify`, `low_confidence` (a
-  not-a-data-query signal → the conversational layer answers in the rail, §10), `present` (a real
-  answer to present in human words, §10), `error`.
-- **Security.** `web/database.rules.json` makes `/runs/{uid}` **read-only by its owner**
-  (`auth.uid === $uid`); the client never writes (the admin SDK bypasses rules).
-- **Failure path.** A failed run streams a terminal `error` / `status: error`, so a client never
-  hangs on `running`; and the full HTTP response covers the case where RTDB is unavailable.
+- **Backend** (`engine/trace.py`). `emitter(uid, jobId) -> emit(node, value)`; the server emits `status`
+  and the terminal state via `stream_final`, while the compose engine emits `status: resolving`, each
+  `resolve/{i}` slide, and each `views/{i}` as it is built. A per-request emit **context** (`set_ctx` /
+  `ctx_emit`) lets deep resolution code stream the cell→QID lookup without threading `emit` through every
+  signature (safe because the server sets it inside the per-model `WORLD_LOCK`). firebase-admin (already
+  present for auth) does the writes. Every write is best-effort — streaming must never break the answer.
+- **RTDB is OPTIONAL.** Driven by `RTDB_URL`. Unset ⇒ the emitter functions become clean no-ops,
+  firebase-admin still initializes for auth, and the frontend falls back to the full-JSON HTTP response.
+  Self-hosters get a working system with no Realtime Database.
+- **Keyed on the Firebase `uid`**, not the schema `sub`, so a client cannot choose another user's stream.
+  On the chat path the orchestrator streams under `/runs/{uid}/{turnId}` and announces each engine call
+  (`calls/{i}: {jobId, question}`) so the browser can subscribe to each nested `/runs/{uid}/{jobId}`
+  trace.
+- **Security.** `web/database.rules.json` makes `/runs/{uid}` **read-only by its owner** (`auth.uid ===
+  $uid`); the client never writes (the admin SDK bypasses rules).
+- **Failure path.** A failed run streams a terminal `error` / `status: error`, so a client never hangs on
+  `running`; and the full HTTP response covers the case where RTDB is unavailable.
 
 ---
 
-## 10. The conversational layer (Sonnet)
+## 12. The conversational layer (Sonnet)
 
-Everything above is deterministic: a message becomes SQL, or it doesn't. But a chat rail invites
-messages that *aren't* data queries — "how does this work?", "did you mean revenue over $100?",
-or an emotional "I'm worried our top region is too concentrated." Forcing those into a degenerate
-query (or bouncing the user to a separate "did you mean" page) is the wrong answer. The
-**conversational layer** handles them **in the same conversation**, using a frozen Sonnet
-(`claude-sonnet-5`) as a thin **presentation / fallback** surface — **never as a calculator.**
+Everything above is deterministic: a message becomes SQL, or it doesn't. But a chat rail invites messages
+that *aren't* data queries — "how does this work?", "did you mean revenue over $100?", or an emotional
+"I'm worried our top region is too concentrated." The **conversational layer** handles them **in the same
+conversation**, using a frozen Sonnet (`ANTHROPIC_MODEL`, default `claude-sonnet-5`) as a thin
+**presentation / fallback** surface — **never as a calculator.**
 
 > **The one invariant: Sonnet never produces a number.** Every figure still comes from SQL the
-> deterministic engine ran. Sonnet only *phrases* — it either explains why a message wasn't run,
-> or wraps a value the engine already computed in human words. This is what keeps the "no
-> hallucinated numbers" guarantee intact even with an LLM in the loop.
+> deterministic engine ran. Sonnet only *phrases* — it either explains why a message wasn't run, or wraps
+> a value the engine already computed. This keeps the "no hallucinated numbers" guarantee intact even
+> with an LLM in the loop.
 
-**It is entirely optional.** The layer lives behind `POST /api/converse` (§4.5) and needs
-`ANTHROPIC_API_KEY`. Unset it and the endpoint returns 503; the browser degrades to a
-payload-based "did you mean…?" line, and plain data answers are unaffected. Self-hosters get a
-working system with no Anthropic account at all — exactly like RTDB streaming (§9) is optional.
+**Two places Sonnet appears** — both optional (`ANTHROPIC_API_KEY`), both never on the arithmetic path:
 
-### 10.1 When it fires — three signals from the deterministic engine
+1. **The orchestrator chat loop** (§3, §4.7) — the tool-loop front end. It decides *when* to call the
+   engine and rewrites shorthand, but every number is a `prereasoner_query` result.
+2. **`/api/converse`** — the in-rail present/clarify surface for the direct reason page. `engine/
+   converse.py: reply()` has exactly two modes:
+   - **PRESENT** — given the engine's `answer` + `sql`, wrap the value(s) *verbatim* in human words
+     ("Your total revenue comes to $48,213.50. Whether that's 'good' depends on your targets…").
+   - **FALLBACK** — given a `clarify` rephrasing or an `error` (no answer), offer the rephrasing or
+     explain a meta question — never stating a data value it wasn't given.
 
-The engine decides; the browser reacts. Three signals, all raised **by the deterministic path**
-before any LLM is involved:
+**When it fires — three signals from the deterministic engine** (the engine decides; the browser reacts):
 
-| Signal | Raised when | Engine site | UI reaction |
-|---|---|---|---|
-| **coverage pre-gate** (`low_confidence`, no result) | a message has **no** data intent, **no** schema-word, **no** resolvable entity — it's conversational, not a query ("how does this work?") | `KnowledgeReasoner.serve` → `ComposedKnowledgeQuery._has_data_signal` (short-circuits **before** reasoning, so nothing garbage streams) | conversational reply in the rail |
-| **clarify** (a proposed rephrasing, no result) | a query would **silently drop** part of the question — a resolved-but-unfiltered entity, or a measure with no aggregate (§7 clarify gate) | `KnowledgeQuery._clarify` | conversational reply **+ a one-tap Run button** for the rephrasing |
-| **present** (`present: true`, **with** a real result) | the engine **did** compute an answer, but the phrasing is emotional/opinion/first-person ("*I'm worried* our churn is *too high*") | `KnowledgeReasoner._tag_present` → `ComposedKnowledgeQuery._human_tone` | Sonnet presents the **computed** value in human words; the derivation stays in the panel |
+| Signal | Raised when | Engine site |
+|---|---|---|
+| **coverage pre-gate** (`low_confidence`, no result) | a message has no data intent, no schema word, no resolvable entity ("how does this work?") | `KnowledgeReasoner.serve` → `ComposedKnowledgeQuery._has_data_signal` (short-circuits **before** reasoning) |
+| **clarify** (a rephrasing, no result) | a query would silently drop part of the question (§8 clarify gate) | `KnowledgeQuery._clarify` |
+| **present** (`present: true`, **with** a real result) | the answer is real but the phrasing is emotional/opinion/first-person | `KnowledgeReasoner._tag_present` → `ComposedKnowledgeQuery._human_tone` |
 
-Anything else — a normal data query — never touches this layer. **Plain queries stay raw, at zero
-LLM cost.** That "only when signaled" scoping is the whole point: the fast, free, deterministic
-path answers real questions; Sonnet is spent only on the messages that genuinely aren't one, plus
-the small set explicitly flagged for human presentation.
-
-The detectors are cheap and **schema-aware** (`engine/knowledge_compose.py`): `_has_data_signal`
-(data-intent words, schema-token mentions, or a resolvable world entity), `_human_tone` (an
-emotional/opinion lexicon `_HUMAN_CUE` + an "is that too high / should we…" regex `_HUMAN_RE`),
-and the shared `_schema_tokens` helper — so a cue word that is actually a **column name** ("show
-me the *feeling* column") reads as data, not emotion, and doesn't trigger a needless Sonnet call.
-Every detector is best-effort: it fails **open** for real queries (`_has_data_signal` returns
-`True` on error → never blocks a query) and **closed** for tone (`_human_tone` returns `False` on
-error → never forces a present).
-
-### 10.2 The two Sonnet modes (`engine/converse.py`)
-
-`converse.reply()` has exactly two modes, chosen by whether an `answer` was supplied:
-
-- **PRESENT** — given the engine's `answer` (a `{columns, rows}` result) and its `sql`. Sonnet is
-  told to **use the value(s) verbatim** and wrap them warmly, never recomputing or inventing a
-  figure; an empty result renders as an explicit "returned no rows" sentinel so the model is never
-  told to "use the number" with no number in hand. *"Is that a good monthly revenue?"* →
-  *"Your total revenue comes to $48,213.50. Whether that's 'good' depends on your targets…"*
-- **FALLBACK** — given a `clarify` rephrasing or an `error` (no `answer`). Sonnet offers the
-  rephrasing ("Did you mean …? — tap Run") or, for a meta question, explains accurately (e.g. the
-  Wikidata resolution that turned the surface "germany" into the entity **Germany**), and is
-  instructed **never** to state a data value it wasn't given.
-
-### 10.3 The browser side (`web/public/lib/workbook.js`)
-
-```
-   engine result ──▶  data query?  ──yes──▶  render answer + derivation (no Sonnet)
-                          │no / signalled
-                          ▼
-        low_confidence / clarify ─▶ conversationalReply()  ─▶ POST /api/converse (FALLBACK)
-        present + result          ─▶ tryPresent()           ─▶ POST /api/converse (PRESENT)
-                          │
-                          ▼
-              Sonnet text in the chat rail   +   the derivation/reference sheets stay in the panel
-```
-
-Two UX rules make it feel like one conversation, not a redirect:
-
-- **The derivation persists.** When a follow-up is conversational (Sonnet answers, and builds no
-  sheets of its own), the **previous** turn's derivation and reference sheets stay on screen —
-  because a meta question ("how did you get that?") is usually *about* them. The prior sheets are
-  marked *stale* at the start of each turn and retired only when a new **data** query produces its
-  own first sheet (`dropStale`). A `present` answer keeps its own fresh derivation in the panel
-  and shows Sonnet's words in the rail.
-- **Race-free presentation.** `present`, `result`, and `status` stream on separate RTDB nodes with
-  no cross-node ordering guarantee, so `tryPresent()` is driven from every trigger (the `present`
-  signal, `result`, `finalize`, and the atomic HTTP body) and fires **once**, only after both the
-  derivation has settled **and** a concrete answer is in hand — it never sends a null answer to
-  Sonnet. If `/api/converse` is unavailable, present degrades to showing the raw computed result.
+Anything else — a normal data query — never touches this layer; plain queries stay raw, at zero LLM cost.
+The detectors are cheap and **schema-aware** (a cue word that is actually a column name reads as data),
+and fail safely: `_has_data_signal` fails **open** (never blocks a real query), `_human_tone` fails
+**closed** (never forces a needless present). If `ANTHROPIC_API_KEY` is unset, `/api/converse` returns
+503 and the browser degrades to a payload-based reply.
 
 ---
 
-## 11. Data artifacts
+## 13. Model artifacts & training
 
-Everything the engine opens at runtime lives in `engine/data/` (override with
-`PREREASONER_DATA_DIR`). The authoritative per-file table — sizes, consumers, and which files are
-gitignored — is [`engine/data/README.md`](../engine/data/README.md). The short version:
+Everything the engine opens at runtime lives in `engine/data/` (override with `PREREASONER_DATA_DIR`).
+The authoritative per-file table is [`engine/data/README.md`](../engine/data/README.md); the short
+version:
 
 | Artifact | What it is |
 |---|---|
 | `qwen_lora/` | the LoRA adapter for the Qwen2.5-0.5B unified encoder (the trained metric space) |
 | `encoder.pt` | state_dict of the trained relational readout (`RelationalModel`) — a plain state_dict, no pickled classes |
 | `encoder_meta.pt` | `{"alloc", "cfg"}` — the dim allocation + the model constructor config |
-| `alloc.json` | the dim allocation as JSON (same content as `encoder_meta.pt["alloc"]`), used by the torch-free router import |
-| `anchor_assignment.npz` | per-dim firing thresholds from the anchor head |
-| `dim_thresholds.json` / `route_thresholds.json` | calibrated threshold overrides for the `/api/dimension` readout and the per-leaf routing gates |
-| `taxonomy.csv` / `assignment.csv` | the P279 taxonomy (root→leaf paths, QIDs, world tables) and the training-token table (which leaves are supported) |
-| `primitives.npz` | the learned 10-primitive head read by `PrimitiveReader` |
-| `word_*.json` | world word-table metadata for the meaning-graph planner |
+| `alloc.json` | the dim allocation as JSON (86 content dims: 9 struct + 67 property + 10 intent) |
+| `families.json` | the 8 entity families → distinctive schema.org properties, `geo` flag, and candidate world tables (§6) |
+| `props_thr.json` | per-property Youden-J firing thresholds used by the family consensus decode |
+| `anchor_assignment.npz` | per-dim firing thresholds from the anchor head (incl. the intent/operator gates) |
+| `dim_thresholds.json` | calibrated threshold overrides for the `/api/dimension` readout |
+| `primitives.npz` | the learned 10-primitive head read by `PrimitiveReader` (§7) |
+| `taxonomy.csv` / `assignment.csv` | the type→table map (`_world_type_map`) + the training-token table |
+| `sql_proposer.json` / `sql_*ranker*.json` | the research-only trained SQL proposer + rankers (Spider eval / training harness, §7.2) |
+| `word_*.json` | knowledgebase word-table metadata for the meaning-graph planner |
 
-The large binaries are produced by the [`training/`](../training/README.md) pipeline; the
-world-facts data (words index, wikipedia tables, settlements) lives in Postgres, populated by
-[`db/sync`](../db/README.md) — not in this directory.
-
----
-
-## 12. Key decisions (ADRs)
-
-Each: *what we chose, the alternative, and why.*
-
-1. **Encoder, not backbone.** Qwen encodes each clean *unit* and we pool its subtokens; we do
-   **not** read named dims off Qwen's raw BPE shards. *Alternative:* anchor dims directly on
-   subtokens. *Why:* reading a dim off a shard splits names/numbers
-   (`Marie Curie` → `["Marie", " Cur", "ie"]`) and ruins interpretability. Pooling makes the unit
-   atomic — honoring "never split a name or number."
-2. **Deterministic joins, not learned.** FK discovery + the edge graph are plain algorithms fed
-   to the model as a fixed prior. *Alternative:* let the model learn which tables join. *Why:*
-   auditability, and small models can't reliably *discover* joins — but they can *weight* given
-   ones.
-3. **No decoder / no generation.** SQL is assembled by templates and executed. *Why:* a wrong
-   answer must be a traceable query, not a hallucination — the entire value proposition.
-4. **Taxonomy-path dims instead of flat hand-named type dims.** Each entity value fires its
-   **whole Wikidata `P279` ancestor path** (root→leaf), not one hand-named neuron. *Why:* typing
-   is grounded in a real, navigable taxonomy, and the leaf dim maps directly to a
-   `knowledgebase."<type>"` table.
-5. **Re-anchor the readout on clean Wikidata instances.** Noisy embedding-mapped CSV cells made
-   non-geo dims non-discriminative; the non-geo pool was replaced with clean `P31` instances and
-   only the relational readout re-trained (encoder frozen, geo spine skipped). *Why:* a `street`
-   dim was out-firing `hospital`; the clean re-anchor took taxonomy AUC 0.886 → 1.0 without
-   touching the encoder (RESEARCH.md §6).
-6. **QID-keyed `wikipedia` schema, lazy-synced.** *Alternative:* name-keyed world tables joined
-   on `lower(name)`. *Why:* QID PK/FK gives exact, homonym-free joins and 2-hop world filters
-   (`city.country.continent`); lazy `ensure_entity` fills only what's actually queried instead of
-   a full bulk import.
-7. **One serving process, three endpoints.** *Alternative:* one service per endpoint. *Why:* the
-   endpoints share one model and one code path; a single `prereasoner-api` service means one
-   deploy, one warm-up, one lock discipline (`/api/reason` + `/api/knowledge` share the model;
-   `/api/dimension` is independent).
-8. **Streaming out-of-band, HTTP as fallback.** *Alternative:* hold the HTTP response open (or
-   chunk it) for the whole computation. *Why:* proxy timeouts break long geo queries; an optional
-   RTDB side-channel streams past them while the plain JSON response keeps the system fully
-   functional without it.
-9. **Scale-to-zero + warm-up retry, not always-on.** *Why:* idle cost ≈ $0; the first cold hit's
-   model load + lazy fill is absorbed by a warm-up GET + client retry. (Deployment detail:
-   `infra/README.md`.)
-10. **A conversational LLM only at the edges, only when signalled, never for arithmetic.** A chat
-    UI attracts non-data messages; the deterministic engine flags them (`low_confidence` /
-    `clarify` / `present`) and *only then* is Sonnet called, to explain or to phrase an
-    already-computed answer (§10). *Alternative:* route everything through the LLM (an agentic
-    text-to-SQL chatbot), or bounce non-queries to a separate page. *Why:* keeping the LLM off the
-    arithmetic path preserves the "no hallucinated numbers" guarantee; scoping it to signalled
-    turns keeps plain queries fast and free; answering in-chat (not via redirect) keeps one
-    coherent conversation. It is optional (no key ⇒ graceful fallback), exactly like streaming (#8).
+The large binaries are produced by the training pipeline — see [`docs/TRAINING.md`](TRAINING.md) for how
+the encoder, the relational readout, the property/family calibration, and the SQL artifacts are built and
+reproduced. The knowledge-facts data (words index, faithful tables, settlements) lives in Postgres,
+populated by [`db/sync`](../db/README.md) — not in this directory.
 
 ---
 
-## 13. Glossary
+## 14. Glossary
 
-- **unit** — the atomic thing the model reads: one column name, one cell value, or one question
-  token. Names and numbers are never split below this level.
-- **named dimension / anchoring** — a reserved hidden dimension trained (via MSE on raw
-  activations) to fire for a specific interpretable concept, so its value is directly readable.
-- **taxonomy dim** — one of the 74 taxonomy dims, each a real Wikidata `P279` node; an entity
-  value co-fires the dims down its root→leaf path (`geolocatable_entity` … `populated_place` …
-  `city`); 42 live entity leaves in the shipped allocation.
-- **QID** — a Wikidata entity id (e.g. France = `Q142`, city = `Q515`). In the `wikipedia`
-  schema it is the PRIMARY KEY, and item-property columns store the related entity's QID as a
-  FOREIGN KEY.
-- **RelationalModel** — the trained 10-layer bidirectional transformer
-  (`engine/encoder_model.py`) that sits on top of the unified encoder and carries the named
-  dimensions.
-- **unified encoder** — Qwen2.5-0.5B + a LoRA adapter, trained jointly as a metric space
-  (InfoNCE on altLabels, for resolution) **and** the anchored readout encoder (MSE typing +
-  intent).
-- **edge / FK edge** — typed relations (`same_col`/`same_row`/`same_cell`/`fk`) injected as an
-  attention prior; the `fk` edge links a foreign-key column's units to the referenced key's units
-  across tables.
-- **intent dims** — named dims for the query's operation (`intent_agg_*`, `filter_*`, `group`,
-  `sort_*`, `limit`); what turns the readout into SQL.
-- **Router** — types a column to its taxonomy leaf (QID + `wikipedia` table) from the anchored
-  taxonomy dims, choosing the world table to join (`engine/router.py`).
-- **ensure_entity** — `engine/knowledge_sync.py: ensure_entity(qid, type_qid)`: lazily fetches a
-  QID's faithful row from WDQS into `knowledgebase."<type>"` the first time it's needed.
-- **bridge** — a per-user table: `"<csv> connected to wikipedia"` (resolved cell → QID, backs
-  the join) and `"<csv> unconnected to wikipedia"` (encoder vector per free-text cell, backs the
-  semantic predicate).
-- **search_path** — the Postgres setting `"<sub>", knowledgebase, public` that lets one query
-  see the user's tables, the world DB, and the resolution index together.
-- **clarify gate** — returns a "did you mean?" rephrasing when the SQL would silently drop part
-  of the question (a resolved-but-unfiltered entity, or a measure with no aggregate). Answered in
-  the chat rail by the conversational layer (§10), not a page redirect.
-- **conversational layer** — the optional Sonnet surface behind `POST /api/converse` (§10) that
-  answers non-data messages and presents computed answers in words. It never emits a number.
-- **coverage pre-gate** — `ComposedKnowledgeQuery._has_data_signal`: a message with no data intent, no
-  schema word, and no resolvable entity short-circuits with `low_confidence` before any reasoning,
-  so it's answered conversationally instead of forced into a degenerate query.
-- **present / human tone** — the "only when signalled" presentation path: `_human_tone` detects
-  emotional/opinion/first-person phrasing over a *real* answer, `_tag_present` sets `present:true`,
-  and the UI routes the computed answer + SQL through Sonnet to phrase it warmly — derivation still
-  in the panel, number still from SQL.
-- **view stacking** — the composition mechanism (`engine/compose.py`): a complex analytical
-  question decomposes into a DAG of simple primitive views (filter / time-filter / group_agg /
-  yoy / running / share / divide / having / top-N / sort) over a JOIN base + a WORLD base. Plain
-  world/aggregate/clarify queries delegate to the world planner.
-- **alloc** — the allocation map (`alloc.json`) assigning each of the 93 content dims to a named
-  concept.
+- **unit** — the atomic thing the model reads: one column name, one cell value, or one question token.
+  Names and numbers are never split below this level (subtokens are mean-pooled).
+- **named dimension** — a reserved hidden dimension of `RelationalModel` trained to fire for a specific
+  interpretable concept (a datatype, a schema.org property, or a query intent), so its value is directly
+  readable off the last `nc` coordinates.
+- **property superposition-decode** — the column-typing method (§6): the model reads a superposition of
+  schema.org **property** dims, and the entity **family** is decoded by consensus over how many of a
+  family's distinctive properties fire (Youden-J thresholds). Replaced the older taxonomy-leaf typing.
+- **family** — one of 8 coarse entity classes (`place` / `person` / `org` / `film` / `music` /
+  `publication` / `product` / `organism`). The router returns a family or **abstains** (a literal column).
+- **abstain / literal** — a column whose best family fires below 0.40 of its distinctive props; it is a
+  literal (amount / id / status) and is not typed as an entity.
+- **QID** — a Wikidata entity id (France = `Q142`, city type = `Q515`). In the qid-keyed
+  `knowledgebase."<type>"` tables it is the PRIMARY KEY; item-property columns store the related entity's
+  QID as a FOREIGN KEY.
+- **RelationalModel** — the trained 10-layer bidirectional relational-attention transformer
+  (`engine/encoder_model.py`) that carries the named dimensions, on top of the LoRA-Qwen encoder.
+- **unified encoder** — Qwen2.5-0.5B + a LoRA adapter, one model reused for entity resolution (a metric
+  space), the anchored property/intent readout, and the free-text bridge embeddings.
+- **ensure_entity** — `engine/knowledge_sync.py: ensure_entity(qid, type_qid)`: lazily fetches a QID's
+  faithful row from WDQS into `knowledgebase."<type>"` the first time it's needed.
+- **bridge** — a per-conversation table: `"<t> connected to wikipedia"` (resolved cell → QID, backs the
+  join) and `"<t> unconnected to wikipedia"` (encoder vector per free-text cell, backs the semantic
+  predicate).
+- **search_path** — the Postgres setting `"<conv>", knowledgebase, public` that lets one query see the
+  upload, the knowledgebase, and the geo tables together.
+- **clarify gate** — returns a "did you mean?" rephrasing when the SQL would silently drop part of the
+  question. Answered in the chat rail by the conversational layer, not a page redirect.
+- **coverage pre-gate** — `_has_data_signal`: a message with no data intent, schema word, or resolvable
+  entity short-circuits with `low_confidence` before any reasoning.
+- **view stacking** — the composition mechanism (`engine/compose.py`): a complex question decomposes into
+  a DAG of primitive views (EXCL / RATIO / TOPN / SHARE / TIME / HAVING / SORT / DIVIDE / RUNNING / GROUP)
+  over a JOIN + knowledge base.
+- **typed-AST planner** — the deterministic bounded SQL-AST search (`PREREASONER_SQL_PLANNER=ast`;
+  `engine/sql_*.py`, [SQL_AST.md](SQL_AST.md)), an alternative to the named-dim slot-filler.
+- **orchestrator** — the `prereasoner-chat` Cloud Run service (`orchestrator/`) running the Sonnet tool
+  loop over the MCP tools.
+- **MCP server** — the stdio server (`mcp_server/`) exposing `prereasoner_query` / `prereasoner_describe`,
+  spawned per session by the orchestrator, forwarding to the engine over HTTP.
 
 ---
 
-## 14. Repository layout
+## 15. Repository layout
 
 ```
-engine/            the serving package: model, planner stack, SQL execution, HTTP server
-                   (run: python -m engine.server; see §4–§6)
-engine/data/       runtime model + taxonomy artifacts (engine/data/README.md)
-db/                the world database: init.sql + the sync/ bootstrap pipeline (db/README.md)
-web/               the static frontend: Firebase Hosting pages + rules (web/README.md)
-training/          the full training pipeline: corpus building, taxonomy, encoder training,
-                   anchoring, calibration, release gates (training/README.md)
-tests/             end-to-end engine tests (need live Postgres; tests/README.md)
-docs/              this document + RESEARCH.md
-Dockerfile         builds the serving engine container
+engine/            the serving engine: model, planner stack, SQL execution, HTTP server
+                   (run: python -m engine.server; see §4–§8)
+engine/data/       runtime model + calibration artifacts (engine/data/README.md, §13)
+orchestrator/      the Sonnet chat backend (prereasoner-chat): server.py + orchestrator.py + system_prompt.py
+mcp_server/        the stdio MCP server (prereasoner_query / prereasoner_describe) fronting the engine
+db/                the knowledgebase database: init.sql + the sync/ bootstrap pipeline (db/README.md)
+web/               the static frontend: Firebase Hosting pages + rewrites + RTDB rules (web/README.md)
+training/          the training pipeline (docs/TRAINING.md)
+tests/             end-to-end tests (engine suites need live Postgres) + the MCP/orchestrator contract tests
+spider/            the Spider evaluation harness for the typed-AST planner (docs/SQL_AST.md)
+docs/              this document + RESEARCH.md + SQL_AST.md + TRAINING.md
+Dockerfile         builds the engine container (prereasoner-api)
+Dockerfile.orchestrator  builds the orchestrator + bundled MCP server (prereasoner-chat)
+cloudbuild.yaml / cloudbuild.orchestrator.yaml   the two Cloud Build pipelines
 requirements.txt   serving dependencies
 ```
