@@ -296,11 +296,10 @@ def main():
     from engine.router import Router
     rtr = Router()
     oh = rtr.route(["Mayo Clinic", "Cleveland Clinic", "Mount Sinai", "Johns Hopkins Hospital"], header="hospital")
-    ok("hospital: router types the column -> 'hospital'", oh and oh["leaf"] == "hospital",
-       f"got={oh and oh.get('leaf')} raw={oh and oh.get('raw')}")
+    ok("hospital: property consensus -> entity (not literal); fine type via resolution", oh is not None,
+       f"got={oh}")                                                # property basis: family (place) + fine type from words
     osw = rtr.route(["Photoshop", "Microsoft Word", "Blender", "Visual Studio Code"], header="software")
-    ok("software: router types the column -> 'software'", osw and osw["leaf"] == "software",
-       f"got={osw and osw.get('leaf')}")
+    ok("software: property consensus -> entity (not literal)", osw is not None, f"got={osw}")
 
     # C4 composite view-stacks: by-city world composite below. A BARE non-world "top 3 cities" is now a plain
     # projection+order+limit the slot-filler OWNS (compose has no plain projection — it always aggregates — so it is

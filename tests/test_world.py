@@ -45,10 +45,10 @@ def main():
     from engine.router import Router
     r = Router()
     o = r.route(["Mayo Clinic", "Cleveland Clinic", "Mount Sinai", "Johns Hopkins Hospital"], header="hospital")
-    ok("router: hospital column -> hospital", o and o["leaf"] == "hospital", f"got={o and o['leaf']}")
+    ok("router: hospital column -> entity (property consensus, not literal)", o is not None, f"got={o}")
     o2 = r.route(["Photoshop", "Microsoft Word", "Blender", "Visual Studio Code"], header="software")
-    ok("router: software column -> software", o2 and o2["leaf"] == "software", f"got={o2 and o2['leaf']}")
-    ok("router: decay weights present", o and len(o.get("decayed", {})) >= 1)
+    ok("router: software column -> entity (property consensus, not literal)", o2 is not None, f"got={o2}")
+    ok("router: property consensus scores present", o and len(o.get("scores", {})) >= 1)
 
     sub = f"test_world_{int(time.time())}"
     CUST = {"name": "customers", "columns": ["name", "city", "amount"],

@@ -251,7 +251,10 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         cur.execute("SELECT type, COUNT(DISTINCT norm) FROM knowledgebase.\"words\" WHERE norm = ANY(%s) "
                     "AND type NOT IN ('city','country','state','type') GROUP BY type ORDER BY 2 DESC LIMIT 1", (norms,))
         row = cur.fetchone()
-        if not row or row[1] < max(2, self.GROUND_FRAC * len(norms)):
+        # >=50% of the DISTINCT cells resolve to ONE non-geo type. The property router already gated entity-vs-literal
+        # (a literal column abstains upstream), so a plain majority is the right bar here — a hospital column with a
+        # few unresolvable/foreign entries (a German hospital absent from words) still types as `hospital`.
+        if not row or row[1] < max(2, 0.5 * len(norms)):
             return None, None
         wl = row[0]
         cur.execute('SELECT qid FROM knowledgebase."types" WHERE label=%s LIMIT 1', (wl,))
