@@ -50,47 +50,54 @@ instances carry it** (`MIN_SUPPORT=25`). Instances (with their properties) come 
 mapped Wikidata-P-id → schema.org name via `bridge_prop.csv`. **Which types are pulled** is controlled by the
 `TYPES` map (`build_assignment21_v2.py:37–41`, Wikidata qid → coarse family).
 
-## Runbook: add a new type (worked example — software)
+## Runbook: add a new type (worked example — software) — VALIDATED on CPU
+
+> Steps 1–4 below have been **run and validated** (see `training/props/README.md` for the evidence). The basis
+> grew **67 → 71 props**, the corpus regenerated at **nc=90**, and software came out with a distinctive property
+> **`operatingSystem` (0.27 in-family vs 0.00 out)** — so consensus decoding will type it. Only the GPU
+> encoder-train (step 5) remains.
 
 **Validated preconditions (checked live):**
-- `capped.entity` holds **13,958 SoftwareApplication instances** carrying genuinely distinctive props:
-  `P178` developer (22%), `P306` operatingSystem (16%), `P348` softwareVersion (15%), `P277`
-  programmingLanguage (12%), `P400` platform (6%). So software **is** typeable by property consensus — its
-  props just need to reach the basis. (These clear `MIN_SUPPORT=25` easily.)
+- The software type is Wikidata **`Q7397` ("software"), 13,958 instances** — **not** `Q166142` (which has 0
+  instances in `capped.entity`). Its instances carry distinctive props `P306` operatingSystem, `P277`
+  programmingLanguage, `P348` softwareVersion, `P178` author, `P400` runtimePlatform. Of these,
+  `operatingSystem/softwareVersion/programmingLanguage/author` clear `MIN_SUPPORT=25` and enter the basis.
 
-**Blockers to running it (must be resolved first):**
+**Blockers to running it:**
 1. **GPU** — `train_props_gpu.py` back-props through Qwen-0.5B (~600 steps). CPU is a multi-hour job; use a
-   GPU box (e.g. RunPod). Every other step is CPU/Postgres.
-2. **`bridge_prop.csv` is missing** (it lived in a scratchpad temp dir; not in git). The Wikidata→schema.org
-   prop mapping must be reconstructed, and it must map the software P-ids above
-   (`P306`→`operatingSystem`, `P348`→`softwareVersion`, `P178`→`developer`, `P277`→`programmingLanguage`,
-   `P400`→`applicationSubCategory`/`featureList`).
+   GPU box (e.g. RunPod). Every other step is CPU/Postgres and is **done**.
+2. ~~`bridge_prop.csv` is missing~~ — **RESOLVED**: it is now vendored at
+   [`training/props/bridge_prop.csv`](../training/props/bridge_prop.csv) (182 rows) with the 5 software P-ids
+   mapped (`P306`→operatingSystem, `P277`→programmingLanguage, `P348`→softwareVersion, `P178`→author,
+   `P400`→runtimePlatform).
 3. **Two Postgres DBs**: `WORLD_PG_PASSWORD`/`KB_PG_PASSWORD` (env) for `capped.entity` + `knowledgebase`.
 
-**Steps:**
-1. Code edits: add `"Q166142": "software"` to `TYPES` (`build_assignment21_v2.py:37–41`); make software its own
-   family in `build_families.py` (`"software":"software"` + `FAM_SCHEMATYPES["software"]=["SoftwareApplication"]`);
-   ensure the software P-ids are in `bridge_prop.csv`.
-2. `python -m runtime21.build_assignment_pg` → `python -m runtime21.build_assignment21_v2` (rebuilds the basis;
-   confirm the software props now appear in `alloc21_dims.json`).
-3. `python -m runtime21.build_from_props` (writes the encoder corpus to `runtime20/data/`).
-4. `cp runtime20/data/alloc.json runtime20/data/alloc20.json` (the trainer reads `alloc20.json` — easily missed).
-5. **(GPU)** `python -m runtime20.scripts.train_props_gpu --steps 600 --lr 2e-4`.
+**Steps (1–4 done, 5–8 remaining):**
+1. ✅ Code edits: added `"Q7397": "software"` to `TYPES` (`build_assignment21_v2.py:42`); ensured the software
+   P-ids are in `bridge_prop.csv`. Still TODO for step 6: make software its own family in `build_families.py`
+   (`"software":"software"` + `FAM_SCHEMATYPES["software"]=["SoftwareApplication"]`).
+2. ✅ `build_assignment_pg` → `build_assignment21_v2` — basis grew to **71 props**; the software props appear in
+   `alloc21_dims.json`.
+3. ✅ `build_from_props` — corpus written to `runtime20/data/units_{train,test}.jsonl` (nc=90, ~1.1 MB).
+4. ✅ `cp runtime20/data/alloc.json runtime20/data/alloc20.json` (the trainer reads `alloc20.json`).
+5. **(GPU — REMAINING)** `python -m runtime20.scripts.train_props_gpu --steps 600 --lr 2e-4`.
 6. Stage `encoder_props*.pt` + `qwen_lora_props/` into `runtime21/data/props_model/`, then
    `python -m runtime21.build_families` + `python -m runtime21.calibrate_props`.
 7. Copy into `engine/data/`: `encoder_props.pt`→`encoder.pt`, `encoder_props_meta.pt`→`encoder_meta.pt`,
    `qwen_lora_props/*`→`qwen_lora/`, `runtime20/data/alloc.json`→`alloc.json`.
-   (`families.json` + `props_thr.json` are written to `engine/data/` by steps 6.) Do **not** touch
+   (`families.json` + `props_thr.json` are written to `engine/data/` by step 6.) Do **not** touch
    `anchor_assignment.npz` (legacy, unused by the router).
 8. Verify: `python -m tests.test_world` + `python -m tests.test_geo` — the software assertion must pass, with no
    regression on the other 76 assertions.
 
 ## Independence — what must be vendored
 
-For this repo to build the model standalone, the training pipeline must move in from `flat-data`. The hard
-cross-repo couplings to fix:
-- `runtime21/build_families.py:18` and `runtime21/calibrate_props.py:35` write directly into `engine/data`.
-- `bridge_prop.csv` must be committed here (not a temp path).
-- `runtime20/{model11.py, scripts/train_props_gpu.py}` (the model + trainer) + the corpus builder must be
-  vendored as, e.g., `training/props/`.
+For this repo to build the model standalone, the training pipeline must move in from `flat-data`. Progress +
+the hard cross-repo couplings that remain:
+- ✅ `bridge_prop.csv` is committed here at `training/props/bridge_prop.csv` (first piece vendored).
+- `runtime21/{build_assignment_pg,build_assignment21_v2,build_from_props,build_families,calibrate_props}.py` +
+  `runtime20/{model11.py, scripts/train_props_gpu.py}` (the model + trainer) must be vendored into
+  `training/props/`, with their hardcoded `SP`/`ROOT`/`DATA` paths parameterized.
+- `runtime21/build_families.py:18` and `runtime21/calibrate_props.py:35` write directly into `engine/data` —
+  keep that as an explicit `--out engine/data` flag once vendored.
 - The two Postgres DBs are training-time inputs; document a from-scratch build (or ship the corpus).
