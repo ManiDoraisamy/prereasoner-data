@@ -14,6 +14,7 @@
     "productionCompany",
     "aggregateRating",
     "asin",
+    "about",
     "award",
     "isBasedOn"
    ],
@@ -30,6 +31,7 @@
   "music": {
    "distinctive": [
     "genre",
+    "countryOfOrigin",
     "byArtist",
     "uploadDate",
     "previousItem",
@@ -106,7 +108,8 @@
     "parentTaxon",
     "taxonName",
     "taxonRank",
-    "birthDate"
+    "birthDate",
+    "gender"
    ],
    "geo": false,
    "tables": [
@@ -192,7 +195,9 @@
     "provider",
     "brand",
     "distance",
-    "width"
+    "previousItem",
+    "width",
+    "height"
    ],
    "geo": false,
    "tables": [
@@ -200,11 +205,6 @@
      "schema_type": "Product",
      "qid": "Q2424752",
      "table": "product"
-    },
-    {
-     "schema_type": "SoftwareApplication",
-     "qid": "Q166142",
-     "table": "application software"
     },
     {
      "schema_type": "Vehicle",
@@ -217,7 +217,7 @@
      "table": "website"
     }
    ],
-   "n_train_cells": 120
+   "n_train_cells": 80
   },
   "publication": {
    "distinctive": [
@@ -248,6 +248,20 @@
     }
    ],
    "n_train_cells": 40
+  },
+  "software": {
+   "distinctive": [
+    "operatingSystem"
+   ],
+   "geo": false,
+   "tables": [
+    {
+     "schema_type": "SoftwareApplication",
+     "qid": "Q166142",
+     "table": "application software"
+    }
+   ],
+   "n_train_cells": 40
   }
  },
  "props": [
@@ -259,6 +273,7 @@
   "affiliation",
   "aggregateRating",
   "asin",
+  "author",
   "award",
   "birthDate",
   "brand",
@@ -297,6 +312,7 @@
   "name",
   "nationality",
   "numberOfEmployees",
+  "operatingSystem",
   "owns",
   "parentOrganization",
   "parentTaxon",
@@ -305,9 +321,11 @@
   "previousItem",
   "producer",
   "productionCompany",
+  "programmingLanguage",
   "provider",
   "publisher",
   "servesCuisine",
+  "softwareVersion",
   "startTime",
   "subOrganization",
   "taxonName",
