@@ -1,8 +1,17 @@
-# engine/data — runtime model + taxonomy artifacts
+# engine/data — runtime model + typing artifacts
 
 Everything the serving engine opens at runtime lives here (override the location with
 `PREREASONER_DATA_DIR`). Large binaries are **gitignored** (the repo `.gitignore` excludes `*.pt`, `*.db`,
 `*.npz` and `qwen_lora/`) and must be fetched/produced separately; the small CSV/JSON artifacts are committed.
+
+**Provision the weights on a fresh clone:**
+```
+PREREASONER_WEIGHTS_REPO=<owner>/<hf-repo> python -m engine.fetch_weights
+```
+This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`, and `primitives.npz`
+from a Hugging Face repo into this directory (see `engine/fetch_weights.py`). To publish them:
+`huggingface_hub.upload_folder(folder_path='engine/data', repo_id='<owner>/<hf-repo>',
+allow_patterns=['*.pt','*.npz','qwen_lora/*'])`. To (re)train them from scratch, see `docs/TRAINING.md`.
 
 | File | Size | Purpose | In git? |
 |---|---|---|---|
