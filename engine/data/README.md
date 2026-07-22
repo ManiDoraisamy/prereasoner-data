@@ -6,12 +6,14 @@ Everything the serving engine opens at runtime lives here (override the location
 
 **Provision the weights on a fresh clone:**
 ```
-PREREASONER_WEIGHTS_REPO=<owner>/<hf-repo> python -m engine.fetch_weights
+HF_TOKEN=<read-token> python -m engine.fetch_weights
 ```
 This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`, and `primitives.npz`
-from a Hugging Face repo into this directory (see `engine/fetch_weights.py`). To publish them:
-`huggingface_hub.upload_folder(folder_path='engine/data', repo_id='<owner>/<hf-repo>',
-allow_patterns=['*.pt','*.npz','qwen_lora/*'])`. To (re)train them from scratch, see `docs/TRAINING.md`.
+into this directory (see `engine/fetch_weights.py`). The default source repo is
+**`manidoraisamy/prereasoner-weights`** (currently **private** — set `HF_TOKEN` to a token with read access;
+override the repo with `PREREASONER_WEIGHTS_REPO`). To (re)publish after a retrain:
+`huggingface_hub.upload_folder(folder_path='engine/data', repo_id='manidoraisamy/prereasoner-weights',
+allow_patterns=['*.pt','*.npz','qwen_lora/*'])`. To (re)train from scratch, see `docs/TRAINING.md`.
 
 | File | Size | Purpose | In git? |
 |---|---|---|---|

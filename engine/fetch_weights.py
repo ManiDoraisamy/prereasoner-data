@@ -26,8 +26,9 @@ from pathlib import Path
 
 DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve().parent / "data")
 
-# The public Hugging Face repo holding the weights. Override with PREREASONER_WEIGHTS_REPO.
-DEFAULT_REPO = os.environ.get("PREREASONER_WEIGHTS_REPO", "PLACEHOLDER/prereasoner-weights")
+# The Hugging Face repo holding the weights. Override with PREREASONER_WEIGHTS_REPO.
+# NOTE: this repo is currently PRIVATE — set HF_TOKEN (a token with read access) to fetch from it.
+DEFAULT_REPO = os.environ.get("PREREASONER_WEIGHTS_REPO", "manidoraisamy/prereasoner-weights")
 
 # (relative path under the HF repo == relative path under engine/data/, size for the log)
 WEIGHTS = [
@@ -72,8 +73,10 @@ def main() -> int:
         dest = DATA_DIR / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         print(f"  fetching {rel} from {args.repo} ...", flush=True)
-        # download to the HF cache, then hard-link/copy into engine/data at the same relative path
-        path = hf_hub_download(repo_id=args.repo, filename=rel, revision=args.revision)
+        # download to the HF cache, then hard-link/copy into engine/data at the same relative path.
+        # token: read from HF_TOKEN (the repo is private); falls back to the ambient huggingface-cli login.
+        path = hf_hub_download(repo_id=args.repo, filename=rel, revision=args.revision,
+                               token=os.environ.get("HF_TOKEN"))
         import shutil
         shutil.copyfile(path, dest)
         fetched += 1
