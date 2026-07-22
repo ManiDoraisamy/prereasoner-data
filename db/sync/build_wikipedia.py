@@ -78,7 +78,7 @@ def main():
     created, skipped, seen = 0, 0, {}
     for leaf in sorted(leaf_qid):
         qid = leaf_qid[leaf]
-        if not _exists(cur, "world", leaf):                                 # no faithful schema mirror -> discover later
+        if not _exists(cur, "knowledgebase", leaf):                         # no faithful schema mirror -> discover later
             skipped += 1; continue
         cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' AND table_name=%s "
                     "AND column_name='qid'", (leaf,))

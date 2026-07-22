@@ -1,10 +1,10 @@
 """
-gen20 — build the CLEAN `wikipedia` schema and reset to a qid-keyed world. Mani: "create a new schema called
-'wikipedia' and create the exact wikidata name as table name along with the exact columns … let the lazy sync work.
+gen20 — build the qid-keyed entity tables in the `knowledgebase` schema (formerly a separate `wikipedia` schema).
+Original intent: "create the exact wikidata name as table name along with the exact columns … let the lazy sync work.
 Also delete all user and test schema and start from scratch so that the primary key - foreign key is always qid."
 
 WHAT IT DOES:
-  1. CREATE SCHEMA wikipedia.
+  1. CREATE SCHEMA knowledgebase (if absent).
   2. One EMPTY table per router leaf, named by its EXACT Wikidata label, with the faithful Wikidata property columns
      (copied from the knowledgebase."<leaf>" mirror schema that was built by property-frequency discovery) + **qid as PRIMARY KEY
      (NOT NULL)** — so every join is qid PK/FK. NO data migration: lazy-sync fills each table on first use
@@ -75,7 +75,7 @@ def main():
     created, skipped, seen = 0, 0, {}
     for leaf in sorted(LEAF_QID):
         qid = LEAF_QID[leaf]
-        if not _exists(cur, "world", leaf):                                 # no faithful schema mirror -> discover later
+        if not _exists(cur, "knowledgebase", leaf):                         # no faithful schema mirror -> discover later
             skipped += 1; continue
         cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' AND table_name=%s "
                     "AND column_name='qid'", (leaf,))

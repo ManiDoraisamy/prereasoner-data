@@ -465,7 +465,7 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         try:
             cur = conn.cursor()
             cur.execute(f'CREATE SCHEMA IF NOT EXISTS {qident(schema)}')
-            cur.execute(f'SET search_path TO {qident(schema)}, world, public')
+            cur.execute(f'SET search_path TO {qident(schema)}, knowledgebase, public')
             self._persist_main_unconn(cur, schema, t, sch, plan)
             conn.commit()
             # connected bridge = the SAME persisted table the aggregate path builds (value-keyed), via the overrides
