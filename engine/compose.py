@@ -142,6 +142,30 @@ class ComposeEngine:
                         return (c, v)
         return None
 
+    # Query words that are NEVER a filter value even if they happen to sit in a text cell (a summary 'Total' row, a
+    # 'name' header echoed as data) — they'd otherwise let 'total amount' self-match a cell and filter on itself.
+    _VALUE_STOP = frozenset({"total", "amount", "sum", "count", "average", "avg", "mean", "number", "all", "the",
+                             "and", "for", "per", "each", "top", "row", "rows", "value", "values", "name", "names",
+                             "data", "table", "none", "null", "true", "false", "yes", "no"})
+
+    def _value_filter(self, low, texts, cols, rows, skip=None):
+        """The (column, value) to KEEP: a question phrase that EXACTLY names a distinct categorical VALUE already in a
+        text column ('total amount in Chennai' -> city = 'Chennai'). This is the plain input-column filter that needs
+        NO world model — the value is right there in the data, so we filter on it directly (the world join/attribute
+        path only handles values that are NOT in the upload, e.g. a country the cities roll up to). Whole-value word-
+        boundary match (so multi-word 'New York' works and 'in' never matches); returns the LONGEST match (most
+        specific), or None. `skip` is a value already claimed elsewhere (e.g. by exclusion)."""
+        best = None                                          # (col, value, match_len)
+        for c in texts:
+            ci = cols.index(c)
+            for v in {str(r[ci]) for r in rows if ci < len(r) and r[ci] not in (None, "")}:
+                vl = v.lower()
+                if len(vl) < 3 or v == skip or vl in self._VALUE_STOP:
+                    continue
+                if re.search(r'\b' + re.escape(vl) + r'\b', low) and (best is None or len(vl) > best[2]):
+                    best = (c, v, len(vl))
+        return (best[0], best[1]) if best else None
+
     def _dims(self, low, texts):
         return [c for c in texts if self._mentions(c, low)]
 
@@ -433,6 +457,16 @@ class ComposeEngine:
                     cur = self._materialize(con, self._vname("join", used), join_view(fact, joins), "join",
                                             "join " + " + ".join([fact] + [d for d, *_ in joins]))
                     base.append(cur)
+            # base A': a plain equality filter on an UPLOADED text column ('total amount in Chennai' -> city='Chennai').
+            # The value is already in the data, so filter it DIRECTLY — no world model. Runs on the uploaded columns
+            # BEFORE the world join adds a 'country'/'continent', so it never re-matches a world attribute the
+            # world_filter below already applied ('total amount in France' has no 'France' cell -> world handles it).
+            vtyp = self._types(cur["columns"], cur["rows"])
+            vf = self._value_filter(low, [c for c in cur["columns"] if vtyp[c] == "text"], cur["columns"], cur["rows"])
+            if vf:
+                cur = self._materialize(con, self._vname("filter", used), filter_view(cur["name"], [(vf[0], "=", vf[1])]),
+                                        "filter", f"where {vf[0]} = {vf[1]!r}")
+                base.append(cur)
             if world is not None:                            # base B: world-meaning join (+ optional filter on a world dim)
                 wf = self._world_link(low, cur, world)
                 if wf:
