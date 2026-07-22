@@ -89,7 +89,13 @@ controlled by the `TYPES` map (`build_assignment21_v2.py:41–46`, Wikidata qid 
 3. ✅ `python -m training.props.build_from_props` — corpus written to `data/units_{train,test}.jsonl`
    (**nc=90** = 9 struct + 71 prop + 10 intent, ~1.1 MB).
 4. ✅ `cp training/props/data/alloc.json training/props/data/alloc20.json` (the trainer reads `alloc20.json`).
-5. **(GPU — REMAINING)** `python -m training.props.train_props_gpu --steps 600 --lr 2e-4`.
+5. **(GPU — REMAINING)** `python -m training.props.augment_intent` (anchors the serving intent phrasings +
+   writes the held-out intent eval), then `python -m training.props.train_props_gpu --steps 600 --lr 2e-4`.
+   The trainer's keep-best selects on **property AUC + held-out intent op-accuracy** (a
+   `read_op_model` mirror) — the first run selected on property AUC alone and regressed COUNT intent at
+   serving; see `training/props/pipeline.md` § "The intent guard". Gate the checkpoint with
+   `python -m training.props.eval_intent --ckpt props` — intent op-accuracy must be **≥ the 0.808
+   engine baseline** AND the `howmany_customers_france` probe must be OK.
 6. `python -m training.props.build_families` + `python -m training.props.calibrate_props` (both stage their
    outputs into `engine/data/`; override with `PREREASONER_ENGINE_DATA`).
 7. Copy the GPU-train (`train_props_gpu`) outputs into `engine/data/` under the engine's names:
@@ -97,7 +103,9 @@ controlled by the `TYPES` map (`build_assignment21_v2.py:41–46`, Wikidata qid 
    `data/alloc.json`→`alloc.json`. (`families.json` + `props_thr.json` are written to `engine/data/` by step 6.)
    Do **not** touch `anchor_assignment.npz` (legacy, unused by the router).
 8. Verify: `python -m tests.test_world` + `python -m tests.test_geo` — the software assertion (`test_world.py:50`)
-   must flip from `None` to a routed family, with no regression on the other assertions.
+   must flip from `None` to a routed family, with no regression on the other assertions — **and**
+   `python -m tests.test_route_wired` (the COUNT world-join aggregate "how many customers in France" must still
+   answer, i.e. return the French-customer count; the first run passed test_world/test_geo but broke exactly this).
 
 ## Independence — what is vendored, what stays external
 

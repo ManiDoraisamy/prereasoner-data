@@ -25,6 +25,7 @@ from training.lib.relblock import RelBlockModel                   # noqa: E402  
 from training.train.train_multitask import load, fam_report       # noqa: E402
 from training.train.train_unified import pack, pack_csv, collate_live, evaluate   # noqa: E402
 from training.lib.encoder import LiveQwen                         # noqa: E402
+from training.props.eval_intent import load_eval, intent_metrics  # noqa: E402  (read_op_model-mirror intent eval)
 
 HERE = os.path.dirname(os.path.abspath(__file__))              # training/props/
 TRAIN_DIR = os.environ.get("PREREASONER_TRAIN_DIR", HERE)
@@ -61,10 +62,21 @@ def main():
     tax = [p for p in (pack_csv(t, aid, fam_dims, nc) for t in load(os.path.join(R, "units_train.jsonl"))) if p]
     sql = [p for p in (pack(g, aid, fam_dims, nc, args.max_units) for g in load(os.path.join(R, "sql_graphs_train.jsonl"))) if p]
     join = [p for p in (pack(g, aid, fam_dims, nc, args.max_units) for g in load(os.path.join(R, "join_graphs_train.jsonl"))) if p]
-    pool = sql + join
+    # intent AUGMENTATION (augment_intent.py): the serving phrasings — "how many"/"number of" -> COUNT,
+    # "sum of"/"how much" -> SUM, "in <place>" as NONE — anchored, not left to emergent generalization.
+    aug_p = os.path.join(R, "intent_aug_train.jsonl")
+    aug = [p for p in (pack(g, aid, fam_dims, nc, args.max_units) for g in load(aug_p)) if p] if os.path.exists(aug_p) else []
+    pool = sql + join + aug
     test_full = [p for p in (pack_csv(t, aid, fam_dims, nc) for t in load(os.path.join(R, "units_test.jsonl"))) if p]
-    print(f"dev={dev} | nc={nc} | tax{len(tax)}+sql{len(sql)}+join{len(join)} | test {len(test_full)} | "
-          f"LoRA-trainable {sum(p.numel() for p in enc.parameters() if p.requires_grad)/1e6:.2f}M", flush=True)
+    # held-out intent eval (NEVER trained on): keep-best selects on it so the property-optimal
+    # checkpoint can no longer ship with drifted intent (the first run's COUNT regression).
+    ieval = load_eval(aid, fam_dims, nc, max_units=args.max_units)
+    if not ieval:
+        print("WARNING: no intent_eval.jsonl — keep-best falls back to property AUC only "
+              "(run `python -m training.props.augment_intent` first)", flush=True)
+    print(f"dev={dev} | nc={nc} | tax{len(tax)}+sql{len(sql)}+join{len(join)}+aug{len(aug)} | test {len(test_full)} "
+          f"| intent-eval {len(ieval)} | LoRA-trainable {sum(p.numel() for p in enc.parameters() if p.requires_grad)/1e6:.2f}M",
+          flush=True)
 
     def propauc():
         means, out = fam_report(alloc, *evaluate(enc, model, test_full, nc, enc.hdim, dev), fams={"taxonomy"})
@@ -72,11 +84,20 @@ def main():
         mean = float(np.mean([a for a, _ in rows])) if rows else 0.0
         return mean, sum(a >= 0.75 for a, _ in rows), sum(a >= 0.85 for a, _ in rows), len(rows)
 
+    def intenteval():
+        """(op-accuracy, mean intent AUC, #failing named probes) on the held-out intent eval."""
+        if not ieval:
+            return None
+        acc, _, probes, iauc = intent_metrics(enc, model, ieval, aid, nc, enc.hdim, dev)
+        return acc, iauc, sum(1 for *_x, ok in probes if not ok)
+
     params = [p for p in enc.parameters() if p.requires_grad] + list(model.parameters())
     opt = torch.optim.AdamW(params, lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.steps)
     ntax = max(1, int(args.anch_n * 0.6))
-    m = propauc(); print(f"[pre] prop mean-AUC(n>=5)={m[0]:.3f}  >=0.75:{m[1]}  >=0.85:{m[2]}  (of {m[3]})", flush=True)
+    m = propauc(); it = intenteval()
+    print(f"[pre] prop mean-AUC(n>=5)={m[0]:.3f}  >=0.75:{m[1]}  >=0.85:{m[2]}  (of {m[3]})"
+          + (f"  | intent acc={it[0]:.3f} auc={it[1]:.3f} bad-probes={it[2]}" if it else ""), flush=True)
     best = -1.0
     for step in range(1, args.steps + 1):
         ba = rng.sample(tax, min(ntax, len(tax))) + rng.sample(pool, min(args.anch_n - ntax, len(pool)))
@@ -86,18 +107,24 @@ def main():
         mse = ((model(x, E, kp)["content"][cm] - ct[cm]) ** 2).mean()
         opt.zero_grad(); mse.backward(); opt.step(); sched.step()
         if step % args.eval_every == 0 or step == 1:
-            m = propauc()
+            m = propauc(); it = intenteval()
+            # COMBINED keep-best: property quality AND serving-mirror intent accuracy. The first run
+            # selected on prop AUC alone and shipped a checkpoint whose drifted intent broke COUNT
+            # at serving — intent now carries equal weight (both metrics live in [0,1]).
+            score = m[0] + (it[0] if it else 0.0)
             flag = ""
-            if m[0] > best:
-                best = m[0]
+            if score > best:
+                best = score
                 enc.qwen.save_pretrained(os.path.join(R, "qwen_lora_props"))
                 torch.save(model.state_dict(), os.path.join(R, "encoder_props.pt"))
                 torch.save({"alloc": alloc, "cfg": {**cfg, "nc": nc}}, os.path.join(R, "encoder_props_meta.pt"))
                 flag = "  <- best saved"
-            print(f"[{step:4d}] mse={mse.item():.4f}  prop mean-AUC(n>=5)={m[0]:.3f}  >=0.75:{m[1]}  >=0.85:{m[2]}{flag}",
-                  flush=True)
-    print(f"DONE  best prop mean-AUC(n>=5) = {best:.3f}  (frozen re-anchor was 0.474; raw-embedding LR ceiling ~0.77)",
-          flush=True)
+            print(f"[{step:4d}] mse={mse.item():.4f}  prop mean-AUC(n>=5)={m[0]:.3f}  >=0.75:{m[1]}  >=0.85:{m[2]}"
+                  + (f"  | intent acc={it[0]:.3f} auc={it[1]:.3f} bad-probes={it[2]}" if it else "")
+                  + flag, flush=True)
+    print(f"DONE  best prop+intent = {best:.3f}  (first run: prop-only 0.938 with intent acc 0.697/drifted; "
+          f"shipped-model intent op-accuracy baseline 0.808 — gate the checkpoint with "
+          f"`python -m training.props.eval_intent --ckpt props`)", flush=True)
 
 
 if __name__ == "__main__":

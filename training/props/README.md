@@ -33,15 +33,29 @@ adding software to the training basis. Every CPU step is done + validated; only 
    So a software column will fire `operatingSystem` → the consensus router decodes the `software` family → it
    types. (The earlier "software has no distinctive props" was purely the missing bridge mappings.)
 
-**What remains (the mechanical finish — turns the software test green):**
-6. **GPU encoder-train** (`python -m training.props.train_props_gpu --steps 600`) on the nc=90 corpus — the one
-   step that back-props through Qwen-0.5B; needs a GPU (e.g. RunPod). ~20 MB up (corpus + base LoRA), ~90 MB back.
-   Remember the `cp data/alloc.json data/alloc20.json` swap first.
+**First GPU run (2026-07-22): software typed, but held back.** The run reached prop mean-AUC **0.938** and the
+deployed candidate passed both software assertions (test_world 15/15, test_geo 35/35) — but it **regressed
+COUNT-aggregate intent** ("how many customers in France" → the free-text path instead of `COUNT(*)`), because
+keep-best selected on property AUC alone while the un-frozen LoRA drifted the (weakly-anchored) intent dims.
+The fix is in place — see "The intent guard" in [`pipeline.md`](pipeline.md): `augment_intent.py` anchors the
+serving phrasings + holds out a serving-mirror intent eval, and the trainer's keep-best now selects on
+**property AUC + intent op-accuracy** combined. `eval_intent.py` reproduces the live failure on the drifted
+checkpoint (COUNT 0.110 vs SUM 0.121, to three decimals): shipped baseline **0.808**, drifted **0.697** (the
+None class collapsed 0.769 → 0.138 — spurious fires), on a question-text-split eval with zero verbatim leakage.
+
+**What remains (the re-run — turns the software test green with aggregates intact):**
+6. `python -m training.props.augment_intent` (once per corpus refresh), then the **GPU encoder-train**
+   (`python -m training.props.train_props_gpu --steps 600`) on the nc=90 corpus; needs a GPU (e.g. RunPod).
+   ~20 MB up (corpus + base LoRA), ~90 MB back. Remember the `cp data/alloc.json data/alloc20.json` swap first.
+   Gate the result: `python -m training.props.eval_intent --ckpt props` — intent op-accuracy must be **≥ the
+   0.808 engine baseline** with the `howmany_customers_france` probe OK.
 7. `python -m training.props.build_families` (software gets `operatingSystem` as its distinctive prop) +
    `python -m training.props.calibrate_props` (Youden-J thresholds for the 4 new dims).
 8. Copy the Stage-3 outputs into `engine/data/` under the engine's names
    (`encoder.pt`/`encoder_meta.pt`/`qwen_lora/`/`alloc.json`; `families.json` + `props_thr.json` are already
-   staged there by step 7), then `python -m tests.test_world` + `test_geo` — the software assertion must pass.
+   staged there by step 7), then `python -m tests.test_world` + `test_geo` (software must pass) **and**
+   `python -m tests.test_route_wired` (the COUNT world-join must still answer — the French-customer count,
+   3 with the current fixture; the test asserts ≥2).
 
 ## External inputs (not committed)
 
