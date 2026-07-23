@@ -12,6 +12,12 @@ infra/
 training/
 web/
 db/
+# The engine image COPYs only engine/ + regress/ (+ tests/ for the orchestrator build); everything
+# below is build-irrelevant and was silently bloating the upload (spider caches/DBs alone were ~1.3 GB).
+spider/
+.model_taxbak/
+scratch/
+*.tar.gz
 **/__pycache__/
 *.pyc
 # NOTE: tests/ is intentionally NOT ignored — the orchestrator build (cloudbuild.orchestrator.yaml) runs
