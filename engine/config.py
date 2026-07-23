@@ -25,8 +25,6 @@ Env contract:
                           interpretable typed-AST planner. The ast_profile/ast_strict trained-proposer modes
                           are research-only and were retired from serving; their code/artifacts remain for the
                           Spider eval + training harness.)
-  PREREASONER_SQL_PROPOSER optional proposer artifact path
-  PREREASONER_SQL_RANKER   optional strict ranker artifact path
 
   --- Anthropic / Sonnet (the /api/converse conversational layer — ARCHITECTURE §10 — and the MCP orchestrator) ---
   ANTHROPIC_API_KEY    Anthropic key. OPTIONAL for the engine: powers the /api/converse conversational fallback +
@@ -118,14 +116,6 @@ def sql_planner_mode():
             f"invalid PREREASONER_SQL_PLANNER={mode!r}; expected one of {sorted(allowed)}"
         )
     return mode
-
-
-def sql_proposer_path() -> Path:
-    return Path(os.environ.get("PREREASONER_SQL_PROPOSER") or DATA_DIR / "sql_proposer.json")
-
-
-def sql_ranker_path() -> Path:
-    return Path(os.environ.get("PREREASONER_SQL_RANKER") or DATA_DIR / "sql_profile_ranker.json")
 
 
 def kb_model_route_enabled():

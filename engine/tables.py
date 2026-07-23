@@ -689,8 +689,8 @@ class TableQuery:
                     if candidate.sql not in seen:
                         merged.append(candidate)
                         seen.add(candidate.sql)
-                    if len(merged) == max_candidates:
-                        break
+                    if len(merged) >= max_candidates:   # >= not ==: with max_candidates==1 the seed already
+                        break                            # exceeds the cap, so == never fires and the pool grows unbounded
                 candidates = merged
             else:
                 candidates = proposed

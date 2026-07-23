@@ -224,8 +224,10 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "results"))
     ap.add_argument("--per-diff", type=int, default=0)
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
-    ap.add_argument("--planner", default="slot", choices=["slot", "ast"],
-                    help="fallback text-to-SQL planner; ast enables deterministic AST search and ranking")
+    ap.add_argument("--planner", default="ast", choices=["slot", "ast"],
+                    help="text-to-SQL planner; default 'ast' matches production (PREREASONER_SQL_PLANNER=ast). "
+                         "'slot' is the retired legacy slot-filler (diagnostics only). Serving-faithful = "
+                         "ast + default --selection serving_top1 + --max-candidates 25 + no proposer/ranker.")
     ap.add_argument("--ranker-model", default="",
                     help="optional frozen Phase 6 ranker JSON (AST planner only)")
     ap.add_argument("--proposer-model", default="",
