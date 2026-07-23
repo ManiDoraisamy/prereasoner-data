@@ -770,14 +770,14 @@ async function startRun(){
                                     body:JSON.stringify({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()})}).then(parseBody).catch(()=>null);
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
-  httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ try{ sessionStorage.setItem('pr_conversation_id', j.conversation_id); }catch(_){} renderRail(); } });
+  httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
   httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; if(j.present) PRESENT=true; tryPresent(); });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
-      onConversation:c=>{ if(RUN!==myRun||!c)return; try{ sessionStorage.setItem('pr_conversation_id', c); }catch(_){} renderRail(); },   // arrives early via the stream — reliable even if the HTTP body is lost
+      onConversation:c=>{ if(RUN!==myRun||!c)return; setConversation(c); renderRail(); },   // arrives early via the stream — persist + reflect in the URL (mirrors the orchestrated path), reliable even if the HTTP body is lost
       onStatus:st=>{ if(!live())return;
         if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Resolving to the world…'; renderRail(); }
         else if(st==='running'&&!VIEWS.length&&!RESOLVES.length){ STATUS=WB.runningMsg; renderRail(); }

@@ -174,6 +174,9 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                         shaped = json.loads(_tool_text(result))
                         if not conv and shaped.get("conversation_id"):
                             conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session
+                            _emit("conversation_id", conv)    # stream it NOW, mid-turn — the browser unsubscribes from the
+                                                              # turn node on 'status:done' (workbook settle()), so the
+                                                              # post-'done' emit below would be MISSED: no URL, no snapshot save
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
                         tool_results.append({
                             "type": "tool_result", "tool_use_id": block.id,
