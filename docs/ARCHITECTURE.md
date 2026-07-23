@@ -442,10 +442,12 @@ A profile-based trained proposer + a strict-denotation promotion gate (`engine/s
 `sql_profile.py`, `sql_profile_expansion.py`, `sql_proposal_runtime.py`) exist for research: the
 profile beam and learned ordering are explicit Spider eval/training options, not serving modes. Their
 artifacts are bound to exact proposer, adapter, pool, and generation fingerprints. The current learned
-promotion gate is disabled because it regressed full Spider dev. The exact research serving-selector
-replay scores **37.6% strict / 57.6% scalar-gold**; isolated AST search scores
-**41.2% / 58.1%**. The measurement
-boundary, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
+promotion gate is disabled because it regressed full Spider dev. Measured in the **exact serving config**
+(`--planner ast`, top-1, pool 25, no proposer/ranker) on Spider dev **gold-tables**, the deterministic
+planner scores **37.6% strict / 57.6% scalar-gold** (389/1034, 235/408; up from 36.1%/56.9% before the
+recall-first search fixes); the isolated AST-search benchmark (`ast_eval.py`, different pipeline) scores
+**41.2% / 58.1%**. The whole-database config (not what serving uses) is lower and is pending a re-measure
+on this code. The measurement boundary, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
 
 ---
 

@@ -241,11 +241,14 @@ The learned ranker was trained on an older candidate distribution. Its calibrate
 promotion candidate regressed full Spider dev, so the committed gate is disabled and no
 ranker result is presented as a current accuracy claim.
 
-The exact `full_eval.py --selection serving_top1` path, which also includes the live
-encoder, accepted proposer/profile expansion, and compose fallback, scores
-**389/1034 strict (37.6%)**, **509/1034 lenient (49.2%)**, and **235/408 scalar
-(57.6%)**. `ast_eval.py` is an isolated AST-search benchmark; `full_eval.py` is the
-serving-selector measurement. Do not compare them as if they were the same pipeline.
+The **serving-faithful** `full_eval.py --planner ast --selection serving_top1 --max-candidates 25`
+path (NO proposer, NO ranker — byte-for-byte `engine/tables.py:_serve_ast`) scores **389/1034 strict
+(37.6%)**, **509/1034 lenient (49.2%)**, and **235/408 scalar (57.6%)** on gold-tables. (Attaching the
+proposer + profile expansion at pool 180 yields the *same* top-1 numbers — the proposer changed zero
+top-1 selections in that run — so the accuracy is entirely the deterministic planner's; the proposer/
+expansion only raise pool recall, ~47%→55%, which top-1 selection does not yet convert.) `ast_eval.py`
+is an isolated AST-search benchmark; `full_eval.py --planner ast` is the serving-selector measurement.
+Do not compare them as if they were the same pipeline.
 
 ### What the numbers mean
 

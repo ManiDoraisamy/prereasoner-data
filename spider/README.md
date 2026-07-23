@@ -16,7 +16,9 @@
 > 41.2% strict top-1 while raising top-10 strict oracle from 46.8% to 52.7% and full-pool recall
 > from 47.4% to 55.1%, with 21.31 average candidates. The learned ranker's promotion policy
 > regresses full Spider dev and is disabled.
-> The exact research serving-selector replay scores 37.6% strict and 57.6% scalar-gold.
+> The serving-faithful config (`--planner ast --selection serving_top1 --max-candidates 25`, no
+> proposer/ranker == `_serve_ast`) scores 37.6% strict / 57.6% scalar-gold on gold-tables (validated
+> full 1034-q run; up from 36.1%/56.9% before the recall-first fixes).
 > The typed planner is wired
 > into live own-data serving as `PREREASONER_SQL_PLANNER=ast`; proposer/profile/ranker paths remain
 > explicit research options and `legacy` remains the default rollout mode. These tools belong to the

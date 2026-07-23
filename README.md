@@ -86,10 +86,10 @@ your data**, and the derivation *is* the reasoning trace.
   Production runs the AST planner (`PREREASONER_SQL_PLANNER=ast`): a bounded typed-AST search over
   the foreign-key graph with **hand-written, fully-inspectable ranking — no trained proposer or learned
   ranker** (`engine/tables.py: _serve_ast`; the proposer/ranker artifacts exist only for the offline
-  eval/training harness). The exact research serving-selector replay reaches
-  **37.6% strict / 57.6% scalar-gold** on Spider dev; isolated hand-ranked AST search reaches
-  **41.2% strict / 58.1% scalar-gold**
-  (`docs/SQL_AST.md` explains the measurement boundary).
+  eval/training harness). Measured in the **exact serving configuration** (`--planner ast`, top-1,
+  `--max-candidates 25`, no proposer/ranker) on Spider dev **gold-tables** it reaches **37.6% strict /
+  57.6% scalar-gold** (`docs/SQL_AST.md` explains the measurement boundary; the whole-database config,
+  which serving does not use, is lower and is pending a re-measure on this code).
 - **World/knowledge path** (`engine/knowledge_query.py`, `engine/knowledge_compose.py`): when a
   question needs a fact you didn't upload — *"total amount in France"* over a sheet that only lists
   cities — text columns are typed by the property router, each value resolves through the
