@@ -83,9 +83,11 @@ your data**, and the derivation *is* the reasoning trace.
 - **Own-data path** (`engine/tables.py: serve()`): for questions answered entirely from your
   uploaded tables, SQL is built either by the **compose engine** (a stack of simple, named views —
   filter, group, top-N, share, year-over-year …) or by the **deterministic typed-AST planner**.
-  Production runs the AST planner (`PREREASONER_SQL_PLANNER=ast`): a profile-based bounded AST
-  search over the typed foreign-key graph, ordered by a learned ranker (`engine/sql_*.py`). On
-  Spider dev it reaches ~32% strict denotation accuracy (`docs/SQL_AST.md`).
+  Production runs the AST planner (`PREREASONER_SQL_PLANNER=ast`): a bounded typed-AST search over
+  the foreign-key graph with **hand-written, fully-inspectable ranking — no trained proposer or learned
+  ranker** (`engine/tables.py: _serve_ast`; the proposer/ranker artifacts exist only for the offline
+  eval/training harness). On Spider dev (gold-tables) it reaches **~36% strict / ~57% scalar-gold**
+  denotation accuracy (`docs/SQL_AST.md`).
 - **World/knowledge path** (`engine/knowledge_query.py`, `engine/knowledge_compose.py`): when a
   question needs a fact you didn't upload — *"total amount in France"* over a sheet that only lists
   cities — text columns are typed by the property router, each value resolves through the
