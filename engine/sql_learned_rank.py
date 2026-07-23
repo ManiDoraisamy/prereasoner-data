@@ -31,7 +31,7 @@ from engine.sql_candidate import ScoredQuery
 
 MODEL_VERSION = 1
 _TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
-_COUNT_CUES = frozenset({"count", "counts", "many", "number"})
+_COUNT_CUES = frozenset({"count", "counts"})
 _GROUP_CUES = frozenset({"each", "per"})
 _ORDER_CUES = frozenset({
     "biggest", "earliest", "fewest", "first", "greatest", "highest", "largest",
@@ -50,6 +50,7 @@ _STRUCTURAL_CUES = frozenset({
     "whose", "with", "without", "youngest",
 })
 _HASH_BUCKETS = 64
+_IDENTIFIER_BOUNDARY_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 
 
 @dataclass(frozen=True)
@@ -262,6 +263,56 @@ def load_ranker_model(path: str) -> RankerModel:
     raise ValueError(f"unsupported SQL ranker artifact type: {data.get('type')!r}")
 
 
+def verify_ranker_contract(
+    model: RankerModel,
+    *,
+    proposer_model=None,
+    adapter_sha256: str | None = None,
+    profile_config=None,
+    pool_size: int | None = None,
+) -> None:
+    """Reject a ranker outside the artifact and candidate distribution it was fit on."""
+    metadata = model.metadata
+    expected_proposer = str(metadata.get("proposer_model_sha256") or "")
+    if expected_proposer:
+        actual_proposer = getattr(proposer_model, "source_sha256", None)
+        if actual_proposer != expected_proposer:
+            raise RuntimeError(
+                "SQL ranker/proposer mismatch: ranker expects proposer "
+                f"{expected_proposer[:12]}, got {(actual_proposer or 'missing')[:12]}"
+            )
+    expected_adapter = str(metadata.get("encoder_adapter_sha256") or "")
+    if expected_proposer and not expected_adapter:
+        raise RuntimeError("SQL ranker artifact has no encoder adapter provenance")
+    if expected_adapter and adapter_sha256 != expected_adapter:
+        raise RuntimeError(
+            "SQL ranker/encoder mismatch: ranker expects adapter "
+            f"{expected_adapter[:12]}, got {(adapter_sha256 or 'missing')[:12]}"
+        )
+    if pool_size is not None and metadata.get("pool") is not None:
+        expected_pool = int(metadata["pool"])
+        if pool_size != expected_pool:
+            raise RuntimeError(
+                f"SQL ranker candidate-pool mismatch: trained with {expected_pool}, got {pool_size}"
+            )
+    if expected_proposer and metadata.get("profile_max_candidates") is not None and profile_config is None:
+        raise RuntimeError("SQL ranker requires explicit profile expansion")
+    if profile_config is not None:
+        expected = {
+            "profile_max_candidates": profile_config.max_candidates,
+            "profile_per_profile": profile_config.per_profile,
+            "profile_generation_penalty": profile_config.generation_penalty,
+            "profile_binding_quality_weight": profile_config.binding_quality_weight,
+        }
+        mismatches = [
+            f"{name}={metadata.get(name)!r} (runtime {value!r})"
+            for name, value in expected.items()
+            if name in metadata and float(metadata[name]) != float(value)
+        ]
+        if mismatches:
+            raise RuntimeError("SQL ranker generation-contract mismatch: " + ", ".join(mismatches))
+
+
 def _rerank(
     model: RankerModel,
     label: str,
@@ -289,7 +340,7 @@ def learned_feature_vector(
     baseline_rank: int = 0,
     pool_size: int = 1,
 ) -> dict[str, float]:
-    """Extract stable ranking features without table, column, or literal identities."""
+    """Extract stable ranking features without memorizing schema identities."""
     features = learned_question_features(question)
     for name in (
         "question_count", "question_group", "question_order", "question_negation",
@@ -321,6 +372,7 @@ def learned_feature_vector(
 
     ast = _ast_features(candidate.query)
     features.update(ast)
+    features.update(_lexical_role_features(question, candidate.query))
     features.update({
         "match.count": features["question_count"] * ast.get("ast.aggregate.COUNT", 0.0),
         "match.group": features["question_group"] * float(ast.get("ast.group_columns", 0.0) > 0),
@@ -349,9 +401,14 @@ def rerank_with_promotion_gate(
     if not candidates:
         return []
     ranked = model.rerank(question, candidates)
-    threshold = float(model.metadata.get("promotion_gate", {}).get("margin_threshold", math.inf))
+    gate = model.metadata.get("promotion_gate", {})
+    threshold = float(gate.get("margin_threshold", math.inf))
     fallback = candidates[0]
     scored_fallback = next(candidate for candidate in ranked if candidate.sql == fallback.sql)
+    if not bool(gate.get("enabled", True)):
+        return [scored_fallback] + [
+            candidate for candidate in ranked if candidate.sql != scored_fallback.sql
+        ]
     eligible = [
         candidate for candidate in ranked
         if candidate.sql != fallback.sql
@@ -372,17 +429,22 @@ def learned_question_features(question: str) -> dict[str, float]:
     """Question-only features shared by online extraction and cached training groups."""
     tokens = tuple(token.lower() for token in _TOKEN_RE.findall(question))
     token_set = set(tokens)
+    count_requested = (
+        bool(token_set & _COUNT_CUES)
+        or any(pair == ("how", "many") for pair in zip(tokens, tokens[1:]))
+        or any(pair == ("number", "of") for pair in zip(tokens, tokens[1:]))
+    )
     features: Counter[str] = Counter({
         "question_token_count": float(len(tokens)),
-        "question_count": float(bool(token_set & _COUNT_CUES)),
+        "question_count": float(count_requested),
         "question_group": float(bool(token_set & _GROUP_CUES)),
         "question_order": float(bool(token_set & _ORDER_CUES)),
         "question_negation": float(bool(token_set & _NEGATION_CUES)),
         "question_disjunction": float("or" in token_set or "either" in token_set),
         "question_distinct": float(bool(token_set & {"different", "distinct", "unique"})),
-        "question_aggregate": float(bool(
-            token_set & {"average", "avg", "count", "maximum", "mean", "min", "minimum",
-                         "number", "sum", "total", "max"}
+        "question_aggregate": float(count_requested or bool(
+            token_set & {"average", "avg", "maximum", "mean", "min", "minimum",
+                         "sum", "total", "max"}
         )),
     })
     for token in sorted(token_set & _STRUCTURAL_CUES):
@@ -420,6 +482,87 @@ def _feature_count_weight(name: str) -> float:
         depth += 1
         parts.pop(0)
     return 0.5 ** depth
+
+
+def _identifier_tokens(identifier: str) -> frozenset[str]:
+    expanded = _IDENTIFIER_BOUNDARY_RE.sub(" ", identifier.replace("_", " "))
+    return frozenset(token.lower() for token in _TOKEN_RE.findall(expanded))
+
+
+def _lexical_role_features(question: str, query: Query) -> dict[str, float]:
+    """Measure question/schema overlap by AST role without exposing identifier names."""
+    question_tokens = frozenset(token.lower() for token in _TOKEN_RE.findall(question))
+    identifiers: dict[str, set[str]] = {
+        role: set()
+        for role in ("aggregate", "filter", "group", "join", "order", "projection", "table")
+    }
+
+    def add_expression(role: str, expression) -> None:
+        if isinstance(expression, ColumnRef):
+            identifiers[role].add(expression.name)
+        elif isinstance(expression, Aggregate):
+            if isinstance(expression.operand, ColumnRef):
+                identifiers[role].add(expression.operand.name)
+                identifiers["aggregate"].add(expression.operand.name)
+        elif isinstance(expression, ScalarSubquery):
+            visit_query(expression.query)
+
+    def add_predicate(predicate) -> None:
+        if predicate is None:
+            return
+        if isinstance(predicate, BooleanExpr):
+            for term in predicate.terms:
+                add_predicate(term)
+        elif isinstance(predicate, Comparison):
+            add_expression("filter", predicate.left)
+            add_expression("filter", predicate.right)
+        elif isinstance(predicate, InPredicate):
+            add_expression("filter", predicate.left)
+            if isinstance(predicate.source, tuple):
+                for expression in predicate.source:
+                    add_expression("filter", expression)
+            else:
+                visit_query(predicate.source)
+        elif isinstance(predicate, ExistsPredicate):
+            visit_query(predicate.query)
+
+    def visit_query(node: Query) -> None:
+        if isinstance(node, SetQuery):
+            visit_query(node.left)
+            visit_query(node.right)
+            return
+        if isinstance(node.from_table, SubquerySource):
+            visit_query(node.from_table.query)
+        else:
+            identifiers["table"].add(node.from_table)
+        for join in node.joins:
+            identifiers["table"].add(join.table)
+            identifiers["join"].update((join.left.name, join.right.name))
+        for item in node.select:
+            add_expression("projection", item.expression)
+        for column in node.group_by:
+            identifiers["group"].add(column.name)
+        for term in node.order_by:
+            add_expression("order", term.expression)
+        add_predicate(node.where)
+        add_predicate(node.having)
+
+    visit_query(query)
+    features: dict[str, float] = {}
+    for role, names in identifiers.items():
+        token_sets = [_identifier_tokens(name) for name in sorted(names)]
+        identifier_tokens = frozenset().union(*token_sets) if token_sets else frozenset()
+        matched = identifier_tokens & question_tokens
+        exact = sum(bool(tokens) and tokens <= question_tokens for tokens in token_sets)
+        prefix = f"lexical.{role}"
+        features[f"{prefix}.identifier_count"] = float(len(token_sets))
+        features[f"{prefix}.matched_tokens"] = float(len(matched))
+        features[f"{prefix}.token_coverage"] = (
+            len(matched) / len(identifier_tokens) if identifier_tokens else 0.0
+        )
+        features[f"{prefix}.exact_identifiers"] = float(exact)
+        features[f"{prefix}.any_match"] = float(bool(matched))
+    return {name: value for name, value in features.items() if value != 0.0}
 
 
 def _ast_features(query: Query) -> dict[str, float]:

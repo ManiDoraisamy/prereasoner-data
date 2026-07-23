@@ -8,7 +8,8 @@ on NumPy and stable lexical features.
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+import hashlib
 import json
 import math
 import re
@@ -154,6 +155,7 @@ class SQLProposalModel:
     sketch_thresholds: np.ndarray
     metadata: Mapping[str, Any]
     version: int = PROPOSAL_MODEL_VERSION
+    source_sha256: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if self.version != PROPOSAL_MODEL_VERSION:
@@ -371,8 +373,10 @@ class SQLProposalModel:
 
     @classmethod
     def load(cls, path: str) -> "SQLProposalModel":
-        with open(path, encoding="utf-8") as handle:
-            return cls.from_dict(json.load(handle))
+        with open(path, "rb") as handle:
+            payload = handle.read()
+        model = cls.from_dict(json.loads(payload.decode("utf-8")))
+        return replace(model, source_sha256=hashlib.sha256(payload).hexdigest())
 
     def save(self, path: str) -> None:
         with open(path, "w", encoding="utf-8") as handle:

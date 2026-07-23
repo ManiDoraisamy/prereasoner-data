@@ -63,10 +63,13 @@ def semantic_role_phrases(question: str) -> dict[str, str]:
     if not words:
         return {"global": question}
 
-    aggregate = next((i for i, token in enumerate(low)
-                      if token in {"count", "number", "sum", "total", "average", "avg", "mean",
-                                   "minimum", "min", "maximum", "max"}
-                      or (token == "how" and i + 1 < len(low) and low[i + 1] == "many")), None)
+    aggregate = next((
+        i for i, token in enumerate(low)
+        if token in {"count", "sum", "total", "average", "avg", "mean",
+                     "minimum", "min", "maximum", "max"}
+        or (token == "number" and i + 1 < len(low) and low[i + 1] == "of")
+        or (token == "how" and i + 1 < len(low) and low[i + 1] == "many")
+    ), None)
     group = next((i for i, token in enumerate(low) if token in {"each", "per"}), None)
     filter_pos = next((i for i, token in enumerate(low)
                        if token in {"where", "with", "whose", "from", "after", "before", "between"}), None)
@@ -262,7 +265,20 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     tokens = _tokens(question)
     aggregate_positions: dict[str, list[int]] = {fn: [] for fn in ("COUNT", "SUM", "AVG", "MIN", "MAX")}
     for i, token in enumerate(tokens):
-        if token in {"count", "number"} or (token == "how" and i + 1 < len(tokens) and tokens[i + 1] == "many"):
+        number_is_column_label = (
+            token == "number"
+            and i > 0
+            and any(
+                tokens[i - 1] in _schema_tokens(column.ref.name)
+                for column in schema.columns
+            )
+        )
+        if (
+            token == "count"
+            or (token == "number" and i + 1 < len(tokens)
+                and tokens[i + 1] == "of" and not number_is_column_label)
+            or (token == "how" and i + 1 < len(tokens) and tokens[i + 1] == "many")
+        ):
             aggregate_positions["COUNT"].append(i)
         elif token in {"sum", "total"}:
             aggregate_positions["SUM"].append(i)
@@ -370,8 +386,14 @@ def execution_features(query: Query, rows: Sequence[Sequence[Any]], error: str |
 
 def execute_and_rerank(question: str, candidates: Sequence[ScoredQuery], schema: SchemaGraph,
                        executor: Callable[[str], tuple[Sequence[str], Sequence[Sequence[Any]]]],
-                       max_candidates: int = 5) -> list[ExecutedCandidate]:
-    """Execute a bounded semantic prefix and rerank successful result shapes."""
+                       max_candidates: int = 5,
+                       preserve_top: bool = True) -> list[ExecutedCandidate]:
+    """Execute a bounded semantic prefix without silently changing semantic top-1.
+
+    Result-shape features remain useful for ordering fallback candidates after an
+    execution failure. A merely nonempty result is not evidence that a lower-ranked
+    query answers the question, so the successful semantic winner stays first.
+    """
     observed = []
     for candidate in candidates[:max(1, max_candidates)]:
         try:
@@ -379,7 +401,12 @@ def execute_and_rerank(question: str, candidates: Sequence[ScoredQuery], schema:
             observed.append(ExecutedCandidate(candidate, tuple(columns), tuple(tuple(row) for row in rows)))
         except Exception as exc:  # noqa: BLE001 - failed SQL is evidence against only that candidate
             observed.append(ExecutedCandidate(candidate, error=f"{type(exc).__name__}: {exc}"))
-    return CandidateRanker(schema).rank_executions(question, observed)
+    ranked = CandidateRanker(schema).rank_executions(question, observed)
+    if preserve_top and observed and observed[0].error is None:
+        top_sql = observed[0].candidate.sql
+        top = next(item for item in ranked if item.candidate.sql == top_sql)
+        return [top] + [item for item in ranked if item.candidate.sql != top_sql]
+    return ranked
 
 
 def _columns_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Sequence[tuple[int, int]]) -> set[ColumnRef]:
@@ -423,6 +450,8 @@ def _schema_tokens(name: str) -> tuple[str, ...]:
 
 def _canon(word: str) -> str:
     word = word.lower().strip()
+    if word == "ids":
+        return "id"
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
     if len(word) > 3 and word.endswith("ses"):

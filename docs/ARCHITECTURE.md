@@ -435,15 +435,17 @@ searches a bounded space of valid SQL abstract syntax trees rather than filling 
 Pipeline: `engine/sql_schema.py` builds the typed FK graph → `engine/sql_search.py` runs bounded search →
 capability modules add recursive queries, constraints, extrema, and set operations (`engine/
 sql_recursive.py`, `sql_constraints.py`, `sql_extrema.py`, `sql_expansion.py`) → candidate ASTs are
-scored by deterministic features and a **learned ranker** (`engine/sql_rank.py`, `sql_learned_rank.py`)
+scored by inspectable deterministic features (`engine/sql_rank.py`)
 → only validated ASTs (`engine/sql_ast.py`) are rendered to SQL. `engine/sql.py` is the public facade.
 
 A profile-based trained proposer + a strict-denotation promotion gate (`engine/sql_proposal.py`,
 `sql_profile.py`, `sql_profile_expansion.py`, `sql_proposal_runtime.py`) exist for research: the
-`ast_profile`/`ast_strict` modes were **retired from serving** but their code + artifacts remain for the
-Spider eval + training harness (`engine/config.py: sql_planner_mode`). On the realistic whole-database
-Spider dev set, the deterministic typed search lands **strict top-1 ≈ 32.5%** (gated promotion 33.3%);
-full numbers, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
+profile beam and learned ordering are explicit Spider eval/training options, not serving modes. Their
+artifacts are bound to exact proposer, adapter, pool, and generation fingerprints. The current learned
+promotion gate is disabled because it regressed full Spider dev. The exact research serving-selector
+replay scores **37.6% strict / 57.6% scalar-gold**; isolated AST search scores
+**41.2% / 58.1%**. The measurement
+boundary, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
 
 ---
 

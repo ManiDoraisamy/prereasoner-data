@@ -21,14 +21,23 @@ allow_patterns=['*.pt','*.npz','qwen_lora/*'])`, then a clone runs this to provi
 from __future__ import annotations
 import argparse
 import os
+import shutil
 import sys
+import tempfile
 from pathlib import Path
+
+from engine.artifact_provenance import load_weights_manifest, validate_weight_bundle
 
 DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve().parent / "data")
 
 # The Hugging Face repo holding the weights. Override with PREREASONER_WEIGHTS_REPO.
 # NOTE: this repo is currently PRIVATE — set HF_TOKEN (a token with read access) to fetch from it.
-DEFAULT_REPO = os.environ.get("PREREASONER_WEIGHTS_REPO", "prereasoner/prereasoner-weights")
+_MANIFEST = load_weights_manifest(DATA_DIR)
+DEFAULT_REPO = os.environ.get(
+    "PREREASONER_WEIGHTS_REPO",
+    (_MANIFEST or {}).get("repository", "prereasoner/prereasoner-weights"),
+)
+DEFAULT_REVISION = (_MANIFEST or {}).get("revision")
 
 # (relative path under the HF repo == relative path under engine/data/, size for the log)
 WEIGHTS = [
@@ -49,7 +58,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Provision the gitignored model weights into engine/data/.")
     ap.add_argument("--repo", default=DEFAULT_REPO, help="Hugging Face repo id holding the weights")
     ap.add_argument("--force", action="store_true", help="re-download even if the file already exists")
-    ap.add_argument("--revision", default=None, help="optional HF revision/tag/commit")
+    ap.add_argument("--revision", default=DEFAULT_REVISION,
+                    help="HF revision; defaults to the immutable revision in weights_manifest.json")
     args = ap.parse_args()
 
     if args.repo.startswith("PLACEHOLDER"):
@@ -65,27 +75,37 @@ def main() -> int:
         return 2
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    fetched = skipped = 0
-    for rel in WEIGHTS:
-        if _present(rel) and not args.force:
-            skipped += 1
-            continue
-        dest = DATA_DIR / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        print(f"  fetching {rel} from {args.repo} ...", flush=True)
-        # download to the HF cache, then hard-link/copy into engine/data at the same relative path.
-        # token: read from HF_TOKEN (the repo is private); falls back to the ambient huggingface-cli login.
-        path = hf_hub_download(repo_id=args.repo, filename=rel, revision=args.revision,
-                               token=os.environ.get("HF_TOKEN"))
-        import shutil
-        shutil.copyfile(path, dest)
-        fetched += 1
+    if not args.force:
+        try:
+            fingerprint = validate_weight_bundle(DATA_DIR)
+        except RuntimeError:
+            fingerprint = None
+        if fingerprint is not None:
+            print(f"weights ready in {DATA_DIR}: manifest verified ({fingerprint[:12]})")
+            return 0
 
-    print(f"weights ready in {DATA_DIR}: {fetched} fetched, {skipped} already present.")
-    missing = [rel for rel in WEIGHTS if not _present(rel)]
-    if missing:
-        print("STILL MISSING (repo may not contain them): " + ", ".join(missing), file=sys.stderr)
-        return 1
+    if _MANIFEST is None:
+        print("weights_manifest.json is required for an atomic verified download", file=sys.stderr)
+        return 2
+    with tempfile.TemporaryDirectory(prefix=".weights-", dir=DATA_DIR) as temporary:
+        staging = Path(temporary)
+        for rel in WEIGHTS:
+            dest = staging / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            print(f"  fetching {rel} from {args.repo}@{args.revision} ...", flush=True)
+            path = hf_hub_download(
+                repo_id=args.repo,
+                filename=rel,
+                revision=args.revision,
+                token=os.environ.get("HF_TOKEN"),
+            )
+            shutil.copyfile(path, dest)
+        fingerprint = validate_weight_bundle(staging, _MANIFEST)
+        for rel in WEIGHTS:
+            dest = DATA_DIR / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(staging / rel, dest)
+    print(f"weights ready in {DATA_DIR}: verified bundle {fingerprint[:12]}")
     return 0
 
 

@@ -116,6 +116,8 @@ def main():
                         help="optional frozen Phase 6 ranker JSON")
     parser.add_argument("--proposer-model", default="",
                         help="optional frozen structured proposer JSON")
+    parser.add_argument("--profile-expansion", action="store_true",
+                        help="explicitly generate candidates from predicted profiles")
     parser.add_argument("--profile-max-candidates", type=int, default=32)
     parser.add_argument("--profile-per-profile", type=int, default=4)
     parser.add_argument("--profile-generation-penalty", type=float, default=5.0)
@@ -149,13 +151,28 @@ def main():
         proposal_encoder = EncoderQuery()
         proposal_provider = ProposalSignalProvider(proposal_model, proposal_encoder)
 
-    profile_config = ProfileSearchConfig(
-        max_candidates=args.profile_max_candidates,
-        per_profile=args.profile_per_profile,
-        generation_penalty=args.profile_generation_penalty,
-        binding_quality_weight=args.profile_binding_quality_weight,
-        preserve_baseline_top=not args.allow_profile_top,
+    if args.profile_expansion and proposal_model is None:
+        parser.error("--profile-expansion requires --proposer-model")
+    profile_config = (
+        ProfileSearchConfig(
+            max_candidates=args.profile_max_candidates,
+            per_profile=args.profile_per_profile,
+            generation_penalty=args.profile_generation_penalty,
+            binding_quality_weight=args.profile_binding_quality_weight,
+            preserve_baseline_top=not args.allow_profile_top,
+        )
+        if args.profile_expansion else None
     )
+    if rank_model is not None:
+        from engine.sql_learned_rank import verify_ranker_contract
+
+        verify_ranker_contract(
+            rank_model,
+            proposer_model=proposal_model,
+            adapter_sha256=getattr(proposal_encoder, "encoder_adapter_sha256", None),
+            profile_config=profile_config,
+            pool_size=args.pool,
+        )
 
     dev = json.load(open(os.path.join(args.data, "dev.json"), encoding="utf-8"))
     if args.limit:
@@ -178,7 +195,8 @@ def main():
     if rank_model is not None:
         stats["phase6"] = collections.Counter()
     if proposal_model is not None:
-        stats["profile_expansion"] = collections.Counter()
+        proposal_key = "profile_expansion" if args.profile_expansion else "proposer_roles"
+        stats[proposal_key] = collections.Counter()
         if rank_model is not None:
             stats["profile_ranked"] = collections.Counter()
             stats["profile_ranked_safe"] = collections.Counter()
@@ -248,7 +266,7 @@ def main():
             _score(stats["phase5"], gold_rows, phase5, con, args.top_k)
             if proposal_model is not None:
                 _score(
-                    stats["profile_expansion"], gold_rows, profile_candidates, con, args.top_k
+                    stats[proposal_key], gold_rows, profile_candidates, con, args.top_k
                 )
                 if rank_model is not None:
                     _score(stats["profile_ranked"], gold_rows, profile_ranked, con, args.top_k)
@@ -273,6 +291,7 @@ def main():
         "config": args.config,
         "top_k": args.top_k,
         "pool": args.pool,
+        "profile_expansion_enabled": args.profile_expansion,
         "profile_max_candidates": args.profile_max_candidates,
         "profile_per_profile": args.profile_per_profile,
         "profile_generation_penalty": args.profile_generation_penalty,
@@ -290,9 +309,7 @@ def main():
         result["phase6"] = _summary(stats["phase6"], len(dev))
     if proposal_model is not None:
         result["proposer_model"] = args.proposer_model
-        result["profile_expansion"] = _summary(
-            stats["profile_expansion"], len(dev)
-        )
+        result[proposal_key] = _summary(stats[proposal_key], len(dev))
         if rank_model is not None:
             result["profile_ranked"] = _summary(stats["profile_ranked"], len(dev))
             result["profile_ranked_safe"] = _summary(

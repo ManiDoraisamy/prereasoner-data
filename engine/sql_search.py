@@ -100,11 +100,18 @@ class SQLSearcher:
                                              "order", "ordered", "sort", "sorted", "rank", "ranked"}),
                                len(tokens))
         prefix_tokens = set(tokens[:clause_boundary])
-        explicit_projection_columns = set()
-        for schema_column in self.schema.columns:
-            name_tokens = {_canon(word) for word in _name_words(schema_column.ref.name) if _canon(word) != "id"}
-            if name_tokens and name_tokens <= prefix_tokens:
-                explicit_projection_columns.add(schema_column.ref)
+        id_requested = bool(_ID_WORDS & set(tokens))
+        explicit_projection_columns = {
+            schema_column.ref
+            for schema_column in self.schema.columns
+            if (
+                (link_words := _column_link_words(schema_column.ref, id_requested))
+                and set(link_words) <= prefix_tokens
+                and _column_link_positions(
+                    schema_column.ref, tokens[:clause_boundary], self.schema, link_words
+                )
+            )
+        }
         clause_only_columns = {
             option.column for mention in mentions for option in mention.options
             if option.column not in explicit_projection_columns
@@ -197,7 +204,9 @@ class SQLSearcher:
                 pool = _merge_candidates(pool, generated)
         profile_baseline = tuple(pool)
         profile_requested = bool(
-            semantic_signals is not None and semantic_signals.sketch_profiles
+            profile_config is not None
+            and semantic_signals is not None
+            and semantic_signals.sketch_profiles
         )
         if profile_requested:
             from engine.sql_profile_expansion import ProfileQueryExpander
@@ -252,11 +261,10 @@ class SQLSearcher:
         id_requested = bool(_ID_WORDS & token_set)
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            words = tuple(_canon(w) for w in _name_words(column.name))
-            meaningful = tuple(w for w in words if w != "id")
             if _is_id(column.name) and not id_requested:
                 continue
-            positions = [i for i, token in enumerate(tokens) if token in meaningful]
+            meaningful = _column_link_words(column, id_requested)
+            positions = _column_link_positions(column, tokens, self.schema, meaningful)
             if not positions:
                 continue
             coverage = len({tokens[i] for i in positions} & set(meaningful)) / max(len(set(meaningful)), 1)
@@ -301,7 +309,17 @@ class SQLSearcher:
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []
         for i, token in enumerate(tokens):
-            if token in {"count", "counts"} or (token == "number" and (i + 1 >= len(tokens) or tokens[i + 1] == "of")):
+            number_is_column_label = (
+                token == "number"
+                and i > 0
+                and any(mention.position == i - 1 for mention in mentions)
+            )
+            if token in {"count", "counts"} or (
+                token == "number"
+                and i + 1 < len(tokens)
+                and tokens[i + 1] == "of"
+                and not number_is_column_label
+            ):
                 cues.append(("COUNT", i))
             elif token in {"sum", "total"}:
                 if token == "total" and i + 1 < len(tokens) and tokens[i + 1] in {"number", "count"}:
@@ -666,6 +684,8 @@ def _name_words(name: str) -> tuple[str, ...]:
 
 def _canon(word: str) -> str:
     word = word.lower().strip()
+    if word == "ids":
+        return "id"
     if len(word) > 4 and word.endswith("ies"):
         return word[:-3] + "y"
     if len(word) > 3 and word.endswith("ses"):
@@ -678,6 +698,75 @@ def _canon(word: str) -> str:
 def _is_id(name: str) -> bool:
     words = _name_words(name)
     return bool(words) and words[-1].lower() in {"id", "identifier", "key"}
+
+
+def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
+    words = tuple(_canon(word) for word in _name_words(column.name))
+    table_words = {_canon(word) for word in _name_words(column.table)}
+    meaningful = tuple(
+        word for word in words
+        if word != "id" and word not in table_words
+    )
+    if not meaningful and _is_id(column.name) and id_requested:
+        return ("id",)
+    return meaningful or tuple(word for word in words if word != "id")
+
+
+def _column_link_positions(
+    column: ColumnRef,
+    tokens: tuple[str, ...],
+    schema: SchemaGraph,
+    link_words: tuple[str, ...],
+) -> list[int]:
+    positions = [i for i, token in enumerate(tokens) if token in link_words]
+    generic_link = not set(link_words) - {"name", "id"}
+    duplicate_link = sum(
+        _column_link_words(schema_column.ref, True) == link_words
+        for schema_column in schema.columns
+    ) > 1
+    if len(schema.tables) <= 1 or (not generic_link and not duplicate_link):
+        return positions
+
+    column_entities = {
+        _canon(word) for word in _name_words(column.table)
+    } | {
+        _canon(word) for word in _name_words(column.name)
+        if _canon(word) not in {"name", "id", "identifier", "key"}
+    }
+    schema_entities = {
+        _canon(word)
+        for schema_column in schema.columns
+        for word in _name_words(schema_column.ref.table) + _name_words(schema_column.ref.name)[:-1]
+        if _canon(word) not in {"name", "id", "identifier", "key"}
+    }
+    qualified = []
+    for position in positions:
+        context = set(tokens[max(0, position - 2):position])
+        if "its" in context:
+            antecedent = next(
+                (token for token in reversed(tokens[:position]) if token in schema_entities),
+                None,
+            )
+            if antecedent:
+                context.add(antecedent)
+        if position + 1 < len(tokens) and tokens[position + 1] == "of":
+            context.update(tokens[position + 2:position + 4])
+        entity_context = context & schema_entities
+        if not entity_context or entity_context & column_entities:
+            qualified.append(position)
+            continue
+        if set(link_words) == {"name"}:
+            context_tables = {
+                table for table in schema.tables
+                if set(map(_canon, _name_words(table))) <= entity_context
+            }
+            if any(
+                foreign_key.from_column.table in context_tables
+                and foreign_key.to_column.table == column.table
+                for foreign_key in schema.foreign_keys
+            ):
+                qualified.append(position)
+    return qualified
 
 
 def _number(value: str) -> int | float:

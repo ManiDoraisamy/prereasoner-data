@@ -646,19 +646,54 @@ class TableQuery:
         the boundary explicit; the rich ``sch`` already contains its values and inferred types.
         """
         from engine.sql_search import SQLSearcher, SchemaGraph
-        graph = SchemaGraph.from_planner(sch, fks)
-        signals = (
-            self.ast_semantic_signals(
-                question, sch, proposal_model, proposal_question_vector
+        if rank_model is not None:
+            from engine.sql_learned_rank import verify_ranker_contract
+
+            verify_ranker_contract(
+                rank_model,
+                proposer_model=proposal_model,
+                adapter_sha256=getattr(self, "encoder_adapter_sha256", None),
+                profile_config=profile_config,
+                pool_size=max_candidates,
             )
+        graph = SchemaGraph.from_planner(sch, fks)
+        searcher = SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates)
+        baseline_signals = (
+            self.ast_semantic_signals(question, sch)
             if use_semantic_signals else None
         )
-        candidates = SQLSearcher(
-            graph, beam_size=beam_size, max_candidates=max_candidates
-        ).search(
-            question, semantic_signals=signals, phase2=phase2, phase3=phase3, phase4=phase4,
-            phase5=phase5, profile_config=profile_config,
+        baseline = searcher.search(
+            question, semantic_signals=baseline_signals,
+            phase2=phase2, phase3=phase3, phase4=phase4, phase5=phase5,
         )
+        candidates = baseline
+        if proposal_model is not None:
+            proposal_signals = self.ast_semantic_signals(
+                question, sch, proposal_model, proposal_question_vector
+            )
+            proposed = searcher.search(
+                question, semantic_signals=proposal_signals,
+                phase2=phase2, phase3=phase3, phase4=phase4, phase5=phase5,
+                profile_config=profile_config,
+            )
+            if baseline:
+                from dataclasses import replace
+
+                fallback = replace(
+                    baseline[0],
+                    evidence=baseline[0].evidence + ("proposer:fallback-top",),
+                )
+                merged = [fallback]
+                seen = {fallback.sql}
+                for candidate in tuple(proposed) + tuple(baseline[1:]):
+                    if candidate.sql not in seen:
+                        merged.append(candidate)
+                        seen.add(candidate.sql)
+                    if len(merged) == max_candidates:
+                        break
+                candidates = merged
+            else:
+                candidates = proposed
         if rank_model is None:
             return candidates
         if proposal_model is not None:

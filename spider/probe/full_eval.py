@@ -33,7 +33,7 @@ if ROOT not in sys.path:
 warnings.filterwarnings("ignore")
 
 from hardness import eval_hardness
-from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_timeout
+from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_budget
 from spider_eval import (
     compare,
     record_integrated_result,
@@ -83,9 +83,10 @@ def slot_predict(enc, tabs, question):
 
 def ast_predict(
     enc, tabs, question, schema_fks=None, rank_model=None, proposal_model=None,
-    proposal_question_vector=None, schema_cache=None,
+    proposal_question_vector=None, schema_cache=None, profile_config=None,
+    selection="serving_top1", max_candidates=25,
 ):
-    """Run semantic AST ranking, then execution-rerank a bounded candidate prefix."""
+    """Run AST search using either exact serving top-1 or bounded execution checks."""
     cache_key = tuple(id(table) for table in tabs)
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
@@ -101,9 +102,11 @@ def ast_predict(
         sch,
         norm,
         fks,
+        max_candidates=max_candidates,
         rank_model=rank_model,
         proposal_model=proposal_model,
         proposal_question_vector=proposal_question_vector,
+        profile_config=profile_config,
     )
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
@@ -114,10 +117,35 @@ def ast_predict(
             raise RuntimeError(f"guard: {why}")
         return enc.execute(tmap, sch, sql)
 
+    if not candidates:
+        return {"ok": False, "error": "no connected AST candidate",
+                "stage": "ast_search", "path": "ast"}
+    if selection == "serving_top1":
+        candidate = candidates[0]
+        try:
+            _, rows = execute(candidate.sql)
+        except Exception as exc:                  # noqa: BLE001
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                    "stage": "ast_search", "path": "ast"}
+        return {
+            "ok": True,
+            "sql": candidate.sql,
+            "rows": [list(row) for row in rows],
+            "path": "ast",
+            "plan": list(candidate.evidence),
+            "candidate_count": len(candidates),
+            "executed_candidate_count": 1,
+            "selected_candidate_rank": 0,
+            "candidate_score": round(candidate.score, 4),
+            "rank_features": dict(candidate.features),
+        }
+
     graph = SchemaGraph.from_planner(sch, fks)
-    executions = execute_and_rerank(question, candidates, graph, execute, max_candidates=5)
+    executions = execute_and_rerank(
+        question, candidates, graph, execute, max_candidates=5, preserve_top=True
+    )
     errors = [execution.error for execution in executions if execution.error]
-    for execution in executions:
+    for selected_rank, execution in enumerate(executions):
         candidate = execution.candidate
         if execution.error:
             continue
@@ -129,6 +157,7 @@ def ast_predict(
         return {"ok": True, "sql": candidate.sql, "rows": [list(row) for row in rows], "path": "ast",
                 "plan": list(candidate.evidence), "candidate_count": len(candidates),
                 "executed_candidate_count": len(executions), "candidate_score": round(candidate.score, 4),
+                "selected_candidate_rank": selected_rank,
                 "rank_features": dict(candidate.features)}
     detail = errors[0] if errors else "no connected AST candidate"
     return {"ok": False, "error": detail, "stage": "ast_search", "path": "ast"}
@@ -154,7 +183,8 @@ _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 
 def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None,
             rank_model=None, proposal_model=None, proposal_question_vector=None,
-            ast_schema_cache=None):
+            ast_schema_cache=None, profile_config=None,
+            selection="serving_top1", max_candidates=25):
     """Route like the live system (gate -> compose -> stand-or-fall-back -> delegate/slot). Any
     unrecovered exception is caught and attributed to a stage."""
     try:
@@ -175,7 +205,8 @@ def predict(enc, eng, reader, tabs, question, planner="slot", schema_fks=None,
         return (
             ast_predict(
                 enc, tabs, question, schema_fks, rank_model, proposal_model,
-                proposal_question_vector, ast_schema_cache,
+                proposal_question_vector, ast_schema_cache, profile_config,
+                selection, max_candidates,
             )
             if planner == "ast" else slot_predict(enc, tabs, question)
         )
@@ -199,8 +230,16 @@ def main():
                     help="optional frozen Phase 6 ranker JSON (AST planner only)")
     ap.add_argument("--proposer-model", default="",
                     help="optional frozen structured proposer JSON (AST planner only)")
+    ap.add_argument("--profile-expansion", action="store_true",
+                    help="explicitly enable proposer-driven profile generation")
+    ap.add_argument("--selection", choices=["serving_top1", "execution_checks"],
+                    default="serving_top1",
+                    help="serving_top1 matches live AST selection exactly")
+    ap.add_argument("--max-candidates", type=int, default=25,
+                    help="AST candidate pool returned to selection/ranking")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
-    ap.add_argument("--timeout", type=float, default=12.0)
+    ap.add_argument("--timeout", type=float, default=12.0,
+                    help="soft prediction latency budget; evaluation is never abandoned")
     ap.add_argument("--tag", default="")
     ap.add_argument("--checkpoint-every", type=int, default=25)
     ap.add_argument("--resume", action="store_true")
@@ -208,8 +247,16 @@ def main():
     ap.add_argument("--max-new", type=int, default=0,
                     help="checkpoint and exit cleanly after this many new predictions")
     args = ap.parse_args()
-    if args.checkpoint_every < 0 or args.max_new < 0:
+    if args.checkpoint_every < 0 or args.max_new < 0 or args.max_candidates < 1:
         ap.error("checkpoint cadence and max-new must be nonnegative")
+    if args.profile_expansion and not args.proposer_model:
+        ap.error("--profile-expansion requires --proposer-model")
+
+    profile_config = None
+    if args.profile_expansion:
+        from engine.sql_profile_expansion import ProfileSearchConfig
+
+        profile_config = ProfileSearchConfig()
 
     rank_model = None
     if args.ranker_model:
@@ -247,8 +294,27 @@ def main():
         "planner": args.planner,
         "ranker_model": args.ranker_model or None,
         "proposer_model": args.proposer_model or None,
+        "profile_expansion": args.profile_expansion,
+        "selection": args.selection,
+        "max_candidates": args.max_candidates,
         "cap": args.cap,
         "timeout": args.timeout,
+    }
+    from engine.artifact_provenance import fingerprint_paths, sha256_tree
+    from engine.config import DATA_DIR
+
+    checkpoint_contract["artifacts"] = {
+        **fingerprint_paths({
+            "dev": os.path.join(args.data, "dev.json"),
+            "tables": os.path.join(args.data, "tables.json"),
+            "proposer": args.proposer_model or None,
+            "ranker": args.ranker_model or None,
+            "encoder": DATA_DIR / "encoder.pt",
+            "encoder_meta": DATA_DIR / "encoder_meta.pt",
+            "planner_code": os.path.join(ROOT, "engine", "sql_search.py"),
+            "ranking_code": os.path.join(ROOT, "engine", "sql_rank.py"),
+        }),
+        "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
     }
     completed = {}
     if args.resume and os.path.exists(checkpoint_path):
@@ -268,6 +334,20 @@ def main():
     from engine.primitive_head import PrimitiveReader
     from engine.compose import ComposeEngine
     enc = EncoderQuery()
+    if proposal_model is not None:
+        from engine.sql_proposal_runtime import verify_proposer_adapter
+
+        verify_proposer_adapter(proposal_model, enc)
+    if rank_model is not None:
+        from engine.sql_learned_rank import verify_ranker_contract
+
+        verify_ranker_contract(
+            rank_model,
+            proposer_model=proposal_model,
+            adapter_sha256=enc.encoder_adapter_sha256,
+            profile_config=profile_config,
+            pool_size=args.max_candidates,
+        )
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
     proposal_question_vectors = {}
@@ -315,22 +395,27 @@ def main():
             r = saved
         else:
             new_predictions += 1
-            r, terr = run_with_timeout(
+            r, terr, prediction_seconds, over_budget = run_with_budget(
                 lambda: predict(
                     enc, eng, reader, tabs, ex["question"], args.planner,
                     ast_fks.get(db_id), rank_model, proposal_model,
                     proposal_question_vectors.get(i), ast_schema_cache,
+                    profile_config, args.selection, args.max_candidates,
                 ),
                 args.timeout,
             )
             if terr is not None:
-                r = {"ok": False, "error": str(terr), "stage": "timeout", "path": "timeout"}
+                r = {"ok": False, "error": str(terr), "stage": "prediction_error",
+                     "path": args.planner}
+            r["prediction_seconds"] = round(prediction_seconds, 6)
+            r["over_budget"] = over_budget
         cmp = compare(gold_rows, r.get("rows")) if r["ok"] else {}
         path_hist[r["path"]] += 1
         st = stat[diff]; st["n"] += 1
         if gerr:
             st["gold_exec_error"] += 1
         record_integrated_result(st, gold_rows, cmp, bool(r["ok"]))
+        st["over_budget"] += bool(r.get("over_budget"))
         if not r["ok"]:
             stage_hist[r["stage"]] += 1
         else:
@@ -369,6 +454,10 @@ def main():
         "n": tot["n"], "config": args.config, "planner": args.planner,
         "ranker_model": args.ranker_model or None,
         "proposer_model": args.proposer_model or None,
+        "profile_expansion": args.profile_expansion,
+        "selection": args.selection,
+        "max_candidates": args.max_candidates,
+        "artifacts": checkpoint_contract["artifacts"],
         "answered_pct": round(100 * tot["answered"] / N, 1),
         "error_pct": round(100 * tot["error"] / N, 1),
         "correct_lenient_pct": round(100 * tot["correct_lenient"] / N, 1),

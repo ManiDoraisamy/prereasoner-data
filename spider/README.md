@@ -11,18 +11,15 @@
 > `results/ast_failure_analysis.json`. `probe/build_ast_proposal_data.py` converts all
 > Spider-train gold trees into database-disjoint sketch, schema-link, and literal targets;
 > `probe/train_ast_proposer.py` fits deterministic top-k sketch and role-aware schema heads.
-> Their audits are `results/ast_proposal_data.json`, `results/ast_proposer.json`, and
-> `results/ast_proposer_ablation.json`. The compressed profile beam preserves 39.5% top-1 strict,
-> raises top-10 strict oracle from 44.5% to 51.2% and full-pool strict oracle from 45.0% to 53.5%,
-> with 22.02 average candidates. The broader 55.6% pool-recall experiment is retained as an
-> ablation because it regressed top-1 and averaged 78.71 candidates. A profile-aware deterministic
-> ranker with a held-out 1.5-point promotion gate raises strict top-1 to 40.3% and top-10 strict
-> oracle to 52.3%; raw reranking remains unsafe and the gate is not used for lenient/scalar
-> objectives. On the realistic all-table configuration, the existing gate reaches 33.3% strict
-> top-1 with 51.4% pool recall. A separately trained all-table ranker improved Spider-train
-> validation but regressed dev to 30.6%, so it is retained only as a rejected ablation. The typed
-> planner is wired into live own-data serving behind `PREREASONER_SQL_PLANNER`; `legacy` remains
-> the default rollout mode. These tools belong to the
+> Their audits are `results/ast_proposal_data.json`, `results/ast_proposer.json`, and the current
+> result files documented in `docs/SQL_AST.md`. The corrected explicit profile beam preserves
+> 41.2% strict top-1 while raising top-10 strict oracle from 46.8% to 52.7% and full-pool recall
+> from 47.4% to 55.1%, with 21.31 average candidates. The learned ranker's promotion policy
+> regresses full Spider dev and is disabled.
+> The exact research serving-selector replay scores 37.6% strict and 57.6% scalar-gold.
+> The typed planner is wired
+> into live own-data serving as `PREREASONER_SQL_PLANNER=ast`; proposer/profile/ranker paths remain
+> explicit research options and `legacy` remains the default rollout mode. These tools belong to the
 > current AST planner work; the rest of this document preserves the earlier route diagnosis.
 
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.

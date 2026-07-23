@@ -35,6 +35,8 @@ except ImportError:  # direct script execution
     from spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
 
 from engine.sql_search import SQLSearcher
+from engine.sql_profile_expansion import ProfileSearchConfig
+from engine.sql_proposal_runtime import ProposalSignalProvider
 
 
 def _pct(value: int, denominator: int) -> float:
@@ -231,6 +233,12 @@ def main() -> None:
     parser.add_argument("--pool", type=int, default=180)
     parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--proposer-model", default="")
+    parser.add_argument("--profile-expansion", action="store_true")
+    parser.add_argument("--profile-max-candidates", type=int, default=32)
+    parser.add_argument("--profile-per-profile", type=int, default=4)
+    parser.add_argument("--profile-generation-penalty", type=float, default=5.0)
+    parser.add_argument("--profile-binding-quality-weight", type=float, default=2.0)
     parser.add_argument("--out", default=os.path.join(results, "ast_failure_analysis.json"))
     parser.add_argument(
         "--details",
@@ -241,6 +249,15 @@ def main() -> None:
         default=os.path.join(data, "ranker_train_gold_180.jsonl"),
     )
     args = parser.parse_args()
+    if args.profile_expansion and not args.proposer_model:
+        parser.error("--profile-expansion requires --proposer-model")
+    if (
+        args.profile_max_candidates < 1
+        or args.profile_per_profile < 1
+        or args.profile_generation_penalty < 0
+        or args.profile_binding_quality_weight < 0
+    ):
+        parser.error("profile candidate budgets must be positive and weights nonnegative")
 
     with open(os.path.join(args.data, "dev.json"), encoding="utf-8") as handle:
         examples = json.load(handle)
@@ -248,6 +265,30 @@ def main() -> None:
         examples = examples[:args.limit]
     with open(os.path.join(args.data, "tables.json"), encoding="utf-8") as handle:
         metas = {meta["db_id"]: meta for meta in json.load(handle)}
+
+    proposal_model = None
+    proposal_provider = None
+    question_vectors = ()
+    profile_config = None
+    if args.proposer_model:
+        from engine.encoder_overlay import EncoderQuery
+        from engine.sql_proposal import SQLProposalModel
+
+        proposal_model = SQLProposalModel.load(args.proposer_model)
+        print("loading frozen encoder for profile proposals...", flush=True)
+        proposal_encoder = EncoderQuery()
+        proposal_provider = ProposalSignalProvider(proposal_model, proposal_encoder)
+        question_vectors = proposal_encoder._encode([
+            str(example["question"]) for example in examples
+        ])
+    if args.profile_expansion:
+        profile_config = ProfileSearchConfig(
+            max_candidates=args.profile_max_candidates,
+            per_profile=args.profile_per_profile,
+            generation_penalty=args.profile_generation_penalty,
+            binding_quality_weight=args.profile_binding_quality_weight,
+            preserve_baseline_top=True,
+        )
 
     details = []
     db_cache: dict[str, dict[str, dict[str, Any]]] = {}
@@ -269,7 +310,16 @@ def main() -> None:
             spider_foreign_keys(metadata),
             max_candidates=args.pool,
         )
-        candidates = searcher.search(str(example["question"]))
+        signals = None
+        if proposal_provider is not None:
+            signals = proposal_provider.signals(
+                str(example["question"]), searcher.schema, question_vectors[index]
+            )
+        candidates = searcher.search(
+            str(example["question"]),
+            semantic_signals=signals,
+            profile_config=profile_config,
+        )
         connection = build_mem_db(tables)
         gold_rows, gold_error = exec_sql_timed(connection, str(example["query"]))
         assessed = []
@@ -316,6 +366,8 @@ def main() -> None:
         args.top_k,
         training_audit,
     )
+    result["proposer_model"] = args.proposer_model or None
+    result["profile_expansion"] = bool(profile_config)
     for path, payload in ((args.out, result), (args.details, details)):
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w", encoding="utf-8") as handle:

@@ -1,0 +1,773 @@
+{
+  "config": "gold_tables",
+  "pool": 180,
+  "top_k": 10,
+  "n": 1034,
+  "elapsed_seconds": 73.75,
+  "candidate_pool": {
+    "total_candidates": 22032,
+    "average_candidates": 21.31,
+    "median_candidates": 21.0,
+    "maximum_candidates": 137
+  },
+  "outcomes": {
+    "top1_strict": {
+      "n": 426,
+      "pct": 41.2
+    },
+    "strict_in_pool": {
+      "n": 144,
+      "pct": 13.9
+    },
+    "no_match": {
+      "n": 219,
+      "pct": 21.2
+    },
+    "lenient_only": {
+      "n": 197,
+      "pct": 19.1
+    },
+    "no_candidate": {
+      "n": 48,
+      "pct": 4.6
+    }
+  },
+  "metric_overlap": {
+    "strict_any": 570,
+    "lenient_any": 734,
+    "both": 537,
+    "strict_only": 33,
+    "lenient_only": 197,
+    "neither": 267,
+    "note": "strict-only cases have empty gold denotations; lenient requires nonempty gold values"
+  },
+  "strict_recall_failures": {
+    "n": 464,
+    "pct": 44.9,
+    "bottlenecks": {
+      "lenient_only": {
+        "n": 197,
+        "pct_of_strict_failures": 42.5
+      },
+      "missing_sketch": {
+        "n": 184,
+        "pct_of_strict_failures": 39.7
+      },
+      "no_candidate": {
+        "n": 48,
+        "pct_of_strict_failures": 10.3
+      },
+      "value_or_semantic_mismatch": {
+        "n": 15,
+        "pct_of_strict_failures": 3.2
+      },
+      "missing_column_link": {
+        "n": 15,
+        "pct_of_strict_failures": 3.2
+      },
+      "missing_composition": {
+        "n": 5,
+        "pct_of_strict_failures": 1.1
+      }
+    },
+    "neither_strict_nor_lenient": 267,
+    "profile_coverage": {
+      "pool_sketch_covered": {
+        "n": 108,
+        "pct_of_strict_failures": 23.3
+      },
+      "pool_table_covered": {
+        "n": 394,
+        "pct_of_strict_failures": 84.9
+      },
+      "pool_role_columns_covered": {
+        "n": 242,
+        "pct_of_strict_failures": 52.2
+      },
+      "candidate_schema_covered": {
+        "n": 180,
+        "pct_of_strict_failures": 38.8
+      },
+      "combined_profile_covered": {
+        "n": 62,
+        "pct_of_strict_failures": 13.4
+      }
+    },
+    "most_common_missing_sketch_features": {
+      "select_items": 55,
+      "from_tables": 37,
+      "predicate.=": 32,
+      "filter_predicates": 28,
+      "boolean.and": 24,
+      "subquery.predicate": 21,
+      "join_predicates": 20,
+      "joins": 20,
+      "distinct": 20,
+      "blocks": 18,
+      "predicate.in": 12,
+      "predicate.not": 12,
+      "predicate.>": 9,
+      "aggregate.MAX": 8,
+      "set.intersect": 7,
+      "aggregate.SUM": 7,
+      "aggregate.COUNT": 6,
+      "group_items": 6,
+      "predicate.!=": 5,
+      "aggregate.MIN": 5,
+      "predicate.<": 4,
+      "predicate.like": 4,
+      "predicate.between": 3,
+      "having_predicates": 3,
+      "boolean.or": 3,
+      "set.union": 3,
+      "aggregate.AVG": 2,
+      "predicate.<=": 1,
+      "limit": 1,
+      "order.desc": 1
+    },
+    "nearest_candidate_missing_features": {
+      "select_items": 92,
+      "from_tables": 43,
+      "predicate.=": 34,
+      "filter_predicates": 33,
+      "boolean.and": 26,
+      "blocks": 26,
+      "subquery.predicate": 21,
+      "join_predicates": 20,
+      "joins": 20,
+      "distinct": 20,
+      "predicate.not": 13,
+      "predicate.in": 12,
+      "aggregate.SUM": 11,
+      "group_items": 10,
+      "predicate.>": 9,
+      "aggregate.MAX": 9,
+      "aggregate.COUNT": 8,
+      "set.intersect": 7,
+      "aggregate.AVG": 6,
+      "predicate.!=": 5,
+      "aggregate.MIN": 5,
+      "predicate.<": 4,
+      "predicate.like": 4,
+      "predicate.between": 3,
+      "having_predicates": 3,
+      "boolean.or": 3,
+      "set.union": 3,
+      "predicate.<=": 1,
+      "limit": 1,
+      "order.desc": 1
+    },
+    "nearest_candidate_extra_features": {
+      "predicate.=": 121,
+      "boolean.and": 116,
+      "filter_predicates": 108,
+      "group_items": 26,
+      "select_items": 22,
+      "limit": 6,
+      "aggregate.COUNT": 6,
+      "join_predicates": 6,
+      "subquery.scalar": 4,
+      "set.except": 4,
+      "order.asc": 4,
+      "joins": 4,
+      "from_tables": 3,
+      "predicate.<": 2,
+      "predicate.<=": 2,
+      "predicate.>=": 2,
+      "predicate.>": 1,
+      "blocks": 1,
+      "predicate.!=": 1,
+      "predicate.is not": 1,
+      "distinct": 1,
+      "aggregate.SUM": 1
+    },
+    "most_common_nearest_sketch_deltas": [
+      {
+        "n": 35,
+        "extra": {},
+        "missing": {}
+      },
+      {
+        "n": 17,
+        "extra": {
+          "boolean.and": 2,
+          "filter_predicates": 2,
+          "predicate.=": 2
+        },
+        "missing": {}
+      },
+      {
+        "n": 13,
+        "extra": {},
+        "missing": {
+          "select_items": 1
+        }
+      },
+      {
+        "n": 7,
+        "extra": {
+          "boolean.and": 1,
+          "filter_predicates": 1,
+          "predicate.=": 1
+        },
+        "missing": {}
+      },
+      {
+        "n": 6,
+        "extra": {},
+        "missing": {
+          "select_items": 2
+        }
+      },
+      {
+        "n": 4,
+        "extra": {},
+        "missing": {
+          "filter_predicates": 1,
+          "predicate.like": 1,
+          "select_items": 1
+        }
+      },
+      {
+        "n": 3,
+        "extra": {},
+        "missing": {
+          "filter_predicates": 1,
+          "predicate.=": 1
+        }
+      },
+      {
+        "n": 3,
+        "extra": {},
+        "missing": {
+          "blocks": 1,
+          "filter_predicates": 1,
+          "from_tables": 1,
+          "predicate.in": 1,
+          "predicate.not": 1,
+          "select_items": 1,
+          "subquery.predicate": 1
+        }
+      },
+      {
+        "n": 3,
+        "extra": {
+          "group_items": 1
+        },
+        "missing": {
+          "select_items": 1
+        }
+      },
+      {
+        "n": 3,
+        "extra": {},
+        "missing": {
+          "filter_predicates": 1,
+          "from_tables": 1,
+          "join_predicates": 1,
+          "joins": 1,
+          "predicate.=": 2
+        }
+      },
+      {
+        "n": 3,
+        "extra": {
+          "boolean.and": 2,
+          "filter_predicates": 2,
+          "predicate.=": 2,
+          "select_items": 1
+        },
+        "missing": {}
+      },
+      {
+        "n": 3,
+        "extra": {},
+        "missing": {
+          "aggregate.MAX": 1,
+          "group_items": 1,
+          "select_items": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {},
+        "missing": {
+          "from_tables": 1,
+          "join_predicates": 1,
+          "joins": 1,
+          "predicate.=": 1,
+          "select_items": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {
+          "group_items": 1,
+          "select_items": 1
+        },
+        "missing": {
+          "filter_predicates": 1,
+          "predicate.>": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {},
+        "missing": {
+          "boolean.and": 1,
+          "select_items": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {},
+        "missing": {
+          "boolean.and": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {},
+        "missing": {
+          "from_tables": 1,
+          "join_predicates": 1,
+          "joins": 1,
+          "predicate.=": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {
+          "group_items": 1
+        },
+        "missing": {
+          "aggregate.AVG": 1
+        }
+      },
+      {
+        "n": 2,
+        "extra": {
+          "boolean.and": 2,
+          "filter_predicates": 2,
+          "predicate.=": 2,
+          "select_items": 2
+        },
+        "missing": {}
+      },
+      {
+        "n": 2,
+        "extra": {
+          "aggregate.COUNT": 1
+        },
+        "missing": {
+          "aggregate.SUM": 1
+        }
+      }
+    ],
+    "missing_role_column_counts": {
+      "filter": 62,
+      "projection": 58,
+      "join": 28,
+      "aggregate": 28,
+      "group": 15,
+      "order": 4,
+      "having": 1
+    },
+    "gold_feature_counts": {
+      "select_items": 428,
+      "from_tables": 400,
+      "predicate.=": 292,
+      "blocks": 270,
+      "filter_predicates": 215,
+      "joins": 131,
+      "join_predicates": 129,
+      "aggregate.COUNT": 69,
+      "boolean.and": 51,
+      "group_items": 39,
+      "distinct": 36,
+      "subquery.predicate": 28,
+      "aggregate.AVG": 27,
+      "limit": 21,
+      "predicate.>": 19,
+      "predicate.in": 19,
+      "predicate.not": 19,
+      "aggregate.SUM": 19,
+      "having_predicates": 16,
+      "set.intersect": 14,
+      "order.desc": 14,
+      "aggregate.MAX": 13,
+      "order.asc": 13,
+      "predicate.!=": 10,
+      "aggregate.MIN": 9,
+      "predicate.<": 7,
+      "set.except": 5,
+      "boolean.or": 5,
+      "predicate.>=": 4,
+      "predicate.like": 4
+    }
+  },
+  "by_difficulty": {
+    "easy": {
+      "top1_strict": 126,
+      "strict_in_pool": 36,
+      "missing_sketch": 26,
+      "missing_column_link": 9,
+      "no_candidate": 10,
+      "lenient_only": 25,
+      "value_or_semantic_mismatch": 13,
+      "missing_composition": 3
+    },
+    "extra": {
+      "top1_strict": 52,
+      "missing_sketch": 54,
+      "strict_in_pool": 18,
+      "lenient_only": 35,
+      "no_candidate": 7
+    },
+    "hard": {
+      "top1_strict": 87,
+      "lenient_only": 27,
+      "strict_in_pool": 25,
+      "missing_sketch": 19,
+      "no_candidate": 15,
+      "missing_column_link": 1
+    },
+    "medium": {
+      "top1_strict": 161,
+      "missing_sketch": 85,
+      "lenient_only": 110,
+      "value_or_semantic_mismatch": 2,
+      "strict_in_pool": 65,
+      "no_candidate": 16,
+      "missing_column_link": 5,
+      "missing_composition": 2
+    }
+  },
+  "samples": {
+    "top1_strict": [
+      {
+        "index": 0,
+        "db_id": "concert_singer",
+        "question": "How many singers do we have?",
+        "gold": "SELECT count(*) FROM singer",
+        "top_sql": "SELECT COUNT(*) FROM \"singer\""
+      },
+      {
+        "index": 2,
+        "db_id": "concert_singer",
+        "question": "Show name, country, age for all singers ordered by age from the oldest to the youngest.",
+        "gold": "SELECT name ,  country ,  age FROM singer ORDER BY age DESC",
+        "top_sql": "SELECT \"singer\".\"Name\", \"singer\".\"Country\", \"singer\".\"Age\" FROM \"singer\" ORDER BY \"singer\".\"Age\" ASC"
+      },
+      {
+        "index": 3,
+        "db_id": "concert_singer",
+        "question": "What are the names, countries, and ages for every singer in descending order of age?",
+        "gold": "SELECT name ,  country ,  age FROM singer ORDER BY age DESC",
+        "top_sql": "SELECT \"singer\".\"Name\", \"singer\".\"Country\", \"singer\".\"Age\" FROM \"singer\" ORDER BY \"singer\".\"Age\" DESC"
+      },
+      {
+        "index": 4,
+        "db_id": "concert_singer",
+        "question": "What is the average, minimum, and maximum age of all singers from France?",
+        "gold": "SELECT avg(age) ,  min(age) ,  max(age) FROM singer WHERE country  =  'France'",
+        "top_sql": "SELECT AVG(\"singer\".\"Age\"), MIN(\"singer\".\"Age\"), MAX(\"singer\".\"Age\") FROM \"singer\" WHERE \"singer\".\"Country\" = 'France'"
+      },
+      {
+        "index": 6,
+        "db_id": "concert_singer",
+        "question": "Show the name and the release year of the song by the youngest singer.",
+        "gold": "SELECT song_name ,  song_release_year FROM singer ORDER BY age LIMIT 1",
+        "top_sql": "SELECT \"singer\".\"Song_Name\", \"singer\".\"Song_release_year\" FROM \"singer\" WHERE \"singer\".\"Age\" IS NOT NULL ORDER BY \"singer\".\"Age\" ASC LIMIT 1"
+      }
+    ],
+    "strict_in_pool": [
+      {
+        "index": 1,
+        "db_id": "concert_singer",
+        "question": "What is the total number of singers?",
+        "gold": "SELECT count(*) FROM singer",
+        "top_sql": "SELECT \"singer\".\"Name\", COUNT(*) FROM \"singer\" GROUP BY \"singer\".\"Name\""
+      },
+      {
+        "index": 33,
+        "db_id": "concert_singer",
+        "question": "Show the name and theme for all concerts and the number of singers in each concert.",
+        "gold": "SELECT T2.concert_name ,  T2.theme ,  count(*) FROM singer_in_concert AS T1 JOIN concert AS T2 ON T1.concert_id  =  T2.concert_id GROUP BY T2.concert_id",
+        "top_sql": "SELECT \"concert\".\"concert_Name\", \"concert\".\"Theme\", \"singer_in_concert\".\"concert_ID\", COUNT(*) FROM \"concert\" JOIN \"singer_in_concert\" ON \"singer_in_concert\".\"concert_ID\" = \"concert\".\"concert_ID\" GROUP BY \"concert\".\"concert_Name\", \"concert\".\"Theme\", \"singer_in_concert\".\"concert_ID\""
+      },
+      {
+        "index": 42,
+        "db_id": "concert_singer",
+        "question": "What are the names and locations of the stadiums that had concerts that occurred in both 2014 and 2015?",
+        "gold": "SELECT T2.name ,  T2.location FROM concert AS T1 JOIN stadium AS T2 ON T1.stadium_id  =  T2.stadium_id WHERE T1.Year  =  2014 INTERSECT SELECT T2.name ,  T2.location FROM concert AS T1 JOIN stadium AS T2 ON T1.stadium_id  =  T2.stadium_id WHERE T1.Year  =  2015",
+        "top_sql": "SELECT \"concert\".\"concert_Name\", \"stadium\".\"Location\" FROM \"concert\" JOIN \"stadium\" ON \"concert\".\"Stadium_ID\" = \"stadium\".\"Stadium_ID\" WHERE \"concert\".\"Year\" = 2014 INTERSECT SELECT \"concert\".\"concert_Name\", \"stadium\".\"Location\" FROM \"concert\" JOIN \"stadium\" ON \"concert\".\"Stadium_ID\" = \"stadium\".\"Stadium_ID\" WHERE \"concert\".\"Year\" = 2015"
+      },
+      {
+        "index": 43,
+        "db_id": "concert_singer",
+        "question": "Find the number of concerts happened in the stadium with the highest capacity .",
+        "gold": "select count(*) from concert where stadium_id = (select stadium_id from stadium order by capacity desc limit 1)",
+        "top_sql": "SELECT \"stadium\".\"Capacity\" FROM \"concert\" JOIN \"stadium\" ON \"concert\".\"Stadium_ID\" = \"stadium\".\"Stadium_ID\" ORDER BY \"stadium\".\"Highest\" DESC LIMIT 1"
+      },
+      {
+        "index": 44,
+        "db_id": "concert_singer",
+        "question": "What are the number of concerts that occurred in the stadium with the largest capacity ?",
+        "gold": "select count(*) from concert where stadium_id = (select stadium_id from stadium order by capacity desc limit 1)",
+        "top_sql": "SELECT \"stadium\".\"Capacity\" FROM \"concert\" JOIN \"stadium\" ON \"concert\".\"Stadium_ID\" = \"stadium\".\"Stadium_ID\" ORDER BY \"stadium\".\"Capacity\" DESC LIMIT 1"
+      }
+    ],
+    "missing_sketch": [
+      {
+        "index": 5,
+        "db_id": "concert_singer",
+        "question": "What is the average, minimum, and maximum age for all French singers?",
+        "gold": "SELECT avg(age) ,  min(age) ,  max(age) FROM singer WHERE country  =  'France'",
+        "top_sql": "SELECT AVG(\"singer\".\"Age\"), MIN(\"singer\".\"Age\"), MAX(\"singer\".\"Age\") FROM \"singer\""
+      },
+      {
+        "index": 34,
+        "db_id": "concert_singer",
+        "question": "What are the names , themes , and number of singers for every concert ?",
+        "gold": "select t2.concert_name ,  t2.theme ,  count(*) from singer_in_concert as t1 join concert as t2 on t1.concert_id  =  t2.concert_id group by t2.concert_id",
+        "top_sql": "SELECT \"concert\".\"Theme\", COUNT(\"concert\".\"concert_Name\") FROM \"concert\" GROUP BY \"concert\".\"Theme\""
+      },
+      {
+        "index": 41,
+        "db_id": "concert_singer",
+        "question": "Find the name and location of the stadiums which some concerts happened in the years of both 2014 and 2015.",
+        "gold": "SELECT T2.name ,  T2.location FROM concert AS T1 JOIN stadium AS T2 ON T1.stadium_id  =  T2.stadium_id WHERE T1.Year  =  2014 INTERSECT SELECT T2.name ,  T2.location FROM concert AS T1 JOIN stadium AS T2 ON T1.stadium_id  =  T2.stadium_id WHERE T1.Year  =  2015",
+        "top_sql": "SELECT \"concert\".\"concert_Name\", \"stadium\".\"Location\", \"concert\".\"Year\" FROM \"concert\" JOIN \"stadium\" ON \"concert\".\"Stadium_ID\" = \"stadium\".\"Stadium_ID\" WHERE \"concert\".\"Year\" = 2014 INTERSECT SELECT \"concert\".\"concert_Name\", \"stadium\".\"Location\", \"concert\".\"Year\" FROM \"concert\" JOIN \"stadium\" ON \"concert\".\"Stadium_ID\" = \"stadium\".\"Stadium_ID\" WHERE \"concert\".\"Year\" = 2015"
+      },
+      {
+        "index": 51,
+        "db_id": "pets_1",
+        "question": "Find number of pets owned by students who are older than 20.",
+        "gold": "SELECT count(*) FROM student AS T1 JOIN has_pet AS T2 ON T1.stuid  =  T2.stuid WHERE T1.age  >  20",
+        "top_sql": "SELECT \"Student\".\"LName\", COUNT(*) FROM \"Student\" GROUP BY \"Student\".\"LName\""
+      },
+      {
+        "index": 52,
+        "db_id": "pets_1",
+        "question": "How many pets are owned by students that have an age greater than 20?",
+        "gold": "SELECT count(*) FROM student AS T1 JOIN has_pet AS T2 ON T1.stuid  =  T2.stuid WHERE T1.age  >  20",
+        "top_sql": "SELECT \"Student\".\"LName\", COUNT(\"Student\".\"Age\") FROM \"Student\" WHERE \"Student\".\"Age\" > 20 GROUP BY \"Student\".\"LName\""
+      }
+    ],
+    "lenient_only": [
+      {
+        "index": 16,
+        "db_id": "concert_singer",
+        "question": "What is the maximum capacity and the average of all stadiums ?",
+        "gold": "select max(capacity), average from stadium",
+        "top_sql": "SELECT \"stadium\".\"Average\" FROM \"stadium\" WHERE \"stadium\".\"Capacity\" = (SELECT MAX(\"stadium\".\"Capacity\") FROM \"stadium\")"
+      },
+      {
+        "index": 35,
+        "db_id": "concert_singer",
+        "question": "List singer names and number of concerts for each singer.",
+        "gold": "SELECT T2.name ,  count(*) FROM singer_in_concert AS T1 JOIN singer AS T2 ON T1.singer_id  =  T2.singer_id GROUP BY T2.singer_id",
+        "top_sql": "SELECT \"singer\".\"Name\", COUNT(*) FROM \"singer\" GROUP BY \"singer\".\"Name\""
+      },
+      {
+        "index": 36,
+        "db_id": "concert_singer",
+        "question": "What are the names of the singers and number of concerts for each person?",
+        "gold": "SELECT T2.name ,  count(*) FROM singer_in_concert AS T1 JOIN singer AS T2 ON T1.singer_id  =  T2.singer_id GROUP BY T2.singer_id",
+        "top_sql": "SELECT \"singer\".\"Name\", COUNT(*) FROM \"singer\" GROUP BY \"singer\".\"Name\""
+      },
+      {
+        "index": 37,
+        "db_id": "concert_singer",
+        "question": "List all singer names in concerts in year 2014.",
+        "gold": "SELECT T2.name FROM singer_in_concert AS T1 JOIN singer AS T2 ON T1.singer_id  =  T2.singer_id JOIN concert AS T3 ON T1.concert_id  =  T3.concert_id WHERE T3.year  =  2014",
+        "top_sql": "SELECT \"singer\".\"Name\", \"concert\".\"Year\" FROM \"concert\" JOIN \"singer_in_concert\" ON \"singer_in_concert\".\"concert_ID\" = \"concert\".\"concert_ID\" JOIN \"singer\" ON \"singer_in_concert\".\"Singer_ID\" = \"singer\".\"Singer_ID\" WHERE \"concert\".\"Year\" = 2014"
+      },
+      {
+        "index": 39,
+        "db_id": "concert_singer",
+        "question": "what is the name and nation of the singer who have a song having 'Hey' in its name?",
+        "gold": "SELECT name ,  country FROM singer WHERE song_name LIKE '%Hey%'",
+        "top_sql": "SELECT \"singer\".\"Name\" FROM \"singer\""
+      }
+    ],
+    "value_or_semantic_mismatch": [
+      {
+        "index": 17,
+        "db_id": "concert_singer",
+        "question": "What is the average and maximum capacities for all stadiums ?",
+        "gold": "select avg(capacity) ,  max(capacity) from stadium",
+        "top_sql": "SELECT \"stadium\".\"Average\" FROM \"stadium\" WHERE \"stadium\".\"Capacity\" = (SELECT MAX(\"stadium\".\"Capacity\") FROM \"stadium\")"
+      },
+      {
+        "index": 201,
+        "db_id": "flight_2",
+        "question": "What are airport names at City 'Aberdeen'?",
+        "gold": "SELECT AirportName FROM AIRPORTS WHERE City = \"Aberdeen\"",
+        "top_sql": "SELECT \"airports\".\"AirportName\", \"airports\".\"City\" FROM \"airports\" WHERE \"airports\".\"City\" = 'Aberdeen '"
+      },
+      {
+        "index": 202,
+        "db_id": "flight_2",
+        "question": "What are the names of airports in Aberdeen?",
+        "gold": "SELECT AirportName FROM AIRPORTS WHERE City = \"Aberdeen\"",
+        "top_sql": "SELECT \"airports\".\"AirportName\" FROM \"airports\" WHERE \"airports\".\"City\" = 'Aberdeen '"
+      },
+      {
+        "index": 203,
+        "db_id": "flight_2",
+        "question": "How many flights depart from 'APG'?",
+        "gold": "SELECT count(*) FROM FLIGHTS WHERE SourceAirport  =  \"APG\"",
+        "top_sql": "SELECT COUNT(*) FROM \"flights\" WHERE \"flights\".\"DestAirport\" = ' APG'"
+      },
+      {
+        "index": 204,
+        "db_id": "flight_2",
+        "question": "Count the number of flights departing from 'APG'.",
+        "gold": "SELECT count(*) FROM FLIGHTS WHERE SourceAirport  =  \"APG\"",
+        "top_sql": "SELECT COUNT(*) FROM \"flights\" WHERE \"flights\".\"DestAirport\" = ' APG'"
+      }
+    ],
+    "no_candidate": [
+      {
+        "index": 103,
+        "db_id": "car_1",
+        "question": "Which distinct car models are the produced after 1980?",
+        "gold": "SELECT DISTINCT T1.model FROM MODEL_LIST AS T1 JOIN CAR_NAMES AS T2 ON T1.model  =  T2.model JOIN CARS_DATA AS T3 ON T2.MakeId  =  T3.id WHERE T3.year  >  1980;",
+        "top_sql": null
+      },
+      {
+        "index": 104,
+        "db_id": "car_1",
+        "question": "What are the different models for the cards produced after 1980?",
+        "gold": "SELECT DISTINCT T1.model FROM MODEL_LIST AS T1 JOIN CAR_NAMES AS T2 ON T1.model  =  T2.model JOIN CARS_DATA AS T3 ON T2.MakeId  =  T3.id WHERE T3.year  >  1980;",
+        "top_sql": null
+      },
+      {
+        "index": 135,
+        "db_id": "car_1",
+        "question": "What is the average horsepower of the cars before 1980?",
+        "gold": "SELECT avg(horsepower) FROM CARS_DATA WHERE YEAR  <  1980;",
+        "top_sql": null
+      },
+      {
+        "index": 136,
+        "db_id": "car_1",
+        "question": "What is the average horsepower for all cars produced before 1980 ?",
+        "gold": "select avg(horsepower) from cars_data where year  <  1980;",
+        "top_sql": null
+      },
+      {
+        "index": 213,
+        "db_id": "flight_2",
+        "question": "How many flights does airline 'JetBlue Airways' have?",
+        "gold": "SELECT count(*) FROM FLIGHTS AS T1 JOIN AIRLINES AS T2 ON T1.Airline  =  T2.uid WHERE T2.Airline = \"JetBlue Airways\"",
+        "top_sql": null
+      }
+    ],
+    "missing_column_link": [
+      {
+        "index": 125,
+        "db_id": "car_1",
+        "question": "What is the number of the cars with horsepower more than 150?",
+        "gold": "SELECT count(*) FROM CARS_DATA WHERE horsepower  >  150;",
+        "top_sql": "SELECT COUNT(*) FROM \"cars_data\" GROUP BY \"cars_data\".\"MPG\" HAVING COUNT(*) > 150"
+      },
+      {
+        "index": 126,
+        "db_id": "car_1",
+        "question": "What is the number of cars with a horsepower greater than 150?",
+        "gold": "SELECT count(*) FROM CARS_DATA WHERE horsepower  >  150;",
+        "top_sql": "SELECT COUNT(*) FROM \"cars_data\" GROUP BY \"cars_data\".\"MPG\" HAVING COUNT(*) > 150"
+      },
+      {
+        "index": 305,
+        "db_id": "cre_Doc_Template_Mgt",
+        "question": "How many different templates do all document use?",
+        "gold": "SELECT count(DISTINCT template_id) FROM Documents",
+        "top_sql": "SELECT COUNT(*) FROM \"Documents\""
+      },
+      {
+        "index": 306,
+        "db_id": "cre_Doc_Template_Mgt",
+        "question": "Count the number of different templates used for documents.",
+        "gold": "SELECT count(DISTINCT template_id) FROM Documents",
+        "top_sql": "SELECT COUNT(*) FROM \"Documents\""
+      },
+      {
+        "index": 446,
+        "db_id": "wta_1",
+        "question": "What are the names of tournaments that have more than 10 matches?",
+        "gold": "SELECT tourney_name FROM matches GROUP BY tourney_name HAVING count(*)  >  10",
+        "top_sql": "SELECT \"matches\".\"loser_name\" FROM \"matches\" GROUP BY \"matches\".\"loser_name\" HAVING COUNT(*) > 10"
+      }
+    ],
+    "missing_composition": [
+      {
+        "index": 247,
+        "db_id": "flight_2",
+        "question": "What are flight numbers of flights departing from Airport \"APG\"?",
+        "gold": "SELECT FlightNo FROM FLIGHTS WHERE SourceAirport  =  \"APG\"",
+        "top_sql": "SELECT \"flights\".\"SourceAirport\", COUNT(*) FROM \"flights\" WHERE \"flights\".\"DestAirport\" = ' APG' GROUP BY \"flights\".\"SourceAirport\""
+      },
+      {
+        "index": 249,
+        "db_id": "flight_2",
+        "question": "What are flight numbers of flights arriving at Airport \"APG\"?",
+        "gold": "SELECT FlightNo FROM FLIGHTS WHERE DestAirport  =  \"APG\"",
+        "top_sql": "SELECT \"flights\".\"SourceAirport\", COUNT(*) FROM \"flights\" WHERE \"flights\".\"DestAirport\" = ' APG' GROUP BY \"flights\".\"SourceAirport\""
+      },
+      {
+        "index": 313,
+        "db_id": "cre_Doc_Template_Mgt",
+        "question": "Show ids for all templates that are used by more than one document.",
+        "gold": "SELECT template_id FROM Documents GROUP BY template_id HAVING count(*)  >  1",
+        "top_sql": "SELECT \"Documents\".\"Template_ID\", \"Documents\".\"Document_ID\" FROM \"Documents\" GROUP BY \"Documents\".\"Template_ID\", \"Documents\".\"Document_ID\" HAVING COUNT(*) > 1"
+      },
+      {
+        "index": 791,
+        "db_id": "world_1",
+        "question": "Give the name, population, and head of state for the country that has the largest area.",
+        "gold": "SELECT Name ,  population ,  HeadOfState FROM country ORDER BY SurfaceArea DESC LIMIT 1",
+        "top_sql": "SELECT \"country\".\"Name\", \"country\".\"Population\", \"country\".\"HeadOfState\" FROM \"country\" ORDER BY \"country\".\"Population\" DESC LIMIT 1"
+      },
+      {
+        "index": 964,
+        "db_id": "dog_kennels",
+        "question": "What are the arriving date and the departing date of all the dogs?",
+        "gold": "SELECT date_arrived ,  date_departed FROM Dogs",
+        "top_sql": "SELECT \"Dogs\".\"name\" FROM \"Dogs\""
+      }
+    ]
+  },
+  "ranker_training_audit": {
+    "path": "spider/data/ranker_train_gold_180.jsonl",
+    "header": {
+      "cap": 5000,
+      "config": "gold_tables",
+      "kind": "phase6_cache",
+      "max_examples": 0,
+      "negative_pool": 32,
+      "pool": 180,
+      "train": [
+        "C:\\work\\prereasoner-data\\spider\\data\\train_spider.json"
+      ],
+      "version": 1
+    },
+    "examples": 6997,
+    "databases": 140,
+    "candidate_rows": 34104,
+    "average_candidates": 4.87,
+    "positive_rows": 6142,
+    "oracle_positive_examples": 3135,
+    "oracle_positive_pct": 44.8,
+    "no_positive_examples": 3862,
+    "no_positive_pct": 55.2,
+    "mixed_examples_usable_by_ranking_loss": 1791,
+    "mixed_candidate_rows": 13323,
+    "empty_examples": 157
+  },
+  "proposer_model": "engine/data/sql_proposer.json",
+  "profile_expansion": true
+}

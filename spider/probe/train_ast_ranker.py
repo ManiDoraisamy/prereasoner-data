@@ -45,7 +45,7 @@ from engine.sql_learned_rank import (
 from engine.sql_search import SQLSearcher
 
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 
 def _load_examples(paths: Sequence[str], allow_dev: bool) -> list[dict[str, Any]]:
@@ -300,6 +300,8 @@ def _feature_space(groups: Iterable[Mapping[str, Any]]) -> tuple[tuple[str, ...]
     for group in groups:
         for candidate in group["candidates"]:
             for name, value in candidate["features"].items():
+                if name.startswith("question_hash."):
+                    continue
                 names.add(name)
                 sums[name] += float(value) ** 2
                 counts[name] += 1
@@ -370,10 +372,9 @@ def ranking_metrics(
     }
 
 
-def calibrate_promotion_gate(
+def _promotion_rows(
     groups: Sequence[Mapping[str, Any]], model: RankerModel
-) -> dict[str, Any]:
-    """Select the lowest zero-loss margin with maximal corrective promotions."""
+) -> list[tuple[float, bool, bool]]:
     rows = []
     for group in groups:
         candidates = list(group["candidates"])
@@ -396,19 +397,31 @@ def calibrate_promotion_gate(
             bool(fallback["correct"]),
             bool(challenger["correct"]),
         ))
+    return rows
+
+
+def _promotion_audit(
+    rows: Sequence[tuple[float, bool, bool]], threshold: float
+) -> dict[str, Any]:
+    selected = [row for row in rows if row[0] >= threshold]
+    wins = sum(not fallback and challenger for _, fallback, challenger in selected)
+    losses = sum(fallback and not challenger for _, fallback, challenger in selected)
+    return {
+        "margin_threshold": threshold,
+        "promotions": len(selected),
+        "wins": wins,
+        "losses": losses,
+        "net_wins": wins - losses,
+    }
+
+
+def calibrate_promotion_gate(
+    groups: Sequence[Mapping[str, Any]], model: RankerModel
+) -> dict[str, Any]:
+    """Select the lowest zero-loss margin with maximal corrective promotions."""
+    rows = _promotion_rows(groups, model)
     thresholds = (0.0, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 1.5, 2.0)
-    audits = []
-    for threshold in thresholds:
-        selected = [row for row in rows if row[0] >= threshold]
-        wins = sum(not fallback and challenger for _, fallback, challenger in selected)
-        losses = sum(fallback and not challenger for _, fallback, challenger in selected)
-        audits.append({
-            "margin_threshold": threshold,
-            "promotions": len(selected),
-            "wins": wins,
-            "losses": losses,
-            "net_wins": wins - losses,
-        })
+    audits = [_promotion_audit(rows, threshold) for threshold in thresholds]
     safe = [audit for audit in audits if audit["losses"] == 0]
     selected = max(
         safe or audits,
@@ -418,9 +431,57 @@ def calibrate_promotion_gate(
     )
     return {
         **selected,
+        "enabled": True,
         "eligible_examples": len(rows),
         "selection_rule": "max_net_wins_then_promotions_with_zero_observed_losses",
         "calibration_curve": audits,
+    }
+
+
+def audit_promotion_gate(
+    groups: Sequence[Mapping[str, Any]],
+    model: RankerModel,
+    calibrated: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Require one threshold to be regression-free on two schema-disjoint cohorts."""
+    rows = _promotion_rows(groups, model)
+    paired = []
+    for calibration in calibrated["calibration_curve"]:
+        audit = _promotion_audit(rows, float(calibration["margin_threshold"]))
+        if (
+            calibration["losses"] == 0
+            and calibration["net_wins"] > 0
+            and audit["losses"] == 0
+            and audit["net_wins"] > 0
+        ):
+            paired.append((calibration, audit))
+    selected = max(
+        paired,
+        key=lambda pair: (
+            min(pair[0]["net_wins"], pair[1]["net_wins"]),
+            pair[0]["net_wins"] + pair[1]["net_wins"],
+            -pair[0]["margin_threshold"],
+        ),
+        default=None,
+    )
+    enabled = selected is not None
+    calibration = selected[0] if selected else calibrated
+    audit = selected[1] if selected else _promotion_audit(
+        rows, float(calibrated["margin_threshold"])
+    )
+    return {
+        **calibration,
+        "enabled": enabled,
+        "eligible_examples": calibrated["eligible_examples"],
+        "selection_rule": (
+            "max_worst_split_net_wins_with_zero_losses_on_both_schema_cohorts"
+        ),
+        "calibration_curve": calibrated["calibration_curve"],
+        "audit": {**audit, "eligible_examples": len(rows)},
+        "disabled_reason": (
+            "" if enabled
+            else "no threshold had positive gain and zero losses on both schema cohorts"
+        ),
     }
 
 
@@ -692,6 +753,9 @@ def load_cache(path: str, expected_header: Mapping[str, Any]) -> list[dict[str, 
     for group in groups:
         question_features = learned_question_features(str(group["question"]))
         for candidate in group["candidates"]:
+            for name in tuple(candidate["features"]):
+                if name.startswith("question_"):
+                    del candidate["features"][name]
             candidate["features"].update(question_features)
     return groups
 
@@ -735,6 +799,7 @@ def main() -> None:
     parser.add_argument("--l2", type=float, default=0.002)
     parser.add_argument("--negatives", type=int, default=12)
     parser.add_argument("--holdout-promotion-calibration", action="store_true")
+    parser.add_argument("--promotion-audit-ratio", type=float, default=0.5)
     args = parser.parse_args()
     if args.profile_max_candidates < 1 or args.profile_per_profile < 1:
         parser.error("profile candidate budgets must be positive")
@@ -744,6 +809,8 @@ def main() -> None:
         parser.error("execution timeout must be positive")
     if args.execution_row_limit < 1:
         parser.error("execution row limit must be positive")
+    if not 0 < args.promotion_audit_ratio < 1:
+        parser.error("promotion audit ratio must be between zero and one")
 
     train_paths = args.train or [
         os.path.join(data, "train_spider.json"),
@@ -756,18 +823,20 @@ def main() -> None:
 
     header = _cache_header(args, train_paths)
     generation_stats = {}
+    proposal_model = None
+    if args.proposer_model:
+        from engine.sql_proposal import SQLProposalModel
+
+        proposal_model = SQLProposalModel.load(args.proposer_model)
     if args.cache and os.path.exists(args.cache) and not args.rebuild_cache:
         print(f"loading candidate cache {args.cache}", flush=True)
         groups = load_cache(args.cache, header)
     else:
-        proposal_model = None
         proposal_encoder = None
         question_vectors = ()
         if args.proposer_model:
             from engine.encoder_overlay import EncoderQuery
-            from engine.sql_proposal import SQLProposalModel
 
-            proposal_model = SQLProposalModel.load(args.proposer_model)
             proposal_encoder = EncoderQuery()
             print("encoding ranker-training questions for profile proposals...", flush=True)
             vector_cache = args.question_vector_cache or (
@@ -801,10 +870,19 @@ def main() -> None:
     train_groups, validation_groups, validation_dbs = split_by_database(
         groups, args.validation_ratio, args.seed
     )
+    selection_groups = validation_groups
+    audit_groups: list[Mapping[str, Any]] = []
+    audit_dbs: tuple[str, ...] = ()
+    if args.holdout_promotion_calibration:
+        selection_groups, audit_groups, audit_dbs = split_by_database(
+            validation_groups, args.promotion_audit_ratio, args.seed + 1
+        )
     baseline = {
         "train": ranking_metrics(train_groups),
-        "validation": ranking_metrics(validation_groups),
+        "selection": ranking_metrics(selection_groups),
     }
+    if audit_groups:
+        baseline["promotion_audit"] = ranking_metrics(audit_groups)
     print("baseline", json.dumps(baseline, sort_keys=True), flush=True)
     training_metadata = {
         "dataset": "Spider 1.0 train",
@@ -813,6 +891,10 @@ def main() -> None:
         "cap": args.cap,
         "proposer_model_sha256": (
             _file_sha256(args.proposer_model) if args.proposer_model else ""
+        ),
+        "encoder_adapter_sha256": (
+            proposal_model.metadata.get("adapter_sha256", "")
+            if proposal_model is not None else ""
         ),
         "profile_max_candidates": args.profile_max_candidates,
         "profile_per_profile": args.profile_per_profile,
@@ -823,8 +905,11 @@ def main() -> None:
         "seed": args.seed,
         "train_examples": len(train_groups),
         "validation_examples": len(validation_groups),
+        "selection_examples": len(selection_groups),
+        "promotion_audit_examples": len(audit_groups),
         "train_database_count": len({group["db_id"] for group in train_groups}),
         "validation_database_count": len(validation_dbs),
+        "promotion_audit_database_count": len(audit_dbs),
         "validation_database_sha256": hashlib.sha256(
             "\n".join(validation_dbs).encode("utf-8")
         ).hexdigest(),
@@ -835,7 +920,7 @@ def main() -> None:
     if args.model_type == "tree":
         model = fit_tree_ranker(
             train_groups,
-            validation_groups,
+            selection_groups,
             estimators=args.estimators,
             learning_rate=args.learning_rate,
             max_depth=args.max_depth,
@@ -847,7 +932,7 @@ def main() -> None:
     else:
         model = fit_pairwise_ranker(
             train_groups,
-            validation_groups,
+            selection_groups,
             epochs=args.epochs,
             learning_rate=args.learning_rate,
             l2=args.l2,
@@ -856,8 +941,10 @@ def main() -> None:
         )
     learned = {
         "artifact_train": ranking_metrics(train_groups, model),
-        "artifact_validation": ranking_metrics(validation_groups, model),
+        "artifact_selection": ranking_metrics(selection_groups, model),
     }
+    if audit_groups:
+        learned["artifact_promotion_audit"] = ranking_metrics(audit_groups, model)
     if model.metadata.get("selection_metrics_before_refit"):
         learned["selection_before_refit"] = model.metadata["selection_metrics_before_refit"]
     model_metadata = dict(model.metadata)
@@ -867,8 +954,9 @@ def main() -> None:
         "learned_metrics": learned,
     })
     if args.holdout_promotion_calibration:
-        model_metadata["promotion_gate"] = calibrate_promotion_gate(
-            validation_groups, model
+        calibrated = calibrate_promotion_gate(selection_groups, model)
+        model_metadata["promotion_gate"] = audit_promotion_gate(
+            audit_groups, model, calibrated
         )
     model = model.with_metadata(model_metadata)
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

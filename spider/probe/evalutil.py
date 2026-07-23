@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 import sqlite3
 import threading
+import time
 
 
 def load_capped(db_path, cap=5000):
@@ -90,17 +91,18 @@ def exec_sql_timed(con, sql, timeout=8.0, max_rows=None):
         done.set()
 
 
-def run_with_timeout(fn, timeout=12.0):
-    """Run fn() in a daemon thread; if it exceeds timeout, return (None, TimeoutError) and abandon it."""
-    box = {}
-    def target():
-        try:
-            box["v"] = fn()
-        except Exception as e:                    # noqa: BLE001
-            box["e"] = e
-    t = threading.Thread(target=target, daemon=True); t.start(); t.join(timeout)
-    if t.is_alive():
-        return None, TimeoutError(f"predict>{timeout}s")
-    if "e" in box:
-        return None, box["e"]
-    return box.get("v"), None
+def run_with_budget(fn, budget=12.0):
+    """Run synchronously and report a soft latency-budget violation.
+
+    Python cannot safely kill a thread executing Torch. The previous timeout
+    abandoned that thread, allowing timed-out predictions to keep using shared
+    model state while later examples ran. Search and SQL execution are bounded
+    internally; this wrapper keeps evaluation sequential and deterministic.
+    """
+    started = time.perf_counter()
+    try:
+        value, error = fn(), None
+    except Exception as exc:                     # noqa: BLE001
+        value, error = None, exc
+    elapsed = time.perf_counter() - started
+    return value, error, elapsed, bool(budget and elapsed > budget)

@@ -10,6 +10,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
+from engine.artifact_provenance import sha256_tree, validate_weight_bundle
 from engine.config import DATA_DIR
 from engine.tables import TableQuery, MODEL_ID
 from engine.encoder_model import RelationalModel
@@ -22,6 +23,9 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     thresholds (the intent dims fire the operator; verified SUM/COUNT/AVG)."""
     from pathlib import Path
     d = Path(deploy_dir)
+    obj.model_bundle_sha256 = validate_weight_bundle(d)
+    obj.encoder_adapter_sha256 = sha256_tree(d / "qwen_lora")
+    obj.encoder_data_dir = str(d.resolve())
     pt = torch.load(d / "encoder_meta.pt", map_location="cpu", weights_only=False)
     obj.alloc = pt["alloc"]; obj.nc = obj.alloc["n_content"]
     obj.dims = sorted(obj.alloc["dims"], key=lambda x: x["dim_id"])
