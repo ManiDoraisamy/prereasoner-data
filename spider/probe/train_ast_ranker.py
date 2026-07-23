@@ -77,8 +77,14 @@ def load_or_encode_question_vectors(
 ) -> np.ndarray:
     """Encode questions with resumable, corpus-fingerprinted checkpoints."""
     questions = [str(example["question"]) for example in examples]
+    # Fingerprint on the ENCODER ADAPTER too, not just the corpus + proposer id: the question vectors are
+    # produced by THIS encoder, so a new adapter must invalidate the cache (else stale, coordinate-incompatible
+    # vectors are silently reused — the same class of bug as the proposer/adapter mismatch).
+    from engine.sql_proposal_runtime import _tree_sha256
+    from engine.config import DATA_DIR
+    adapter_sha256 = _tree_sha256(os.path.join(str(DATA_DIR), "qwen_lora"))
     fingerprint = hashlib.sha256(json.dumps(
-        {"questions": questions, "proposer_sha256": proposer_sha256},
+        {"questions": questions, "proposer_sha256": proposer_sha256, "adapter_sha256": adapter_sha256},
         ensure_ascii=True,
         separators=(",", ":"),
     ).encode("utf-8")).hexdigest()
