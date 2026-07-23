@@ -10,9 +10,9 @@ HF_TOKEN=<read-token> python -m engine.fetch_weights
 ```
 This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`, and `primitives.npz`
 into this directory (see `engine/fetch_weights.py`). The default source repo is
-**`manidoraisamy/prereasoner-weights`** (currently **private** — set `HF_TOKEN` to a token with read access;
+**`prereasoner/prereasoner-weights`** (currently **private** — set `HF_TOKEN` to a token with read access;
 override the repo with `PREREASONER_WEIGHTS_REPO`). To (re)publish after a retrain:
-`huggingface_hub.upload_folder(folder_path='engine/data', repo_id='manidoraisamy/prereasoner-weights',
+`huggingface_hub.upload_folder(folder_path='engine/data', repo_id='prereasoner/prereasoner-weights',
 allow_patterns=['*.pt','*.npz','qwen_lora/*'])`. To (re)train from scratch, see `docs/TRAINING.md`.
 
 | File | Size | Purpose | In git? |

@@ -28,7 +28,7 @@ DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve
 
 # The Hugging Face repo holding the weights. Override with PREREASONER_WEIGHTS_REPO.
 # NOTE: this repo is currently PRIVATE — set HF_TOKEN (a token with read access) to fetch from it.
-DEFAULT_REPO = os.environ.get("PREREASONER_WEIGHTS_REPO", "manidoraisamy/prereasoner-weights")
+DEFAULT_REPO = os.environ.get("PREREASONER_WEIGHTS_REPO", "prereasoner/prereasoner-weights")
 
 # (relative path under the HF repo == relative path under engine/data/, size for the log)
 WEIGHTS = [
