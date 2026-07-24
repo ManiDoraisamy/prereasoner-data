@@ -162,14 +162,13 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
-        self._ast_proposal_provider = None
-        self._ast_runtime_models = {}
 
     @staticmethod
     def _is_id(name):
         """Structural surrogate-key test (a primary/foreign key is never a SUM/AVG measure). Defined on the
         BASE so EVERY TableQuery subclass has it — the PG own-data planner (_TableQueryPg) and the offline
-        EncoderQuery both call self._is_id from plan(); a subclass-only definition crashed _TableQueryPg."""
+        EncoderQuery both call self._is_id during typed-AST search; a subclass-only definition crashed
+        _TableQueryPg."""
         return bool(re.search(r"(^id$|_?id$|^index$|^pk$)", name.lower()))
 
     # ---------- encoding ----------
@@ -263,328 +262,6 @@ class TableQuery:
         return sims[0][0] if sims and sims[0][1] > 0.3 else None
 
     # ---------- planning ----------
-    def plan(self, question, sch, tables, fks):
-        toks = question.split(); low = [t.lower() for t in toks]
-        units, colidx = self._schema_name_units(tables, fks)
-        qstart = len(units)
-        units += [{"text": t, "group": "q", "kind": "q", "table": None, "col": -1, "colname": None, "row": -2} for t in toks]
-        x = self._encode([u["text"] for u in units])
-        final = self._layers(units, x)[-1]
-        qvec = x[qstart:]
-        numeric = [c for c in sch if c["affinity"] in ("INTEGER", "REAL")]
-        operand = set()
-        for c in sch:
-            n = c["name"].lower(); operand.add(n); operand.update(n.split())
-        operand |= {str(v).lower() for c in sch for v in c["values"] if v is not None}
-        AGG_CUES = {"count": {"count", "counts", "number", "numbers"}, "sum": {"sum", "sums", "total", "totals"},
-                    "avg": {"avg", "average", "averages", "mean", "means"}}
-        MARGIN = 0.10
-
-        def iscore(intent):
-            d = self.sid[f"intent_{intent}"]; t = self.thr.get(f"intent_{intent}", 0.5)
-            cand = [i for i in range(len(toks)) if low[i] not in operand]
-            if not cand:
-                return 0.0, 0, False
-            j = max(cand, key=lambda i: float(final[qstart + i][d]))
-            sc = float(final[qstart + j][d])
-            return sc, j, sc >= t
-
-        def col_after(preps, kind="any"):
-            for i, t in enumerate(low):
-                if t in preps:
-                    for j in range(i + 1, len(toks)):
-                        c = self._link(qvec[j], low[j], sch, kind=kind)
-                        if c:
-                            return c
-            return None
-
-        slots = {"select": [], "where": [], "group_by": [], "order_by": [], "limit": None, "agg": None, "distinct": False}
-
-        def stem_date():
-            """a question token sharing a >=5-char prefix with a DATE column's name word pins that column
-            ("subscribed" -> "Subscription Date")."""
-            for c in sch:
-                if c.get("is_date") and any(len(w) >= 5 and any(len(t) >= 5 and t[:5] == w[:5] for t in low)
-                                            for w in name_words(c["name"])):
-                    return c
-            return None
-
-        sd, _, sdf = iscore("sort_desc"); sa, _, saf = iscore("sort_asc")
-        if sdf or saf:                                             # learned sort intent has NO verb gate, so only
-            col = stem_date() or col_after({"by"}, kind="num")     # honor it when a sort column is actually nameable
-            if col:                                                # (date phrasing or "by <col>"); never fabricate an
-                slots["order_by"] = [(col, "DESC" if sd >= sa else "ASC")]  # ORDER BY on the row id when it misfires
-
-        # RECENCY over a value-sniffed DATE column ("recently subscribed", "latest", "oldest"). The learned sort
-        # intent rarely fires on these phrasings and the sort slot was numeric-only, so date recency gets its own
-        # deterministic cue gate (cue word + a typed column, no blind fallback).
-        REC_DESC = {"recent", "recently", "latest", "newest"}; REC_ASC = {"earliest", "oldest"}
-        ri = next((i for i, t in enumerate(low) if t in REC_DESC | REC_ASC), -1)
-        if ri >= 0 and not slots["order_by"]:
-            dcol = stem_date() or next((c for c in sch if c.get("is_date")), None)
-            if dcol:
-                slots["order_by"] = [(dcol, "DESC" if low[ri] in REC_DESC else "ASC")]
-
-        # EXPLICIT sort cue ("sort/sorted/order/ordered/arrange/ranked by <col> [ascending|descending]") — the learned
-        # sort intent often misses these phrasings, so gate deterministically on the verb + the column after "by".
-        if ({"sort", "sorted", "order", "ordered", "arrange", "arranged", "rank", "ranked"} & set(low)) and not slots["order_by"]:
-            asc = any(t in {"ascending", "asc", "increasing", "alphabetical"} for t in low)
-            desc = any(t in {"descending", "desc", "decreasing"} for t in low)
-            col = col_after({"by"}, kind="any") or stem_date() or (numeric[0] if numeric else None)
-            if col:
-                hi = col["affinity"] in ("INTEGER", "REAL") or col.get("is_date")   # numbers/dates default high-first
-                slots["order_by"] = [(col, "ASC" if asc else ("DESC" if (desc or hi) else "ASC"))]
-
-        if iscore("limit")[2]:                                    # learned LIMIT intent: take a bare count, but NOT
-            CMP = {"over", "above", "greater", "exceeds", "more", "under", "below", "less", "fewer", "cheaper",
-                   "younger", "smaller", "after", "before", "since", "than", "top"}   # a number right after a
-            for i, t in enumerate(low):                           # comparison cue is that filter's OPERAND ("price
-                if t.isdigit() and not re.fullmatch(r"(19|20)\d{2}", t) and (i == 0 or low[i - 1] not in CMP):
-                    slots["limit"] = int(t); break                # over 500" is a WHERE, not LIMIT 500), nor a year
-
-        if "top" in low and slots["limit"] is None:               # "top 5 …" -> LIMIT 5 + a DESC order if none yet
-            k = next((int(t) for t in low if t.isdigit()), None)
-            if k:
-                slots["limit"] = k
-                if not slots["order_by"]:
-                    mp = [c for c in numeric if not re.search(r"(^id$|_?id$)", c["name"].lower())]
-                    col = stem_date() or col_after({"by"}, kind="num") or (mp[0] if mp else None)
-                    if col:
-                        slots["order_by"] = [(col, "DESC")]
-
-        present = [nm for nm, cues in AGG_CUES.items() if any(t in cues for t in low)]
-        if not present and "how" in low and "many" in low:
-            present = ["count"]
-        # "total NUMBER of X" is a row count — 'total' merely modifies the count noun, it is not a SUM cue.
-        # Without this, both cues fire and the intent margin sometimes picks SUM -> SUM(first numeric).
-        if "sum" in present and "count" in present and any(
-                low[i + 1] in AGG_CUES["count"] for i, t in enumerate(low[:-1]) if t in AGG_CUES["sum"]):
-            present.remove("sum")
-        if present:
-            scored = sorted(((nm, iscore(f"agg_{nm}")[0]) for nm in present), key=lambda a: -a[1])
-            if len(scored) == 1 or scored[0][1] - scored[1][1] >= MARGIN:
-                nm = scored[0][0]
-                if nm == "count":
-                    slots["agg"] = ("COUNT", None, "*")
-                else:
-                    ci = next((i for i, t in enumerate(low) if t in AGG_CUES[nm]), -1)
-                    tgt = None
-                    for k in range(ci + 1, len(toks)):
-                        tgt = self._link(qvec[k], low[k], sch, kind="num")
-                        if tgt:
-                            break
-                    if tgt is None and any(tk == t["name"].lower() or tk.rstrip("s") == t["name"].lower().rstrip("s")
-                                           for tk in low for t in tables):
-                        # "total SINGERS" names the ENTITY, not a measure: no numeric column is nameable
-                        # after the cue but a TABLE is named -> row count (EncoderQuery.read_op_all's
-                        # token_table precedence), instead of blindly SUM-ing the first numeric column.
-                        slots["agg"] = ("COUNT", None, "*")
-                    else:
-                        tgt = tgt or (numeric[0] if numeric else None)
-                        if tgt:
-                            slots["agg"] = ("SUM" if nm == "sum" else "AVG", tgt["table"], tgt["name"])
-
-        if not slots["agg"]:                                      # MIN/MAX agg ("maximum index", "max subscription
-            MM = {"MAX": {"max", "maximum"}, "MIN": {"min", "minimum"}}   # date") — cue + an EXPLICIT numeric/date
-            for fn, cues in MM.items():                                   # target after it; no blind fallback
-                ci = next((i for i, t in enumerate(low) if t in cues), -1)
-                if ci < 0:
-                    continue
-                pool = [c for c in sch if (c["affinity"] in ("INTEGER", "REAL") or c.get("is_date"))
-                        and not re.search(r"(^id$|_?id$)", c["name"].lower())]   # ids are keys, not measures
-                tgt = None
-                for k in range(ci + 1, len(toks)):
-                    tk = low[k]
-                    tgt = next((c for c in pool if tk == c["name"].lower() or
-                                any(wmatch(tk, w) or (len(w) >= 5 and len(tk) >= 5 and tk[:5] == w[:5])
-                                    for w in name_words(c["name"]))), None)
-                    if tgt:
-                        break
-                if tgt:
-                    slots["agg"] = (fn, tgt["table"], tgt["name"]); break
-
-        gcol = col_after({"per", "each"}, kind="cat")
-        if gcol is None and "group" in low:
-            gi = low.index("group")
-            if gi + 1 < len(low) and low[gi + 1] == "by":
-                for k in range(gi + 2, len(toks)):
-                    gcol = self._link(qvec[k], low[k], sch, kind="cat")
-                    if gcol:
-                        break
-        if gcol is None and slots["agg"]:                         # "average weight BY sex", "count BY category" ->
-            gcol = col_after({"by"}, kind="cat")                  # GROUP BY (only a CATEGORICAL col after "by"; a
-        if gcol is not None and (iscore("group")[2] or slots["agg"]):  # numeric "by sales" is sort, handled above)
-            slots["group_by"] = [gcol]
-
-        # eq filter: a CELL VALUE quoted in the question — PHRASE-aware (multi-word values like "United States of
-        # America" match too), longest match wins; "not/except/without/excluding" just before it negates.
-        qstr = " " + " ".join(low) + " "
-        NEG = {"not", "except", "without", "excluding"}
-        best = None
-        for c in sch:
-            for v in {str(v) for v in c["values"] if v is not None and str(v).strip() != ""}:
-                vl = v.lower()
-                if len(vl) < 2 or vl == str(slots["limit"]):      # don't re-match the LIMIT/top-K number as a cell
-                    continue
-                if re.fullmatch(r"-?[\d,]*\.?\d+%?", vl):         # a NUMBER is a comparison operand, not a categorical
-                    continue                                      # equality ("over 5000" must not also add "= 5000")
-                m = re.search(r"(?<![a-z0-9])" + re.escape(vl) + r"(?![a-z0-9])", qstr)
-                if m and (best is None or len(vl) > len(best[2])):
-                    neg = bool(NEG & set(qstr[:m.start()].split()[-3:]))
-                    best = (c, "!=" if neg else "=", v)
-        if best:
-            slots["where"].append(best)
-        GT_CUES = {"over", "above", "greater", "exceeds", "more"}
-        LT_CUES = {"under", "below", "less", "fewer", "cheaper", "younger", "smaller"}
-        for op, cues in ((">", GT_CUES), ("<", LT_CUES)):
-            ci = next((i for i, t in enumerate(low) if t in cues), -1)
-            if ci < 0:
-                continue
-            col = None
-            for k in range(ci - 1, -1, -1):
-                col = self._link(qvec[k], low[k], sch, kind="num")
-                if col:
-                    break
-            col = col or (numeric[0] if numeric else None)
-            val = next((toks[k].replace(",", "") for k in range(ci + 1, len(toks))
-                        if re.fullmatch(r"-?\d[\d,]*\.?\d*", toks[k]) and toks[k].replace(",", "") != str(slots["limit"])), None)
-            if col is not None and val is not None:
-                slots["where"].append((col, op, val))
-
-        # DATE / YEAR filter: a 4-digit year + a year-ish column. A real DATE column compares the ISO year
-        # prefix (substr(col,1,4) op 'YYYY', wrap="year"); an INTEGER/REAL year column ("Year", "*_year", or a
-        # column whose values are all 4-digit years) compares NUMERICALLY (Year = 1980) — "how many cars were
-        # made in 1980". Without the integer arm the year token silently dropped (counted every row).
-        datecols = [c for c in sch if c.get("is_date")]
-
-        def _is_intyear(c):
-            if c.get("is_date") or c["affinity"] not in ("INTEGER", "REAL") or self._is_id(c["name"]):
-                return False
-            n = c["name"].lower()
-            if n == "year" or n.endswith("_year"):
-                return True
-            vs = [str(v).strip() for v in (c.get("values") or []) if v is not None and str(v).strip() != ""]
-            return bool(vs) and all(re.fullmatch(r"(19|20)\d\d", v) for v in vs)
-
-        intyearcols = [c for c in sch if _is_intyear(c)]
-        years = [t for t in low if re.fullmatch(r"(19|20)\d{2}", t)]
-        if (datecols or intyearcols) and years and not any(str(w[2]).lower() in years for w in slots["where"]):
-            ycol = stem_date() or (datecols[0] if datecols else intyearcols[0])
-            wrap = "year" if ycol.get("is_date") else None      # date -> substr prefix; int year -> plain numeric
-
-            def _wt(op, y):
-                return (ycol, op, y, wrap) if wrap else (ycol, op, y)
-            if len(years) >= 2 and "between" in low:
-                slots["where"] += [_wt(">=", years[0]), _wt("<=", years[1])]
-            else:
-                yi = low.index(years[0])
-                prep = next((low[j] for j in range(yi - 1, max(-1, yi - 3), -1)
-                             if low[j] in {"in", "during", "of", "before", "after", "since", "from"}), "in")
-                op = {"before": "<", "after": ">", "since": ">=", "from": ">="}.get(prep, "=")
-                slots["where"].append(_wt(op, years[0]))
-
-        # numeric "after/before/since N" on a NUMERIC column that is named in the query — e.g. an integer year
-        # column ("founded after 2010" -> Founded > 2010). The date filter above already handled before/after for
-        # real date columns, so here: require the column to be matched by NAME (not a fuzzy rep-link — otherwise
-        # "born before 1990" would link "born" to a numeric Index), and skip any year a date filter already used.
-        for op, cues in ((">", {"after"}), ("<", {"before"}), (">=", {"since"})):
-            ci = next((i for i, t in enumerate(low) if t in cues), -1)
-            if ci < 0:
-                continue
-            col = None
-            for k in range(ci - 1, -1, -1):
-                tk = low[k]
-                col = next((c for c in numeric if tk == c["name"].lower()
-                            or any(wmatch(tk, w) for w in name_words(c["name"]))), None)
-                if col:
-                    break
-            val = next((toks[k].replace(",", "") for k in range(ci + 1, len(toks))
-                        if re.fullmatch(r"-?\d[\d,]*\.?\d*", toks[k])), None)
-            if col is not None and val is not None and not any(str(w[2]) == val for w in slots["where"] if len(w) >= 3):
-                slots["where"].append((col, op, val))
-
-        # SUPERLATIVE argmax — "X who/that <verb> the most/least", "X with the most <measure>". There is no
-        # explicit "top K"/agg CUE word, so the cue-gated agg/sort above won't fire; build GROUP BY the entity
-        # + SUM(measure) + ORDER BY that aggregate + LIMIT 1, joining the entity (dim) to the fact that holds
-        # the measure. "the most" = argmax, so exactly one row.
-        SUP_DESC = {"most", "highest", "largest", "biggest", "greatest", "maximum", "max", "best"}
-        SUP_ASC = {"least", "lowest", "smallest", "fewest", "minimum", "min", "worst"}
-        si = next((i for i, t in enumerate(low) if t in SUP_DESC or t in SUP_ASC), -1)
-        if si >= 0 and slots["limit"] is None and not slots["agg"]:
-            sdir = "DESC" if low[si] in SUP_DESC else "ASC"
-            # a real MEASURE is a numeric column that is NOT a key/id — the thing you'd actually SUM. Search for a
-            # measure NAMED after the superlative ONLY against this pool, so "order amount" can't grab `order_id`.
-            meas_pool = [c for c in sch if c["affinity"] in ("INTEGER", "REAL") and not re.search(r"(^id$|_?id$)", c["name"].lower())]
-            mcol = None
-            for k in range(si + 1, len(toks)):
-                mcol = self._link(qvec[k], low[k], meas_pool, kind="num")
-                if mcol:
-                    break
-            named_t = {t["name"] for t in tables
-                       if any(tk == t["name"].lower() or tk.rstrip("s") == t["name"].lower().rstrip("s") for tk in low)}
-            argmax = None
-            for f in fks:                                         # entity named + FK to a fact that has a measure
-                meas = [c for c in meas_pool if c["table"] == f["from_table"] and c["name"] != f["from_col"]]
-                if (f["to_table"] in named_t or f["from_table"] in named_t) and meas:
-                    measure = mcol if (mcol and mcol["table"] == f["from_table"]) else meas[0]
-                    gcol = next((c for c in sch if c["table"] == f["to_table"] and c["name"] == f["to_col"]), None)
-                    if gcol:
-                        argmax = (measure, gcol)
-                        if f["to_table"] in named_t:              # prefer the dim the user actually named
-                            break
-            # "the X who/with the most" = argmax (one row); "LIST/show X by highest" = a ranking (keep all rows)
-            ranking = any(t in {"list", "show", "display", "all", "rank", "every", "each"} for t in low)
-            lim = None if ranking else 1
-            if argmax:
-                measure, gcol = argmax                            # GROUP BY the dim key; SELECT a friendly name col if any
-                disp = next((c for c in sch if c["table"] == gcol["table"] and c["affinity"] == "TEXT" and c["name"] != gcol["name"]), None)
-                slots["agg"] = ("SUM", measure["table"], measure["name"])
-                slots["group_by"] = ([gcol, disp] if disp else [gcol])   # GROUP BY the displayed col too (Postgres
-                slots["order_by"] = [("__agg__", sdir)]; slots["limit"] = lim   # strict GROUP BY; SQLite-equivalent)
-                slots["select"] = [disp] if disp else []
-            elif mcol:                                            # single-table superlative: sort by the measure
-                slots["order_by"] = [(mcol, sdir)]; slots["limit"] = lim
-
-        # projected columns the question names explicitly — plural-insensitive ("show emails" -> Email) and
-        # multi-word names match when ALL their words appear ("first names" -> First Name)
-        named = []
-        for c in sch:
-            words = name_words(c["name"])
-            if (c["name"].lower() in low
-                    or (len(words) == 1 and any(wmatch(t, words[0]) for t in low))
-                    or (len(words) > 1 and all(any(wmatch(t, w) for t in low) for w in words))):
-                named.append(c)
-        used = ({c["name"] for c, _ in slots["order_by"] if isinstance(c, dict)} | {c["name"] for c in slots["group_by"]}
-                | {w[0]["name"] for w in slots["where"]})
-        proj = any(t in {"show", "list", "display", "select", "get", "give"} for t in low)
-        if slots["agg"]:
-            slots["select"] = slots["select"] or list(slots["group_by"])   # argmax may already have set a display col
-        elif proj:
-            slots["select"] = named
-        else:
-            slots["select"] = [c for c in named if c["name"] not in used]
-        if {"unique", "distinct"} & set(low) and not slots["agg"] and named:   # "unique countries" -> SELECT DISTINCT
-            slots["distinct"] = True
-            if not slots["select"]:
-                slots["select"] = named[:1]
-
-        # which tables are involved -> the JOIN (deterministic FK between them)
-        involved = []
-        order_cols = [a for a, _ in slots["order_by"] if isinstance(a, dict)]
-        for c in (slots["select"] + slots["group_by"] + order_cols
-                  + [w[0] for w in slots["where"]] + ([sch_col_of(slots["agg"], sch)] if slots["agg"] and slots["agg"][1] else [])):
-            if c is not None and c["table"] not in involved:
-                involved.append(c["table"])
-        tnames = {t["name"].lower(): t["name"] for t in tables}   # a table NAMED in the question (e.g. "count
-        for tk in low:                                            # ORDERS per city") joins even w/ no column ref
-            for tl, tn in tnames.items():
-                if (tk == tl or tk.rstrip("s") == tl.rstrip("s")) and tn not in involved:
-                    involved.append(tn)
-        if not involved:
-            involved = [tables[0]["name"]]
-        join = self._pick_join(involved, fks, tables)
-        return slots, join, involved, [self._fires(final[qstart + i], "intent") for i in range(len(toks))]
-
     def _pick_join(self, involved, fks, tables):
         """If >=2 involved tables share a discovered FK, return (fact, dim, fk_col, pk_col). Else None."""
         names = set(involved) if len(involved) >= 2 else set()
@@ -597,21 +274,8 @@ class TableQuery:
                     return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
         return None
 
-    def ast_semantic_signals(
-        self, question, sch, proposal_model=None, proposal_question_vector=None
-    ):
+    def ast_semantic_signals(self, question, sch):
         """Encode role-specific question phrases in the same metric space as schema columns."""
-        if proposal_model is not None:
-            from engine.sql_proposal_runtime import ProposalSignalProvider
-
-            provider = getattr(self, "_ast_proposal_provider", None)
-            if provider is None or provider.model is not proposal_model:
-                provider = self._ast_proposal_provider = ProposalSignalProvider(
-                    proposal_model, self
-                )
-            return provider.signals_from_descriptors(
-                question, sch, proposal_question_vector
-            )
         from engine.sql_rank import SemanticSignals, semantic_role_phrases
         phrases = semantic_role_phrases(question)
         columns = [c for c in sch if c.get("qvec") is not None]
@@ -637,76 +301,28 @@ class TableQuery:
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, phase2=True, phase3=True, phase4=True,
-                   phase5=True, rank_model=None, proposal_model=None,
-                   proposal_question_vector=None, profile_config=None):
-        """Return ranked, typed SQL AST candidates for the deterministic planner.
+                   phase5=True):
+        """Return ranked, typed SQL AST candidates from the deterministic planner.
 
-        This is parallel to ``plan``/``assemble`` during rollout: callers can compare both planners without
-        changing the established serving route.  ``tables`` stays in the signature to match ``plan`` and make
-        the boundary explicit; the rich ``sch`` already contains its values and inferred types.
+        Bounded typed-AST search with hand-written, inspectable ranking — no trained proposer or learned
+        ranker. ``tables`` stays in the signature to make the boundary explicit; the rich ``sch`` already
+        carries its values and inferred types.
         """
         from engine.sql_search import SQLSearcher, SchemaGraph
-        if rank_model is not None:
-            from engine.sql_learned_rank import verify_ranker_contract
-
-            verify_ranker_contract(
-                rank_model,
-                proposer_model=proposal_model,
-                adapter_sha256=getattr(self, "encoder_adapter_sha256", None),
-                profile_config=profile_config,
-                pool_size=max_candidates,
-            )
         graph = SchemaGraph.from_planner(sch, fks)
         searcher = SQLSearcher(graph, beam_size=beam_size, max_candidates=max_candidates)
         baseline_signals = (
             self.ast_semantic_signals(question, sch)
             if use_semantic_signals else None
         )
-        baseline = searcher.search(
+        return searcher.search(
             question, semantic_signals=baseline_signals,
             phase2=phase2, phase3=phase3, phase4=phase4, phase5=phase5,
         )
-        candidates = baseline
-        if proposal_model is not None:
-            proposal_signals = self.ast_semantic_signals(
-                question, sch, proposal_model, proposal_question_vector
-            )
-            proposed = searcher.search(
-                question, semantic_signals=proposal_signals,
-                phase2=phase2, phase3=phase3, phase4=phase4, phase5=phase5,
-                profile_config=profile_config,
-            )
-            if baseline:
-                from dataclasses import replace
 
-                fallback = replace(
-                    baseline[0],
-                    evidence=baseline[0].evidence + ("proposer:fallback-top",),
-                )
-                merged = [fallback]
-                seen = {fallback.sql}
-                for candidate in tuple(proposed) + tuple(baseline[1:]):
-                    if candidate.sql not in seen:
-                        merged.append(candidate)
-                        seen.add(candidate.sql)
-                    if len(merged) >= max_candidates:   # >= not ==: with max_candidates==1 the seed already
-                        break                            # exceeds the cap, so == never fires and the pool grows unbounded
-                candidates = merged
-            else:
-                candidates = proposed
-        if rank_model is None:
-            return candidates
-        if proposal_model is not None:
-            from engine.sql_learned_rank import rerank_with_promotion_gate
-
-            return rerank_with_promotion_gate(rank_model, question, candidates)
-        return rank_model.rerank(question, candidates)
-
-    def _serve_ast(self, question, norm, fks, sch, tablemap, mode):
-        # Production runs the pure DETERMINISTIC, fully-interpretable AST planner: bounded typed-AST search +
-        # hand-written inspectable ranking, no trained proposer / learned ranker. (The ast_profile/ast_strict
-        # proposer modes were retired from serving; their code + artifacts live on only for the eval/training
-        # harness — see engine.config.sql_planner_mode.)
+    def _serve_ast(self, question, norm, fks, sch, tablemap):
+        # The pure DETERMINISTIC, fully-interpretable AST planner: bounded typed-AST search + hand-written
+        # inspectable ranking, no trained proposer / learned ranker. This is the one and only own-data planner.
         candidates = self.search_ast(
             question, sch, norm, fks,
             max_candidates=25,
@@ -728,95 +344,7 @@ class TableQuery:
         except Exception as exc:  # execution errors are returned in the serving envelope
             return candidate, None, f"{type(exc).__name__}: {exc}", candidates
 
-    # ---------- assembly ----------
-    def assemble(self, slots, join, involved, sch):
-        toks = []
-
-        def push(text, kind="kw", table=None, col=None, raw=None, clause=None):
-            toks.append({"text": text, "kind": kind, "table": table, "col": col, "raw": raw, "clause": clause})
-
-        def field(c, clause):
-            push(qident(c["table"]), "table", c["table"], None, c["table"], clause); push(".", "op", clause=clause)
-            push(qident(c["name"]), "field", c["table"], c["idx"], c["name"], clause)
-
-        push("SELECT", clause="proj")
-        if slots.get("distinct"):
-            push("DISTINCT", clause="proj")
-        first = True
-        for c in slots["select"]:                                 # the chosen projection: group cols for an agg,
-            if not first:                                         # the display col for an argmax, else named cols
-                push(",", "punc", clause="proj")
-            field(c, "proj"); first = False
-        if slots["agg"]:
-            if not first:
-                push(",", "punc", clause="proj")
-            fn, at, ac = slots["agg"]
-            push(fn + "(", clause="proj")
-            if ac == "*":
-                push("*", "punc", clause="proj")
-            else:
-                tcol = next((c for c in sch if c["table"] == at and c["name"] == ac), None)
-                field(tcol, "proj") if tcol else push("*", "punc", clause="proj")
-            push(")", clause="proj"); first = False
-        if first:
-            push("*", "punc", clause="proj")
-
-        if join:
-            fact, dim, fk, pk = join
-            push("FROM", clause="source"); push(qident(fact), "table", fact, None, fact, "source")
-            push("JOIN", clause="join"); push(qident(dim), "table", dim, None, dim, "join")
-            push("ON", clause="join")
-            push(qident(fact), "table", fact, None, fact, "join"); push(".", "op", clause="join")
-            push(qident(fk), "field", fact, None, fk, "join"); push("=", "op", clause="join")
-            push(qident(dim), "table", dim, None, dim, "join"); push(".", "op", clause="join")
-            push(qident(pk), "field", dim, None, pk, "join")
-        else:
-            push("FROM", clause="source"); push(qident(involved[0]), "table", involved[0], None, involved[0], "source")
-
-        if slots["where"]:
-            push("WHERE", clause="filter")
-            for i, w in enumerate(slots["where"]):
-                c, op, val = w[0], w[1], w[2]
-                wrap = w[3] if len(w) > 3 else None
-                if i:
-                    push("AND", clause="filter")
-                if wrap == "year":                                # compare the ISO year prefix of a date column
-                    push("substr(", "op", clause="filter"); field(c, "filter"); push(",1,4)", "op", clause="filter")
-                    push(op, "op", clause="filter")
-                    push(qlit(val), "literal", c["table"], c["idx"], val, "filter")
-                    continue
-                field(c, "filter"); push(op, "op", clause="filter")
-                if (c["affinity"] in ("INTEGER", "REAL") or "is_num" in c["struct"]) and re.fullmatch(r"-?\d+(\.\d+)?", str(val)):
-                    push(str(val), "literal", c["table"], c["idx"], val, "filter")
-                else:
-                    push(qlit(val), "literal", c["table"], c["idx"], val, "filter")
-        if slots["group_by"]:
-            push("GROUP", clause="group"); push("BY", clause="group")
-            for i, c in enumerate(slots["group_by"]):
-                if i:
-                    push(",", "punc", clause="group")
-                field(c, "group")
-        if slots["order_by"]:
-            push("ORDER", clause="order"); push("BY", clause="order")
-            for i, (c, d) in enumerate(slots["order_by"]):
-                if i:
-                    push(",", "punc", clause="order")
-                if c == "__agg__" and slots["agg"]:               # ORDER BY the aggregate itself (superlative / argmax)
-                    fn, at, ac = slots["agg"]
-                    push(fn + "(", clause="order")
-                    if ac == "*":
-                        push("*", "punc", clause="order")
-                    else:
-                        tcol = next((x for x in sch if x["table"] == at and x["name"] == ac), None)
-                        field(tcol, "order") if tcol else push("*", "punc", clause="order")
-                    push(")", clause="order")
-                else:
-                    field(c, "order")
-                push(d, clause="order")
-        if slots["limit"]:
-            push("LIMIT", clause="limit"); push(str(slots["limit"]), "literal", clause="limit")
-        return " ".join(t["text"] for t in toks), toks
-
+    # ---------- guard + execute ----------
     def guard(self, sql):
         s = sql.strip().rstrip(";")
         if ";" in s:
@@ -851,30 +379,6 @@ class TableQuery:
                 con.execute(ins, [coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
         cur = con.execute(sql)
         return [d[0] for d in cur.description], cur.fetchall()
-
-    def inspect_layers(self, tables, fks, sch, toks):
-        units, colidx = self._schema_name_units(tables, fks)
-        base = len(units)
-        for t in toks:
-            text = t["raw"] if (t["kind"] in ("field", "literal", "table") and t.get("raw") is not None) else t["text"]
-            col = colidx.get((t.get("table"), t.get("raw")), -1) if t["kind"] == "field" else -1
-            units.append({"text": str(text), "group": "sql", "kind": t["kind"], "table": t.get("table"),
-                          "col": col, "colname": t.get("raw") if t["kind"] == "field" else None,
-                          "row": -3, "clause": t.get("clause")})
-        x = self._encode([u["text"] for u in units])
-        layers = self._layers(units, x)
-        out = []
-        for k, t in enumerate(toks):
-            fin = layers[-1][base + k]
-            srole = self._fires(fin, "srole"); clause = self._fires(fin, "clause"); place = self._fires(fin, "ace", 0.4)[:3]
-            salient = ([("srole_" + s, s) for s in srole] + [("clause_" + c, c) for c in clause]
-                       + [(d["name"], dim_label(d["name"])[1]) for d in self.dims
-                          if d["family"] == "ace" and dim_label(d["name"])[1] in place])
-            evo = [{lb: round(float(min(1.0, max(0.0, layers[L][base + k][self.sid[dn]]))), 3) for dn, lb in salient}
-                   for L in range(self.nL)]
-            out.append({"text": t["text"], "kind": t["kind"], "srole": srole, "clause": clause,
-                        "place": place, "evolution": evo})
-        return out
 
     # ---------- analytics (the /dimension per-cell view) ----------
     def _salient_evo(self, layers, ui):
@@ -933,68 +437,40 @@ class TableQuery:
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
         norm, fks = self.ingest(tables)
         sch, colidx, tablemap = self.schema(norm, fks)
-        from engine.config import sql_planner_mode
-
-        mode = sql_planner_mode()
-        if mode != "legacy":
-            try:
-                candidate, result, err, candidates = self._serve_ast(
-                    question, norm, fks, sch, tablemap, mode
-                )
-            except Exception as exc:
-                candidate, result, candidates = None, None, ()
-                err = f"{type(exc).__name__}: {exc}"
-            sql = candidate.sql if candidate is not None else None
-            return {
-                "question": question,
-                "sql": sql,
-                "valid": candidate is not None and err is None,
-                "error": err,
-                "result": result,
-                "tables": [{
-                    "name": table["name"], "columns": table["columns"],
-                    "n_rows": len(table["rows"]), "dropped": table.get("_dedup_dropped", 0),
-                } for table in norm],
-                "fks": [{
-                    "from": qual(fk["from_table"], fk["from_col"]),
-                    "to": qual(fk["to_table"], fk["to_col"]), "conf": fk["conf"],
-                } for fk in fks],
-                "join": None,
-                "schema": [{
-                    "table": column["table"], "name": column["name"],
-                    "affinity": column["affinity"], "ace": column["ace"],
-                } for column in sch],
-                "tokens": [],
-                "ast": repr(candidate.query) if candidate is not None else None,
-                "candidate_count": len(candidates),
-                "evidence": list(candidate.evidence) if candidate is not None else [],
-                "features": dict(candidate.features) if candidate is not None else {},
-                "planner_mode": mode,
-                "model": f"engine - deterministic typed SQL AST planner ({mode})",
-            }
-        slots, join, involved, _ = self.plan(question, sch, norm, fks)
-        sql, toks = self.assemble(slots, join, involved, sch)
-        ok, why = self.guard(sql)
-        result, err = None, None
-        if ok:
-            try:
-                cols, rws = self.execute(tablemap, sch, sql)
-                result = {"columns": cols, "rows": [["" if v is None else v for v in r] for r in rws[:50]]}
-            except Exception as e:
-                err = f"{type(e).__name__}: {e}"
-        else:
-            err = "guard: " + why
-        return {"question": question, "sql": sql, "valid": ok, "error": err, "result": result,
-                "tables": [{"name": t["name"], "columns": t["columns"], "n_rows": len(t["rows"]),
-                            "dropped": t.get("_dedup_dropped", 0)} for t in norm],
-                "fks": [{"from": qual(f["from_table"], f["from_col"]), "to": qual(f["to_table"], f["to_col"]),
-                         "conf": f["conf"]} for f in fks],
-                "join": ({"fact": join[0], "dim": join[1], "on": f'{qual(join[0], join[2])} = {qual(join[1], join[3])}'}
-                         if join else None),
-                "schema": [{"table": c["table"], "name": c["name"], "affinity": c["affinity"], "ace": c["ace"]} for c in sch],
-                "tokens": self.inspect_layers(norm, fks, sch, toks), "n_layers": self.nL,
-                "planner_mode": "legacy",
-                "model": "engine - Qwen encoder + relational model; deterministic FK + named-dim slot-filling -> multi-table SQL"}
+        try:
+            candidate, result, err, candidates = self._serve_ast(
+                question, norm, fks, sch, tablemap
+            )
+        except Exception as exc:
+            candidate, result, candidates = None, None, ()
+            err = f"{type(exc).__name__}: {exc}"
+        sql = candidate.sql if candidate is not None else None
+        return {
+            "question": question,
+            "sql": sql,
+            "valid": candidate is not None and err is None,
+            "error": err,
+            "result": result,
+            "tables": [{
+                "name": table["name"], "columns": table["columns"],
+                "n_rows": len(table["rows"]), "dropped": table.get("_dedup_dropped", 0),
+            } for table in norm],
+            "fks": [{
+                "from": qual(fk["from_table"], fk["from_col"]),
+                "to": qual(fk["to_table"], fk["to_col"]), "conf": fk["conf"],
+            } for fk in fks],
+            "join": None,
+            "schema": [{
+                "table": column["table"], "name": column["name"],
+                "affinity": column["affinity"], "ace": column["ace"],
+            } for column in sch],
+            "tokens": [],
+            "ast": repr(candidate.query) if candidate is not None else None,
+            "candidate_count": len(candidates),
+            "evidence": list(candidate.evidence) if candidate is not None else [],
+            "features": dict(candidate.features) if candidate is not None else {},
+            "model": "engine - deterministic typed SQL AST planner",
+        }
 
 
 def sch_col_of(agg, sch):

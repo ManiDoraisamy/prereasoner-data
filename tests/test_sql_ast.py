@@ -41,25 +41,8 @@ from engine.sql_rank import (
     analyze_question,
     execute_and_rerank,
 )
-from engine.sql_learned_rank import (
-    DecisionTree,
-    LinearRankerModel,
-    TreeEnsembleRankerModel,
-    TreeNode,
-    learned_feature_vector,
-    load_ranker_model,
-    rerank_with_promotion_gate,
-    verify_ranker_contract,
-)
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
-from engine.sql_proposal import (
-    PAIR_EXTRA_FEATURES,
-    SQLProposalModel,
-    pair_features,
-    semantic_signals_from_schema,
-)
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
-from engine.sql_proposal_runtime import ProposalSignalProvider, schema_descriptors
 from spider.probe.evalutil import run_with_budget
 from engine.tables import TableQuery
 from spider.probe.spider_eval import (
@@ -68,26 +51,13 @@ from spider.probe.spider_eval import (
     recursive_gold_table_names,
     spider_foreign_keys,
 )
-from spider.probe.ast_eval import _score as score_spider_candidates
+from spider.probe.evalutil import _score as score_spider_candidates
 from spider.probe.ast_profile import (
     CandidateAssessment,
     SQLProfile,
     diagnose_pool,
     profile_query,
     profile_spider_sql,
-)
-from spider.probe.build_ast_proposal_data import (
-    contrast_record,
-    extract_literal_targets,
-    split_database_ids,
-)
-from spider.probe.train_ast_ranker import (
-    audit_promotion_gate,
-    build_training_groups,
-    calibrate_promotion_gate,
-    load_cache,
-    load_or_encode_question_vectors,
-    save_cache,
 )
 
 
@@ -516,56 +486,6 @@ def test_encoder_role_signal_breaks_ambiguous_column_tie():
     assert any(name == "model_projection" for name, _ in candidates[0].features)
 
 
-def test_proposer_is_a_sidecar_that_preserves_encoder_top_candidate():
-    class SidecarTableQuery(TableQuery):
-        def ast_semantic_signals(
-            self, question, sch, proposal_model=None, proposal_question_vector=None
-        ):
-            if proposal_model is not None:
-                return SemanticSignals(
-                    {"projection": {("customers", "Name"): 0.1, ("orders", "Name"): 0.9}},
-                    {},
-                )
-            return SemanticSignals(
-                {"projection": {("customers", "Name"): 0.9, ("orders", "Name"): 0.1}},
-                {},
-            )
-
-    query = object.__new__(SidecarTableQuery)
-    schema = [
-        {"table": "customers", "name": "Name", "affinity": "TEXT",
-         "is_date": False, "values": ["Alice"]},
-        {"table": "orders", "name": "Name", "affinity": "TEXT",
-         "is_date": False, "values": ["First order"]},
-    ]
-    candidates = query.search_ast(
-        "show names",
-        schema,
-        [{"name": "customers"}, {"name": "orders"}],
-        [],
-        proposal_model=object(),
-    )
-    assert candidates[0].sql == 'SELECT "customers"."Name" FROM "customers"'
-    assert "proposer:fallback-top" in candidates[0].evidence
-    assert any(candidate.sql == 'SELECT "orders"."Name" FROM "orders"'
-               for candidate in candidates)
-
-
-def test_proposed_sketch_profile_promotes_matching_typed_candidate():
-    plain_query = SelectQuery((SelectItem(Star()),), "customers")
-    limited_query = SelectQuery((SelectItem(Star()),), "customers", limit=1)
-    signals = SemanticSignals({}, {}, (profile_query(limited_query).sketch_map,))
-    ranked = CandidateRanker(
-        SQLSearcher.from_tables([CUSTOMERS], []).schema,
-        signals,
-    ).rank("show customers", [
-        ScoredQuery(plain_query, render_query(plain_query), 0.0, ()),
-        ScoredQuery(limited_query, render_query(limited_query), 0.0, ()),
-    ])
-    assert ranked[0].query == limited_query
-    assert ("model_sketch_profile:1", 4.0) in ranked[0].features
-
-
 def test_profile_beam_expands_missing_projection_binding():
     schema = SQLSearcher.from_tables([PEOPLE], []).schema
     age = next(column.ref for column in schema.columns if column.ref.name == "Age")
@@ -734,35 +654,6 @@ def test_soft_prediction_budget_does_not_abandon_work():
     )
     assert value == "done" and error is None and elapsed >= 0.01 and over_budget
     assert threading.active_count() == before
-
-
-def test_phase3_ranks_set_query_by_both_operands():
-    # Both branches contribute without doubling the ordinary semantic-feature scale.
-    stadium = {"name": "stadium", "columns": ["Name", "Location"],
-               "rows": [["Alpha", "North"], ["Beta", "South"]]}
-    schema = SQLSearcher.from_tables([stadium], []).schema
-    name = ColumnRef("stadium", "Name", SQLType.TEXT)
-    location = ColumnRef("stadium", "Location", SQLType.TEXT)
-    left = SelectQuery((SelectItem(name),), "stadium",
-                       where=Comparison(location, "=", Literal("North", SQLType.TEXT)))
-    right_name = SelectQuery((SelectItem(name),), "stadium",
-                             where=Comparison(location, "=", Literal("South", SQLType.TEXT)))
-    right_location = SelectQuery((SelectItem(location),), "stadium",
-                                 where=Comparison(location, "=", Literal("South", SQLType.TEXT)))
-    aligned_set = SetQuery(left, "EXCEPT", right_name)
-    misaligned_set = SetQuery(left, "EXCEPT", right_location)
-    aligned = ScoredQuery(aligned_set, render_query(aligned_set), 0.0, ())
-    misaligned = ScoredQuery(misaligned_set, render_query(misaligned_set), 0.0, ())
-    ranked = CandidateRanker(schema).rank("stadium names except southern ones", [misaligned, aligned])
-    scores = {candidate.sql: candidate.score for candidate in ranked}
-    assert scores[aligned.sql] != scores[misaligned.sql]
-    assert ranked[0].sql == aligned.sql
-    learned = learned_feature_vector(
-        "stadium names except southern ones", ranked[0]
-    )
-    assert "heuristic_value.left" not in learned
-    assert "heuristic_value.right" not in learned
-    assert learned["heuristic_count.projection_role"] == 1.0
 
 
 def test_recursive_ast_scalar_subquery_executes():
@@ -1153,100 +1044,6 @@ def test_phase5_guards_multi_aggregate_and_can_be_disabled():
     assert " LIMIT 1" in phase5[0].sql
 
 
-def test_phase6_features_are_schema_independent():
-    age = ColumnRef("private_people", "SecretAge", SQLType.INTEGER)
-    query = SelectQuery((SelectItem(Aggregate("MAX", age)),), "private_people")
-    candidate = ScoredQuery(
-        query,
-        render_query(query),
-        7.0,
-        ("phase5:row-superlative",),
-        (("aggregate_target:MAX:private_people.SecretAge", 3.0),),
-    )
-    features = learned_feature_vector("What is the maximum secret age?", candidate)
-    assert "private_people" not in " ".join(features)
-    assert "SecretAge" not in " ".join(features)
-    assert features["ast.aggregate.MAX"] == 1.0
-    assert features["heuristic_value.aggregate_target.max"] == 3.0
-    assert features["lexical.projection.exact_identifiers"] == 1.0
-    assert features["lexical.aggregate.token_coverage"] == 1.0
-
-
-def test_phase6_model_round_trip_and_deterministic_rerank():
-    count_query = SelectQuery((SelectItem(Aggregate("COUNT", Star())),), "people")
-    rows_query = SelectQuery((SelectItem(Star()),), "people")
-    candidates = [
-        ScoredQuery(rows_query, render_query(rows_query), 10.0, ()),
-        ScoredQuery(count_query, render_query(count_query), 9.0, ()),
-    ]
-    model = LinearRankerModel(
-        {"match.count": 5.0, "baseline_score": 0.01},
-        metadata={"fixture": True},
-    )
-    first = model.rerank("How many people are there?", candidates)
-    second = model.rerank("How many people are there?", candidates)
-    assert first[0].sql == render_query(count_query)
-    assert [(candidate.sql, candidate.score) for candidate in first] == [
-        (candidate.sql, candidate.score) for candidate in second
-    ]
-    with tempfile.TemporaryDirectory() as directory:
-        path = directory + "/ranker.json"
-        model.save(path)
-        loaded = LinearRankerModel.load(path)
-    assert loaded.to_dict() == model.to_dict()
-    assert loaded.rerank("How many people are there?", candidates)[0].sql == render_query(count_query)
-
-
-def test_phase6_is_opt_in_at_search_boundary():
-    searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=20)
-    baseline = searcher.search("How many people are there?")
-    model = LinearRankerModel({"match.count": 1.0, "baseline_score": 1.0})
-    learned = searcher.search("How many people are there?", rank_model=model)
-    learned_again = searcher.search("How many people are there?", rank_model=model)
-    assert all("phase6:" not in item for candidate in baseline for item in candidate.evidence)
-    assert any("phase6:" in item for item in learned[0].evidence)
-    assert learned[0].sql == model.rerank("How many people are there?", baseline)[0].sql
-    assert [(candidate.sql, candidate.score) for candidate in learned] == [
-        (candidate.sql, candidate.score) for candidate in learned_again
-    ]
-
-
-def test_phase6_tree_artifact_has_dependency_free_inference():
-    tree = DecisionTree((
-        TreeNode("match.count", 0.5, 1, 2),
-        TreeNode(value=-1.0),
-        TreeNode(value=2.0),
-    ))
-    model = TreeEnsembleRankerModel((tree,), learning_rate=0.25, base_score=0.5)
-    assert model.score({"match.count": 0.0}) == 0.25
-    assert model.score({"match.count": 1.0}) == 1.0
-    with tempfile.TemporaryDirectory() as directory:
-        path = directory + "/tree-ranker.json"
-        model.save(path)
-        loaded = load_ranker_model(path)
-    assert isinstance(loaded, TreeEnsembleRankerModel)
-    assert loaded.to_dict() == model.to_dict()
-
-
-def test_public_sql_facade_exposes_stable_planner_contract():
-    from engine import sql
-
-    assert sql.SQLSearcher is SQLSearcher
-    assert sql.SQLProposalModel is SQLProposalModel
-    assert sql.SelectQuery is SelectQuery
-    assert sql.load_ranker_model is load_ranker_model
-    assert sql.ProfileSearchConfig().max_candidates == 32
-    assert callable(sql.execute_and_rerank)
-    assert callable(sql.profile_query)
-    candidates = sql.SQLSearcher.from_tables([PEOPLE], []).search("list person names")
-    assert candidates
-    assert isinstance(candidates[0].query, sql.SelectQuery)
-    planner = sql.DeterministicSQLPlanner(sql.SQLSearcher.from_tables([PEOPLE], []))
-    assert planner.search("list person names")[0].sql == candidates[0].sql
-    descriptors = schema_descriptors(planner.searcher.schema)
-    assert descriptors[0].keys() == {"table", "name", "affinity", "is_date"}
-
-
 def test_shared_spider_evaluation_contract():
     metadata = {
         "demo": {
@@ -1289,90 +1086,19 @@ def test_live_table_query_ast_mode_executes_typed_candidate():
                     index += 1
             return columns, {}, {table["name"]: table for table in tables}
 
-        def ast_semantic_signals(self, question, sch, proposal_model=None, proposal_question_vector=None):
+        def ast_semantic_signals(self, question, sch):
             return SemanticSignals.empty()
 
-    previous = os.environ.get("PREREASONER_SQL_PLANNER")
-    os.environ["PREREASONER_SQL_PLANNER"] = "ast"
-    try:
-        response = HermeticTableQuery().serve([PEOPLE], "list person names")
-    finally:
-        if previous is None:
-            os.environ.pop("PREREASONER_SQL_PLANNER", None)
-        else:
-            os.environ["PREREASONER_SQL_PLANNER"] = previous
+    response = HermeticTableQuery().serve([PEOPLE], "list person names")
     assert response["valid"] is True
     assert response["error"] is None
     assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
     assert response["candidate_count"] > 0
     assert response["ast"].startswith("SelectQuery(")
-    assert response["planner_mode"] == "ast"
-    assert response["model"].endswith("(ast)")
+    assert "AST planner" in response["model"]
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
-
-
-def test_live_proposal_descriptor_cache_is_bounded():
-    class FakeModel:
-        hidden_size = 2
-        role_names = ("projection",)
-        metadata = {"adapter_sha256": "fixture-adapter"}
-
-        @staticmethod
-        def score_table(question, question_vector, table, table_vector):
-            return 0.0
-
-        @staticmethod
-        def score_column_roles(question, question_vector, column, kind, column_vector):
-            return {"projection": 0.0}
-
-        @staticmethod
-        def propose_sketches(question_vector, limit):
-            return ()
-
-    class FakeEncoder:
-        encoder_adapter_sha256 = "fixture-adapter"
-        encoder_data_dir = "fixture"
-
-        @staticmethod
-        def _encode(texts):
-            return np.asarray([[float(index), 1.0] for index, _ in enumerate(texts)])
-
-    provider = ProposalSignalProvider(FakeModel(), FakeEncoder())
-    provider.DESCRIPTOR_CACHE_LIMIT = 2
-    descriptors = [
-        {"table": "items", "name": name, "affinity": "TEXT"}
-        for name in ("alpha", "beta", "gamma")
-    ]
-
-    first = provider.signals_from_descriptors("show items", descriptors)
-    second = provider.signals_from_descriptors("show items", descriptors)
-
-    assert len(first.column_roles["projection"]) == 3
-    assert len(second.column_roles["projection"]) == 3
-    assert len(provider._descriptor_vectors) == 2
-
-
-def test_proposal_provider_rejects_missing_or_mismatched_adapter_provenance():
-    class FakeEncoder:
-        encoder_adapter_sha256 = "current"
-        encoder_data_dir = "fixture"
-
-    class Missing:
-        metadata = {}
-
-    class Mismatched:
-        metadata = {"adapter_sha256": "old"}
-
-    for model, message in ((Missing(), "no encoder adapter provenance"),
-                           (Mismatched(), "MISMATCH")):
-        try:
-            ProposalSignalProvider(model, FakeEncoder())
-        except RuntimeError as exc:
-            assert message in str(exc)
-        else:
-            raise AssertionError("incompatible proposer was accepted")
 
 
 def test_weight_manifest_detects_tampered_bundle():
@@ -1393,42 +1119,6 @@ def test_weight_manifest_detects_tampered_bundle():
             raise AssertionError("tampered model bundle was accepted")
 
 
-def test_ranker_contract_binds_proposer_adapter_pool_and_profile_config():
-    proposer = type("Proposer", (), {"source_sha256": "proposal"})()
-    metadata = {
-        "proposer_model_sha256": "proposal",
-        "encoder_adapter_sha256": "adapter",
-        "pool": 180,
-        "profile_max_candidates": 32,
-        "profile_per_profile": 4,
-        "profile_generation_penalty": 5.0,
-        "profile_binding_quality_weight": 2.0,
-    }
-    model = LinearRankerModel({"baseline_score": 1.0}, metadata=metadata)
-    verify_ranker_contract(
-        model,
-        proposer_model=proposer,
-        adapter_sha256="adapter",
-        profile_config=ProfileSearchConfig(),
-        pool_size=180,
-    )
-    for kwargs, expected in (
-        ({"proposer_model": type("Proposer", (), {"source_sha256": "other"})(),
-          "adapter_sha256": "adapter", "profile_config": ProfileSearchConfig(),
-          "pool_size": 180}, "ranker/proposer"),
-        ({"proposer_model": proposer, "adapter_sha256": "other",
-          "profile_config": ProfileSearchConfig(), "pool_size": 180}, "ranker/encoder"),
-        ({"proposer_model": proposer, "adapter_sha256": "adapter",
-          "profile_config": ProfileSearchConfig(), "pool_size": 25}, "candidate-pool"),
-    ):
-        try:
-            verify_ranker_contract(model, **kwargs)
-        except RuntimeError as exc:
-            assert expected in str(exc)
-        else:
-            raise AssertionError("incompatible ranker contract was accepted")
-
-
 def test_world_own_data_route_preserves_ast_observability():
     from engine.knowledge_tables import KnowledgeTableQuery
 
@@ -1447,7 +1137,6 @@ def test_world_own_data_route_preserves_ast_observability():
                 "sql": 'SELECT "Name" FROM "people"',
                 "result": {"columns": ["Name"], "rows": [["Alice"]]},
                 "error": None,
-                "planner_mode": "ast_profile",
                 "ast": "SelectQuery(...)",
                 "candidate_count": 7,
                 "evidence": ["phase5:projection"],
@@ -1486,7 +1175,6 @@ def test_world_own_data_route_preserves_ast_observability():
     response = HermeticKnowledgeTableQuery().serve([PEOPLE], "list person names")
 
     assert response["planner"] == {
-        "mode": "ast_profile",
         "ast": "SelectQuery(...)",
         "candidate_count": 7,
         "evidence": ["phase5:projection"],
@@ -1636,354 +1324,6 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
     assert diagnose_pool(gold, [assessed(0, gold)])["bottleneck"] == "value_or_semantic_mismatch"
 
 
-def test_ast_proposal_split_is_deterministic_and_database_disjoint():
-    database_ids = [f"db_{index}" for index in range(10)]
-    first = split_database_ids(database_ids, validation_ratio=0.2, seed=1729)
-    second = split_database_ids(reversed(database_ids), validation_ratio=0.2, seed=1729)
-    train, validation = first
-    assert first == second
-    assert len(train) == 8
-    assert len(validation) == 2
-    assert not (set(train) & set(validation))
-    assert set(train) | set(validation) == set(database_ids)
-
-
-def test_ast_proposal_targets_keep_typed_filter_literals():
-    metadata = {
-        "table_names_original": ["people"],
-        "column_names_original": [[-1, "*"], [0, "Age"]],
-    }
-    sql = {
-        "select": [False, [[0, [0, [0, 1, False], None]]]],
-        "from": {"table_units": [["table_unit", 0]], "conds": []},
-        "where": [[False, 3, [0, [0, 1, False], None], 21, None]],
-        "groupBy": [],
-        "having": [],
-        "orderBy": [],
-        "limit": 5,
-        "intersect": None,
-        "union": None,
-        "except": None,
-    }
-    assert extract_literal_targets(sql, metadata) == [
-        {
-            "clause": "where",
-            "operator": ">",
-            "column": "people.age",
-            "value": 21,
-            "value_type": "int",
-            "negated": False,
-        },
-        {
-            "clause": "limit",
-            "operator": "limit",
-            "column": None,
-            "value": 5,
-            "value_type": "int",
-            "negated": False,
-        },
-    ]
-
-
-def test_ast_proposal_contrasts_cover_targeted_same_profile_families():
-    record = {
-        "example_id": "library:00001",
-        "db_id": "library",
-        "split": "train",
-        "question": "Which author has the fewest books?",
-        "target": {
-            "sketch": {
-                "aggregate.COUNT": 2,
-                "blocks": 1,
-                "from_tables": 2,
-                "group_items": 1,
-                "joins": 1,
-                "join_predicates": 1,
-                "limit": 1,
-                "order.asc": 1,
-                "predicate.=": 1,
-                "select_items": 2,
-            },
-            "tables": ["authors", "books"],
-            "roles": {
-                "projection": ["authors.id", "authors.name"],
-                "group": ["authors.name"],
-                "aggregate": ["books.id"],
-                "order": ["books.id"],
-            },
-        },
-    }
-    metadata = {
-        "table_names_original": ["Authors", "Books"],
-        "column_names_original": [
-            (-1, "*"), (0, "id"), (0, "name"),
-            (1, "id"), (1, "author_id"), (1, "title"),
-        ],
-        "column_types": ["text", "number", "text", "number", "number", "text"],
-    }
-    contrast = contrast_record(record, metadata)
-    families = {pair["family"] for pair in contrast["pairs"]}
-    assert families == {
-        "projection_identity",
-        "frequency_extrema",
-        "zero_inclusive_counts",
-        "multi_table_role_binding",
-    }
-    assert contrast["profile"] == record["target"]["sketch"]
-    assert all(pair["positive"] != pair["negative"] for pair in contrast["pairs"])
-    for pair in contrast["pairs"]:
-        assert pair["negative"] not in set(record["target"]["roles"].get(pair["role"], ()))
-
-
-def test_sql_proposer_artifact_round_trip_is_deterministic():
-    import numpy as np
-
-    hidden = 3
-    pair_size = hidden + len(PAIR_EXTRA_FEATURES)
-    model = SQLProposalModel(
-        sketch_names=("limit", "aggregate.COUNT"),
-        role_names=("projection", "filter"),
-        sketch_presence_weight=np.asarray([[1, 0, 0], [0, 1, 0]], dtype=np.float32),
-        sketch_presence_bias=np.zeros(2, dtype=np.float32),
-        sketch_count_weight=np.zeros((2, 2, hidden), dtype=np.float32),
-        sketch_count_bias=np.asarray([[1, 0], [1, 0]], dtype=np.float32),
-        sketch_profiles=({"limit": 1}, {"aggregate.COUNT": 1}),
-        sketch_profile_weight=np.asarray([[1, 0, 0], [0, 1, 0]], dtype=np.float32),
-        sketch_profile_bias=np.zeros(2, dtype=np.float32),
-        table_weight=np.ones(pair_size, dtype=np.float32),
-        table_bias=0.0,
-        role_weight=np.ones((2, pair_size), dtype=np.float32),
-        role_bias=np.zeros(2, dtype=np.float32),
-        sketch_thresholds=np.asarray([0.6, 0.6], dtype=np.float32),
-        metadata={"fixture": True, "maximum_feature_count": 4},
-    )
-    question = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
-    candidate = np.asarray([1.0, 0.0, 0.0], dtype=np.float32)
-    assert model.predict_sketch(question) == {"limit": 1}
-    assert model.propose_sketches(question, limit=2) == (
-        {"limit": 1},
-        {"aggregate.COUNT": 1},
-    )
-    signals = semantic_signals_from_schema(
-        model,
-        "show name",
-        ({"table": "items", "name": "name", "affinity": "TEXT"},),
-        lambda texts: np.repeat(question[None, :], len(texts), axis=0),
-        sketch_limit=1,
-    )
-    assert signals.sketch_profiles == ({"limit": 1},)
-    assert set(signals.column_roles["projection"]) == {("items", "name")}
-    assert len(pair_features("show name", question, "name", candidate)) == pair_size
-    before = model.score_column_roles("show name", question, "name", "text", candidate)
-    with tempfile.TemporaryDirectory() as directory:
-        path = directory + "/proposer.json"
-        model.save(path)
-        loaded = SQLProposalModel.load(path)
-    assert loaded.to_dict() == model.to_dict()
-    assert loaded.predict_sketch(question) == model.predict_sketch(question)
-    assert loaded.score_column_roles("show name", question, "name", "text", candidate) == before
-
-
-def test_ranker_question_vector_cache_is_reused_and_fingerprinted():
-    class FakeEncoder:
-        def __init__(self):
-            self.calls = 0
-
-        def _encode(self, texts):
-            self.calls += 1
-            return np.asarray([[len(text), self.calls] for text in texts], dtype=np.float32)
-
-    examples = ({"question": "one"}, {"question": "three"}, {"question": "seven"})
-    with tempfile.TemporaryDirectory() as directory:
-        path = directory + "/questions.npz"
-        first = FakeEncoder()
-        expected = load_or_encode_question_vectors(first, examples, "abc", path, batch_size=2)
-        assert first.calls == 2
-        second = FakeEncoder()
-        actual = load_or_encode_question_vectors(second, examples, "abc", path, batch_size=2)
-        assert second.calls == 0
-        assert np.array_equal(actual, expected)
-        try:
-            load_or_encode_question_vectors(second, examples, "different", path, batch_size=2)
-        except ValueError as exc:
-            assert "does not match" in str(exc)
-        else:
-            raise AssertionError("stale question-vector cache was accepted")
-
-
-def test_ranker_candidate_cache_replaces_stale_question_features():
-    header = {"kind": "test", "version": 1}
-    groups = [{
-        "db_id": "demo",
-        "question": "show the stop number",
-        "baseline_correct": False,
-        "oracle_correct": False,
-        "candidates": [{
-            "sql": "SELECT stop FROM demo",
-            "rank": 0,
-            "correct": False,
-            "features": {
-                "baseline_score": 1.0,
-                "question_count": 1.0,
-                "question_stale": 9.0,
-            },
-        }],
-    }]
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "ranker.jsonl")
-        save_cache(path, header, groups)
-        loaded = load_cache(path, header)
-    features = loaded[0]["candidates"][0]["features"]
-    assert features["baseline_score"] == 1.0
-    assert "question_count" not in features
-    assert "question_stale" not in features
-
-
-def test_whole_db_ranker_training_reuses_database_runtime():
-    import spider.probe.train_ast_ranker as ranker_training
-
-    with tempfile.TemporaryDirectory() as directory:
-        path = os.path.join(directory, "demo.sqlite")
-        con = sqlite3.connect(path)
-        con.execute('CREATE TABLE "people" ("Name" TEXT)')
-        con.executemany('INSERT INTO "people" VALUES (?)', [("Alice",), ("Bob",)])
-        con.commit()
-        con.close()
-        metadata = {"demo": {
-            "db_id": "demo",
-            "table_names_original": ["people"],
-            "column_names_original": [[-1, "*"], [0, "Name"]],
-            "column_types": ["text", "text"],
-            "foreign_keys": [],
-            "primary_keys": [],
-        }}
-        examples = [{
-            "db_id": "demo", "question": "list names",
-            "query": 'SELECT "Name" FROM "people"',
-        }] * 2
-        original = ranker_training.build_mem_db
-        calls = 0
-
-        def counted_build(tables):
-            nonlocal calls
-            calls += 1
-            return original(tables)
-
-        ranker_training.build_mem_db = counted_build
-        try:
-            groups, _ = build_training_groups(
-                examples, metadata, directory, "whole_db", 5000, 10, 5,
-                progress_every=0,
-            )
-        finally:
-            ranker_training.build_mem_db = original
-
-    assert calls == 1
-    assert len(groups) == 2
-
-
-def test_ranker_training_execution_caps_materialized_rows():
-    from spider.probe.evalutil import exec_sql_timed
-
-    con = sqlite3.connect(":memory:")
-    try:
-        rows, error = exec_sql_timed(
-            con,
-            "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3",
-            timeout=1.0,
-            max_rows=2,
-        )
-    finally:
-        con.close()
-
-    assert rows is None
-    assert error == "ResultTooLarge: more than 2 rows"
-
-
-def test_profile_promotion_gate_requires_calibrated_generated_margin():
-    schema = SQLSearcher.from_tables([PEOPLE], []).schema
-    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
-    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
-    fallback_query = SelectQuery((SelectItem(name),), "people")
-    generated_query = SelectQuery((SelectItem(age),), "people")
-    fallback = ScoredQuery(fallback_query, render_query(fallback_query), 0.0, ())
-    generated = ScoredQuery(
-        generated_query, render_query(generated_query), 2.0, ("profile-expand:1",),
-        (("profile_binding_quality", 0.8),),
-    )
-    model = LinearRankerModel(
-        {"baseline_score": 1.0}, metadata={"promotion_gate": {"margin_threshold": 1.0}}
-    )
-    assert rerank_with_promotion_gate(model, "show values", [fallback, generated])[0].sql == generated.sql
-    strict = LinearRankerModel(
-        {"baseline_score": 1.0}, metadata={"promotion_gate": {"margin_threshold": 3.0}}
-    )
-    assert rerank_with_promotion_gate(strict, "show values", [fallback, generated])[0].sql == fallback.sql
-    ungated = LinearRankerModel({"baseline_score": 1.0})
-    assert rerank_with_promotion_gate(ungated, "show values", [fallback, generated])[0].sql == fallback.sql
-
-
-def test_promotion_gate_calibration_prefers_zero_loss_margin():
-    model = LinearRankerModel({"signal": 1.0})
-    groups = [
-        {"candidates": [
-            {"rank": 0, "sql": "base", "correct": False, "features": {}},
-            {"rank": 1, "sql": "good", "correct": True, "features": {
-                "signal": 1.1, "heuristic_value.profile_binding_quality": 0.8,
-            }},
-        ]},
-        {"candidates": [
-            {"rank": 0, "sql": "base", "correct": True, "features": {}},
-            {"rank": 1, "sql": "bad", "correct": False, "features": {
-                "signal": 0.6, "heuristic_value.profile_binding_quality": 0.7,
-            }},
-        ]},
-    ]
-    gate = calibrate_promotion_gate(groups, model)
-    assert gate["margin_threshold"] == 0.75
-    assert gate["wins"] == 1 and gate["losses"] == 0
-
-
-def test_promotion_gate_requires_independent_zero_loss_audit():
-    model = LinearRankerModel({"signal": 1.0})
-    calibration = [{
-        "candidates": [
-            {"rank": 0, "sql": "base", "correct": False, "features": {}},
-            {"rank": 1, "sql": "good", "correct": True, "features": {
-                "signal": 1.1, "heuristic_value.profile_binding_quality": 0.8,
-            }},
-        ],
-    }]
-    audit = [{
-        "candidates": [
-            {"rank": 0, "sql": "base", "correct": True, "features": {}},
-            {"rank": 1, "sql": "bad", "correct": False, "features": {
-                "signal": 1.2, "heuristic_value.profile_binding_quality": 0.8,
-            }},
-        ],
-    }]
-    gate = audit_promotion_gate(audit, model, calibrate_promotion_gate(calibration, model))
-    assert gate["enabled"] is False
-    assert gate["audit"]["losses"] == 1
-
-    schema = SQLSearcher.from_tables([PEOPLE], []).schema
-    name = next(column.ref for column in schema.columns if column.ref.name == "Name")
-    age = next(column.ref for column in schema.columns if column.ref.name == "Age")
-    fallback_query = SelectQuery((SelectItem(name),), "people")
-    generated_query = SelectQuery((SelectItem(age),), "people")
-    candidates = [
-        ScoredQuery(fallback_query, render_query(fallback_query), 0.0, ()),
-        ScoredQuery(
-            generated_query, render_query(generated_query), 2.0,
-            ("profile-expand:1",), (("profile_binding_quality", 0.8),),
-        ),
-    ]
-    gated_model = LinearRankerModel({"baseline_score": 1.0}, metadata={
-        "promotion_gate": gate,
-    })
-    assert rerank_with_promotion_gate(gated_model, "show values", candidates)[0].sql == candidates[0].sql
-
-
 TESTS = [
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
@@ -2010,8 +1350,6 @@ TESTS = [
     test_grouped_topn_orders_by_aggregate_across_bridge,
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,
-    test_proposer_is_a_sidecar_that_preserves_encoder_top_candidate,
-    test_proposed_sketch_profile_promotes_matching_typed_candidate,
     test_profile_beam_expands_missing_projection_binding,
     test_profile_beam_instantiates_grouped_frequency_shape,
     test_profile_expansion_caps_variants_and_penalizes_transformation,
@@ -2021,7 +1359,6 @@ TESTS = [
     test_profile_generation_requires_explicit_configuration,
     test_execution_checks_preserve_successful_semantic_winner,
     test_soft_prediction_budget_does_not_abandon_work,
-    test_phase3_ranks_set_query_by_both_operands,
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,
     test_recursive_ast_set_query_in_derived_table_executes,
@@ -2050,34 +1387,15 @@ TESTS = [
     test_phase5_returns_dual_lexical_extrema,
     test_phase5_searches_set_difference,
     test_phase5_guards_multi_aggregate_and_can_be_disabled,
-    test_phase6_features_are_schema_independent,
-    test_phase6_model_round_trip_and_deterministic_rerank,
-    test_phase6_is_opt_in_at_search_boundary,
-    test_phase6_tree_artifact_has_dependency_free_inference,
-    test_public_sql_facade_exposes_stable_planner_contract,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,
-    test_live_proposal_descriptor_cache_is_bounded,
-    test_proposal_provider_rejects_missing_or_mismatched_adapter_provenance,
     test_weight_manifest_detects_tampered_bundle,
-    test_ranker_contract_binds_proposer_adapter_pool_and_profile_config,
     test_world_own_data_route_preserves_ast_observability,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
     test_ast_failure_profiles_share_structural_and_schema_vocabulary,
     test_ast_failure_profiles_align_spider_and_typed_joins,
     test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks,
-    test_ast_proposal_split_is_deterministic_and_database_disjoint,
-    test_ast_proposal_targets_keep_typed_filter_literals,
-    test_ast_proposal_contrasts_cover_targeted_same_profile_families,
-    test_sql_proposer_artifact_round_trip_is_deterministic,
-    test_ranker_question_vector_cache_is_reused_and_fingerprinted,
-    test_ranker_candidate_cache_replaces_stale_question_features,
-    test_whole_db_ranker_training_reuses_database_runtime,
-    test_ranker_training_execution_caps_materialized_rows,
-    test_profile_promotion_gate_requires_calibrated_generated_margin,
-    test_promotion_gate_calibration_prefers_zero_loss_margin,
-    test_promotion_gate_requires_independent_zero_loss_audit,
 ]
 
 

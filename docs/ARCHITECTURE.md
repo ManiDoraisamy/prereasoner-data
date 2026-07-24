@@ -159,7 +159,7 @@ All runtime configuration is environment variables, read in one place (`engine/c
 `PORT`, `KB_PG_HOST/PORT/DB/USER/PASSWORD/SSLMODE` (the knowledgebase Postgres), `RTDB_URL` (optional,
 §11), `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL` (Sonnet, §12), `ENGINE_BASE_URL`/`ORCH_HOST`/`ORCH_PORT`/
 `MCP_SERVER_CMD`/`ENGINE_BEARER_TOKEN` (the MCP tier), `PREREASONER_DATA_DIR` (artifacts, §13), `DEVICE`,
-`BASE_MODEL_ID`, `KB_MODEL_ROUTE`, `PREREASONER_SQL_PLANNER`, and the test-only `AUTH_TEST_SUB` (§10).
+`BASE_MODEL_ID`, `KB_MODEL_ROUTE`, and the test-only `AUTH_TEST_SUB` (§10).
 
 ---
 
@@ -260,8 +260,8 @@ is loaded once and shared across every layer** (one Qwen in memory).
 
 ```
 engine/tables.py            TableQuery          base: CSV parse, SQL identifier/literal quoting, the
-                                                named-dim slot-filling planner + the typed-AST planner
-                                                over the user's own tables (SQLite for the local path)
+                                                deterministic typed-AST planner over the user's own
+                                                tables (SQLite for the local path)
 engine/knowledge_tables.py  KnowledgeTableQuery  the implicit knowledgebase word-tables + meaning graph
 engine/pg.py                PgQuery             Postgres execution: per-user/conversation schema load,
                                                 type affinity (INTEGER->BIGINT, NUMERIC->py), SELECT-only
@@ -293,8 +293,8 @@ engine/dimension.py         DimensionModel      the stateless /api/dimension rea
 3. **Plan** — one of two routes (§7):
    - the **compose engine** view-stacks (`engine/compose.py: ComposeEngine`) for composition depth or a
      multi-table/knowledge base, driven by the learned primitive head; or
-   - the **named-dim slot-filler** (`TableQuery.plan` / `assemble`) or the **typed-AST planner**
-     (`TableQuery.search_ast`, `PREREASONER_SQL_PLANNER=ast`) for general single-relation questions.
+   - the **deterministic typed-AST planner** (`TableQuery.search_ast` / `_serve_ast`) for general
+     single-relation questions.
 4. **Resolve + join to the knowledgebase** where the question names a place/type the sheet lacks (§8).
 5. **Guard + execute** (`TableQuery.guard` SELECT-only; `engine/pg.py` on Postgres for the live path,
    in-memory SQLite for the local/compose path) → `{columns, rows}`.
@@ -423,31 +423,27 @@ question to the engine; `serve()` **stands on** the engine's result only when it
 composition or knowledge composite (`_ENGINE_ONLY_VIEWS` always stand; `_SLOT_OVERLAP_VIEWS` — top-N /
 sort / time-filter — stand only when a knowledge join is in the stack), otherwise it defers to the
 authoritative delegate. This context-aware routing is what keeps live knowledge composites working
-without regressing the simple slot-filler paths.
+without regressing the simple single-relation paths.
 
 ### 7.2 The deterministic typed-AST planner
 
-For general single-relation questions, `TableQuery.search_ast` exposes a **typed AST planner** that
-searches a bounded space of valid SQL abstract syntax trees rather than filling slots. It is selected by
-`PREREASONER_SQL_PLANNER=ast` (production); `legacy` (the default) uses the named-dim slot-filler
-(`TableQuery.plan`/`assemble`).
+This is the **one own-data SQL planner**. For general single-relation questions, `TableQuery.search_ast`
+searches a bounded space of valid SQL abstract syntax trees rather than filling slots, and
+`TableQuery._serve_ast` selects `candidates[0]`. It runs unconditionally — there is no planner-mode
+toggle.
 
-Pipeline: `engine/sql_schema.py` builds the typed FK graph → `engine/sql_search.py` runs bounded search →
-capability modules add recursive queries, constraints, extrema, and set operations (`engine/
-sql_recursive.py`, `sql_constraints.py`, `sql_extrema.py`, `sql_expansion.py`) → candidate ASTs are
-scored by inspectable deterministic features (`engine/sql_rank.py`)
-→ only validated ASTs (`engine/sql_ast.py`) are rendered to SQL. `engine/sql.py` is the public facade.
+Pipeline: `engine/sql_schema.py` builds the typed FK graph → `engine/sql_search.py` (`SQLSearcher`) runs
+bounded search → capability modules add recursive queries, constraints, extrema, and set operations
+(`engine/sql_recursive.py`, `sql_constraints.py`, `sql_extrema.py`, `sql_expansion.py`,
+`sql_candidate.py`) → candidate ASTs are scored by **hand-written, fully-inspectable deterministic
+features** (`engine/sql_rank.py`, with structural profiles in `sql_profile.py` and optional deterministic
+candidate expansion in `sql_profile_expansion.py`) → only validated ASTs (`engine/sql_ast.py`) are
+rendered to SQL. The ranking is entirely hand-written; there is no trained proposer or learned ranker.
 
-A profile-based trained proposer + a strict-denotation promotion gate (`engine/sql_proposal.py`,
-`sql_profile.py`, `sql_profile_expansion.py`, `sql_proposal_runtime.py`) exist for research: the
-profile beam and learned ordering are explicit Spider eval/training options, not serving modes. Their
-artifacts are bound to exact proposer, adapter, pool, and generation fingerprints. The current learned
-promotion gate is disabled because it regressed full Spider dev. Measured in the **exact serving config**
-(`--planner ast`, top-1, pool 25, no proposer/ranker) on Spider dev **gold-tables**, the deterministic
-planner scores **37.6% strict / 57.6% scalar-gold** (389/1034, 235/408; up from 36.1%/56.9% before the
-recall-first search fixes); the isolated AST-search benchmark (`ast_eval.py`, different pipeline) scores
-**41.2% / 58.1%**. The whole-database config (not what serving uses) is lower and is pending a re-measure
-on this code. The measurement boundary, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
+Measured in the **exact serving config** (top-1, `--max-candidates 25`) on Spider dev **gold-tables**, the
+deterministic planner scores **37.6% strict / 49.2% lenient / 57.6% scalar-gold** (389/1034, 509/1034,
+235/408). The whole-database config (not what serving uses) is lower and is pending a re-measure on this
+code. The measurement boundary, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
 
 ---
 
@@ -698,7 +694,6 @@ version:
 | `dim_thresholds.json` | calibrated threshold overrides for the `/api/dimension` readout |
 | `primitives.npz` | the learned 10-primitive head read by `PrimitiveReader` (§7) |
 | `taxonomy.csv` / `assignment.csv` | the type→table map (`_world_type_map`) + the training-token table |
-| `sql_proposer.json` / `sql_*ranker*.json` | the research-only trained SQL proposer + rankers (Spider eval / training harness, §7.2) |
 | `word_*.json` | knowledgebase word-table metadata for the meaning-graph planner |
 
 The large binaries are produced by the training pipeline — see [`docs/TRAINING.md`](TRAINING.md) for how
@@ -743,8 +738,9 @@ populated by [`db/sync`](../db/README.md) — not in this directory.
 - **view stacking** — the composition mechanism (`engine/compose.py`): a complex question decomposes into
   a DAG of primitive views (EXCL / RATIO / TOPN / SHARE / TIME / HAVING / SORT / DIVIDE / RUNNING / GROUP)
   over a JOIN + knowledge base.
-- **typed-AST planner** — the deterministic bounded SQL-AST search (`PREREASONER_SQL_PLANNER=ast`;
-  `engine/sql_*.py`, [SQL_AST.md](SQL_AST.md)), an alternative to the named-dim slot-filler.
+- **typed-AST planner** — THE own-data SQL planner: the deterministic bounded SQL-AST search with
+  hand-written inspectable ranking (`engine/sql_*.py`, [SQL_AST.md](SQL_AST.md)). It runs unconditionally;
+  there is no planner-mode toggle.
 - **orchestrator** — the `prereasoner-chat` Cloud Run service (`orchestrator/`) running the Sonnet tool
   loop over the MCP tools.
 - **MCP server** — the stdio server (`mcp_server/`) exposing `prereasoner_query` / `prereasoner_describe`,

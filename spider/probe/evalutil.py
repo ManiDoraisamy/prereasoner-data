@@ -10,6 +10,11 @@ import sqlite3
 import threading
 import time
 
+try:
+    from .spider_eval import compare, is_scalar
+except ImportError:  # direct script execution / spider/probe on sys.path
+    from spider_eval import compare, is_scalar
+
 
 def load_capped(db_path, cap=5000):
     """{lower_name: {name, columns, rows}} with rows capped."""
@@ -106,3 +111,50 @@ def run_with_budget(fn, budget=12.0):
         value, error = None, exc
     elapsed = time.perf_counter() - started
     return value, error, elapsed, bool(budget and elapsed > budget)
+
+
+def _score(counter, gold_rows, candidates, con, top_k):
+    if is_scalar(gold_rows):
+        counter["scalar_n"] += 1
+    counter["candidate_total"] += len(candidates)
+    counter["candidate_max"] = max(counter["candidate_max"], len(candidates))
+    if not candidates:
+        counter["no_candidate"] += 1
+        return
+    flags = []
+    successful = 0
+    for candidate in candidates:
+        rows, error = exec_sql_timed(con, candidate.sql)
+        comparison = compare(gold_rows, rows) if error is None else {}
+        flags.append(comparison)
+        successful += int(error is None)
+    if successful == 0:
+        counter["execution_failure"] += 1
+        return
+    counter["answered"] += 1
+    first = flags[0]
+    counter["lenient"] += bool(first.get("lenient"))
+    counter["strict"] += bool(first.get("strict"))
+    counter["oracle_lenient"] += any(flag.get("lenient") for flag in flags)
+    counter["oracle_strict"] += any(flag.get("strict") for flag in flags)
+    counter["topk_oracle_lenient"] += any(flag.get("lenient") for flag in flags[:top_k])
+    counter["topk_oracle_strict"] += any(flag.get("strict") for flag in flags[:top_k])
+    if is_scalar(gold_rows):
+        counter["scalar"] += bool(first.get("scalar_exact"))
+
+
+def _summary(counter, total):
+    pct = lambda value, denominator=total: round(100 * value / max(denominator, 1), 1)
+    return {
+        "n": total, "answered": counter["answered"], "no_candidate": counter["no_candidate"],
+        "execution_failure": counter["execution_failure"], "gold_execution_failure": counter["gold_execution_failure"],
+        "strict_correct": counter["strict"], "lenient_correct": counter["lenient"], "scalar_correct": counter["scalar"],
+        "topk_oracle_strict_correct": counter["topk_oracle_strict"], "pool_oracle_strict_correct": counter["oracle_strict"],
+        "pool_oracle_lenient_correct": counter["oracle_lenient"],
+        "average_candidates": round(counter["candidate_total"] / max(total, 1), 2),
+        "maximum_candidates": counter["candidate_max"], "lenient_pct": pct(counter["lenient"]),
+        "strict_pct": pct(counter["strict"]), "scalar_pct": pct(counter["scalar"], counter["scalar_n"]),
+        "scalar_n": counter["scalar_n"], "topk_oracle_lenient_pct": pct(counter["topk_oracle_lenient"]),
+        "topk_oracle_strict_pct": pct(counter["topk_oracle_strict"]), "pool_oracle_lenient_pct": pct(counter["oracle_lenient"]),
+        "pool_oracle_strict_pct": pct(counter["oracle_strict"]),
+    }

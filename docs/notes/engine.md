@@ -72,9 +72,8 @@ The serving path opens: `qwen_lora/` (PEFT adapter for the Qwen base), `encoder.
 (the relational-content readout state_dict) + `encoder_meta.pt` (`{"alloc", "cfg"}`),
 `alloc.json`, `families.json` + `props_thr.json` (the property-family router — see
 docs/TRAINING.md), `taxonomy.csv`, `anchor_assignment.npz`, `assignment.csv`,
-`dim_thresholds.json`, `route_thresholds.json`, `primitives.npz`,
-`word_{city,country,state,element}.json`, and the `sql_*.json` ranker/proposer
-configs. The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
+`dim_thresholds.json`, `route_thresholds.json`, `primitives.npz`, and
+`word_{city,country,state,element}.json`. The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
 has none) — the entrypoint gate reports missing weights at startup (see
 docs/notes/infra.md).
 

@@ -83,11 +83,10 @@ your data**, and the derivation *is* the reasoning trace.
 - **Own-data path** (`engine/tables.py: serve()`): for questions answered entirely from your
   uploaded tables, SQL is built either by the **compose engine** (a stack of simple, named views —
   filter, group, top-N, share, year-over-year …) or by the **deterministic typed-AST planner**.
-  Production runs the AST planner (`PREREASONER_SQL_PLANNER=ast`): a bounded typed-AST search over
-  the foreign-key graph with **hand-written, fully-inspectable ranking — no trained proposer or learned
-  ranker** (`engine/tables.py: _serve_ast`; the proposer/ranker artifacts exist only for the offline
-  eval/training harness). Measured in the **exact serving configuration** (`--planner ast`, top-1,
-  `--max-candidates 25`, no proposer/ranker) on Spider dev **gold-tables** it reaches **37.6% strict /
+  Production runs the AST planner: a bounded typed-AST search over the foreign-key graph with
+  **hand-written, fully-inspectable ranking — no trained proposer or learned ranker**
+  (`engine/tables.py: _serve_ast`). Measured in the **exact serving configuration** (top-1,
+  `--max-candidates 25`) on Spider dev **gold-tables** it reaches **37.6% strict /
   57.6% scalar-gold** (`docs/SQL_AST.md` explains the measurement boundary; the whole-database config,
   which serving does not use, is lower and is pending a re-measure on this code).
 - **World/knowledge path** (`engine/knowledge_query.py`, `engine/knowledge_compose.py`): when a
@@ -143,7 +142,7 @@ is unauthenticated by design — it's stateless and stores nothing.
 | `db/` | The `knowledgebase` Postgres: `init.sql` schema contract + `sync/` Wikidata bootstrap scripts. |
 | `docs/` | Architecture, the typed SQL planner, training, research, and testing guides. |
 | `tests/` | End-to-end suites (need a live, seeded Postgres) + the orchestrator/MCP tests. |
-| `spider/` | Spider benchmark tooling: evaluation harnesses, AST proposer/ranker training, recorded results. |
+| `spider/` | Spider benchmark tooling: evaluation harness + recorded results. |
 
 **Model weights are gitignored** — `encoder.pt` (~72 MB), `qwen_lora/` (~17 MB), and the `*.npz`
 calibration artifacts must be provisioned into `engine/data/` separately. The per-file table (what
@@ -168,7 +167,6 @@ The core knobs:
 | Variable | Purpose |
 |---|---|
 | `KB_PG_HOST` / `KB_PG_PORT` / `KB_PG_DB` / `KB_PG_USER` / `KB_PG_PASSWORD` / `KB_PG_SSLMODE` | Postgres (pgvector) connection. `KB_PG_PASSWORD` is required. |
-| `PREREASONER_SQL_PLANNER` | Own-data SQL planner: `legacy` (default) or `ast` (production — the deterministic typed-AST planner). |
 | `ANTHROPIC_API_KEY` | Required only to run the **orchestrator** (the Sonnet tool loop) and the engine's optional `/api/converse` presentation layer. The engine's data path needs no key. |
 | `RTDB_URL` | Optional Firebase Realtime DB URL for live trace streaming. Unset ⇒ streaming no-ops; the HTTP response still carries the full JSON answer. |
 | `AUTH_TEST_SUB` | Test-only auth bypass (a fixed principal, skips token verification). Refused on Cloud Run. |

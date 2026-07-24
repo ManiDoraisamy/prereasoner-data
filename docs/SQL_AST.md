@@ -1,8 +1,10 @@
 # Deterministic SQL Planner
 
-This is the starting point for PreReasoner's typed SQL planner. The planner searches a
-bounded space of valid SQL abstract syntax trees (ASTs). It does not sample SQL tokens
-from a decoder.
+This is PreReasoner's own-data SQL planner — the single, deterministic path from a
+question over your uploaded tables to executed SQL. The planner searches a bounded space
+of valid SQL abstract syntax trees (ASTs) and ranks them with hand-written, fully
+inspectable features. It does not sample SQL tokens from a decoder, and it uses no trained
+proposer or learned ranker.
 
 ## What it does
 
@@ -12,18 +14,16 @@ Given a question, tables, and foreign keys, the planner:
 2. Links question roles to tables, columns, operators, and values.
 3. Constructs and validates candidate ASTs.
 4. Expands recursive queries, constraints, extrema, and set operations when applicable.
-5. Optionally uses a frozen proposal model to add exact-profile AST variants.
-6. Ranks candidates with deterministic features.
-7. Optionally promotes a high-confidence generated candidate with a frozen gated ranker.
-8. Renders only validated ASTs to SQL.
+5. Ranks candidates with hand-written, fully-inspectable deterministic features.
+6. Renders only validated ASTs to SQL.
 
-The same inputs, configuration, and artifacts always produce the same ordering.
-Determinism removes sampling variance. It does not remove natural-language ambiguity,
-schema-linking errors, missing search rules, or ranking errors.
+The same inputs always produce the same ordering. Determinism removes sampling variance.
+It does not remove natural-language ambiguity, schema-linking errors, missing search
+rules, or ranking errors.
 
 ## Architecture
 
-The final runtime path is:
+The runtime path is:
 
 ```text
 question + tables + foreign keys
@@ -34,37 +34,28 @@ question + tables + foreign keys
           v
   typed bounded AST search
           |
-          +-------------------------------+
-          | optional frozen proposer      |
-          | profile + role predictions    |
-          v                               |
-  exact-profile AST expansion <-----------+
-          |
           v
   deterministic semantic ranking
-          |
-          +-------------------------------+
-          | optional frozen tree ranker   |
-          | held-out promotion gate       |
-          v                               |
-  strict-scoped candidate promotion <-----+
           |
           v
       validated SQL
 ```
 
-The proposal model never emits SQL. It predicts structural profiles and schema roles.
-Every generated variant must still pass AST validation. The learned ranker never changes
-an AST; it only reorders existing candidates.
+Nothing here is trained. The ranking is hand-written and fully inspectable; there is no
+trained proposer and no learned ranker. Every candidate must pass AST validation before it
+can be rendered to SQL.
 
 ## Public API
 
-Use `engine.sql` for stable imports.
+### Serving entry point
 
-### Base planner
+Live serving goes through `engine/tables.py`. `TableQuery.serve(tables, question)` runs the
+full own-data pipeline (ingest → schema → `_serve_ast` → guard → execute) and returns the
+answer plus the winning candidate. `_serve_ast` calls `search_ast` and selects
+`candidates[0]`:
 
 ```python
-from engine.sql import SQLSearcher
+from engine.encoder_overlay import EncoderQuery
 
 tables = [
     {
@@ -78,92 +69,59 @@ tables = [
         "rows": [[10, "Ada"], [11, "Lin"]],
     },
 ]
-foreign_keys = [{
-    "from_table": "orders",
-    "from_col": "customer_id",
-    "to_table": "customers",
-    "to_col": "id",
-    "conf": 1.0,
-}]
 
-searcher = SQLSearcher.from_tables(tables, foreign_keys)
-candidates = searcher.search("list each customer name and total order amount")
+engine = EncoderQuery()                       # loads the one shared encoder
+result = engine.serve(tables, "list each customer name and total order amount")
+print(result["sql"])
+```
 
-print(candidates[0].sql)
+### Direct AST search
+
+To call the deterministic planner directly, build the typed schema and foreign keys and call
+`search_ast`:
+
+```python
+from engine.encoder_overlay import EncoderQuery
+
+engine = EncoderQuery()
+norm, fks = engine.ingest(tables)
+sch, colidx, tablemap = engine.schema(norm, fks)
+
+candidates = engine.search_ast(
+    "list each customer name and total order amount",
+    sch, norm, fks,
+    max_candidates=25,
+)
+
+print(candidates[0].sql)         # rendered SQL
 print(candidates[0].query)       # typed AST
 print(candidates[0].evidence)    # generation and ranking trace
 print(candidates[0].features)    # numeric ranking features
 ```
 
-### Profile-aware strict planner
-
-`DeterministicSQLPlanner` composes the final optional proposal and gated-ranker path:
-
-```python
-from engine.encoder_overlay import EncoderQuery
-from engine.sql import (
-    DeterministicSQLPlanner,
-    ProfileSearchConfig,
-    ProposalSignalProvider,
-    SQLProposalModel,
-    SQLSearcher,
-    load_ranker_model,
-)
-
-searcher = SQLSearcher.from_tables(tables, foreign_keys, max_candidates=180)
-encoder = EncoderQuery()
-proposer = SQLProposalModel.load("engine/data/sql_proposer.json")
-provider = ProposalSignalProvider(proposer, encoder)
-ranker = load_ranker_model("engine/data/sql_profile_ranker.json")
-
-planner = DeterministicSQLPlanner(
-    searcher=searcher,
-    signal_provider=provider,
-    rank_model=ranker,
-    profile_config=ProfileSearchConfig(),
-)
-candidates = planner.search("list each customer name and total order amount")
-```
-
-Proposer and ranker metadata are bound to the exact encoder adapter, proposer file,
-candidate-pool size, and profile-generation settings. A mismatch is a hard error. The
-current promotion gate is disabled because it did not pass full Spider dev; do not assume
-a training-split gain improves strict, lenient, or scalar serving accuracy.
-
-### Live serving
-
-`TableQuery.serve` exposes two explicit rollout modes:
-
-| `PREREASONER_SQL_PLANNER` | Runtime behavior |
-|---|---|
-| `legacy` | Existing slot-filling planner. This remains the default. |
-| `ast` | Typed AST search with inspectable hand ranking. This is the production mode. |
-
-The proposer, profile expansion, and learned ranker are explicit research options, not
-hidden serving modes. Evaluation code must supply the proposer, an explicit
-`ProfileSearchConfig`, and the ranker artifact. Candidate zero is the preserved baseline;
-only a promotion gate that passes artifact contracts and accuracy gates may replace it.
-The current committed ranker records a failed Spider dev gate and cannot promote.
+`search_ast` builds a `SchemaGraph` (`engine/sql_search.py: SchemaGraph.from_planner`), runs
+`SQLSearcher(graph, ...).search(...)`, and returns ranked, validated candidates. There is no
+trained proposer and no learned ranker in this path.
 
 The own-data `/api/knowledge` response keeps its existing SQL and result fields and adds a
-`planner` object for AST modes with `mode`, `ast`, `candidate_count`, `evidence`, and
-`features`. Research integrations bound the proposal descriptor-vector cache to 4,096
-entries on a long-lived serving object.
+`planner` object with `ast`, `candidate_count`, `evidence`, and `features`.
 
-## Search configuration
+## Deterministic candidate expansion
 
-`ProfileSearchConfig` is the single source of truth for profile expansion:
+`SQLSearcher.search` accepts an optional `profile_config` (`ProfileSearchConfig`,
+`engine/sql_profile_expansion.py`) that turns on **deterministic** exact-profile candidate
+expansion — an extra search knob that widens the candidate pool from structural AST profiles
+(`engine/sql_profile.py`). It is not a proposer: no model is involved, and every expanded
+variant still passes AST validation and is ranked by the same hand-written features. The
+Spider eval uses it to raise pool recall; serving does not.
 
 | Setting | Default | Meaning |
 |---|---:|---|
-| `max_candidates` | 32 | Maximum generated profile candidates. |
-| `per_profile` | 4 | Maximum retained bindings for one predicted profile. |
-| `generation_penalty` | 5.0 | Prior penalty applied to generated variants. |
-| `binding_quality_weight` | 2.0 | Weight for proposal role-binding quality. |
-| `preserve_baseline_top` | `True` | Keep the hand-ranked winner unless gated promotion is used. |
-
-The older keyword arguments on `SQLSearcher.search` remain for compatibility. New code
-should pass `profile_config`.
+| `max_candidates` | 32 | Maximum expanded profile candidates. |
+| `per_profile` | 4 | Maximum retained bindings for one profile. |
+| `generation_penalty` | 5.0 | Prior penalty applied to expanded variants. |
+| `binding_quality_weight` | 2.0 | Weight for role-binding quality. |
+| `preserve_baseline_top` | `True` | Keep the hand-ranked winner at the top. |
 
 ## Supported SQL
 
@@ -202,21 +160,17 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 
 | Module | Responsibility |
 |---|---|
-| `engine/sql.py` | Stable public imports. |
-| `engine/sql_planner.py` | Final high-level proposer/search/gate orchestration. |
 | `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
 | `engine/sql_schema.py` | Typed schema and join-path search. |
-| `engine/sql_search.py` | Base beam and capability ordering. |
+| `engine/sql_search.py` | `SQLSearcher`: base beam, capability ordering, and candidate assembly. |
+| `engine/sql_candidate.py` | Scored-candidate container and evidence. |
 | `engine/sql_expansion.py` | Shared AST construction helpers. |
 | `engine/sql_recursive.py` | Recursive queries, sets, aliases, and self-joins. |
 | `engine/sql_constraints.py` | `HAVING`, disjunction, scalar, and membership rules. |
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
-| `engine/sql_rank.py` | Hand semantic and execution features. |
+| `engine/sql_rank.py` | Hand-written semantic and execution features. |
 | `engine/sql_profile.py` | Structural AST profiles. |
-| `engine/sql_profile_expansion.py` | Profile configuration and exact-profile expansion. |
-| `engine/sql_proposal.py` | Frozen proposal artifact inference. |
-| `engine/sql_proposal_runtime.py` | Shared schema normalization and encoder caching. |
-| `engine/sql_learned_rank.py` | Frozen ranker inference and promotion gate. |
+| `engine/sql_profile_expansion.py` | Deterministic exact-profile candidate expansion (`ProfileSearchConfig`). |
 
 `SQLSearcher.search` remains the low-level ablation boundary. The capability modules do
 not depend on one another's private internals.
@@ -231,24 +185,19 @@ keys, recursively referenced gold tables, pool 180, and denotation evaluation.
 | Phase 5 typed search | 426 (41.2%) | 484 (46.8%) | 490 (47.4%) | 5.39 |
 | Explicit profile expansion, baseline protected | 426 (41.2%) | 545 (52.7%) | 570 (55.1%) | 21.31 |
 
-Profile expansion adds 80 strict-reachable answers without changing top-1. The current
-projection linker distinguishes properties that share table-name words, qualifies
-ambiguous properties by entity, and follows outbound owner foreign keys for display
-names. Against the previous exact serving artifact this produces 18 strict wins and one
-strict loss. The remaining loss is a known grouped distinct-count target ambiguity.
+The deterministic profile expansion adds 80 strict-reachable answers to the pool without
+changing top-1. The current projection linker distinguishes properties that share
+table-name words, qualifies ambiguous properties by entity, and follows outbound owner
+foreign keys for display names. Against the previous exact serving artifact this produces
+18 strict wins and one strict loss. The remaining loss is a known grouped distinct-count
+target ambiguity.
 
-The learned ranker was trained on an older candidate distribution. Its calibrated
-promotion candidate regressed full Spider dev, so the committed gate is disabled and no
-ranker result is presented as a current accuracy claim.
-
-The **serving-faithful** `full_eval.py --planner ast --selection serving_top1 --max-candidates 25`
-path (NO proposer, NO ranker — byte-for-byte `engine/tables.py:_serve_ast`) scores **389/1034 strict
-(37.6%)**, **509/1034 lenient (49.2%)**, and **235/408 scalar (57.6%)** on gold-tables. (Attaching the
-proposer + profile expansion at pool 180 yields the *same* top-1 numbers — the proposer changed zero
-top-1 selections in that run — so the accuracy is entirely the deterministic planner's; the proposer/
-expansion only raise pool recall, ~47%→55%, which top-1 selection does not yet convert.) `ast_eval.py`
-is an isolated AST-search benchmark; `full_eval.py --planner ast` is the serving-selector measurement.
-Do not compare them as if they were the same pipeline.
+The **serving-faithful** `full_eval.py --selection serving_top1 --max-candidates 25`
+path (byte-for-byte `engine/tables.py:_serve_ast`) scores **389/1034 strict (37.6%)**,
+**509/1034 lenient (49.2%)**, and **235/408 scalar (57.6%)** on gold-tables. This accuracy is
+entirely the deterministic planner's. Turning on deterministic profile expansion at pool 180
+yields the *same* top-1 numbers — it only raises pool recall (~47%→55%), which top-1 selection
+does not yet convert.
 
 ### What the numbers mean
 
@@ -265,14 +214,13 @@ inclusive counts, and multi-table role binding.
 
 Detailed records:
 
-- `spider/results/ast_profile_projection_final.json`: current isolated search and pool recall;
-- `spider/results/ast_profile_failure_analysis_final.json`: final failure-family counts;
+- `spider/results/ast_profile_projection_final.json`: recorded isolated search and pool recall;
+- `spider/results/ast_profile_failure_analysis_final.json`: failure-family counts;
 - `spider/results/ast_profile_failure_details_final.json`: per-example failure diagnoses;
-- `spider/results/ast_profile_nc90_ranked_v3.json`: rejected promotion experiment;
 - `spider/results/full_eval_ast_projection_final/`: exact serving-selector
   summary, per-example records, and resumable checkpoint.
 
-## Training and reproduction
+## Reproduction
 
 Fetch Spider data:
 
@@ -280,60 +228,22 @@ Fetch Spider data:
 python spider/probe/fetch_data.py --include-train
 ```
 
-Build structured proposal supervision and train the proposer:
+Run the serving-faithful evaluation — the deterministic AST planner, byte-for-byte the
+serving selector (`engine/tables.py:_serve_ast`). There is no `--planner`, no
+`--proposer-model`, no `--ranker-model`, and no `--profile-expansion`; the planner is
+unconditional:
 
 ```bash
-python spider/probe/build_ast_proposal_data.py
-python spider/probe/train_ast_proposer.py \
-  --out engine/data/sql_proposer.json \
-  --report spider/results/ast_proposer.json
-```
-
-Train the profile-aware ranker. Question-vector checkpoints are resumable and candidate
-caches are reusable; both are fingerprinted. Calibration databases must remain outside
-the final fit:
-
-```bash
-python spider/probe/train_ast_ranker.py \
-  --dbs spider/data/dbs \
-  --proposer-model engine/data/sql_proposer.json \
-  --pool 180 --negative-pool 48 --estimators 120 \
-  --holdout-promotion-calibration \
-  --cache spider/data/profile_ranker_nc90_v2_cache.jsonl \
-  --out engine/data/sql_profile_ranker_candidate.json
-```
-
-Training writes a candidate artifact. `--holdout-promotion-calibration` divides the
-database-disjoint holdout again and requires the same threshold to show positive gain
-with zero losses on both schema cohorts. That is still not deployment approval: run the
-full Spider dev serving gate and replace the committed artifact only when strict,
-lenient, and scalar acceptance criteria pass.
-
-The rejected whole-database ablation is reproduced with `--config whole_db`,
-`--execution-timeout 1`, and `--execution-row-limit 10000`. Those training-only bounds
-prevent pathological wrong joins from monopolizing hard-negative mining and are recorded
-in cache and model provenance. Whole-database training reuses one schema graph and
-in-memory SQLite database per Spider database.
-
-Evaluate the final path:
-
-```bash
-python spider/probe/ast_eval.py \
-  --dbs spider/data/dbs --pool 180 --top-k 10 \
-  --proposer-model engine/data/sql_proposer.json \
-  --profile-expansion \
-  --out spider/results/ast_profile_projection_final.json
-
 python spider/probe/full_eval.py \
-  --dbs spider/data/dbs --planner ast --config gold_tables \
-  --selection serving_top1 --max-candidates 180 \
-  --proposer-model engine/data/sql_proposer.json \
-  --profile-expansion --tag ast_projection_final \
-  --out spider/results/full_eval_ast_projection_final
+  --dbs spider/data/dbs --config gold_tables \
+  --selection serving_top1 --max-candidates 25 \
+  --tag serving_final \
+  --out spider/results/full_eval_serving_final
 ```
 
-`train_ast_ranker.py` refuses Spider dev as training data unless the diagnostic-only
-override is explicit. Frozen ranker inference does not require scikit-learn.
+`--selection serving_top1` reproduces the live selector; `--selection execution_checks`
+enables execution-based candidate checks for diagnosis. Encoder training is unchanged and
+covered in [`docs/TRAINING.md`](TRAINING.md).
 
 ## Tests
 
@@ -341,9 +251,9 @@ override is explicit. Frozen ranker inference does not require scikit-learn.
 python -m tests.test_sql_ast
 ```
 
-The 93 hermetic tests execute generated SQL against in-memory SQLite and cover AST
-typing, rendering, joins, recursion, constraints, extrema, profiles, artifacts, cache
-provenance, promotion calibration, deterministic ordering, and all live AST modes.
+The hermetic tests execute generated SQL against in-memory SQLite and cover AST typing,
+rendering, joins, recursion, constraints, extrema, profiles, deterministic candidate
+expansion, and deterministic ordering.
 
 Run the repository aggregate suite with:
 
@@ -356,10 +266,10 @@ python -m tests.run_all
 The planner is coherent and deterministic, but Spider is not solved. The next work should
 be measured against the current bottlenecks:
 
-1. Close the ranking gap between selected and strict-reachable candidates.
-2. Add search rules or structured supervision for examples with no strict candidate.
-3. Calibrate promotion for the product's answer metric instead of reusing a strict-only gate.
-4. Treat larger encoders as controlled capacity experiments after objective and data changes.
+1. Close the ranking gap between selected and strict-reachable candidates — better
+   hand-written ranking features that convert pool recall into top-1 selections.
+2. Add search rules for examples with no strict-correct candidate in the pool.
+3. Treat larger encoders as controlled capacity experiments after objective and data changes.
 
 Historical Phase 1-6 names remain in evaluator output for ablation compatibility. They are
 not separate runtime architectures and should not drive new module boundaries.
