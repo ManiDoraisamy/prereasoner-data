@@ -53,6 +53,21 @@ DIFFS = ["easy", "medium", "hard", "extra"]
 from engine.routing import DEPTH_PRIMS, compose_owns
 
 
+def _git_provenance(root):
+    """Record the source commit + whether the worktree is dirty, so every result traces to an exact tree
+    (CLAUDE.md requires both). Best-effort: returns None/False if git is unavailable."""
+    import subprocess
+
+    def _git(*args):
+        try:
+            return subprocess.run(["git", "-C", root, *args], capture_output=True, text=True,
+                                  timeout=10).stdout.strip()
+        except Exception:                                    # noqa: BLE001
+            return ""
+    return {"source_commit": (_git("rev-parse", "HEAD") or None),
+            "worktree_dirty": bool(_git("status", "--porcelain"))}
+
+
 def _write_json_atomic(path, value):
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "w", encoding="utf-8") as handle:
@@ -263,7 +278,8 @@ def main():
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
         }),
         "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
-    }
+        **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
+    }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
     if args.resume and os.path.exists(checkpoint_path):
         with open(checkpoint_path, encoding="utf-8") as handle:

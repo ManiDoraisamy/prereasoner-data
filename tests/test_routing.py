@@ -24,8 +24,8 @@ _REDUNDANT = {"is_necessary": False, "necessary": []}
 
 def test_own_data_composition_routes_to_ast():
     # own-data HAVING / share / group-by / yoy have NO world dependency -> the typed-AST planner owns them.
-    assert route(_views("group_agg", "having"), None) is Route.AST
-    assert route(_views("share"), None) is Route.AST
+    assert route(_views("group_agg", "having"), None) is Route.DELEGATE
+    assert route(_views("share"), None) is Route.DELEGATE
     assert compose_owns(_views("yoy"), None) is False
     assert compose_owns(["having", "group_agg"], None) is False       # flat op-list form (the eval's res['plan'])
     assert compose_owns([], None) is False
@@ -43,7 +43,7 @@ def test_necessary_world_composite_stands():
 def test_redundant_world_join_is_own_data():
     # THE reviewer's case: a world_join happened but the referenced attribute is ALREADY uploaded -> the join was
     # redundant -> own-data -> the typed-AST planner owns it. world_join op present but is_necessary False.
-    assert route(_views("world_join", "share"), _REDUNDANT) is Route.AST
+    assert route(_views("world_join", "share"), _REDUNDANT) is Route.DELEGATE
     assert compose_owns(_views("world_join", "group_agg"), _REDUNDANT, result_rows=[["Europe", 1]]) is False
     print("  PASS  redundant world_join (attr uploaded) -> AST, not compose")
 
@@ -51,7 +51,7 @@ def test_redundant_world_join_is_own_data():
 def test_plain_world_lookup_defers_to_delegate():
     # a NECESSARY world dependency but NO composition (a bare world-filtered scalar) -> the KnowledgeQuery
     # delegate is authoritative; route() returns AST (compose does not own it).
-    assert route(_views("world_join", "world_filter"), _NECESSARY, result_rows=[[270]]) is Route.AST
+    assert route(_views("world_join", "world_filter"), _NECESSARY, result_rows=[[270]]) is Route.DELEGATE
     print("  PASS  plain world lookup -> delegate (route AST)")
 
 
@@ -85,17 +85,30 @@ def _dep(tables, question):
     return res.get("world_dependency")
 
 
-def test_contrastive_necessity_world_vs_uploaded():
-    # (a) referenced value 'France' is only reachable by resolving city -> country through the world model.
+def test_contrastive_redundant_world_filter_with_joinable_city():
+    # BOTH cases keep a joinable `city` column (so the world join fires in both) — the ONLY difference is whether
+    # `country`/`France` is also uploaded. The redundant world filter must NOT make the query world-necessary.
     cities = {"name": "s", "columns": ["city", "amount"], "rows": [["Paris", 100], ["Lyon", 80], ["Tokyo", 50]]}
     dep_world = _dep([cities], "total amount in France")
     assert dep_world and dep_world["is_necessary"], f"France via city->country must be world-necessary: {dep_world}"
-    # (b) SAME query, but 'country'/'France' is ALREADY an uploaded column -> filtered directly, no world grounding
-    # needed -> the query is own-data (world dependency absent or not necessary).
-    country = {"name": "s", "columns": ["country", "amount"], "rows": [["France", 100], ["France", 80], ["Japan", 50]]}
-    dep_own = _dep([country], "total amount in France")
-    assert not (dep_own and dep_own.get("is_necessary")), f"France already uploaded must not be world-necessary: {dep_own}"
-    print("  PASS  contrastive necessity: world-resolved vs uploaded differ")
+    # same query, city STILL joinable, but 'France' is already a value in an uploaded 'country' column -> the direct
+    # value-filter binds it, so the world_filter is REDUNDANT -> own-data.
+    with_country = {"name": "s", "columns": ["city", "country", "amount"],
+                    "rows": [["Paris", "France", 100], ["Lyon", "France", 80], ["Tokyo", "Japan", 50]]}
+    dep_own = _dep([with_country], "total amount in France")
+    assert not (dep_own and dep_own.get("is_necessary")), \
+        f"redundant world_filter (France already uploaded, city still joinable) must NOT be necessary: {dep_own}"
+    print("  PASS  contrastive: joinable city, redundant world filter (France uploaded) -> not necessary")
+
+
+def test_contrastive_abbreviation_still_needs_world():
+    # Uploaded country values are ABBREVIATIONS ('FR') that cannot satisfy 'France' by a direct value-filter, so
+    # world resolution (city -> full country name) remains NECESSARY even though a 'country' column is present.
+    abbrev = {"name": "s", "columns": ["city", "country", "amount"],
+              "rows": [["Paris", "FR", 100], ["Lyon", "FR", 80], ["Tokyo", "JP", 50]]}
+    dep = _dep([abbrev], "total amount in France")
+    assert dep and dep["is_necessary"], f"abbreviated 'FR' can't satisfy 'France' directly -> world necessary: {dep}"
+    print("  PASS  contrastive: uploaded abbreviation 'FR' -> world resolution still necessary")
 
 
 _REPEAT_SCRIPT = (
@@ -135,7 +148,8 @@ TESTS = [
     test_plain_world_lookup_defers_to_delegate,
     test_world_group_by_stands,
     test_constants_are_coherent,
-    test_contrastive_necessity_world_vs_uploaded,
+    test_contrastive_redundant_world_filter_with_joinable_city,
+    test_contrastive_abbreviation_still_needs_world,
     test_cross_process_sql_repeatability,
 ]
 

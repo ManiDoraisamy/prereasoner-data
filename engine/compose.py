@@ -491,19 +491,28 @@ class ComposeEngine:
                 views.append(self._materialize(con, s["out"], self._sql(s), s["op"], s.get("label")))
             final = views[-1] if views else None
             # EXPLICIT world-dependency record for the router. A world_join proves world data was JOINED, not that
-            # it was NECESSARY: if the referenced attribute is already an uploaded column, the join was redundant and
-            # the query is own-data. So necessity = a world-supplied attribute the upload LACKS that the ANSWER
-            # actually uses (appears in the final columns), OR a world_filter (the filter value was absent from the
-            # upload, which is the only reason _world_link filtered instead of the direct value-filter above).
+            # it was NECESSARY. Necessity has two independent sources:
+            #   (a) a world-supplied ATTRIBUTE the upload lacks that the ANSWER actually uses (in the final columns);
+            #   (b) a world FILTER whose value could NOT already be bound directly against uploaded data. The direct
+            #       value-filter `vf` (base A' above) binds an uploaded (column, value) when the value is present, so
+            #       a world_filter on the SAME value is REDUNDANT -> own-data. Uploaded ABBREVIATIONS ('FR') never
+            #       bind 'France' directly, so `vf` is empty there and world resolution stays necessary.
+            # We do NOT treat world_filtered alone as necessary (that was the bug: a redundant world join over an
+            # already-satisfiable filter would wrongly claim the query).
             world_dependency = None
             if world_grounding is not None:
                 supplied, own_cols, wcol, value, world_filtered = world_grounding
                 supplied = sorted({str(a) for a in supplied if a})
                 final_cols = {str(c).lower() for c in (final["columns"] if final else [])}
                 used_necessary = sorted(a for a in supplied if a.lower() not in own_cols and a.lower() in final_cols)
+                direct_bound_same_value = bool(vf and value is not None
+                                               and str(vf[1]).strip().lower() == str(value).strip().lower())
+                world_filter_necessary = bool(world_filtered and not direct_bound_same_value)
                 world_dependency = {
                     "supplied": supplied, "own_columns": sorted(own_cols), "necessary": used_necessary,
-                    "world_filtered": world_filtered, "is_necessary": bool(world_filtered or used_necessary),
+                    "world_filtered": world_filtered, "world_filter_necessary": world_filter_necessary,
+                    "direct_filter": (list(vf) if vf else None),
+                    "is_necessary": bool(world_filter_necessary or used_necessary),
                     "filter_attribute": wcol, "filter_value": value,
                 }
         finally:

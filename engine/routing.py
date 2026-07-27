@@ -37,8 +37,10 @@ COMPOSITION_OPS = frozenset({"yoy", "running", "share", "divide", "having", "top
 
 
 class Route(enum.Enum):
-    AST = "ast"          # the typed-AST planner owns it (own-data)
-    COMPOSE = "compose"  # a world-grounded composite -> the ComposeEngine owns it
+    COMPOSE = "compose"    # a NECESSARY world-grounded composite -> the ComposeEngine hosts it
+    DELEGATE = "delegate"  # everything else -> hand to the delegate, which owns own-data (typed-AST planner) vs
+    #                        an ordinary world lookup (KnowledgeQuery). route() is a compose-ownership decision;
+    #                        the AST-vs-KnowledgeQuery split is made downstream by the delegate, not here.
 
 
 def _ops(plan):
@@ -73,12 +75,13 @@ def route(plan, world_dependency=None, result_rows=None) -> Route:
     ``world_dependency`` ComposeEngine.run's explicit record, or None when no world join grounded.
     ``result_rows``      the engine's result rows (confirms a world group-by produced a real breakdown).
 
-    Returns Route.COMPOSE iff the plan grounds a NECESSARY world dependency AND composes over it; otherwise
-    Route.AST — the typed-AST planner owns every own-data query, and a plain world lookup (necessary world
-    dependency but no composition) defers to the KnowledgeQuery delegate, which route() also returns AST for."""
+    Returns Route.COMPOSE iff the plan grounds a NECESSARY world dependency AND composes over it. Otherwise
+    Route.DELEGATE — hand off to the delegate, which owns own-data (the typed-AST planner) and ordinary world
+    lookups (KnowledgeQuery). route() decides ONLY compose-ownership; the AST-vs-KnowledgeQuery split is made
+    downstream, so a necessary-but-non-composing world lookup is DELEGATE, not COMPOSE."""
     if not (world_dependency and world_dependency.get("is_necessary")):
-        return Route.AST                                      # no NECESSARY world dependency -> planner owns it
-    return Route.COMPOSE if _composes(plan, result_rows) else Route.AST
+        return Route.DELEGATE                                 # no NECESSARY world dependency -> delegate (own-data)
+    return Route.COMPOSE if _composes(plan, result_rows) else Route.DELEGATE
 
 
 def compose_owns(plan, world_dependency=None, result_rows=None) -> bool:
