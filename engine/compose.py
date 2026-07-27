@@ -467,17 +467,22 @@ class ComposeEngine:
                 cur = self._materialize(con, self._vname("filter", used), filter_view(cur["name"], [(vf[0], "=", vf[1])]),
                                         "filter", f"where {vf[0]} = {vf[1]!r}")
                 base.append(cur)
+            world_grounding = None                           # (supplied_attrs, own_columns, wcol, value, world_filtered)
             if world is not None:                            # base B: world-meaning join (+ optional filter on a world dim)
+                own_cols = {str(c).lower() for c in cur["columns"]}   # what the UPLOAD already provides, PRE world join
                 wf = self._world_link(low, cur, world)
                 if wf:
                     link, wkey, keep, wcol, value = wf
                     cur = self._materialize(con, self._vname("world_join", used), world_join_view(cur["name"], link, world["name"], wkey, keep),
                                             "world_join", f"join {cur['name']} to the world on {link}")
                     base.append(cur)
+                    world_filtered = False
                     if wcol and value is not None:           # a world VALUE was named -> filter; else attribute-only join
                         cur = self._materialize(con, self._vname("world_filter", used), filter_view(cur["name"], [(wcol, "=", value)]),
                                                 "world_filter", f"where {wcol} = {value!r}")
                         base.append(cur)
+                        world_filtered = True
+                    world_grounding = (list(keep or []) + ([wcol] if wcol else []), own_cols, wcol, value, world_filtered)
             table = {"name": cur["name"], "columns": cur["columns"], "rows": cur["rows"]}
             prims = self.reader.present(question) if self.reader else None   # learned readout (or None=heuristic)
             steps = self.plan(question, table, prims, used)
@@ -485,9 +490,25 @@ class ComposeEngine:
             for s in steps:
                 views.append(self._materialize(con, s["out"], self._sql(s), s["op"], s.get("label")))
             final = views[-1] if views else None
+            # EXPLICIT world-dependency record for the router. A world_join proves world data was JOINED, not that
+            # it was NECESSARY: if the referenced attribute is already an uploaded column, the join was redundant and
+            # the query is own-data. So necessity = a world-supplied attribute the upload LACKS that the ANSWER
+            # actually uses (appears in the final columns), OR a world_filter (the filter value was absent from the
+            # upload, which is the only reason _world_link filtered instead of the direct value-filter above).
+            world_dependency = None
+            if world_grounding is not None:
+                supplied, own_cols, wcol, value, world_filtered = world_grounding
+                supplied = sorted({str(a) for a in supplied if a})
+                final_cols = {str(c).lower() for c in (final["columns"] if final else [])}
+                used_necessary = sorted(a for a in supplied if a.lower() not in own_cols and a.lower() in final_cols)
+                world_dependency = {
+                    "supplied": supplied, "own_columns": sorted(own_cols), "necessary": used_necessary,
+                    "world_filtered": world_filtered, "is_necessary": bool(world_filtered or used_necessary),
+                    "filter_attribute": wcol, "filter_value": value,
+                }
         finally:
             con.close()
         return {"question": question, "n_steps": len(views), "plan": [v["op"] for v in views],
                 "primitives": sorted(prims) if prims is not None else None,
                 "answer": ({"columns": final["columns"], "rows": final["rows"]} if final else None),
-                "views": views}
+                "views": views, "world_dependency": world_dependency}

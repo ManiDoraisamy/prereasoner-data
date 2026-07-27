@@ -89,12 +89,12 @@ your data**, and the derivation *is* the reasoning trace.
   planner's job; year-over-year / running-total / share / ratio are supported as world-grounded
   composites.)
   (`engine/tables.py: _serve_ast`). On **standard Spider dev** — gold-blind, all DB tables fed,
-  top-1 selection, `--max-candidates 25` (the `whole_db` config) — it scores **30.3% strict /
-  38.9% lenient / 50.0% scalar-gold** (313/1034, 402/1034, 204/408); this is the number to compare
+  top-1 selection, `--max-candidates 25` (the `whole_db` config) — it scores **32.9% strict /
+  42.3% lenient / 52.0% scalar-gold** (340/1034, 437/1034, 212/408); this is the number to compare
   against other Spider systems. In the **oracle-table-selection** config (`gold_tables` — only the
   tables the gold SQL references are fed, which mirrors the product, where a user uploads exactly the
-  relevant sheets) it reaches **37.6% strict / 49.2% lenient / 57.6% scalar-gold** (389/1034,
-  509/1034, 235/408). `docs/SQL_AST.md` explains the measurement boundary.
+  relevant sheets) it reaches **41.0% strict / 52.6% lenient / 58.8% scalar-gold** (424/1034,
+  544/1034, 240/408). `docs/SQL_AST.md` explains the measurement boundary.
 - **World/knowledge path** (`engine/knowledge_query.py`, `engine/knowledge_compose.py`): when a
   question needs a fact you didn't upload — *"total amount in France"* over a sheet that only lists
   cities — text columns are typed by the property router, each value resolves through the

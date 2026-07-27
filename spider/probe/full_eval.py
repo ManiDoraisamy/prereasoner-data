@@ -147,7 +147,8 @@ def compose_predict(eng, tabs, question):
     ans = res.get("answer")
     return {"ok": True, "sql": (res["views"][-1]["sql"] if res.get("views") else None),
             "rows": ans["rows"] if ans else None, "path": "compose",
-            "plan": res.get("plan"), "primitives": res.get("primitives")}
+            "plan": res.get("plan"), "primitives": res.get("primitives"),
+            "world_dependency": res.get("world_dependency")}   # None on Spider (world=None) -> router picks AST
 
 
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
@@ -168,7 +169,8 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         if depth:
             try:
                 r = compose_predict(eng, tabs, question)
-                if compose_owns(r.get("plan"), r.get("rows")):   # AUTHORITY: grounded world dependency
+                # AUTHORITY: a NECESSARY grounded world dependency (world_dependency is None on Spider -> AST).
+                if compose_owns(r.get("plan"), r.get("world_dependency"), r.get("rows")):
                     return r
             except Exception:                     # noqa: BLE001 — live serve() delegates on engine error
                 pass

@@ -192,8 +192,8 @@ planner's; no trained proposer or learned ranker is involved.
 
 | Configuration | Strict | Lenient | Scalar-gold |
 |---|---:|---:|---:|
-| **whole_db** — gold-blind, all DB tables fed (standard Spider) | 313/1034 (30.3%) | 402/1034 (38.9%) | 204/408 (50.0%) |
-| **gold_tables** — oracle table selection, only the gold-referenced tables fed | 389/1034 (37.6%) | 509/1034 (49.2%) | 235/408 (57.6%) |
+| **whole_db** — gold-blind, all DB tables fed (standard Spider) | 340/1034 (32.9%) | 437/1034 (42.3%) | 212/408 (52.0%) |
+| **gold_tables** — oracle table selection, only the gold-referenced tables fed | 424/1034 (41.0%) | 544/1034 (52.6%) | 240/408 (58.8%) |
 
 The **whole_db** row is the number to compare against other Spider systems: it is gold-blind and
 feeds every table in the database, so it also pays the cost of table selection. The **gold_tables**

@@ -303,11 +303,13 @@ class ComposedKnowledgeQuery:
     def _run_engine(self, tables, question, sub, as_of, emit=None, world=None):
         """Build the composed view stack (join -> world_join -> world_filter -> ... -> aggregate) for `question`
         and shape it into the serve response (views carry their own columns/rows so the UI can walk each step).
-        `emit` streams the trace to RTDB live: status:resolving during the (slow) world lookup, then each view."""
-        if emit:
-            emit("status", "resolving")
-        if world is None:                                     # serve() hoists the lookup to route on world-grounding;
-            norm, _ = self.qw.ingest(tables)                  # reuse it here so the world DB is hit once, not twice.
+        `emit` streams the trace to RTDB live: status:resolving during the (slow) world lookup, then each view.
+        When `world` is passed (serve() hoisted the lookup to route on world-grounding) the caller has ALREADY
+        emitted status:resolving before that lookup, so we don't re-emit it here."""
+        if world is None:                                     # standalone call (the re-expression path): do our own
+            if emit:                                          # lookup and stream resolving around it.
+                emit("status", "resolving")
+            norm, _ = self.qw.ingest(tables)
             world = self._world_lookup(norm, sub)
         res = self.reason.run(tables, question, world=world)
         views = [{"name": v["name"], "op": v["op"], "label": v["label"], "sql": v["sql"],
@@ -320,6 +322,7 @@ class ComposedKnowledgeQuery:
         return {"question": question, "as_of": as_of, "error": None,
                 "model": "engine - composed view stack",
                 "plan": res["plan"], "primitives": res["primitives"], "views": views,
+                "world_dependency": res.get("world_dependency"),
                 "sql": final["sql"] if final else None,
                 "result": res["answer"]}
 
@@ -350,14 +353,18 @@ class ComposedKnowledgeQuery:
             # never authority to stand on it. Ground the world dependency FIRST: if nothing resolves against the
             # world model, the query is answerable from the uploaded tables alone, so the typed-AST planner owns it
             # and we never build (let alone stand on) the ComposeEngine. Only when a world dependency grounds do we
-            # build the view stack and let engine.routing.compose_owns decide (a genuine world composite stands; a
-            # plain world lookup falls through to the authoritative delegate).
+            # build the view stack and let engine.routing.compose_owns decide on the EXPLICIT world_dependency
+            # record (a genuine, NECESSARY world composite stands; a redundant join or a plain world lookup falls
+            # through to the authoritative delegate). The world lookup is the slow step, so stream resolving first.
+            if emit:
+                emit("status", "resolving")
             norm, _ = self.qw.ingest(tables)
             world = self._world_lookup(norm, sub)
             if world:
                 try:
                     er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world)
-                    if compose_owns(er.get("views"), (er.get("result") or {}).get("rows")):
+                    if compose_owns(er.get("views"), er.get("world_dependency"),
+                                    (er.get("result") or {}).get("rows")):
                         return er
                 except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
                     import traceback
