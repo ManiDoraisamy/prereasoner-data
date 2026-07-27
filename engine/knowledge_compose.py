@@ -24,36 +24,19 @@ from engine.entities import WORLD_TABLE_TYPE
 from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
 from engine.compose import ComposeEngine
+from engine.routing import DEPTH_PRIMS, WORLD_MEASURES, compose_owns
 
 
 class ComposedKnowledgeQuery:
     """Composition over the live multi-table + world base; delegates non-composed queries to KnowledgeQuery."""
 
-    # The composition primitives this layer ADDS over the delegate (KnowledgeQuery already does plain aggregate +
-    # FK/world joins + list-vs-aggregate). A row COUNT is read separately off read_op_model (it is an operator, not
-    # a head dim) because the delegate's count+world path is weak.
-    # These composition primitives gate to the ENGINE (the view-stack reasoner) — its whole product value.
-    # NOTE: a Spider-dev probe showed trimming TOPN/SORT/TIME here lifts the *benchmark* (those questions route
-    # to the slot planner, which projects/filters — things Spider needs and the aggregate-only engine lacks). But
-    # that trim BROKE the live product: composite world queries ("top 3 cities by population", "amount in Europe
-    # by city") stopped building their view stack (test_geo composite cases -> plan=[]). The live view stack is
-    # the product; the benchmark is not. So TOPN/SORT/TIME stay. Distinguishing a Spider projection/sort from a
-    # live composite analytic is a routing refinement for later — NOT a reason to drop them here.
-    # GROUP is included: a "by <world attribute>" aggregation ("total sales by continent", "sales per country")
-    # needs the engine's group_agg over the world join — the delegate can only produce a single scalar. A GROUP
-    # false-positive is harmless: serve() only STANDS on the engine for a genuine grouped result (see below).
-    # Keep in sync with spider/probe/full_eval.py::DEPTH_PRIMS.
-    DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
-
+    # Routing constants (DEPTH_PRIMS = primitive-head EVIDENCE to build a compose plan; WORLD_MEASURES = a world
+    # attribute the upload can't expose) and the routing AUTHORITY (compose_owns) live in engine.routing — the ONE
+    # shared router used by both this serving path and the Spider eval, so they can never drift.
     def __init__(self):
         self.qw = KnowledgeQuery()                            # resolution + world DB + auth + bridge machinery
         self.reader = PrimitiveReader(encoder=self.qw)    # the learned 10-primitive head on the SAME unified encoder
         self.reason = ComposeEngine(reader=self.reader)   # the deterministic composition engine
-
-    # a distinctive WORLD numeric attribute (a measure the delegate can't expose as a column) -> needs the world join
-    # + analytical stack even for a plain aggregate ("average population of cities"). Narrow + unambiguous on purpose.
-    # (Lexical for now; making "which world attribute the question needs" a learned readout is a next step.)
-    WORLD_MEASURES = re.compile(r'\bpopulation\b|atomic\s+(?:number|mass)', re.I)
 
     def _composed(self, tables, question):
         """LEARNED compose gate (no lexical DEPTH regex): route to the engine when the unified encoder READS a
@@ -61,7 +44,7 @@ class ComposedKnowledgeQuery:
         MEASURE the delegate can't expose (population / atomic number). Plain SUM/AVG, bare group-by, list, and
         hybrid-semantic queries (no such readout) delegate to KnowledgeQuery — which itself distinguishes list from
         aggregate. So whether a question needs composition is mostly a MODEL readout, not a keyword list."""
-        if self.WORLD_MEASURES.search(question or ""):
+        if WORLD_MEASURES.search(question or ""):
             return True
         try:
             # A bare COUNT no longer gates to the engine. The delegate's count+world path was strengthened (the
@@ -70,7 +53,7 @@ class ComposedKnowledgeQuery:
             # the engine's count. Counts WITH composition depth still gate via the DEPTH_PRIMS arm (e.g. top-N by
             # count); a plain count delegates to the fixed KnowledgeQuery, and serve() still re-expresses a clean
             # world-filtered scalar as the view stack (guarded by _same_answer) so the reasoning is still shown.
-            return bool(self.reader.present(question) & self.DEPTH_PRIMS)
+            return bool(self.reader.present(question) & DEPTH_PRIMS)
         except Exception as e:                            # noqa: BLE001 — the gate must never break the world path
             print("compose gate failed, delegating:", e, flush=True)
             return False
@@ -317,34 +300,15 @@ class ComposedKnowledgeQuery:
                     if co_cu[1]:
                         d["currency"] = co_cu[1]
 
-    # the engine "did something" iff it built one of these; a plan that collapsed to just [join, group_agg] means the
-    # gate misfired (e.g. 'German sales' bound no filter) -> defer to the delegate so its clarify gate can fire.
-    _REAL_VIEWS = {"world_join", "world_filter", "topn", "yoy", "running", "share", "divide", "having",
-                   "time_filter", "filter", "sort"}
-    # The DEPTH composition views the engine can build, SPLIT by whether the slot-filler can also express them:
-    #   ENGINE_ONLY = genuine multi-step composition the delegate/slot-filler cannot do (year-over-year, running
-    #     total, share, ratio-divide, HAVING) -> ALWAYS stand on the engine when built.
-    #   SLOT_OVERLAP = order/limit/top-N/argmax/year-filter, which the slot-filler ALSO does — and does WITH
-    #     projection + WHERE. Stand on the engine for these ONLY when a WORLD join is in the stack (a genuine world
-    #     composite, e.g. "top 3 cities by population" = world.Cities join + top-N). A bare NON-world sort/top-N/
-    #     year-filter is exactly what the slot-filler handles better, so it falls through to the delegate.
-    # This is the context-aware routing: it recovers the Spider projection/sort losses (Spider is world=None, so
-    # SLOT_OVERLAP never stands -> the slot-filler projects/filters/orders) WITHOUT dropping the live world
-    # composites the blunt DEPTH_PRIMS trim broke (test_geo: world join present -> stands). Standing also holds for a
-    # world MEASURE the delegate can't expose, or a genuine world GROUP-BY. A bare aggregate/count defers to the
-    # (authoritative) delegate. Keep in sync with spider/probe/full_eval.py.
-    _ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
-    _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
-    _COMPOSITION_VIEWS = _ENGINE_ONLY_VIEWS | _SLOT_OVERLAP_VIEWS         # union, for reference / external callers
-
-    def _run_engine(self, tables, question, sub, as_of, emit=None):
+    def _run_engine(self, tables, question, sub, as_of, emit=None, world=None):
         """Build the composed view stack (join -> world_join -> world_filter -> ... -> aggregate) for `question`
         and shape it into the serve response (views carry their own columns/rows so the UI can walk each step).
         `emit` streams the trace to RTDB live: status:resolving during the (slow) world lookup, then each view."""
         if emit:
             emit("status", "resolving")
-        norm, _ = self.qw.ingest(tables)
-        world = self._world_lookup(norm, sub)
+        if world is None:                                     # serve() hoists the lookup to route on world-grounding;
+            norm, _ = self.qw.ingest(tables)                  # reuse it here so the world DB is hit once, not twice.
+            world = self._world_lookup(norm, sub)
         res = self.reason.run(tables, question, world=world)
         views = [{"name": v["name"], "op": v["op"], "label": v["label"], "sql": v["sql"],
                   "columns": v["columns"], "rows": [list(r) for r in v["rows"][:50]]} for v in res["views"]]
@@ -382,34 +346,23 @@ class ComposedKnowledgeQuery:
         (KnowledgeQuery) stays AUTHORITATIVE for clarify / list / hybrid / non-geo / no-filter; the re-expression only
         stands when it reproduces the delegate's answer. Everything else delegates unchanged."""
         if self._composed(tables, question):
-            try:
-                er = self._run_engine(tables, question, sub, as_of, emit=emit)
-                # Stand on the engine only if it actually built a composition/world stack. If it collapsed to a plain
-                # [join, group_agg] SCALAR (the gate misfired and no filter bound, e.g. 'German sales'), fall through
-                # to the delegate so its CLARIFY gate fires instead of silently returning the ungrouped total.
-                _views = er.get("views") or []
-                # a genuine WORLD GROUP-BY: a world join + a group_agg that actually GROUPED (a real multi-column
-                # breakdown, columns>=2 = dimension+aggregate, not a scalar) + a non-empty result. The delegate
-                # cannot produce this ("total sales by continent" -> per-continent rows), so stand on the engine.
-                _world_involved = any(v.get("op") in ("world_join", "world_filter") for v in _views)
-                _world_grouped = (_world_involved
-                                  and any(v.get("op") == "group_agg" and len(v.get("columns") or []) >= 2 for v in _views)
-                                  and (er.get("result") or {}).get("rows"))
-                # ENGINE_ONLY composition always stands. A SLOT_OVERLAP view (sort / top-N / year-filter) stands ONLY
-                # when a WORLD join is in the stack (a genuine world composite, e.g. "top 3 cities by population" =
-                # world.Cities join + top-N). A BARE non-world sort/top-N/year-filter falls through to the slot-filler,
-                # which projects+filters+orders it correctly — compose has NO plain projection (it always aggregates),
-                # so it's the wrong host for a bare superlative ("top 3 cities" -> the slot-filler's clean
-                # `SELECT city ORDER BY amount DESC LIMIT 3`). Plus world measure / world group-by.
-                if (any(v.get("op") in self._ENGINE_ONLY_VIEWS for v in _views)
-                        or (_world_involved and any(v.get("op") in self._SLOT_OVERLAP_VIEWS for v in _views))
-                        or self.WORLD_MEASURES.search(question or "")
-                        or _world_grouped):
-                    return er
-            except Exception as e:                        # noqa: BLE001 — never hard-fail; fall back to delegate
-                import traceback
-                print("composed serve failed, delegating to KnowledgeQuery:", e, flush=True)
-                traceback.print_exc()
+            # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building —
+            # never authority to stand on it. Ground the world dependency FIRST: if nothing resolves against the
+            # world model, the query is answerable from the uploaded tables alone, so the typed-AST planner owns it
+            # and we never build (let alone stand on) the ComposeEngine. Only when a world dependency grounds do we
+            # build the view stack and let engine.routing.compose_owns decide (a genuine world composite stands; a
+            # plain world lookup falls through to the authoritative delegate).
+            norm, _ = self.qw.ingest(tables)
+            world = self._world_lookup(norm, sub)
+            if world:
+                try:
+                    er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world)
+                    if compose_owns(er.get("views"), (er.get("result") or {}).get("rows")):
+                        return er
+                except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
+                    import traceback
+                    print("composed serve failed, delegating to KnowledgeQuery:", e, flush=True)
+                    traceback.print_exc()
             return self.qw.serve(tables, question, as_of=as_of, schema=sub)
         # Not gated to the engine: the delegate owns clarify / list / hybrid / non-geo / plain answers.
         deleg = self.qw.serve(tables, question, as_of=as_of, schema=sub)

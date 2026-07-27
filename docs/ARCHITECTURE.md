@@ -211,10 +211,14 @@ Below is the *direct* path (reason page → engine). The chat path is the same, 
    HTTP body carries the answer + the SQL; in parallel each stage was streamed to RTDB as it completed
    (§11).
 
-**A question *with* composition depth** — *"top 3 cities by total amount"*, *"total amount in Europe by
-city"*, year-over-year, share, running total — is instead decomposed by `ComposeEngine`
-(`engine/compose.py`) into a DAG of simple primitive views over the FK + knowledge base, each streamed
-as it materializes (§7).
+**A question that grounds a WORLD dependency AND composes over it** — *"top 3 cities by population"*,
+*"total amount in Europe by city"*, world year-over-year / share / running total — is decomposed by
+`ComposeEngine` (`engine/compose.py`) into a DAG of simple primitive views over the FK + knowledge base,
+each streamed as it materializes (§7). Routing authority is a *grounded* world dependency, read off the
+built plan (`engine/routing.py: compose_owns`), never the primitive-head prediction alone. A question
+answerable from the uploaded tables ALONE — including own-data HAVING and group-by — is owned by the
+typed-AST planner; the self-contained (no-world) year-over-year / running / share / divide variants were
+retired (untested and weaker than the planner).
 
 ### 4.1–4.6 The engine endpoints
 
@@ -393,9 +397,12 @@ model's *only* relational parameter is a per-edge-type × per-head additive atte
 
 ## 7. SQL generation over your own data
 
-Two routes assemble SQL over the uploaded tables. Both are deterministic; neither samples SQL tokens.
+The **typed-AST planner (§7.2) owns every query answerable from the uploaded tables alone.** The compose
+engine (§7.1) is a *world-enrichment / analytical-lowering* component — the shared router
+(`engine/routing.py: compose_owns`) hands it a query ONLY when the built plan grounds a world dependency
+(`world_join` / `world_filter`). Both are deterministic; neither samples SQL tokens.
 
-### 7.1 The compose engine (view stacking)
+### 7.1 The compose engine (world-grounded view stacking)
 
 `engine/compose.py: ComposeEngine` decomposes an analytical question into a **DAG of simple primitive
 views**, each materialized as a SQL view, stacked over a base relation (the uploaded FK join + the
@@ -413,6 +420,11 @@ DIVIDE ratio of two measures
 RUNNING cumulative / running total
 GROUP  group-by a dimension
 ```
+
+These are the primitive-head cues that make it worth *building* a compose plan — they are **evidence, not
+authority**. The engine only *stands* on that plan when it grounds a world dependency (`compose_owns`).
+HAVING and GROUP over own data are handled by the typed-AST planner; RATIO/SHARE/DIVIDE/RUNNING are
+supported as world-grounded composites (the self-contained variants were retired).
 
 Which primitives are present is read off the **learned 10-primitive head** (`engine/primitive_head.py:
 PrimitiveReader.present`) on the **same** unified encoder, OR'd with cheap lexical/operand cues for rare

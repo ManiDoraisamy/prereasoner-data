@@ -46,10 +46,11 @@ from spider_eval import (
 )
 
 DIFFS = ["easy", "medium", "hard", "extra"]
-# Mirrors the LIVE routing gate — keep in sync with engine.knowledge_compose.ComposedKnowledgeQuery.DEPTH_PRIMS.
-# The Spider-only trim of TOPN/SORT/TIME was REVERTED: it lifted the benchmark but broke live composite view
-# stacks (test_geo). This mirror tracks the live gate, so the Spider number here reflects real behavior.
-DEPTH_PRIMS = frozenset({"EXCL", "RATIO", "TOPN", "SHARE", "TIME", "HAVING", "SORT", "DIVIDE", "RUNNING", "GROUP"})
+# Routing is NOT mirrored here — it is IMPORTED from the ONE shared router (engine.routing), the same module
+# live serving uses, so the eval can never drift from production. DEPTH_PRIMS is the primitive-head EVIDENCE to
+# build a compose plan; compose_owns is the AUTHORITY (a grounded world dependency). Spider tables are world-less,
+# so compose_owns is always False here -> every question routes to the typed-AST planner.
+from engine.routing import DEPTH_PRIMS, compose_owns
 
 
 def _write_json_atomic(path, value):
@@ -149,24 +150,16 @@ def compose_predict(eng, tabs, question):
             "plan": res.get("plan"), "primitives": res.get("primitives")}
 
 
-# the DEPTH composition views — mirrors engine.knowledge_compose.ComposedKnowledgeQuery, SPLIT by whether the
-# delegate AST planner can also express them. ENGINE_ONLY (yoy/running/share/divide/having) the planner cannot do
-# -> always stand on compose. SLOT_OVERLAP (topn/sort/time_filter) the planner ALSO does WITH projection+WHERE ->
-# stand on compose only when a WORLD join is in the plan (world_join/world_filter). On Spider world=None, so a
-# world join NEVER appears -> SLOT_OVERLAP always falls to the AST planner (recovering the projection/sort losses),
-# while the live world composites (world join present) still stand. Keep in sync with knowledge_compose.py.
-_ENGINE_ONLY_VIEWS = {"yoy", "running", "share", "divide", "having"}
-_SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
-
-
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
             ast_schema_cache=None, selection="serving_top1", max_candidates=25,
             use_signals=True, use_compose=True):
-    """Route like the live system (gate -> compose -> stand-or-fall-back -> delegate/AST planner). Any
-    unrecovered exception is caught and attributed to a stage.
+    """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
+    EVIDENCE to build a compose plan; the AUTHORITY to stand on it is a grounded world dependency (compose_owns).
+    Spider tables are world-less, so compose_owns is always False and every question routes to the typed-AST
+    planner. Any unrecovered exception is caught and attributed to a stage.
 
-    use_compose / use_signals gate the compose routing and encoder signals respectively (ablation only;
-    serving is always True/True). use_compose=False isolates the pure typed-AST planner."""
+    use_compose / use_signals gate compose routing and encoder signals (ablation only; serving is always
+    True/True). use_compose=False isolates the pure typed-AST planner."""
     if use_compose:
         try:
             depth = bool(reader.present(question) & DEPTH_PRIMS)
@@ -175,11 +168,8 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         if depth:
             try:
                 r = compose_predict(eng, tabs, question)
-                plan = r.get("plan") or []
-                world = any(op in ("world_join", "world_filter") for op in plan)   # never true on Spider (world=None)
-                if (any(op in _ENGINE_ONLY_VIEWS for op in plan)
-                        or (world and any(op in _SLOT_OVERLAP_VIEWS for op in plan))):
-                    return r                      # genuine composition (or a world composite) — stand on it
+                if compose_owns(r.get("plan"), r.get("rows")):   # AUTHORITY: grounded world dependency
+                    return r
             except Exception:                     # noqa: BLE001 — live serve() delegates on engine error
                 pass
     try:
@@ -257,7 +247,7 @@ def main():
     # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
     # (tables.py / knowledge_compose.py / primitive_head.py / compose.py / encoder_overlay.py) or an edit to
     # this harness must invalidate a --resume checkpoint, or stale predictions get silently reused.
-    engine_code = ("tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
+    engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_profile.py", "sql_profile_expansion.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py")

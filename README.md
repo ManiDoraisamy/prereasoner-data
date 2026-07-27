@@ -80,11 +80,14 @@ fixed list of hand-named types, and you can read *why* it typed a column the way
 The answer is never generated text. The engine turns question + tables into **SQL it executes on
 your data**, and the derivation *is* the reasoning trace.
 
-- **Own-data path** (`engine/tables.py: serve()`): for questions answered entirely from your
-  uploaded tables, SQL is built either by the **compose engine** (a stack of simple, named views —
-  filter, group, top-N, share, year-over-year …) or by the **deterministic typed-AST planner**.
-  Production runs the AST planner: a bounded typed-AST search over the foreign-key graph with
-  **hand-written, fully-inspectable ranking — no trained proposer or learned ranker**
+- **Own-data path** (`engine/tables.py: serve()`): every question answerable entirely from your
+  uploaded tables is owned by the **deterministic typed-AST planner** — a bounded typed-AST search
+  over the foreign-key graph with **hand-written, fully-inspectable ranking, no trained proposer or
+  learned ranker**. (The `ComposeEngine` is a *world-enrichment* component, not a competing own-data
+  planner: it only hosts a query whose plan grounds a world dependency — see the routing invariant in
+  [engine/routing.py](engine/routing.py). Own-data analytical shapes like HAVING and group-by are the
+  planner's job; year-over-year / running-total / share / ratio are supported as world-grounded
+  composites.)
   (`engine/tables.py: _serve_ast`). On **standard Spider dev** — gold-blind, all DB tables fed,
   top-1 selection, `--max-candidates 25` (the `whole_db` config) — it scores **30.3% strict /
   38.9% lenient / 50.0% scalar-gold** (313/1034, 402/1034, 204/408); this is the number to compare
