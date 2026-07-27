@@ -30,10 +30,6 @@ allow_patterns=['*.pt','*.npz','qwen_lora/*'])`. To (re)train from scratch, see 
 | `taxonomy.csv` | 5 KB | The Wikidata P279 taxonomy (qid, category_1..N root->leaf, status, world_tables). Source of `engine.taxonomy.LEAF_PATH/LEAF_QID/LEAF_TABLES` and the non-geo type map. | yes |
 | `primitives.npz` | 72 KB | The learned 10-primitive linear head (`W`, `prims`, `thr`) read by `engine.primitive_head.PrimitiveReader`. | no (gitignored, `*.npz`) |
 | `weights_manifest.json` | 1 KB | Pinned weight-repository revision and immutable hashes for the complete runtime bundle. | yes |
-| `sql_ranker.json` | ~300 KB | Optional frozen SQL AST tree ranker. Inference uses `engine.sql_learned_rank` and does not import scikit-learn. The current artifact is experimental and is not loaded automatically because it did not pass the Spider dev promotion gate. | yes |
-| `sql_profile_ranker.json` | ~170 KB | Proposer- and adapter-matched profile ranker. Promotion is disabled because the full Spider dev serving gate regressed top-1; the model may order fallback candidates but cannot displace rank one. | yes |
-| `sql_profile_ranker_whole_db.json` | ~190 KB | Rejected all-table ranker ablation. It improved database-disjoint Spider-train validation but regressed Spider-dev strict top-1, so serving does not load it by default. Retained for reproducibility. | yes |
-| `sql_proposer.json` | ~5 MB | Frozen structured profile, table, and column-role proposer for explicit research/evaluation expansion. Loading fails closed unless its recorded adapter hash matches the active encoder. | yes |
 | `word_city.json` | 5 KB | World word-table metadata (key/concepts/filter attrs/links) for the meaning-graph planner. | yes |
 | `word_country.json` | 4 KB | ditto | yes |
 | `word_state.json` | 1 KB | ditto | yes |

@@ -69,9 +69,11 @@ def _write_json_atomic(path, value):
 
 def ast_predict(
     enc, tabs, question, schema_fks=None, schema_cache=None,
-    selection="serving_top1", max_candidates=25,
+    selection="serving_top1", max_candidates=25, use_signals=True,
 ):
-    """Run AST search using either exact serving top-1 or bounded execution checks."""
+    """Run AST search using either exact serving top-1 or bounded execution checks.
+
+    use_signals gates the encoder semantic signals (ablation only; serving is always True)."""
     cache_key = tuple(id(table) for table in tabs)
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
@@ -82,7 +84,8 @@ def ast_predict(
         if schema_cache is not None:
             schema_cache[cache_key] = cached
     norm, fks, sch, tmap = cached
-    candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates)
+    candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
+                                use_semantic_signals=use_signals)
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
 
@@ -157,27 +160,32 @@ _SLOT_OVERLAP_VIEWS = {"topn", "sort", "time_filter"}
 
 
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
-            ast_schema_cache=None, selection="serving_top1", max_candidates=25):
+            ast_schema_cache=None, selection="serving_top1", max_candidates=25,
+            use_signals=True, use_compose=True):
     """Route like the live system (gate -> compose -> stand-or-fall-back -> delegate/AST planner). Any
-    unrecovered exception is caught and attributed to a stage."""
-    try:
-        depth = bool(reader.present(question) & DEPTH_PRIMS)
-    except Exception:                            # noqa: BLE001
-        depth = False
-    if depth:
+    unrecovered exception is caught and attributed to a stage.
+
+    use_compose / use_signals gate the compose routing and encoder signals respectively (ablation only;
+    serving is always True/True). use_compose=False isolates the pure typed-AST planner."""
+    if use_compose:
         try:
-            r = compose_predict(eng, tabs, question)
-            plan = r.get("plan") or []
-            world = any(op in ("world_join", "world_filter") for op in plan)   # never true on Spider (world=None)
-            if (any(op in _ENGINE_ONLY_VIEWS for op in plan)
-                    or (world and any(op in _SLOT_OVERLAP_VIEWS for op in plan))):
-                return r                          # genuine composition (or a world composite) — stand on it
-        except Exception:                         # noqa: BLE001 — live serve() delegates on engine error
-            pass
+            depth = bool(reader.present(question) & DEPTH_PRIMS)
+        except Exception:                        # noqa: BLE001
+            depth = False
+        if depth:
+            try:
+                r = compose_predict(eng, tabs, question)
+                plan = r.get("plan") or []
+                world = any(op in ("world_join", "world_filter") for op in plan)   # never true on Spider (world=None)
+                if (any(op in _ENGINE_ONLY_VIEWS for op in plan)
+                        or (world and any(op in _SLOT_OVERLAP_VIEWS for op in plan))):
+                    return r                      # genuine composition (or a world composite) — stand on it
+            except Exception:                     # noqa: BLE001 — live serve() delegates on engine error
+                pass
     try:
         return ast_predict(
             enc, tabs, question, schema_fks, ast_schema_cache,
-            selection, max_candidates,
+            selection, max_candidates, use_signals,
         )
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
@@ -198,6 +206,11 @@ def main():
                     help="serving_top1 matches live AST selection exactly")
     ap.add_argument("--max-candidates", type=int, default=25,
                     help="AST candidate pool returned to selection/ranking")
+    # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
+    ap.add_argument("--no-compose", action="store_true",
+                    help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
+    ap.add_argument("--no-signals", action="store_true",
+                    help="ablation: run the AST search WITHOUT encoder semantic signals")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0,
                     help="soft prediction latency budget; evaluation is never abandoned")
@@ -233,20 +246,29 @@ def main():
         "config": args.config,
         "selection": args.selection,
         "max_candidates": args.max_candidates,
+        "compose": not args.no_compose,
+        "signals": not args.no_signals,
         "cap": args.cap,
         "timeout": args.timeout,
     }
     from engine.artifact_provenance import fingerprint_paths, sha256_tree
     from engine.config import DATA_DIR
 
+    # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
+    # (tables.py / knowledge_compose.py / primitive_head.py / compose.py / encoder_overlay.py) or an edit to
+    # this harness must invalidate a --resume checkpoint, or stale predictions get silently reused.
+    engine_code = ("tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
+                   "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
+                   "sql_recursive.py", "sql_profile.py", "sql_profile_expansion.py",
+                   "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py")
     checkpoint_contract["artifacts"] = {
         **fingerprint_paths({
             "dev": os.path.join(args.data, "dev.json"),
             "tables": os.path.join(args.data, "tables.json"),
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
-            "planner_code": os.path.join(ROOT, "engine", "sql_search.py"),
-            "ranking_code": os.path.join(ROOT, "engine", "sql_rank.py"),
+            "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
+            **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
         }),
         "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
     }
@@ -313,6 +335,7 @@ def main():
                     enc, eng, reader, tabs, ex["question"],
                     ast_fks.get(db_id), ast_schema_cache,
                     args.selection, args.max_candidates,
+                    not args.no_signals, not args.no_compose,
                 ),
                 args.timeout,
             )
@@ -365,6 +388,8 @@ def main():
     summary = {
         "n": tot["n"], "config": args.config,
         "selection": args.selection,
+        "compose": not args.no_compose,
+        "signals": not args.no_signals,
         "max_candidates": args.max_candidates,
         "artifacts": checkpoint_contract["artifacts"],
         "answered_pct": round(100 * tot["answered"] / N, 1),

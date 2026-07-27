@@ -17,9 +17,16 @@ Given a question, tables, and foreign keys, the planner:
 5. Ranks candidates with hand-written, fully-inspectable deterministic features.
 6. Renders only validated ASTs to SQL.
 
-The same inputs always produce the same ordering. Determinism removes sampling variance.
-It does not remove natural-language ambiguity, schema-linking errors, missing search
-rules, or ranking errors.
+The same inputs always produce the same candidate **ordering** — the planner's selection is
+deterministic, which removes sampling variance. It does not remove natural-language ambiguity,
+schema-linking errors, missing search rules, or ranking errors.
+
+> **Caveat — end-to-end byte-identity is not guaranteed.** Deterministic here means the AST
+> planner's *candidate selection* is reproducible. It is **not** a claim that end-to-end serving
+> emits byte-identical SQL across processes: the compose path shows cross-process SQL variance (an
+> external review observed a few differing compose SQLs across two runs under identical model
+> hashes; likely compose-path ordering that would need controlled torch/thread settings to pin).
+> Treat byte-for-byte cross-process reproduction as a known caveat, not a guarantee.
 
 ## Architecture
 
@@ -112,8 +119,9 @@ The own-data `/api/knowledge` response keeps its existing SQL and result fields 
 `engine/sql_profile_expansion.py`) that turns on **deterministic** exact-profile candidate
 expansion — an extra search knob that widens the candidate pool from structural AST profiles
 (`engine/sql_profile.py`). It is not a proposer: no model is involved, and every expanded
-variant still passes AST validation and is ranked by the same hand-written features. The
-Spider eval uses it to raise pool recall; serving does not.
+variant still passes AST validation and is ranked by the same hand-written features. It is a
+kept, purely deterministic knob; serving leaves it off. It is not tied to any reproducible
+accuracy gain in the current tree — do not attribute a specific pool-recall number to it.
 
 | Setting | Default | Meaning |
 |---|---:|---|
@@ -177,48 +185,27 @@ not depend on one another's private internals.
 
 ## Spider results
 
-The current full-dev measurements use all 1,034 Spider dev examples, Spider foreign
-keys, recursively referenced gold tables, pool 180, and denotation evaluation.
+The reported numbers are the **serving-faithful** measurement: `full_eval.py` running the exact
+serving selector (byte-for-byte `engine/tables.py:_serve_ast`) — top-1, `--max-candidates 25` — over
+all 1,034 Spider dev examples with denotation evaluation. This accuracy is entirely the deterministic
+planner's; no trained proposer or learned ranker is involved.
 
-| Configuration | Strict top-1 | Strict top-10 | Strict pool oracle | Avg. candidates |
-|---|---:|---:|---:|---:|
-| Phase 5 typed search | 426 (41.2%) | 484 (46.8%) | 490 (47.4%) | 5.39 |
-| Explicit profile expansion, baseline protected | 426 (41.2%) | 545 (52.7%) | 570 (55.1%) | 21.31 |
+| Configuration | Strict | Lenient | Scalar-gold |
+|---|---:|---:|---:|
+| **whole_db** — gold-blind, all DB tables fed (standard Spider) | 313/1034 (30.3%) | 402/1034 (38.9%) | 204/408 (50.0%) |
+| **gold_tables** — oracle table selection, only the gold-referenced tables fed | 389/1034 (37.6%) | 509/1034 (49.2%) | 235/408 (57.6%) |
 
-The deterministic profile expansion adds 80 strict-reachable answers to the pool without
-changing top-1. The current projection linker distinguishes properties that share
-table-name words, qualifies ambiguous properties by entity, and follows outbound owner
-foreign keys for display names. Against the previous exact serving artifact this produces
-18 strict wins and one strict loss. The remaining loss is a known grouped distinct-count
-target ambiguity.
+The **whole_db** row is the number to compare against other Spider systems: it is gold-blind and
+feeds every table in the database, so it also pays the cost of table selection. The **gold_tables**
+row is an oracle-table-selection configuration that feeds only the tables the gold SQL references;
+this is the closer analogue to the product, where a user uploads exactly the relevant sheets, and it
+is an upper bound relative to standard Spider, not a standard-Spider result.
 
-The **serving-faithful** `full_eval.py --selection serving_top1 --max-candidates 25`
-path (byte-for-byte `engine/tables.py:_serve_ast`) scores **389/1034 strict (37.6%)**,
-**509/1034 lenient (49.2%)**, and **235/408 scalar (57.6%)** on gold-tables. This accuracy is
-entirely the deterministic planner's. Turning on deterministic profile expansion at pool 180
-yields the *same* top-1 numbers — it only raises pool recall (~47%→55%), which top-1 selection
-does not yet convert.
-
-### What the numbers mean
-
-The corrected pool contains a strict-correct query for 570 examples, but the protected
-top-1 is correct for only 426. This leaves two distinct problems:
-
-1. **Selection:** 144 reachable answers are not selected first.
-2. **Generation:** 464 examples still have no strict-correct AST in the pool.
-
-Determinism makes both failures reproducible and inspectable; it does not solve either
-one. A larger decoder is not the first remedy. The next useful data is targeted,
-same-profile contrastive supervision for projection identity, aggregate shape, zero-
-inclusive counts, and multi-table role binding.
-
-Detailed records:
-
-- `spider/results/ast_profile_projection_final.json`: recorded isolated search and pool recall;
-- `spider/results/ast_profile_failure_analysis_final.json`: failure-family counts;
-- `spider/results/ast_profile_failure_details_final.json`: per-example failure diagnoses;
-- `spider/results/full_eval_ast_projection_final/`: exact serving-selector
-  summary, per-example records, and resumable checkpoint.
+> **Historical note.** Earlier "profile-expansion / pool-recall" experiments (a "pool 180" candidate
+> pool reaching ~55% strict pool-oracle) depended on a trained research **proposer** that has since
+> been removed from the tree, along with `build_ast_proposal_data.py`. Those pool numbers were **not**
+> produced by the deterministic serving path and **cannot be reproduced from HEAD**; they are recorded
+> here only as history and are deliberately excluded from the table above.
 
 ## Reproduction
 
@@ -229,17 +216,21 @@ python spider/probe/fetch_data.py --include-train
 ```
 
 Run the serving-faithful evaluation — the deterministic AST planner, byte-for-byte the
-serving selector (`engine/tables.py:_serve_ast`). There is no `--planner`, no
-`--proposer-model`, no `--ranker-model`, and no `--profile-expansion`; the planner is
-unconditional:
+serving selector (`engine/tables.py:_serve_ast`). The planner is unconditional: there is no
+planner-mode flag, no proposer, and no learned ranker to pass.
+
+Standard Spider (whole_db — the headline comparison number):
 
 ```bash
 python spider/probe/full_eval.py \
-  --dbs spider/data/dbs --config gold_tables \
+  --dbs spider/data/dbs --config whole_db \
   --selection serving_top1 --max-candidates 25 \
-  --tag serving_final \
-  --out spider/results/full_eval_serving_final
+  --tag serving_whole_db \
+  --out spider/results/full_eval_serving_whole_db
 ```
+
+Oracle table selection (gold_tables — the product-analogue upper bound): rerun the same
+command with `--config gold_tables`.
 
 `--selection serving_top1` reproduces the live selector; `--selection execution_checks`
 enables execution-based candidate checks for diagnosis. Encoder training is unchanged and

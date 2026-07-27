@@ -1,28 +1,25 @@
 # Spider Benchmark — Diagnose Before Fixing (v2)
 
-> **Current planner note.** This document records the original diagnostic study of the slot-filler
-> and compose routes. The repository now also contains a typed deterministic AST planner with
-> subqueries, aliases, self-joins, set operations, nested aggregation, and bounded AST search. Start
-> with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the current implementation and results; use this
-> document for the historical probe methodology and legacy-route baseline.
+> **Current planner note.** This document records the original diagnostic study of the earlier
+> compose route and its delegate. The own-data SQL layer has since been consolidated to a **single
+> deterministic typed-AST planner** (`engine/tables.py: search_ast` → `engine/sql_search.py`) with
+> subqueries, aliases, self-joins, set operations, nested aggregation, and bounded AST search — and
+> hand-written, fully-inspectable ranking. There is **no separate slot-filler, no `--planner` flag,
+> no `PREREASONER_SQL_PLANNER` env var, and no trained proposer or learned ranker**; the planner runs
+> unconditionally. Start with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the current implementation
+> and results; use this document for the historical probe methodology and route diagnosis.
 
-> **Current accuracy-research tools.** `probe/mine_ast_failures.py` compares recursive
-> gold SQL profiles with the complete typed-AST pool and writes
-> `results/ast_failure_analysis.json`. `probe/build_ast_proposal_data.py` converts all
-> Spider-train gold trees into database-disjoint sketch, schema-link, and literal targets;
-> `probe/train_ast_proposer.py` fits deterministic top-k sketch and role-aware schema heads.
-> Their audits are `results/ast_proposal_data.json`, `results/ast_proposer.json`, and the current
-> result files documented in `docs/SQL_AST.md`. The corrected explicit profile beam preserves
-> 41.2% strict top-1 while raising top-10 strict oracle from 46.8% to 52.7% and full-pool recall
-> from 47.4% to 55.1%, with 21.31 average candidates. The learned ranker's promotion policy
-> regresses full Spider dev and is disabled.
-> The serving-faithful config (`--planner ast --selection serving_top1 --max-candidates 25`, no
-> proposer/ranker == `_serve_ast`) scores 37.6% strict / 57.6% scalar-gold on gold-tables (validated
-> full 1034-q run; up from 36.1%/56.9% before the recall-first fixes).
-> The typed planner is wired
-> into live own-data serving as `PREREASONER_SQL_PLANNER=ast`; proposer/profile/ranker paths remain
-> explicit research options and `legacy` remains the default rollout mode. These tools belong to the
-> current AST planner work; the rest of this document preserves the earlier route diagnosis.
+> **Current headline result.** The serving-faithful config (`--selection serving_top1
+> --max-candidates 25`, byte-for-byte `engine/tables.py:_serve_ast`) scores, over all 1034 Spider dev
+> examples with denotation evaluation:
+> - **standard Spider (`whole_db`, gold-blind, all tables fed): 30.3% strict / 38.9% lenient / 50.0%
+>   scalar-gold** (313/1034, 402/1034, 204/408) — the number to compare against other Spider systems;
+> - oracle table selection (`gold_tables`, only the gold-referenced tables fed, the product analogue):
+>   37.6% strict / 49.2% lenient / 57.6% scalar-gold (389/1034, 509/1034, 235/408).
+>
+> The accuracy is entirely the deterministic planner's. Earlier profile-expansion / trained-proposer
+> "pool recall" experiments have been removed from the tree and are not reproducible from HEAD; see the
+> historical note in [`docs/SQL_AST.md`](../docs/SQL_AST.md).
 
 > **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.
 > The goal is to localize *why* PreReasoner scores low on Spider before changing anything. This is
@@ -49,21 +46,25 @@ question over uploaded tables it:
    country a city is in, population, …). This is the product's differentiator.
 3. **Answers as a stack of SQL views** it can show the user.
 
-There are **two SQL generators** and a router between them (`engine/knowledge_compose.py :: _composed`):
+There are **two SQL routes** and a router between them (`engine/knowledge_compose.py :: _composed`):
 
 | Path | File | Emits | Executes on |
 |---|---|---|---|
 | **Compose** (view-stacking) | `engine/compose.py` + `engine/primitives.py` | one flattened base (single table / FK star-join / world join) → `filter · time_filter · group_agg · having · topn · sort · yoy · running · share · divide`, agg ∈ COUNT/SUM/AVG/MIN/MAX | in-memory **SQLite** |
-| **Slot-filler** (delegate) | `engine/tables.py :: TableQuery` | `SELECT`/projection, value-matched `WHERE`, `>`/`<`, dates, `GROUP BY`, `ORDER BY`, `LIMIT`, superlative argmax, **one** FK `JOIN`, agg | in-memory **SQLite** (offline) / **Postgres** (live) |
+| **Typed-AST planner** (own-data) | `engine/tables.py :: TableQuery.search_ast` → `engine/sql_search.py` | a bounded search over valid SQL ASTs: projections + `DISTINCT`, `WHERE`, aggregates, `GROUP BY`/`HAVING`, `ORDER BY`/`LIMIT`, multi-hop and self-joins, scalar subqueries, `IN`/`EXISTS`, derived tables, and `UNION`/`INTERSECT`/`EXCEPT` — ranked by hand-written deterministic features | in-memory **SQLite** (offline) / **Postgres** (live) |
 
 Routing: a question whose **learned primitive head** fires a *depth* primitive
-(`EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING`) → **Compose**; everything else → the delegate
-(→ slot-filler for a self-contained table). The live full stack (`KnowledgeReasoner → ComposedKnowledgeQuery →
-KnowledgeQuery`) additionally does world resolution + a **clarify gate**, and executes on **Postgres**.
+(`EXCL/RATIO/TOPN/SHARE/TIME/HAVING/SORT/DIVIDE/RUNNING`) → **Compose**; everything else → the
+deterministic typed-AST planner for a self-contained table. The live full stack (`KnowledgeReasoner →
+ComposedKnowledgeQuery → KnowledgeQuery`) additionally does world resolution + a **clarify gate**, and
+executes on **Postgres**.
 
-**Neither legacy generator has a nested-subquery primitive, a set-operation
-(`INTERSECT/UNION/EXCEPT`) primitive, or a self-join.** Those were hard ceilings for the two routes
-measured by this diagnostic. They are not ceilings of the newer AST planner.
+**Note on the original diagnostic.** The route this diagnostic measured through `engine/tables.py` was an
+earlier template/slot-filler delegate with **no nested-subquery, set-operation
+(`INTERSECT/UNION/EXCEPT`), or self-join** support — those were hard structural ceilings for that route.
+That delegate has since been **replaced by the deterministic typed-AST planner**, which does cover
+subqueries, set operations, and self-joins; the ceilings below are the earlier route's, not the current
+planner's.
 
 ---
 
@@ -75,8 +76,9 @@ the live path is **Postgres-gated** (`kb_pg_password()` raises without a seeded 
 a 15–45 min Wikidata sync), and `sentence_transformers`/`pgvector` are absent. So we do **not** fabricate
 a "12%." Instead we run the parts that *are* faithful and Postgres-free:
 
-- **Both SQL generators run on SQLite** (compose via `ComposeEngine.run(..., world=None)`; slot-filler via
-  `TableQuery.plan → assemble → execute`). For self-contained Spider DBs `world` **is** `None`, so the
+- **Both SQL routes ran on SQLite** (compose via `ComposeEngine.run(..., world=None)`; the delegate — at
+  the time of this diagnostic, the earlier slot-filler — via its `plan → assemble → execute` path; the
+  current tree runs the deterministic typed-AST planner here instead). For self-contained Spider DBs `world` **is** `None`, so the
   **assembled SQL is identical to what the live system would emit** — only the *executor* differs
   (SQLite vs Postgres), which does not change denotation. This yields a **faithful offline reproduction**
   of the system's SQL (Probe D+), missing only: world resolution (irrelevant to Spider) and the clarify
@@ -125,15 +127,17 @@ All under `spider/probe/`. Data (`dev.json`, `tables.json`, the 20 dev SQLite DB
   over representative Spider columns to test the v1 Phase-4 worry: does the router **abstain** on
   out-of-taxonomy columns, or **silently mis-fire** (false resolution)?
 - **Probe D+ — full offline system** (`full_eval.py`, model on CPU; **the headline**). Reproduces the
-  live routing (compose vs slot-filler), executes the emitted SQL on SQLite, and compares denotation to
-  the real gold rows. Reports the three-outcome split + a stage-attributed error histogram.
-  (`compose_eval.py` is the compose-path-only variant used to isolate that generator.)
+  live own-data path (the compose route and the deterministic typed-AST planner), executes the emitted
+  SQL on SQLite, and compares denotation to the real gold rows. Reports the three-outcome split + a
+  stage-attributed error histogram.
 
 Two input configs are reported:
+- **`whole_db`** — feed all of the DB's tables (product-realistic, gold-blind). This is **standard
+  Spider** — it pays the cost of table selection + FK-join flattening, and is the number to compare
+  against other Spider systems.
 - **`gold_tables`** — feed only the tables the gold SQL references (oracle table selection). Isolates
-  *reasoning/binding* quality; an **upper bound**.
-- **`whole_db`** — feed all of the DB's tables (product-realistic, gold-blind). Measures the extra cost
-  of table selection + the FK-join-flattening behaviour.
+  *reasoning/binding* quality; an **upper bound** relative to standard Spider, and the closer analogue to
+  the product (where the user uploads exactly the relevant sheets).
 
 ---
 
@@ -228,6 +232,12 @@ is visible; (d) hand spot-checks gate the histogram.
 cd spider/probe
 python fetch_data.py                       # dev.json, tables.json, 20 dev SQLite DBs -> ../data
 python static_probe.py                     # Probe A + B
-PYTHONPATH=../.. python full_eval.py --dbs ../data/dbs --config gold_tables --tag full   # Probe D+
-PYTHONPATH=../.. python typing_probe.py --dbs ../data/dbs                                # Probe C
+
+# Probe D+ — the serving-faithful deterministic typed-AST planner (engine/tables.py:_serve_ast).
+# Standard Spider (the headline comparison number):
+python full_eval.py --dbs ../data/dbs --config whole_db --selection serving_top1 --max-candidates 25
+# Oracle table selection (the product-analogue upper bound): same command with --config gold_tables:
+python full_eval.py --dbs ../data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
+
+python typing_probe.py --dbs ../data/dbs   # Probe C
 ```

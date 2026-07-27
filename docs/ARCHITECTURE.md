@@ -440,10 +440,13 @@ features** (`engine/sql_rank.py`, with structural profiles in `sql_profile.py` a
 candidate expansion in `sql_profile_expansion.py`) → only validated ASTs (`engine/sql_ast.py`) are
 rendered to SQL. The ranking is entirely hand-written; there is no trained proposer or learned ranker.
 
-Measured in the **exact serving config** (top-1, `--max-candidates 25`) on Spider dev **gold-tables**, the
-deterministic planner scores **37.6% strict / 49.2% lenient / 57.6% scalar-gold** (389/1034, 509/1034,
-235/408). The whole-database config (not what serving uses) is lower and is pending a re-measure on this
-code. The measurement boundary, capability map, and API are in [`docs/SQL_AST.md`](SQL_AST.md).
+Measured in the **exact serving config** (top-1, `--max-candidates 25`), the deterministic planner scores
+**30.3% strict / 38.9% lenient / 50.0% scalar-gold** (313/1034, 402/1034, 204/408) on **standard Spider
+dev** — the gold-blind `whole_db` config that feeds every table, the number to compare against other
+Spider systems. In the **oracle-table-selection** `gold_tables` config (only the gold-referenced tables
+fed, the product analogue) it scores **37.6% strict / 49.2% lenient / 57.6% scalar-gold** (389/1034,
+509/1034, 235/408). The measurement boundary, capability map, and API are in
+[`docs/SQL_AST.md`](SQL_AST.md).
 
 ---
 
