@@ -220,6 +220,8 @@ python -m tests.run_all
 
 ## Documentation
 
+- **[docs/PROMPT_TO_SQL.md](docs/PROMPT_TO_SQL.md)** — start here: a walkthrough of how one prompt
+  becomes SQL (the readout matrix → typed AST → SQL), with a diagram. Written for new developers.
 - **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the whole system works, top to bottom.
 - **[docs/TRAINING.md](docs/TRAINING.md)** — the training pipeline and how to add a new type.
 - **[docs/SQL_AST.md](docs/SQL_AST.md)** — the deterministic typed-AST SQL planner: API, capability
