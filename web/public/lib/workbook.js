@@ -97,7 +97,7 @@ function tokCls(tk){const u=tk.toUpperCase();
   const m=tk.match(/^"([^"]+)"$/); if(m&&TABNAMES.includes(m[1].toLowerCase()))return 'tbl';
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
-const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Wikipedia data',master:'Master data'};
+const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Wikipedia',master:'Your wiki'};
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
