@@ -147,7 +147,15 @@ function resultSummary(){
   if(r.rows.length===1) return {k:'result',v:r.columns.map((c,i)=>c+': '+fmt(r.rows[0][i])).join('  ·  '),big:false};
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
-function conv2html(t){ return esc(String(t||'')).replace(/\n/g,'<br>'); }
+function conv2html(t){
+  // Render the assistant reply's inline markdown. esc() runs FIRST so any HTML in the (LLM-generated) text is
+  // neutralized to entities; the markdown tags below are then added on that safe string, so this stays XSS-safe.
+  let s = esc(String(t||''));
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');            // `inline code`
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');  // **bold**  (consumed before single-* italic)
+  s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');              // *italic*
+  return s.replace(/\n/g, '<br>');
+}
 // Only THIS turn's derivation is "Reasoning steps". Stale sheets (kept from the previous turn so a conversational
 // follow-up's workbook isn't empty) must NOT render here — else an empty/no-data turn ("chennai?" with no Chennai
 // rows) would show the PRIOR turn's steps (e.g. France's world_join/world_filter) under the new question's header.
