@@ -34,7 +34,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `embeddings.py` | `Embedder` (bge-small), `normalize_surface`, `pgvector_literal`. |
 | `primitives.py` | pure SQL view builders. |
 | `primitive_head.py` | `PrimitiveReader` (head at `DATA_DIR/primitives.npz`; default encoder = `EncoderQuery`). |
-| `joins.py` | offline FK discovery for the compose engine. |
+| `joins.py` | compose's join assembly: `join_plan` (fact selection + flatten-safe keep-lists). FK discovery delegates to `relations.discover_fks` (one shared detector). |
 | `taxonomy.py` | `snake`, `name_like`, and the taxonomy constants (`TAX`/`LEAF_PATH`/`LEAF_QID`/`LEAF_TABLES`) loaded from `taxonomy.csv`. |
 | `knowledge_sync.py` | the runtime lazy-Wikidata-fill path: `lazy_resolve`, `ensure_entity`, `find_entity`, `discover`, `fetch_one`, `wlabel`, `ensure_table` + the WDQS client (`wdqs`, `V`, `qid_of`, `wbsearch`, `ask`, `ENDPOINT`, `UA`). Reachable from `entities.py` / `knowledge_query.py`. The bulk-sync CLI lives in `db/sync`. |
 | `converse.py` | `reply()` — the optional in-chat Sonnet fallback/presentation (see §"Conversational layer"). |

@@ -1,53 +1,29 @@
-"""Deterministic many-to-one FK discovery for the multi-table JOIN base of the composition engine (the
-offline analog of engine.relations / the live world resolution). A child.col is an FK to parent.key when
-parent.key is UNIQUE and every child value is contained in it (an inclusion dependency), with a name/shape
-compatibility check. The live serving path (engine.knowledge_compose) uses the world resolution instead; this
-keeps the composition engine testable in plain SQLite.
+"""Compose's multi-table JOIN base: choose the FACT table and its flatten-safe joins from the discovered
+foreign keys.
+
+FK DISCOVERY itself is NOT reimplemented here — it is owned by `engine.relations.discover_fks`, the one
+deterministic inclusion-dependency detector (a child column references a parent when the parent column is a
+UNIQUE key and the child's values are included in it, boosted by name/type agreement). This module adapts
+that edge list to the (child, child_col, parent, parent_col) tuples `join_plan` needs and builds the
+flattened SQLite view.
+
+Keeping ONE detector means the compose panel and the AST planner agree on every join — including STRING
+foreign keys (orders.customer -> customers.name), whose key is a name, not a number. A foreign key is a
+referential inclusion, not a numeric type, so the readable-name join is a first-class relationship, not a
+special case.
 """
 from __future__ import annotations
-import re
 
-
-def _col_vals(t, ci):
-    return [str(r[ci]) for r in t["rows"] if ci < len(r) and r[ci] is not None and str(r[ci]).strip()]
+from engine.relations import discover_fks as _discover_fk_edges
 
 
 def discover_fks(tables):
-    """-> [(child_table, child_col, parent_table, parent_col)] many-to-one, one FK per (child,col)."""
-    out, seen = [], set()
-    for child in tables:
-        for ci, cc in enumerate(child["columns"]):
-            cvals = set(_col_vals(child, ci))
-            if not cvals or (child["name"], cc) in seen:
-                continue
-            for parent in tables:
-                if parent["name"] == child["name"]:
-                    continue
-                for pi, pc in enumerate(parent["columns"]):
-                    pvals = _col_vals(parent, pi)
-                    pset = set(pvals)
-                    if len(pset) < 2 or len(pset) != len(pvals):     # parent key must be UNIQUE (a real key)
-                        continue
-                    name_ok = cc.lower() == pc.lower() or pc.lower() in cc.lower()
-                    if not name_ok and cc.lower().endswith(("id", "_id")):
-                        # An id-suffixed inclusion is a FK when the id names a FOREIGN entity, NOT when it is the
-                        # child's OWN identifier coincidentally ⊆ another id column. Small integer id ranges make
-                        # concert.concert_ID ⊆ stadium.Stadium_ID inclusion-true though it is no FK (concert_ID is
-                        # concert's own key). But relationship-named foreign keys (stores.Manager_ID -> employees,
-                        # Owner_ID/Buyer_ID -> a differently-named parent) are the common real pattern and MUST
-                        # resolve. So: accept when the stem names the parent, OR the stem is a foreign name (not the
-                        # child's own table) and the parent key is id-shaped. Reject only the child's self-id.
-                        stem = re.sub(r"_?ids?$", "", cc.lower())
-                        child_sing = child["name"].lower().rstrip("s")
-                        names_parent = bool(stem) and (stem in parent["name"].lower() or stem in pc.lower())
-                        is_self_id = (not stem) or stem == child["name"].lower() or stem == child_sing
-                        name_ok = names_parent or (not is_self_id and pc.lower().endswith("id"))
-                    if cvals <= pset and name_ok:                    # inclusion dependency + name/shape compatible
-                        out.append((child["name"], cc, parent["name"], pc)); seen.add((child["name"], cc))
-                        break
-                if (child["name"], cc) in seen:
-                    break
-    return out
+    """-> [(child_table, child_col, parent_table, parent_col)] many-to-one, one FK per (child, col).
+
+    Thin adapter over the shared inclusion-dependency detector (`engine.relations.discover_fks`), which
+    already returns the single best parent per child column with a name/type-boosted confidence and a strict
+    unique-key requirement on the parent (so a fanned-out or coincidental match is not emitted)."""
+    return [(f["from_table"], f["from_col"], f["to_table"], f["to_col"]) for f in _discover_fk_edges(tables)]
 
 
 def join_plan(tables, fks):

@@ -49,7 +49,8 @@ def dedup(t):
 def is_key(values):
     # A join/FK TARGET must be EXACTLY unique — a 0.98 tolerance let a column with a few duplicate keys become
     # an FK target, so a fact row matched multiple parent rows and the join fanned out (inflating SUM/COUNT/AVG).
-    # This mirrors the strict uniqueness check in joins.discover_fks (the compose/SQLite path).
+    # This strict uniqueness rule is the one both paths use: engine.joins.discover_fks (the compose/SQLite
+    # path) delegates here, so the planner and the compose panel share this exact key test.
     nn = [_norm(v) for v in values if _norm(v) is not None]
     return len(nn) >= 2 and len(nn) == len(values) and len(set(nn)) == len(nn)   # unique (exact), no nulls
 
@@ -96,8 +97,13 @@ def discover_fks(tables, min_incl=0.9):
                 if incl < min_incl:
                     continue
                 nb = _name_boost(ax, bname, by)
-                if not many_to_one and nb < 0.3:               # a unique/1:1 column is a FK only WITH a name signal —
-                    continue                                   # else two independent keys with overlapping ranges fake one
+                # A foreign key needs a NAME/key-name signal, not merely value inclusion. Without one, a repeating
+                # measure/flag/low-cardinality-categorical column whose distinct values happen to fall inside an
+                # unrelated unique key (qty -> warehouse.wh_id; a 0/1 flag -> a {0,1} lookup; severity -> priority.level)
+                # is faked into an FK. Require some name evidence in BOTH cases; a UNIQUE (1:1) child needs a STRONGER
+                # signal, since two independent keys overlap by chance more readily than a repeating column does.
+                if nb <= 0.0 or (not many_to_one and nb < 0.3):
+                    continue
                 conf = min(1.0, incl * 0.6 + nb + (0.2 if many_to_one else 0.0))
                 if best is None or conf > best[2]:
                     best = (bname, by, conf, incl)

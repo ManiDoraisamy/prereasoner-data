@@ -112,7 +112,8 @@ function renderSheet(){
     +'</div>';
   if(m.cls==='master') h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>'
     +'<span class=mactions>'
-    +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">upload CSV</button>'
+    +'<button class=mlink onclick="generateMaster(\''+m.id+'\')">Generate</button>'
+    +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">Upload</button>'
     +(m.saved?'':'<button class=mlink onclick="dismissMaster(\''+m.id+'\')">dismiss</button>')
     +'</span></div>';
   if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
@@ -515,6 +516,20 @@ async function saveMaster(id){
   }catch(_){}
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
   saveConvState();                                           // fold the saved master into the conversation snapshot
+}
+async function generateMaster(id){                            // fill the reference table's attribute columns with Sonnet
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  const gen=[...document.querySelectorAll('.masterhint .mlink')].find(b=>b.textContent==='Generate');
+  if(gen){ gen.textContent='Generating…'; gen.disabled=true; }
+  try{ const tk=await window.ensureToken();
+    const rows=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');   // real entities only (drop the blank new-row)
+    const r=await fetch(API_BASE+'/api/master/generate',{method:'POST',
+      headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
+      body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
+    if(r.ok){ const j=await r.json(); if(j&&j.columns&&j.columns.length){ sh.cols=j.columns; sh.rows=(j.rows||[]).map(x=>x.slice()); sh.dirty=true; } }
+    else if(gen){ gen.textContent='Generate failed — retry'; gen.disabled=false; return; }
+  }catch(_){ if(gen){ gen.textContent='Generate failed — retry'; gen.disabled=false; return; } }
+  renderSheet();                                              // repaint the filled table (also restores the button label)
 }
 function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;

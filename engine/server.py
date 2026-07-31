@@ -178,6 +178,8 @@ class H(BaseHTTPRequestHandler):
             self._post_dimension()
         elif path == "/api/converse":
             self._post_converse()
+        elif path == "/api/master/generate":
+            self._post_master_generate()
         elif path in ("/api/master", "/api/master/delete"):
             self._post_master(path)
         elif path in ("/api/conversation/delete", "/api/conversation/delete-all"):
@@ -252,6 +254,30 @@ class H(BaseHTTPRequestHandler):
                 print(f"/api/converse degraded (503): {type(e).__name__}: {e}", flush=True)  # missing key vs down vs rate-limit
                 self._send(503, json.dumps({"error": f"converse unavailable: {type(e).__name__}: {e}"})); return
             self._send(200, json.dumps({"reply": text}))
+        except Exception as e:                               # noqa: BLE001
+            self._send(500, json.dumps({"error": str(e)}))
+
+    # ---------------- /api/master/generate (Sonnet fills a reference table) ----------------
+    def _post_master_generate(self):
+        """POST /api/master/generate {name, columns, rows} → Sonnet fills the reference table's attribute
+        columns for each entity (the first column) and returns {columns, rows}. Firebase-auth'd like the
+        reasoning routes; a missing/failed Anthropic key degrades to a clear 503 (the button re-enables)."""
+        try:
+            n = int(self.headers.get("Content-Length", 0))
+            if n > MAX_BODY:
+                self._send(200, json.dumps({"error": "payload too large"})); return
+            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            from engine import converse
+            try:
+                out = converse.generate_master(req.get("name", "reference"),
+                                               req.get("columns") or [], req.get("rows") or [])
+            except Exception as e:                           # noqa: BLE001 — no key / SDK / bad JSON: let the client re-enable
+                print(f"/api/master/generate degraded (503): {type(e).__name__}: {e}", flush=True)
+                self._send(503, json.dumps({"error": f"generate unavailable: {type(e).__name__}: {e}"})); return
+            self._send(200, json.dumps(out))
         except Exception as e:                               # noqa: BLE001
             self._send(500, json.dumps({"error": str(e)}))
 

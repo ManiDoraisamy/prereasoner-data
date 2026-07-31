@@ -39,6 +39,20 @@ same repo and was updated in the same change; keeping aliases would only preserv
   executor on live routes.
 - Per-service bundle directories that duplicated the entire package and its weights (~327 MB).
 
+## One foreign-key detector
+
+Foreign-key discovery had drifted into two implementations: `engine/relations.py:discover_fks` (the
+principled inclusion-dependency detector — a child column references a parent when the parent is a UNIQUE
+key and the child's values are included in it, boosted by name/type agreement) used by the typed-AST
+planner, and a second, conservative detector in `engine/joins.py` that gated on column-*name* matching and
+fed the compose panel. They disagreed: the AST planner joined a **string** foreign key
+(`orders.customer → customers.name`, a name — not a number), but the compose panel dropped it because the
+column names differed, producing a derivation that summed the wrong column. A foreign key is a referential
+inclusion, not a numeric type, so this was a bug, not a policy. `engine/joins.py` now delegates discovery to
+`engine/relations.py` (one detector, shared by planner and panel) and retains only `join_plan` (compose's
+fact selection and flatten-safe `keep` lists). The uniqueness and self-id guards live in one place, so the
+two paths can no longer diverge.
+
 ## Config is environment-only
 
 The old code defaulted to a hardcoded Cloud SQL IP and a hardcoded Firebase RTDB URL. All

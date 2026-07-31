@@ -187,8 +187,10 @@ Below is the *direct* path (reason page → engine). The chat path is the same, 
 4. **Serve** (`engine/knowledge.py: KnowledgeReasoner.serve`, under a process-wide `WORLD_LOCK`). This is
    the one shared model instance. It first checks the **coverage pre-gate** (is this even a data query?
    §12), then delegates down the planner stack (§5). For "total amount in France":
-   - **Typing/routing.** FK discovery finds `orders.customer_id → customers.customer_id`
-     (deterministic, `engine/relations.py`). The property router (`engine/router.py: Router`) reads
+   - **Typing/routing.** FK discovery finds `orders.customer → customers.name` — a **string** foreign
+     key (a referential inclusion, not a numeric type), from the one deterministic detector
+     (`engine/relations.py`) shared by the AST planner and the compose panel (`engine/joins.py` delegates
+     to it). The property router (`engine/router.py: Router`) reads
      `customers.city` and decodes the **place** family; grounding then confirms the cells resolve as
      cities (`engine/knowledge_query.py: KnowledgeQuery.route` / `_grounds`, §6). The word "France" is
      recognized as a country filter (`engine/entities.py: _resolve`).

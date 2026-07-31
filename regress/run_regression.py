@@ -124,6 +124,30 @@ def run_unit_checks():
         fails.append(f"joins.discover_fks re-admitted spurious self-id join concert_ID->stadium (got {sfks})")
     else:
         print("  ok       fk_no_spurious_selfid")
+    # (2b) a STRING foreign key must resolve by inclusion (orders.customer NAME -> customers.name): a foreign key
+    # is a referential inclusion, not a numeric type. The old name-gated compose detector dropped this, so the
+    # combined amount table went missing from the derivation panel. This pins the shipped fix inside the image.
+    customers = {"name": "customers", "columns": ["customer ID", "name", "city"],
+                 "rows": [["1", "Holmes", "London"], ["2", "Clouseau", "Paris"], ["3", "Lupin", "Paris"]]}
+    orders = {"name": "orders", "columns": ["order ID", "customer", "amount"],
+              "rows": [["101", "Holmes", "100"], ["102", "Clouseau", "310"], ["103", "Lupin", "180"], ["104", "Holmes", "20"]]}
+    strfks = discover_fks([customers, orders])
+    if ("orders", "customer", "customers", "name") not in strfks:
+        fails.append(f"REG joins.discover_fks dropped the STRING FK orders.customer->customers.name (got {strfks})")
+    else:
+        print("  ok   REG fk_string_name_resolves")
+    # (2c) the anti-fabrication guard: a repeating MEASURE column whose distinct values coincidentally fall inside
+    # an unrelated unique key is NOT an FK (it carries no name signal). Guards the qty/flag/categorical false
+    # positives found by adversarial verification of the unified detector.
+    items = {"name": "order_items", "columns": ["item_id", "qty"],
+             "rows": [["1", "1"], ["2", "2"], ["3", "3"], ["4", "2"], ["5", "1"], ["6", "3"]]}
+    wh = {"name": "warehouse", "columns": ["wh_id", "location"],
+          "rows": [["1", "n"], ["2", "s"], ["3", "e"], ["4", "w"]]}
+    mfks = discover_fks([items, wh])
+    if any(f[1] == "qty" for f in mfks):
+        fails.append(f"REG joins.discover_fks faked an FK from the measure column qty->warehouse (got {mfks})")
+    else:
+        print("  ok       fk_no_name_signal_measure_rejected")
     # (3) The typed-AST search calls self._is_id (surrogate-key test), so EVERY TableQuery subclass used in
     # serving must have it — the PG own-data planner _TableQueryPg lacked it and crashed live (offline
     # EncoderQuery has it, so this is invisible to the model tiers). Pin every serving subclass.
