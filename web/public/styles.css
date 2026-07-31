@@ -226,6 +226,11 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .wb.editable tr.newrow td.wbc:hover{background:#f6f3ff}
 .newstar{color:var(--brand);font-weight:700;font-size:14px;line-height:1}
 .wb.editable td.wbc[data-ph]:empty::before{content:attr(data-ph);color:#c4bdd6;font-style:italic;pointer-events:none}
+/* the "+ new column" ghost column (master sheets) — mirrors the "+ new row" ghost row */
+.wb.editable th.newcol{cursor:pointer;background:#fbfaff;color:#b9b2cf;font:italic 600 11.5px var(--disp);letter-spacing:normal;white-space:nowrap;min-width:112px}
+.wb.editable th.newcol:hover{background:#f0ebfb;color:var(--brand)}
+.wb.editable td.newcol{background:#fbfaff;cursor:pointer}
+.wb.editable td.newcol:hover,.wb.editable th.newcol:hover{background:#f6f3ff}
 .wb.editable td.rn{position:relative}
 .rowdel{all:unset;cursor:pointer;position:absolute;right:2px;top:50%;transform:translateY(-50%);width:15px;height:15px;line-height:15px;text-align:center;border-radius:4px;color:#c9c3d8;font-size:14px;opacity:0}
 .wb.editable tbody tr:hover .rowdel{opacity:1}

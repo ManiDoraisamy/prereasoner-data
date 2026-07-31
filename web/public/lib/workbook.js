@@ -75,6 +75,7 @@ function renderGrid(m){
   const edit=(m.cls==='input'||m.cls==='master');            // input + master are EDITABLE; derived/reference are read-only but STILL navigable
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
+  if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
   const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // editable: one trailing blank "new record" row
   const rc=(SEL&&SEL.sid===m.id)?selRect():null;                           // the selection rectangle if the selection is on THIS sheet (any sheet)
@@ -85,6 +86,7 @@ function renderGrid(m){
       let mark=''; if(rc){ if(ri===SEL.r&&ci===SEL.c)mark=' sel'; else if(ri>=rc.r0&&ri<=rc.r1&&ci>=rc.c0&&ci<=rc.c1)mark=' insel'; }
       h+='<td class="'+(numeric[ci]?'n ':'')+'wbc'+mark+'"'   // EVERY cell is a navigable wbc; only editable sheets accept edits/paste/new-row
         +' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"'+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val)+'">'+esc(val)+'</td>'; }
+    if(m.cls==='master') h+='<td class=newcol onclick="addMasterCol(\''+m.id+'\')"></td>';   // ghost cells under the "+ new column" header
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
   h+='</tbody></table></div>';
@@ -110,8 +112,6 @@ function renderSheet(){
     +'</div>';
   if(m.cls==='master') h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>'
     +'<span class=mactions>'
-    +'<button class=mlink onclick="addMasterCol(\''+m.id+'\')">+ column</button>'
-    +'<button class=mlink onclick="masterPaste(\''+m.id+'\')">paste</button>'
     +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">upload CSV</button>'
     +(m.saved?'':'<button class=mlink onclick="dismissMaster(\''+m.id+'\')">dismiss</button>')
     +'</span></div>';
@@ -526,12 +526,6 @@ function addMasterCol(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   const nm=(prompt('New column name (e.g. category, price, region):')||'').trim(); if(!nm)return;
   sh.cols.push(nm); sh.rows.forEach(r=>r.push('')); sh.dirty=true; renderSheet();
-}
-function masterPaste(id){
-  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  const txt=prompt('Paste rows (CSV — first line is the column headers):'); if(!txt)return;
-  const p=parseCSV(txt); if(!p.cols.length)return;
-  sh.cols=p.cols; sh.rows=p.rows; sh.dirty=true; renderSheet();
 }
 function masterUpload(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
