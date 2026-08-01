@@ -141,7 +141,7 @@ function renderSheet(){
       h+='<span class=mactions>'
         +'<button class=mlink'+(m._genBusy?' disabled':'')+' onclick="generateMaster(\''+m.id+'\')">'+esc(m._gen||'Autofill')+'</button>'
         +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">Upload</button>'
-        +(m.saved?'':'<button class="mlink mclose" aria-label="Dismiss for this conversation" title="Dismiss for this conversation — nothing is deleted" onclick="dismissMaster(\''+m.id+'\')">✕</button>')   // D2
+        +(m.saved?'':'<button class="mlink mclose" aria-label="Remove — move to + Reference" title="Remove from tabs — add it back any time from “+ Reference”" onclick="removeMasterSheet(\''+m.id+'\')">✕</button>')   // D2
         +'</span>';
     h+='</div>';
   }
@@ -166,7 +166,7 @@ function renderTabs(){
   const steps=BOOK.filter(s=>(s.cls==='deriv'||s.cls==='ref')&&!s.result);
   const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')" title="'+esc((s.result?'Result':s.name)+(s.cls==='master'&&!s.saved?' — unsaved reference':''))+'"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?'<span class=unsaveddot title="unsaved" aria-label="unsaved"> •</span>':'')+'</button>';
   const zone=(label,arr,extra)=> (arr.length||extra) ? '<span class=tabzone>'+arr.map(tab).join('')+(extra||'')+'</span>' : '';   // grouped (subtle dividers) but no space-wasting labels
-  const suggest = REFCANDS.length ? '<button class="wtab refsuggest" title="'+REFCANDS.length+' column'+(REFCANDS.length===1?'':'s')+' can be enriched with reference data" onclick="refSuggestMenu(this,event)">+ Reference</button>' : '';
+  const suggest = REFCANDS.length ? '<button class="wtab refsuggest" title="'+REFCANDS.length+' reference '+(REFCANDS.length===1?'table':'tables')+' not shown — click to add as a sheet" onclick="refSuggestMenu(this,event)">+ Reference</button>' : '';
   $('tabstrip').innerHTML = zone('Sources',sources) + zone('Reference',reference,suggest) + zone('Steps',steps) + zone('Result',result);
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
@@ -559,16 +559,18 @@ function surfaceUnresolved(){
     });
   }catch(_){}
 }
-function acceptRefCand(i){                                    // A1: user accepts a suggestion -> surface that column as a reference sheet
+function acceptRefCand(i){                                    // A1: user accepts a candidate -> SHOW that column as a reference sheet (leaves AVAILABLE)
   const c=REFCANDS[i]; if(!c)return; REFCANDS.splice(i,1);
-  const id=addMasterSheet(c.name,[c.name],c.vals.map(v=>[v]),false); pick(id);
+  let cols=(c.cols&&c.cols.length)?c.cols:null, rows=c.rows, saved=!!c.saved;   // a candidate from a REMOVED sheet carries its full data back...
+  if(!cols){ const md=MDATA[c.key]; if(md&&md.cols&&md.cols.length){ cols=md.cols.slice(); rows=(md.rows||[]).map(r=>r.slice()); saved=true; } }   // ...else the user's saved reference...
+  if(!cols){ cols=[c.name]; rows=(c.vals||[]).map(v=>[v]); saved=false; }        // ...else a bare entity column to enrich
+  const id=addMasterSheet(c.name, cols, rows, saved); pick(id); saveConvState();
 }
-function dismissRefSuggest(){ REFCANDS=[]; renderTabs(); }
-function refSuggestMenu(btn,ev){                             // the collapsed "Add reference data" popover
+function refSuggestMenu(btn,ev){                             // the "+ Reference" popover — reference data available to show as a sheet
   if(ev) ev.stopPropagation(); closeMasterMenu();
   const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
-  el.innerHTML='<div class=mmenu-hd>Enrich a column with reference data</div>'
-    + REFCANDS.map((c,i)=>'<button onclick="closeMasterMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+c.vals.length+' value'+(c.vals.length===1?'':'s')+'</span></button>').join('');
+  el.innerHTML='<div class=mmenu-hd>Add reference data as a sheet</div>'
+    + REFCANDS.map((c,i)=>'<button onclick="closeMasterMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+((c.cols&&c.cols.length>1)?(c.cols.length-1)+' column'+(c.cols.length===2?'':'s'):(c.vals.length+' value'+(c.vals.length===1?'':'s')))+'</span></button>').join('');
   document.body.appendChild(el);
   const r=btn.getBoundingClientRect();
   el.style.left=Math.max(8,r.left)+'px'; el.style.top=Math.max(8,r.top-el.offsetHeight-6)+'px';   // open ABOVE the bottom tab bar
@@ -674,11 +676,26 @@ async function runGenerate(id){
       .catch(()=>{});                                          // proxy 60s timeout on a cold engine is EXPECTED; RTDB delivers
   }catch(_){ setGen('Autofill failed — retry',false); }
 }
-function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
+function removeMasterSheet(id){                               // the ONE remove: take a reference sheet out of the tabs and back under "+ Reference". Reversible, non-destructive.
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  BOOK=BOOK.filter(s=>s.id!==id); if(sh.name) MSEEN.add(String(sh.name).toLowerCase());
+  const key=String(sh.name||'').toLowerCase();
+  const vals=[...new Set((sh.rows||[]).map(r=>String((r&&r[0])==null?'':r[0]).trim()).filter(Boolean))];
+  const cand={name:sh.name, key, vals, cols:(sh.cols||[]).slice(), rows:(sh.rows||[]).map(r=>r.slice()), saved:!!sh.saved};   // carry full data so re-add is lossless
+  const idx=BOOK.indexOf(sh);
+  BOOK=BOOK.filter(s=>s.id!==id);
+  if(!REFCANDS.some(c=>c.key===key)) REFCANDS.push(cand);      // now AVAILABLE under "+ Reference" (MSEEN keeps loadMaster from auto-showing it again)
   if(ACTIVE===id) ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
-  paint();
+  paint(); saveConvState();
+  toast('Moved “'+sh.name+'” to “+ Reference”.', 'Undo', ()=>{  // reversible — re-show it exactly as it was
+    REFCANDS=REFCANDS.filter(c=>c.key!==key);
+    BOOK.splice(Math.min(idx,BOOK.length),0,{id:sh.id, cls:'master', name:sh.name, cols:cand.cols, rows:cand.rows, saved:cand.saved, dirty:!!sh.dirty});
+    MSEEN.add(key); ACTIVE=sh.id; paint(); saveConvState();
+  }, 8000);
+}
+function deleteMasterSheet(id){                               // ⋮ "Delete" — confirm, then remove to "+ Reference" (reframed: reversible, not data loss)
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  if(!confirm('Remove “'+sh.name+'” from this conversation?\nIt stays saved — add it back any time from “+ Reference”.')) return;
+  removeMasterSheet(id);
 }
 let _mmenuDoc=null;
 function masterMenu(id, btn, ev){                             // the ⋮ menu on a SAVED master sheet: Autofill / Upload / Delete
@@ -686,7 +703,7 @@ function masterMenu(id, btn, ev){                             // the ⋮ menu on
   const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
   el.innerHTML='<button onclick="closeMasterMenu();generateMaster(\''+id+'\')">Autofill</button>'
     +'<button onclick="closeMasterMenu();masterUpload(\''+id+'\')">Upload</button>'
-    +'<button class=danger onclick="closeMasterMenu();deleteMasterData(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete generated data</button>';   // E3: icon + red, D2: worded around data loss
+    +'<button class=danger onclick="closeMasterMenu();deleteMasterSheet(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete</button>';   // removes the sheet -> "+ Reference" (re-addable), with a confirm
   document.body.appendChild(el);
   const r=btn.getBoundingClientRect();                        // anchor the dropdown to the ⋮ button, right-aligned + on-screen
   el.style.left=Math.max(8, r.right-el.offsetWidth)+'px'; el.style.top=(r.bottom+4)+'px';
@@ -696,21 +713,6 @@ function masterMenu(id, btn, ev){                             // the ⋮ menu on
 function closeMasterMenu(){
   if(_mmenuDoc){ document.removeEventListener('mousedown', _mmenuDoc); _mmenuDoc=null; }
   const m=document.getElementById('mmenu'); if(m) m.remove();
-}
-function deleteMasterData(id){                                // clear the GENERATED columns + values, keep the entity column. D1: confirm + Undo.
-  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  const gen=(sh.cols||[]).length-1;                          // number of generated (non-entity) columns
-  if(gen<=0){ renderSheet(); return; }                        // nothing to clear
-  const entity=(sh.cols&&sh.cols[0])||sh.name;
-  if(!confirm('Clear the '+gen+' generated column'+(gen===1?'':'s')+' on “'+sh.name+'”? The “'+entity+'” column stays.')) return;
-  const snap={cols:(sh.cols||[]).slice(), rows:(sh.rows||[]).map(r=>r.slice()), dirty:sh.dirty, saved:sh.saved};   // for Undo
-  sh.cols=[entity];
-  sh.rows=(sh.rows||[]).map(r=>[(r&&r[0]!=null)?r[0]:'']);
-  sh.dirty=true;                                             // a reset is unsaved -> the Save button + inline Autofill come back
-  renderSheet();
-  toast('Cleared '+gen+' generated column'+(gen===1?'':'s')+'.', 'Undo', ()=>{   // ~8s Undo fully restores columns + values
-    sh.cols=snap.cols; sh.rows=snap.rows; sh.dirty=snap.dirty; sh.saved=snap.saved; renderSheet();
-  }, 8000);
 }
 let _toastTimer=null;
 function toast(msg, actionLabel, actionFn, ms){              // a transient bottom toast with an optional action (e.g. Undo)
@@ -1151,7 +1153,9 @@ function convSnapshot(){
   const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||s.cls==='master').map(s=>({
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[], rows:(s.rows||[]).slice(0,MAX_RENDER_ROWS),
     sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved }));
-  return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY};
+  const refcands=REFCANDS.map(c=>({name:c.name, key:c.key, vals:(c.vals||[]).slice(0,500),   // the AVAILABLE list must survive reload so "+ Reference" persists
+    cols:(c.cols&&c.cols.length>1)?c.cols:undefined, rows:(c.cols&&c.cols.length>1&&c.rows)?c.rows.slice(0,MAX_RENDER_ROWS):undefined, saved:!!c.saved}));
+  return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands};
 }
 let _saveStateT=null;
 function saveConvState(){                                     // persist the snapshot after a turn settles
@@ -1174,6 +1178,11 @@ function restoreConvState(st){                               // render a stored 
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
       rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:false});
     if(s.cls==='master'&&s.name) MSEEN.add(String(s.name).toLowerCase()); });   // don't let loadMaster duplicate it
+  if(Array.isArray(st.refcands)){                            // AVAILABLE candidates (removed or never-shown) -> "+ Reference" persists across reload
+    const shown=new Set(BOOK.filter(s=>s.cls==='master').map(s=>String(s.name||'').toLowerCase()));
+    REFCANDS=st.refcands.filter(c=>c&&c.key&&!shown.has(c.key)).map(c=>({name:c.name, key:c.key, vals:c.vals||[], cols:c.cols, rows:c.rows, saved:!!c.saved}));
+    REFCANDS.forEach(c=>MSEEN.add(c.key));                   // keep loadMaster from auto-promoting a removed reference back to a sheet
+  }
   const turns=st.turns.slice(), last=turns.pop();
   CHAT=turns.map(t=>({q:t.q, reply:t.reply||'', html:'<div class=convmsg>'+conv2html(t.reply||'')+'</div>'}));
   if(last){ question=last.q; try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
