@@ -1,8 +1,12 @@
 """master.py — per-user MASTER (reference) data: the user's own "world model" for the PRIVATE entities
 Wikidata doesn't know (their products, reps, regions, SKUs...). It's stored in a per-user Postgres schema
 `m_<hash(sub)>` in the same `world` database as the wikipedia/world schemas, so it persists across ALL of
-that user's conversations and (Phase 3) a query's search_path can span
-`"<conversation>", "<master>", knowledgebase, public` — joining private + public data in one query.
+that user's conversations.
+
+At reasoning time, engine.server._master_tabs folds the master tables RELEVANT to a request's uploaded data
+(their key column overlaps an uploaded column) into that request's table set, so the deterministic typed-AST
+planner joins uploads + master (+ world) in one query — private + public data answered together. The merge is
+scoped per-conversation by value overlap, so unrelated cross-conversation references never enter the schema.
 
 Security mirrors engine.conversations: the user_id is ALWAYS the verified token subject (engine.auth), never
 client-supplied. The schema name is DERIVED from it (md5), so a user can only ever read/write their own
@@ -82,7 +86,8 @@ def get_master(user_id, name):
 
 def save_master(user_id, name, columns, rows):
     """Create-or-REPLACE a master table (drop + create + insert — a full overwrite of that reference table).
-    All columns are stored as text; the FIRST column is the key that links to the user's data (Phase 3)."""
+    All columns are stored as text; the FIRST column is the key that links to the user's data (the join key
+    engine.server._master_tabs matches against uploaded columns)."""
     name = str(name or "").strip()
     columns = [str(c).strip() for c in (columns or []) if str(c).strip()]
     if not name or not columns:

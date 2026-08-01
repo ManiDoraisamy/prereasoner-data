@@ -23,7 +23,7 @@ import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/ANT
 # spawned suites; without it the world suites silently SKIP (or return 1) and the gate falsely looks green.
 
 SUITES = ["tests.test_sql_ast", "tests.test_routing", "tests.test_compose", "tests.test_converse",
-          "tests.test_mcp", "tests.test_orchestrator"]
+          "tests.test_master_ingest", "tests.test_mcp", "tests.test_orchestrator"]
 ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
                  "tests.test_route_wired", "tests.test_geo"]
 

@@ -18,6 +18,8 @@ header Authorization: Bearer <Firebase ID token>. The response echoes conversati
 Run: python -m engine.server
 """
 from __future__ import annotations
+import csv as _csv
+import io
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -43,6 +45,69 @@ MAX_ROWS = 5000
 
 WORLD_ROUTES = ("/api/reason", "/api/knowledge")
 DIM_ROUTE = "/api/dimension"
+
+
+def _rows_to_csv(columns, rows):
+    """Serialize a master table's (columns, rows) back to CSV so csv_table parses it byte-identically to an
+    uploaded sheet — same typing/affinity path, so a master table is just another own-data table to the planner."""
+    buf = io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow([str(c) for c in columns])
+    for r in (rows or []):
+        w.writerow(["" if v is None else str(v) for v in r])
+    return buf.getvalue()
+
+
+def _master_tabs(sub, tabs):
+    """Phase 3 — fold the user's own reference (master) tables into the reasoning table set so the deterministic
+    typed-AST planner (engine.tables/engine.sql_search) can join uploads + master (+ world) in ONE query.
+
+    A master table is included ONLY if its KEY column (col 0) substantially overlaps some uploaded column's
+    values — i.e. it is a reference FOR that column (product->category, sku->region, ...). This scopes the
+    per-user, cross-conversation master store to THIS conversation's data, so unrelated references never
+    pollute the schema. Returned as csv_table tabs (identical shape to uploads). Best-effort: any failure
+    yields no master tables and never breaks reasoning."""
+    try:
+        metas = master.list_master(sub)
+    except Exception:                                        # noqa: BLE001 — reference merge is best-effort
+        return []
+    if not metas:
+        return []
+    have = {t["name"] for t in tabs}
+    up_cols = []                                             # distinct lower-cased values per uploaded column (candidate FK children)
+    for t in tabs:
+        cols = t.get("columns") or []
+        for ci in range(len(cols)):
+            vals = {str(r[ci]).strip().lower() for r in (t.get("rows") or [])
+                    if ci < len(r) and r[ci] is not None and str(r[ci]).strip() != ""}
+            if vals:
+                up_cols.append(vals)
+    if not up_cols:
+        return []
+    out = []
+    for m in metas:
+        name = m.get("name")
+        slug = _slug(name, len(tabs) + len(out))
+        if slug in have or any(o["name"] == slug for o in out):   # never shadow an uploaded table (or double-add)
+            continue
+        try:
+            full = master.get_master(sub, name)
+        except Exception:                                    # noqa: BLE001
+            continue
+        if not full or len(full.get("columns") or []) < 2 or not full.get("rows"):
+            continue                                         # a key + >=1 attribute, else there is nothing to join to
+        keys = {str(r[0]).strip().lower() for r in full["rows"]
+                if r and r[0] is not None and str(r[0]).strip() != ""}
+        if not keys:
+            continue
+        relevant = any(len(col & keys) >= 2 and (len(col & keys) / len(col) >= 0.5 or len(col & keys) / len(keys) >= 0.5)
+                       for col in up_cols)
+        if not relevant:
+            continue
+        out.append(csv_table(_rows_to_csv(full["columns"], full["rows"][:MAX_ROWS]), slug))
+        if len(tabs) + len(out) >= MAX_SHEETS:
+            break
+    return out
 
 
 class H(BaseHTTPRequestHandler):
@@ -322,6 +387,13 @@ class H(BaseHTTPRequestHandler):
                 if len(t["rows"]) > MAX_ROWS:
                     truncated.append(f"{t['name']}: only the first {MAX_ROWS} rows were used ({len(t['rows'])} uploaded)")
                     t["rows"] = t["rows"][:MAX_ROWS]
+            # Phase 3: fold in the user's own reference (master) tables that JOIN this data, so the deterministic
+            # AST planner spans uploads + master (+ world) in one query. Only tables relevant to THIS data, and
+            # NOT persisted into the conversation snapshot (they stay in the per-user master store, engine.master).
+            try:
+                tabs.extend(_master_tabs(sub, tabs))
+            except Exception:                                # noqa: BLE001 — reference merge is best-effort, never fatal
+                pass
             # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
             # conversation id is honored ONLY after the ownership check (chat.user_conversation);
             # otherwise a new conversation is minted for the verified user. No conversation id

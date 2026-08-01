@@ -577,17 +577,20 @@ function refSuggestMenu(btn,ev){                             // the "+ Reference
   _mmenuDoc=e=>{ if(!el.contains(e.target)) closeMasterMenu(); };
   setTimeout(()=>document.addEventListener('mousedown',_mmenuDoc),0);
 }
+const masterSig=s=>JSON.stringify({cols:s.cols, rows:(s.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''))});
+async function persistMaster(sh, tk){                        // POST one reference sheet to the per-user master store; true on success
+  const rows=(sh.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''));   // drop blank trailing rows
+  const r=await fetch(API_BASE+'/api/master',{method:'POST',
+    headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
+    body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
+  return r.ok;
+}
 async function saveMaster(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   const btn=document.querySelector('.msave'); if(btn){ btn.textContent='Saving…'; btn.disabled=true; }
-  const masterSig=s=>JSON.stringify({cols:s.cols, rows:(s.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''))});
   try{ const tk=await window.ensureToken();
-    const rows=(sh.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''));   // drop blank trailing rows
     const sentSig=masterSig(sh);                             // exactly what this POST persists (guards against an edit landing mid-flight)
-    const r=await fetch(API_BASE+'/api/master',{method:'POST',
-      headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
-      body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
-    if(r.ok){ sh.saved=true;
+    if(await persistMaster(sh, tk)){ sh.saved=true;
       try{ if(!localStorage.getItem('pr_ref_explained')){ localStorage.setItem('pr_ref_explained','1');   // D4: one-time explainer
         toast('Saved as reference — “'+sh.name+'” will now appear in your other conversations too.', 'Got it', null, 9000); } }catch(_){}
       if(masterSig(sh)===sentSig) sh.dirty=false;            // only clear dirty if nothing changed during the save — else keep it (beforeunload guard stays armed)
@@ -595,6 +598,18 @@ async function saveMaster(id){
   }catch(_){}
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
   saveConvState();                                           // fold the saved master into the conversation snapshot
+}
+async function autosaveRefs(){                               // auto-save-on-use: persist shown ENRICHED reference sheets before a turn so the engine can join them (Phase 3)
+  const pending=BOOK.filter(s=>s.cls==='master' && (!s.saved||s.dirty) && (s.cols||[]).length>1
+    && (s.rows||[]).some(r=>r.some(v=>String(v||'').trim()!=='')));   // has a key + attribute column(s) + real values
+  if(!pending.length) return;
+  let tk; try{ tk=await window.ensureToken(); }catch(_){ return; }
+  let changed=false;
+  for(const sh of pending){
+    const sig=masterSig(sh);
+    try{ if(await persistMaster(sh, tk)){ sh.saved=true; if(masterSig(sh)===sig) sh.dirty=false; changed=true; } }catch(_){}
+  }
+  if(changed){ paint(); saveConvState(); }
 }
 // The DEFAULT generation prompt, aware of context: first run -> "add columns + fill" (referencing the uploaded
 // data so the columns are useful alongside it); already-generated with empty cells (the input CSV grew, so new
@@ -973,6 +988,7 @@ function markTurnDone(){                                      // the turn finish
 }
 
 async function startRun(){
+  await autosaveRefs();                                       // Phase 3: persist shown reference sheets first, so the engine's per-user master schema is current before it reasons
   if(ORCH) return startTurn();                                // orchestrated front-door (flag; direct path below is unchanged)
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
