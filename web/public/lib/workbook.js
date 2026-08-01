@@ -112,7 +112,7 @@ function renderSheet(){
     +'</div>';
   if(m.cls==='master') h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>'
     +'<span class=mactions>'
-    +'<button class=mlink onclick="generateMaster(\''+m.id+'\')">Generate</button>'
+    +'<button class=mlink'+(m._genBusy?' disabled':'')+' onclick="generateMaster(\''+m.id+'\')">'+esc(m._gen||'Generate')+'</button>'
     +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">Upload</button>'
     +(m.saved?'':'<button class=mlink onclick="dismissMaster(\''+m.id+'\')">dismiss</button>')
     +'</span></div>';
@@ -547,35 +547,46 @@ function openGenModal(sh){
   document.body.appendChild(ov);
   const ta=document.getElementById('genta'); if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
 }
-async function runGenerate(id){                               // fire the fill job; the answer arrives via RTDB (survives the 60s proxy timeout)
+// Fire the fill job and render the master sheet LIVE as Sonnet streams: the header arrives (columns appear),
+// then each row fills in as it completes. RTDB is the primary channel (decoupled from the 60s proxy timeout);
+// the HTTP body is the warm/fast fallback. Progress rides on the master sheet's own Generate button (sh._gen),
+// so it survives every per-row re-render.
+async function runGenerate(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  const ta=document.getElementById('genta'), runBtn=document.getElementById('genrun'), msg=document.getElementById('genmsg');
-  const instruction=ta?ta.value:'';
-  const setErr=t=>{ if(runBtn){ runBtn.textContent='Generate'; runBtn.disabled=false; } if(msg){ msg.textContent=t; msg.classList.add('err'); } };
-  if(runBtn){ runBtn.textContent='Generating…'; runBtn.disabled=true; }
-  if(msg){ msg.classList.remove('err'); msg.textContent='Working… this can take up to a couple of minutes on a cold start.'; }
+  const ta=document.getElementById('genta'); const instruction=ta?ta.value:'';
+  closeGenModal();                                            // reveal the sheet so the user watches it fill
+  const nReal=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='').length;
+  const setGen=(lbl,busy)=>{ sh._gen=lbl; sh._genBusy=!!busy; renderSheet(); };   // reflected by the masterhint render
+  setGen('Generating…', true);
   try{
     const tk=await window.ensureToken(), uid=window.__uid;
     const jobId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
-    const rows=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');   // real entities only (drop the blank new-row)
-    let done=false, unsub=null, timer=null;
+    const rows=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');   // real entities only, IN ORDER (index == mrows key)
+    let done=false, unsub=null, timer=null, got=0;
     const finish=()=>{ done=true; if(unsub){try{unsub();}catch(_){}} if(timer)clearTimeout(timer); };
-    const apply=out=>{ if(done)return; finish();
-      if(out&&out.columns&&out.columns.length){ sh.cols=out.columns; sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true; }
-      closeGenModal(); renderSheet(); };
-    if(uid&&window.subscribeRun){                             // (1) primary path: RTDB, decoupled from the HTTP timeout
+    const padRows=()=>{ const w=(sh.cols||[]).length; (sh.rows||[]).forEach(r=>{ while(r.length<w)r.push(''); }); };
+    const applyCols=cols=>{ if(!cols||!cols.length||done)return; sh.cols=cols.slice(); padRows(); sh.dirty=true; setGen('Generating…',true); };
+    const applyRow=(idx,cells)=>{ if(!Array.isArray(cells)||done)return;
+      while(sh.rows.length<=idx) sh.rows.push((sh.cols||[]).map(()=>''));
+      sh.rows[idx]=cells.slice(); sh.dirty=true; got++; setGen('Generating… ('+Math.min(got,nReal||got)+(nReal?'/'+nReal:'')+')',true); };
+    const complete=out=>{ if(done)return; finish();
+      if(out&&out.columns&&out.columns.length){ sh.cols=out.columns.slice(); sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true; }
+      setGen(null,false); };                                  // -> button back to "Generate"
+    if(uid&&window.subscribeRun){                             // (1) LIVE stream: header, then each row as it fills
       unsub=window.subscribeRun(uid,jobId,{
-        onResult:v=>{ if(v&&v.columns) apply(v); },
-        onStatus:st=>{ if(st==='error'&&!done){ finish(); setErr('Generation failed — try again.'); } } });
+        onMasterCols:cols=>applyCols(cols),
+        onMasterRow:(k,cells)=>applyRow(parseInt(k,10)||0, cells),
+        onResult:v=>{ if(v&&v.columns) complete(v); },
+        onStatus:st=>{ if(st==='error'&&!done){ finish(); setGen('Generate failed — retry',false); } } });
     }
-    timer=setTimeout(()=>{ if(!done){ finish(); setErr('Generation timed out — try again.'); } }, 180000);
-    fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) fallback: warm/fast path returns the body directly
+    timer=setTimeout(()=>{ if(!done){ finish(); setGen('Generate failed — retry',false); } }, 180000);
+    fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
-      .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns) apply(j); }
-        else if(!done&&!uid) setErr('Generation failed — try again.'); })   // no RTDB fallback available -> surface the failure
+      .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns) complete(j); }
+        else if(!done&&!uid) setGen('Generate failed — retry',false); })   // no RTDB fallback available -> surface it
       .catch(()=>{});                                          // proxy 60s timeout on a cold engine is EXPECTED; RTDB delivers
-  }catch(_){ setErr('Generation failed — try again.'); }
+  }catch(_){ setGen('Generate failed — retry',false); }
 }
 function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;

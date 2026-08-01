@@ -33,6 +33,8 @@ window.subscribeRun = (uid, jobId, cb) => {
   const presentRef = at('present');
   const errorRef = at('error');
   const questionRef = at('question');
+  const mcolsRef = at('mcols');                                   // master-data GENERATE stream: header + one child per row
+  const mrowsRef = at('mrows');
   const uConv = onValue(convRef, s => { const v = s.val(); if (v != null && cb.onConversation) cb.onConversation(v); });
   const uStatus = onValue(statusRef, s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
   const uResolve = onChildAdded(resolveRef, s => { if (cb.onResolve) cb.onResolve(s.key, s.val()); });
@@ -43,7 +45,9 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uLowConf = onValue(lowConfRef, s => { const v = s.val(); if (v && cb.onLowConfidence) cb.onLowConfidence(); });
   const uPresent = onValue(presentRef, s => { const v = s.val(); if (v && cb.onPresent) cb.onPresent(); });
   const uError = onValue(errorRef, s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
-  return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); off(base); } catch(_){} };
+  const uMcols = onValue(mcolsRef, s => { const v = s.val(); if (v && cb.onMasterCols) cb.onMasterCols(v); });
+  const uMrow = onChildAdded(mrowsRef, s => { if (cb.onMasterRow) cb.onMasterRow(s.key, s.val()); });
+  return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uMcols(); uMrow(); off(base); } catch(_){} };
 };
 
 // Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Sonnet front-door announces each engine

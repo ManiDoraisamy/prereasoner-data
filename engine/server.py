@@ -279,7 +279,7 @@ class H(BaseHTTPRequestHandler):
             from engine import converse
             try:
                 out = converse.generate_master(req.get("name", "reference"), req.get("columns") or [],
-                                               req.get("rows") or [], instruction=req.get("instruction"))
+                                               req.get("rows") or [], instruction=req.get("instruction"), emit=emit)
             except Exception as e:                           # noqa: BLE001 — no key / SDK / bad JSON: let the client re-enable
                 print(f"/api/master/generate degraded (503): {type(e).__name__}: {e}", flush=True)
                 emit("error", f"generate unavailable: {type(e).__name__}"); emit("status", "error")
