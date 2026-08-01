@@ -471,7 +471,16 @@ async function loadMaster(){                                  // cache the user'
       if(full&&full.columns) MDATA[String(full.name).toLowerCase()]={name:full.name,cols:full.columns,rows:full.rows};
     }
     const cols=inputColumns();                                // a saved master shows only if its name matches a column in this conversation's data (skip unrelated like "product")
+    const colVals=k=>{                                        // distinct lower-cased values of THIS data's column named k
+      for(const sh of BOOK.filter(s=>s.cls==='input')){ const ci=(sh.cols||[]).findIndex(c=>String(c).toLowerCase()===k);
+        if(ci>=0) return new Set((sh.rows||[]).map(r=>String(r[ci]==null?'':r[ci]).trim().toLowerCase()).filter(Boolean)); }
+      return new Set(); };
     Object.keys(MDATA).forEach(k=>{ if(!cols[k])return; const d=MDATA[k];
+      // RELEVANCE: a saved reference belongs to THIS conversation only if its entities (col 0) actually appear in
+      // the data's column of that name — otherwise a generic column like "name" surfaces an UNRELATED saved table
+      // (e.g. a customers "name"/segment table shown over detective names — a pure name collision).
+      const ents=new Set((d.rows||[]).map(r=>String((r&&r[0])==null?'':r[0]).trim().toLowerCase()).filter(Boolean));
+      if(ents.size){ const vals=colVals(k); if(![...ents].some(v=>vals.has(v))) return; }   // no overlapping entity -> not for this data
       const existing=BOOK.find(s=>s.cls==='master'&&String(s.name||'').toLowerCase()===k);
       if(existing){                                           // surfaceUnresolved won the race and showed a BLANK shadow -> upgrade it in place with the saved data
         if(!existing.saved&&!existing.dirty){ if(d.cols&&d.cols.length)existing.cols=d.cols; existing.rows=(d.rows||[]).map(r=>r.slice()); existing.saved=true; }
