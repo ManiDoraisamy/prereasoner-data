@@ -721,6 +721,8 @@ function toast(msg, actionLabel, actionFn, ms){              // a transient bott
 }
 function addMasterCol(id){                                    // add a column and edit its NAME inline (spreadsheet-style, no prompt() dialog)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  for(let i=(sh.cols||[]).length-1;i>=1;i--){ if(String(sh.cols[i]||'').trim()===''){ sh.cols.splice(i,1); sh.rows.forEach(r=>r.splice(i,1)); } }   // drop abandoned unnamed columns first (no accumulation)
+  sh._editCol=null;
   sh.cols.push(''); sh.rows.forEach(r=>r.push('')); sh._editCol=sh.cols.length-1; sh.dirty=true;
   renderSheet();
   setTimeout(()=>{ const inp=document.querySelector('#sheetcard .colnameedit'); if(inp){ inp.focus(); inp.select&&inp.select(); } }, 0);
