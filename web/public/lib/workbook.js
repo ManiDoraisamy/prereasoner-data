@@ -73,8 +73,15 @@ function renderGrid(m){
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
   const shown=rows.slice(0,MAX_RENDER_ROWS);
   const edit=(m.cls==='input'||m.cls==='master');            // input + master are EDITABLE; derived/reference are read-only but STILL navigable
+  // B1: per-column provenance on derived/reference sheets — SRC = carried from your data, AI = added by lookup/derivation.
+  const inputCols=new Set(BOOK.filter(s=>s.cls==='input').flatMap(s=>(s.cols||[]).map(c=>String(c).toLowerCase())));
+  const showProv=(m.cls==='deriv'||m.cls==='ref');
+  const provOf=c=>inputCols.has(String(c).toLowerCase())?'src':'ai';
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
-  for(let ci=0;ci<cols.length;ci++) h+='<th'+(numeric[ci]?' class=n':'')+'>'+esc(cols[ci])+'</th>';
+  for(let ci=0;ci<cols.length;ci++){ const pv=showProv?provOf(cols[ci]):'';
+    h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
+      +(pv?' title="'+(pv==='src'?'From your data':'Added by AI (Wikipedia lookup / derivation) — worth a sanity-check')+'"':'')
+      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+(pv==='src'?'SRC':'AI')+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
   const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // editable: one trailing blank "new record" row
@@ -84,8 +91,9 @@ function renderGrid(m){
     h+='<tr'+(isNew?' class=newrow':'')+'><td class=rn>'+(isNew?'<span class=newstar title="New row — type here to add">&lowast;</span>':((ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')))+'</td>';
     for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
       let mark=''; if(rc){ if(ri===SEL.r&&ci===SEL.c)mark=' sel'; else if(ri>=rc.r0&&ri<=rc.r1&&ci>=rc.c0&&ci<=rc.c1)mark=' insel'; }
-      h+='<td class="'+(numeric[ci]?'n ':'')+'wbc'+mark+'"'   // EVERY cell is a navigable wbc; only editable sheets accept edits/paste/new-row
-        +' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"'+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val)+'">'+esc(val)+'</td>'; }
+      const aic=(m.cls==='master'&&m.cellAI&&m.cellAI.has(ri+','+ci))?' aicell':'';   // B3: autofilled cell (edit to confirm)
+      h+='<td class="'+(numeric[ci]?'n ':'')+'wbc'+mark+aic+'"'   // EVERY cell is a navigable wbc; only editable sheets accept edits/paste/new-row
+        +' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"'+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val+(aic?'  ·  AI-generated — edit to confirm':''))+'">'+esc(val)+'</td>'; }
     if(m.cls==='master') h+='<td class=newcol onclick="addMasterCol(\''+m.id+'\')"></td>';   // ghost cells under the "+ new column" header
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
@@ -111,32 +119,49 @@ function renderSheet(){
     +(m.cls==='master'?'<span class=spacer></span>'
         +((m.saved&&!m.dirty)                                 // saved -> a ⋮ menu (Autofill / Upload / Delete); otherwise the Save button
            ?'<button class="mbtn mdots" aria-label="More actions" onclick="masterMenu(\''+m.id+'\',this,event)">⋮</button>'
-           :'<button class="mbtn msave dirty" onclick="saveMaster(\''+m.id+'\')">Save</button>'):'')
+           :'<button class="mbtn msave dirty" title="Save as reference — reused across your conversations" onclick="saveMaster(\''+m.id+'\')">Save</button>'):'')
     +'</div>';
   if(EDITED) h+='<div class="masterhint recalchint"><span>&#9998; You changed your data — recompute to update the answer.</span>'
     +'<span class=mactions><button class=mlink onclick="recalc()">Recalculate</button></span></div>';
   if(m.cls==='master'){
-    h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>';
+    // D3: teach once, then get out of the way — empty tables get guidance, populated ones a quiet caption; the long pitch moves to a "?".
+    const hasAttr=(m.cols||[]).length>1;
+    const help='Reference data is reused across every conversation. Add attribute columns (category, price, region…), then Autofill or Upload to fill them.';
+    h+='<div class="masterhint'+(hasAttr?' quiet':'')+'">';
+    h+= hasAttr
+      ? '<span>Reference data for <b>'+esc(m.name)+'</b> · reused across your conversations <button class=mhelp title="'+escAttr(help)+'" aria-label="About reference data">?</button></span>'
+      : '<span>Add a column, then <b>Autofill</b> or <b>Upload</b> to enrich <b>'+esc(m.name)+'</b>. <button class=mhelp title="'+escAttr(help)+'" aria-label="About reference data">?</button></span>';
     if(!(m.saved&&!m.dirty))                                  // unsaved -> inline actions; once saved they move into the ⋮ menu
       h+='<span class=mactions>'
         +'<button class=mlink'+(m._genBusy?' disabled':'')+' onclick="generateMaster(\''+m.id+'\')">'+esc(m._gen||'Autofill')+'</button>'
         +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">Upload</button>'
-        +(m.saved?'':'<button class="mlink mclose" aria-label="Close" title="Close" onclick="dismissMaster(\''+m.id+'\')">✕</button>')
+        +(m.saved?'':'<button class="mlink mclose" aria-label="Dismiss for this conversation" title="Dismiss for this conversation — nothing is deleted" onclick="dismissMaster(\''+m.id+'\')">✕</button>')   // D2
         +'</span>';
     h+='</div>';
   }
   if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
   h+=renderGrid(m);
+  if(m.result){                                              // E1/B2: ground the answer — link it to the rows it aggregated
+    const feeders=BOOK.filter(s=>s.cls==='deriv'&&!s.result);
+    const src=feeders[feeders.length-1];
+    if(src){ const n=(src.rows||[]).length;
+      h+='<div class=resultcap>= aggregated from <b>'+n+'</b> row'+(n===1?'':'s')+' · <button class=mlink onclick="pick(\''+src.id+'\')">view the “'+esc(dispName(src))+'” rows</button></div>'; }
+  }
   $('sheetcard').innerHTML=h;
 }
 function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
 function tabTxt(s){ const t=s.result?'Result':dispName(s); return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
-  // Reading order: your data -> the world (wikipedia) it resolved -> your master data (the unresolved rest) -> steps.
-  const inputs=BOOK.filter(s=>s.cls==='input'), refs=BOOK.filter(s=>s.cls==='ref'),
-        masters=BOOK.filter(s=>s.cls==='master'), derivs=BOOK.filter(s=>s.cls==='deriv');
+  // A5: group the strip by pipeline role — Sources · Reference · Steps · Result — so inputs and the answer are never
+  // lost among the machine scratch sheets. The zone labels double as a non-color cue for sheet kind (E3).
+  const sources=BOOK.filter(s=>s.cls==='input');
+  const reference=BOOK.filter(s=>s.cls==='master');
+  const result=BOOK.filter(s=>s.result);
+  const steps=BOOK.filter(s=>(s.cls==='deriv'||s.cls==='ref')&&!s.result);
   const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')" title="'+esc((s.result?'Result':s.name)+(s.cls==='master'&&!s.saved?' — unsaved reference':''))+'"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?'<span class=unsaveddot title="unsaved" aria-label="unsaved"> •</span>':'')+'</button>';
-  $('tabstrip').innerHTML=inputs.map(tab).join('')+refs.map(tab).join('')+masters.map(tab).join('')+derivs.map(tab).join('');
+  const zone=(label,arr,extra)=> (arr.length||extra) ? '<span class=tabzone><span class=tabzlabel>'+label+'</span>'+arr.map(tab).join('')+(extra||'')+'</span>' : '';
+  const suggest = REFCANDS.length ? '<button class="wtab refsuggest" title="Columns that can be enriched with reference data" onclick="refSuggestMenu(this,event)">+ Add reference data ('+REFCANDS.length+')</button>' : '';
+  $('tabstrip').innerHTML = zone('Sources',sources) + zone('Reference',reference,suggest) + zone('Steps',steps) + zone('Result',result);
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
 }
@@ -169,7 +194,10 @@ function conv2html(t){
 // Only THIS turn's derivation is "Reasoning steps". Stale sheets (kept from the previous turn so a conversational
 // follow-up's workbook isn't empty) must NOT render here — else an empty/no-data turn ("chennai?" with no Chennai
 // rows) would show the PRIOR turn's steps (e.g. France's world_join/world_filter) under the new question's header.
-function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); return d.length?('<div class=steps>'+d.map((s,i)=>'<button class="steplink'+(s.id===ACTIVE?' on':'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||s.name)+'</span></button>').join('')+'</div>'):''; }
+function lineage(s){ if(!s||!s.sql)return ''; const t=[]; const re=/(?:from|join)\s+"([^"]+)"/gi; let m2;   // C1: which sheets feed this step (from its SQL)
+  while((m2=re.exec(s.sql))){ const nm=m2[1]; if(!/world|meaning/i.test(nm)&&!t.includes(nm)) t.push(nm); } return t.slice(0,4).join(', '); }
+function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); return d.length?('<div class=steps>'+d.map((s,i)=>{ const lin=lineage(s);
+  return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||dispName(s))+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span></button>'; }).join('')+'</div>'):''; }
 function asksLine(){ return CALLS.length?('<div class=cotask>read as '+CALLS.map(c=>'&ldquo;'+esc(c.question)+'&rdquo;').join(', ')+'</div>'):''; }
 // The chain of thought — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
 // re-render (e.g. clicking a step to open its sheet) doesn't snap it shut.
@@ -290,7 +318,9 @@ function commitEdit(){                                        // write the edit 
   if(sh){ const v=(el.textContent||'').replace(/\n/g,' ');
     const grew=SEL.r>=sh.rows.length;                          // typing into the trailing "new record" row appends a real row
     const old=(sh.rows[SEL.r]&&sh.rows[SEL.r][SEL.c]!=null)?sh.rows[SEL.r][SEL.c]:'';
-    if(old!==v){ pushUndo(SEL.sid); while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); sh.rows[SEL.r][SEL.c]=v; markDirtySheet(sh);
+    if(old!==v){ pushUndo(SEL.sid); while(sh.rows.length<=SEL.r) sh.rows.push(sh.cols.map(()=>'')); sh.rows[SEL.r][SEL.c]=v;
+      if(sh.cellAI) sh.cellAI.delete(SEL.r+','+SEL.c);         // B3: editing an autofilled cell promotes it to user-entered
+      markDirtySheet(sh);
       if(grew) paint(); }                                      // re-render so a fresh new-record row appears below (Access datasheet behavior)
     el.title=v; }
 }
@@ -495,13 +525,14 @@ async function loadMaster(){                                  // cache the user'
 // After a query, the engine marks each resolved column as connected (wtable) or NOT (unconnected:true).
 // The unconnected ones are the private entities the world model can't enrich — surface each as a master
 // sheet (its saved data if any, else its distinct values) for the user to enrich.
+let REFCANDS=[];                                              // A1: reference-data CANDIDATES, offered as one collapsed suggestion (not N tabs)
 function surfaceUnresolved(){
   try{
-    const surfaced=[];                                        // normalized value-sets already surfaced (A1: skip a duplicate column)
+    const seen=[];                                            // normalized value-sets already surfaced or offered (dedup)
     (RESOLVES||[]).forEach(r=>{
       if(!r||!r.unconnected)return;                          // only columns the engine could NOT connect to the world
       const nm=String(r.column||'').trim(), key=nm.toLowerCase();
-      if(!nm||MSEEN.has(key))return;                         // already shown or already surfaced
+      if(!nm||MSEEN.has(key)||REFCANDS.some(c=>c.key===key))return;   // already shown, surfaced, or already a candidate
       let vals=[];                                           // its distinct values, from whichever input sheet has the column
       for(const sh of BOOK.filter(s=>s.cls==='input')){
         const ci=(sh.cols||[]).findIndex(c=>String(c).toLowerCase()===key);
@@ -512,14 +543,32 @@ function surfaceUnresolved(){
       if(saved){                                             // A2: only surface a SAVED reference whose entities OVERLAP this data
         const ents=new Set((saved.rows||[]).map(rw=>String((rw&&rw[0])||'').trim().toLowerCase()).filter(Boolean));
         if(ents.size && ![...ents].some(v=>norm.has(v))) return;   // zero entity overlap -> unrelated reference, don't surface
-        addMasterSheet(saved.name,saved.cols,saved.rows,true); surfaced.push(norm); return;
+        addMasterSheet(saved.name,saved.cols,saved.rows,true); seen.push(norm); return;
       }
-      // A1 (safe declutter): skip a column that DUPLICATES an already-surfaced one (e.g. orders.customer == customers.name) —
-      // the other tab already covers the same entities, so nothing is lost.
-      if(norm.size && surfaced.some(prev=>[...norm].every(v=>prev.has(v)))) return;
-      addMasterSheet(nm, [nm], vals.slice(0,500).map(v=>[v]), false); surfaced.push(norm);
+      // A1: skip a DUPLICATE column (orders.customer == customers.name) and FREE-TEXT / line-item columns (e.g. 'ordered').
+      if(norm.size && seen.some(prev=>[...norm].every(v=>prev.has(v)))) return;
+      const avgLen=vals.length?vals.reduce((a,v)=>a+String(v).length,0)/vals.length:0;
+      if(vals.length>=6 && (avgLen>22 || vals.length>80)) return;   // long descriptive values -> not a reference entity
+      REFCANDS.push({name:nm,key,vals:vals.slice(0,500)}); seen.push(norm);   // collect as ONE suggestion — no auto-opened tab
     });
   }catch(_){}
+}
+function acceptRefCand(i){                                    // A1: user accepts a suggestion -> surface that column as a reference sheet
+  const c=REFCANDS[i]; if(!c)return; REFCANDS.splice(i,1);
+  const id=addMasterSheet(c.name,[c.name],c.vals.map(v=>[v]),false); pick(id);
+}
+function dismissRefSuggest(){ REFCANDS=[]; renderTabs(); }
+function refSuggestMenu(btn,ev){                             // the collapsed "Add reference data" popover
+  if(ev) ev.stopPropagation(); closeMasterMenu();
+  const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
+  el.innerHTML='<div class=mmenu-hd>Enrich a column with reference data</div>'
+    + REFCANDS.map((c,i)=>'<button onclick="closeMasterMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+c.vals.length+' value'+(c.vals.length===1?'':'s')+'</span></button>').join('')
+    + '<button class=danger onclick="closeMasterMenu();dismissRefSuggest()">Not now</button>';
+  document.body.appendChild(el);
+  const r=btn.getBoundingClientRect();
+  el.style.left=Math.max(8,r.left)+'px'; el.style.top=Math.max(8,r.top-el.offsetHeight-6)+'px';   // open ABOVE the bottom tab bar
+  _mmenuDoc=e=>{ if(!el.contains(e.target)) closeMasterMenu(); };
+  setTimeout(()=>document.addEventListener('mousedown',_mmenuDoc),0);
 }
 async function saveMaster(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
@@ -532,6 +581,8 @@ async function saveMaster(id){
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
     if(r.ok){ sh.saved=true;
+      try{ if(!localStorage.getItem('pr_ref_explained')){ localStorage.setItem('pr_ref_explained','1');   // D4: one-time explainer
+        toast('Saved as reference — “'+sh.name+'” will now appear in your other conversations too.', 'Got it', null, 9000); } }catch(_){}
       if(masterSig(sh)===sentSig) sh.dirty=false;            // only clear dirty if nothing changed during the save — else keep it (beforeunload guard stays armed)
     }
   }catch(_){}
@@ -577,6 +628,8 @@ async function runGenerate(id){
   const ta=document.getElementById('genta'); const instruction=ta?ta.value:'';
   closeGenModal();                                            // reveal the sheet so the user watches it fill
   const nReal=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='').length;
+  const preFilled=new Set();                                   // B3: cells the user already had before this autofill stay "user", not AI
+  (sh.rows||[]).forEach((r,ri)=>(r||[]).forEach((v,ci)=>{ if(ci>=1&&String(v||'').trim()!=='') preFilled.add(ri+','+ci); }));
   const setGen=(lbl,busy)=>{ sh._gen=lbl; sh._genBusy=!!busy; renderSheet(); };   // reflected by the masterhint render
   setGen('Filling…', true);
   try{
@@ -589,9 +642,12 @@ async function runGenerate(id){
     const applyCols=cols=>{ if(!cols||!cols.length||done)return; sh.cols=cols.slice(); padRows(); sh.dirty=true; setGen('Filling…',true); };
     const applyRow=(idx,cells)=>{ if(!Array.isArray(cells)||done)return;
       while(sh.rows.length<=idx) sh.rows.push((sh.cols||[]).map(()=>''));
+      sh.cellAI=sh.cellAI||new Set();
+      cells.forEach((v,ci)=>{ if(ci>=1&&String(v||'').trim()!==''&&!preFilled.has(idx+','+ci)) sh.cellAI.add(idx+','+ci); });   // B3: mark autofilled cells
       sh.rows[idx]=cells.slice(); sh.dirty=true; got++; setGen('Filling… ('+Math.min(got,nReal||got)+(nReal?'/'+nReal:'')+')',true); };
     const complete=out=>{ if(done)return; finish();
-      if(out&&out.columns&&out.columns.length){ sh.cols=out.columns.slice(); sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true; }
+      if(out&&out.columns&&out.columns.length){ sh.cols=out.columns.slice(); sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true;
+        sh.cellAI=new Set(); sh.rows.forEach((r,ri)=>(r||[]).forEach((v,ci)=>{ if(ci>=1&&String(v||'').trim()!==''&&!preFilled.has(ri+','+ci)) sh.cellAI.add(ri+','+ci); })); }
       setGen(null,false); };                                  // -> button back to "Generate"
     if(uid&&window.subscribeRun){                             // (1) LIVE stream: header, then each row as it fills
       unsub=window.subscribeRun(uid,jobId,{
@@ -621,7 +677,7 @@ function masterMenu(id, btn, ev){                             // the ⋮ menu on
   const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
   el.innerHTML='<button onclick="closeMasterMenu();generateMaster(\''+id+'\')">Autofill</button>'
     +'<button onclick="closeMasterMenu();masterUpload(\''+id+'\')">Upload</button>'
-    +'<button class=danger onclick="closeMasterMenu();deleteMasterData(\''+id+'\')">Delete</button>';
+    +'<button class=danger onclick="closeMasterMenu();deleteMasterData(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete generated data</button>';   // E3: icon + red, D2: worded around data loss
   document.body.appendChild(el);
   const r=btn.getBoundingClientRect();                        // anchor the dropdown to the ⋮ button, right-aligned + on-screen
   el.style.left=Math.max(8, r.right-el.offsetWidth)+'px'; el.style.top=(r.bottom+4)+'px';

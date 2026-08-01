@@ -174,6 +174,35 @@ body.app{background:#fff}
 .wbtoast-act{all:unset;cursor:pointer;color:#c3b6ff;font-weight:700;padding:3px 8px;border-radius:6px}
 .wbtoast-act:hover{background:rgba(255,255,255,.13);color:#fff}
 .wtab .unsaveddot{color:#e0912a;font-weight:700}
+/* B1: per-column provenance on derived/reference headers — SRC (from your data) vs AI (looked up / derived) */
+.provtag{display:inline-block;margin-left:6px;font:800 8.5px/1 var(--disp);letter-spacing:.06em;padding:2px 4px;border-radius:4px;vertical-align:middle}
+.provtag.src{background:#e2f5e9;color:#178a3a}
+.provtag.ai{background:#ece6fb;color:var(--brand)}
+.wb th.prov-src{box-shadow:inset 0 -2px 0 #b7e4c6}
+.wb th.prov-ai{box-shadow:inset 0 -2px 0 #cbbdf3}
+/* B3: autofilled reference cells (edit to confirm) */
+.wb td.aicell{background:#f7f4ff;position:relative}
+.wb td.aicell::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:#c3b2f0}
+/* A5: tab strip grouped into pipeline zones (Sources · Reference · Steps · Result) */
+.tabzone{display:inline-flex;align-items:center;gap:2px;padding-left:9px;margin-left:5px;border-left:1px solid #e7e1f5}
+.tabzone:first-child{border-left:none;margin-left:0;padding-left:0}
+.tabzlabel{font:800 8.5px/1 var(--disp);letter-spacing:.09em;text-transform:uppercase;color:#a79fce;padding:0 5px 0 0;white-space:nowrap}
+.wtab.refsuggest{color:var(--brand);border:1px dashed #c9bff0;background:#faf9ff}
+.wtab.refsuggest:hover{background:#f3effd;border-style:solid}
+.mmenu-hd{font:700 11px var(--disp);color:#8a82ac;padding:6px 12px 5px}
+.mmenu-sub{color:#a79fce;font-weight:500;font-size:11px}
+/* D3: reference bar — quiet once populated; the long pitch lives behind a "?" */
+.mhelp{all:unset;cursor:help;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#eadfc7;color:#8a6a2e;font:800 10px var(--disp);margin-left:5px}
+.mhelp:hover{background:#e0d1b3}
+.masterhint.quiet{background:#fdfaf3;color:#9c8b6a}
+/* E1: grounding caption under the Result sheet */
+.resultcap{padding:9px 14px;font:12.5px var(--disp);color:var(--card-ink-dim);border-top:1px solid #efeafa}
+.resultcap b{color:var(--card-ink)}
+.resultcap .mlink{color:var(--brand);padding:2px 6px}
+.resultcap .mlink:hover{background:#f3effd;border-radius:6px}
+/* C1: reasoning-step lineage + E3: delete icon */
+.steplin{color:#a79fce;font-weight:500}
+.mmenu button.danger .dgico{font-size:12px;margin-right:3px}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
