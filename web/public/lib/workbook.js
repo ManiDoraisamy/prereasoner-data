@@ -79,8 +79,14 @@ function renderGrid(m){
   const provOf=c=>inputCols.has(String(c).toLowerCase())?'src':'ai';
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++){ const pv=showProv?provOf(cols[ci]):'';
+    if(m.cls==='master'&&m._editCol===ci){                    // inline column-name editor — spreadsheet-style, no prompt() dialog
+      h+='<th class=colnamewrap><input class=colnameedit data-orig="'+escAttr(cols[ci])+'" value="'+escAttr(cols[ci])+'" placeholder="column name" spellcheck=false autocomplete=off '
+        +'onkeydown="event.stopPropagation(); if(event.key===\'Enter\'){this.blur();} else if(event.key===\'Escape\'){this.value=this.dataset.orig; this.blur();}" '
+        +'onblur="commitColName(\''+m.id+'\','+ci+',this.value)"></th>';
+      continue; }
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
-      +(pv?' title="'+(pv==='src'?'From your data':'Added by AI (Wikipedia lookup / derivation) — worth a sanity-check')+'"':'')
+      +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
+                        :(pv?' title="'+(pv==='src'?'From your data':'Added by AI (Wikipedia lookup / derivation) — worth a sanity-check')+'"':''))
       +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+(pv==='src'?'SRC':'AI')+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
@@ -159,8 +165,8 @@ function renderTabs(){
   const result=BOOK.filter(s=>s.result);
   const steps=BOOK.filter(s=>(s.cls==='deriv'||s.cls==='ref')&&!s.result);
   const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')" title="'+esc((s.result?'Result':s.name)+(s.cls==='master'&&!s.saved?' — unsaved reference':''))+'"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?'<span class=unsaveddot title="unsaved" aria-label="unsaved"> •</span>':'')+'</button>';
-  const zone=(label,arr,extra)=> (arr.length||extra) ? '<span class=tabzone><span class=tabzlabel>'+label+'</span>'+arr.map(tab).join('')+(extra||'')+'</span>' : '';
-  const suggest = REFCANDS.length ? '<button class="wtab refsuggest" title="Columns that can be enriched with reference data" onclick="refSuggestMenu(this,event)">+ Add reference data ('+REFCANDS.length+')</button>' : '';
+  const zone=(label,arr,extra)=> (arr.length||extra) ? '<span class=tabzone>'+arr.map(tab).join('')+(extra||'')+'</span>' : '';   // grouped (subtle dividers) but no space-wasting labels
+  const suggest = REFCANDS.length ? '<button class="wtab refsuggest" title="'+REFCANDS.length+' column'+(REFCANDS.length===1?'':'s')+' can be enriched with reference data" onclick="refSuggestMenu(this,event)">+ Reference</button>' : '';
   $('tabstrip').innerHTML = zone('Sources',sources) + zone('Reference',reference,suggest) + zone('Steps',steps) + zone('Result',result);
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
@@ -562,8 +568,7 @@ function refSuggestMenu(btn,ev){                             // the collapsed "A
   if(ev) ev.stopPropagation(); closeMasterMenu();
   const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
   el.innerHTML='<div class=mmenu-hd>Enrich a column with reference data</div>'
-    + REFCANDS.map((c,i)=>'<button onclick="closeMasterMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+c.vals.length+' value'+(c.vals.length===1?'':'s')+'</span></button>').join('')
-    + '<button class=danger onclick="closeMasterMenu();dismissRefSuggest()">Not now</button>';
+    + REFCANDS.map((c,i)=>'<button onclick="closeMasterMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+c.vals.length+' value'+(c.vals.length===1?'':'s')+'</span></button>').join('');
   document.body.appendChild(el);
   const r=btn.getBoundingClientRect();
   el.style.left=Math.max(8,r.left)+'px'; el.style.top=Math.max(8,r.top-el.offsetHeight-6)+'px';   // open ABOVE the bottom tab bar
@@ -654,13 +659,14 @@ async function runGenerate(id){
         onMasterCols:cols=>applyCols(cols),
         onMasterRow:(k,cells)=>applyRow(parseInt(k,10)||0, cells),
         onResult:v=>{ if(v&&v.columns) complete(v); },
-        onStatus:st=>{ if(st==='error'&&!done){ finish(); setGen('Autofill failed — retry',false); } } });
+        onStatus:st=>{ if(done)return; if(st==='done'){ finish(); setGen(null,false); }   // streamed rows already applied; reset the button even if the result node was missed
+                       else if(st==='error'){ finish(); setGen('Autofill failed — retry',false); } } });
     }
     timer=setTimeout(()=>{ if(!done){ finish(); setGen('Autofill failed — retry',false); } }, 180000);
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
-      .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns) complete(j); }
+      .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns && !uid) complete(j); }   // apply the HTTP body ONLY without RTDB; else let the RTDB stream render row-by-row and onResult reconcile — so a warm/fast response never preempts the live fill
         else if(!done&&!uid) setGen('Autofill failed — retry',false); })   // no RTDB fallback available -> surface it
       .catch(()=>{});                                          // proxy 60s timeout on a cold engine is EXPECTED; RTDB delivers
   }catch(_){ setGen('Autofill failed — retry',false); }
@@ -713,10 +719,23 @@ function toast(msg, actionLabel, actionFn, ms){              // a transient bott
   if(actionLabel&&actionFn){ const b=el.querySelector('.wbtoast-act'); if(b) b.onclick=()=>{ close(); try{actionFn();}catch(_){} }; }
   _toastTimer=setTimeout(close, ms||6000);
 }
-function addMasterCol(id){
+function addMasterCol(id){                                    // add a column and edit its NAME inline (spreadsheet-style, no prompt() dialog)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  const nm=(prompt('New column name (e.g. category, price, region):')||'').trim(); if(!nm)return;
-  sh.cols.push(nm); sh.rows.forEach(r=>r.push('')); sh.dirty=true; renderSheet();
+  sh.cols.push(''); sh.rows.forEach(r=>r.push('')); sh._editCol=sh.cols.length-1; sh.dirty=true;
+  renderSheet();
+  setTimeout(()=>{ const inp=document.querySelector('#sheetcard .colnameedit'); if(inp){ inp.focus(); inp.select&&inp.select(); } }, 0);
+}
+function editMasterCol(id, ci){ const sh=BOOK.find(s=>s.id===id); if(!sh)return;   // double-click a header to rename it inline
+  sh._editCol=ci; renderSheet();
+  setTimeout(()=>{ const inp=document.querySelector('#sheetcard .colnameedit'); if(inp){ inp.focus(); inp.select&&inp.select(); } }, 0);
+}
+function commitColName(id, ci, val){
+  const sh=BOOK.find(s=>s.id===id); if(!sh||sh._editCol==null)return; sh._editCol=null;
+  const nm=String(val||'').trim();
+  const dup=(sh.cols||[]).some((c,i)=>i!==ci&&String(c).trim().toLowerCase()===nm.toLowerCase());
+  if(!nm||dup){ sh.cols.splice(ci,1); sh.rows.forEach(r=>r.splice(ci,1)); if(sh.cellAI) sh.cellAI=new Set([...sh.cellAI].filter(k=>+k.split(',')[1]!==ci)); }   // blank/duplicate -> drop the column
+  else { sh.cols[ci]=nm; }
+  sh.dirty=true; renderSheet();
 }
 function masterUpload(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;

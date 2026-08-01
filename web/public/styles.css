@@ -203,6 +203,10 @@ body.app{background:#fff}
 /* C1: reasoning-step lineage + E3: delete icon */
 .steplin{color:#a79fce;font-weight:500}
 .mmenu button.danger .dgico{font-size:12px;margin-right:3px}
+/* inline column-name editor (spreadsheet-style, replaces the prompt() dialog) */
+.wb th.colnamewrap{padding:2px}
+.wb input.colnameedit{width:100%;min-width:100px;box-sizing:border-box;border:1.5px solid var(--brand);border-radius:5px;padding:5px 8px;font:600 12px var(--disp);color:var(--card-ink);background:#fff;outline:none}
+.wb input.colnameedit::placeholder{color:#b9b2cf;font-weight:500}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
