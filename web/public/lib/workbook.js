@@ -517,19 +517,65 @@ async function saveMaster(id){
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
   saveConvState();                                           // fold the saved master into the conversation snapshot
 }
-async function generateMaster(id){                            // fill the reference table's attribute columns with Sonnet
+// The DEFAULT generation prompt, aware of context: first run -> "add columns + fill" (referencing the uploaded
+// data so the columns are useful alongside it); already-generated with empty cells (the input CSV grew, so new
+// entities were surfaced) -> "fill only the missing cells, keep the rest".
+function genPromptDefault(sh){
+  const inputCols=Object.values(inputColumns()).filter(c=>String(c).toLowerCase()!==String(sh.name||'').toLowerCase());
+  const attr=(sh.cols||[]).slice(1);                          // the non-entity (attribute) columns
+  const real=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');
+  const filled=attr.length&&real.some(r=>attr.some((c,i)=>String(r[i+1]||'').trim()!==''));
+  const empty =attr.length&&real.some(r=>attr.some((c,i)=>String(r[i+1]||'').trim()===''));
+  if(filled&&empty)                                           // partially filled -> the CSV added rows -> fill the gaps
+    return 'Fill in only the empty cells for "'+sh.name+'", keeping every existing value exactly as it is.';
+  return 'Add useful reference columns about each "'+sh.name+'" and fill in a value for every row'
+       +(inputCols.length?', so this reference data works alongside my uploaded spreadsheet (columns: '+inputCols.join(', ')+')':'')+'.';
+}
+function generateMaster(id){ const sh=BOOK.find(s=>s.id===id); if(sh) openGenModal(sh); }   // open the editable-prompt popup
+function closeGenModal(){ const ov=document.getElementById('genmodal'); if(ov) ov.remove(); }
+function openGenModal(sh){
+  closeGenModal();
+  const ov=document.createElement('div'); ov.id='genmodal'; ov.className='genbackdrop';
+  ov.onclick=e=>{ if(e.target===ov) closeGenModal(); };
+  ov.innerHTML='<div class=gencard role=dialog aria-modal=true>'
+    +'<div class=genhd>Generate reference data for <b>'+esc(sh.name)+'</b></div>'
+    +'<div class=gensub>Edit the prompt if you like, then Generate. Columns are filled with AI; any values you already entered are kept.</div>'
+    +'<textarea class=genta id=genta spellcheck=false>'+esc(genPromptDefault(sh))+'</textarea>'
+    +'<div class=genmsg id=genmsg></div>'
+    +'<div class=genbtns><button type=button class=gencancel onclick="closeGenModal()">Cancel</button>'
+    +'<button type=button class=genrun id=genrun onclick="runGenerate(\''+sh.id+'\')">Generate</button></div></div>';
+  document.body.appendChild(ov);
+  const ta=document.getElementById('genta'); if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
+}
+async function runGenerate(id){                               // fire the fill job; the answer arrives via RTDB (survives the 60s proxy timeout)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  const gen=[...document.querySelectorAll('.masterhint .mlink')].find(b=>b.textContent==='Generate');
-  if(gen){ gen.textContent='Generating…'; gen.disabled=true; }
-  try{ const tk=await window.ensureToken();
+  const ta=document.getElementById('genta'), runBtn=document.getElementById('genrun'), msg=document.getElementById('genmsg');
+  const instruction=ta?ta.value:'';
+  const setErr=t=>{ if(runBtn){ runBtn.textContent='Generate'; runBtn.disabled=false; } if(msg){ msg.textContent=t; msg.classList.add('err'); } };
+  if(runBtn){ runBtn.textContent='Generating…'; runBtn.disabled=true; }
+  if(msg){ msg.classList.remove('err'); msg.textContent='Working… this can take up to a couple of minutes on a cold start.'; }
+  try{
+    const tk=await window.ensureToken(), uid=window.__uid;
+    const jobId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
     const rows=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');   // real entities only (drop the blank new-row)
-    const r=await fetch(API_BASE+'/api/master/generate',{method:'POST',
+    let done=false, unsub=null, timer=null;
+    const finish=()=>{ done=true; if(unsub){try{unsub();}catch(_){}} if(timer)clearTimeout(timer); };
+    const apply=out=>{ if(done)return; finish();
+      if(out&&out.columns&&out.columns.length){ sh.cols=out.columns; sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true; }
+      closeGenModal(); renderSheet(); };
+    if(uid&&window.subscribeRun){                             // (1) primary path: RTDB, decoupled from the HTTP timeout
+      unsub=window.subscribeRun(uid,jobId,{
+        onResult:v=>{ if(v&&v.columns) apply(v); },
+        onStatus:st=>{ if(st==='error'&&!done){ finish(); setErr('Generation failed — try again.'); } } });
+    }
+    timer=setTimeout(()=>{ if(!done){ finish(); setErr('Generation timed out — try again.'); } }, 180000);
+    fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) fallback: warm/fast path returns the body directly
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
-      body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
-    if(r.ok){ const j=await r.json(); if(j&&j.columns&&j.columns.length){ sh.cols=j.columns; sh.rows=(j.rows||[]).map(x=>x.slice()); sh.dirty=true; } }
-    else if(gen){ gen.textContent='Generate failed — retry'; gen.disabled=false; return; }
-  }catch(_){ if(gen){ gen.textContent='Generate failed — retry'; gen.disabled=false; return; } }
-  renderSheet();                                              // repaint the filled table (also restores the button label)
+      body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
+      .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns) apply(j); }
+        else if(!done&&!uid) setErr('Generation failed — try again.'); })   // no RTDB fallback available -> surface the failure
+      .catch(()=>{});                                          // proxy 60s timeout on a cold engine is EXPECTED; RTDB delivers
+  }catch(_){ setErr('Generation failed — try again.'); }
 }
 function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;

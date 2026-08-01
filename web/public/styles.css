@@ -142,6 +142,23 @@ body.app{background:#fff}
 .mactions{display:flex;gap:4px;flex:0 0 auto}
 .mlink{all:unset;cursor:pointer;font:600 11.5px var(--disp);color:#a5651a;padding:3px 9px;border-radius:9999px}
 .mlink:hover{background:#f6ead2}
+/* Generate-reference-data popup: an editable prompt the user confirms before the AI fills the master table */
+.genbackdrop{position:fixed;inset:0;z-index:50;background:rgba(30,19,64,.42);display:flex;align-items:center;justify-content:center;padding:20px}
+.gencard{width:min(560px,100%);background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(40,12,140,.32);padding:22px 22px 18px;display:flex;flex-direction:column;gap:12px}
+.genhd{font:600 16px var(--disp);color:var(--card-ink)}
+.genhd b{color:var(--brand)}
+.gensub{font:13px/1.5 var(--disp);color:var(--card-ink-dim)}
+.genta{width:100%;min-height:104px;resize:vertical;border:1px solid #ddd4f5;border-radius:10px;padding:12px 14px;font:13.5px/1.55 var(--disp);color:var(--card-ink);outline:none;background:#faf9ff}
+.genta:focus{border-color:var(--brand);background:#fff}
+.genmsg{font:12.5px/1.4 var(--mono);color:var(--card-ink-dim);min-height:16px}
+.genmsg.err{color:#d33}
+.genbtns{display:flex;justify-content:flex-end;gap:10px;margin-top:2px}
+.gencancel,.genrun{all:unset;cursor:pointer;padding:9px 20px;border-radius:9999px;font:700 12.5px var(--disp)}
+.gencancel{color:var(--card-ink-dim)}
+.gencancel:hover{background:#f3effd;color:var(--brand)}
+.genrun{background:var(--brand);color:#fff;box-shadow:0 8px 20px rgba(40,12,140,.30)}
+.genrun:hover{background:var(--brand-deep)}
+.genrun[disabled]{opacity:.55;cursor:default}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}

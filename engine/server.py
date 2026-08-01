@@ -259,26 +259,37 @@ class H(BaseHTTPRequestHandler):
 
     # ---------------- /api/master/generate (Sonnet fills a reference table) ----------------
     def _post_master_generate(self):
-        """POST /api/master/generate {name, columns, rows} → Sonnet fills the reference table's attribute
-        columns for each entity (the first column) and returns {columns, rows}. Firebase-auth'd like the
-        reasoning routes; a missing/failed Anthropic key degrades to a clear 503 (the button re-enables)."""
+        """POST /api/master/generate {name, columns, rows, instruction?, jobId?} → Sonnet fills the reference
+        table's attribute columns for each entity (col 0), preserving already-filled cells, and returns
+        {columns, rows}. The Sonnet fill can exceed the ~60s Firebase-proxy timeout (cold start + generation),
+        so — exactly like the reasoning routes — the result is ALSO streamed to RTDB (/runs/{uid}/{jobId}):
+        the browser reads it there even when the POST response is lost to the proxy. A missing/failed Anthropic
+        key degrades to a clear 503 (+ an RTDB error) so the popup re-enables."""
+        emit = None
         try:
             n = int(self.headers.get("Content-Length", 0))
             if n > MAX_BODY:
                 self._send(200, json.dumps({"error": "payload too large"})); return
             req = json.loads(self.rfile.read(n) or b"{}") if n else {}
-            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
+            emit = emitter(uid, req.get("jobId"))            # no-op if RTDB/jobId absent; else streams past the 60s proxy
+            emit("status", "running")
             from engine import converse
             try:
-                out = converse.generate_master(req.get("name", "reference"),
-                                               req.get("columns") or [], req.get("rows") or [])
+                out = converse.generate_master(req.get("name", "reference"), req.get("columns") or [],
+                                               req.get("rows") or [], instruction=req.get("instruction"))
             except Exception as e:                           # noqa: BLE001 — no key / SDK / bad JSON: let the client re-enable
                 print(f"/api/master/generate degraded (503): {type(e).__name__}: {e}", flush=True)
+                emit("error", f"generate unavailable: {type(e).__name__}"); emit("status", "error")
                 self._send(503, json.dumps({"error": f"generate unavailable: {type(e).__name__}: {e}"})); return
+            emit("result", out); emit("status", "done")      # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(out))
         except Exception as e:                               # noqa: BLE001
+            if emit is not None:
+                try: emit("error", str(e)); emit("status", "error")
+                except Exception: pass                       # noqa: BLE001 — streaming is best-effort
             self._send(500, json.dumps({"error": str(e)}))
 
     # ---------------- /api/reason + /api/knowledge (Firebase auth + RTDB trace stream) ----------------

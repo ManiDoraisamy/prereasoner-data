@@ -98,34 +98,51 @@ def reply(question, clarify=None, error=None, tables=None, answer=None, sql=None
 
 
 GEN_SYSTEM = """You fill in a REFERENCE ("master") data table for a spreadsheet product. You are given a table
-name, its column headers, and a list of entities (the values in the FIRST column). Fill in the OTHER columns
-for every entity with accurate, concise, factual values from general knowledge (a few words each; use "" only
-when genuinely unknown). Keep the first column's values EXACTLY as given, one output row per entity, same
-order. If only the entity column was provided, add 2–3 useful, clearly-named attribute columns and fill them.
+name, its column headers, the entities (the values in the FIRST column), and the CURRENT rows (some cells may
+already be filled). Produce accurate, concise, factual values from general knowledge (a few words each; use ""
+only when genuinely unknown).
+
+Rules:
+- Keep the FIRST column's values EXACTLY as given, one output row per entity, same order.
+- PRESERVE every already-filled (non-empty) cell EXACTLY as given — only fill the empty "" cells.
+- If only the entity column was provided, ADD 2–3 useful, clearly-named attribute columns and fill them.
+- Follow any additional instruction from the user (e.g. which columns to add, or to fill only missing cells).
 
 Return ONLY a JSON object: {"columns": [<headers>], "rows": [[<cell>, ...], ...]} — every row has exactly as
 many cells as columns, the first cell is the entity verbatim. No markdown, no commentary, JSON only."""
 
 
-def generate_master(name, columns, rows, model=None, api_key=None, max_tokens=2000):
+def generate_master(name, columns, rows, instruction=None, model=None, api_key=None, max_tokens=2000):
     """Generate/fill a master (reference) table with Sonnet. `columns` = headers (first is the entity key);
-    `rows` = existing rows (only the first column's entity values are required). Returns {'columns', 'rows'} —
-    the first column preserved verbatim, the rest filled. Raises if the Anthropic key/SDK is unavailable."""
+    `rows` = existing rows (only the first column's entity values are required; other cells may already be
+    filled). `instruction` = optional user guidance (which columns to add, or to fill only missing cells).
+    Returns {'columns', 'rows'} — the first column preserved verbatim, every already-filled cell preserved,
+    the empty cells filled. Raises if the Anthropic key/SDK is unavailable."""
     from anthropic import Anthropic
     from engine.config import anthropic_api_key, ANTHROPIC_MODEL
 
     columns = [str(c) for c in (columns or [])] or ["name"]
-    entities, seen = [], set()
+    # entities (col 0) + the already-filled cells to PRESERVE, keyed by (entity, column name) so a preserved
+    # value survives even if the model adds/reorders columns.
+    entities, existing, table, seen = [], {}, [], set()
     for r in (rows or []):
-        e = str((r or [""])[0]).strip()
-        if e and e.lower() not in seen:
-            entities.append(e); seen.add(e.lower())
+        cells = [("" if v is None else str(v)) for v in (r or [])]
+        e = (cells[0] if cells else "").strip()
+        if not e or e.lower() in seen:
+            continue
+        entities.append(e); seen.add(e.lower())
+        table.append((cells + [""] * len(columns))[:len(columns)])
+        existing[e.lower()] = {str(columns[i]).lower(): cells[i]
+                               for i in range(1, min(len(cells), len(columns))) if cells[i].strip()}
     if not entities:
         return {"columns": columns, "rows": []}
     client = Anthropic(api_key=api_key or anthropic_api_key())
+    guidance = (f"\n\nAdditional instruction from the user (follow it):\n{instruction.strip()}"
+                if instruction and str(instruction).strip() else "")
     user = (f"Table name: {name!r}\nColumns: {json.dumps(columns)}\n"
-            f"Entity column: {columns[0]!r}\nEntities ({len(entities)}): {json.dumps(entities)}\n\n"
-            "Return the JSON now.")
+            f"Entity column: {columns[0]!r}\nEntities ({len(entities)}): {json.dumps(entities)}\n"
+            f"Current rows (preserve every non-empty cell EXACTLY; fill only the \"\" cells): {json.dumps(table)}"
+            f"{guidance}\n\nReturn the JSON now.")
     resp = client.messages.create(
         model=model or ANTHROPIC_MODEL, max_tokens=max_tokens, system=GEN_SYSTEM,
         messages=[{"role": "user", "content": user}],
@@ -135,7 +152,17 @@ def generate_master(name, columns, rows, model=None, api_key=None, max_tokens=20
         text = text.split("```", 2)[1].lstrip("json").strip() if text.count("```") >= 2 else text.strip("`")
     data = json.loads(text)
     out_cols = [str(c) for c in (data.get("columns") or columns)]
-    out_rows = [[("" if v is None else str(v)) for v in row] for row in (data.get("rows") or []) if row]
     width = len(out_cols)
-    out_rows = [(row + [""] * width)[:width] for row in out_rows]   # normalize ragged rows to the header width
+    out_rows = []
+    for row in (data.get("rows") or []):
+        if not row:
+            continue
+        rr = ([("" if v is None else str(v)) for v in row] + [""] * width)[:width]   # normalize to header width
+        ex = existing.get(rr[0].strip().lower())
+        if ex:                                                   # PRESERVE the user's already-filled cells (by column name)
+            for i in range(1, width):
+                v = ex.get(out_cols[i].lower())
+                if v and v.strip():
+                    rr[i] = v
+        out_rows.append(rr)
     return {"columns": out_cols, "rows": out_rows}
