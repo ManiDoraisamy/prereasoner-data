@@ -99,14 +99,15 @@ function tokCls(tk){const u=tk.toUpperCase();
   const m=tk.match(/^"([^"]+)"$/); if(m&&TABNAMES.includes(m[1].toLowerCase()))return 'tbl';
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
-const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Wikipedia',master:'Your wiki'};
+const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Wikipedia',master:'Reference'};   // A3: one term per concept ("Reference", not "Your wiki")
+function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/wikipedia lookup/i.test(n)) n='enriched'; return n; }   // A3: derived step != the Wikipedia source
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
   let h='<div class="bandbar band-'+m.cls+'"></div><div class=sheetband>'
-    +'<span class="dot '+m.cls+'"></span><span class=snm>'+esc(m.result?'Result':m.name)+'</span>'
+    +'<span class="dot '+m.cls+'"></span><span class=snm title="'+esc(m.result?'Result':m.name)+'">'+esc(m.result?'Result':dispName(m))+'</span>'
     +'<span class="skind '+m.cls+'">'+(m.result?esc(m.name):KINDLBL[m.cls])+'</span>'
-    +(m.sql?'<span class=spacer></span><button class=sqlbtn onclick=toggleSql()>SQL</button>':'')
+    +(m.sql?'<span class=spacer></span><button class=sqlbtn title="View the SQL for this sheet" aria-label="View SQL" onclick=toggleSql()>SQL</button>':'')
     +(m.cls==='master'?'<span class=spacer></span>'
         +((m.saved&&!m.dirty)                                 // saved -> a ⋮ menu (Autofill / Upload / Delete); otherwise the Save button
            ?'<button class="mbtn mdots" aria-label="More actions" onclick="masterMenu(\''+m.id+'\',this,event)">⋮</button>'
@@ -129,12 +130,12 @@ function renderSheet(){
   $('sheetcard').innerHTML=h;
 }
 function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
-function tabTxt(s){ const t=s.result?'Result':s.name; return t.length>26?t.slice(0,24)+'…':t; }
+function tabTxt(s){ const t=s.result?'Result':dispName(s); return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
   // Reading order: your data -> the world (wikipedia) it resolved -> your master data (the unresolved rest) -> steps.
   const inputs=BOOK.filter(s=>s.cls==='input'), refs=BOOK.filter(s=>s.cls==='ref'),
         masters=BOOK.filter(s=>s.cls==='master'), derivs=BOOK.filter(s=>s.cls==='deriv');
-  const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?' •':'')+'</button>';
+  const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')" title="'+esc((s.result?'Result':s.name)+(s.cls==='master'&&!s.saved?' — unsaved reference':''))+'"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?'<span class=unsaveddot title="unsaved" aria-label="unsaved"> •</span>':'')+'</button>';
   $('tabstrip').innerHTML=inputs.map(tab).join('')+refs.map(tab).join('')+masters.map(tab).join('')+derivs.map(tab).join('');
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
@@ -496,18 +497,27 @@ async function loadMaster(){                                  // cache the user'
 // sheet (its saved data if any, else its distinct values) for the user to enrich.
 function surfaceUnresolved(){
   try{
+    const surfaced=[];                                        // normalized value-sets already surfaced (A1: skip a duplicate column)
     (RESOLVES||[]).forEach(r=>{
       if(!r||!r.unconnected)return;                          // only columns the engine could NOT connect to the world
       const nm=String(r.column||'').trim(), key=nm.toLowerCase();
       if(!nm||MSEEN.has(key))return;                         // already shown or already surfaced
-      const saved=MDATA[key];
-      if(saved){ addMasterSheet(saved.name,saved.cols,saved.rows,true); return; }
       let vals=[];                                           // its distinct values, from whichever input sheet has the column
       for(const sh of BOOK.filter(s=>s.cls==='input')){
         const ci=(sh.cols||[]).findIndex(c=>String(c).toLowerCase()===key);
         if(ci>=0){ vals=[...new Set((sh.rows||[]).map(rw=>rw[ci]).filter(v=>v!==''&&v!=null).map(String))]; break; }
       }
-      addMasterSheet(nm, [nm], vals.slice(0,500).map(v=>[v]), false);
+      const norm=new Set(vals.map(v=>String(v).trim().toLowerCase()));
+      const saved=MDATA[key];
+      if(saved){                                             // A2: only surface a SAVED reference whose entities OVERLAP this data
+        const ents=new Set((saved.rows||[]).map(rw=>String((rw&&rw[0])||'').trim().toLowerCase()).filter(Boolean));
+        if(ents.size && ![...ents].some(v=>norm.has(v))) return;   // zero entity overlap -> unrelated reference, don't surface
+        addMasterSheet(saved.name,saved.cols,saved.rows,true); surfaced.push(norm); return;
+      }
+      // A1 (safe declutter): skip a column that DUPLICATES an already-surfaced one (e.g. orders.customer == customers.name) —
+      // the other tab already covers the same entities, so nothing is lost.
+      if(norm.size && surfaced.some(prev=>[...norm].every(v=>prev.has(v)))) return;
+      addMasterSheet(nm, [nm], vals.slice(0,500).map(v=>[v]), false); surfaced.push(norm);
     });
   }catch(_){}
 }
@@ -622,12 +632,30 @@ function closeMasterMenu(){
   if(_mmenuDoc){ document.removeEventListener('mousedown', _mmenuDoc); _mmenuDoc=null; }
   const m=document.getElementById('mmenu'); if(m) m.remove();
 }
-function deleteMasterData(id){                                // clear ALL generated columns + cell values, keep ONLY the entity (first) column -> ready to Autofill again
+function deleteMasterData(id){                                // clear the GENERATED columns + values, keep the entity column. D1: confirm + Undo.
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  sh.cols=[(sh.cols&&sh.cols[0])||sh.name];
+  const gen=(sh.cols||[]).length-1;                          // number of generated (non-entity) columns
+  if(gen<=0){ renderSheet(); return; }                        // nothing to clear
+  const entity=(sh.cols&&sh.cols[0])||sh.name;
+  if(!confirm('Clear the '+gen+' generated column'+(gen===1?'':'s')+' on “'+sh.name+'”? The “'+entity+'” column stays.')) return;
+  const snap={cols:(sh.cols||[]).slice(), rows:(sh.rows||[]).map(r=>r.slice()), dirty:sh.dirty, saved:sh.saved};   // for Undo
+  sh.cols=[entity];
   sh.rows=(sh.rows||[]).map(r=>[(r&&r[0]!=null)?r[0]:'']);
   sh.dirty=true;                                             // a reset is unsaved -> the Save button + inline Autofill come back
   renderSheet();
+  toast('Cleared '+gen+' generated column'+(gen===1?'':'s')+'.', 'Undo', ()=>{   // ~8s Undo fully restores columns + values
+    sh.cols=snap.cols; sh.rows=snap.rows; sh.dirty=snap.dirty; sh.saved=snap.saved; renderSheet();
+  }, 8000);
+}
+let _toastTimer=null;
+function toast(msg, actionLabel, actionFn, ms){              // a transient bottom toast with an optional action (e.g. Undo)
+  const old=document.getElementById('wbtoast'); if(old)old.remove(); if(_toastTimer)clearTimeout(_toastTimer);
+  const el=document.createElement('div'); el.id='wbtoast'; el.className='wbtoast';
+  el.innerHTML='<span>'+esc(msg)+'</span>'+(actionLabel?'<button type=button class=wbtoast-act>'+esc(actionLabel)+'</button>':'');
+  document.body.appendChild(el);
+  const close=()=>{ if(_toastTimer){clearTimeout(_toastTimer);_toastTimer=null;} const e=document.getElementById('wbtoast'); if(e)e.remove(); };
+  if(actionLabel&&actionFn){ const b=el.querySelector('.wbtoast-act'); if(b) b.onclick=()=>{ close(); try{actionFn();}catch(_){} }; }
+  _toastTimer=setTimeout(close, ms||6000);
 }
 function addMasterCol(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;

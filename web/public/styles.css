@@ -169,6 +169,11 @@ body.app{background:#fff}
 .mmenu button:hover{background:#f3effd;color:var(--brand)}
 .mmenu button.danger{color:#c0392b}
 .mmenu button.danger:hover{background:#fdecea;color:#a5281b}
+/* Undo toast (D1: Delete is recoverable for ~8s) */
+.wbtoast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:70;display:flex;align-items:center;gap:14px;background:#241a4d;color:#fff;padding:11px 16px;border-radius:10px;box-shadow:0 14px 34px rgba(20,8,60,.4);font:13px var(--disp);max-width:92vw}
+.wbtoast-act{all:unset;cursor:pointer;color:#c3b6ff;font-weight:700;padding:3px 8px;border-radius:6px}
+.wbtoast-act:hover{background:rgba(255,255,255,.13);color:#fff}
+.wtab .unsaveddot{color:#e0912a;font-weight:700}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
