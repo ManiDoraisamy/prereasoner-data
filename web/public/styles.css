@@ -159,6 +159,16 @@ body.app{background:#fff}
 .genrun{background:var(--brand);color:#fff;box-shadow:0 8px 20px rgba(40,12,140,.30)}
 .genrun:hover{background:var(--brand-deep)}
 .genrun[disabled]{opacity:.55;cursor:default}
+/* master toolbar: the ⋮ menu (saved sheet), the close (✕) icon (dismiss an unsaved sheet), and the dropdown */
+.mbtn.mdots{min-width:0;padding:1px 9px;font:600 18px/1 var(--disp);color:#a5651a;background:transparent;border:1px solid transparent}
+.mbtn.mdots:hover{background:#f6ead2;border-color:#eadfc7}
+.mlink.mclose{font-size:12px;line-height:1;padding:4px 7px;color:#b08a4a}
+.mlink.mclose:hover{background:#f6ead2;color:#8a6a2e}
+.mmenu{position:fixed;z-index:60;min-width:152px;background:#fff;border:1px solid #e6ddf5;border-radius:10px;box-shadow:0 14px 36px rgba(40,12,140,.22);padding:5px}
+.mmenu button{all:unset;display:block;width:100%;box-sizing:border-box;cursor:pointer;padding:9px 12px;border-radius:7px;font:600 13px var(--disp);color:var(--card-ink)}
+.mmenu button:hover{background:#f3effd;color:var(--brand)}
+.mmenu button.danger{color:#c0392b}
+.mmenu button.danger:hover{background:#fdecea;color:#a5281b}
 .sqlrow{display:none;flex:0 0 auto;padding:9px 16px;border-bottom:1px solid #efeafa;background:#faf9ff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}

@@ -108,14 +108,22 @@ function renderSheet(){
     +'<span class="skind '+m.cls+'">'+(m.result?esc(m.name):KINDLBL[m.cls])+'</span>'
     +(m.sql?'<span class=spacer></span><button class=sqlbtn onclick=toggleSql()>SQL</button>':'')
     +(m.cls==='master'?'<span class=spacer></span>'
-        +'<button class="mbtn msave'+(m.dirty||!m.saved?' dirty':'')+'" onclick="saveMaster(\''+m.id+'\')">'+(m.saved&&!m.dirty?'Saved':'Save')+'</button>':'')
+        +((m.saved&&!m.dirty)                                 // saved -> a ⋮ menu (Autofill / Upload / Delete); otherwise the Save button
+           ?'<button class="mbtn mdots" aria-label="More actions" onclick="masterMenu(\''+m.id+'\',this,event)">⋮</button>'
+           :'<button class="mbtn msave dirty" onclick="saveMaster(\''+m.id+'\')">Save</button>'):'')
     +'</div>';
-  if(m.cls==='master') h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>'
-    +'<span class=mactions>'
-    +'<button class=mlink'+(m._genBusy?' disabled':'')+' onclick="generateMaster(\''+m.id+'\')">'+esc(m._gen||'Generate')+'</button>'
-    +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">Upload</button>'
-    +(m.saved?'':'<button class=mlink onclick="dismissMaster(\''+m.id+'\')">dismiss</button>')
-    +'</span></div>';
+  if(EDITED) h+='<div class="masterhint recalchint"><span>&#9998; You changed your data — recompute to update the answer.</span>'
+    +'<span class=mactions><button class=mlink onclick="recalc()">Recalculate</button></span></div>';
+  if(m.cls==='master'){
+    h+='<div class=masterhint><span>Your reference data for <b>'+esc(m.name)+'</b> — add attributes (category, price, region…) and fill them in; reused across every conversation.</span>';
+    if(!(m.saved&&!m.dirty))                                  // unsaved -> inline actions; once saved they move into the ⋮ menu
+      h+='<span class=mactions>'
+        +'<button class=mlink'+(m._genBusy?' disabled':'')+' onclick="generateMaster(\''+m.id+'\')">'+esc(m._gen||'Autofill')+'</button>'
+        +'<button class=mlink onclick="masterUpload(\''+m.id+'\')">Upload</button>'
+        +(m.saved?'':'<button class="mlink mclose" aria-label="Close" title="Close" onclick="dismissMaster(\''+m.id+'\')">✕</button>')
+        +'</span>';
+    h+='</div>';
+  }
   if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
   h+=renderGrid(m);
   $('sheetcard').innerHTML=h;
@@ -432,13 +440,7 @@ function syncInputsToSheets(){                                // serialize edite
     SHEETS[s.si].data=[s.cols.map(csvCell).join(',')].concat((s.rows||[]).map(r=>r.map(csvCell).join(','))).join('\n'); });
   try{ sessionStorage.setItem(SS.TABLES, JSON.stringify(SHEETS)); }catch(_){}
 }
-function showRecalc(on){
-  let b=$('recalcbar');
-  if(!b){ b=document.createElement('div'); b.id='recalcbar'; b.className='recalcbar';
-    b.innerHTML='<span>&#9998; You changed your data.</span><button onclick="recalc()">Recalculate</button>';
-    document.body.appendChild(b); }
-  b.classList.toggle('show',!!on);
-}
+function showRecalc(on){ renderSheet(); }   // the Recalculate bar is rendered by renderSheet (a masterhint-style top bar) when EDITED
 function recalc(){                                            // re-run the last question on the edited data (auto-composed; no retyping)
   if(!SETTLED&&!FAILMSG) return;                             // one run at a time
   syncInputsToSheets();                                      // serialize the edits INTO SHEETS before the run (recalc clears EDITED, so startTurn can't)
@@ -547,12 +549,12 @@ function openGenModal(sh){
   const ov=document.createElement('div'); ov.id='genmodal'; ov.className='genbackdrop';
   ov.onclick=e=>{ if(e.target===ov) closeGenModal(); };
   ov.innerHTML='<div class=gencard role=dialog aria-modal=true>'
-    +'<div class=genhd>Generate reference data for <b>'+esc(sh.name)+'</b></div>'
+    +'<div class=genhd>Autofill reference data for <b>'+esc(sh.name)+'</b></div>'
     +'<div class=gensub>Edit the prompt if you like, then Generate. Columns are filled with AI; any values you already entered are kept.</div>'
     +'<textarea class=genta id=genta spellcheck=false>'+esc(genPromptDefault(sh))+'</textarea>'
     +'<div class=genmsg id=genmsg></div>'
     +'<div class=genbtns><button type=button class=gencancel onclick="closeGenModal()">Cancel</button>'
-    +'<button type=button class=genrun id=genrun onclick="runGenerate(\''+sh.id+'\')">Generate</button></div></div>';
+    +'<button type=button class=genrun id=genrun onclick="runGenerate(\''+sh.id+'\')">Autofill</button></div></div>';
   document.body.appendChild(ov);
   const ta=document.getElementById('genta'); if(ta){ ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length); }
 }
@@ -566,7 +568,7 @@ async function runGenerate(id){
   closeGenModal();                                            // reveal the sheet so the user watches it fill
   const nReal=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='').length;
   const setGen=(lbl,busy)=>{ sh._gen=lbl; sh._genBusy=!!busy; renderSheet(); };   // reflected by the masterhint render
-  setGen('Generating…', true);
+  setGen('Filling…', true);
   try{
     const tk=await window.ensureToken(), uid=window.__uid;
     const jobId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
@@ -574,10 +576,10 @@ async function runGenerate(id){
     let done=false, unsub=null, timer=null, got=0;
     const finish=()=>{ done=true; if(unsub){try{unsub();}catch(_){}} if(timer)clearTimeout(timer); };
     const padRows=()=>{ const w=(sh.cols||[]).length; (sh.rows||[]).forEach(r=>{ while(r.length<w)r.push(''); }); };
-    const applyCols=cols=>{ if(!cols||!cols.length||done)return; sh.cols=cols.slice(); padRows(); sh.dirty=true; setGen('Generating…',true); };
+    const applyCols=cols=>{ if(!cols||!cols.length||done)return; sh.cols=cols.slice(); padRows(); sh.dirty=true; setGen('Filling…',true); };
     const applyRow=(idx,cells)=>{ if(!Array.isArray(cells)||done)return;
       while(sh.rows.length<=idx) sh.rows.push((sh.cols||[]).map(()=>''));
-      sh.rows[idx]=cells.slice(); sh.dirty=true; got++; setGen('Generating… ('+Math.min(got,nReal||got)+(nReal?'/'+nReal:'')+')',true); };
+      sh.rows[idx]=cells.slice(); sh.dirty=true; got++; setGen('Filling… ('+Math.min(got,nReal||got)+(nReal?'/'+nReal:'')+')',true); };
     const complete=out=>{ if(done)return; finish();
       if(out&&out.columns&&out.columns.length){ sh.cols=out.columns.slice(); sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true; }
       setGen(null,false); };                                  // -> button back to "Generate"
@@ -586,22 +588,46 @@ async function runGenerate(id){
         onMasterCols:cols=>applyCols(cols),
         onMasterRow:(k,cells)=>applyRow(parseInt(k,10)||0, cells),
         onResult:v=>{ if(v&&v.columns) complete(v); },
-        onStatus:st=>{ if(st==='error'&&!done){ finish(); setGen('Generate failed — retry',false); } } });
+        onStatus:st=>{ if(st==='error'&&!done){ finish(); setGen('Autofill failed — retry',false); } } });
     }
-    timer=setTimeout(()=>{ if(!done){ finish(); setGen('Generate failed — retry',false); } }, 180000);
+    timer=setTimeout(()=>{ if(!done){ finish(); setGen('Autofill failed — retry',false); } }, 180000);
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
       .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns) complete(j); }
-        else if(!done&&!uid) setGen('Generate failed — retry',false); })   // no RTDB fallback available -> surface it
+        else if(!done&&!uid) setGen('Autofill failed — retry',false); })   // no RTDB fallback available -> surface it
       .catch(()=>{});                                          // proxy 60s timeout on a cold engine is EXPECTED; RTDB delivers
-  }catch(_){ setGen('Generate failed — retry',false); }
+  }catch(_){ setGen('Autofill failed — retry',false); }
 }
 function dismissMaster(id){                                   // hide an unwanted surfaced master sheet (won't resurface this session)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   BOOK=BOOK.filter(s=>s.id!==id); if(sh.name) MSEEN.add(String(sh.name).toLowerCase());
   if(ACTIVE===id) ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
   paint();
+}
+let _mmenuDoc=null;
+function masterMenu(id, btn, ev){                             // the ⋮ menu on a SAVED master sheet: Autofill / Upload / Delete
+  if(ev) ev.stopPropagation(); closeMasterMenu();
+  const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
+  el.innerHTML='<button onclick="closeMasterMenu();generateMaster(\''+id+'\')">Autofill</button>'
+    +'<button onclick="closeMasterMenu();masterUpload(\''+id+'\')">Upload</button>'
+    +'<button class=danger onclick="closeMasterMenu();deleteMasterData(\''+id+'\')">Delete</button>';
+  document.body.appendChild(el);
+  const r=btn.getBoundingClientRect();                        // anchor the dropdown to the ⋮ button, right-aligned + on-screen
+  el.style.left=Math.max(8, r.right-el.offsetWidth)+'px'; el.style.top=(r.bottom+4)+'px';
+  _mmenuDoc=e=>{ if(!el.contains(e.target)) closeMasterMenu(); };   // click OUTSIDE closes; clicks on a menu item run first
+  setTimeout(()=>document.addEventListener('mousedown', _mmenuDoc), 0);
+}
+function closeMasterMenu(){
+  if(_mmenuDoc){ document.removeEventListener('mousedown', _mmenuDoc); _mmenuDoc=null; }
+  const m=document.getElementById('mmenu'); if(m) m.remove();
+}
+function deleteMasterData(id){                                // clear ALL generated columns + cell values, keep ONLY the entity (first) column -> ready to Autofill again
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  sh.cols=[(sh.cols&&sh.cols[0])||sh.name];
+  sh.rows=(sh.rows||[]).map(r=>[(r&&r[0]!=null)?r[0]:'']);
+  sh.dirty=true;                                             // a reset is unsaved -> the Save button + inline Autofill come back
+  renderSheet();
 }
 function addMasterCol(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
