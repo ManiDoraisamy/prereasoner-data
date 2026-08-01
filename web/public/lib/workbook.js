@@ -666,8 +666,11 @@ async function runGenerate(id){
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
-      .then(async r=>{ if(r.ok){ const j=await r.json(); if(j&&j.columns && !uid) complete(j); }   // apply the HTTP body ONLY without RTDB; else let the RTDB stream render row-by-row and onResult reconcile — so a warm/fast response never preempts the live fill
-        else if(!done&&!uid) setGen('Autofill failed — retry',false); })   // no RTDB fallback available -> surface it
+      .then(async r=>{ if(!r.ok){ if(!done&&!uid) setGen('Autofill failed — retry',false); return; }
+        const j=await r.json(); if(!j||!j.columns||done) return;
+        if(!uid){ complete(j); return; }                    // no RTDB at all -> the HTTP body IS the result
+        await new Promise(res=>setTimeout(res,3000));        // RTDB present: PREFER the live stream (onMasterRow renders row-by-row)
+        if(!done && got===0) complete(j); })                 // ...only fall back to the body if the stream showed NO rows (RTDB silent)
       .catch(()=>{});                                          // proxy 60s timeout on a cold engine is EXPECTED; RTDB delivers
   }catch(_){ setGen('Autofill failed — retry',false); }
 }
