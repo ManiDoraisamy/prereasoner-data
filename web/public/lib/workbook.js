@@ -1005,7 +1005,8 @@ async function startTurn(){
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
-    if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j); if(SETTLED) saveConvState(); }   // no live stream -> render from the body; if it lands AFTER 'done' settled the turn, re-persist so a reload restores the real derivation (not the pre-body stale one)
+    if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // no live stream -> render from the body
+      if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
     if(!REPLY&&j.reply) REPLY=j.reply;
     if(!SETTLED) markTurnDone();
   });
