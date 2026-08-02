@@ -85,11 +85,22 @@ const checks = `
     ACTIVE = 's2';
     dropStale();
     if (BOOK.some(s => s.stale)) throw new Error('a viewless data result must retire the prior turn stale steps');
+
+    // Completeness: a typed-AST own-data answer (sql + answer, no views stack) is surfaced as ONE reasoning step,
+    // so the SQL and result are visible (regression: reference-join answers showed no steps/views/SQL at all).
+    VIEWS = []; RUN = 9; AUTO = true; J = null;
+    BOOK = [{id:'in', cls:'input', name:'orders', cols:[], rows:[]}];
+    renderTurnFromHTTP({traces:[{question:'total amount for apparel', engine:{
+      sql:'SELECT SUM("orders"."amount") FROM "orders" JOIN "ordered" ON "orders"."ordered"="ordered"."ordered" WHERE "ordered"."category"=\\'Apparel\\'',
+      answer:{columns:['sum'], rows:[[892]]}}}]});
+    const step = BOOK.find(s => s.cls === 'deriv');
+    if (!step) throw new Error('a typed-AST answer (sql+answer, no views) must surface a reasoning step');
+    if (!/SUM/.test(step.sql) || step.rows[0][0] !== 892) throw new Error('the surfaced step lost the SQL or the result');
     __finish();
   } catch (error) { __finish(error); }
 }());`;
 
 vm.runInContext(source + checks, context, {filename: 'workbook.js'});
 
-done.then(() => console.log('workbook reference state: 8 passed, 0 failed'))
+done.then(() => console.log('workbook reference state: 9 passed, 0 failed'))
   .catch(error => { console.error(error.stack || error); process.exitCode = 1; });

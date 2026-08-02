@@ -1031,8 +1031,13 @@ function addCall(uid,c){                                      // an engine call 
 }
 function renderTurnFromHTTP(j){                               // fallback: no RTDB -> build the derivation from the /chat body's traces
   let rendered=false;
-  (j.traces||[]).forEach(t=>{ const eng=t.engine||{}; (eng.views||[]).forEach(v=>{ appendView(v); rendered=true; }); });
-  if(!rendered && (j.traces||[]).some(t=>Array.isArray(((t.engine||{}).result||{}).rows))) dropStale();   // a data answer with no derivation -> don't leave the prior turn's stale steps showing as this answer's
+  (j.traces||[]).forEach(t=>{ const eng=t.engine||{};
+    if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v); rendered=true; }); }   // composed query: the full view stack
+    else if(eng.sql&&eng.answer&&Array.isArray(eng.answer.rows)){                                                  // typed-AST own-data path returns one SQL + answer, no view stack -> surface it as a single step so the SQL + result are visible
+      const agg=/\b(sum|count|avg|min|max)\s*\(/i.test(eng.sql);
+      appendView({op:agg?'group_agg':'select', label:'result', columns:eng.answer.columns||[], rows:eng.answer.rows, sql:eng.sql}); rendered=true; }
+  });
+  if(!rendered && (j.traces||[]).some(t=>Array.isArray(((t.engine||{}).result||{}).rows))) dropStale();   // a data answer with no derivation at all -> don't leave the prior turn's stale steps showing as this answer's
 }
 function markTurnDone(){                                      // the turn finished: settle, show Sonnet's reply in the rail
   if(SETTLED)return;
