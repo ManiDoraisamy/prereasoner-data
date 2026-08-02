@@ -67,11 +67,29 @@ const checks = `
     try { await autosaveRefs(); } catch (error) { rejected = /duplicate sku key/.test(String(error.message)); }
     if (!rejected) throw new Error('autosave swallowed a server validation failure');
     if (BOOK[0].saved || !BOOK[0].dirty) throw new Error('failed autosave falsely marked reference clean');
+
+    // Turn transition: a follow-up data turn must retire the PRIOR turn's stale steps, never show a stale/fresh
+    // mix (regression: an Apparel total was grafted onto the previous "in France" turn's filtered/total steps).
+    VIEWS = []; RUN = 7; AUTO = true;
+    BOOK = [{id:'d1', cls:'deriv', name:'combined', stale:true},
+            {id:'d2', cls:'deriv', name:'filtered', stale:true, sql:"SELECT * FROM x WHERE country='France'"},
+            {id:'d3', cls:'deriv', name:'total', stale:true, result:true, rows:[[970]]}];
+    ACTIVE = 'd3';
+    appendView({op:'group_agg', columns:['sum'], rows:[[892]], sql:'SELECT SUM("amount") FROM "filtered"'});
+    if (BOOK.some(s => s.stale)) throw new Error('a fresh derivation must retire the prior turn stale steps');
+    if (BOOK.filter(s => s.cls === 'deriv').length !== 1) throw new Error('stale prior-turn steps were left showing');
+
+    // A viewless data result path: dropStale (what onResult now calls when no fresh derivation exists) retires stale.
+    BOOK = [{id:'s1', cls:'deriv', name:'filtered', stale:true, sql:"WHERE country='France'"},
+            {id:'s2', cls:'deriv', name:'total', stale:true, result:true, rows:[[970]]}];
+    ACTIVE = 's2';
+    dropStale();
+    if (BOOK.some(s => s.stale)) throw new Error('a viewless data result must retire the prior turn stale steps');
     __finish();
   } catch (error) { __finish(error); }
 }());`;
 
 vm.runInContext(source + checks, context, {filename: 'workbook.js'});
 
-done.then(() => console.log('workbook reference state: 6 passed, 0 failed'))
+done.then(() => console.log('workbook reference state: 8 passed, 0 failed'))
   .catch(error => { console.error(error.stack || error); process.exitCode = 1; });

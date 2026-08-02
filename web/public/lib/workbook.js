@@ -1005,7 +1005,7 @@ async function startTurn(){
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
-    if(!VIEWS.length&&Array.isArray(j.traces)) renderTurnFromHTTP(j);   // no live stream -> render from the body
+    if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j); if(SETTLED) saveConvState(); }   // no live stream -> render from the body; if it lands AFTER 'done' settled the turn, re-persist so a reload restores the real derivation (not the pre-body stale one)
     if(!REPLY&&j.reply) REPLY=j.reply;
     if(!SETTLED) markTurnDone();
   });
@@ -1021,14 +1021,18 @@ function addCall(uid,c){                                      // an engine call 
     onResolve:(k,r)=>{ if(!r||typeof r!=='object'||!r.column)return; const id=c.jobId+'/'+k; if(SEEN_R.has(id))return; SEEN_R.add(id); appendResolve(r); },
     // reconcile this call's last view with its authoritative result rows (calls stream sequentially, so the
     // most recent deriv sheet is this call's last step). The answer + any clarify are synthesized into REPLY.
-    onResult:r=>{ if(!r||!Array.isArray(r.rows))return; const last=BOOK.filter(s=>s.cls==='deriv').pop();
-      if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.result=true; if(last.id===ACTIVE)paint(); } },
+    onResult:r=>{ if(!r||!Array.isArray(r.rows))return;
+      if(!BOOK.some(s=>s.cls==='deriv'&&!s.stale)) dropStale();   // a data result with no fresh derivation of its own -> retire the prior turn's stale steps; NEVER graft this answer onto them
+      const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale).pop();
+      if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.result=true; if(last.id===ACTIVE)paint(); } else paint(); },
     onStatus:()=>{}, onClarify:()=>{}, onLowConfidence:()=>{}, onPresent:()=>{}, onError:()=>{},
   });
   callSubs.push(sub);
 }
 function renderTurnFromHTTP(j){                               // fallback: no RTDB -> build the derivation from the /chat body's traces
-  (j.traces||[]).forEach(t=>{ const eng=t.engine||{}; (eng.views||[]).forEach(v=>appendView(v)); });
+  let rendered=false;
+  (j.traces||[]).forEach(t=>{ const eng=t.engine||{}; (eng.views||[]).forEach(v=>{ appendView(v); rendered=true; }); });
+  if(!rendered && (j.traces||[]).some(t=>Array.isArray(((t.engine||{}).result||{}).rows))) dropStale();   // a data answer with no derivation -> don't leave the prior turn's stale steps showing as this answer's
 }
 function markTurnDone(){                                      // the turn finished: settle, show Sonnet's reply in the rail
   if(SETTLED)return;
