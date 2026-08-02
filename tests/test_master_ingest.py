@@ -12,7 +12,7 @@ import sys
 
 from engine import master
 from engine.relations import discover_fks
-from engine.tables import csv_table, table_name
+from engine.tables import csv_table, table_from_rows, table_name
 
 ORDERS = csv_table(
     "order ID,customer,ordered,amount\n"
@@ -107,6 +107,25 @@ def test_does_not_select_a_case_insensitive_join_that_sql_cannot_execute():
     assert result["warnings"] and "text normalization" in result["warnings"][0], result
 
 
+def test_table_from_rows_unquotes_cells_like_a_csv_upload():
+    # A saved-reference cell with literal wrapping quotes must normalize the SAME as the identical value uploaded
+    # as CSV, or relevant_tables' case-sensitive value-inclusion guard silently drops the reference.
+    built = table_from_rows("cities", ['"city"'], [['"Paris"'], ["Lyon"]])
+    csv = csv_table('"""city"""\n"""Paris"""\nLyon\n', "cities")
+    assert built["columns"] == csv["columns"] == ["city"], (built["columns"], csv["columns"])
+    assert built["rows"] == csv["rows"] == [["Paris"], ["Lyon"]], (built["rows"], csv["rows"])
+
+
+def test_selects_a_reference_whose_stored_values_carry_wrapping_quotes():
+    # orders.ordered holds unquoted product names (as a CSV upload parses them); the reference stored the same
+    # keys with literal wrapping quotes. After unquoting they match, so the reference must still be selected.
+    quoted = {"ordered": {"name": "ordered", "columns": ["ordered", "category"],
+                          "rows": [['"' + row[0] + '"', row[1]] for row in STORE["ordered"]["rows"]]}}
+    result = _selected(quoted)
+    assert [table["name"] for table in result["tables"]] == ["ordered"], result
+    assert result["warnings"] == [], result
+
+
 def test_caps_reference_rows_and_table_count():
     rows = STORE["ordered"]["rows"] + [[f"p{i}", "x"] for i in range(100)]
     result = _selected({"ordered": {"name": "ordered", "columns": ["ordered", "category"], "rows": rows}},
@@ -181,6 +200,8 @@ TESTS = [
     test_never_shadows_an_uploaded_table,
     test_uses_the_planner_inclusion_threshold,
     test_does_not_select_a_case_insensitive_join_that_sql_cannot_execute,
+    test_table_from_rows_unquotes_cells_like_a_csv_upload,
+    test_selects_a_reference_whose_stored_values_carry_wrapping_quotes,
     test_caps_reference_rows_and_table_count,
     test_selects_multi_hop_reference_chains_to_a_fixed_point,
     test_store_failure_is_visible_instead_of_silent,

@@ -500,6 +500,7 @@ function addMasterSheet(name,cols,rows,saved,dirty){
   return id;
 }
 let MDATA={};                                                // cache aliases by table name and first-column join key
+let MASTER_READY=null;                                       // resolves once loadMaster has cached the server's saved references (guards the blank-shadow autosave race)
 function cacheMaster(sh){
   Object.keys(MDATA).forEach(key=>{ if(MDATA[key]&&MDATA[key].name===sh.name) delete MDATA[key]; });
   const data={name:sh.name,cols:(sh.cols||[]).slice(),rows:(sh.rows||[]).map(row=>row.slice())};
@@ -593,14 +594,19 @@ function refSuggestMenu(btn,ev){                             // the "+ Reference
 const hasCellValue=v=>v!=null&&String(v).trim()!=='';
 const referenceRows=s=>(s.rows||[]).filter(r=>r.some(hasCellValue));
 const masterSig=s=>JSON.stringify({cols:s.cols, rows:referenceRows(s)});
-async function persistMaster(sh, tk){                        // POST one reference sheet; rejects with the server's actionable error
+async function persistMaster(sh, tk){                        // POST one reference sheet; rejects with the server's actionable error (or a timeout)
   const rows=referenceRows(sh);                              // drop blank trailing rows, preserving numeric zero
-  const r=await fetch(API_BASE+'/api/master',{method:'POST',
-    headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
-    body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
-  let body={}; try{ body=await r.json(); }catch(_){}
-  if(!r.ok||body.error) throw new Error(body.error||('HTTP '+r.status));
-  return body;
+  const ctl=(typeof AbortController!=='undefined')?new AbortController():null;
+  const timer=ctl?setTimeout(()=>ctl.abort(),45000):null;    // a save gates the turn — never wedge on a stalled POST; fail cleanly so it's retryable
+  try{
+    const r=await fetch(API_BASE+'/api/master',{method:'POST',
+      headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
+      body:JSON.stringify({name:sh.name, columns:sh.cols, rows}), signal:ctl?ctl.signal:undefined});
+    let body={}; try{ body=await r.json(); }catch(_){}
+    if(!r.ok||body.error) throw new Error(body.error||('HTTP '+r.status));
+    return body;
+  }catch(e){ if(ctl&&e&&e.name==='AbortError') throw new Error('saving reference data timed out — please try again'); throw e; }
+  finally{ if(timer)clearTimeout(timer); }
 }
 async function saveMaster(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
@@ -616,8 +622,22 @@ async function saveMaster(id){
   saveConvState();                                           // fold the saved master into the conversation snapshot
 }
 async function autosaveRefs(){                               // auto-save-on-use: persist shown enriched references before a turn
-  const pending=BOOK.filter(s=>s.cls==='master' &&
+  let pending=BOOK.filter(s=>s.cls==='master' &&
     ((s.saved&&s.dirty) || (!s.saved&&(s.cols||[]).length>1&&(s.rows||[]).some(r=>r.some(hasCellValue)))));
+  if(!pending.length) return false;
+  let ready=false;                                            // did loadMaster's cache settle in time? (bounded so a stalled loadMaster never hangs the turn)
+  try{ ready=await Promise.race([Promise.resolve(MASTER_READY).then(()=>true,()=>true), new Promise(res=>setTimeout(()=>res(false),8000))]); }catch(_){ ready=false; }
+  const entities=t=>new Set((t.rows||[]).map(r=>String((r&&r[0])==null?'':r[0]).trim().toLowerCase()).filter(Boolean));   // col-0 join keys
+  pending=pending.filter(sh=>{
+    if(sh.saved) return true;                                 // an intentionally-edited saved reference is a full sheet -> safe to persist
+    if(!ready) return false;                                  // server state unknown -> don't risk overwriting a saved copy; this reference just joins on the next turn
+    const prior=MDATA[referenceKey(sh.name,sh.cols)]||MDATA[String(sh.name||'').toLowerCase()];
+    if(!prior) return true;                                   // no server copy of this name -> a genuinely new reference, persist it
+    const pe=entities(prior), sameRef=[...entities(sh)].some(v=>pe.has(v));   // shares entities -> the SAME reference (a partial shadow), not a mere name collision
+    const fuller=(prior.cols||[]).length>(sh.cols||[]).length
+      || (prior.rows||[]).filter(r=>r.some(hasCellValue)).length>referenceRows(sh).length;
+    return !(sameRef&&fuller);                                // suppress ONLY a partial shadow of the same, fuller server reference (an explicit Save can still replace it)
+  });
   if(!pending.length) return false;
   const tk=await window.ensureToken();
   let changed=false;
@@ -1275,7 +1295,7 @@ async function run(){
     }catch(_){}
   }
   try{ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } }catch(_){}   // restore ORCH context on reload
-  wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); loadMaster();
+  wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); MASTER_READY=loadMaster();
   window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
   // RESTORE the saved snapshot (turns + derived sheets + result) instead of re-running the model. Only when it
   // belongs to THIS conversation; otherwise fall through to a fresh run (a brand-new conversation, or no snapshot yet).

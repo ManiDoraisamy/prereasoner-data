@@ -153,14 +153,17 @@ def csv_table(csv_text, name):
 
 
 def table_from_rows(name, columns, rows):
-    """Build a planner table from structured rows using the same cell typing as CSV uploads."""
-    cols = [str(column).strip() for column in (columns or [])]
+    """Build a planner table from structured rows using the SAME cell typing as CSV uploads (parse_rows):
+    _unquote then _typed. Without this, a saved-reference cell keeps any wrapping quotes while the same value
+    uploaded as CSV is unquoted, so master.relevant_tables' case-sensitive value-inclusion guard would drop the
+    reference. Kept byte-identical so a master table is just another own-data table to the planner."""
+    cols = [_unquote(str(column)) or f"col{i}" for i, column in enumerate(columns or [])]
     width = len(cols)
     typed_rows = []
     for row in rows or []:
         values = list(row or [])[:width]
         values += [None] * (width - len(values))
-        typed_rows.append([_typed(value) for value in values])
+        typed_rows.append([_typed(_unquote(value)) for value in values])
     return {"name": name, "columns": cols, "rows": typed_rows}
 
 
