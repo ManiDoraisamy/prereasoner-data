@@ -53,6 +53,19 @@ inclusion, not a numeric type, so this was a bug, not a policy. `engine/joins.py
 fact selection and flatten-safe `keep` lists). The uniqueness and self-id guards live in one place, so the
 two paths can no longer diverge.
 
+## Private references use the own-data planner
+
+Persistent product, SKU, region, and similar dimensions live in a per-user `m_<md5(sub)>` schema. They are
+own-data relationships, not public-world grounding, so they do not have a separate SQL generator and the complete
+master schema is not added to `search_path`. Before serving, `engine.master.relevant_tables` loads the authenticated
+user's saved dimensions, validates connectivity with `engine.relations.discover_fks`, follows direct and multi-hop
+links to a fixed point, and converts only bounded relevant tables into the planner's normal typed table form.
+
+This materialization was chosen over a three-schema `search_path` because AST search needs the same bounded rows and
+values used for schema linking and FK discovery. Selecting in one place keeps planning and execution aligned and
+prevents unrelated cross-conversation references from entering a request. The browser saves dirty references before
+submitting; a failed save aborts the turn rather than falling back to a stale persisted copy.
+
 ## Config is environment-only
 
 The old code defaulted to a hardcoded Cloud SQL IP and a hardcoded Firebase RTDB URL. All

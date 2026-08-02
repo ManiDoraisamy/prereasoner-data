@@ -1,4 +1,4 @@
-// workbook.js — the read-only WORKBOOK + CHAT shared by /reason and /world. CLASSIC script: load
+// workbook.js — the editable WORKBOOK + CHAT shared by /reason and /knowledge. CLASSIC script: load
 // AFTER lib/shared.js and after an inline <script> that sets window.WB_CONFIG. The page's module
 // block (firebase-init.js) calls run() once signed in, or fail(msg) when sign-in fails.
 //
@@ -82,7 +82,7 @@ function renderGrid(m){
     if(m.cls==='master'&&m._editCol===ci){                    // inline column-name editor — spreadsheet-style, no prompt() dialog
       h+='<th class=colnamewrap><input class=colnameedit data-orig="'+escAttr(cols[ci])+'" value="'+escAttr(cols[ci])+'" placeholder="column name" spellcheck=false autocomplete=off '
         +'onkeydown="event.stopPropagation(); if(event.key===\'Enter\'){this.blur();} else if(event.key===\'Escape\'){this.value=this.dataset.orig; this.blur();}" '
-        +'onblur="commitColName(\''+m.id+'\','+ci+',this.value)"></th>';
+        +'onblur="commitColName(\''+m.id+'\','+ci+',this.value,this.dataset.orig)"></th>';
       continue; }
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
@@ -280,7 +280,8 @@ function seedInputs(){
    + master data are editable; the rest read-only. */
 function cellEl(sid,r,c){ return document.querySelector('#sheetcard td.wbc[data-sid="'+sid+'"][data-r="'+r+'"][data-c="'+c+'"]'); }
 function sheetEditable(sid){ const sh=BOOK.find(s=>s.id===sid); return !!(sh&&(sh.cls==='input'||sh.cls==='master')); }   // read-only sheets navigate + copy, but never edit
-function markDirtySheet(sh){ if(!sh)return; if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){ sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); } }
+function markDirtySheet(sh){ if(!sh)return; if(sh.cls==='input'){ if(!EDITED){ EDITED=true; showRecalc(true); } } else if(sh.cls==='master'){
+  sh.dirty=true; const b=document.querySelector('.msave'); if(b)b.classList.add('dirty'); saveConvState(); } }
 function lastDataRow(sh){ return Math.max(0,(sh.rows||[]).length-1); }   // ranges/fills stop here; the trailing "new record" row is never multi-selected
 function cellVal(sh,r,c){ return (sh.rows[r]&&sh.rows[r][c]!=null)?sh.rows[r][c]:''; }
 // The Recalculate bar reflects whether input data differs from what was last computed. markDirtySheet sets it on a
@@ -489,15 +490,21 @@ function recalc(){                                            // re-run the last
 
 /* ---- MASTER DATA: the user's own reference tables for private entities (product, rep, region...) that the
    world model doesn't know. Stored per-user server-side (/api/master), so they're shared across every
-   conversation. Unresolved text columns surface here as empty sheets to fill; Phase 3 will join them. ---- */
+   conversation. Unresolved text columns surface here as empty sheets to fill and reuse. ---- */
 let MSEEN=new Set();                                          // master/unresolved names already surfaced (no dupes)
-function addMasterSheet(name,cols,rows,saved){
+const referenceKey=(name,cols)=>String((cols&&cols[0])||name||'').trim().toLowerCase();
+function addMasterSheet(name,cols,rows,saved,dirty){
   const id='m'+(BOOK.filter(s=>s.cls==='master').length)+'_'+Math.random().toString(36).slice(2,6);
-  addSheet({id, cls:'master', name, cols:cols&&cols.length?cols:[name], rows:rows||[], saved:!!saved, dirty:false});
-  MSEEN.add(String(name).toLowerCase());
+  addSheet({id, cls:'master', name, cols:cols&&cols.length?cols:[name], rows:rows||[], saved:!!saved, dirty:!!dirty});
+  MSEEN.add(referenceKey(name,cols));
   return id;
 }
-let MDATA={};                                                // cache of the user's saved master tables (name-lc -> {name,cols,rows})
+let MDATA={};                                                // cache aliases by table name and first-column join key
+function cacheMaster(sh){
+  Object.keys(MDATA).forEach(key=>{ if(MDATA[key]&&MDATA[key].name===sh.name) delete MDATA[key]; });
+  const data={name:sh.name,cols:(sh.cols||[]).slice(),rows:(sh.rows||[]).map(row=>row.slice())};
+  MDATA[String(sh.name||'').toLowerCase()]=data; MDATA[referenceKey(sh.name,sh.cols)]=data;
+}
 function inputColumns(){                                      // {lc colname -> original} across the user's input sheets
   const m={}; BOOK.filter(s=>s.cls==='input').forEach(sh=>(sh.cols||[]).forEach(c=>{ const k=String(c||'').trim().toLowerCase(); if(k)m[k]=c; })); return m;
 }
@@ -507,20 +514,22 @@ async function loadMaster(){                                  // cache the user'
     if(!r.ok)return; const j=await r.json();
     for(const t of (j.tables||[])){
       const full=await fetch(API_BASE+'/api/master?name='+encodeURIComponent(t.name),{headers:{Authorization:'Bearer '+tk}}).then(x=>x.ok?x.json():null).catch(()=>null);
-      if(full&&full.columns) MDATA[String(full.name).toLowerCase()]={name:full.name,cols:full.columns,rows:full.rows};
+      if(full&&full.columns){ const d={name:full.name,cols:full.columns,rows:full.rows};
+        MDATA[String(full.name).toLowerCase()]=d; MDATA[referenceKey(full.name,full.columns)]=d; }
     }
     const cols=inputColumns();                                // a saved master shows only if its name matches a column in this conversation's data (skip unrelated like "product")
     const colVals=k=>{                                        // distinct lower-cased values of THIS data's column named k
       for(const sh of BOOK.filter(s=>s.cls==='input')){ const ci=(sh.cols||[]).findIndex(c=>String(c).toLowerCase()===k);
         if(ci>=0) return new Set((sh.rows||[]).map(r=>String(r[ci]==null?'':r[ci]).trim().toLowerCase()).filter(Boolean)); }
       return new Set(); };
-    Object.keys(MDATA).forEach(k=>{ if(!cols[k])return; const d=MDATA[k];
+    const unique=[...new Map(Object.values(MDATA).map(d=>[String(d.name).toLowerCase(),d])).values()];
+    unique.forEach(d=>{ const k=referenceKey(d.name,d.cols); if(!cols[k])return;
       // RELEVANCE: a saved reference belongs to THIS conversation only if its entities (col 0) actually appear in
       // the data's column of that name — otherwise a generic column like "name" surfaces an UNRELATED saved table
       // (e.g. a customers "name"/segment table shown over detective names — a pure name collision).
       const ents=new Set((d.rows||[]).map(r=>String((r&&r[0])==null?'':r[0]).trim().toLowerCase()).filter(Boolean));
       if(ents.size){ const vals=colVals(k); if(![...ents].some(v=>vals.has(v))) return; }   // no overlapping entity -> not for this data
-      const existing=BOOK.find(s=>s.cls==='master'&&String(s.name||'').toLowerCase()===k);
+      const existing=BOOK.find(s=>s.cls==='master'&&referenceKey(s.name,s.cols)===k);
       if(existing){                                           // surfaceUnresolved won the race and showed a BLANK shadow -> upgrade it in place with the saved data
         if(!existing.saved&&!existing.dirty){ if(d.cols&&d.cols.length)existing.cols=d.cols; existing.rows=(d.rows||[]).map(r=>r.slice()); existing.saved=true; }
       } else if(!MSEEN.has(k)){ addMasterSheet(d.name,d.cols,d.rows,true); }   // (if the user already edited the shadow, leave their edits — a Save will overwrite the server intentionally)
@@ -547,7 +556,7 @@ function surfaceUnresolved(){
       const norm=new Set(vals.map(v=>String(v).trim().toLowerCase()));
       const saved=MDATA[key];
       if(saved){                                             // A2: only surface a SAVED reference whose entities OVERLAP this data
-        const ents=new Set((saved.rows||[]).map(rw=>String((rw&&rw[0])||'').trim().toLowerCase()).filter(Boolean));
+        const ents=new Set((saved.rows||[]).map(rw=>String((rw&&rw[0])==null?'':rw[0]).trim().toLowerCase()).filter(Boolean));
         if(ents.size && ![...ents].some(v=>norm.has(v))) return;   // zero entity overlap -> unrelated reference, don't surface
         addMasterSheet(saved.name,saved.cols,saved.rows,true); seen.push(norm); return;
       }
@@ -561,10 +570,14 @@ function surfaceUnresolved(){
 }
 function acceptRefCand(i){                                    // A1: user accepts a candidate -> SHOW that column as a reference sheet (leaves AVAILABLE)
   const c=REFCANDS[i]; if(!c)return; REFCANDS.splice(i,1);
-  let cols=(c.cols&&c.cols.length)?c.cols:null, rows=c.rows, saved=!!c.saved;   // a candidate from a REMOVED sheet carries its full data back...
-  if(!cols){ const md=MDATA[c.key]; if(md&&md.cols&&md.cols.length){ cols=md.cols.slice(); rows=(md.rows||[]).map(r=>r.slice()); saved=true; } }   // ...else the user's saved reference...
+  let cols=null, rows=null, saved=!!c.saved, dirty=!!c.dirty;
+  const md=MDATA[c.key];
+  if(saved&&!dirty&&md&&md.cols&&md.cols.length){ cols=md.cols.slice(); rows=(md.rows||[]).map(r=>r.slice()); }
+  if(!cols&&(c.cols&&c.cols.length)){ cols=c.cols; rows=c.rows; }                // a removed local draft carries its full data back
+  if(!cols&&md&&md.cols&&md.cols.length){ cols=md.cols.slice(); rows=(md.rows||[]).map(r=>r.slice()); saved=true; }
   if(!cols){ cols=[c.name]; rows=(c.vals||[]).map(v=>[v]); saved=false; }        // ...else a bare entity column to enrich
-  const id=addMasterSheet(c.name, cols, rows, saved); pick(id); saveConvState();
+  const id=addMasterSheet(c.name, cols, rows, saved, dirty); const sh=BOOK.find(s=>s.id===id);
+  if(sh&&c.cellAI) sh.cellAI=new Set(c.cellAI); pick(id); saveConvState();
 }
 function refSuggestMenu(btn,ev){                             // the "+ Reference" popover — reference data available to show as a sheet
   if(ev) ev.stopPropagation(); closeMasterMenu();
@@ -577,39 +590,44 @@ function refSuggestMenu(btn,ev){                             // the "+ Reference
   _mmenuDoc=e=>{ if(!el.contains(e.target)) closeMasterMenu(); };
   setTimeout(()=>document.addEventListener('mousedown',_mmenuDoc),0);
 }
-const masterSig=s=>JSON.stringify({cols:s.cols, rows:(s.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''))});
-async function persistMaster(sh, tk){                        // POST one reference sheet to the per-user master store; true on success
-  const rows=(sh.rows||[]).filter(r=>r.some(v=>String(v||'').trim()!==''));   // drop blank trailing rows
+const hasCellValue=v=>v!=null&&String(v).trim()!=='';
+const referenceRows=s=>(s.rows||[]).filter(r=>r.some(hasCellValue));
+const masterSig=s=>JSON.stringify({cols:s.cols, rows:referenceRows(s)});
+async function persistMaster(sh, tk){                        // POST one reference sheet; rejects with the server's actionable error
+  const rows=referenceRows(sh);                              // drop blank trailing rows, preserving numeric zero
   const r=await fetch(API_BASE+'/api/master',{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
     body:JSON.stringify({name:sh.name, columns:sh.cols, rows})});
-  return r.ok;
+  let body={}; try{ body=await r.json(); }catch(_){}
+  if(!r.ok||body.error) throw new Error(body.error||('HTTP '+r.status));
+  return body;
 }
 async function saveMaster(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   const btn=document.querySelector('.msave'); if(btn){ btn.textContent='Saving…'; btn.disabled=true; }
   try{ const tk=await window.ensureToken();
     const sentSig=masterSig(sh);                             // exactly what this POST persists (guards against an edit landing mid-flight)
-    if(await persistMaster(sh, tk)){ sh.saved=true;
-      try{ if(!localStorage.getItem('pr_ref_explained')){ localStorage.setItem('pr_ref_explained','1');   // D4: one-time explainer
-        toast('Saved as reference — “'+sh.name+'” will now appear in your other conversations too.', 'Got it', null, 9000); } }catch(_){}
-      if(masterSig(sh)===sentSig) sh.dirty=false;            // only clear dirty if nothing changed during the save — else keep it (beforeunload guard stays armed)
-    }
-  }catch(_){}
+    await persistMaster(sh, tk); sh.saved=true;
+    try{ if(!localStorage.getItem('pr_ref_explained')){ localStorage.setItem('pr_ref_explained','1');   // D4: one-time explainer
+      toast('Saved as reference — “'+sh.name+'” will now appear in your other conversations too.', 'Got it', null, 9000); } }catch(_){}
+    if(masterSig(sh)===sentSig){ sh.dirty=false; cacheMaster(sh); }   // an edit during the POST remains dirty and out of the server cache
+  }catch(e){ toast('Could not save “'+sh.name+'”: '+(e&&e.message||e), null, null, 9000); }
   paint();                                                   // refresh the sheet (Save->Saved) AND the tab strip (drop the unsaved dot)
   saveConvState();                                           // fold the saved master into the conversation snapshot
 }
-async function autosaveRefs(){                               // auto-save-on-use: persist shown ENRICHED reference sheets before a turn so the engine can join them (Phase 3)
-  const pending=BOOK.filter(s=>s.cls==='master' && (!s.saved||s.dirty) && (s.cols||[]).length>1
-    && (s.rows||[]).some(r=>r.some(v=>String(v||'').trim()!=='')));   // has a key + attribute column(s) + real values
-  if(!pending.length) return;
-  let tk; try{ tk=await window.ensureToken(); }catch(_){ return; }
+async function autosaveRefs(){                               // auto-save-on-use: persist shown enriched references before a turn
+  const pending=BOOK.filter(s=>s.cls==='master' &&
+    ((s.saved&&s.dirty) || (!s.saved&&(s.cols||[]).length>1&&(s.rows||[]).some(r=>r.some(hasCellValue)))));
+  if(!pending.length) return false;
+  const tk=await window.ensureToken();
   let changed=false;
-  for(const sh of pending){
-    const sig=masterSig(sh);
-    try{ if(await persistMaster(sh, tk)){ sh.saved=true; if(masterSig(sh)===sig) sh.dirty=false; changed=true; } }catch(_){}
-  }
-  if(changed){ paint(); saveConvState(); }
+  try{ for(const sh of pending){
+    const sig=masterSig(sh); await persistMaster(sh, tk); sh.saved=true;
+    if(masterSig(sh)===sig){ sh.dirty=false; cacheMaster(sh); }
+    else throw new Error('“'+sh.name+'” changed while it was being saved; run the query again.');
+    changed=true;
+  } } finally { if(changed){ paint(); saveConvState(); } }
+  return changed;
 }
 // The DEFAULT generation prompt, aware of context: first run -> "add columns + fill" (referencing the uploaded
 // data so the columns are useful alongside it); already-generated with empty cells (the input CSV grew, so new
@@ -617,9 +635,9 @@ async function autosaveRefs(){                               // auto-save-on-use
 function genPromptDefault(sh){
   const inputCols=Object.values(inputColumns()).filter(c=>String(c).toLowerCase()!==String(sh.name||'').toLowerCase());
   const attr=(sh.cols||[]).slice(1);                          // the non-entity (attribute) columns
-  const real=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');
-  const filled=attr.length&&real.some(r=>attr.some((c,i)=>String(r[i+1]||'').trim()!==''));
-  const empty =attr.length&&real.some(r=>attr.some((c,i)=>String(r[i+1]||'').trim()===''));
+  const real=(sh.rows||[]).filter(r=>hasCellValue((r||[])[0]));
+  const filled=attr.length&&real.some(r=>attr.some((c,i)=>hasCellValue(r[i+1])));
+  const empty =attr.length&&real.some(r=>attr.some((c,i)=>!hasCellValue(r[i+1])));
   if(filled&&empty)                                           // partially filled -> the CSV added rows -> fill the gaps
     return 'Fill in only the empty cells for "'+sh.name+'", keeping every existing value exactly as it is.';
   return 'Add useful reference columns about each "'+sh.name+'" and fill in a value for every row'
@@ -649,15 +667,15 @@ async function runGenerate(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   const ta=document.getElementById('genta'); const instruction=ta?ta.value:'';
   closeGenModal();                                            // reveal the sheet so the user watches it fill
-  const nReal=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='').length;
+  const nReal=(sh.rows||[]).filter(r=>hasCellValue((r||[])[0])).length;
   const preFilled=new Set();                                   // B3: cells the user already had before this autofill stay "user", not AI
-  (sh.rows||[]).forEach((r,ri)=>(r||[]).forEach((v,ci)=>{ if(ci>=1&&String(v||'').trim()!=='') preFilled.add(ri+','+ci); }));
+  (sh.rows||[]).forEach((r,ri)=>(r||[]).forEach((v,ci)=>{ if(ci>=1&&hasCellValue(v)) preFilled.add(ri+','+ci); }));
   const setGen=(lbl,busy)=>{ sh._gen=lbl; sh._genBusy=!!busy; renderSheet(); };   // reflected by the masterhint render
   setGen('Filling…', true);
   try{
     const tk=await window.ensureToken(), uid=window.__uid;
     const jobId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
-    const rows=(sh.rows||[]).filter(r=>String((r||[''])[0]||'').trim()!=='');   // real entities only, IN ORDER (index == mrows key)
+    const rows=(sh.rows||[]).filter(r=>hasCellValue((r||[])[0]));   // real entities only, IN ORDER (index == mrows key)
     let done=false, unsub=null, timer=null, got=0;
     const finish=()=>{ done=true; if(unsub){try{unsub();}catch(_){}} if(timer)clearTimeout(timer); };
     const padRows=()=>{ const w=(sh.cols||[]).length; (sh.rows||[]).forEach(r=>{ while(r.length<w)r.push(''); }); };
@@ -665,21 +683,21 @@ async function runGenerate(id){
     const applyRow=(idx,cells)=>{ if(!Array.isArray(cells)||done)return;
       while(sh.rows.length<=idx) sh.rows.push((sh.cols||[]).map(()=>''));
       sh.cellAI=sh.cellAI||new Set();
-      cells.forEach((v,ci)=>{ if(ci>=1&&String(v||'').trim()!==''&&!preFilled.has(idx+','+ci)) sh.cellAI.add(idx+','+ci); });   // B3: mark autofilled cells
+      cells.forEach((v,ci)=>{ if(ci>=1&&hasCellValue(v)&&!preFilled.has(idx+','+ci)) sh.cellAI.add(idx+','+ci); });   // B3: mark autofilled cells
       sh.rows[idx]=cells.slice(); sh.dirty=true; got++; setGen('Filling… ('+Math.min(got,nReal||got)+(nReal?'/'+nReal:'')+')',true); };
     const complete=out=>{ if(done)return; finish();
       if(out&&out.columns&&out.columns.length){ sh.cols=out.columns.slice(); sh.rows=(out.rows||[]).map(x=>x.slice()); sh.dirty=true;
-        sh.cellAI=new Set(); sh.rows.forEach((r,ri)=>(r||[]).forEach((v,ci)=>{ if(ci>=1&&String(v||'').trim()!==''&&!preFilled.has(ri+','+ci)) sh.cellAI.add(ri+','+ci); })); }
-      setGen(null,false); };                                  // -> button back to "Generate"
+        sh.cellAI=new Set(); sh.rows.forEach((r,ri)=>(r||[]).forEach((v,ci)=>{ if(ci>=1&&hasCellValue(v)&&!preFilled.has(ri+','+ci)) sh.cellAI.add(ri+','+ci); })); }
+      setGen(null,false); saveConvState(); };                 // -> button back to "Generate"
     if(uid&&window.subscribeRun){                             // (1) LIVE stream: header, then each row as it fills
       unsub=window.subscribeRun(uid,jobId,{
         onMasterCols:cols=>applyCols(cols),
         onMasterRow:(k,cells)=>applyRow(parseInt(k,10)||0, cells),
         onResult:v=>{ if(v&&v.columns) complete(v); },
-        onStatus:st=>{ if(done)return; if(st==='done'){ finish(); setGen(null,false); }   // streamed rows already applied; reset the button even if the result node was missed
-                       else if(st==='error'){ finish(); setGen('Autofill failed — retry',false); } } });
+        onStatus:st=>{ if(done)return; if(st==='done'){ finish(); setGen(null,false); saveConvState(); }   // streamed rows already applied; reset the button even if the result node was missed
+                       else if(st==='error'){ finish(); setGen('Autofill failed — retry',false); saveConvState(); } } });
     }
-    timer=setTimeout(()=>{ if(!done){ finish(); setGen('Autofill failed — retry',false); } }, 180000);
+    timer=setTimeout(()=>{ if(!done){ finish(); setGen('Autofill failed — retry',false); saveConvState(); } }, 180000);
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
@@ -693,9 +711,10 @@ async function runGenerate(id){
 }
 function removeMasterSheet(id){                               // the ONE remove: take a reference sheet out of the tabs and back under "+ Reference". Reversible, non-destructive.
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  const key=String(sh.name||'').toLowerCase();
+  const key=referenceKey(sh.name,sh.cols);
   const vals=[...new Set((sh.rows||[]).map(r=>String((r&&r[0])==null?'':r[0]).trim()).filter(Boolean))];
-  const cand={name:sh.name, key, vals, cols:(sh.cols||[]).slice(), rows:(sh.rows||[]).map(r=>r.slice()), saved:!!sh.saved};   // carry full data so re-add is lossless
+  const cand={name:sh.name, key, vals, cols:(sh.cols||[]).slice(), rows:(sh.rows||[]).map(r=>r.slice()), saved:!!sh.saved,
+    dirty:!!sh.dirty, cellAI:sh.cellAI?[...sh.cellAI]:undefined};   // carry full state so re-add/reload is lossless
   const idx=BOOK.indexOf(sh);
   BOOK=BOOK.filter(s=>s.id!==id);
   if(!REFCANDS.some(c=>c.key===key)) REFCANDS.push(cand);      // now AVAILABLE under "+ Reference" (MSEEN keeps loadMaster from auto-showing it again)
@@ -703,22 +722,37 @@ function removeMasterSheet(id){                               // the ONE remove:
   paint(); saveConvState();
   toast('Moved “'+sh.name+'” to “+ Reference”.', 'Undo', ()=>{  // reversible — re-show it exactly as it was
     REFCANDS=REFCANDS.filter(c=>c.key!==key);
-    BOOK.splice(Math.min(idx,BOOK.length),0,{id:sh.id, cls:'master', name:sh.name, cols:cand.cols, rows:cand.rows, saved:cand.saved, dirty:!!sh.dirty});
+    BOOK.splice(Math.min(idx,BOOK.length),0,{id:sh.id, cls:'master', name:sh.name, cols:cand.cols, rows:cand.rows,
+      saved:cand.saved, dirty:!!sh.dirty, cellAI:cand.cellAI?new Set(cand.cellAI):undefined});
     MSEEN.add(key); ACTIVE=sh.id; paint(); saveConvState();
   }, 8000);
 }
-function deleteMasterSheet(id){                               // ⋮ "Delete" — confirm, then remove to "+ Reference" (reframed: reversible, not data loss)
+function confirmRemoveMasterSheet(id){                        // remove from this workbook; the saved cross-conversation copy remains
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   if(!confirm('Remove “'+sh.name+'” from this conversation?\nIt stays saved — add it back any time from “+ Reference”.')) return;
   removeMasterSheet(id);
 }
+async function deleteMasterData(id){                          // permanently delete the authenticated user's saved copy
+  const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  if(!confirm('Permanently delete the saved reference “'+sh.name+'”?\nThis removes it from every conversation and cannot be undone.')) return;
+  try{ const tk=await window.ensureToken();
+    const r=await fetch(API_BASE+'/api/master/delete',{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+tk},body:JSON.stringify({name:sh.name})});
+    let body={}; try{ body=await r.json(); }catch(_){}
+    if(!r.ok||body.error) throw new Error(body.error||('HTTP '+r.status));
+    const key=referenceKey(sh.name,sh.cols); Object.keys(MDATA).forEach(k=>{ if(MDATA[k]&&MDATA[k].name===sh.name) delete MDATA[k]; }); MSEEN.delete(key);
+    REFCANDS=REFCANDS.filter(c=>c.key!==key); BOOK=BOOK.filter(s=>s.id!==id);
+    if(ACTIVE===id) ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
+    paint(); saveConvState(); toast('Deleted saved reference “'+sh.name+'”.', null, null, 7000);
+  }catch(e){ toast('Could not delete “'+sh.name+'”: '+(e&&e.message||e), null, null, 9000); }
+}
 let _mmenuDoc=null;
-function masterMenu(id, btn, ev){                             // the ⋮ menu on a SAVED master sheet: Autofill / Upload / Delete
+function masterMenu(id, btn, ev){                             // the ⋮ menu on a saved reference sheet
   if(ev) ev.stopPropagation(); closeMasterMenu();
   const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
   el.innerHTML='<button onclick="closeMasterMenu();generateMaster(\''+id+'\')">Autofill</button>'
     +'<button onclick="closeMasterMenu();masterUpload(\''+id+'\')">Upload</button>'
-    +'<button class=danger onclick="closeMasterMenu();deleteMasterSheet(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete</button>';   // removes the sheet -> "+ Reference" (re-addable), with a confirm
+    +'<button onclick="closeMasterMenu();confirmRemoveMasterSheet(\''+id+'\')">Remove from workbook</button>'
+    +'<button class=danger onclick="closeMasterMenu();deleteMasterData(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete saved reference</button>';
   document.body.appendChild(el);
   const r=btn.getBoundingClientRect();                        // anchor the dropdown to the ⋮ button, right-aligned + on-screen
   el.style.left=Math.max(8, r.right-el.offsetWidth)+'px'; el.style.top=(r.bottom+4)+'px';
@@ -742,28 +776,33 @@ function toast(msg, actionLabel, actionFn, ms){              // a transient bott
 function addMasterCol(id){                                    // add a column and edit its NAME inline (spreadsheet-style, no prompt() dialog)
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   for(let i=(sh.cols||[]).length-1;i>=1;i--){ if(String(sh.cols[i]||'').trim()===''){ sh.cols.splice(i,1); sh.rows.forEach(r=>r.splice(i,1)); } }   // drop abandoned unnamed columns first (no accumulation)
-  sh._editCol=null;
+  sh._editCol=null; sh._editWasDirty=!!sh.dirty;
   sh.cols.push(''); sh.rows.forEach(r=>r.push('')); sh._editCol=sh.cols.length-1; sh.dirty=true;
   renderSheet();
   setTimeout(()=>{ const inp=document.querySelector('#sheetcard .colnameedit'); if(inp){ inp.focus(); inp.select&&inp.select(); } }, 0);
 }
 function editMasterCol(id, ci){ const sh=BOOK.find(s=>s.id===id); if(!sh)return;   // double-click a header to rename it inline
-  sh._editCol=ci; renderSheet();
+  sh._editWasDirty=!!sh.dirty; sh._editCol=ci; renderSheet();
   setTimeout(()=>{ const inp=document.querySelector('#sheetcard .colnameedit'); if(inp){ inp.focus(); inp.select&&inp.select(); } }, 0);
 }
-function commitColName(id, ci, val){
+function commitColName(id, ci, val, original){
   const sh=BOOK.find(s=>s.id===id); if(!sh||sh._editCol==null)return; sh._editCol=null;
-  const nm=String(val||'').trim();
+  const wasDirty=!!sh._editWasDirty; delete sh._editWasDirty; let changed=false;
+  const nm=String(val||'').trim(), orig=String(original||'').trim();
   const dup=(sh.cols||[]).some((c,i)=>i!==ci&&String(c).trim().toLowerCase()===nm.toLowerCase());
-  if(!nm||dup){ sh.cols.splice(ci,1); sh.rows.forEach(r=>r.splice(ci,1)); if(sh.cellAI) sh.cellAI=new Set([...sh.cellAI].filter(k=>+k.split(',')[1]!==ci)); }   // blank/duplicate -> drop the column
-  else { sh.cols[ci]=nm; }
-  sh.dirty=true; renderSheet();
+  if(!nm||dup){
+    if(orig){ sh.cols[ci]=orig; toast(dup?'Column names must be unique.':'A column name cannot be empty.', null, null, 6000); }
+    else { sh.cols.splice(ci,1); sh.rows.forEach(r=>r.splice(ci,1)); sh.dirty=wasDirty; if(sh.cellAI) sh.cellAI=new Set([...sh.cellAI].flatMap(k=>{
+      const p=k.split(','), c=+p[1]; return c===ci?[]:[p[0]+','+(c>ci?c-1:c)]; })); changed=true; }
+  } else if(nm!==orig){ sh.cols[ci]=nm; sh.dirty=true; changed=true; }
+  if(changed) saveConvState();
+  renderSheet();
 }
 function masterUpload(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
   const inp=document.createElement('input'); inp.type='file'; inp.accept='.csv,.tsv,.txt,text/csv';
   inp.onchange=()=>{ const f=inp.files&&inp.files[0]; if(!f)return; const rd=new FileReader();
-    rd.onload=()=>{ const p=parseCSV(String(rd.result||'')); if(p.cols.length){ sh.cols=p.cols; sh.rows=p.rows; sh.dirty=true; renderSheet(); } };
+    rd.onload=()=>{ const p=parseCSV(String(rd.result||'')); if(p.cols.length){ sh.cols=p.cols; sh.rows=p.rows; sh.dirty=true; renderSheet(); saveConvState(); } };
     rd.readAsText(f); };
   inp.click();
 }
@@ -988,7 +1027,8 @@ function markTurnDone(){                                      // the turn finish
 }
 
 async function startRun(){
-  await autosaveRefs();                                       // Phase 3: persist shown reference sheets first, so the engine's per-user master schema is current before it reasons
+  try{ await autosaveRefs(); }                                // reference state is part of this turn: never reason against a stale saved copy
+  catch(e){ fail('Could not save reference data, so the query was not run: '+(e&&e.message||e)); return; }
   if(ORCH) return startTurn();                                // orchestrated front-door (flag; direct path below is unchanged)
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
@@ -1166,11 +1206,15 @@ function convSnapshot(){
   const turns=CHAT.map(t=>({q:t.q, reply:t.reply||''}));
   if(SETTLED && turnReply()) turns.push({q:question, reply:turnReply()});   // the live (settled) turn isn't archived yet
   if(!turns.length) return null;
-  const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||s.cls==='master').map(s=>({
-    id:s.id, cls:s.cls, name:s.name, cols:s.cols||[], rows:(s.rows||[]).slice(0,MAX_RENDER_ROWS),
-    sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved }));
+  const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||(s.cls==='master'&&(!s.saved||s.dirty))).map(s=>({
+    id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
+    rows:s.cls==='master'?(s.rows||[]).map(r=>r.slice()):(s.rows||[]).slice(0,MAX_RENDER_ROWS),
+    sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
+    cellAI:s.cls==='master'&&s.cellAI?[...s.cellAI]:undefined }));
   const refcands=REFCANDS.map(c=>({name:c.name, key:c.key, vals:(c.vals||[]).slice(0,500),   // the AVAILABLE list must survive reload so "+ Reference" persists
-    cols:(c.cols&&c.cols.length>1)?c.cols:undefined, rows:(c.cols&&c.cols.length>1&&c.rows)?c.rows.slice(0,MAX_RENDER_ROWS):undefined, saved:!!c.saved}));
+    cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
+    rows:(c.cols&&c.cols.length>1&&c.rows)?((!c.saved||c.dirty)?c.rows.map(r=>r.slice()):c.rows.slice(0,MAX_RENDER_ROWS)):undefined,
+    saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
   return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands};
 }
 let _saveStateT=null;
@@ -1192,11 +1236,13 @@ function restoreConvState(st){                               // render a stored 
   if(!st||st.v!==1||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
-      rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:false});
-    if(s.cls==='master'&&s.name) MSEEN.add(String(s.name).toLowerCase()); });   // don't let loadMaster duplicate it
+      rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:!!s.dirty,
+      cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});
+    if(s.cls==='master'&&s.name) MSEEN.add(referenceKey(s.name,s.cols)); });   // don't let loadMaster duplicate it
   if(Array.isArray(st.refcands)){                            // AVAILABLE candidates (removed or never-shown) -> "+ Reference" persists across reload
-    const shown=new Set(BOOK.filter(s=>s.cls==='master').map(s=>String(s.name||'').toLowerCase()));
-    REFCANDS=st.refcands.filter(c=>c&&c.key&&!shown.has(c.key)).map(c=>({name:c.name, key:c.key, vals:c.vals||[], cols:c.cols, rows:c.rows, saved:!!c.saved}));
+    const shown=new Set(BOOK.filter(s=>s.cls==='master').map(s=>referenceKey(s.name,s.cols)));
+    REFCANDS=st.refcands.filter(c=>c&&c.key&&!shown.has(c.key)).map(c=>({name:c.name, key:c.key, vals:c.vals||[], cols:c.cols,
+      rows:c.rows, saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
     REFCANDS.forEach(c=>MSEEN.add(c.key));                   // keep loadMaster from auto-promoting a removed reference back to a sheet
   }
   const turns=st.turns.slice(), last=turns.pop();

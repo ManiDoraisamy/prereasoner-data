@@ -1,7 +1,7 @@
 """orchestrator.py — the Sonnet tool loop over the PreReasoner MCP server.
 
 Per chat request we: (1) spawn the MCP server over stdio with the user's Firebase token injected into its
-env (identity passthrough, never a tool argument — mcp-now.md §5); (2) run a manual Anthropic tool loop so
+env (identity passthrough, never a tool argument — docs/MCP.md); (2) run a manual Anthropic tool loop so
 we control the jobId per `prereasoner_query` call and can capture the full engine trace to return to the
 browser; (3) return the assistant reply + one replayable trace per PreReasoner call.
 

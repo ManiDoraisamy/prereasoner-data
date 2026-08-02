@@ -74,7 +74,7 @@ SelectQuery(
 The node types are a real grammar: `SelectQuery`, `SelectItem`, `Aggregate`, `ColumnRef`, `Comparison`,
 `BooleanExpr`, `OrderTerm`, `Join`, `ScalarSubquery`, `InPredicate`, … Each candidate is wrapped as a
 [`ScoredQuery(query, score, evidence, features)`](../engine/sql_candidate.py) — the `evidence` tuple is the
-human-readable trace (`"phase5:projection"`, `"aggregate:SUM(...)"`, …). Serving takes **`candidates[0]`**
+human-readable trace (`"extrema:projection"`, `"aggregate:SUM(...)"`, ...). Serving takes **`candidates[0]`**
 ([`engine/tables.py:_serve_ast`](../engine/tables.py)); there is **no trained proposer and no learned ranker** —
 the ranking is hand-written and inspectable.
 

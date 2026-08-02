@@ -8,17 +8,17 @@
 -- (bulk) and by the engine's lazy sync at query time (see db/README.md).
 --
 -- The engine connects as a single role (typically `postgres`) named by
--- KB_PG_USER; it CREATEs per-user schemas at request time, so the role
+-- KB_PG_USER; it CREATEs conversation and private-reference schemas, so the role
 -- needs CREATE on the database. No other roles/grants are assumed.
 -- ============================================================================
 
 -- ----------------------------------------------------------------------------
 -- 0. Extensions
 --    vector  : pgvector — knowledgebase."words".embedding vector(384) + HNSW <=> search
---              (engine: query16 entity resolution, world17 hybrid semantic rank)
+--              (engine entity resolution and hybrid semantic ranking)
 --    pg_trgm : trigram GIN index on public.entity_label for fuzzy value match
 --              (legacy value matcher; kept because init creates entity_label)
---    NOTE: no PostGIS / earthdistance / cube — geo NEARBY (world19) computes
+--    NOTE: no PostGIS / earthdistance / cube — geo NEARBY computes
 --    haversine in plain SQL (acos/radians over settlement.lat/lng).
 -- ----------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -33,9 +33,9 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 --                    lazily filled), and the friendly name-keyed tables + views.
 --                    (Named "knowledgebase" — NOT "world" — because "world model"
 --                    means a learned dynamics model in ML; this is a lookup KB.)
---    "<google-sub>" per-user schemas are created BY THE ENGINE at request time
---    (query14._load_user_schema): uploads + the two bridge tables
---    "<t> connected to wikipedia" / "<t> unconnected to wikipedia".
+--    c_<32hex> conversation schemas hold uploads, selected reference copies, and
+--    the two bridge tables. m_<md5(sub)> schemas hold persistent private references.
+--    Both are created by the engine from authorized server-side identities.
 -- ----------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS knowledgebase;
 
@@ -43,8 +43,8 @@ CREATE SCHEMA IF NOT EXISTS knowledgebase;
 -- 2. public — raw Wikidata world model
 --    Populated by db/sync/sync_wikidata.py (live WDQS, recommended) or
 --    db/sync/import_dump.py (HF parquet dump, legacy).
---    Read by: db/sync/build_world.py + build_words.py (transforms into world.*),
---    and directly by the engine's geo NEARBY (world19 -> public.settlement).
+--    Read by: db/sync/build_world.py + build_words.py (transforms into knowledgebase.*),
+--    and directly by the engine's geo NEARBY path.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.continent (
   qid   text PRIMARY KEY,
@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS public.settlement (
   admin_qid    text,
   admin        text,
   population   bigint,
-  lat          double precision,      -- world19 geo NEARBY reads lat/lng
+  lat          double precision,      -- geo NEARBY reads lat/lng
   lng          double precision,
   timezone     text,
   is_capital   boolean DEFAULT false
@@ -142,8 +142,7 @@ CREATE INDEX IF NOT EXISTS ix_label_trgm          ON public.entity_label USING g
 --    embedding = bge-small-en-v1.5 [CLS], L2-normalized, 384-dim; cosine via <=>.
 --    Populated by db/sync/build_words.py; single rows appended by the engine's
 --    lazy sync (sync_entity.ensure_entity) and by sync_types.py (type='type').
---    Read by: query16 (_nn/_resolve/value-membership routing, cell bridges),
---    world17 (grounding, _resolve_world_qid, qid->label), world18 (lookup).
+--    Read by the entity resolver, cell bridges, world grounding, and lookup paths.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS knowledgebase."words" (
   id            bigserial PRIMARY KEY,
@@ -170,8 +169,7 @@ CREATE INDEX IF NOT EXISTS ix_words_hnsw       ON knowledgebase."words" USING hn
 --    Populated by db/sync/sync_types.py from db/sync/data/taxonomy.csv.
 --    resolver_type links legacy words.type strings ('city') to the node qid
 --    (Q515) — set by db/sync/unify_words_qid.py (or sync_types.py).
---    Read by: sync_entity.wlabel (wikipedia table naming), world17
---    (_resolve_world_qid), route19 taxonomy walk.
+--    Read by lazy entity table naming, world-QID resolution, and taxonomy routing.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS knowledgebase."types" (
   qid           text PRIMARY KEY,
@@ -188,9 +186,9 @@ CREATE INDEX IF NOT EXISTS ix_types_leaf     ON knowledgebase."types"(is_leaf);
 CREATE INDEX IF NOT EXISTS ix_types_resolver ON knowledgebase."types"("resolver_type");
 
 -- ----------------------------------------------------------------------------
--- 5. world friendly tables + "... in the World" views.
+-- 5. Friendly world tables + "... in the World" views.
 --    Denormalized copies of public.* the SQL planner references by friendly
---    name (query14/15 planner, world18 ENTITY_ATTRS). Populated by
+--    name (typed planner and world-attribute enrichment). Populated by
 --    db/sync/build_world.py. The views exist because generated SQL uses the
 --    "<X> in the World" spelling.
 -- ----------------------------------------------------------------------------
@@ -201,7 +199,7 @@ CREATE TABLE IF NOT EXISTS knowledgebase."Cities" (
   is_primary  int,                    -- 1 = most populous settlement with this name
   updated_at  text,
   source      text,
-  qid         text                    -- stable key (world18 joins Cities by qid)
+  qid         text                    -- stable key for city joins
 );
 
 CREATE TABLE IF NOT EXISTS knowledgebase."Countries" (
@@ -275,7 +273,7 @@ CREATE OR REPLACE VIEW knowledgebase."Continents in the World" AS SELECT * FROM 
 CREATE OR REPLACE VIEW knowledgebase."States in the World"     AS SELECT * FROM knowledgebase."States";
 
 -- ----------------------------------------------------------------------------
--- 6. wikipedia — qid-keyed faithful Wikidata tables. INTENTIONALLY EMPTY HERE.
+-- 6. Qid-keyed faithful Wikidata tables. INTENTIONALLY EMPTY HERE.
 --    Tables are named by the EXACT Wikidata type label (e.g. knowledgebase."city",
 --    knowledgebase."hospital") with columns = the type's discovered Wikidata
 --    properties (all text) + qid PRIMARY KEY + name. They are created:
@@ -287,17 +285,20 @@ CREATE OR REPLACE VIEW knowledgebase."States in the World"     AS SELECT * FROM 
 -- ----------------------------------------------------------------------------
 
 -- ----------------------------------------------------------------------------
--- 7. Per-user schemas (created BY THE ENGINE, documented for completeness):
---    CREATE SCHEMA IF NOT EXISTS "<verified-google-sub>";
---      "<sub>"."<upload-table>"                       -- the uploaded CSV rows
---      "<sub>"."<t> connected to wikipedia"           -- resolved FKs:
+-- 7. Conversation and private-reference schemas (created by the engine):
+--    c_<32hex> is ownership-checked before use and contains:
+--      "<conversation>"."<upload-or-selected-reference>" -- typed request rows
+--      "<conversation>"."<t> connected to wikipedia"     -- resolved FKs:
 --          ("column" text, "value" text, "world_type" text,
 --           "world_key" text, "country" text, "world_qid" text)
---      "<sub>"."<t> unconnected to wikipedia"         -- free-text vectors:
+--      "<conversation>"."<t> unconnected to wikipedia"   -- free-text vectors:
 --          ("__pk" bigint, "column" text, "value" text,
 --           "embedding" vector(896))                  -- unified-encoder dim
 --    Queries run with:
---      SET search_path TO "<sub>", knowledgebase, public
+--      SET search_path TO "<conversation>", knowledgebase, public
+--    m_<md5(verified-sub)> contains persistent private reference dimensions;
+--    its first column is the validated primary key. Relevant tables are copied
+--    into the request table set rather than adding this schema to search_path.
 -- ----------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------

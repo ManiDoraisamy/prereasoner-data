@@ -78,7 +78,7 @@ numbers are written `genN` in prose (README explains).
   unless the historical bootstrap artifacts exist.
 - Residual caveat: `train_multitask` itself warm-starts from an even earlier SQL-base checkpoint and consumes
   earlier-generation corpora (`unit_emb.npy`, `sql_graphs_*`, `join_graphs_*`) whose *generator* scripts are
-  not in scope — those ship as data artifacts. A truly-from-nothing rerun of phase 4 is therefore not possible
+  not in scope — those ship as data artifacts. A truly-from-nothing rebuild of the full encoder lineage is therefore not possible
   from `training/` alone; this is stated plainly in `training/README.md`.
 
 ## Other notes

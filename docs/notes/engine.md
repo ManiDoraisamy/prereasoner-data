@@ -10,9 +10,9 @@ the modules, the env-var contract, and the data files the serving path opens.
 | module | classes / responsibility |
 |---|---|
 | `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (stateless, own `DIM_LOCK`), `POST /api/converse` (Sonnet fallback/present), `GET /healthz`. CORS + MAX_BODY(10MB)/MAX_SHEETS(8)/MAX_ROWS(5000). |
-| `auth.py` | `_verify_principal`, `_bearer`, `_slug` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
+| `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
-| `tables.py` | `TableQuery`; `csv_table`, `qident/qlit/qual`, `name_words/wmatch`, `parse_rows/dim_label/LABEL`. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
+| `tables.py` | `TableQuery`; canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |
 | `knowledge_tables.py` | `KnowledgeTableQuery` (implicit world `word_*` tables, meaning graph, freshness). |
 | `pg.py` | `PgQuery`, `_TableQueryPg`; `_pg()` is fully config-driven (host/port/db/user/sslmode/password). |
 | `resolve_base.py` | `RoutedQuery` (generalized routing + country aliases + States/Elements configs). |
@@ -39,6 +39,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `knowledge_sync.py` | the runtime lazy-Wikidata-fill path: `lazy_resolve`, `ensure_entity`, `find_entity`, `discover`, `fetch_one`, `wlabel`, `ensure_table` + the WDQS client (`wdqs`, `V`, `qid_of`, `wbsearch`, `ask`, `ENDPOINT`, `UA`). Reachable from `entities.py` / `knowledge_query.py`. The bulk-sync CLI lives in `db/sync`. |
 | `converse.py` | `reply()` — the optional in-chat Sonnet fallback/presentation (see §"Conversational layer"). |
 | `conversations.py` | the `chat` schema (conversation identity + ownership; IDOR-safe). |
+| `master.py` | Per-user reference persistence, validation, and direct/multi-hop request selection through `relations.discover_fks`. |
 
 Tests live in `tests/` (`test_geo.py`, `test_world.py`, `test_nongeo.py`, `test_world_joins.py`,
 `test_route_wired.py`); most need a live seeded Postgres — see `tests/README.md`.

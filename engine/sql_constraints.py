@@ -166,7 +166,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                                 built = _candidate(
                                     query,
                                     score,
-                                    ("phase4:having:count",),
+                                    ("constraint:having:count",),
                                 )
                                 if built is not None:
                                     out.append(built)
@@ -184,7 +184,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                                 built = _candidate(
                                     query,
                                     41.0 + threshold.strength + entity_score + relation_score,
-                                    ("phase4:having:count-category",),
+                                    ("constraint:having:count-category",),
                                 )
                                 if built is not None:
                                     out.append(built)
@@ -241,7 +241,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                     built = _candidate(
                         transformed,
                         candidate.score + 24.0,
-                        candidate.evidence + (f"phase4:having:{aggregate.function.lower()}",),
+                        candidate.evidence + (f"constraint:having:{aggregate.function.lower()}",),
                     )
                     if built is not None:
                         out.append(built)
@@ -253,7 +253,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                             sanitized,
                             candidate.score + 29.0,
                             candidate.evidence
-                            + (f"phase4:having:{aggregate.function.lower()}:sanitized",),
+                            + (f"constraint:having:{aggregate.function.lower()}:sanitized",),
                         )
                         if built is not None:
                             out.append(built)
@@ -282,7 +282,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                 built = _candidate(
                     transformed,
                     candidate.score + 19.0,
-                    candidate.evidence + ("phase4:where-or",),
+                    candidate.evidence + ("constraint:where-or",),
                 )
                 if built is not None:
                     out.append(built)
@@ -306,7 +306,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             built = _candidate(
                 transformed,
                 candidate.score + 21.0,
-                candidate.evidence + ("phase4:where-or-linked",),
+                candidate.evidence + ("constraint:where-or-linked",),
             )
             if built is not None:
                 out.append(built)
@@ -325,7 +325,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                 built = _candidate(
                     sanitized,
                     candidate.score + 24.0 + select_bonus,
-                    candidate.evidence + ("phase4:where-or-sanitized",),
+                    candidate.evidence + ("constraint:where-or-sanitized",),
                 )
                 if built is not None:
                     out.append(built)
@@ -397,7 +397,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                         transformed,
                         candidate.score + 25.0,
                         candidate.evidence
-                        + (f"phase4:scalar-{aggregate.function.lower()}:{operator}",),
+                        + (f"constraint:scalar-{aggregate.function.lower()}:{operator}",),
                     )
                     if built is not None:
                         out.append(built)
@@ -487,7 +487,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                     built = _candidate(
                         transformed,
                         candidate.score + 31.0,
-                        candidate.evidence + (f"phase4:scalar-{function.lower()}:direct",),
+                        candidate.evidence + (f"constraint:scalar-{function.lower()}:direct",),
                     )
                     if built is not None:
                         out.append(built)
@@ -539,7 +539,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                     built = _candidate(
                         outer,
                         50.0,
-                        ("phase4:scalar-row-selector",),
+                        ("constraint:scalar-row-selector",),
                     )
                     if built is not None:
                         out.append(built)
@@ -582,7 +582,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                     built = _candidate(
                         transformed,
                         candidate.score + 27.0,
-                        candidate.evidence + ("phase4:scalar-frequency-selector",),
+                        candidate.evidence + ("constraint:scalar-frequency-selector",),
                     )
                     if built is not None:
                         out.append(built)
@@ -628,7 +628,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                         built = _candidate(
                             outer,
                             candidate.score + 21.0,
-                            candidate.evidence + ("phase4:in-membership",),
+                            candidate.evidence + ("constraint:in-membership",),
                         )
                         if built is not None:
                             out.append(built)
@@ -672,7 +672,7 @@ class ConstraintQueryExpander(ExpansionSupport):
             built = _candidate(
                 outer,
                 candidate.score + 25.0,
-                candidate.evidence + ("phase4:positive-and-not-in",),
+                candidate.evidence + ("constraint:positive-and-not-in",),
             )
             if built is not None:
                 out.append(built)
@@ -725,7 +725,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                 built = _candidate(
                     outer,
                     47.0 + role_bonus,
-                    ("phase4:in-membership:direct",),
+                    ("constraint:in-membership:direct",),
                 )
                 if built is not None:
                     out.append(built)
@@ -871,7 +871,7 @@ class ConstraintQueryExpander(ExpansionSupport):
                 built = _candidate(
                     query,
                     51.0 + select_bonus - 0.2 * len(tree.joins),
-                    ("phase4:where-or:direct",),
+                    ("constraint:where-or:direct",),
                 )
                 if built is not None:
                     out.append(built)

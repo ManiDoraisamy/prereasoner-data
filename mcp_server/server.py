@@ -2,7 +2,7 @@
 
 Run: python -m mcp_server.server   (stdio transport; launched by the orchestrator per session)
 
-The tool DESCRIPTIONS below carry the routing-discipline rules (mcp-now.md §3) so ANY MCP client — not
+The tool DESCRIPTIONS below carry the routing-discipline rules (docs/MCP.md) so ANY MCP client — not
 just our orchestrator — inherits them. Tools return a JSON string; the client json.loads the text content.
 """
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """tests/stub_engine.py — a fake PreReasoner engine for testing the layers ABOVE it (MCP server,
 orchestrator, chat UI) WITHOUT a seeded world Postgres, model weights, or Docker.
 
-It returns responses in the engine's EXACT documented shapes (mcp-now.md §0.3): an answer with a `views`
+It returns responses in the engine's exact documented shapes (docs/MCP.md): an answer with a `views`
 stack (the France=270 demo), a `clarify`, and an `error` — plus /api/dimension and /healthz. This is NOT
 the real engine; it is a contract-shaped fixture. The real engine has its own tests (tests/test_*.py) and
 is exercised end-to-end only against the deployed Cloud Run service.

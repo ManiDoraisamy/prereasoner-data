@@ -1,7 +1,7 @@
 """test_mcp.py — the PreReasoner MCP server layer.
 
 Two parts, both dependency-light (no seeded Postgres, no model weights, no Anthropic key):
-  (A) UNIT — shape_reason_response's status-mapping matrix (pure function; mcp-now.md §4.2).
+  (A) UNIT — shape_reason_response's status-mapping matrix (pure function; docs/MCP.md).
   (B) INTEGRATION — engine_client.call_query / call_describe against an in-process STUB engine
       (tests/stub_engine.py) that returns the engine's exact documented shapes.
 

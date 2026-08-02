@@ -1,4 +1,4 @@
-"""test_orchestrator.py — the Sonnet orchestrator's ROUTING DISCIPLINE (mcp-now.md §3), against the
+"""test_orchestrator.py — the Sonnet orchestrator's routing discipline (docs/MCP.md), against the
 in-process STUB engine so the whole browser->orchestrator->MCP->engine loop is exercised without a seeded
 world Postgres.
 

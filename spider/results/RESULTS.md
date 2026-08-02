@@ -1,7 +1,8 @@
 # Spider Results — canonical current report
 
-**Pinned to commit `8e9187b` (+ the redundant-world-filter correction on top).** Numbers below are the
-serving-faithful measurement: `spider/probe/full_eval.py` running the exact production selector on **Spider
+The current `whole_db` row was measured from source commit `55cf3b0` with a dirty worktree whose exact planner,
+evaluator, dataset, and encoder hashes are recorded in the result JSON. Numbers below are the serving-faithful
+measurement: `spider/probe/full_eval.py` running the exact production selector on **Spider
 dev (1034 examples, 20 DBs)**, real trained encoder (Qwen2.5-0.5B + LoRA + relational readout, `engine/data/`)
 on **CPU**, denotation compared against the real gold rows. Difficulty labels are the official `eval_hardness`
 (vendored verbatim).
@@ -16,8 +17,8 @@ typed-AST planner** (`routed = {ast: 1034}`; zero compose). Accuracy here is ent
 
 | Configuration | strict | lenient | scalar-gold |
 |---|---:|---:|---:|
-| **whole_db** — gold-blind, all DB tables fed (**standard Spider**) | **340/1034 (32.9%)** | 437/1034 (42.3%) | 212/408 (52.0%) |
-| **gold_tables** — oracle table selection, only gold-referenced tables fed | **424/1034 (41.0%)** | 544/1034 (52.6%) | 240/408 (58.8%) |
+| **whole_db** — gold-blind, all DB tables fed (**standard Spider**) | **358/1034 (34.6%)** | 451/1034 (43.6%) | 224/408 (54.9%) |
+| **gold_tables** — oracle table selection, last verified before this planner change | **424/1034 (41.0%)** | 544/1034 (52.6%) | 240/408 (58.8%) |
 
 `whole_db` is the number to compare against other Spider systems (gold-blind; it also pays the cost of table
 selection). `gold_tables` feeds only the tables the gold SQL references — the closer analogue to the product,
@@ -31,13 +32,16 @@ UB); **scalar-gold** = the clean unambiguous single-value subset (n=408).
 
 | difficulty | n | answered | strict | lenient | scalar |
 |---|--:|--:|--:|--:|--:|
-| easy | 248 | 243 | 110 | 127 | 96/173 |
-| medium | 446 | 432 | 123 | 177 | 54/101 |
-| hard | 174 | 163 | 60 | 85 | 45/77 |
+| easy | 248 | 243 | 121 | 138 | 107/173 |
+| medium | 446 | 432 | 127 | 177 | 54/101 |
+| hard | 174 | 163 | 63 | 88 | 46/77 |
 | extra | 166 | 162 | 47 | 48 | 17/57 |
-| **all** | **1034** | **1000** | **340** | **437** | **212/408** |
+| **all** | **1034** | **1000** | **358** | **451** | **224/408** |
 
 **gold_tables** (oracle tables):
+
+This row is the last verified oracle ablation from commit `37570f8`; it was not rerun for the current planner
+change and must not be used to calculate a current table-selection gap.
 
 | difficulty | n | answered | strict | lenient | scalar |
 |---|--:|--:|--:|--:|--:|
@@ -66,11 +70,19 @@ report) the source commit + dirty-worktree flag, so a run is traceable to an exa
 - **Structural floor.** Spider's hard/extra tiers are ~50% nested subqueries + set operations; the typed-AST
   planner covers many via `sql_recursive`/`sql_constraints`, but deep multi-step nesting remains the dominant
   miss on those tiers (see the difficulty tables — extra tops out ~28%).
-- **Table selection is the biggest whole_db lever.** gold_tables (424) vs whole_db (340) is a 84-example gap
-  from feeding all tables; most of it is over-joining (unnecessary tables). Table-set retrieval is the next
-  planned accuracy work — it is not yet implemented.
-- **`what is the total number of X`** emits a grouped COUNT instead of the scalar (a documented planner gap,
-  tracked in `regress/offline_cases.py`); the common phrasings (`how many X`, `count the X`) are correct.
+- **Table selection remains a major whole-db lever.** The previous same-tree oracle ablation was 424 versus 340
+  gold-blind, with many misses caused by unnecessary tables and joins. The oracle row has not yet been rerun on
+  the current planner, so its current gap is deliberately not claimed here.
+- **Language-to-role binding remains the main easy/medium failure source.** The current gain came from count
+  scope, identity, and source/destination role fixes; projection identity and relationship direction still account
+  for many candidate-ranking misses outside those families.
+
+## Current transition
+
+Against the deployed `37570f8` whole-db baseline (340 strict / 437 lenient / 212 scalar), the current run has
+18 strict gains, 14 lenient gains, and 12 scalar gains, with **zero losses** in each metric. Fifty-seven selected
+SQL strings changed and none of those changed examples became unanswered. The accepted artifact is
+`release_review_final5_20260802`; earlier `release_review*` directories from this work are superseded diagnostics.
 
 ## Historical
 

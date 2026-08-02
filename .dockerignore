@@ -16,6 +16,5 @@ infra
 tests
 training
 web
-LICENSE
 **/__pycache__
 **/*.pyc

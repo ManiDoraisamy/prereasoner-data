@@ -164,7 +164,7 @@ class RecursiveQueryExpander:
                         result,
                         candidate.score + (16.0 if operator == "INTERSECT" else 13.0)
                         + projection_bonus,
-                        candidate.evidence + (f"phase3:set:{operator.lower()}",),
+                        candidate.evidence + (f"recursive:set:{operator.lower()}",),
                     )
                     if built is not None:
                         out.append(built)
@@ -213,7 +213,7 @@ class RecursiveQueryExpander:
             built = _candidate(
                 outer,
                 candidate.score + 16.0,
-                candidate.evidence + ("phase3:not-in",),
+                candidate.evidence + ("recursive:not-in",),
             )
             if built is not None:
                 out.append(built)
@@ -228,7 +228,7 @@ class RecursiveQueryExpander:
                 built = _candidate(
                     difference,
                     candidate.score + 7.0,
-                    candidate.evidence + ("phase3:set:except",),
+                    candidate.evidence + ("recursive:set:except",),
                 )
                 if built is not None:
                     out.append(built)
@@ -286,7 +286,7 @@ class RecursiveQueryExpander:
                     built = _candidate(
                         outer,
                         candidate.score + 15.0 + _column_question_overlap(projection, question),
-                        candidate.evidence + (f"phase3:scalar-avg:{operator}",),
+                        candidate.evidence + (f"recursive:scalar-avg:{operator}",),
                     )
                     if built is not None:
                         out.append(built)
@@ -340,7 +340,7 @@ class RecursiveQueryExpander:
                 built = _candidate(
                     outer,
                     36.0 + _column_question_overlap(target, question),
-                    (f"phase3:scalar-superlative:{direction.lower()}",),
+                    (f"recursive:scalar-superlative:{direction.lower()}",),
                 )
                 if built is not None:
                     out.append(built)
@@ -404,7 +404,7 @@ class RecursiveQueryExpander:
                     built = _candidate(
                         outer,
                         38.0 - 0.2 * len(joins),
-                        (f"phase3:nested:{outer_function.lower()}-count",),
+                        (f"recursive:nested:{outer_function.lower()}-count",),
                     )
                     if built is not None:
                         out.append(built)
@@ -449,7 +449,7 @@ class RecursiveQueryExpander:
                         or "how many" in " ".join(tokens),
                         schema=self.schema,
                     )
-                    built = _candidate(query, 46.0, ("phase3:self-join:route",))
+                    built = _candidate(query, 46.0, ("recursive:self-join:route",))
                     if built is not None:
                         out.append(built)
 
@@ -478,7 +478,7 @@ class RecursiveQueryExpander:
                     value,
                     display[0],
                 )
-                built = _candidate(query, 44.0, ("phase3:self-join:relationship",))
+                built = _candidate(query, 44.0, ("recursive:self-join:relationship",))
                 if built is not None:
                     out.append(built)
         return out

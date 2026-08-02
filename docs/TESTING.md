@@ -1,111 +1,166 @@
-# Testing PreReasoner locally
+# Testing
 
-Everything can be tested on one machine without deploying anything. Cloud Run is **not**
-required. There are two local setups; both were used to verify this repo end to end.
+PreReasoner has hermetic tests, browser-state tests, live database integrations, a deployment regression gate, and
+Spider accuracy evaluation. They answer different questions and should not be collapsed into one green badge.
 
-## Option A — Docker (recommended, zero local Python)
+## Quick Local Checks
 
-```sh
-cp .env.example .env                        # defaults are fine
-docker compose up --build                   # pgvector Postgres + engine on :8080
-docker compose --profile seed run --rm seed # one-time world-data seed (~15–45 min)
+Run these before involving models, PostgreSQL, or network services:
+
+```powershell
+python -m tests.test_sql_ast
+python -m tests.test_master_ingest
+python -m tests.test_routing
+node --check web/public/lib/workbook.js
+node web/tests/workbook_reference.test.js
+python -m compileall -q engine db training tests orchestrator mcp_server
+git diff --check
 ```
 
-## Option B — native Python (what you have; no Docker needed)
+These cover typed AST behavior, deterministic routing, private-reference selection and validation, workbook
+reference state, JavaScript syntax, and Python syntax. Some imported engine modules require packages from
+`requirements.txt`, but the tests do not require a running database or model weights unless stated otherwise by
+their output.
 
-Requires Python 3.11+ with the deps from `requirements.txt`. For the database, either run
-any Postgres 16 with the `vector` and `pg_trgm` extensions and apply `db/init.sql` + the
-seed from [db/README.md](../db/README.md), or point at an existing world database.
+## Repository Runner
 
-```sh
-# bash / Git Bash
-set -a; source .env; set +a
-export AUTH_TEST_SUB=localdev          # dev-only: skip Firebase token verification
-unset RTDB_URL                         # optional: no Firebase at all (JSON responses)
-python -m engine.server                # serves :8080, loads models in ~10 s
+```powershell
+python -m tests.run_all
 ```
 
-`AUTH_TEST_SUB` makes `/api/reason` and `/api/knowledge` accept any bearer token and use the
-fixed principal you name (its own isolated Postgres schema). Never set it in production.
+The runner executes the canonical suites in this order:
 
-## 1. API tests (curl)
+| Suite | Primary boundary |
+|---|---|
+| `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
+| `tests.test_routing` | Shared route authority and cross-process determinism |
+| `tests.test_compose` | Composed operations and relationship discovery |
+| `tests.test_converse` | Optional presentation/fill behavior |
+| `tests.test_master_ingest` | Private-reference validation, storage, and fixed-point selection |
+| `tests.test_mcp` | MCP response shape and engine adapter |
+| `tests.test_orchestrator` | Tool-use policy and HTTP envelope |
+| `tests.test_world` | Grounding, geo basics, and aggregate delegation |
+| `tests.test_nongeo` | Non-geographic world resolution and lazy fill |
+| `tests.test_world_joins` | Country, continent, and state world-table joins |
+| `tests.test_route_wired` | Model-driven route to SQL end to end |
+| `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 
-```sh
-curl -s localhost:8080/healthz
-# {"ok": true, "reason": true, "world": true, "dimension": true}
+The live suites need runtime weights and a seeded PostgreSQL knowledgebase. Some also need network access for an
+uncached Wikidata entity. The runner reports unavailable suites as skipped so local development can continue, but a
+skip is not a passing integration test. Record exact skips and prerequisites in a pull request.
 
-# Reasoning over an uploaded sheet (world join + aggregate + top-N):
-curl -s localhost:8080/api/reason -X POST \
-  -H "Content-Type: application/json" -H "Authorization: Bearer dev" \
-  -d '{"tables":[{"name":"cities","data":"city,population\nParis,2100000\nLyon,513000"}],
-       "question":"which city has the largest population?"}'
+Run live suites sequentially. They create and replace shared test fixtures; concurrently launching two aggregate
+runs against one database can make one suite observe the other's fixture state.
 
-# World-knowledge filtering:
-curl -s localhost:8080/api/knowledge -X POST \
-  -H "Content-Type: application/json" -H "Authorization: Bearer dev" \
-  -d '{"tables":[{"name":"cities","data":"city,visitors\nParis,500\nBerlin,300"}],
-       "question":"which of these cities are in France?"}'
+## Deployment Regression Gate
 
-# Stateless column typing (no auth):
-curl -s localhost:8080/api/dimension -X POST -H "Content-Type: application/json" \
-  -d '{"data":"city,population\nParis,2100000\nLyon,513000"}'
+After a serving, routing, world, or database change, run:
+
+```powershell
+python -m regress.run_regression --require-world
 ```
 
-Every response contains the full inspectable trace: `plan`, per-step `views` with their SQL
-and rows, and `result`.
+`--require-world` makes missing live prerequisites fail rather than silently reducing the gate to offline tests.
+The gate covers core FK invariants, representative own-data SQL, canonical world answers, world-table joins, route
+wiring, and non-geographic grounding.
 
-## 2. Frontend in a browser
+## Browser State Tests
 
-```sh
-npm i -g firebase-tools
-cd web && firebase serve --only hosting --project <your-project> --port 5057
+The workbook reference tests run in a Node VM with a minimal browser/Firebase harness:
+
+```powershell
+node web/tests/workbook_reference.test.js
 ```
 
-Open `http://localhost:5057`, then in the devtools console (once per browser):
+They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, and snapshot restoration. Run
+`node --check` on every changed JavaScript file as well.
+
+For a manual browser pass, start Firebase Hosting from `web/`:
+
+```powershell
+npm install --global firebase-tools
+firebase serve --only hosting --project <firebase-project> --port 5057
+```
+
+Point the browser at a local engine only for development:
 
 ```js
-localStorage.setItem('pr_api_base', 'http://localhost:8080')  // pages -> local engine
-sessionStorage.setItem('pr_test_auth', '1')                   // skip Google sign-in (localhost only)
+localStorage.setItem('pr_api_base', 'http://localhost:8080');
+sessionStorage.setItem('pr_test_auth', '1');
 ```
 
-Then use the site normally: the landing page ships a demo (“total amount in France” over
-`customers.csv` + `orders.csv`) — submit it and watch the view stack build
-(`join → world → world filter → aggregate`, answer **270**). Without RTDB the trace renders
-from the JSON response a few seconds after the engine finishes; with `RTDB_URL` set and
-Google application-default credentials available, it streams step by step.
+Check reference edits and deletion, a direct own-data answer, a world-dependent answer, clarification, trace
+rendering, and reload restoration. Never enable the test-auth bypass in a production deployment.
 
-What to check on each page:
-- `/` landing: demo chips attach, submit navigates to `/reason`.
-- `/reason`: trace plays, scrubber works, ⓘ opens Warnings / Info / Debug.
-- `/world`: same flow with world-knowledge resolution.
-- `/clarify`: reached automatically when the engine can’t parse the question.
-- `/sheets`: renders and starts the Google Picker (needs a real Google account to finish).
+## Start A Local Engine
 
-## 3. Regression suite (browser)
+See [GETTING_STARTED.md](GETTING_STARTED.md) for full setup. The Docker path is:
 
-Open `/reason`, paste `web/tests/regression.js` into the console, run `await runRegression()`.
-It asserts final answers against `/api/reason` for ~60 canonical questions.
-
-## 4. End-to-end Python suites
-
-`tests/` needs a seeded world database (they create/drop their own per-test schemas):
-
-```sh
-pip install -r requirements.txt
-set -a; source .env; set +a
-python -m tests.test_geo          # geo/NEARBY + live-SQL oracle checks
-python -m tests.test_world        # world joins
-python -m tests.test_nongeo      # non-geo lazy Wikidata fill (network-dependent)
-python -m tests.test_world_joins
-python -m tests.test_route_wired
+```powershell
+Copy-Item .env.example .env
+docker compose up --build
+docker compose --profile seed run --rm seed
 ```
 
-## What was verified before release
+The seed operation is required once for world tests. Native execution requires PostgreSQL 16 with `vector` and
+`pg_trgm`, `db/init.sql`, the synchronized knowledge data, runtime weights, and:
 
-- All three endpoints end to end against a live world database (correct answers, including
-  the canonical France = 270 demo), from both curl and real Chrome.
-- The full page sweep above, with a clean browser console.
-- `terraform validate`, `docker`-less CI checks (`compileall`, `node --check`), and zero-hit
-  greps for legacy names, hardcoded hosts, and secrets.
-- Not yet machine-verified here: `docker compose up --build` (no Docker on the dev machine)
-  and a fresh `terraform apply` into a clean GCP project — run those once before announcing.
+```powershell
+$env:AUTH_TEST_SUB = "localdev"
+python -m engine.server
+```
+
+`AUTH_TEST_SUB` is a local test bypass and must not exist in production configuration.
+
+## Spider Accuracy
+
+Planner behavior changes require a fresh serving-faithful `whole_db` run:
+
+```powershell
+python spider/probe/fetch_data.py --include-train
+python spider/probe/full_eval.py `
+  --dbs spider/data/dbs `
+  --config whole_db `
+  --selection serving_top1 `
+  --max-candidates 25 `
+  --tag <unique-tag> `
+  --out spider/results/<unique-tag>/whole_db/full_eval_whole_db
+```
+
+`whole_db` is the gold-blind headline. `gold_tables` is an oracle table-selection ablation and must not be reported
+as standard Spider accuracy. Compare per-example records as well as aggregate strict, lenient, and scalar metrics;
+an aggregate gain can hide regressions in an important query class.
+
+The result JSON records source and artifact provenance. Do not reuse a checkpoint after planner, evaluator, or model
+artifacts change. Canonical accepted measurements belong in [../spider/results/RESULTS.md](../spider/results/RESULTS.md),
+not in source comments or duplicate result documents.
+
+## Infrastructure Validation
+
+When deployment files change, also run these where the CLIs are installed:
+
+```powershell
+docker compose config
+docker build -t prereasoner-engine:test .
+docker build -f Dockerfile.orchestrator -t prereasoner-orchestrator:test .
+terraform -chdir=infra fmt -check
+terraform -chdir=infra validate
+```
+
+If Docker or Terraform is unavailable, say so explicitly. Static parsing and unit tests do not replace an image
+build or Terraform validation.
+
+## Pull Request Evidence
+
+Report:
+
+1. focused tests and counts;
+2. repository runner suites and skips;
+3. deployment-gate status when applicable;
+4. browser checks for frontend changes;
+5. Spider aggregate and per-example deltas for planner changes;
+6. infrastructure checks or unavailable tools.
+
+Do not describe a flaky external lookup as a product regression without rerunning against stable fixtures. Do not
+describe an execution-successful SQL candidate as semantically correct unless its expected result or structure was
+asserted.

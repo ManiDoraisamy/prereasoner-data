@@ -1,4 +1,4 @@
-# The Sonnet orchestrator + the PreReasoner MCP server (mcp-now.md §7).
+# The Sonnet orchestrator + the PreReasoner MCP server (docs/MCP.md).
 #
 # One lean image: the orchestrator HTTP server spawns the MCP server as a stdio subprocess (same image),
 # and the MCP server calls the engine over HTTP (ENGINE_BASE_URL). NO torch/transformers/spaCy here — the
@@ -11,15 +11,18 @@ FROM python:3.11-slim
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
+COPY LICENSE THIRD_PARTY.md /licenses/
 COPY orchestrator/requirements.txt /app/orchestrator/requirements.txt
 RUN pip install --no-cache-dir -r orchestrator/requirements.txt
 
-# engine/ is copied for engine.config / auth / trace (config + Firebase token-verify + the RTDB trace
-# stream); its heavy submodules are never imported here and their deps are intentionally absent.
+# The orchestrator uses only engine.config plus the lightweight auth and trace modules imported by /chat.
+# Copy those modules explicitly so local model weights and the heavy serving implementation cannot accidentally
+# inflate this lean image.
 # mcp_server/ + orchestrator/ are the app. web/ is NOT copied: in production Firebase Hosting serves the
 # static UI and rewrites only /chat + /api to this service, so the container never serves static files
 # (and web/ is excluded from the build upload by .gcloudignore). Local dev serves web/ from the repo tree.
-COPY engine/ /app/engine/
+RUN mkdir -p /app/engine
+COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py /app/engine/
 COPY mcp_server/ /app/mcp_server/
 COPY orchestrator/ /app/orchestrator/
 

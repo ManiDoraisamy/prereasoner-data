@@ -1,41 +1,69 @@
-# Engine tests
+# Test Suites
 
-`python -m tests.test_sql_ast` is the hermetic SQL AST search/ranking suite and needs neither model weights nor
-Postgres. It validates generated SQL by executing it against in-memory SQLite. The remaining engine suites below
-are live integration tests.
+Run commands from the repository root.
 
-These are **live integration tests**: every suite talks to a real world Postgres (pgvector) with the
-`world`/`wikipedia`/`public` schemas populated. The intended harness is the repo's docker-compose Postgres
-plus the `db/sync` pipeline that mirrors the Wikidata world model into it. They are deliberately NOT unit
-tests — they oracle-check the served answers against SQL recomputed from the same live tables.
+## Hermetic Suites
 
-## Prerequisites
+These need no PostgreSQL and no network. Some imported modules still require the Python packages in
+`requirements.txt`.
 
-1. Postgres with pgvector running and synced (docker-compose service + `db/sync`).
-2. Environment (see `.env.example`):
-   - `KB_PG_HOST` / `KB_PG_PORT` / `KB_PG_DB` / `KB_PG_USER` / `KB_PG_PASSWORD` (required — every
-     suite skips or exits early without the password)
-   - `AUTH_TEST_SUB` (optional) — the per-user schema the world tests write bridges into; each suite has its own
-     default test schema.
-   - `GEO_TEST_SUB` (optional) — schema for the geo suite (default `geotest`).
-3. Model data in `engine/data` (see `engine/data/README.md`) — the router/world tests load the trained encoder.
-4. `pip install -r requirements.txt` (+ the spaCy `en_core_web_md` model).
+| Command | Covers |
+|---|---|
+| `python -m tests.test_sql_ast` | Typed AST validation/rendering, search, ranking, execution checks, and failure profiles |
+| `python -m tests.test_routing` | The one shared serving/evaluation route decision |
+| `python -m tests.test_compose` | Composition DAG and explicit world-dependency records |
+| `python -m tests.test_converse` | Reference autofill/presentation parsing with a mocked model stream |
+| `python -m tests.test_master_ingest` | Reference validation, direct/multi-hop selection, caps, and failure disclosure |
+| `python -m tests.test_mcp` | MCP adapter contract |
+| `python -m tests.test_orchestrator` | Orchestrator behavior; skips without `ANTHROPIC_API_KEY` where applicable |
 
-## Running
+The frontend state regression is separate because it runs under Node:
 
-From the repo root:
-
-```
-python -m tests.test_world        # type hierarchy, router, aggregates, population, nearby
-python -m tests.test_geo          # deep geo suite with SQL oracles + concurrency regression
-python -m tests.test_nongeo      # non-geo world join + lazy Wikidata fill (needs outbound network)
-python -m tests.test_world_joins  # join coverage per routable world table
-python -m tests.test_route_wired  # trained model drives live routing end to end
+```powershell
+node web/tests/workbook_reference.test.js
 ```
 
-Notes:
+## Live Engine Suites
 
-- First runs are slow on CPU (the LoRA Qwen + bge + spaCy load takes minutes) and the lazy Wikidata fill
-  performs live WDQS/API calls.
-- `tests.test_geo` intentionally builds a SECOND model instance to reproduce a concurrency deadlock scenario;
-  expect double the load time.
+These require the manifest-pinned runtime artifacts and a seeded PostgreSQL knowledgebase configured through
+`KB_PG_*` variables:
+
+| Command | Covers |
+|---|---|
+| `python -m tests.test_world` | Type hierarchy, routing, aggregates, population, and nearby queries |
+| `python -m tests.test_nongeo` | Non-geo world joins and lazy Wikidata fill; requires outbound network |
+| `python -m tests.test_world_joins` | Join coverage for routable world tables |
+| `python -m tests.test_route_wired` | Trained model driving routing end to end |
+| `python -m tests.test_geo` | Geo SQL oracles and concurrency regression |
+
+First runs can be slow because Qwen, PEFT, sentence-transformers, and spaCy load on CPU. `test_geo` intentionally
+constructs a second model instance for its deadlock regression.
+
+## Repository Runner
+
+```powershell
+python -m tests.run_all
+```
+
+`tests.run_all` always runs the hermetic suites. It adds live engine suites unless `RUN_ENGINE_TESTS=0`. Individual
+live suites may report `SKIP` when prerequisites are absent; review the output rather than treating exit code zero as
+proof that integration ran.
+
+Use this for a deliberate hermetic-only pass:
+
+```powershell
+$env:RUN_ENGINE_TESTS = "0"
+python -m tests.run_all
+```
+
+## Other Gates
+
+```powershell
+python -m compileall -q engine db training tests orchestrator mcp_server
+node --check web/public/lib/workbook.js
+git diff --check
+```
+
+Spider is an evaluation, not a unit suite. Follow [../docs/SQL_AST.md](../docs/SQL_AST.md) and write results only to a
+new provenance-bearing output directory. Do not overwrite committed aggregates without their matching per-example
+records.

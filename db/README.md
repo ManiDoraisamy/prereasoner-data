@@ -1,21 +1,22 @@
-# db/ — the PreReasoner world database
+# Database Bootstrap
 
 Everything needed to bootstrap the Postgres database (`world`) the engine serves
 against, on a **fresh instance** — local Docker or Cloud SQL.
 
-The database holds four kinds of state:
+The database holds five schema families:
 
 | Schema | Contents | Created by | Filled by |
 |---|---|---|---|
 | `public` | raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, `entity_label`) | `init.sql` | `sync/sync_wikidata.py` (bulk) |
-| `world` | serving tables: `"words"` (pgvector entity-resolution index, HNSW), `"types"` (type taxonomy), friendly tables `"Cities"`/`"Countries"`/`"Places"`/`"Elements"`/`"Continents"`/`"States"` + `"... in the World"` views | `init.sql` | `sync/build_world.py`, `sync/build_words.py`, `sync/sync_types.py` |
-| `wikipedia` | qid-keyed faithful Wikidata tables, one per type, named by the **exact Wikidata label** (`knowledgebase."city"`, `knowledgebase."hospital"`, ...) | lazily by the engine (or `sync/mirror_schema.py` + `sync/build_wikipedia.py` up front) | **lazily at query time**, one entity per miss |
-| `"<google-sub>"` | per-user schemas: uploaded CSV tables + the bridge tables `"<t> connected to wikipedia"` / `"<t> unconnected to wikipedia"` | **by the engine at request time** | by the engine |
+| `knowledgebase` | Resolution index, taxonomy, friendly world tables/views, and qid-keyed faithful Wikidata tables named by exact type label | `init.sql` plus sync scripts; entity rows also fill lazily |
+| `chat` | Conversation metadata and verified user-to-conversation ownership | `init.sql` and `engine/conversations.py` |
+| `c_<32hex>` | One authorized conversation's uploads, selected private-reference copies, and world bridges | engine request path |
+| `m_<md5(sub)>` | One verified user's persistent private reference dimensions | `engine/master.py` |
 
 Connection config is env-var only (no hardcoded hosts): `KB_PG_HOST`, `KB_PG_PORT`,
 `KB_PG_DB`, `KB_PG_USER`, `KB_PG_PASSWORD` (+ optional `KB_PG_SSLMODE`,
 default `prefer`). See `sync/_conn.py`. The engine's role needs `CREATE` on the
-database (it creates per-user schemas); the scripts assume the default `postgres` role.
+database (it creates conversation and private-reference schemas); the scripts assume the default `postgres` role.
 
 **Extensions required: `vector` (pgvector) and `pg_trgm`.** Nothing else — geo
 "NEARBY" queries compute haversine distance in plain SQL over `settlement.lat/lng`,
@@ -72,7 +73,8 @@ Cloud SQL (it is granted `cloudsqlsuperuser`).
   time** from live Wikidata whenever an uploaded CSV cell resolves to a qid that
   isn't stored yet. This covers the entire non-geo world (hospitals, software,
   films, ...) and the qid-keyed city/country joins.
-- per-user schemas + upload tables + bridge tables — created per request.
+- conversation schemas, upload/selected-reference tables, and bridge tables — created per request.
+- per-user master schemas and tables — created when authenticated users save references.
 
 **Must be pre-synced (the engine cannot answer without them):**
 
@@ -80,7 +82,7 @@ Cloud SQL (it is granted `cloudsqlsuperuser`).
   ("cities in US", value-membership column routing, the cell bridge) does an exact
   `norm` match and/or an HNSW `<=>` search here. Empty index ⇒ nothing resolves,
   and even the lazy path is gated on words/types lookups.
-- `knowledgebase."types"` — the taxonomy; the lazy sync derives the `wikipedia` table
+- `knowledgebase."types"` — the taxonomy; the lazy sync derives the qid-keyed table
   name for a type from `types.label`, and qid taxonomy walks read it.
 - `public.settlement` (with lat/lng) — the geo NEARBY primitive
   ("big cities near Paris") reads it directly.
@@ -104,7 +106,7 @@ python db/sync/unify_words_qid.py                    # verify the qid walk (opti
 
 That makes the demo paths work: entity resolution ("US"→United States), world joins
 (city→country→continent), aggregates, geo NEARBY (for cities ≥100k), and the lazy
-`wikipedia` fill for anything else.
+qid-keyed entity fill for anything else.
 
 ### Full sync (complete settlement long tail + aliases; several hours of WDQS)
 
@@ -114,7 +116,7 @@ python db/sync/build_world.py
 python db/sync/build_words.py --cities --city-aliases   # ~213k word rows incl. Wikidata aliases ("Bombay"->Mumbai)
 python db/sync/sync_types.py
 python db/sync/mirror_schema.py                      # optional: pre-create knowledgebase."<leaf>" mirror schemas
-python db/sync/build_wikipedia.py                    # optional: pre-create empty qid-PK wikipedia tables
+python db/sync/build_wikipedia.py                    # optional: pre-create empty qid-PK entity tables
 ```
 
 `import_dump.py` is a legacy alternative bulk import from the
@@ -134,6 +136,6 @@ python db/sync/sync_entity.py --qid Q515 --label city --lazy "Kyoto"   # one ent
 |---|---|
 | minimal seed (`--high-only`, words `--cities`) | ~10k settlements, ~40–60k word rows ⇒ **well under 1 GB** incl. HNSW |
 | full sync | ~174k settlements, ~213k word rows (384-dim vectors ≈ 1.5 KB each) ⇒ words table + HNSW index ≈ 1 GB; **~2–3 GB total** |
-| lazy growth | one `wikipedia` row + one `words` row per newly-seen entity; per-user schemas grow with uploads (896-dim vectors in the unconnected bridge) |
+| lazy growth | one qid-keyed entity row + one `words` row per newly seen entity; conversation bridges and private reference schemas grow with use |
 
 A 20 GB disk is comfortable.

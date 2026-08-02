@@ -4,7 +4,7 @@ This is PreReasoner's own-data SQL planner — the single, deterministic path fr
 question over your uploaded tables to executed SQL. The planner searches a bounded space
 of valid SQL abstract syntax trees (ASTs) and ranks them with hand-written, fully
 inspectable features. It does not sample SQL tokens from a decoder, and it uses no trained
-proposer or learned ranker.
+SQL proposer or learned candidate ranker. The frozen encoder contributes similarity features.
 
 ## What it does
 
@@ -20,13 +20,6 @@ Given a question, tables, and foreign keys, the planner:
 The same inputs always produce the same candidate **ordering** — the planner's selection is
 deterministic, which removes sampling variance. It does not remove natural-language ambiguity,
 schema-linking errors, missing search rules, or ranking errors.
-
-> **Caveat — end-to-end byte-identity is not guaranteed.** Deterministic here means the AST
-> planner's *candidate selection* is reproducible. It is **not** a claim that end-to-end serving
-> emits byte-identical SQL across processes: the compose path shows cross-process SQL variance (an
-> external review observed a few differing compose SQLs across two runs under identical model
-> hashes; likely compose-path ordering that would need controlled torch/thread settings to pin).
-> Treat byte-for-byte cross-process reproduction as a known caveat, not a guarantee.
 
 ## Architecture
 
@@ -48,9 +41,10 @@ question + tables + foreign keys
       validated SQL
 ```
 
-Nothing here is trained. The ranking is hand-written and fully inspectable; there is no
-trained proposer and no learned ranker. Every candidate must pass AST validation before it
-can be rendered to SQL.
+AST construction and ranking logic are hand-written and fully inspectable. The frozen trained
+encoder supplies deterministic role and schema similarities, but there is no trained SQL proposer,
+decoder, or learned candidate ranker. Every candidate must pass AST validation before it can be
+rendered to SQL.
 
 ## Public API
 
@@ -118,9 +112,9 @@ The own-data `/api/knowledge` response keeps its existing SQL and result fields 
 `SQLSearcher.search` accepts an optional `profile_config` (`ProfileSearchConfig`,
 `engine/sql_profile_expansion.py`) that turns on **deterministic** exact-profile candidate
 expansion — an extra search knob that widens the candidate pool from structural AST profiles
-(`engine/sql_profile.py`). It is not a proposer: no model is involved, and every expanded
-variant still passes AST validation and is ranked by the same hand-written features. It is a
-kept, purely deterministic knob; serving leaves it off. It is not tied to any reproducible
+(`engine/sql_profile.py`). The expansion algorithm is deterministic and may consume profiles
+supplied through semantic signals; every variant still passes AST validation and is ranked by
+the same named features. Serving leaves this optional knob off. It is not tied to any reproducible
 accuracy gain in the current tree — do not attribute a specific pool-recall number to it.
 
 | Setting | Default | Meaning |
@@ -192,14 +186,15 @@ planner's; no trained proposer or learned ranker is involved.
 
 | Configuration | Strict | Lenient | Scalar-gold |
 |---|---:|---:|---:|
-| **whole_db** — gold-blind, all DB tables fed (standard Spider) | 340/1034 (32.9%) | 437/1034 (42.3%) | 212/408 (52.0%) |
-| **gold_tables** — oracle table selection, only the gold-referenced tables fed | 424/1034 (41.0%) | 544/1034 (52.6%) | 240/408 (58.8%) |
+| **whole_db** — gold-blind, all DB tables fed (standard Spider) | 358/1034 (34.6%) | 451/1034 (43.6%) | 224/408 (54.9%) |
+| **gold_tables** — oracle table selection, last verified before this planner change | 424/1034 (41.0%) | 544/1034 (52.6%) | 240/408 (58.8%) |
 
 The **whole_db** row is the number to compare against other Spider systems: it is gold-blind and
 feeds every table in the database, so it also pays the cost of table selection. The **gold_tables**
 row is an oracle-table-selection configuration that feeds only the tables the gold SQL references;
 this is the closer analogue to the product, where a user uploads exactly the relevant sheets, and it
-is an upper bound relative to standard Spider, not a standard-Spider result.
+is an upper bound relative to standard Spider, not a standard-Spider result. The displayed oracle row
+is from commit `37570f8`; rerun it before claiming a current table-selection gap.
 
 > **Historical note.** Earlier "profile-expansion / pool-recall" experiments (a "pool 180" candidate
 > pool reaching ~55% strict pool-oracle) depended on a trained research **proposer** that has since
@@ -262,5 +257,5 @@ be measured against the current bottlenecks:
 2. Add search rules for examples with no strict-correct candidate in the pool.
 3. Treat larger encoders as controlled capacity experiments after objective and data changes.
 
-Historical Phase 1-6 names remain in evaluator output for ablation compatibility. They are
-not separate runtime architectures and should not drive new module boundaries.
+Search controls and evidence use functional names (`recursive`, `constraint`, and `extrema`) rather
+than historical implementation phases; these capabilities are one planner, not separate architectures.

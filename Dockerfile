@@ -61,6 +61,7 @@ WORKDIR /app
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hf /opt/hf
+COPY LICENSE THIRD_PARTY.md /licenses/
 
 # engine/ includes engine/data/* when the weights exist locally; in a fresh clone only
 # the small committed artifacts (alloc.json, taxonomy.csv, thresholds, word_*.json) come along.

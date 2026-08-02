@@ -1,5 +1,9 @@
 # web/ — frontend notes
 
+> This is a chronological implementation log and older entries describe the UI as it existed on their date.
+> The current contributor contract is [../../web/README.md](../../web/README.md); architecture facts belong in
+> [../ARCHITECTURE.md](../ARCHITECTURE.md).
+
 `web/` is the static Firebase Hosting frontend. It talks to the engine (ONE Cloud Run service,
 `prereasoner-api`) through a single Hosting rewrite `/api/**`, exposing `POST /api/reason`,
 `POST /api/knowledge`, `POST /api/dimension`, `POST /api/converse`, `GET /healthz`. RTDB streaming

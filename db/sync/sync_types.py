@@ -11,8 +11,7 @@ and typically the first run — need no network). resolver_type links the legacy
 words.type strings to their node ('city' -> Q515), which the engine's qid taxonomy walk
 uses (see unify_words_qid.py for the original in-place migration + verification).
 
-Read by the engine: sync-on-demand table naming (knowledgebase."<exact label>"), world17
-_resolve_world_qid, route19 taxonomy walk.
+Read by the engine for lazy table naming, world-QID resolution, and taxonomy routing.
 
 Run (after build_words.py):
   export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py

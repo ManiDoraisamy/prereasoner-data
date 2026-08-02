@@ -1,4 +1,4 @@
-"""Build the friendly `world` tables the SQL planner references, from the raw
+"""Build the friendly knowledgebase tables the SQL planner references, from the raw
 public.* import (run sync_wikidata.py or import_dump.py first):
 
   knowledgebase."Cities"      <- public.settlement  (+ qid, + is_primary = most populous per name)
@@ -10,8 +10,8 @@ public.* import (run sync_wikidata.py or import_dump.py first):
   knowledgebase."Country Aliases" <- curated alias list (legacy; knowledgebase."words" supersedes it)
 
 The tables and their "... in the World" views are created by db/init.sql; this
-script only (re)populates them. Consumed by the engine's planner (query14/15)
-and the composition path (world18 ENTITY_ATTRS), and read by build_words.py to
+script only (re)populates them. Consumed by the typed planner and composition path,
+and read by build_words.py to
 seed the words index.
 
 Run:
@@ -34,7 +34,7 @@ TRUNCATE knowledgebase."Cities", knowledgebase."Countries", knowledgebase."Place
 '''
 
 # one row per settlement; is_primary = 1 where its population is the max for that (lowercased) name;
-# qid carried through so the bridge / world18 can join Cities by the stable key.
+# qid carried through so world grounding can join Cities by the stable key.
 POP_CITIES = '''
 INSERT INTO knowledgebase."Cities" (name, country, population, is_primary, updated_at, source, qid)
 SELECT s.name, COALESCE(s.country, ''), COALESCE(s.population, 0),

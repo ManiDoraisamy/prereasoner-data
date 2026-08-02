@@ -1,6 +1,6 @@
 # The Sonnet orchestrator + the PreReasoner MCP server (they ship in one image; the orchestrator spawns
 # the MCP server as a stdio subprocess). Kept OUT of the engine's requirements.txt so the heavy model
-# image stays lean (mcp-now.md §0.6, §7).
+# image stays lean (docs/MCP.md).
 anthropic>=0.69
 mcp>=1.2
 httpx>=0.27

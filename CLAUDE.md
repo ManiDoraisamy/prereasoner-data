@@ -35,11 +35,14 @@ Extend these owners. Do not build parallel replacements.
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
 | World grounding and knowledge joins | `engine/knowledge_query.py` |
 | Candidate scoring | `engine/sql_rank.py` |
+| Table normalization and canonical planner table names | `engine/tables.py` |
+| Private reference validation, persistence, and request selection | `engine/master.py` |
 | Runtime model loading and overlay | `engine/encoder_overlay.py` |
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |
 | Property-model training pipeline | `training/props/` |
 | Serving-faithful Spider evaluation | `spider/probe/full_eval.py` |
 | Hermetic SQL planner regression suite | `tests/test_sql_ast.py` |
+| Workbook and reference-data browser lifecycle | `web/public/lib/workbook.js` |
 
 The routing decision is `engine/routing.py:route()` — one pure function that both
 `engine/knowledge_compose.py` (serving) and `spider/probe/full_eval.py` (evaluation)
@@ -198,7 +201,7 @@ Minimum validation:
 
 - Planner/search/ranker change: `python -m tests.test_sql_ast`
 - Compose/routing change: `python -m tests.test_compose`
-- General Python change: `python -m compileall -q engine db training tests`
+- General Python change: `python -m compileall -q engine db training tests orchestrator mcp_server`
 - Repository-wide change: `python -m tests.run_all`
 - Spider behavior change: fresh serving-faithful `whole_db` evaluation; add
   `gold_tables` only when the oracle ablation answers a specific question

@@ -4,7 +4,7 @@ Kept separate from the MCP transport (server.py) so it is unit-testable without 
 subprocess: `shape_reason_response(...)` is a pure function over the engine's JSON, and `call_query(...)`
 is the only thing that touches the network.
 
-Contract references (mcp-now.md §0.3, §4.2): the engine's /api/reason body is NOT one fixed shape. We map
+Contract reference (docs/MCP.md): the engine's /api/reason body is NOT one fixed shape. We map
 it to a stable tool output whose `status` is one of "answered" | "clarify" | "error" — a mapping WE
 compute (the engine has no top-level `status` field).
 """
@@ -30,7 +30,7 @@ def _bearer_token() -> str | None:
 
 
 def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> dict[str, Any]:
-    """Map a raw /api/reason response to the stable tool output (mcp-now.md §2, §4.2).
+    """Map a raw /api/reason response to the stable tool output (docs/MCP.md).
 
     Pure function — no I/O — so the full status-mapping matrix is unit-testable.
     """
@@ -112,7 +112,7 @@ def call_describe(tables: list[dict], *, base_url: str | None = None,
                   timeout: float | None = None) -> dict[str, Any]:
     """Per-table coverage hint via the engine's stateless /api/dimension (no auth).
 
-    Honest scope limit (mcp-now.md §2): this reports what the model TYPES each column as, not which cells
+    Honest scope limit (docs/MCP.md): this reports what the model TYPES each column as, not which cells
     actually resolved to world entities. Returns one readout per table.
     """
     base = (base_url or _engine_base_url()).rstrip("/")

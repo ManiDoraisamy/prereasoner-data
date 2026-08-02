@@ -1,4 +1,4 @@
-"""Build knowledgebase."words" — THE pgvector entity-resolution index (engine: query16/world17).
+"""Build knowledgebase."words" — the pgvector entity-resolution index.
 
 Each row is a SURFACE form (a string someone might type) -> its CANONICAL world entity:
   (surface, canonical, type, props, norm, embedding vector(384), qid, canon_country, is_primary)

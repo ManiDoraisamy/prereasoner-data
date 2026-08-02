@@ -1,33 +1,69 @@
 # Contributing
 
-Thanks for your interest in PreReasoner.
+Thanks for improving PreReasoner. Begin with [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md), then read the
+owner for the behavior you intend to change and its tests.
 
-## Development setup
+## Development Principles
 
-1. `cp .env.example .env` and fill in what you need (local dev needs almost nothing).
-2. `docker compose up` — starts Postgres (pgvector, schema auto-applied from `db/init.sql`)
-   and the engine on `http://localhost:8080` with `AUTH_TEST_SUB=localdev` so you can call
-   `/api/reason` without Firebase.
-3. Seed world data (one-time, ~15–45 min): see [db/README.md](db/README.md).
-4. Frontend: see [web/README.md](web/README.md) (Firebase emulators).
+- Extend the existing production owner; do not add a competing planner, router, evaluator, endpoint, or model bundle.
+- Keep the typed AST as the only own-data SQL representation.
+- Keep routing in `engine.routing.route()` and FK discovery in `engine.relations.discover_fks()`.
+- Preserve deterministic ordering and explicit tie-breakers.
+- Treat execution success as validity, not proof of semantic correctness.
+- Add a regression test that fails for the observed reason.
+- Keep configuration in `engine/config.py` and `.env.example`; never commit hosts, credentials, tokens, or user data.
+- Do not commit generated Spider checkpoints or model experiments as source changes.
 
-## Tests
+The detailed machine-agent rules in [CLAUDE.md](CLAUDE.md) express the same ownership and validation discipline.
 
-`tests/` are end-to-end suites that need the seeded Postgres from step 3:
+## Setup
 
-```
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python -m tests.test_geo        # etc. — see tests/README.md
+Copy-Item .env.example .env
 ```
 
-CI runs compile/syntax checks on every PR; the live suites are run manually until a seeded
-database is available in CI.
+Use Docker Compose for PostgreSQL and the engine, or follow the native setup in
+[docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). Runtime weights are described in
+[engine/data/README.md](engine/data/README.md).
 
-## Guidelines
+## Test Matrix
 
-- No version-numbered names (modules, classes, endpoints, artifacts) — names describe function.
-- Configuration goes through `engine/config.py` and `.env.example`; never hardcode hosts, URLs,
-  or credentials.
-- `engine/auth.py` is security-critical: changes to it get extra scrutiny and must not weaken
-  the verified-subject → schema derivation.
-- Keep [DECISIONS.md](DECISIONS.md) current when you change something structural.
+| Change | Required checks |
+|---|---|
+| Python-only utility | focused tests and `python -m compileall -q engine db training tests orchestrator mcp_server` |
+| Planner/search/ranker | `python -m tests.test_sql_ast` |
+| Routing/compose | `python -m tests.test_routing` and `python -m tests.test_compose` |
+| Saved references | `python -m tests.test_master_ingest` |
+| Workbook frontend | `node --check web/public/lib/workbook.js` and `node web/tests/workbook_reference.test.js` |
+| Repository-wide | `python -m tests.run_all` and `git diff --check` |
+| Planner behavior measured on Spider | fresh serving-faithful `whole_db` evaluation with provenance |
+
+Live suites require model artifacts and a seeded PostgreSQL database. A skipped suite is not a pass; state skips and
+their missing prerequisites in the pull request.
+
+## Pull Requests
+
+Describe:
+
+1. the failure or capability being addressed;
+2. the production owner changed;
+3. the behavioral invariant preserved;
+4. exact test counts and any skips;
+5. benchmark deltas when planner behavior changed;
+6. migration or rollback steps for schema, model, or deployment changes.
+
+Keep structural decisions in [DECISIONS.md](DECISIONS.md), architecture facts in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), and measured SQL results in
+[spider/results/RESULTS.md](spider/results/RESULTS.md).
+
+## Security And Data
+
+Authentication always derives the user from a verified Firebase token. Client-provided user ids must never select a
+schema. Conversation ids require ownership checks. Reference table and column names must pass the validated quoting
+path in `engine/master.py`.
+
+Use synthetic fixtures in tests. Do not commit conversation snapshots, uploaded customer data, database dumps,
+credentials, or production evaluation checkpoints containing sensitive content.

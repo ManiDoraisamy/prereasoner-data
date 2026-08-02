@@ -1,128 +1,86 @@
-# PreReasoner — web frontend
+# Web Frontend
 
-The static web UI for PreReasoner: attach a spreadsheet (CSV / Excel / Google Sheets), ask a
-question in plain language, and read the answer as a **workbook** — your tables and every
-reasoning step shown as spreadsheet tabs, with a chat rail for follow-ups. Every intermediate
-table is real, computed data, not generated text.
+`web/` is a static Firebase Hosting application with no bundler or framework. It presents uploaded data, references,
+SQL derivations, and results as a workbook with a conversational rail.
 
-It is plain HTML/CSS/JS (no build step, no framework) served by **Firebase Hosting**, with:
+## Runtime Shape
 
-- **Auth**: Firebase Authentication (Google sign-in, same-tab redirect).
-- **Engine**: one Cloud Run service (`prereasoner-api`) reached via the Hosting rewrite
-  `/api/**` → Cloud Run. Endpoints the pages use: `POST /api/reason`, `POST /api/knowledge`, and the
-  conversation endpoints `GET /api/conversations` / `GET /api/conversation` (plus `GET` pings to
-  pre-warm the scale-to-zero service, and `GET /healthz`).
-- **Live trace**: Firebase Realtime Database. The engine streams the reasoning trace to
-  `/runs/{uid}/{jobId}`; the workbook subscribes and adds sheets live as they're produced,
-  decoupled from the 60s HTTP proxy timeout. A signed-in user can read only their own runs
-  (`database.rules.json`).
+- `reason.html` and `knowledge.html` load the same classic script, `public/lib/workbook.js`.
+- Firebase Authentication supplies the ID token used by authenticated engine routes.
+- Hosting rewrites `/api/**` to the engine and `/chat` to the optional orchestrator.
+- Firebase Realtime Database can stream trace nodes under `/runs/{uid}/{jobId}`. When RTDB is unavailable, the
+  completed HTTP response renders the same result.
+- Conversation snapshots preserve the visible workbook and rail without re-running a query on reload.
 
-## The workbook
+## Workbook Sheet Types
 
-`reason.html` and `knowledge.html` are the same **workbook**, differing only in which engine endpoint
-they call. Its logic is one shared module, `lib/workbook.js`:
+| Class | Meaning | Editable |
+|---|---|---|
+| `input` | User-uploaded source table | Yes; changes require recalculation |
+| `master` | User-owned reusable reference table | Yes; dirty changes are saved before a query |
+| `ref` | Public world lookup materialized by the engine | No |
+| `deriv` | SQL reasoning step or result | No |
 
-- The left side is the spreadsheet — a sheet with a Google-Sheets-style bottom tab bar. Sheets are
-  colour-coded: **green** = your uploaded tables (read-only; the AI never writes here), **blue** =
-  one per reasoning step (named for what it does, with a per-sheet SQL disclosure), **grey** = the
-  world-knowledge lookups a step used.
-- The right side is the **chat**: your question, the live status, links to each step, the result,
-  and a follow-up box. A follow-up re-runs over the same tables in the same conversation.
-- The header shows the conversation's opening question; the ☰ menu opens the **conversations
-  drawer** (past conversations from `GET /api/conversations`, re-openable — each re-hydrates its
-  stored tables). A conversation's `conversation_id` round-trips in `sessionStorage` and on every
-  request, so follow-ups continue it (see [../docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) §8).
+The browser request sends uploaded source tables. Saved references are authenticated server data: the browser saves
+dirty reference sheets through `/api/master`, then `engine.master.relevant_tables` selects the references connected
+to the current upload. A save failure stops the query, preventing an answer from using stale reference values.
 
-## Page map
+Reference actions have distinct meanings:
 
-```
-index.html   home: attach data (+ Add data -> Excel/CSV file picker, or sheets.html), type a question
-   ├─> sheets.html   Google Sheets import (drive.file scope + Picker) — returns to home with the sheet attached
-   └─> reason.html   the workbook on POST /api/reason (sign-in happens here as a redirect)
-          │
-          └─> knowledge.html    the same workbook on POST /api/knowledge (world-knowledge joins)
-404.html     Firebase default not-found page
-```
+- **Remove from workbook** hides the sheet in this conversation and keeps it available under `+ Reference`.
+- **Delete saved reference** calls `/api/master/delete`, removes the cross-conversation copy, and cannot be undone.
 
-When the engine is unsure (a clarify) or the message isn't a data query at all (low_confidence),
-the workbook answers **in the chat rail** via the conversational layer (`POST /api/converse`,
-Sonnet) — it does not navigate to a separate page. See the engine's [ARCHITECTURE §10](../docs/ARCHITECTURE.md#10-the-conversational-layer-sonnet).
+Dirty state and AI-cell provenance survive conversation snapshot reloads. The first reference column is the join key;
+the engine requires non-empty, unique keys and unique column names.
 
-Shared code lives in `public/lib/`:
+## Page Map
 
-| file | contents |
+| Page | Purpose |
 |---|---|
-| `lib/config.js` | Firebase web config + Picker credentials — the ONE place self-hosters edit (all values are public client identifiers, not secrets) |
-| `lib/shared.js` | `esc`, `parseCSV`, `slug`, `sqlTokens`, op labels, sessionStorage keys (`SS.*`), UI constants, `API_BASE` |
-| `lib/firebase-init.js` | Firebase app/auth/RTDB init, `ensureSignedIn()`, `window.ensureToken`, `window.subscribeRun` |
-| `lib/workbook.js` | the workbook itself — sheets, tabs, the chat rail, conversations, and the streaming/fallback run logic |
-| `lib/table-render.js` | `tableBubble()` — a standalone table renderer (used by the regression harness) |
+| `index.html` | Attach CSV/Excel/Google Sheets data and begin a question |
+| `reason.html` | Workbook over the general reason endpoint |
+| `knowledge.html` | Same workbook over the knowledge endpoint |
+| `chatui.html` | Orchestrated conversational entry point |
+| `sheets.html` | Google Sheets picker/import flow |
+| `admin.html` | Allowlisted operational view |
 
-`lib/config.js` and `lib/firebase-init.js` are ES modules (imported by the pages'
-`<script type="module">` blocks); `lib/shared.js` and `lib/workbook.js` are classic scripts loaded
-via `<script src>` **before** the module block calls `run()`.
+`public/lib/shared.js` owns common storage, escaping, CSV parsing, and navigation helpers. `workbook.js` owns workbook
+state, rendering, editing, reference lifecycle, conversation restoration, trace subscription, and request submission.
+`public/lib/firebase-init.js` bridges Firebase module APIs into the classic page scripts.
 
-## Self-hosting checklist
+## Local Development
 
-1. Create a Firebase project with **Authentication (Google provider)** and a
-   **Realtime Database** instance; create a Web App and copy its SDK config into
-   `public/lib/config.js`.
-2. Deploy the PreReasoner engine to Cloud Run **in the same Google Cloud project**, service
-   name `prereasoner-api` (or edit `serviceId`/`region` in `firebase.json`).
-3. For the Google Sheets import (`sheets.html`): create a browser API key restricted to your
-   domain with the Picker, Sheets and Drive APIs enabled, and put it plus your numeric project
-   number in `public/lib/config.js` (`PICKER_API_KEY` / `PICKER_APP_ID`).
-4. Bind the directory to your project — this repo intentionally ships no `.firebaserc`:
+Start the engine first, then serve Hosting:
 
-   ```sh
-   cd web
-   firebase use <your-project-id>
-   ```
-
-## Local development
-
-```sh
-npm i -g firebase-tools
-cd web
-firebase use <your-project-id>
-firebase emulators:start        # hosting :5000, auth :9099, database :9000, emulator UI
+```powershell
+npm install --global firebase-tools
+Set-Location web
+firebase serve --only hosting --project <firebase-project> --port 5057
 ```
 
-Notes on what the emulator does and does not give you — honestly:
+For localhost-only testing, set:
 
-- **Pages, auth, RTDB** run locally.
-- **`/api/**` rewrites are proxied to the real, deployed Cloud Run service** in the project you
-  selected with `firebase use`. The hosting emulator cannot proxy a `run:` rewrite to localhost.
-- **To point the pages at a locally running engine**, run once in the browser console:
-  ```js
-  localStorage.setItem('pr_api_base', 'http://localhost:8080')
-  ```
-  Every page then calls `http://localhost:8080/api/...` directly (the engine sends permissive
-  CORS). `localStorage.removeItem('pr_api_base')` returns to the same-origin rewrite.
-- **To skip Google sign-in entirely** (works on `localhost` only), run the engine with
-  `AUTH_TEST_SUB=localdev` and set in the browser console:
-  ```js
-  sessionStorage.setItem('pr_test_auth', '1')
-  ```
-  The pages then send a dummy bearer token that the engine accepts without verification.
-  Both toggles together give a fully local, no-Google, no-deploy test loop — see
-  [docs/TESTING.md](../docs/TESTING.md) for the end-to-end recipe.
-- Sign-in against the **production** Google identity works on `localhost` only if `localhost`
-  is in the Firebase Auth authorized domains (it is by default for new projects).
-
-## Regression test
-
-`tests/regression.js` is an auto-generated, browser-console regression suite (the generator
-lives in the training/tools area of the model repo). To run: open the site, go to `/reason` so
-you are signed in, paste the whole file into the devtools console, then `await runRegression()`.
-It asserts final answers (row counts / first cell) against `/api/reason`. It is outside
-`public/` on purpose — it is not deployed.
-
-## Deploy
-
-```sh
-cd web
-firebase use <your-project-id>
-firebase deploy                       # hosting + database rules
-# or: firebase deploy --only hosting
+```js
+localStorage.setItem('pr_api_base', 'http://localhost:8080');
+sessionStorage.setItem('pr_test_auth', '1');
 ```
+
+Open `http://localhost:5057`. `pr_test_auth` is a local browser convenience and must be paired with the engine's
+development-only `AUTH_TEST_SUB`; neither is valid production authentication.
+
+## Validation
+
+```powershell
+Get-ChildItem public/lib/*.js | ForEach-Object { node --check $_.FullName }
+node tests/workbook_reference.test.js
+```
+
+`tests/workbook_reference.test.js` evaluates the production classic script in a minimal VM and verifies reference
+row compaction, numeric zero preservation, dirty/provenance snapshot state, successful autosave, and surfaced save
+errors. `tests/regression.js` is the larger signed-in browser regression against a live `/api/reason` endpoint.
+
+## Deployment
+
+`firebase.json` is the source of truth for Hosting rewrites. Deploying static files and deploying the Cloud Run
+engine are separate operations. Do not point production Hosting at an unverified engine revision; validate the tagged
+revision first, then update traffic and Hosting deliberately.

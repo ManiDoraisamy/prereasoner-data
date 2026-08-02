@@ -185,7 +185,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                     built = _candidate(
                         transformed,
                         58.0 + target.score + where_bonus - 0.2 * len(query.joins),
-                        candidate.evidence + ("phase5:row-superlative",),
+                        candidate.evidence + ("extrema:row-superlative",),
                     )
                     if built is not None:
                         out.append(built)
@@ -244,7 +244,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             direct = _candidate(
                 SelectQuery(select, source),
                 66.0,
-                ("phase5:dual-extrema",),
+                ("extrema:dual-extrema",),
             )
             if direct is not None:
                 out.append(direct)
@@ -273,7 +273,7 @@ class ExtremaQueryExpander(ExpansionSupport):
             built = _candidate(
                 transformed,
                 68.0 + min(2.0, 0.25 * len(terms)) - 0.2 * len(query.joins),
-                candidate.evidence + ("phase5:dual-extrema",),
+                candidate.evidence + ("extrema:dual-extrema",),
             )
             if built is not None:
                 out.append(built)
@@ -345,7 +345,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                         query,
                         64.0 + target.score + 0.75 * len(projection)
                         + min(2.0, float(len(categorical))) - 0.2 * len(tree.joins),
-                        ("phase5:row-superlative:direct",),
+                        ("extrema:row-superlative:direct",),
                     )
                     if built is not None:
                         out.append(built)
@@ -461,7 +461,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                                 60.0 + entity_score + relation_score + structure_score
                                 + where_bonus + 1.5 * max(0, len(projection) - 1)
                                 - 0.25 * projection_index - 0.2 * len(joins),
-                                ("phase5:frequency-superlative",),
+                                ("extrema:frequency-superlative",),
                             )
                             if built is not None:
                                 out.append(built)
@@ -517,7 +517,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                         built = _candidate(
                             SetQuery(left, "EXCEPT", right),
                             51.0 + entity_score + relation_score + structure_score,
-                            ("phase5:set-except",),
+                            ("extrema:set-except",),
                         )
                         if built is not None:
                             out.append(built)

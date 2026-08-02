@@ -1,5 +1,5 @@
 """
-gen20 — the TRAINED-MODEL route gate. Proves the OBJECTIVE that the SERVED model (router: qwen_lora + RelBlock +
+The trained-model route gate. Proves that the served model (router: qwen_lora + RelBlock +
 route_thresholds.json), NOT the ridge probe, types world columns correctly. validate_data.py only checks the ridge-probe
 artifacts + data cleanliness; this checks the artifacts router actually serves.
 
@@ -34,7 +34,7 @@ _WTYPE = {"city": "city", "country": "country", "u_s_state": "state"}        # l
 
 def _try_conn():
     """world DB for grounding, or None (then the gate is router-ALONE — looser, since grounding is what rejects a
-    name column the city dim loosely fires on). The DEPLOYED world path ALWAYS grounds (world17._grounds, spec item 3),
+    name column the city dim loosely fires on). The deployed world path always grounds (`KnowledgeQuery._grounds`),
     so when the DB is reachable we test THAT (the real served path), not router in isolation."""
     import os
     if not os.environ.get("KB_PG_PASSWORD"):
@@ -52,7 +52,7 @@ def _try_conn():
 
 
 def _grounds(cells, leaf, cur):
-    """spec item 3, mirrors world17._grounds: >=80% of cells are real `leaf` entities in knowledgebase."words". A loose
+    """Mirror `KnowledgeQuery._grounds`: >=80% of cells are real `leaf` entities in knowledgebase."words". A loose
     city-fire on a name column is dropped here (names don't ground)."""
     from training.lib.embedder import normalize_surface
     wtype = _WTYPE.get(leaf)
@@ -67,7 +67,7 @@ def _grounds(cells, leaf, cur):
 
 def _route(r, col, cur):
     """the DEPLOYED decision: router types the column, then (if a DB is present) grounding confirms — exactly the
-    world17 path. cur=None -> router-alone."""
+    production path. cur=None -> router-alone."""
     o = r.route(col, header=None, world_only=True)
     if not o:
         return None

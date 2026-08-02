@@ -239,9 +239,9 @@ def test_shared_table_words_do_not_collapse_distinct_projection_mentions():
     searcher = SQLSearcher.from_tables([documents], [], max_candidates=180)
     candidates = searcher.search(
         "What are the ids, names, and descriptions for all documents?",
-        phase3=False,
-        phase4=False,
-        phase5=False,
+        expand_recursive=False,
+        expand_constraints=False,
+        expand_extrema=False,
     )
     expected = (
         'SELECT "Documents"."Document_ID", "Documents"."Document_Name", '
@@ -394,6 +394,12 @@ def test_repeated_count_paraphrase_is_one_aggregate():
     assert execute([PEOPLE], candidate.sql) == [(2,)]
 
 
+def test_total_number_of_entities_is_a_scalar_count():
+    candidate = best("What is the total number of people?", [PEOPLE])
+    assert candidate.sql == 'SELECT COUNT(*) FROM "people"'
+    assert execute([PEOPLE], candidate.sql) == [(3,)]
+
+
 def test_number_used_as_a_column_label_is_not_a_count_request():
     pit_stops = {
         "name": "pitStops",
@@ -404,19 +410,131 @@ def test_number_used_as_a_column_label_is_not_a_count_request():
     question = "Find the driver id and stop number of all drivers."
     assert analyze_question(question, searcher.schema).count_requested is False
     ranked = searcher.search(
-        question, phase2=False, phase3=False, phase4=False, phase5=False,
+        question, rank_candidates=False, expand_recursive=False,
+        expand_constraints=False, expand_extrema=False,
     )
     assert ranked
     assert "COUNT(" not in ranked[0].sql
 
 
-def test_phase2_ranks_count_distinct_above_grouped_count():
+def test_abbreviated_number_column_is_not_a_count_request():
+    flights = {
+        "name": "flights",
+        "columns": ["FlightNo", "SourceAirport"],
+        "rows": [[101, "APG"], [202, "LAX"]],
+    }
+    candidate = best("Give the flight numbers of flights leaving from APG", [flights])
+    assert candidate.sql == (
+        'SELECT "flights"."FlightNo" FROM "flights" '
+        'WHERE "flights"."SourceAirport" = \'APG\''
+    )
+    assert execute([flights], candidate.sql) == [(101,)]
+
+
+def test_travel_direction_disambiguates_parallel_airport_foreign_keys():
+    airports = {
+        "name": "airports",
+        "columns": ["AirportCode"],
+        "rows": [["APG"], ["LAX"]],
+    }
+    flights = {
+        "name": "flights",
+        "columns": ["FlightNo", "SourceAirport", "DestAirport"],
+        "rows": [[101, "APG", "LAX"], [202, "LAX", "APG"]],
+    }
+    fks = [
+        {"from_table": "flights", "from_col": "SourceAirport",
+         "to_table": "airports", "to_col": "AirportCode"},
+        {"from_table": "flights", "from_col": "DestAirport",
+         "to_table": "airports", "to_col": "AirportCode"},
+    ]
+    leaving = best("Give the flight numbers of flights leaving from APG", [airports, flights], fks)
+    landing = best("Give the flight numbers of flights landing at APG", [airports, flights], fks)
+    count = best("Return the number of flights", [airports, flights], fks)
+    airport_count = best("Return the number of airports", [airports, flights], fks)
+    assert '"flights"."SourceAirport"' in leaving.sql
+    assert '"flights"."DestAirport"' not in leaving.sql
+    assert '"flights"."DestAirport"' in landing.sql
+    assert '"flights"."SourceAirport"' not in landing.sql
+    assert execute([airports, flights], leaving.sql) == [(101,)]
+    assert execute([airports, flights], landing.sql) == [(202,)]
+    assert count.sql == 'SELECT COUNT(*) FROM "flights"'
+    assert execute([airports, flights], count.sql) == [(2,)]
+    assert airport_count.sql == 'SELECT COUNT(*) FROM "airports"'
+    assert execute([airports, flights], airport_count.sql) == [(2,)]
+
+
+def test_scalar_count_keeps_qualified_one_letter_category_filter():
+    matches = {
+        "name": "matches",
+        "columns": ["winner_name", "winner_hand", "tourney_name"],
+        "rows": [
+            ["Alice", "L", "WTA Championships"],
+            ["Alice", "L", "WTA Championships"],
+            ["Beth", "R", "WTA Championships"],
+            ["Cara", "L", "Other"],
+        ],
+    }
+    candidate = best(
+        "Find the number of left handed winners who participated in the WTA Championships",
+        [matches],
+    )
+    assert '"matches"."winner_hand" = \'L\'' in candidate.sql
+    assert 'COUNT(DISTINCT "matches"."winner_name")' in candidate.sql
+    assert "GROUP BY" not in candidate.sql
+    assert execute([matches], candidate.sql) == [(1,)]
+
+
+def test_counted_table_beats_related_column_with_same_entity_word():
+    documents = {
+        "name": "Documents",
+        "columns": ["Document_ID", "Template_ID"],
+        "rows": [[1, 10], [2, 10], [3, 20]],
+    }
+    templates = {
+        "name": "Templates",
+        "columns": ["Template_ID", "Template_Type_Code"],
+        "rows": [[10, "PPT"], [20, "PDF"]],
+    }
+    paragraphs = {
+        "name": "Paragraphs",
+        "columns": ["Paragraph_ID", "Document_ID"],
+        "rows": [[100, 1], [101, 1], [102, 2]],
+    }
+    fks = [
+        {"from_table": "Documents", "from_col": "Template_ID",
+         "to_table": "Templates", "to_col": "Template_ID"},
+        {"from_table": "Paragraphs", "from_col": "Document_ID",
+         "to_table": "Documents", "to_col": "Document_ID"},
+    ]
+    candidate = best(
+        "How many documents are using the template with type code PPT?",
+        [documents, templates, paragraphs],
+        fks,
+    )
+    assert 'COUNT("Documents".' in candidate.sql
+    assert 'JOIN "Paragraphs"' not in candidate.sql
+    assert execute([documents, templates, paragraphs], candidate.sql) == [(2,)]
+
+
+def test_arbitrary_word_does_not_become_a_category_initial_filter():
+    records = {
+        "name": "records",
+        "columns": ["status"],
+        "rows": [["A"], ["I"]],
+    }
+    candidate = best("List all statuses", [records])
+    assert "WHERE" not in candidate.sql
+    assert set(execute([records], candidate.sql)) == {("A",), ("I",)}
+
+
+def test_ranker_prefers_count_distinct_over_grouped_count():
     candidate = best("Find the number of distinct type of pets", [PETS])
     assert candidate.sql == 'SELECT COUNT(DISTINCT "Pets"."PetType") FROM "Pets"'
     assert execute([PETS], candidate.sql) == [(2,)]
 
 
-def test_phase2_coordinates_multiple_aggregate_operands():
+def test_ranker_coordinates_multiple_aggregate_operands():
     candidate = best("Find the average and maximum age for each type of pet", [PETS])
     assert 'AVG("Pets"."pet_age")' in candidate.sql
     assert 'MAX("Pets"."pet_age")' in candidate.sql
@@ -496,7 +614,8 @@ def test_profile_beam_expands_missing_projection_binding():
         (profile_query(target).sketch_map,),
     )
     candidates = SQLSearcher(schema, max_candidates=25).search(
-        "show people details", semantic_signals=signals, phase3=False, phase4=False, phase5=False,
+        "show people details", semantic_signals=signals, expand_recursive=False,
+        expand_constraints=False, expand_extrema=False,
         profile_config=ProfileSearchConfig(),
     )
     assert any(candidate.query == target for candidate in candidates)
@@ -525,7 +644,8 @@ def test_profile_beam_instantiates_grouped_frequency_shape():
         (profile,),
     )
     candidates = SQLSearcher(schema, max_candidates=40).search(
-        "show people details", semantic_signals=signals, phase3=False, phase4=False, phase5=False,
+        "show people details", semantic_signals=signals, expand_recursive=False,
+        expand_constraints=False, expand_extrema=False,
         profile_config=ProfileSearchConfig(),
     )
     expanded = [candidate for candidate in candidates if "profile-expand:1" in candidate.evidence]
@@ -700,21 +820,21 @@ def test_recursive_ast_set_query_in_derived_table_executes():
     assert execute([PEOPLE], render_query(query)) == [(1,)]
 
 
-def test_phase3_searches_scalar_average():
+def test_recursive_expansion_searches_scalar_average():
     candidate = best("Show names of people older than the average age", [PEOPLE])
     assert "(SELECT AVG(" in candidate.sql
     assert execute([PEOPLE], candidate.sql) == [("Cara",)]
 
 
-def test_phase3_searches_anti_membership():
+def test_recursive_expansion_searches_anti_membership():
     candidate = SQLSearcher.from_tables([STADIUM, CONCERT], STADIUM_FKS).search(
-        "Show the stadium names without any concert", phase5=False
+        "Show the stadium names without any concert", expand_extrema=False
     )[0]
     assert " NOT IN (SELECT " in candidate.sql
     assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
 
 
-def test_phase3_searches_route_self_join():
+def test_recursive_expansion_searches_route_self_join():
     candidate = best(
         "How many flights depart from City Aberdeen and have destination City Ashley?",
         [AIRPORTS, FLIGHTS],
@@ -725,7 +845,7 @@ def test_phase3_searches_route_self_join():
     assert execute([AIRPORTS, FLIGHTS], candidate.sql) == [(1,)]
 
 
-def test_phase3_searches_nested_count_aggregate():
+def test_recursive_expansion_searches_nested_count_aggregate():
     students = {
         "name": "students",
         "columns": ["Student_ID", "Name"],
@@ -747,7 +867,7 @@ def test_phase3_searches_nested_count_aggregate():
     assert execute([students, pets], candidate.sql) == [(1.0,)]
 
 
-def test_phase3_set_expansion_keeps_every_categorical_alternative():
+def test_recursive_set_expansion_keeps_every_categorical_alternative():
     people = {
         "name": "people",
         "columns": ["Name", "Country"],
@@ -755,8 +875,8 @@ def test_phase3_set_expansion_keeps_every_categorical_alternative():
     }
     candidates = SQLSearcher.from_tables([people], [], max_candidates=80).search(
         "List people in France, Spain, or Italy",
-        phase4=False,
-        phase5=False,
+        expand_constraints=False,
+        expand_extrema=False,
     )
     candidate = next(candidate for candidate in candidates if " UNION " in candidate.sql)
     assert candidate.sql.count("SELECT") == 3
@@ -765,7 +885,7 @@ def test_phase3_set_expansion_keeps_every_categorical_alternative():
     assert execute([people], candidate.sql) == [("A",), ("B",), ("C",)]
 
 
-def test_phase4_searches_cross_table_count_having():
+def test_constraint_expansion_searches_cross_table_count_having():
     candidate = best(
         "Show stadium names that have more than one concert",
         [STADIUM, CONCERT],
@@ -776,14 +896,14 @@ def test_phase4_searches_cross_table_count_having():
     assert execute([STADIUM, CONCERT], candidate.sql) == [("Alpha",)]
 
 
-def test_phase4_searches_single_table_count_having():
+def test_constraint_expansion_searches_single_table_count_having():
     candidate = best("List countries having at least two people", [PEOPLE])
     assert 'GROUP BY "people"."Country"' in candidate.sql
     assert "HAVING COUNT(*) >= 2" in candidate.sql
     assert execute([PEOPLE], candidate.sql) == [("France",)]
 
 
-def test_phase4_searches_disjunction():
+def test_constraint_expansion_searches_disjunction():
     candidate = best(
         "How many people are from France or have age greater than 35?",
         [PEOPLE],
@@ -792,7 +912,7 @@ def test_phase4_searches_disjunction():
     assert execute([PEOPLE], candidate.sql) == [(3,)]
 
 
-def test_phase4_disjoins_every_repeated_column_group():
+def test_constraint_expansion_disjoins_every_repeated_column_group():
     people = {
         "name": "people",
         "columns": ["Name", "Country", "Job"],
@@ -813,7 +933,7 @@ def test_phase4_disjoins_every_repeated_column_group():
     assert all(" UNION " not in item.sql for item in candidates)
 
 
-def test_phase4_disjunction_deduplicates_entities_across_relation():
+def test_constraint_disjunction_deduplicates_entities_across_relation():
     customers = {
         "name": "customers",
         "columns": ["Customer_ID", "Name"],
@@ -832,7 +952,7 @@ def test_phase4_disjunction_deduplicates_entities_across_relation():
     assert execute([customers, orders], candidate.sql) == [("Alice",)]
 
 
-def test_phase4_disjunction_preserves_shared_official_filter():
+def test_constraint_disjunction_preserves_shared_official_filter():
     countries = {
         "name": "country",
         "columns": ["Code", "Name"],
@@ -855,7 +975,7 @@ def test_phase4_disjunction_preserves_shared_official_filter():
     assert execute([countries, languages], candidate.sql) == [("Alpha",), ("Beta",)]
 
 
-def test_phase4_searches_filtered_scalar_minimum():
+def test_constraint_expansion_searches_filtered_scalar_minimum():
     cars = {
         "name": "cars_data",
         "columns": ["Id", "Horsepower", "Cylinders"],
@@ -881,7 +1001,7 @@ def test_phase4_searches_filtered_scalar_minimum():
     assert execute([cars, names], candidate.sql) == [(2, "B")]
 
 
-def test_phase4_keeps_grouped_superlative_as_aggregate():
+def test_constraint_expansion_keeps_grouped_superlative_as_aggregate():
     candidate = best("What is the maximum age for all the different countries?", [PEOPLE])
     assert 'MAX("people"."Age")' in candidate.sql
     assert 'GROUP BY "people"."Country"' in candidate.sql
@@ -889,7 +1009,7 @@ def test_phase4_keeps_grouped_superlative_as_aggregate():
     assert execute([PEOPLE], candidate.sql) == [("France", 30), ("Spain", 40)]
 
 
-def test_phase4_infers_high_confidence_missing_entity_fk():
+def test_constraint_expansion_infers_high_confidence_missing_entity_fk():
     airlines = {
         "name": "airlines",
         "columns": ["uid", "Airline"],
@@ -905,23 +1025,28 @@ def test_phase4_infers_high_confidence_missing_entity_fk():
     assert execute([airlines, flights], candidate.sql) == [("A",)]
 
 
-def test_phase4_can_be_disabled_without_contaminating_phase3():
+def test_constraint_expansion_can_be_disabled_without_affecting_recursive_expansion():
     searcher = SQLSearcher.from_tables([STADIUM, CONCERT], STADIUM_FKS)
     question = "Show stadium names that have more than one concert"
-    phase3 = searcher.search(question, phase3=True, phase4=False, phase5=False)
-    phase4 = searcher.search(question, phase3=True, phase4=True, phase5=False)
-    assert all("phase4:" not in evidence for candidate in phase3 for evidence in candidate.evidence)
-    assert " HAVING " not in phase3[0].sql
-    assert " HAVING " in phase4[0].sql
+    recursive_only = searcher.search(
+        question, expand_recursive=True, expand_constraints=False, expand_extrema=False,
+    )
+    constrained = searcher.search(
+        question, expand_recursive=True, expand_constraints=True, expand_extrema=False,
+    )
+    assert all("constraint:" not in evidence
+               for candidate in recursive_only for evidence in candidate.evidence)
+    assert " HAVING " not in recursive_only[0].sql
+    assert " HAVING " in constrained[0].sql
 
 
-def test_phase5_searches_row_superlative():
+def test_extrema_expansion_searches_row_superlative():
     candidate = best("Show the name and country of the youngest person", [PEOPLE])
     assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 1')
     assert execute([PEOPLE], candidate.sql) == [("Bob", "France")]
 
 
-def test_phase5_preserves_filter_on_row_superlative():
+def test_extrema_expansion_preserves_filter_on_row_superlative():
     candidate = best(
         "For people from France, show the name of the oldest person",
         [PEOPLE],
@@ -931,13 +1056,13 @@ def test_phase5_preserves_filter_on_row_superlative():
     assert execute([PEOPLE], candidate.sql) == [("Alice",)]
 
 
-def test_phase5_searches_explicit_top_n():
+def test_extrema_expansion_searches_explicit_top_n():
     candidate = best("Show the 2 youngest people names", [PEOPLE])
     assert candidate.sql.endswith('ORDER BY "people"."Age" ASC LIMIT 2')
     assert execute([PEOPLE], candidate.sql) == [("Bob",), ("Alice",)]
 
 
-def test_phase5_distinguishes_limit_token_from_equal_filter_value():
+def test_extrema_expansion_distinguishes_limit_token_from_equal_filter_value():
     cars = {
         "name": "cars",
         "columns": ["Name", "Doors", "Price"],
@@ -954,14 +1079,14 @@ def test_phase5_distinguishes_limit_token_from_equal_filter_value():
     assert execute([cars], candidate.sql) == [(300,), (200,)]
 
 
-def test_phase5_searches_frequency_superlative():
+def test_extrema_expansion_searches_frequency_superlative():
     candidate = best("Which country has the most people?", [PEOPLE])
     assert 'GROUP BY "people"."Country"' in candidate.sql
     assert candidate.sql.endswith("ORDER BY COUNT(*) DESC LIMIT 1")
     assert execute([PEOPLE], candidate.sql) == [("France",)]
 
 
-def test_phase5_frequency_superlative_can_return_count():
+def test_extrema_frequency_superlative_can_return_count():
     candidate = best(
         "List the country with the most people and how many people it has",
         [PEOPLE],
@@ -970,7 +1095,7 @@ def test_phase5_frequency_superlative_can_return_count():
     assert execute([PEOPLE], candidate.sql) == [("France", 2)]
 
 
-def test_phase5_frequency_argmin_includes_zero_related_entities():
+def test_extrema_frequency_argmin_includes_zero_related_entities():
     students = {
         "name": "students",
         "columns": ["Student_ID", "Name"],
@@ -996,7 +1121,7 @@ def test_phase5_frequency_argmin_includes_zero_related_entities():
     assert execute([students, pets], candidate.sql) == [("Alex",)]
 
 
-def test_phase5_returns_dual_lexical_extrema():
+def test_extrema_expansion_returns_dual_lexical_extrema():
     cars = {
         "name": "cars",
         "columns": ["Name", "Country", "Price", "Weight"],
@@ -1021,7 +1146,7 @@ def test_phase5_returns_dual_lexical_extrema():
     assert execute([cars], separate.sql) == [(500, 700)]
 
 
-def test_phase5_searches_set_difference():
+def test_extrema_expansion_searches_set_difference():
     candidate = best(
         "Show the stadium names without any concert",
         [STADIUM, CONCERT],
@@ -1031,17 +1156,18 @@ def test_phase5_searches_set_difference():
     assert execute([STADIUM, CONCERT], candidate.sql) == [("Gamma",)]
 
 
-def test_phase5_guards_multi_aggregate_and_can_be_disabled():
+def test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled():
     aggregate = best("What are the minimum and maximum age of people?", [PEOPLE])
     assert aggregate.sql == 'SELECT MIN("people"."Age"), MAX("people"."Age") FROM "people"'
 
     searcher = SQLSearcher.from_tables([PEOPLE], [])
     question = "Show the name and country of the youngest person"
-    phase4 = searcher.search(question, phase5=False)
-    phase5 = searcher.search(question, phase5=True)
-    assert all("phase5:" not in evidence for candidate in phase4 for evidence in candidate.evidence)
-    assert " LIMIT 1" not in phase4[0].sql
-    assert " LIMIT 1" in phase5[0].sql
+    without_extrema = searcher.search(question, expand_extrema=False)
+    with_extrema = searcher.search(question, expand_extrema=True)
+    assert all("extrema:" not in evidence
+               for candidate in without_extrema for evidence in candidate.evidence)
+    assert " LIMIT 1" not in without_extrema[0].sql
+    assert " LIMIT 1" in with_extrema[0].sql
 
 
 def test_shared_spider_evaluation_contract():
@@ -1139,7 +1265,7 @@ def test_world_own_data_route_preserves_ast_observability():
                 "error": None,
                 "ast": "SelectQuery(...)",
                 "candidate_count": 7,
-                "evidence": ["phase5:projection"],
+                "evidence": ["extrema:projection"],
                 "features": {"projection": 1.0},
                 "model": "typed planner",
             }
@@ -1177,7 +1303,7 @@ def test_world_own_data_route_preserves_ast_observability():
     assert response["planner"] == {
         "ast": "SelectQuery(...)",
         "candidate_count": 7,
-        "evidence": ["phase5:projection"],
+        "evidence": ["extrema:projection"],
         "features": {"projection": 1.0},
     }
     assert response["model"] == "typed planner"
@@ -1339,9 +1465,15 @@ TESTS = [
     test_directional_year_filter_targets_date_column,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
+    test_total_number_of_entities_is_a_scalar_count,
     test_number_used_as_a_column_label_is_not_a_count_request,
-    test_phase2_ranks_count_distinct_above_grouped_count,
-    test_phase2_coordinates_multiple_aggregate_operands,
+    test_abbreviated_number_column_is_not_a_count_request,
+    test_travel_direction_disambiguates_parallel_airport_foreign_keys,
+    test_scalar_count_keeps_qualified_one_letter_category_filter,
+    test_counted_table_beats_related_column_with_same_entity_word,
+    test_arbitrary_word_does_not_become_a_category_initial_filter,
+    test_ranker_prefers_count_distinct_over_grouped_count,
+    test_ranker_coordinates_multiple_aggregate_operands,
     test_multi_hop_join_uses_bridge_table,
     test_grouped_count_uses_entity_display_column,
     test_filter_column_does_not_leak_into_projection,
@@ -1362,31 +1494,31 @@ TESTS = [
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,
     test_recursive_ast_set_query_in_derived_table_executes,
-    test_phase3_searches_scalar_average,
-    test_phase3_searches_anti_membership,
-    test_phase3_searches_route_self_join,
-    test_phase3_searches_nested_count_aggregate,
-    test_phase3_set_expansion_keeps_every_categorical_alternative,
-    test_phase4_searches_cross_table_count_having,
-    test_phase4_searches_single_table_count_having,
-    test_phase4_searches_disjunction,
-    test_phase4_disjoins_every_repeated_column_group,
-    test_phase4_disjunction_deduplicates_entities_across_relation,
-    test_phase4_disjunction_preserves_shared_official_filter,
-    test_phase4_searches_filtered_scalar_minimum,
-    test_phase4_keeps_grouped_superlative_as_aggregate,
-    test_phase4_infers_high_confidence_missing_entity_fk,
-    test_phase4_can_be_disabled_without_contaminating_phase3,
-    test_phase5_searches_row_superlative,
-    test_phase5_preserves_filter_on_row_superlative,
-    test_phase5_searches_explicit_top_n,
-    test_phase5_distinguishes_limit_token_from_equal_filter_value,
-    test_phase5_searches_frequency_superlative,
-    test_phase5_frequency_superlative_can_return_count,
-    test_phase5_frequency_argmin_includes_zero_related_entities,
-    test_phase5_returns_dual_lexical_extrema,
-    test_phase5_searches_set_difference,
-    test_phase5_guards_multi_aggregate_and_can_be_disabled,
+    test_recursive_expansion_searches_scalar_average,
+    test_recursive_expansion_searches_anti_membership,
+    test_recursive_expansion_searches_route_self_join,
+    test_recursive_expansion_searches_nested_count_aggregate,
+    test_recursive_set_expansion_keeps_every_categorical_alternative,
+    test_constraint_expansion_searches_cross_table_count_having,
+    test_constraint_expansion_searches_single_table_count_having,
+    test_constraint_expansion_searches_disjunction,
+    test_constraint_expansion_disjoins_every_repeated_column_group,
+    test_constraint_disjunction_deduplicates_entities_across_relation,
+    test_constraint_disjunction_preserves_shared_official_filter,
+    test_constraint_expansion_searches_filtered_scalar_minimum,
+    test_constraint_expansion_keeps_grouped_superlative_as_aggregate,
+    test_constraint_expansion_infers_high_confidence_missing_entity_fk,
+    test_constraint_expansion_can_be_disabled_without_affecting_recursive_expansion,
+    test_extrema_expansion_searches_row_superlative,
+    test_extrema_expansion_preserves_filter_on_row_superlative,
+    test_extrema_expansion_searches_explicit_top_n,
+    test_extrema_expansion_distinguishes_limit_token_from_equal_filter_value,
+    test_extrema_expansion_searches_frequency_superlative,
+    test_extrema_frequency_superlative_can_return_count,
+    test_extrema_frequency_argmin_includes_zero_related_entities,
+    test_extrema_expansion_returns_dual_lexical_extrema,
+    test_extrema_expansion_searches_set_difference,
+    test_extrema_expansion_guards_multi_aggregate_and_can_be_disabled,
     test_shared_spider_evaluation_contract,
     test_live_table_query_ast_mode_executes_typed_candidate,
     test_weight_manifest_detects_tampered_bundle,

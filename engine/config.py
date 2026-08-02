@@ -25,7 +25,7 @@ Env contract:
   --- Anthropic / Sonnet (the /api/converse conversational layer — ARCHITECTURE §10 — and the MCP orchestrator) ---
   ANTHROPIC_API_KEY    Anthropic key. OPTIONAL for the engine: powers the /api/converse conversational fallback +
                        answer presentation; unset ⇒ /api/converse 503s and the UI degrades gracefully. REQUIRED
-                       only to run the separate MCP orchestrator chat backend (mcp-now.md). No default.
+                       only to run the separate MCP orchestrator chat backend (docs/MCP.md). No default.
   ANTHROPIC_MODEL      Sonnet model id for /api/converse + the orchestrator   (default claude-sonnet-5)
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
@@ -109,7 +109,7 @@ def kb_model_route_enabled():
     return os.environ.get("KB_MODEL_ROUTE", "1") != "0"
 
 
-# ---------- MCP layer: Sonnet orchestrator + PreReasoner MCP server (mcp-now.md) ----------
+# ---------- MCP layer: Sonnet orchestrator + PreReasoner MCP server (docs/MCP.md) ----------
 # Static knobs resolve at import (mirrors BASE_MODEL_ID); the security-sensitive key is call-time
 # (mirrors kb_pg_password) so a clear error beats an anthropic auth stack trace.
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")

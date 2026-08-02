@@ -11,7 +11,7 @@ reproduced faithfully.
 
 | Extension | Why | Where used |
 |---|---|---|
-| `vector` (pgvector) | `knowledgebase."words".embedding vector(384)` + HNSW `<=>` cosine search; per-user `"<t> unconnected to wikipedia".embedding vector(896)` | `entities._nn` / `_cell_bridge_sql` (LATERAL `<=>`); `knowledge_query._persist_main_unconn` (`vector(hdim)`, hdim=896 for the unified Qwen encoder) |
+| `vector` (pgvector) | `knowledgebase."words".embedding vector(384)` + HNSW `<=>` cosine search; per-conversation `"<t> unconnected to wikipedia".embedding vector(896)` | `entities._nn` / `_cell_bridge_sql` (LATERAL `<=>`); `knowledge_query._persist_main_unconn` (`vector(hdim)`, hdim=896 for the unified Qwen encoder) |
 | `pg_trgm` | GIN trigram index on `public.entity_label(lower(label))` | `init.sql` `ix_label_trgm` (legacy value matcher) |
 | ~~postgis / earthdistance / cube~~ | **NOT used.** Geo NEARBY computes haversine in plain SQL (`acos/radians/cos/sin` over `public.settlement.lat/lng`) | grep for `earthdistance|postgis|ll_to_earth|cube` = zero code hits |
 
@@ -28,16 +28,16 @@ reproduced faithfully.
   `engine/knowledge_sync.ensure_table`, or up front by `db/sync/build_wikipedia.py`),
   AND the friendly name-keyed tables + `"... in the World"` views
   (`"Cities"`/`"Countries"`/`"Elements"`/… read by `engine/knowledge_compose`).
-- `"<google-sub>"` — per-user, created at request time by
-  `engine/pg._load_user_schema` (`CREATE SCHEMA IF NOT EXISTS "<sub>"`); `<sub>` is
-  the server-verified Firebase/Google `sub` (long numeric id). Queries run with
-  `SET search_path TO "<sub>", knowledgebase, public` (knowledgebase so bare
-  `city`/`country` resolve to the qid-keyed tables; public last so the `vector`
-  type + `<=>` operator resolve).
 - `chat` — conversation identity + ownership (`user_profile` / `conversation` /
   `user_conversation`; `engine/conversations.py`, also in `init.sql`). The working
   Postgres schema for a run is the conversation id (`c_<32 hex>`); authorization is
   by verified user via `user_conversation` (no IDOR).
+- `c_<32hex>` — one authorized conversation's uploaded tables, selected reference
+  copies, and world-resolution bridges. Queries run with
+  `SET search_path TO "<conversation>", knowledgebase, public`.
+- `m_<md5(sub)>` — persistent private reference dimensions for one verified user.
+  It is never added wholesale to `search_path`; `engine.master.relevant_tables`
+  selects bounded FK-connected tables and materializes them into the request table set.
 
 ## 3. Static tables (created by `db/init.sql`)
 
@@ -101,10 +101,11 @@ by name).
 |---|---|---|
 | `knowledgebase."<exact Wikidata label>"` | e.g. `knowledgebase."city"`, `knowledgebase."hospital"`, `knowledgebase."academic journal"` — label from `knowledgebase."types".label`, truncated to 63 chars; shared labels suffixed `" (Qxxx)"` by `build_wikipedia.py` | `engine/knowledge_sync.ensure_table` (via `ensure_entity`/`lazy_resolve`, called from `entities` cell bridges + `knowledge_query._resolve_world_qid`/`_serve_world_type`); pre-creatable up front by `db/sync/build_wikipedia.py` (qid-PK copies) or `mirror_schema.py` |
 | rows in the qid-keyed tables | one row per entity, qid PK, all-TEXT property columns, item-valued props store the related entity's **qid** (FK) | `ensure_entity` → `fetch_one` (WDQS), `ON CONFLICT (qid) DO NOTHING`; each also INSERTs a `knowledgebase."words"` row |
-| `"<sub>"` schema | verified Google `sub` (≥15-digit numeric) | `engine/pg._load_user_schema` |
-| `"<sub>"."<upload>"` | CSV table name | same (DROP + CREATE on re-upload; INTEGER→BIGINT, REAL→double precision) |
-| `"<sub>"."<t> connected to wikipedia"` | `('column' text, value text, world_type text, world_key text, country text, world_qid text)` | `engine/knowledge_query._persist_connected` (CONN_DDL; migration guard for the 5→6-col upgrade) |
-| `"<sub>"."<t> unconnected to wikipedia"` | `(__pk bigint, 'column' text, value text, embedding vector(896))` | `engine/knowledge_query._persist_main_unconn` (hdim = unified Qwen encoder hidden size 896) |
+| `c_<32hex>` schema | authorized conversation id | `engine.conversations.resolve_conversation` + `engine.pg._load_user_schema` |
+| `c_<32hex>."<upload-or-selected-reference>"` | typed request table | `engine.pg._load_user_schema` (DROP + CREATE on each serve; INTEGER→BIGINT, REAL→double precision) |
+| `c_<32hex>."<t> connected to wikipedia"` | `('column' text, value text, world_type text, world_key text, country text, world_qid text)` | `engine.knowledge_query._persist_connected` |
+| `c_<32hex>."<t> unconnected to wikipedia"` | `(__pk bigint, 'column' text, value text, embedding vector(896))` | `engine.knowledge_query._persist_main_unconn` |
+| `m_<md5(sub)>."<reference>"` | all-text dimension; first column is a primary/unique key | `engine.master.save_master` |
 
 ## 5. Lazy-fill vs pre-sync (confirmed from code)
 
@@ -172,7 +173,7 @@ of db bootstrap — it lives in `training/` (see docs/notes/training.md).
    serving path reads it anymore (`words` superseded it). Kept because the sync
    scripts still write it; could be dropped later.
 5. **Live-DB-only artifacts** — anything created manually on Cloud SQL (extra
-   indexes, VACUUM settings, the actual per-user schemas, the lazily-accreted
+   indexes, VACUUM settings, the actual conversation/master schemas, the lazily-accreted
    qid-keyed Wikidata tables and their discovered column sets) is not reproducible
    from code; a fresh instance re-discovers those schemas from *current* Wikidata,
    so property columns may differ from an older live DB's discoveries.

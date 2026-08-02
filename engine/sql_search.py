@@ -39,6 +39,13 @@ _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
 _PROJECTION_CUES = frozenset({"show", "list", "display", "select", "give", "find", "which", "what"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
+_CATEGORICAL_INITIALS = {
+    "left": "l", "right": "r",
+    "male": "m", "female": "f",
+    "yes": "y", "no": "n",
+    "true": "t", "false": "f",
+    "unknown": "u",
+}
 
 
 @dataclass(frozen=True)
@@ -75,9 +82,9 @@ class SQLSearcher:
     def from_tables(cls, tables: Sequence[dict], fks: Sequence[dict | tuple], **kwargs) -> "SQLSearcher":
         return cls(SchemaGraph.from_tables(tables, fks), **kwargs)
 
-    def search(self, question: str, semantic_signals=None, phase2: bool = True,
-               phase3: bool = True, phase4: bool = True,
-               phase5: bool = True, rank_model=None,
+    def search(self, question: str, semantic_signals=None, rank_candidates: bool = True,
+               expand_recursive: bool = True, expand_constraints: bool = True,
+               expand_extrema: bool = True, rank_model=None,
                profile_max_candidates: int = 32,
                profile_per_profile: int = 4,
                profile_generation_penalty: float = 5.0,
@@ -140,6 +147,14 @@ class SQLSearcher:
                                            if c in explicit_projection_columns
                                            or (c not in predicate_columns and c not in clause_only_columns))
                 if draft.aggregates:
+                    # Entity mentions can contribute an implicit display projection. Aggregate queries retain
+                    # only columns the question names explicitly; _group_choices owns each/per/by grouping.
+                    # An empty group choice is the scalar interpretation, so it must not inherit a display
+                    # projection merely because the same words also identify a filter column.
+                    raw_projection = tuple(
+                        c for c in raw_projection
+                        if c in explicit_projection_columns and group_columns
+                    )
                     grouped = _unique_columns(group_columns + raw_projection)
                     expressions = tuple(SelectItem(c) for c in grouped) + tuple(
                         SelectItem(a) for a in draft.aggregates
@@ -187,15 +202,15 @@ class SQLSearcher:
         pool_size = max(self.beam_size, self.max_candidates * 4)
         base = sorted(dedup.values(), key=lambda c: (-c.score, c.sql))[:pool_size]
         pool = base
-        if phase3 or phase4 or phase5:
+        if expand_recursive or expand_constraints or expand_extrema:
             from engine.sql_recursive import RecursiveQueryExpander
             from engine.sql_constraints import ConstraintQueryExpander
             from engine.sql_extrema import ExtremaQueryExpander
 
             expansion_pipeline = (
-                (phase3, RecursiveQueryExpander),
-                (phase4, ConstraintQueryExpander),
-                (phase5, ExtremaQueryExpander),
+                (expand_recursive, RecursiveQueryExpander),
+                (expand_constraints, ConstraintQueryExpander),
+                (expand_extrema, ExtremaQueryExpander),
             )
             for enabled, expander_type in expansion_pipeline:
                 if not enabled:
@@ -220,7 +235,7 @@ class SQLSearcher:
                 max(0.0, profile_binding_quality_weight),
             ).expand(question, pool)
             pool = _merge_candidates(pool, generated)
-        if not phase2:
+        if not rank_candidates:
             return pool[:self.max_candidates]
         from engine.sql_rank import CandidateRanker
         ranked = CandidateRanker(self.schema, semantic_signals).rank(
@@ -311,8 +326,23 @@ class SQLSearcher:
         for i, token in enumerate(tokens):
             number_is_column_label = (
                 token == "number"
-                and i > 0
-                and any(mention.position == i - 1 for mention in mentions)
+                and any(
+                    mention.position == i - 1
+                    or (
+                        mention.position == i
+                        and i > 0
+                        and any(
+                            "number" in _column_link_words(option.column, True)
+                            and tokens[i - 1] in {
+                                *(_canon(word) for word in _name_words(option.column.table)),
+                                *(_canon(word) for word in _name_words(option.column.name)
+                                  if word.lower() != "no"),
+                            }
+                            for option in mention.options
+                        )
+                    )
+                    for mention in mentions
+                )
             )
             if token in {"count", "counts"} or (
                 token == "number"
@@ -357,6 +387,9 @@ class SQLSearcher:
                     distinct = bool({"different", "distinct", "unique"} & set(tokens))
                     options.append((Aggregate("COUNT", option.column, distinct), 3.3 + option.score * 0.1,
                                     f"aggregate:COUNT({option.column.table}.{option.column.name})"))
+                for column in self._counted_entity_identities(tokens, position):
+                    options.append((Aggregate("COUNT", column, distinct=True), 3.8,
+                                    f"aggregate:COUNT(DISTINCT {column.table}.{column.name})"))
             else:
                 targets = self._target_columns(mentions, position, numeric=function in {"SUM", "AVG"})
                 if not targets:
@@ -378,6 +411,37 @@ class SQLSearcher:
             beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
         return [(aggregates, score, evidence) for aggregates, score, evidence in beam]
 
+    def _counted_entity_identities(
+        self, tokens: tuple[str, ...], position: int
+    ) -> list[ColumnRef]:
+        """Identity columns for a repeated entity count such as ``winners who participated``."""
+        relative = next(
+            (index for index in range(position + 1, len(tokens))
+             if tokens[index] in {"who", "that", "which"}),
+            None,
+        )
+        if relative is None:
+            return []
+        subject = set(tokens[position + 1:relative]) - {"a", "an", "the", "of"}
+        if not subject:
+            return []
+
+        matches = []
+        for schema_column in self.schema.columns:
+            column = schema_column.ref
+            words = tuple(_canon(word) for word in _name_words(column.name))
+            if not words or words[-1] not in {"id", "identifier", "key", "name"}:
+                continue
+            role = set(words[:-1])
+            table_role = {_canon(word) for word in _name_words(column.table)}
+            if (role and role & subject) or (not role and table_role & subject):
+                matches.append(column)
+        return sorted(matches, key=lambda column: (
+            0 if _name_words(column.name)[-1].lower() == "name" else 1,
+            column.table,
+            column.name,
+        ))[:4]
+
     def _target_columns(self, mentions: tuple[_Mention, ...], position: int, numeric: bool) -> list[_ColumnOption]:
         options = [option for mention in mentions for option in mention.options
                    if not numeric or option.column.type.numeric]
@@ -392,7 +456,7 @@ class SQLSearcher:
 
     def _predicate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         groups: list[list[tuple[tuple[Comparison, ...], float, str]]] = []
-        groups.extend(self._value_predicate_groups(tokens))
+        groups.extend(self._value_predicate_groups(tokens, mentions))
         groups.extend(self._numeric_predicate_groups(tokens, mentions))
         if not groups:
             return [((), 0.0, ())]
@@ -405,7 +469,7 @@ class SQLSearcher:
             beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
         return [(predicates, score, evidence) for predicates, score, evidence in beam]
 
-    def _value_predicate_groups(self, tokens: tuple[str, ...]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+    def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
@@ -432,6 +496,69 @@ class SQLSearcher:
                 choices.append(((Comparison(column, operator, literal),), 5.0,
                                 f"value:{column.table}.{column.name}{operator}{phrase}"))
             groups.append(choices)
+        groups.extend(self._categorical_initial_groups(tokens, mentions, occupied))
+        return groups
+
+    def _categorical_initial_groups(
+        self,
+        tokens: tuple[str, ...],
+        mentions: tuple[_Mention, ...],
+        occupied: set[int],
+    ) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+        """Resolve qualified one-letter categories such as ``left hand`` -> ``hand = 'L'``.
+
+        The initial is considered only immediately before a word belonging to a recognized column
+        mention. This keeps the rule structural: arbitrary words cannot become filters merely because
+        a table happens to contain a one-letter category.
+        """
+        values_by_column: dict[ColumnRef, dict[str, Any]] = {}
+        for values in self.schema.value_index.values():
+            for column, value in values:
+                text = str(value).strip()
+                if len(text) == 1 and text.isalpha():
+                    values_by_column.setdefault(column, {})[text.lower()] = value
+
+        qualified: dict[tuple[int, str], list[tuple[int, ColumnRef, Any]]] = {}
+        for mention in mentions:
+            for option in mention.options:
+                column = option.column
+                values = values_by_column.get(column)
+                if not values:
+                    continue
+                link_words = set(_column_link_words(column, id_requested=True))
+                link_positions = [
+                    index for index, token in enumerate(tokens)
+                    if token in link_words
+                ]
+                for position in link_positions:
+                    descriptor = position - 1
+                    if descriptor < 0 or descriptor in occupied:
+                        continue
+                    token = tokens[descriptor]
+                    value = values.get(_CATEGORICAL_INITIALS.get(token, ""))
+                    if value is not None:
+                        qualified.setdefault((descriptor, token), []).append(
+                            (len(link_words), column, value)
+                        )
+
+        groups = []
+        for (_, token), options in sorted(qualified.items()):
+            specificity = max(item[0] for item in options)
+            alternatives = []
+            seen: set[tuple[ColumnRef, Any]] = set()
+            for option_specificity, column, value in sorted(
+                options, key=lambda item: (-item[0], item[1].table, item[1].name, repr(item[2]))
+            ):
+                key = (column, value)
+                if option_specificity != specificity or key in seen:
+                    continue
+                seen.add(key)
+                alternatives.append(
+                    ((Comparison(column, "=", Literal(value, column.type)),), 4.75,
+                     f"category-initial:{column.table}.{column.name}={token}")
+                )
+            if alternatives:
+                groups.append(alternatives)
         return groups
 
     def _numeric_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
@@ -581,6 +708,8 @@ class SQLSearcher:
                                         (f"group-entity:{table}.{displays[0].name}",)))
         if projection_groups:
             options.append((projection_groups, 2.5, tuple(f"group:{c.table}.{c.name}" for c in projection_groups)))
+            if not explicit_positions and any(a.function == "COUNT" for a in draft.aggregates):
+                options.append(((), 0.0, ("group:none-count",)))
         if not options:
             options.append(((), 0.0, ()))
         dedup = {}
@@ -684,6 +813,8 @@ def _name_words(name: str) -> tuple[str, ...]:
 
 def _canon(word: str) -> str:
     word = word.lower().strip()
+    if word == "handed":
+        return "hand"
     if word == "ids":
         return "id"
     if len(word) > 4 and word.endswith("ies"):
@@ -701,7 +832,8 @@ def _is_id(name: str) -> bool:
 
 
 def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
-    words = tuple(_canon(word) for word in _name_words(column.name))
+    words = tuple("number" if word.lower() == "no" else _canon(word)
+                  for word in _name_words(column.name))
     table_words = {_canon(word) for word in _name_words(column.table)}
     meaningful = tuple(
         word for word in words
@@ -719,6 +851,18 @@ def _column_link_positions(
     link_words: tuple[str, ...],
 ) -> list[int]:
     positions = [i for i, token in enumerate(tokens) if token in link_words]
+    if link_words == ("number",) and "no" in {
+        word.lower() for word in _name_words(column.name)
+    }:
+        entity_words = {
+            _canon(word)
+            for word in _name_words(column.table) + _name_words(column.name)
+            if word.lower() != "no"
+        }
+        positions = [
+            position for position in positions
+            if set(tokens[max(0, position - 2):position]) & entity_words
+        ]
     generic_link = not set(link_words) - {"name", "id"}
     duplicate_link = sum(
         _column_link_words(schema_column.ref, True) == link_words

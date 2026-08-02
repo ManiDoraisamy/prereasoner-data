@@ -7,7 +7,7 @@ Routes:
   GET  /...         static files from web/public (the chat UI); / -> chat.html
 
 In production Firebase Hosting serves the static UI and rewrites /chat + /api to the respective Cloud Run
-services (mcp-now.md §7); this single-origin server is the local-dev equivalent so the whole
+services (docs/MCP.md); this single-origin server is the local-dev equivalent so the whole
 browser -> orchestrator -> MCP -> engine loop runs from one URL.
 
 Run: python -m orchestrator.server

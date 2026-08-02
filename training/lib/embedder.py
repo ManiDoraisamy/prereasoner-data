@@ -1,13 +1,13 @@
 """
-gen16 — the RETRIEVAL embedder for entity resolution (separate from the frozen Qwen interpretable encoder).
+The retrieval embedder for entity resolution (separate from the frozen Qwen interpretable encoder).
 
-Why a different model: the frozen Qwen-0.5B unit encoder (gen11._encode) mean-pools a generative LM's hidden
+Why a different model: the frozen Qwen-0.5B unit encoder mean-pools a generative LM's hidden
 states — an anisotropic space that is NOT a metric space for entity-linking (measured: "USA" is nearer to
 "Australia" than to "United States"). bge-small-en-v1.5 is contrastively trained for retrieval, so cosine
 distance is meaningful: "US"/"USA"/"UK"/"Deutschland"/"Holland"/"Bombay" all land on the right canonical entity,
 and prepositions ("in") / non-entities ("Indiana") stay below threshold. This embedder backs:
-  - the world `words` vector index (one row per canonical entity)  -> setup_words16.py
-  - CSV cell-value resolution + spaCy-parsed prompt-word resolution -> query16.py
+  - the `knowledgebase.words` vector index (one row per canonical entity)
+  - CSV cell-value resolution and parsed prompt-word resolution in `engine.entities`
 
 bge-small sentence embedding = the [CLS] token of last_hidden_state, L2-normalized (per the model card), so cosine
 similarity == dot product. 384-dim. CPU-fine (33M params).

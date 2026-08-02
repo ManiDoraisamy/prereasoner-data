@@ -1,6 +1,6 @@
-"""The orchestrator system prompt. Encodes the routing discipline (mcp-now.md §3) so bypass is expensive
+"""The orchestrator system prompt. Encodes the routing discipline (docs/MCP.md) so bypass is expensive
 and deferral is the default. Shipped with the server; the same four rules also live in the tool
-descriptions (mcp_server/descriptions.py), per mcp-now.md §3."""
+descriptions (mcp_server/descriptions.py)."""
 
 SYSTEM_PROMPT = """\
 You are the friendly assistant inside PreReasoner, a tool that answers questions about the user's own

@@ -8,17 +8,9 @@ the test-bypass env var (AUTH_TEST_SUB) changed.
 Non-prod bypass: AUTH_TEST_SUB -> fixed sub, skips token verification (test-only).
 """
 from __future__ import annotations
-import re
-
 from engine.config import auth_test_sub
 
 _FB_AUTH = None
-
-
-def _slug(name, i):
-    s = re.sub(r"\.csv$", "", (name or "").strip(), flags=re.I)
-    s = re.sub(r"[^0-9A-Za-z_]+", "_", s).strip("_").lower()
-    return s or f"t{i}"
 
 
 def _verify_principal(token):

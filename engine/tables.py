@@ -106,6 +106,13 @@ def _typed(v):
         return v
 
 
+def table_name(name, index=0):
+    """Return the canonical SQL/planner name for an uploaded or saved table."""
+    value = re.sub(r"\.csv$", "", (name or "").strip(), flags=re.I)
+    value = re.sub(r"[^0-9A-Za-z_]+", "_", value).strip("_").lower()
+    return value or f"t{index}"
+
+
 def _unquote(s):
     s = (s or "").strip() if isinstance(s, str) else s
     if isinstance(s, str) and len(s) >= 2 and s[0] == s[-1] and s[0] in ("'", '"'):
@@ -143,6 +150,18 @@ def csv_table(csv_text, name):
     rows = parse_rows(csv_text, "auto")
     cols = list(rows[0].keys()) if rows else []
     return {"name": name, "columns": cols, "rows": [[r.get(c) for c in cols] for r in rows]}
+
+
+def table_from_rows(name, columns, rows):
+    """Build a planner table from structured rows using the same cell typing as CSV uploads."""
+    cols = [str(column).strip() for column in (columns or [])]
+    width = len(cols)
+    typed_rows = []
+    for row in rows or []:
+        values = list(row or [])[:width]
+        values += [None] * (width - len(values))
+        typed_rows.append([_typed(value) for value in values])
+    return {"name": name, "columns": cols, "rows": typed_rows}
 
 
 class TableQuery:
@@ -300,8 +319,8 @@ class TableQuery:
         return SemanticSignals(column_roles, table_global)
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
-                   use_semantic_signals=True, phase2=True, phase3=True, phase4=True,
-                   phase5=True):
+                   use_semantic_signals=True, rank_candidates=True, expand_recursive=True,
+                   expand_constraints=True, expand_extrema=True):
         """Return ranked, typed SQL AST candidates from the deterministic planner.
 
         Bounded typed-AST search with hand-written, inspectable ranking — no trained proposer or learned
@@ -317,7 +336,10 @@ class TableQuery:
         )
         return searcher.search(
             question, semantic_signals=baseline_signals,
-            phase2=phase2, phase3=phase3, phase4=phase4, phase5=phase5,
+            rank_candidates=rank_candidates,
+            expand_recursive=expand_recursive,
+            expand_constraints=expand_constraints,
+            expand_extrema=expand_extrema,
         )
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):

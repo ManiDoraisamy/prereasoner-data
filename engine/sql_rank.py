@@ -169,6 +169,16 @@ class CandidateRanker:
             if group_columns:
                 features.append(("distinct_not_grouped", -3.0))
 
+        if roles.count_requested and set(roles.tokens) & {"who", "that", "which"}:
+            distinct_identities = [
+                aggregate.operand
+                for aggregate in count_aggregates
+                if aggregate.distinct
+                and isinstance(aggregate.operand, ColumnRef)
+                and (_is_id(aggregate.operand.name) or _is_name(aggregate.operand.name))
+            ]
+            features.append(("count_distinct_entity", 4.0 if distinct_identities else 0.0))
+
         for column in group_columns:
             alignment = self._group_alignment(column, roles) or (
                 count_ranked and any(
@@ -201,11 +211,36 @@ class CandidateRanker:
             operand = aggregate.operand
             targets = roles.aggregate_targets.get(aggregate.function, frozenset())
             if aggregate.function == "COUNT":
-                aligned = operand in roles.counted_columns or operand.table in roles.counted_tables
+                aligned = (
+                    operand.table in roles.counted_tables
+                    if roles.counted_tables
+                    else operand in roles.counted_columns
+                )
                 features.append((f"count_target:{_column_label(operand)}", 1.5 if aligned else 0.0))
             elif targets:
                 features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
                                  3.0 if operand in targets else -3.5))
+
+        travel_direction = _travel_direction(roles.tokens)
+        if travel_direction:
+            role_columns = {
+                column
+                for comparison in _comparisons(query.where)
+                if isinstance(comparison.left, ColumnRef)
+                for column in (comparison.left,)
+            }
+            role_columns.update(
+                column for join in query.joins for column in (join.left, join.right)
+            )
+            directional_columns = [
+                column for column in role_columns if _travel_column_role(column) is not None
+            ]
+            if directional_columns:
+                aligned = any(
+                    _travel_column_role(column) == travel_direction
+                    for column in directional_columns
+                )
+                features.append((f"travel_direction:{travel_direction}", 3.0 if aligned else -3.0))
 
         features.extend(self._model_features(query))
         return tuple(features)
@@ -308,11 +343,15 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
                   + [len(tokens)])
         group_windows.append((start, end))
 
+    count_stops = clause_stops | {
+        "is", "are", "was", "were", "who", "that", "which",
+        "use", "using", "used", "have", "has", "in", "from", "on", "at",
+    }
     count_windows = []
     for position in aggregate_positions["COUNT"]:
         start = position + (2 if tokens[position:position + 2] == ("how", "many") else 1)
         end = min([p for p in group_positions if p > position]
-                  + [i for i in range(start, len(tokens)) if tokens[i] in clause_stops]
+                  + [i for i in range(start, len(tokens)) if tokens[i] in count_stops]
                   + [len(tokens)])
         count_windows.append((start, end))
 
@@ -445,11 +484,17 @@ def _tokens(text: str) -> tuple[str, ...]:
 
 def _schema_tokens(name: str) -> tuple[str, ...]:
     spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", str(name))
-    return tuple(_canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced) if _canon(token) != "id")
+    return tuple(
+        "number" if token.lower() == "no" else _canon(token)
+        for token in re.findall(r"[A-Za-z0-9]+", spaced)
+        if _canon(token) != "id"
+    )
 
 
 def _canon(word: str) -> str:
     word = word.lower().strip()
+    if word == "handed":
+        return "hand"
     if word == "ids":
         return "id"
     if len(word) > 4 and word.endswith("ies"):
@@ -459,6 +504,24 @@ def _canon(word: str) -> str:
     if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
         return word[:-1]
     return word
+
+
+def _travel_direction(tokens: tuple[str, ...]) -> str | None:
+    token_set = set(tokens)
+    if token_set & {"leave", "leaving", "depart", "departing", "departure", "origin", "source"}:
+        return "source"
+    if token_set & {"arrive", "arriving", "arrival", "land", "landing", "destination", "dest"}:
+        return "destination"
+    return None
+
+
+def _travel_column_role(column: ColumnRef) -> str | None:
+    words = set(_schema_tokens(column.name))
+    if words & {"source", "origin", "departure", "depart", "from"}:
+        return "source"
+    if words & {"destination", "dest", "arrival", "arrive", "landing", "to"}:
+        return "destination"
+    return None
 
 
 def _is_id(name: str) -> bool:

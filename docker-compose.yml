@@ -58,7 +58,7 @@ services:
       db:
         condition: service_healthy
 
-  # The Sonnet orchestrator + PreReasoner MCP server (mcp-now.md §7). Calls the engine over the compose
+  # The Sonnet orchestrator + PreReasoner MCP server (docs/MCP.md). Calls the engine over the compose
   # network (ENGINE_BASE_URL=http://engine:8080), same way the engine reaches db. Needs ANTHROPIC_API_KEY
   # in .env. Local: chat UI + /chat on http://localhost:8090; the engine runs with AUTH_TEST_SUB so no
   # Firebase token is needed and RTDB is unset (the reasoning player rebuilds from the returned views).

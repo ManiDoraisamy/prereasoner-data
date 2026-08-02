@@ -1,4 +1,4 @@
-# The Sonnet orchestrator chat backend (prereasoner-chat) — mcp-now.md §7.
+# The Sonnet orchestrator chat backend (prereasoner-chat) — docs/MCP.md.
 #
 # A SECOND, lightweight Cloud Run service alongside the engine (google_cloud_run_v2_service.api in
 # main.tf). It calls the engine over HTTP and Anthropic over HTTPS; it does NOT touch Postgres or write
