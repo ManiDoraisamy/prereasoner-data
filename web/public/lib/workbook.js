@@ -17,8 +17,8 @@ const WB = Object.assign({
   runningMsg: 'Decomposing into steps…',
   warmupMsg: 'Warming up the model (cold start)…',
   demoQ: 'top 3 cities by total amount',
-  demoTables: [{name:'customers.csv',data:'customer_id,name,city\n1,Ada,Paris\n2,Lin,Lyon\n3,Bo,Paris\n4,Sam,Berlin\n5,Mai,Lyon'},
-               {name:'orders.csv',data:'order_id,customer_id,amount,status\n101,1,120,shipped\n102,1,60,shipped\n103,2,80,shipped\n104,2,160,shipped\n105,3,90,shipped\n106,4,40,pending\n107,5,200,shipped\n108,5,30,shipped'}],
+  demoTables: [{name:'customers',data:'customer_id,name,city\n1,Ada,Paris\n2,Lin,Lyon\n3,Bo,Paris\n4,Sam,Berlin\n5,Mai,Lyon'},
+               {name:'orders',data:'order_id,customer_id,amount,status\n101,1,120,shipped\n102,1,60,shipped\n103,2,80,shipped\n104,2,160,shipped\n105,3,90,shipped\n106,4,40,pending\n107,5,200,shipped\n108,5,30,shipped'}],
 }, window.WB_CONFIG || {});
 
 const $=id=>document.getElementById(id);
