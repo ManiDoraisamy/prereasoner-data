@@ -221,6 +221,53 @@ def test_grouping_validation_sees_ordered_aggregates():
     raise AssertionError("ORDER BY aggregate did not activate grouped projection validation")
 
 
+def test_composite_foreign_key_renders_and_executes_as_one_join():
+    shipments = {
+        "name": "shipments",
+        "columns": ["country", "postal_code", "parcel"],
+        "rows": [["US", "10001", "A"], ["CA", "10001", "B"]],
+    }
+    postal = {
+        "name": "postal",
+        "columns": ["country_code", "postal_code", "place_name"],
+        "rows": [["US", "10001", "New York"], ["CA", "10001", "Toronto"]],
+    }
+    graph = SchemaGraph.from_tables([shipments, postal], [{
+        "from_table": "shipments", "from_cols": ("country", "postal_code"),
+        "to_table": "postal", "to_cols": ("country_code", "postal_code"),
+        "confidence": 1.0,
+    }])
+    assert len(graph.foreign_keys) == 1 and graph.foreign_keys[0].is_composite
+    tree = graph.join_trees({"shipments", "postal"}, preferred_root="shipments")[0]
+    assert len(tree.joins[0].predicates) == 2
+    place = graph.column_map[("postal", "place_name")].ref
+    query = SelectQuery((SelectItem(place),), "shipments", joins=tree.joins)
+    sql = render_query(query)
+    assert " AND " in sql
+    assert execute([shipments, postal], sql) == [("New York",), ("Toronto",)]
+
+
+def test_composite_join_validation_rejects_disconnected_predicate():
+    query = SelectQuery(
+        (SelectItem(ColumnRef("postal", "place", SQLType.TEXT)),),
+        "shipments",
+        joins=(Join(
+            "postal",
+            ColumnRef("shipments", "postal", SQLType.TEXT),
+            ColumnRef("postal", "postal", SQLType.TEXT),
+            additional=((
+                ColumnRef("unseen", "country", SQLType.TEXT),
+                ColumnRef("postal", "country", SQLType.TEXT),
+            ),),
+        ),),
+    )
+    try:
+        validate_query(query)
+    except ASTValidationError:
+        return
+    raise AssertionError("disconnected composite predicate passed AST validation")
+
+
 def test_projection_filter_and_order():
     candidate = best(
         "Show name, country and age for people from France ordered by age descending",
@@ -298,6 +345,28 @@ def test_entity_projection_follows_owner_foreign_key():
     assert candidate.sql == (
         'SELECT "people"."Name" FROM "poker_player" JOIN "people" '
         'ON "poker_player"."People_ID" = "people"."People_ID"'
+    )
+
+
+def test_fk_attribute_phrase_does_not_project_the_source_qualifier():
+    registrations = {
+        "name": "registrations", "columns": ["registration_id", "country"],
+        "rows": [[1, "FR"], [2, "US"]],
+    }
+    countries = {
+        "name": "iana_country", "columns": ["alpha2", "name"],
+        "rows": [["FR", "France"], ["US", "United States"]],
+    }
+    foreign_keys = [{
+        "from_table": "registrations", "from_col": "country",
+        "to_table": "iana_country", "to_col": "alpha2",
+    }]
+    candidate = SQLSearcher.from_tables([registrations, countries], foreign_keys).search(
+        "Show the country name for each registration"
+    )[0]
+    assert candidate.sql == (
+        'SELECT "iana_country"."name" FROM "registrations" JOIN "iana_country" '
+        'ON "registrations"."country" = "iana_country"."alpha2"'
     )
 
 
@@ -1456,10 +1525,13 @@ TESTS = [
     test_typed_ast_rejects_mismatched_literal_payloads,
     test_ast_rejects_indeterminate_set_and_aggregate_shapes,
     test_grouping_validation_sees_ordered_aggregates,
+    test_composite_foreign_key_renders_and_executes_as_one_join,
+    test_composite_join_validation_rejects_disconnected_predicate,
     test_projection_filter_and_order,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,
     test_generic_projection_respects_entity_qualifier,
     test_entity_projection_follows_owner_foreign_key,
+    test_fk_attribute_phrase_does_not_project_the_source_qualifier,
     test_entity_id_does_not_follow_owner_foreign_key,
     test_duplicate_property_projection_respects_entity_qualifier,
     test_directional_year_filter_targets_date_column,

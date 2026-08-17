@@ -3,12 +3,12 @@
 Standalone on purpose — db/ must bootstrap a fresh database without importing
 the engine package. Connection parameters come exclusively from env vars:
 
-  KB_PG_HOST      host, or a "/cloudsql/..." unix-socket path  (default: localhost)
-  KB_PG_PORT      port                                          (default: 5432)
-  KB_PG_DB        database name                                 (default: world)
-  KB_PG_USER      role                                          (default: postgres)
-  KB_PG_PASSWORD  password                                      (required)
-  KB_PG_SSLMODE   libpq sslmode                                 (default: prefer)
+  SYNC_PG_*       privileged sync-job connection settings
+  KB_PG_*         fallback settings for local development
+
+Production sync jobs should set SYNC_PG_USER/SYNC_PG_PASSWORD so serving can use a
+separate non-superuser KB_PG_USER. Host, port, database, and sslmode follow the same
+override-then-fallback rule.
                      use "require" for a Cloud SQL public IP; "prefer" works for
                      both local docker (no SSL) and SSL-enabled servers.
 """
@@ -18,14 +18,24 @@ import os
 import psycopg2
 
 
-def connect():
-    host = os.environ.get("KB_PG_HOST", "localhost")
+def _setting(name: str, default=None):
+    return os.environ.get(f"SYNC_PG_{name}", os.environ.get(f"KB_PG_{name}", default))
+
+
+def _connection_kwargs() -> dict:
+    host = _setting("HOST", "localhost")
     kw = dict(host=host,
-              dbname=os.environ.get("KB_PG_DB", "world"),
-              user=os.environ.get("KB_PG_USER", "postgres"),
-              password=os.environ["KB_PG_PASSWORD"],
+              dbname=_setting("DB", "world"),
+              user=_setting("USER", "postgres"),
+              password=_setting("PASSWORD"),
               connect_timeout=30)
+    if not kw["password"]:
+        raise ValueError("SYNC_PG_PASSWORD or KB_PG_PASSWORD is required")
     if not host.startswith("/"):          # TCP; a "/cloudsql/..." unix socket takes no port/sslmode
-        kw["port"] = int(os.environ.get("KB_PG_PORT", "5432"))
-        kw["sslmode"] = os.environ.get("KB_PG_SSLMODE", "prefer")
-    return psycopg2.connect(**kw)
+        kw["port"] = int(_setting("PORT", "5432"))
+        kw["sslmode"] = _setting("SSLMODE", "prefer")
+    return kw
+
+
+def connect():
+    return psycopg2.connect(**_connection_kwargs())

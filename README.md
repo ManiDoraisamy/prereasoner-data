@@ -22,7 +22,9 @@ New contributors should read these in order:
 3. [docs/SQL_AST.md](docs/SQL_AST.md) - typed AST search, ranking, and Spider evaluation.
 4. [docs/TESTING.md](docs/TESTING.md) - hermetic, integration, and browser validation.
 5. [docs/MCP.md](docs/MCP.md) - MCP adapter and optional conversational orchestration.
-6. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request expectations.
+6. [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md) - synchronized publishers, schemas, tables, scope, licensing, and commands.
+7. [docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md](docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md) - market-led domain profiles and deterministic serving integration.
+8. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request expectations.
 
 ## How A Request Works
 
@@ -49,8 +51,9 @@ Postgres execution + inspectable trace
 ```
 
 The AST planner receives uploaded tables and any selected reference tables in the same typed table format.
-`engine.relations.discover_fks` is the single foreign-key detector for both request-time reference selection and
-planner join graphs. Public world joins are separate because they require entity-to-QID grounding.
+`engine.relations` owns the planner relationship graph: `discover_fks` infers scalar edges from request data, while
+`relate(..., explicit_fks=...)` validates trusted internal tuple edges from reference enrichment. Client table payloads
+cannot declare trusted edges. Public world joins are separate because they require entity-to-QID grounding.
 
 ## Data And Isolation
 
@@ -58,7 +61,8 @@ One PostgreSQL database contains:
 
 | Scope | Schema | Purpose |
 |---|---|---|
-| Shared | `knowledgebase` and `public` | Resolution index, taxonomy, Wikidata-backed entity tables, and geo data |
+| Wikidata (legacy names pending migration) | `knowledgebase` and `public` | Current resolution index, taxonomy, Wikidata-backed entities, and staging/geo data; coordinated target is `wikidata` |
+| Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. IANA country-name lookup is code-approved; deployment enablement is empty by default. See `docs/SOURCE_DATA.md` |
 | Conversation | `c_<32hex>` | Uploaded tables and world-resolution bridges for one authorized conversation |
 | User | `m_<md5(sub)>` | Private reference dimensions such as product-to-category or SKU-to-region |
 
@@ -114,6 +118,7 @@ Fast checks that need neither weights nor Postgres:
 python -m tests.test_sql_ast
 python -m tests.test_master_ingest
 python -m tests.test_routing
+python -m tests.test_enrichment
 node web/tests/workbook_reference.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server
 ```
@@ -133,6 +138,7 @@ gold-blind headline configuration, while `gold_tables` is an oracle ablation.
 | Path | Owner |
 |---|---|
 | `engine/` | Runtime typing, planning, grounding, execution, auth, conversations, and references |
+| `engine/enrichment/` | Deterministic intent, source policy, request-local reference materialization, and replay manifests |
 | `web/` | Static workbook UI, Firebase Hosting configuration, and browser tests |
 | `orchestrator/` | Optional conversational tool loop; it presents engine results but does not invent numbers |
 | `mcp_server/` | MCP adapter over the same engine API |

@@ -6,7 +6,8 @@ signals; typed AST construction, candidate ordering, routing, joins, validation,
 fixed inputs, configuration, database state, and model artifacts.
 
 Read [GETTING_STARTED.md](GETTING_STARTED.md) first when setting up the repository. Read
-[SQL_AST.md](SQL_AST.md) for planner internals and [../db/README.md](../db/README.md) for the database contract.
+[SQL_AST.md](SQL_AST.md) for planner internals, [SOURCE_DATA.md](SOURCE_DATA.md) for
+publisher-owned references, and [../db/README.md](../db/README.md) for the database contract.
 
 ## System Boundaries
 
@@ -39,11 +40,12 @@ engine operation to MCP clients. Neither component owns data reasoning or may in
 
 ## Data Scopes
 
-The PostgreSQL deployment uses three distinct scopes:
+The PostgreSQL deployment uses four distinct scopes:
 
 | Scope | Schema | Contents |
 |---|---|---|
-| Shared | `knowledgebase`, `public` | Resolution index, taxonomy, Wikidata-backed entity tables, geo data |
+| Wikidata shared data (legacy names) | `knowledgebase`, `public` | Current resolution index, taxonomy, Wikidata-backed entity tables, and staging/geo data; target migration is described below |
+| Synchronized reference sources | See `SOURCE_DATA.md` | Nine publisher-owned schemas with active physical releases; logical datasets remain separately deployment-gated |
 | Conversation | `c_<32hex>` | Uploaded tables and persisted world-resolution bridges |
 | User | `m_<md5(subject)>` | Reusable private reference tables |
 
@@ -54,6 +56,36 @@ Private references are not added wholesale to a SQL `search_path`. `engine.maste
 bounded set, applies the production foreign-key detector to uploaded and saved tables, and selects only references
 connected to the request. Selection runs to a fixed point, so a valid multi-hop chain can be included. Selected
 references then become ordinary typed planner tables; there is no reference-specific SQL generator.
+
+## Domain Semantics And Enrichment
+
+Market-led domain profiles and deterministic shared-reference enrichment are specified in
+[KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMENT_ROADMAP.md). The active publisher
+inventory is recorded in [SOURCE_DATA.md](SOURCE_DATA.md). A physical source release being
+active does not make it planner-visible. `iana_country` is the first code-approved logical
+dataset, but deployment still requires `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default
+empty allowlist keeps current production answers unchanged.
+The production request flow now contains the guarded integration boundary: explicit intent,
+domain-role recognition, database-backed registry selection, request-local materialization,
+trusted-edge propagation, and serving provenance. The embedded currency fixture remains
+evaluation-only because the synchronized CLDR source needs a reviewed logical projection
+across code, localized-name, symbol, and fraction tables before it can replace the fixture.
+
+The source materialization design makes the currently ambiguous database boundary explicit: physical shared schemas are source-
+owned (`wikidata` after migration and the publisher schemas in `SOURCE_DATA.md`), while domain roles describe request-private
+operational tables and classify source datasets in the planner registry. Each source owns a versioned `release`
+table. PostgreSQL `public` contains no application data. `engine.relations` remains the
+relationship-graph owner, and the existing typed AST remains the only SQL planner. Enrichment does not add a router,
+planner, or request-time network path.
+
+Existing Wikidata country, currency, timezone, city, and administrative-area tables migrate from legacy
+`knowledgebase` and `public` into source-owned `wikidata`. IANA and CLDR facts remain in `iana` and `cldr`; they are
+linked to Wikidata by explicit registry edges and are not copied into domain schemas. Each source fact has one
+writable owner and each exposed relation has one planner role.
+The measured baseline found incomplete/mixed Wikidata code data and empty timezone staging, so M1 uses pinned IANA
+and CLDR snapshots. Each implemented refresh inserts a complete immutable release and activates it atomically;
+upserting into active reference rows is prohibited because it retains upstream deletions and breaks deterministic
+replay. The legacy Wikidata schema migration is still pending.
 
 ## Request Flow
 
@@ -110,6 +142,41 @@ a primitive prediction alone cannot seize a self-contained own-data question.
 World lookup may depend on Wikidata availability for an uncached entity. Existing cached data and emitted SQL make
 successful results reproducible, but external source availability is an operational dependency rather than model
 entropy.
+
+## Deterministic Reference Enrichment
+
+Publisher-owned reference facts remain in publisher-named schemas. `engine/enrichment/registry.py` is the single
+policy owner and describes each logical dataset with a `DatasetDefinition`: qualified relations, identity and lookup
+keys, lookup cardinality, ambiguity behavior, temporal selection, licensing, row-level restrictions, and activation.
+Registration never grants planner visibility.
+
+`engine/enrichment/store.py` resolves exactly one active source release and returns a typed `SnapshotPin` containing
+the source schema, release ID, schema version, and definition hash. Reads are key-bounded, release-qualified, ordered,
+and network-free. Replays may read a retired pinned release; ordinary requests resolve the active release once at the
+start of enrichment.
+
+Source capabilities are intentionally different: exact dimensions, ambiguous relations, numbering-pattern metadata,
+temporal series, temporal rule sets, bounded calendars, terminology hierarchies, and rights-bearing document graphs.
+`engine/enrichment/intents.py` extracts only explicit requested attributes; ordinary own-data grouping does not activate
+enrichment. `engine/enrichment/adapters.py` returns typed match, absence, ambiguity, policy-denial, and ineligibility
+outcomes while retaining snapshot and license provenance. Temporal capabilities still abstain because row-level temporal
+AST semantics are not implemented.
+
+Trusted composite edges pass separately to `TableQuery.ingest`; they are not accepted from a client table payload.
+`SchemaGraph` stores their ordered column pairs as one foreign key, and `sql_ast.Join` validates and renders them as one
+atomic `ON a.x = b.x AND a.y = b.y` clause. Legacy scalar fields remain available to existing planner components.
+Source activation has two keys: the registry definition must be code-approved and the deployment allowlist must
+name it. `db/reference_grants.py` derives read-only relation grants from that same registry; a deployment must use
+a non-superuser serving role. Snapshot rollback uses `db/sync/releases.py` and accepts only a previously validated
+retired release.
+
+`engine/domain_profiles.py` owns seven versioned market profiles and their Schema.org mappings;
+`engine/domain_typing.py` emits conservative request-local role evidence. Dataset definitions may declare
+`compatible_roles`, which is a mandatory runtime gate for domain-sensitive references. `engine/enrichment/runtime.py`
+then combines role evidence with explicit request intent, value type, activation, snapshot, exact row coverage, and
+policy outcomes. A match becomes an ordinary bounded planner tab plus a trusted edge. The server attaches
+`provenance.enrichment` only when a dataset was actually used, so disabled/no-intent requests retain their prior
+response shape.
 
 ## Private Reference Lifecycle
 

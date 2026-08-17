@@ -17,7 +17,9 @@ Auth (the verified Google sub) is enforced by the server; the composed path read
 world schema + the request's own data (no per-user schema read -> no IDOR).
 """
 from __future__ import annotations
+import hashlib
 import re
+import threading
 
 from engine.tables import qident
 from engine.entities import WORLD_TABLE_TYPE
@@ -29,6 +31,12 @@ from engine.routing import DEPTH_PRIMS, WORLD_MEASURES, compose_owns
 
 class ComposedKnowledgeQuery:
     """Composition over the live multi-table + world base; delegates non-composed queries to KnowledgeQuery."""
+
+    # Bridge tables are conversation-scoped mutable state. A small local lock stripe handles
+    # threads sharing one process; a PostgreSQL advisory lock handles separate service
+    # processes. The lock spans refresh and execution, so another request cannot observe the
+    # bridge between DELETE and INSERT.
+    _serve_locks = tuple(threading.RLock() for _ in range(64))
 
     # Routing constants (DEPTH_PRIMS = primitive-head EVIDENCE to build a compose plan; WORLD_MEASURES = a world
     # attribute the upload can't expose) and the routing AUTHORITY (compose_owns) live in engine.routing — the ONE
@@ -342,12 +350,36 @@ class ComposedKnowledgeQuery:
         except (TypeError, ValueError):
             return str(va) == str(vb)
 
-    def serve(self, tables, question, sub, as_of=None, emit=None):
+    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=()):
+        if not sub:
+            return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
+                                      explicit_fks=explicit_fks)
+        digest = hashlib.sha256(str(sub).encode("utf-8")).digest()
+        local_lock = self._serve_locks[int.from_bytes(digest[:2], "big") % len(self._serve_locks)]
+        with local_lock:
+            conn = self.qw._rconn()
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT pg_advisory_lock(hashtext(%s), hashtext(%s))",
+                            ("prereasoner-world-bridge", str(sub)))
+                try:
+                    return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
+                                              explicit_fks=explicit_fks)
+                finally:
+                    cur.execute("SELECT pg_advisory_unlock(hashtext(%s), hashtext(%s))",
+                                ("prereasoner-world-bridge", str(sub)))
+            finally:
+                cur.close()
+
+    def _serve_locked(self, tables, question, sub, as_of=None, emit=None, explicit_fks=()):
         """Composed (composition primitives / COUNT / world MEASURE) -> the view stack. A plain world-FILTERED
         scalar aggregate ('total amount in France') is ALSO re-expressed as the view stack so the demo SHOWS the
         reasoning (resolve -> world join -> filter -> aggregate) instead of jumping to the number. The delegate
         (KnowledgeQuery) stays AUTHORITATIVE for clarify / list / hybrid / non-geo / no-filter; the re-expression only
         stands when it reproduces the delegate's answer. Everything else delegates unchanged."""
+        if explicit_fks:
+            return self.qw.serve(tables, question, as_of=as_of, schema=sub,
+                                 explicit_fks=explicit_fks)
         if self._composed(tables, question):
             # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building —
             # never authority to stand on it. Ground the world dependency FIRST: if nothing resolves against the
@@ -358,7 +390,8 @@ class ComposedKnowledgeQuery:
             # through to the authoritative delegate). The world lookup is the slow step, so stream resolving first.
             if emit:
                 emit("status", "resolving")
-            norm, _ = self.qw.ingest(tables)
+            norm, _ = (self.qw.ingest(tables, explicit_fks=explicit_fks)
+                       if explicit_fks else self.qw.ingest(tables))
             world = self._world_lookup(norm, sub)
             if world:
                 try:
@@ -370,9 +403,13 @@ class ComposedKnowledgeQuery:
                     import traceback
                     print("composed serve failed, delegating to KnowledgeQuery:", e, flush=True)
                     traceback.print_exc()
-            return self.qw.serve(tables, question, as_of=as_of, schema=sub)
+            return (self.qw.serve(tables, question, as_of=as_of, schema=sub,
+                                  explicit_fks=explicit_fks)
+                    if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
         # Not gated to the engine: the delegate owns clarify / list / hybrid / non-geo / plain answers.
-        deleg = self.qw.serve(tables, question, as_of=as_of, schema=sub)
+        deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
+                               explicit_fks=explicit_fks)
+                 if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
         # But a CLEAN world-filtered scalar aggregate (a world join in meaning_join, one number, NO clarify) is
         # re-expressed as the view stack so the reasoning is shown — kept only if it matches the delegate's answer.
         if (not deleg.get("clarify") and not deleg.get("error")

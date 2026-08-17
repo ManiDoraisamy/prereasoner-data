@@ -311,6 +311,8 @@ class RecursiveQueryExpander:
         out = []
         for target in targets:
             for fk in self.schema.foreign_keys:
+                if fk.is_composite:
+                    continue
                 if target.table == fk.from_column.table:
                     lookup_key, outer_key = fk.from_column, fk.to_column
                 elif target.table == fk.to_column.table:
@@ -415,6 +417,8 @@ class RecursiveQueryExpander:
         values = _value_mentions(self.schema, question)
         grouped_fks: dict[tuple[str, str], list[ForeignKey]] = defaultdict(list)
         for fk in self.schema.foreign_keys:
+            if fk.is_composite:
+                continue
             grouped_fks[(fk.from_column.table, fk.to_column.table)].append(fk)
 
         tokens = _tokens(question)
@@ -617,7 +621,9 @@ def _entity_select(select: tuple[SelectItem, ...], table: str) -> tuple[SelectIt
 def _entity_join_key(query: SelectQuery, table: str) -> ColumnRef | None:
     options = []
     for join in query.joins:
-        for column in (join.left, join.right):
+        if len(join.predicates) != 1:
+            continue
+        for column in join.predicates[0]:
             if column.table == table:
                 options.append(column)
     if not options:
@@ -648,7 +654,10 @@ def _column_question_overlap(column: ColumnRef, question: str) -> int:
 
 
 def _tree_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
-    options = [column for join in joins for column in (join.left, join.right) if column.table == table]
+    options = [
+        column for join in joins if len(join.predicates) == 1 for column in join.predicates[0]
+        if column.table == table
+    ]
     return sorted(set(options), key=lambda column: (0 if _is_id(column.name) else 1, column.name))[0] if options else None
 
 

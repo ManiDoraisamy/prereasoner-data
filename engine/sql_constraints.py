@@ -703,6 +703,8 @@ class ConstraintQueryExpander(ExpansionSupport):
             entity_table = aggregates[0].expression.operand.table
             subject_tokens = set(tokens[:cue_position])
             for fk in self.schema.foreign_keys:
+                if fk.is_composite:
+                    continue
                 if fk.to_column.table == entity_table:
                     entity_key, relation_key = fk.to_column, fk.from_column
                 elif fk.from_column.table == entity_table:

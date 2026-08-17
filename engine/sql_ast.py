@@ -112,9 +112,17 @@ class Join:
     right: ColumnRef
     kind: str = "INNER"
     alias: str | None = None
+    additional: tuple[tuple[ColumnRef, ColumnRef], ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "kind", self.kind.upper())
+        object.__setattr__(self, "additional", tuple(
+            (left, right) for left, right in self.additional
+        ))
+
+    @property
+    def predicates(self) -> tuple[tuple[ColumnRef, ColumnRef], ...]:
+        return ((self.left, self.right),) + self.additional
 
 
 @dataclass(frozen=True)
@@ -241,14 +249,17 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
         qualifier = join.alias or join.table
         if qualifier in joined:
             raise ASTValidationError(f"duplicate table qualifier: {qualifier}")
-        edge_tables = {join.left.table, join.right.table}
-        if qualifier not in edge_tables:
-            raise ASTValidationError("joined table alias is not present in its ON edge")
-        if not (edge_tables & joined):
-            raise ASTValidationError("joins must add one table to the connected FROM graph")
-        unknown = edge_tables - joined - {qualifier} - set(outer_scope)
-        if unknown:
-            raise ASTValidationError(f"join edge references unknown qualifiers: {sorted(unknown)}")
+        for left, right in join.predicates:
+            edge_tables = {left.table, right.table}
+            if qualifier not in edge_tables:
+                raise ASTValidationError("joined table alias is not present in every ON predicate")
+            if not (edge_tables & joined):
+                raise ASTValidationError("every ON predicate must connect to the existing FROM graph")
+            unknown = edge_tables - joined - {qualifier} - set(outer_scope)
+            if unknown:
+                raise ASTValidationError(
+                    f"join predicate references unknown qualifiers: {sorted(unknown)}"
+                )
         joined.add(qualifier)
 
     visible = frozenset(joined) | outer_scope
@@ -317,7 +328,10 @@ def _render_query(query: Query) -> str:
         sql += f" {prefix} {_qident(join.table)}"
         if join.alias is not None:
             sql += f" AS {_qident(join.alias)}"
-        sql += f" ON {_render_expr(join.left)} = {_render_expr(join.right)}"
+        sql += " ON " + " AND ".join(
+            f"{_render_expr(left)} = {_render_expr(right)}"
+            for left, right in join.predicates
+        )
     if query.where is not None:
         sql += " WHERE " + _render_predicate(query.where)
     if query.group_by:

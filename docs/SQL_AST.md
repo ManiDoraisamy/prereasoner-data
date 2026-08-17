@@ -17,6 +17,11 @@ Given a question, tables, and foreign keys, the planner:
 5. Ranks candidates with hand-written, fully-inspectable deterministic features.
 6. Renders only validated ASTs to SQL.
 
+Foreign keys may contain one or several ordered column pairs. A composite key remains one
+logical graph edge and one `Join`; rendering produces an atomic conjunction such as
+`ON child.country = parent.country AND child.postal = parent.postal`. The validator rejects
+any component that does not connect the new table to the existing join graph.
+
 The same inputs always produce the same candidate **ordering** — the planner's selection is
 deterministic, which removes sampling variance. It does not remove natural-language ambiguity,
 schema-linking errors, missing search rules, or ranking errors.
@@ -99,6 +104,10 @@ print(candidates[0].query)       # typed AST
 print(candidates[0].evidence)    # generation and ranking trace
 print(candidates[0].features)    # numeric ranking features
 ```
+
+Trusted internal callers may pass tuple edges to `ingest(tables, explicit_fks=...)` using
+`from_cols` and `to_cols`. This parameter is an internal planner boundary; serving does not
+read foreign keys from uploaded table dictionaries.
 
 `search_ast` builds a `SchemaGraph` (`engine/sql_search.py: SchemaGraph.from_planner`), runs
 `SQLSearcher(graph, ...).search(...)`, and returns ranked, validated candidates. There is no

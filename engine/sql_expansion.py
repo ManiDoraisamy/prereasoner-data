@@ -392,7 +392,8 @@ def physical_tables(query: SelectQuery) -> set[str]:
 
 def join_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
     columns = [
-        column for join in joins for column in (join.left, join.right)
+        column for join in joins if len(join.predicates) == 1
+        for column in join.predicates[0]
         if column.table == table
     ]
     return sorted(

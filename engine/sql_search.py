@@ -102,6 +102,7 @@ class SQLSearcher:
             return []
         table_scores = self._table_scores(tokens)
         mentions = self._column_mentions(tokens, table_scores)
+        mentions = self._suppress_fk_attribute_qualifiers(tokens, mentions)
         clause_boundary = next((i for i, token in enumerate(tokens)
                                 if token in {"where", "with", "whose", "having", "from", "for",
                                              "order", "ordered", "sort", "sorted", "rank", "ranked"}),
@@ -320,6 +321,38 @@ class SQLSearcher:
             if out:
                 return out
         return [((), 0.0, ())]
+
+    def _suppress_fk_attribute_qualifiers(
+            self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> tuple[_Mention, ...]:
+        """Treat adjacent ``country name``-style FK phrases as one target attribute.
+
+        A source column named ``country`` is a qualifier when its trusted edge points to the
+        table owning the immediately following ``name``/``title``/``label`` mention. Explicit
+        lists such as ``country code and country name`` are non-adjacent and remain unchanged.
+        """
+        suppressed = set()
+        display_names = {"name", "title", "label", "description"}
+        for left, right in zip(mentions, mentions[1:]):
+            if right.position != left.position + 1 or right.position >= len(tokens):
+                continue
+            target_tables = {
+                option.column.table for option in right.options
+                if set(_name_words(option.column.name)) & display_names
+            }
+            if not target_tables:
+                continue
+            qualifier = tokens[left.position]
+            if not any(
+                qualifier in {_canon(word) for word in _name_words(target)}
+                for target in target_tables
+            ):
+                continue
+            if all(any(
+                fk.from_column == option.column and fk.to_column.table in target_tables
+                for fk in self.schema.foreign_keys
+            ) for option in left.options):
+                suppressed.add(left.position)
+        return tuple(mention for mention in mentions if mention.position not in suppressed)
 
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []

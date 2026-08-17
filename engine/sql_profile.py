@@ -132,10 +132,11 @@ class _ASTProfileBuilder(_ProfileBuilder):
             local_aliases[join.table] = physical
             if join.alias:
                 local_aliases[join.alias] = physical
-            self.feature("join_predicates")
-            self.feature("predicate.=")
-            self._column(join.left, "join", aliases=local_aliases)
-            self._column(join.right, "join", aliases=local_aliases)
+            for left, right in join.predicates:
+                self.feature("join_predicates")
+                self.feature("predicate.=")
+                self._column(left, "join", aliases=local_aliases)
+                self._column(right, "join", aliases=local_aliases)
             from_tables += 1
         self.feature("from_tables", from_tables)
         self.feature("joins", len(query.joins))

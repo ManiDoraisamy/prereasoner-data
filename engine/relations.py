@@ -11,6 +11,8 @@ Table form: {"name": str, "columns": [str], "rows": [[val, ...], ...]} (rows ali
 """
 from __future__ import annotations
 
+from math import isfinite
+
 
 def _num(v):
     try:
@@ -113,8 +115,60 @@ def discover_fks(tables, min_incl=0.9):
     return fks
 
 
-def relate(tables):
-    """Dedup every table, then discover the FK graph. -> {tables, fks}."""
+def _explicit_fk(raw, tables):
+    if hasattr(raw, "as_foreign_key"):
+        raw = raw.as_foreign_key(1.0)
+    if not isinstance(raw, dict):
+        raise ValueError("explicit foreign keys must be mappings or ExplicitKeyEdge values")
+    from_table, to_table = str(raw.get("from_table", "")), str(raw.get("to_table", ""))
+    from_cols = raw.get("from_cols", (raw.get("from_col"),))
+    to_cols = raw.get("to_cols", (raw.get("to_col"),))
+    if isinstance(from_cols, str) or isinstance(to_cols, str):
+        raise ValueError("explicit foreign-key columns must be collections")
+    from_cols, to_cols = tuple(from_cols), tuple(to_cols)
+    if not from_cols or len(from_cols) != len(to_cols) or None in from_cols + to_cols:
+        raise ValueError("explicit foreign keys require equally sized, non-empty column tuples")
+    columns = {str(table["name"]): set(map(str, table["columns"])) for table in tables}
+    if from_table not in columns or to_table not in columns or from_table == to_table:
+        raise ValueError("explicit foreign key references an unknown or identical table")
+    if not set(map(str, from_cols)) <= columns[from_table] or not set(map(str, to_cols)) <= columns[to_table]:
+        raise ValueError("explicit foreign key references an unknown column")
+    confidence = raw.get("conf", raw.get("confidence", 1.0))
+    if (isinstance(confidence, bool) or not isinstance(confidence, (int, float))
+            or not isfinite(float(confidence)) or not 0.0 <= confidence <= 1.0):
+        raise ValueError("explicit foreign-key confidence must be in [0,1]")
+    inclusion = raw.get("inclusion", confidence)
+    if (isinstance(inclusion, bool) or not isinstance(inclusion, (int, float))
+            or not isfinite(float(inclusion)) or not 0.0 <= inclusion <= 1.0):
+        raise ValueError("explicit foreign-key inclusion must be in [0,1]")
+    edge = {
+        "from_table": from_table, "from_cols": tuple(map(str, from_cols)),
+        "to_table": to_table, "to_cols": tuple(map(str, to_cols)),
+        "conf": float(confidence), "inclusion": float(inclusion),
+        "explicit": True,
+    }
+    if len(from_cols) == 1:
+        edge.update(from_col=str(from_cols[0]), to_col=str(to_cols[0]))
+    if "cardinality" in raw:
+        edge["cardinality"] = str(getattr(raw["cardinality"], "value", raw["cardinality"]))
+    return edge
+
+
+def _fk_signature(edge):
+    from_cols = tuple(edge["from_cols"]) if "from_cols" in edge else (edge["from_col"],)
+    to_cols = tuple(edge["to_cols"]) if "to_cols" in edge else (edge["to_col"],)
+    return edge["from_table"], from_cols, edge["to_table"], to_cols
+
+
+def relate(tables, explicit_fks=()):
+    """Deduplicate tables and merge validated trusted edges with discovered scalar FKs."""
     for t in tables:
         dedup(t)
-    return {"tables": tables, "fks": discover_fks(tables)}
+    explicit = [_explicit_fk(edge, tables) for edge in explicit_fks]
+    merged = list(explicit)
+    signatures = {_fk_signature(edge) for edge in explicit}
+    for edge in discover_fks(tables):
+        if _fk_signature(edge) not in signatures:
+            merged.append(edge)
+            signatures.add(_fk_signature(edge))
+    return {"tables": tables, "fks": merged}

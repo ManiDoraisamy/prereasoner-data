@@ -691,11 +691,11 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
             print(f"[knowledge_query] country name lookup failed for {qid!r}: {e}", flush=True)
             return None
 
-    def serve(self, tables, question, as_of=None, schema=None):
+    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=()):
         """Hybrid structured+semantic retrieval when the question has a free-text predicate AND the data has a
         free-text column AND it is not an aggregate; otherwise delegate to EntityQuery (which uses the unified
         operator via read_op_all). Any hybrid error falls back to EntityQuery so the world path never hard-fails."""
-        norm, fks = self.ingest(tables)
+        norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, _, _ = self.schema(norm, fks)
         is_agg = self.read_op_all(question, sch) is not None
         if is_agg and schema:                                         # NON-GEO world join (hospital/software/... + lazy fill)
@@ -728,7 +728,8 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         # 2-arg TableQuery.serve. EntityQuery.serve's own super() is relative to EntityQuery and correctly chains
         # RoutedQuery->PgQuery->KnowledgeTableQuery (skipping TableQuery). read_op_all inside that chain still resolves
         # to EncoderQuery's metric-space operator via MRO.
-        res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema)
+        res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
+                                explicit_fks=explicit_fks)
         # Clarify gate (COVERAGE): if the query silently DROPPED part of the question — a degenerate SELECT *
         # ('German sales'), OR a measure word with no aggregate ('French sales' -> SELECT name WHERE France) — offer
         # a best-guess unambiguous rephrasing (from the model's sub-threshold signals) for the user to confirm,

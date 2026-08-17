@@ -40,6 +40,21 @@ def qual(t, c):
     return f'{qident(t)}.{qident(c)}'
 
 
+def normalize_table_name(name):
+    """Return the canonical table identifier used throughout planner ingestion."""
+    return re.sub(r"\W+", "_", str(name)).strip("_") or "t"
+
+
+def _fk_columns(fk, side):
+    plural, singular = f"{side}_cols", f"{side}_col"
+    return tuple(fk[plural]) if plural in fk else (fk[singular],)
+
+
+def _fk_endpoint(fk, side):
+    values = [qual(fk[f"{side}_table"], column) for column in _fk_columns(fk, side)]
+    return values[0] if len(values) == 1 else values
+
+
 def affinity(struct):
     if "is_num" in struct:
         return "REAL" if "num_frac" in struct else "INTEGER"
@@ -220,19 +235,26 @@ class TableQuery:
                 if d["family"] == fam and vec[d["dim_id"]] >= self.thr.get(d["name"], thr)]
 
     # ---------- ingest + schema ----------
-    def ingest(self, tables):
-        """tables: [{name, columns, rows(list[dict] or list[list])}]. Dedup + discover FKs (deterministic)."""
+    def ingest(self, tables, explicit_fks=()):
+        """Normalize tables, deduplicate rows, and merge trusted internal edges with discovered FKs."""
         norm = []
         for t in tables:
             cols = list(t["columns"])
             rows = [r if isinstance(r, list) else [r.get(c) for c in cols] for r in t["rows"]]
-            norm.append({"name": re.sub(r"\W+", "_", str(t["name"])).strip("_") or "t", "columns": cols, "rows": rows})
-        g = relate(norm)                                          # dedup + FK discovery
+            norm.append({"name": normalize_table_name(t["name"]), "columns": cols, "rows": rows})
+        g = relate(norm, explicit_fks=explicit_fks)                # dedup + trusted/discovered FK graph
         return g["tables"], g["fks"]
 
     def _schema_name_units(self, tables, fks):
         """One name-only schema unit per (table, column), GLOBAL col index, ref=(to_table,to_col) on FK cols."""
-        ref_of = {(f["from_table"], f["from_col"]): (f["to_table"], f["to_col"]) for f in fks}
+        ref_of = {}
+        for fk in fks:
+            from_cols = _fk_columns(fk, "from")
+            to_cols = _fk_columns(fk, "to")
+            ref_of.update({
+                (fk["from_table"], from_col): (fk["to_table"], to_col)
+                for from_col, to_col in zip(from_cols, to_cols)
+            })
         units, colidx = [], {}
         for t in tables:
             for c in t["columns"]:
@@ -288,10 +310,14 @@ class TableQuery:
         """If >=2 involved tables share a discovered FK, return (fact, dim, fk_col, pk_col). Else None."""
         names = set(involved) if len(involved) >= 2 else set()
         for f in fks:
+            if "from_col" not in f:
+                continue
             if f["from_table"] in names and f["to_table"] in names:
                 return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
         if len(involved) >= 2:                                    # involved tables with no direct FK: use any FK touching one
             for f in fks:
+                if "from_col" not in f:
+                    continue
                 if f["from_table"] in involved or f["to_table"] in involved:
                     return (f["from_table"], f["to_table"], f["from_col"], f["to_col"])
         return None
@@ -458,9 +484,9 @@ class TableQuery:
             out["table_name"] = str(table["name"]); out["table_evolution"] = self._salient_evo(layers, tpos)
         return out
 
-    def serve(self, tables, question):
+    def serve(self, tables, question, explicit_fks=()):
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
-        norm, fks = self.ingest(tables)
+        norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
         try:
             candidate, result, err, candidates = self._serve_ast(
@@ -481,8 +507,9 @@ class TableQuery:
                 "n_rows": len(table["rows"]), "dropped": table.get("_dedup_dropped", 0),
             } for table in norm],
             "fks": [{
-                "from": qual(fk["from_table"], fk["from_col"]),
-                "to": qual(fk["to_table"], fk["to_col"]), "conf": fk["conf"],
+                "from": _fk_endpoint(fk, "from"),
+                "to": _fk_endpoint(fk, "to"),
+                "conf": fk["conf"],
             } for fk in fks],
             "join": None,
             "schema": [{

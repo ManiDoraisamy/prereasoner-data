@@ -536,7 +536,8 @@ class ExtremaQueryExpander(ExpansionSupport):
         foreign_key_columns = {
             column
             for foreign_key in self.schema.foreign_keys
-            for column in (foreign_key.from_column, foreign_key.to_column)
+            for pair in foreign_key.column_pairs
+            for column in pair
         }
         for schema_column in self.schema.columns:
             column = schema_column.ref

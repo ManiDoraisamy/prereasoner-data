@@ -1,6 +1,6 @@
 # Spider Results — canonical current report
 
-The current `whole_db` row was measured from source commit `55cf3b0` with a dirty worktree whose exact planner,
+The current `whole_db` row was measured from source commit `3760b44` with a dirty worktree whose exact planner,
 evaluator, dataset, and encoder hashes are recorded in the result JSON. Numbers below are the serving-faithful
 measurement: `spider/probe/full_eval.py` running the exact production selector on **Spider
 dev (1034 examples, 20 DBs)**, real trained encoder (Qwen2.5-0.5B + LoRA + relational readout, `engine/data/`)
@@ -17,7 +17,7 @@ typed-AST planner** (`routed = {ast: 1034}`; zero compose). Accuracy here is ent
 
 | Configuration | strict | lenient | scalar-gold |
 |---|---:|---:|---:|
-| **whole_db** — gold-blind, all DB tables fed (**standard Spider**) | **358/1034 (34.6%)** | 451/1034 (43.6%) | 224/408 (54.9%) |
+| **whole_db** — gold-blind, all DB tables fed (**standard Spider**) | **359/1034 (34.7%)** | 453/1034 (43.8%) | 224/408 (54.9%) |
 | **gold_tables** — oracle table selection, last verified before this planner change | **424/1034 (41.0%)** | 544/1034 (52.6%) | 240/408 (58.8%) |
 
 `whole_db` is the number to compare against other Spider systems (gold-blind; it also pays the cost of table
@@ -33,10 +33,10 @@ UB); **scalar-gold** = the clean unambiguous single-value subset (n=408).
 | difficulty | n | answered | strict | lenient | scalar |
 |---|--:|--:|--:|--:|--:|
 | easy | 248 | 243 | 121 | 138 | 107/173 |
-| medium | 446 | 432 | 127 | 177 | 54/101 |
+| medium | 446 | 432 | 128 | 179 | 54/101 |
 | hard | 174 | 163 | 63 | 88 | 46/77 |
 | extra | 166 | 162 | 47 | 48 | 17/57 |
-| **all** | **1034** | **1000** | **358** | **451** | **224/408** |
+| **all** | **1034** | **1000** | **359** | **453** | **224/408** |
 
 **gold_tables** (oracle tables):
 
@@ -79,10 +79,11 @@ report) the source commit + dirty-worktree flag, so a run is traceable to an exa
 
 ## Current transition
 
-Against the deployed `37570f8` whole-db baseline (340 strict / 437 lenient / 212 scalar), the current run has
-18 strict gains, 14 lenient gains, and 12 scalar gains, with **zero losses** in each metric. Fifty-seven selected
-SQL strings changed and none of those changed examples became unanswered. The accepted artifact is
-`release_review_final5_20260802`; earlier `release_review*` directories from this work are superseded diagnostics.
+Against the previous accepted `release_review_final5_20260802` row (358 strict / 451 lenient / 224 scalar), the
+current run has one strict gain, two lenient gains, no scalar change, and **zero losses**. Three selected SQL strings
+changed. The gains remove spurious related-table projections and joins for document-template and contestant-name
+questions. The accepted artifact is `enrichment_activation_20260817`; earlier `release_review*` directories are
+superseded diagnostics.
 
 ## Historical
 

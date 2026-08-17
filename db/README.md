@@ -1,22 +1,43 @@
 # Database Bootstrap
 
+> **Current naming debt:** the running code still stores Wikidata staging in PostgreSQL
+> `public` and Wikidata serving projections in `knowledgebase`. These are legacy names, not
+> the target open-source contract. New enrichment work must follow
+> [`docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md`](../docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md):
+> `wikidata` for Wikidata-owned data and publisher schemas listed in
+> [`docs/SOURCE_DATA.md`](../docs/SOURCE_DATA.md) for new
+> synchronized references. Domain meaning belongs in registry metadata, not duplicate
+> `geo`/`finance` schemas, and `public` contains no application tables. Until the coordinated
+> migration lands, the remainder of this file documents the
+> schema names the current executable actually uses.
+
 Everything needed to bootstrap the Postgres database (`world`) the engine serves
 against, on a **fresh instance** — local Docker or Cloud SQL.
 
-The database holds five schema families:
+The database holds source, application, and tenant schema families:
 
-| Schema | Contents | Created by | Filled by |
-|---|---|---|---|
-| `public` | raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, `entity_label`) | `init.sql` | `sync/sync_wikidata.py` (bulk) |
-| `knowledgebase` | Resolution index, taxonomy, friendly world tables/views, and qid-keyed faithful Wikidata tables named by exact type label | `init.sql` plus sync scripts; entity rows also fill lazily |
+| Schema | Contents | Created and filled by |
+|---|---|---|
+| `public` | raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, `entity_label`) | `init.sql`, then `sync/sync_wikidata.py` |
+| `knowledgebase` | Resolution index, taxonomy, friendly world tables/views, and QID-keyed faithful Wikidata tables named by exact type label | `init.sql` plus Wikidata sync scripts; entity rows also fill lazily |
+| `iana` | Pinned IANA country codes, canonical zones, aliases, representative locations, and country-zone mappings | `python -m db.sync.sources.iana.sync` |
+| `cldr` | Pinned CLDR territory/currency code data, localized names/symbols, temporal currency usage, and unit metadata | `python -m db.sync.sources.cldr.sync` |
+| `google_libphonenumber` | Numbering-region patterns and formatting metadata | `python -m db.sync.sources.google_libphonenumber.sync` |
+| `geonames` | Worldwide postal rows and the scoped `cities5000` place extract | `python -m db.sync.sources.geonames.sync` |
+| `ecb` | Historical EUR reference exchange rates | `python -m db.sync.sources.ecb.sync` |
+| `ec_tedb` | Dated EU VAT responses with category and CN/CPA codes | `python -m db.sync.sources.ec_tedb.sync` |
+| `nager_date` | Bounded community public-holiday snapshots | `python -m db.sync.sources.nager_date.sync` |
+| `cdc` | Effective CDC/NCHS ICD-10-CM tabular hierarchy | `python -m db.sync.sources.cdc.sync` |
+| `nlm_cde` | Public NIH/NLM CDEs, forms, assessment structure, and rights flags | `python -m db.sync.sources.nlm_cde.sync` |
 | `chat` | Conversation metadata and verified user-to-conversation ownership | `init.sql` and `engine/conversations.py` |
 | `c_<32hex>` | One authorized conversation's uploads, selected private-reference copies, and world bridges | engine request path |
 | `m_<md5(sub)>` | One verified user's persistent private reference dimensions | `engine/master.py` |
 
-Connection config is env-var only (no hardcoded hosts): `KB_PG_HOST`, `KB_PG_PORT`,
-`KB_PG_DB`, `KB_PG_USER`, `KB_PG_PASSWORD` (+ optional `KB_PG_SSLMODE`,
-default `prefer`). See `sync/_conn.py`. The engine's role needs `CREATE` on the
-database (it creates conversation and private-reference schemas); the scripts assume the default `postgres` role.
+Connection config is env-var only (no hardcoded hosts). Serving uses `KB_PG_*`. Sync,
+migration, release, and grant commands prefer `SYNC_PG_*` and fall back to `KB_PG_*` for
+local development. In production the engine must use a non-superuser role; privileged sync
+credentials belong only on offline jobs. See `sync/_conn.py`. The engine role still needs
+the narrowly scoped database/schema privileges required to create conversation and private-reference schemas.
 
 **Extensions required: `vector` (pgvector) and `pg_trgm`.** Nothing else — geo
 "NEARBY" queries compute haversine distance in plain SQL over `settlement.lat/lng`,
@@ -130,12 +151,66 @@ python db/sync/sync_entity.py --qid Q6256 --label country --max 1000   # bulk on
 python db/sync/sync_entity.py --qid Q515 --label city --lazy "Kyoto"   # one entity, like the engine does
 ```
 
+### Source-owned reference sync
+
+These synchronizers create their schema and tables only when invoked. They download a
+pinned release, validate the complete declared input, insert an immutable content-addressed
+release, verify table counts, and activate it in one transaction:
+
+```bash
+python -m db.sync.sources.iana.sync --dry-run
+python -m db.sync.sources.iana.sync
+
+python -m db.sync.sources.cldr.sync --dry-run
+python -m db.sync.sources.cldr.sync
+python -m db.sync.sources.google_libphonenumber.sync
+python -m db.sync.sources.geonames.sync
+python -m db.sync.sources.ecb.sync
+python -m db.sync.sources.ec_tedb.sync --situation-on 2026-08-17
+python -m db.sync.sources.nager_date.sync --year-start 2025 --year-end 2027
+python -m db.sync.sources.cdc.sync
+python -m db.sync.sources.nlm_cde.sync --version 2026-08-17
+
+# Upgrade source schemas that already exist; no source download is performed.
+python -m db.sync.migrations
+
+# Grant only code-approved reference relations to an existing non-superuser serving role.
+python -m db.reference_grants --role prereasoner_runtime --datasets iana_country
+
+# Atomically reactivate a previously validated immutable release.
+python -m db.sync.releases --schema iana --release-id <retired-release-id>
+```
+
+Use `--archive <path>` to validate and load an already-downloaded release. Rerunning the
+same active content is idempotent. The IANA sync fully materializes `iso3166.tab`,
+`zone1970.tab`, and default-release `Zone`/`Link` records into 5 data tables; it deliberately
+does not claim compiled timezone transitions. The CLDR sync fully materializes its declared
+territory, currency, unit, and localized territory/currency display structures into 14 data
+tables across every locale file; it does not mirror unrelated CLDR calendars, collation,
+annotations, or numbering data.
+
+Source schema migrations are checksummed in each source's `schema_migration` table and run
+independently of source downloads. The runner skips absent source schemas, takes a
+transaction-scoped advisory lock, and rolls back a source migration on failure. A
+synchronizer refuses to reuse an active release whose materialized schema version is older
+than the version required by its checked-in source contract.
+
+See [`docs/SOURCE_DATA.md`](../docs/SOURCE_DATA.md) for exact table counts, source scope,
+licenses, quality limits, and the credential-gated WHO/LOINC commands. Run
+`python -m tests.test_source_sync` for the hermetic parser/validation suite. These tables
+are materialized foundations and do not become planner-visible merely because their physical
+release is active. `iana_country` is code-approved, but it is selected only when the serving
+deployment explicitly sets `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default is empty.
+
 ## 4. Storage expectations (rough)
 
 | State | Estimate |
 |---|---|
 | minimal seed (`--high-only`, words `--cities`) | ~10k settlements, ~40–60k word rows ⇒ **well under 1 GB** incl. HNSW |
 | full sync | ~174k settlements, ~213k word rows (384-dim vectors ≈ 1.5 KB each) ⇒ words table + HNSW index ≈ 1 GB; **~2–3 GB total** |
+| nine active publisher-source schemas (2026-08-17) | about **985 MB** total: GeoNames 650 MB, NLM CDE 175 MB, ECB 75 MB, CLDR 61 MB, and smaller sources |
 | lazy growth | one qid-keyed entity row + one `words` row per newly seen entity; conversation bridges and private reference schemas grow with use |
 
-A 20 GB disk is comfortable.
+The verified Cloud SQL database was 3,229 MB after these imports. A 20 GB disk remains
+comfortable for the active set, but a future full Open Food Facts or GLEIF import requires a
+separate measured storage budget.

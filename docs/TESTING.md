@@ -11,6 +11,10 @@ Run these before involving models, PostgreSQL, or network services:
 python -m tests.test_sql_ast
 python -m tests.test_master_ingest
 python -m tests.test_routing
+python -m tests.test_enrichment
+python -m tests.test_source_sync
+python -m regress.product_templates
+python -m regress.source_activation
 node --check web/public/lib/workbook.js
 node web/tests/workbook_reference.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server
@@ -21,6 +25,21 @@ These cover typed AST behavior, deterministic routing, private-reference selecti
 reference state, JavaScript syntax, and Python syntax. Some imported engine modules require packages from
 `requirements.txt`, but the tests do not require a running database or model weights unless stated otherwise by
 their output.
+
+`regress.product_templates` runs 35 source-cited public-template development cases, five for
+each domain profile. These fixtures measure deterministic recognition but are not customer
+held-out evidence. An opted-in held-out corpus stays under ignored `regress/private/` and can
+be run with:
+
+```powershell
+python -m regress.product_templates --private-corpus regress/private/<corpus>.json
+```
+
+The loader accepts only schema version 1, explicit metadata-only consent, table and column
+names, expected profile/roles, question, and gold AST shape. It rejects row values, unknown
+fields, duplicate columns, unknown roles, and partial profile coverage at evaluation time;
+the command prints a canonical SHA-256 replay identity. `regress.source_activation` is the
+separate 25-positive/100-negative IANA selection and candidate-pool gate.
 
 ## Repository Runner
 
@@ -37,6 +56,8 @@ The runner executes the canonical suites in this order:
 | `tests.test_compose` | Composed operations and relationship discovery |
 | `tests.test_converse` | Optional presentation/fill behavior |
 | `tests.test_master_ingest` | Private-reference validation, storage, and fixed-point selection |
+| `tests.test_enrichment` | M0 profile/role contracts, intent contrastives, value typing, bounded adapters, domain gates, request-local materialization, tuple edges, replay manifests, and serving-shaped benchmarks |
+| `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator` | Tool-use policy and HTTP envelope |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |

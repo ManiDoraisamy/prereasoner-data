@@ -139,9 +139,10 @@ class EntityQuery(RoutedQuery):
         return best if best[1] >= self.THRESH else None
 
     # ---- overrides ----
-    def serve(self, tables, question, as_of=None, schema=None):
+    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=()):
         self._q_orig = question                      # original-case prompt for spaCy + bge (low_q is lowercased)
-        return super().serve(tables, question, as_of=as_of, schema=schema)
+        return super().serve(tables, question, as_of=as_of, schema=schema,
+                             explicit_fks=explicit_fks)
 
     def _find_value(self, low_q, w):
         """resolve a where value via embedding NN over the world `words` index for any ENTITY-typed filter attr;

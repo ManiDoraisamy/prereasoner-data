@@ -230,7 +230,7 @@ class CandidateRanker:
                 for column in (comparison.left,)
             }
             role_columns.update(
-                column for join in query.joins for column in (join.left, join.right)
+                column for join in query.joins for pair in join.predicates for column in pair
             )
             directional_columns = [
                 column for column in role_columns if _travel_column_role(column) is not None
@@ -249,10 +249,11 @@ class CandidateRanker:
         if column in roles.group_columns or column.table in roles.group_tables:
             return True
         for fk in self.schema.foreign_keys:
-            if column == fk.from_column and fk.to_column.table in roles.group_tables:
-                return True
-            if column == fk.to_column and fk.from_column.table in roles.group_tables:
-                return True
+            for from_column, to_column in fk.column_pairs:
+                if column == from_column and to_column.table in roles.group_tables:
+                    return True
+                if column == to_column and from_column.table in roles.group_tables:
+                    return True
         return False
 
     def _model_features(self, query: SelectQuery) -> list[tuple[str, float]]:

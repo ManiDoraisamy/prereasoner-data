@@ -40,3 +40,6 @@ node_modules/
 Thumbs.db
 .DS_Store
 .model_taxbak/
+
+# Opted-in evaluation metadata stays local; only validators and public fixtures are committed.
+regress/private/

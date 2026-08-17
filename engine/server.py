@@ -35,6 +35,7 @@ from engine import admin
 
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
+ENRICHMENT = None                  # request-local enrichment; registry activation remains authoritative
 WORLD_LOCK = threading.Lock()      # one request at a time through the shared world model (set_ctx is per-request)
 DIM_LOCK = threading.Lock()        # one request at a time through the dimension model
 MAX_BODY = 10 * 1024 * 1024
@@ -330,6 +331,16 @@ class H(BaseHTTPRequestHandler):
                     t["rows"] = t["rows"][:MAX_ROWS]
             references = master.relevant_tables(sub, tabs, MAX_SHEETS - len(tabs), MAX_ROWS)
             tabs.extend(references["tables"])
+            enrichment = None
+            if ENRICHMENT is not None:
+                from engine.enrichment.runtime import table_versions
+                enrichment = ENRICHMENT.prepare(
+                    tabs, req.get("question", ""), as_of=req.get("as_of"),
+                    private_reference_versions=table_versions(references["tables"]),
+                    table_budget=max(0, MAX_SHEETS - len(tabs)), row_budget=MAX_ROWS,
+                )
+                if enrichment.used:
+                    tabs = list(enrichment.tables)
             # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
             # conversation id is honored ONLY after the ownership check (chat.user_conversation);
             # otherwise a new conversation is minted for the verified user. No conversation id
@@ -345,7 +356,12 @@ class H(BaseHTTPRequestHandler):
             with WORLD_LOCK:
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
                 try:
-                    res = MODEL.serve(tabs, req.get("question", ""), conv, req.get("as_of"), emit=emit)
+                    serve_kwargs = {"emit": emit}
+                    if enrichment is not None and enrichment.used:
+                        serve_kwargs["explicit_fks"] = enrichment.explicit_fks
+                    res = MODEL.serve(
+                        tabs, req.get("question", ""), conv, req.get("as_of"), **serve_kwargs
+                    )
                 finally:
                     set_ctx(None)
             if isinstance(res, dict):
@@ -354,6 +370,15 @@ class H(BaseHTTPRequestHandler):
                 res.setdefault("warnings", []).extend(truncated)
             if references["warnings"] and isinstance(res, dict):
                 res.setdefault("warnings", []).extend(references["warnings"])
+            if enrichment is not None and isinstance(res, dict):
+                if enrichment.used:
+                    provenance = res.get("provenance")
+                    if not isinstance(provenance, dict):
+                        provenance = {"world": provenance} if provenance is not None else {}
+                    provenance["enrichment"] = enrichment.provenance()
+                    res["provenance"] = provenance
+                if enrichment.warnings:
+                    res.setdefault("warnings", []).extend(enrichment.warnings)
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(res))
         except Exception as e:                           # noqa: BLE001
@@ -385,12 +410,18 @@ class H(BaseHTTPRequestHandler):
 
 
 def main():
-    global MODEL, DIM_MODEL
+    global MODEL, DIM_MODEL, ENRICHMENT
     from engine.knowledge import KnowledgeReasoner
     from engine.dimension import DimensionModel
     print("loading world reasoner (composition engine + unified Qwen + bge resolver + spaCy; LIVE Postgres)...",
           flush=True)
     MODEL = KnowledgeReasoner()
+    from engine.enrichment import EnrichmentRuntime, SnapshotStore, deployment_dataset_allowlist
+    from engine.pg import _pg
+    ENRICHMENT = EnrichmentRuntime(
+        SnapshotStore(_pg),
+        enabled_datasets=deployment_dataset_allowlist(os.environ.get("ENRICHMENT_ACTIVE_DATASETS")),
+    )
     try:
         from engine.embeddings import Embedder
         Embedder.get().encode(["warmup"])               # load bge weights at startup, not on first request

@@ -400,9 +400,12 @@ class KnowledgeTableQuery:
                      f' AND ({qident(R)}.{qident("valid_to")} IS NULL OR {qlit(as_of)} < {qident(R)}.{qident("valid_to")})')
         return cond
 
-    def serve(self, tables, question, as_of=None):
+    def serve(self, tables, question, as_of=None, explicit_fks=()):
         as_of = as_of or datetime.date.today().isoformat()    # the DECISION time the answer is computed "as of"
-        norm, fks = self.q11.ingest(tables)                   # dedup + uploaded FK discovery
+        norm, fks = (
+            self.q11.ingest(tables, explicit_fks=explicit_fks)
+            if explicit_fks else self.q11.ingest(tables)
+        )
         sch, colidx, tablemap = self.q11.schema(norm, fks)
         routes, coldims = {}, {}
         for t in norm:                                        # route cities + collect hover dims across ALL sheets
@@ -428,7 +431,8 @@ class KnowledgeTableQuery:
             wtarget = None                                   # the upload has its OWN column of that name ("unique
                                                              # countries" + a Country column) -> own data wins
         if mf is None and wtarget is None:                   # neither a world filter NOR a world column asked ->
-            r = self.q11.serve(tables, question)             # the full own-data planner (agg / sort / superlative / JOIN)
+            r = (self.q11.serve(tables, question, explicit_fks=explicit_fks)
+                 if explicit_fks else self.q11.serve(tables, question))
             return {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
                     "error": r.get("error"), "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()},
                     "dims": coldims, "meaning_join": None, "provenance": None, "warnings": [],

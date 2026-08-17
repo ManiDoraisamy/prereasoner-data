@@ -114,14 +114,14 @@ class PgQuery(KnowledgeTableQuery):
         self._pg_schema = None
         self._con = None
 
-    def serve(self, tables, question, as_of=None, schema=None):
+    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=()):
         if not schema:
             return {"error": "not signed in (no schema)", "question": question}
         self._pg_schema = schema
         self.q11._pg_schema = schema
         self._con = None
         try:
-            return super().serve(tables, question, as_of)
+            return super().serve(tables, question, as_of, explicit_fks=explicit_fks)
         finally:
             if self._con is not None:
                 self._con.close(); self._con = None

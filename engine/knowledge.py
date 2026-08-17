@@ -28,7 +28,7 @@ class KnowledgeReasoner:
         self.composed = ComposedKnowledgeQuery()
         self.qw = self.composed.qw                                              # expose KnowledgeQuery (server warmup: MODEL.qw._spacy())
 
-    def serve(self, tables, question, sub, as_of=None, emit=None):
+    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=()):
         if NEAR.search(question or ""):
             r = self._nearby(question)
             if r:
@@ -43,7 +43,11 @@ class KnowledgeReasoner:
                         "model": "engine - conversational (not a data query)"}
         except Exception as e:                                              # noqa: BLE001 — never block a real query
             print("coverage pre-gate skipped:", e, flush=True)
-        res = self.composed.serve(tables, question, sub, as_of=as_of, emit=emit)  # delegate (no regression)
+        res = (self.composed.serve(
+            tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks
+        ) if explicit_fks else self.composed.serve(
+            tables, question, sub, as_of=as_of, emit=emit
+        ))
         return self._tag_present(res, question, tables)
 
     def _tag_present(self, res, question, tables=None):

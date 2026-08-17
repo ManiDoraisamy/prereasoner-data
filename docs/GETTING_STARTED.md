@@ -1,7 +1,12 @@
 # Developer Getting Started
 
 This guide gets a new contributor from a clone to a verified local change. Read
-[ARCHITECTURE.md](ARCHITECTURE.md) after the first successful request.
+[ARCHITECTURE.md](ARCHITECTURE.md) after the first successful request. Contributors working
+on domain semantics or shared reference data must also read
+[KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMENT_ROADMAP.md); it distinguishes implemented
+guardrails, code-approved datasets, deployment enablement, and remaining evaluation work.
+Use [SOURCE_DATA.md](SOURCE_DATA.md) for the exact publisher-owned schema inventory and sync
+commands. Never infer a source from a domain label such as healthcare, tax, or retail.
 
 ## 1. Choose A Development Level
 
@@ -10,6 +15,7 @@ You do not need the entire production stack for every change.
 | Work | Required |
 |---|---|
 | Typed AST, routing, reference selection | Python dependencies used by the imported engine modules; no Postgres |
+| Source parser or synchronizer | `db/sync/requirements.txt`; PostgreSQL only for an actual load |
 | Browser state and static UI | Node 20 and a static/Firebase server |
 | Full engine request | Runtime weights and PostgreSQL |
 | World grounding | Runtime weights, seeded knowledgebase, and network for lazy Wikidata misses |
@@ -44,6 +50,8 @@ reconfigured before a third party can reproduce the complete application from a 
 python -m tests.test_sql_ast
 python -m tests.test_master_ingest
 python -m tests.test_routing
+python -m tests.test_enrichment
+python -m tests.test_source_sync
 node web/tests/workbook_reference.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server
 ```
@@ -72,6 +80,21 @@ python -m engine.server
 ```
 
 Never set `AUTH_TEST_SUB` in production.
+
+Reference enrichment is off unless both code and deployment approve a dataset. For a local
+IANA country-name exercise, sync IANA, grant only the registered tables to the existing
+non-superuser serving role, then enable the dataset:
+
+```powershell
+$env:SYNC_PG_USER = "postgres"
+$env:SYNC_PG_PASSWORD = "<admin password>"
+python -m db.sync.sources.iana.sync
+python -m db.reference_grants --role prereasoner_runtime --datasets iana_country
+$env:ENRICHMENT_ACTIVE_DATASETS = "iana_country"
+```
+
+Do not use the sync role to run `engine.server`. Roll a source back only to a validated
+retired release with `python -m db.sync.releases --schema iana --release-id <release-id>`.
 
 ## 5. Make A First Request
 
@@ -140,6 +163,14 @@ The frontend has no build step. `reason.html` and `knowledge.html` load the shar
 | FK inference | `engine/relations.py` | `tests.test_sql_ast`, `tests.test_master_ingest` |
 | Saved references | `engine/master.py` | `tests.test_master_ingest` |
 | Routing | `engine/routing.py` | `tests.test_routing` |
+| Shared enrichment policy | `engine/enrichment/registry.py` | `tests.test_enrichment` |
+| Requested enrichment intent | `engine/enrichment/intents.py` | `tests.test_enrichment` |
+| Source lookup policy and ambiguity | `engine/enrichment/adapters.py` | `tests.test_enrichment` |
+| Domain profiles and role evidence | `engine/domain_profiles.py`, `engine/domain_typing.py` | `tests.test_enrichment` |
+| Public and opted-in metadata evaluation | `regress/product_templates.py` | `tests.test_enrichment` |
+| Request-local enrichment and manifests | `engine/enrichment/runtime.py` | `tests.test_enrichment` |
+| Source activation, grants, and rollback | `engine/enrichment/registry.py`, `db/reference_grants.py`, `db/sync/releases.py` | `tests.test_enrichment`, `tests.test_source_sync` |
+| IANA/CLDR source ingestion | `db/sync/sources/<source>/sync.py` | `tests.test_source_sync` |
 | World grounding | `engine/knowledge_query.py` | live world suites |
 | HTTP/auth adaptation | `engine/server.py` | focused suite plus live request |
 | Workbook lifecycle | `web/public/lib/workbook.js` | `web/tests/workbook_reference.test.js` |

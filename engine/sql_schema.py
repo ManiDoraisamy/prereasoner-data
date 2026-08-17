@@ -29,18 +29,42 @@ class ForeignKey:
     from_column: ColumnRef
     to_column: ColumnRef
     confidence: float = 1.0
+    additional_columns: tuple[tuple[ColumnRef, ColumnRef], ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "additional_columns", tuple(
+            (left, right) for left, right in self.additional_columns
+        ))
+        if any(
+            left.table != self.from_column.table or right.table != self.to_column.table
+            for left, right in self.additional_columns
+        ):
+            raise ValueError("all composite foreign-key columns must connect the same tables")
+        if len(set(self.column_pairs)) != len(self.column_pairs):
+            raise ValueError("foreign key contains duplicate column pairs")
+        if (isinstance(self.confidence, bool) or not isinstance(self.confidence, Real)
+                or not math.isfinite(float(self.confidence))
+                or not 0.0 <= float(self.confidence) <= 1.0):
+            raise ValueError("foreign-key confidence must be in [0,1]")
+
+    @property
+    def column_pairs(self) -> tuple[tuple[ColumnRef, ColumnRef], ...]:
+        return ((self.from_column, self.to_column),) + self.additional_columns
+
+    @property
+    def is_composite(self) -> bool:
+        return bool(self.additional_columns)
 
     @property
     def tables(self) -> frozenset[str]:
         return frozenset((self.from_column.table, self.to_column.table))
 
     @property
-    def signature(self) -> tuple[str, str, str, str]:
-        return (
-            self.from_column.table,
-            self.from_column.name,
-            self.to_column.table,
-            self.to_column.name,
+    def signature(self) -> tuple[str, ...]:
+        return tuple(
+            value
+            for left, right in self.column_pairs
+            for value in (left.table, left.name, right.table, right.name)
         )
 
 
@@ -66,7 +90,12 @@ class SchemaGraph:
         self.foreign_keys = tuple(
             foreign_key for foreign_key in foreign_keys
             if (foreign_key.from_column.table in self.by_table
-                and foreign_key.to_column.table in self.by_table)
+                and foreign_key.to_column.table in self.by_table
+                and all(
+                    (left.table, left.name) in self.column_map
+                    and (right.table, right.name) in self.column_map
+                    for left, right in foreign_key.column_pairs
+                ))
         )
         adjacency: dict[str, list[int]] = {table: [] for table in self.tables}
         for index, foreign_key in enumerate(self.foreign_keys):
@@ -207,6 +236,7 @@ class SchemaGraph:
                     new_table,
                     foreign_key.from_column,
                     foreign_key.to_column,
+                    additional=foreign_key.additional_columns,
                 ))
                 joined.add(new_table)
                 picked = edge_index
@@ -237,15 +267,28 @@ def _foreign_key(
     raw: dict | tuple, refs: dict[tuple[str, str], ColumnRef]
 ) -> ForeignKey | None:
     if isinstance(raw, dict):
-        from_table, from_column = str(raw["from_table"]), str(raw["from_col"])
-        to_table, to_column = str(raw["to_table"]), str(raw["to_col"])
+        from_table, to_table = str(raw["from_table"]), str(raw["to_table"])
+        from_columns = raw.get("from_cols", (raw["from_col"],) if "from_col" in raw else ())
+        to_columns = raw.get("to_cols", (raw["to_col"],) if "to_col" in raw else ())
         confidence = float(raw.get("conf", raw.get("confidence", 1.0)) or 1.0)
     else:
         from_table, from_column, to_table, to_column = map(str, raw[:4])
+        from_columns, to_columns = (from_column,), (to_column,)
         confidence = float(raw[4]) if len(raw) > 4 else 1.0
-    left = _resolve_ref(refs, from_table, from_column)
-    right = _resolve_ref(refs, to_table, to_column)
-    return ForeignKey(left, right, confidence) if left is not None and right is not None else None
+    if isinstance(from_columns, str) or isinstance(to_columns, str):
+        return None
+    from_columns, to_columns = tuple(map(str, from_columns)), tuple(map(str, to_columns))
+    if not from_columns or len(from_columns) != len(to_columns):
+        return None
+    pairs = tuple(
+        (_resolve_ref(refs, from_table, from_column),
+         _resolve_ref(refs, to_table, to_column))
+        for from_column, to_column in zip(from_columns, to_columns)
+    )
+    if any(left is None or right is None for left, right in pairs):
+        return None
+    typed_pairs = tuple((left, right) for left, right in pairs if left is not None and right is not None)
+    return ForeignKey(typed_pairs[0][0], typed_pairs[0][1], confidence, typed_pairs[1:])
 
 
 def _resolve_ref(
