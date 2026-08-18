@@ -572,6 +572,33 @@ _CURRENCY = DatasetDefinition(
 )
 
 
+# A non-temporal USD reference-rate snapshot so `amount * rate_to_usd` conversion (M3c) can fire on
+# date-less order/invoice data. The date-aware series lives in `ecb_exchange_rate` (TEMPORAL_SERIES);
+# this is the single-key latest-rate variant for the common "total in USD" question.
+_CURRENCY_FX_USD = DatasetDefinition(
+    name="currency_fx_usd", capability=Capability.EXACT_DIMENSION,
+    identity_key=("currency_code",), lookup_key=("currency_code",),
+    attributes=("rate_to_usd",),
+    cardinality=LookupCardinality.ONE, ambiguity_policy=AmbiguityPolicy.UNIQUE,
+    temporal=TemporalContract(),
+    storage=EmbeddedStorage("2026-08-fixture", (
+        ("USD", 1.0), ("EUR", 1.08), ("GBP", 1.27), ("JPY", 0.0067),
+        ("INR", 0.012), ("CAD", 0.74), ("AUD", 0.66), ("CHF", 1.12),
+        ("CNY", 0.14), ("SGD", 0.74), ("HKD", 0.128), ("SEK", 0.096),
+        ("NOK", 0.093), ("NZD", 0.61), ("ZAR", 0.055), ("BRL", 0.20),
+        ("AED", 0.272), ("THB", 0.028),
+    )),
+    source="static USD reference-rate snapshot; temporary fixture (temporal series: ecb_exchange_rate)",
+    license="reference-rate facts; snapshot fixture",
+    redistribution="rate facts only", commercial_use="approved",
+    privacy_class="public_reference",
+    eligibility=Eligibility(required=frozenset({CURRENCY_CODE, ATTR_EXCHANGE_RATE})),
+    thresholds=_STRICT,
+    compatible_roles=frozenset({"order", "order_item", "invoice", "payment", "offer", "product"}),
+    activation=Activation.EVALUATION,
+)
+
+
 _SOURCE_DEFINITIONS = (
     _source_definition(
         "iana_country", Capability.EXACT_DIMENSION, "iana", "country_code",
@@ -739,7 +766,7 @@ _SOURCE_DEFINITIONS = (
 )
 
 REGISTRY: Mapping[str, DatasetDefinition] = MappingProxyType({
-    definition.name: definition for definition in (_CURRENCY,) + _SOURCE_DEFINITIONS
+    definition.name: definition for definition in (_CURRENCY, _CURRENCY_FX_USD) + _SOURCE_DEFINITIONS
 })
 
 

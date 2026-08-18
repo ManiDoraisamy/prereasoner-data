@@ -375,7 +375,7 @@ def test_benchmark_requires_positive_and_negative_support():
 
 
 def test_source_registry_models_measured_data_shapes_without_enabling_them():
-    assert len(REGISTRY) == 17
+    assert len(REGISTRY) == 18                                          # +currency_fx_usd (embedded, M3b)
     source_definitions = [definition for definition in REGISTRY.values()
                           if isinstance(definition.storage, PostgresStorage)]
     assert len(source_definitions) == 16
@@ -720,6 +720,30 @@ def test_runtime_order_shaped_table_abstains_when_values_are_not_currencies():
     assert not plan.used and plan.tables == tuple(tables) and plan.manifest is None
 
 
+def test_currency_conversion_attaches_fx_rates_and_planner_converts():
+    # M3b+M3c end to end (hermetic): a "... in US dollars" question over multi-currency orders makes
+    # the enrichment ATTACH currency_fx_usd (+ the currency->currency_code edge), and the planner then
+    # emits SUM(amount * rate_to_usd). Enrichment stays OFF in production until the dataset is
+    # allowlisted; this runs in evaluation mode.
+    from engine.sql_search import SQLSearcher
+    orders = _t("orders", ["order_id", "currency", "amount"],
+                [[1, "EUR", 310], [2, "EUR", 210], [3, "GBP", 100], [4, "EUR", 95]])
+    plan = EnrichmentRuntime(
+        SnapshotStore(lambda: None), allow_evaluation=True, identity=RuntimeIdentity("t", "sha256:m"),
+    ).prepare([orders], "total order amount in US dollars")
+    assert plan.used and plan.added_tables == ("currency_fx_usd",)
+    assert {(e.from_table, e.from_col, e.to_table, e.to_col) for e in plan.explicit_fks} == {
+        ("orders", "currency", "currency_fx_usd", "currency_code")}
+    normalized, fks = TableQuery().ingest(plan.tables, explicit_fks=plan.explicit_fks)
+    top = SQLSearcher.from_tables(normalized, fks).search("total order amount in US dollars")[0]
+    assert "rate_to_usd" in top.sql and " * " in top.sql, top.sql          # planner converts
+    # a plain total (no conversion cue) does not attach the FX rates
+    plain = EnrichmentRuntime(
+        SnapshotStore(lambda: None), allow_evaluation=True, identity=RuntimeIdentity("t", "sha256:m"),
+    ).prepare([orders], "total order amount")
+    assert not plain.used, plain.added_tables
+
+
 class _FakeCursor:
     def __init__(self, rows, calls):
         self.rows = rows
@@ -914,6 +938,7 @@ TESTS = [
     test_runtime_materializes_once_and_connects_every_eligible_table,
     test_runtime_source_failure_abstains_without_changing_own_data,
     test_runtime_order_shaped_table_abstains_when_values_are_not_currencies,
+    test_currency_conversion_attaches_fx_rates_and_planner_converts,
     test_snapshot_store_pins_release_and_bounds_qualified_lookup,
     test_snapshot_store_detects_unique_contract_violation,
     test_private_product_corpus_is_metadata_only_consent_bound_and_replayable,
