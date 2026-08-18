@@ -132,6 +132,80 @@ curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
 # /api/reason & /api/knowledge need a Firebase ID token — use the hosted web UI.
 ```
 
+## 6. Least-privilege serving + enrichment activation (opt-in)
+
+By default the engine serves as the `postgres` superuser and reference **enrichment is off**.
+Two independent opt-ins harden this; both default to today's behavior, so leaving them unset is
+a no-op.
+
+- `serving_db_role` — run serving as a **non-superuser** Cloud SQL role.
+- `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
+  per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
+
+> Terraform is not validated in this repo's dev environment. Run `terraform validate &&
+> terraform plan` before every apply below, and note the grant bootstrap can only be verified
+> against the live instance.
+
+### 6a. Non-superuser serving role
+
+Serving is **not** read-only — it creates per-conversation and per-user `m_<hash>` master
+schemas at request time (`engine/pg.py`, `engine/master.py`). So the role needs `CREATE` on the
+database plus `SELECT` on the curated world data, and only **SELECT-only** on enrichment sources.
+Apply in three steps to avoid a broken window (the role must be grantable *before* Cloud Run
+points at it):
+
+```bash
+cd infra
+# 1. Create the role + its secret WITHOUT repointing Cloud Run yet (-target skips the service).
+terraform apply -var project_id=<PROJECT> -var serving_db_role=serving \
+  -target=google_sql_user.serving \
+  -target=google_secret_manager_secret_version.serving_db_password
+
+# 2. Run application migrations and bootstrap grants as the privileged postgres role (via
+#    cloud-sql-proxy, as in step 3 above). The migration owns shared chat DDL; the serving role
+#    receives chat DML only and never owns or alters those tables.
+SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.sync.app_migrations
+SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.reference_grants --role serving
+
+#    The base world grants are still applied directly; verify the schema list against your
+#    seeded DB (db/README.md) before running.
+psql "$PROXY_CONN" <<'SQL'
+  GRANT CONNECT, CREATE ON DATABASE world TO serving;      -- runtime conversation/master schemas
+  GRANT USAGE ON SCHEMA knowledgebase, public TO serving;  -- curated world + public.settlement
+  GRANT SELECT ON ALL TABLES IN SCHEMA knowledgebase, public TO serving;
+  ALTER DEFAULT PRIVILEGES IN SCHEMA knowledgebase GRANT SELECT ON TABLES TO serving;
+SQL
+
+# 3. Now repoint Cloud Run at the (grant-ready) role.
+terraform apply -var project_id=<PROJECT> -var serving_db_role=serving
+```
+
+The privileged `postgres` credential stays reserved for sync/migration/grants jobs (via
+`SYNC_PG_*`, see `.env.example` and `db/sync/_conn.py`); serving never uses it once flipped.
+
+### 6b. Activate a reference dataset
+
+Per-dataset, after 6a:
+
+```bash
+# Grant chat DML plus SELECT-only on the dataset's source tables + audit privileges.
+SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.reference_grants \
+  --role serving --datasets iana_country
+
+# Add it to the deployment allowlist and redeploy.
+cd infra && terraform apply -var project_id=<PROJECT> -var serving_db_role=serving \
+  -var enrichment_active_datasets=iana_country
+```
+
+### 6c. Rollback
+
+- **Disable enrichment only** (fast, keeps the role): re-apply with
+  `-var enrichment_active_datasets=""`. Answers revert to own-data + world immediately.
+- **Back to superuser serving**: re-apply with `-var serving_db_role=""`. Cloud Run flips back to
+  `postgres`; the serving secret is destroyed. Dropping the DB role itself can fail while it owns
+  ephemeral conversation/master schemas — reassign or drop those first, or simply leave the role
+  in place (unused) and rely on the enrichment-off rollback.
+
 ## Teardown
 
 ```bash

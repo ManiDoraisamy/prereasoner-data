@@ -1,4 +1,4 @@
-"""Least-privilege grants and write-denial audit for activated reference datasets."""
+"""Least-privilege serving grants and write-denial audit for reference datasets."""
 from __future__ import annotations
 
 import argparse
@@ -13,6 +13,44 @@ from engine.enrichment.registry import Activation, PostgresStorage, REGISTRY
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 _WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+_CHAT_TABLES = ("user_profile", "conversation", "user_conversation")
+
+
+def apply_chat_grants(cur, runtime_role: str) -> None:
+    """Grant the serving role only the chat DML it needs after admin migration."""
+    if not _IDENTIFIER.fullmatch(runtime_role or ""):
+        raise ValueError("runtime_role must be a lowercase PostgreSQL identifier")
+    role_id = sql.Identifier(runtime_role)
+    cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA {} FROM {}").format(
+        sql.Identifier("chat"), role_id,
+    ))
+    cur.execute(sql.SQL("GRANT USAGE ON SCHEMA {} TO {}").format(
+        sql.Identifier("chat"), role_id,
+    ))
+    for table_name in _CHAT_TABLES:
+        table = sql.SQL("{}.{}").format(sql.Identifier("chat"), sql.Identifier(table_name))
+        cur.execute(sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE {} TO {}").format(
+            table, role_id,
+        ))
+
+    cur.execute(
+        "SELECT has_schema_privilege(%s, 'chat', 'USAGE'), "
+        "has_schema_privilege(%s, 'chat', 'CREATE')",
+        (runtime_role, runtime_role),
+    )
+    has_usage, has_create = cur.fetchone()
+    if not has_usage or has_create:
+        raise RuntimeError(f"chat schema privilege audit failed for {runtime_role}")
+    for table_name in _CHAT_TABLES:
+        qualified = f"chat.{table_name}"
+        cur.execute(
+            "SELECT has_table_privilege(%s,%s,'SELECT,INSERT,UPDATE,DELETE'), "
+            "has_table_privilege(%s,%s,'TRUNCATE,REFERENCES,TRIGGER')",
+            (runtime_role, qualified, runtime_role, qualified),
+        )
+        can_dml, can_escalate = cur.fetchone()
+        if not can_dml or can_escalate:
+            raise RuntimeError(f"chat privilege audit failed for {runtime_role} on {qualified}")
 
 
 def approved_reference_targets(dataset_names, registry=REGISTRY) -> dict[str, tuple[str, ...]]:
@@ -28,8 +66,9 @@ def approved_reference_targets(dataset_names, registry=REGISTRY) -> dict[str, tu
             raise ValueError(f"dataset is not code-approved for activation: {name}")
         if not isinstance(definition.storage, PostgresStorage):
             raise ValueError(f"activated dataset is not PostgreSQL-backed: {name}")
-        relation = definition.storage.relation
-        grouped[relation.schema_name].update(("release", relation.table_name))
+        relations = (definition.storage.relation, *definition.storage.related_relations)
+        for relation in relations:
+            grouped[relation.schema_name].update(("release", relation.table_name))
     return {schema: tuple(sorted(tables)) for schema, tables in sorted(grouped.items())}
 
 
@@ -46,6 +85,9 @@ def apply_reference_grants(cur, runtime_role: str, dataset_names) -> dict[str, t
         raise ValueError("the serving role must not be a superuser")
 
     role_id = sql.Identifier(runtime_role)
+    apply_chat_grants(cur, runtime_role)
+    if not targets:
+        return targets
     for schema_name, tables in targets.items():
         schema_id = sql.Identifier(schema_name)
         cur.execute(sql.SQL("REVOKE CREATE ON SCHEMA {} FROM {}").format(schema_id, role_id))
@@ -91,7 +133,7 @@ def apply_reference_grants(cur, runtime_role: str, dataset_names) -> dict[str, t
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--role", required=True, help="existing non-superuser serving role")
-    parser.add_argument("--datasets", required=True, help="comma-separated code-approved datasets")
+    parser.add_argument("--datasets", default="", help="comma-separated code-approved datasets")
     args = parser.parse_args()
     datasets = frozenset(name.strip() for name in args.datasets.split(",") if name.strip())
     connection = connect()

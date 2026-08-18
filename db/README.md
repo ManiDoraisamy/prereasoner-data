@@ -174,8 +174,11 @@ python -m db.sync.sources.nlm_cde.sync --version 2026-08-17
 # Upgrade source schemas that already exist; no source download is performed.
 python -m db.sync.migrations
 
-# Grant only code-approved reference relations to an existing non-superuser serving role.
-python -m db.reference_grants --role prereasoner_runtime --datasets iana_country
+# Apply application-schema migrations as the privileged admin, before serving flips roles.
+python -m db.sync.app_migrations
+
+# Grant chat DML to an existing non-superuser role; add --datasets when activating references.
+python -m db.reference_grants --role prereasoner_runtime
 
 # Atomically reactivate a previously validated immutable release.
 python -m db.sync.releases --schema iana --release-id <retired-release-id>

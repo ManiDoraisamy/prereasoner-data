@@ -268,6 +268,38 @@ def test_composite_join_validation_rejects_disconnected_predicate():
     raise AssertionError("disconnected composite predicate passed AST validation")
 
 
+def test_composite_self_join_helpers_render_complete_predicates():
+    # The is_composite guard in _self_join_candidates keeps composite FKs out of the self-join
+    # helpers today, so this is unreachable via search. It pins the OWNER invariant (cleanup #1
+    # from the 349a4ae review): if a composite FK ever reaches these helpers they must emit a
+    # COMPLETE join (ON a=b AND c=d), never a silent partial join.
+    from engine.sql_schema import ForeignKey
+    from engine.sql_recursive import _route_self_join, _relationship_self_join
+
+    def _fk(child_code, child_region):
+        return ForeignKey(
+            ColumnRef("flights", child_code, SQLType.TEXT),
+            ColumnRef("airports", "code", SQLType.TEXT),
+            additional_columns=((ColumnRef("flights", child_region, SQLType.TEXT),
+                                 ColumnRef("airports", "region", SQLType.TEXT)),),
+        )
+
+    source_fk, destination_fk = _fk("source_code", "source_region"), _fk("dest_code", "dest_region")
+    assert source_fk.is_composite and destination_fk.is_composite
+    name = ColumnRef("airports", "name", SQLType.TEXT)
+
+    route = render_query(_route_self_join(
+        "flights", "airports", source_fk, destination_fk,
+        (0, name, "Aberdeen"), (1, name, "Ashley"), True, None))
+    assert '"base"."source_region" = "source"."region"' in route, route
+    assert '"base"."dest_region" = "destination"."region"' in route, route
+
+    relation = render_query(_relationship_self_join(
+        "flights", "airports", source_fk, destination_fk, (0, name, "Aberdeen"), name))
+    assert '"relation"."source_region" = "owner"."region"' in relation, relation
+    assert '"relation"."dest_region" = "related"."region"' in relation, relation
+
+
 def test_projection_filter_and_order():
     candidate = best(
         "Show name, country and age for people from France ordered by age descending",
@@ -1527,6 +1559,7 @@ TESTS = [
     test_grouping_validation_sees_ordered_aggregates,
     test_composite_foreign_key_renders_and_executes_as_one_join,
     test_composite_join_validation_rejects_disconnected_predicate,
+    test_composite_self_join_helpers_render_complete_predicates,
     test_projection_filter_and_order,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,
     test_generic_projection_respects_entity_qualifier,

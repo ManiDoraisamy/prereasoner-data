@@ -32,6 +32,7 @@ from db.sync.migrations import MIGRATIONS, latest_schema_version
 from db.sync._conn import _connection_kwargs
 from db.sync.releases import activate_validated_release
 from db.reference_grants import approved_reference_targets
+from engine.enrichment.registry import REGISTRY, PostgresStorage, QualifiedRelation
 
 
 def _iana_archive(*, unknown_zone: bool = False) -> bytes:
@@ -362,6 +363,21 @@ def test_reference_grant_plan_is_registry_derived_and_least_scope():
             pass
 
 
+def test_reference_grant_plan_includes_registered_related_relations():
+    definition = REGISTRY["iana_country"]
+    custom = replace(
+        definition,
+        storage=PostgresStorage(
+            QualifiedRelation("iana", "country_code"),
+            (QualifiedRelation("iana", "zone"),),
+        ),
+    )
+    registry = {"iana_country": custom}
+    assert approved_reference_targets({"iana_country"}, registry) == {
+        "iana": ("country_code", "release", "zone"),
+    }
+
+
 def test_sync_connection_credentials_override_serving_credentials():
     env = {
         "KB_PG_HOST": "serve-db", "KB_PG_PORT": "5432", "KB_PG_DB": "world",
@@ -397,6 +413,7 @@ TESTS = [
     test_who_parser_preserves_icd11_hierarchy_and_source_documents,
     test_release_rollback_accepts_only_validated_retired_snapshots,
     test_reference_grant_plan_is_registry_derived_and_least_scope,
+    test_reference_grant_plan_includes_registered_related_relations,
     test_sync_connection_credentials_override_serving_credentials,
 ]
 

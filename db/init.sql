@@ -305,10 +305,18 @@ CREATE OR REPLACE VIEW knowledgebase."States in the World"     AS SELECT * FROM 
 -- chat: conversation identity + ownership (engine/conversations.py).
 -- The working Postgres schema for a run is the CONVERSATION id (self-contained,
 -- archivable). Authorization is by the verified user via user_conversation — a
--- client cannot use a conversation id it does not own (no IDOR). The engine also
--- creates these idempotently at runtime, so applying this file is optional.
+-- client cannot use a conversation id it does not own (no IDOR).
+-- Request handling performs DML only. Apply db.sync.app_migrations as the privileged
+-- admin before a non-superuser serving role is enabled.
 -- ---------------------------------------------------------------------------
 CREATE SCHEMA IF NOT EXISTS "chat";
+
+CREATE TABLE IF NOT EXISTS "chat"."schema_migration" (
+  version integer PRIMARY KEY,
+  name text NOT NULL UNIQUE,
+  checksum text NOT NULL,
+  applied_at timestamptz NOT NULL DEFAULT now()
+);
 
 CREATE TABLE IF NOT EXISTS "chat"."user_profile" (
   user_id     text PRIMARY KEY,                    -- the verified Google sub (stable across devices)
@@ -320,6 +328,7 @@ CREATE TABLE IF NOT EXISTS "chat"."conversation" (
   conversation_id text PRIMARY KEY,                -- also the name of this conversation's data schema (c_<32 hex>)
   initial_prompt  text,                            -- the opening question (drawer label)
   tables          jsonb,                           -- the uploaded CSVs [{name,data}] so a conversation re-opens self-contained
+  state           jsonb,                           -- renderable client snapshot
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 

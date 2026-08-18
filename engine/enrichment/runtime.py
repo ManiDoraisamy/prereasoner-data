@@ -44,9 +44,8 @@ class RuntimeIdentity:
         )
         engine_root = Path(__file__).resolve().parents[1]
         source_identity = {
-            name: sha256_file(engine_root / name)
-            for name in ("domain_profiles.py", "domain_typing.py", "sql_ast.py", "sql_search.py",
-                         "sql_rank.py", "tables.py", "enrichment/runtime.py")
+            path.relative_to(engine_root).as_posix(): sha256_file(path)
+            for path in sorted((engine_root / "engine").rglob("*.py"))
         }
         build = (os.environ.get("K_REVISION") or os.environ.get("GIT_COMMIT")
                  or "source-sha256:" + canonical_json_sha256(source_identity))

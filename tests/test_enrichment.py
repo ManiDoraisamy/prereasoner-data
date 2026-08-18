@@ -174,6 +174,11 @@ def test_value_typing_is_conservative():
             pass
 
 
+def test_value_typing_uses_complete_synced_country_and_currency_code_sets():
+    assert ISO_COUNTRY in detect_column(["AL", "AD", "AQ", "ZW"])
+    assert CURRENCY_CODE in detect_column(["ALL", "AFN", "XOF", "ZMW"])
+
+
 def test_integration_spike_enters_discover_fks_path():
     # a differently-named currency column -> select produces an EXPLICIT key edge
     orders = _t("orders", ["order_id", "amount", "currency"],
@@ -698,6 +703,23 @@ def test_runtime_source_failure_abstains_without_changing_own_data():
     )
 
 
+def test_runtime_order_shaped_table_abstains_when_values_are_not_currencies():
+    # Defense-in-depth (cleanup #3 from the 349a4ae review): the role gate (runtime.py:210-211) is
+    # only a NARROWING filter. An order-SHAPED table (so the role gate fires) whose 'currency'
+    # column holds non-currency free text must still ABSTAIN — a role match plus requested-attribute
+    # intent is NOT sufficient; exact value-typing is the real gate. This proves role recognition
+    # alone cannot inject an enrichment table into a served answer.
+    assert detect_roles([_t("orders", ["order_id", "currency", "amount"],
+                            [[1, "gift card", 20], [2, "store credit", 30]])]), "role gate must fire"
+    tables = [_t("orders", ["order_id", "currency", "amount"],
+                 [[1, "gift card", 20], [2, "store credit", 30], [3, "loyalty points", 40]])]
+    plan = EnrichmentRuntime(
+        SnapshotStore(lambda: None), allow_evaluation=True,
+        identity=RuntimeIdentity("test", "sha256:model"),
+    ).prepare(tables, "Show the currency symbol for every order", as_of="2026-08-17")
+    assert not plan.used and plan.tables == tuple(tables) and plan.manifest is None
+
+
 class _FakeCursor:
     def __init__(self, rows, calls):
         self.rows = rows
@@ -810,6 +832,7 @@ TESTS = [
     test_snapshot_and_registry_ids_are_content_complete,
     test_eligibility_required_optional_disqualifying,
     test_value_typing_is_conservative,
+    test_value_typing_uses_complete_synced_country_and_currency_code_sets,
     test_integration_spike_enters_discover_fks_path,
     test_renamed_column_edge_is_not_yet_bridged_by_discover_fks,
     test_ineligible_datasets_never_selected,
@@ -835,6 +858,7 @@ TESTS = [
     test_runtime_edges_use_planner_table_names_and_do_not_invent_as_of,
     test_runtime_materializes_once_and_connects_every_eligible_table,
     test_runtime_source_failure_abstains_without_changing_own_data,
+    test_runtime_order_shaped_table_abstains_when_values_are_not_currencies,
     test_snapshot_store_pins_release_and_bounds_qualified_lookup,
     test_snapshot_store_detects_unique_contract_violation,
     test_private_product_corpus_is_metadata_only_consent_bound_and_replayable,

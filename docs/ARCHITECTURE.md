@@ -46,6 +46,7 @@ The PostgreSQL deployment uses four distinct scopes:
 |---|---|---|
 | Wikidata shared data (legacy names) | `knowledgebase`, `public` | Current resolution index, taxonomy, Wikidata-backed entity tables, and staging/geo data; target migration is described below |
 | Synchronized reference sources | See `SOURCE_DATA.md` | Nine publisher-owned schemas with active physical releases; logical datasets remain separately deployment-gated |
+| Application metadata | `chat` | Admin-migrated conversation, user-profile, and ownership tables; serving receives DML only |
 | Conversation | `c_<32hex>` | Uploaded tables and persisted world-resolution bridges |
 | User | `m_<md5(subject)>` | Reusable private reference tables |
 
@@ -89,7 +90,8 @@ replay. The legacy Wikidata schema migration is still pending.
 
 ## Request Flow
 
-1. `engine.server` validates the body, verifies the principal, and parses the uploaded tables.
+1. `db/init.sql` plus the privileged application migration command prepare shared `chat` metadata before deployment;
+   `engine.server` then validates the body, verifies the principal, and parses uploaded tables.
 2. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning.
 3. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.

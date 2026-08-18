@@ -48,3 +48,34 @@ variable "rtdb_url" {
   type        = string
   default     = ""
 }
+
+variable "serving_db_role" {
+  description = <<-EOT
+    Opt-in least-privilege serving. Empty (default) = the engine serves as the `postgres`
+    superuser (current behavior). Set to a lowercase role name (e.g. "serving") to have
+    Terraform create a NON-superuser Cloud SQL login role and point Cloud Run's KB_PG_USER at
+    it. The role still needs the admin-run application migration and one-time SQL bootstrap
+    (CREATE on the database for runtime conversation/master schemas, chat DML, SELECT on
+    `knowledgebase`, and `python -m db.reference_grants` for activated enrichment sources) — see
+    infra/README.md §6. Applying with this set changes only the serving credential; it does NOT
+    run the bootstrap.
+  EOT
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.serving_db_role == "" || can(regex("^[a-z][a-z0-9_]*$", var.serving_db_role))
+    error_message = "serving_db_role must be empty or a lowercase PostgreSQL identifier."
+  }
+}
+
+variable "enrichment_active_datasets" {
+  description = <<-EOT
+    Deployment allowlist for deterministic reference enrichment — the second of two activation
+    keys (the first is per-dataset code approval in engine/enrichment/registry.py). Comma-separated
+    code-approved dataset names (e.g. "iana_country"). Empty (default) keeps enrichment OFF: the
+    engine serves own-data + world answers exactly as before.
+  EOT
+  type        = string
+  default     = ""
+}

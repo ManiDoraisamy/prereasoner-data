@@ -1,5 +1,9 @@
 """conversations.py — conversation identity + the `chat` metadata schema.
 
+The base schema is created by ``db/init.sql`` and upgraded by the privileged
+``python -m db.sync.app_migrations`` command. Request handling only performs the
+authorized DML below; it never creates or alters shared application tables.
+
 The Postgres WORKING schema for a run is the CONVERSATION id (not the user), so a conversation's
 uploaded tables and derived data are self-contained in one schema — inspectable, and archivable
 to GCS as a unit (see db/sync/archive_conversation.py).
@@ -23,39 +27,12 @@ import uuid
 
 from engine.pg import _pg
 
-_CHAT_DDL = (
-    'CREATE SCHEMA IF NOT EXISTS "chat"',
-    'CREATE TABLE IF NOT EXISTS "chat"."user_profile" ('
-    ' user_id text PRIMARY KEY,'
-    ' created_at timestamptz NOT NULL DEFAULT now(),'
-    ' last_seen timestamptz NOT NULL DEFAULT now())',
-    'CREATE TABLE IF NOT EXISTS "chat"."conversation" ('
-    ' conversation_id text PRIMARY KEY,'
-    ' initial_prompt text,'
-    ' tables jsonb,'
-    ' state jsonb,'                                           # renderable snapshot: turns + derived sheets + result + history
-    ' created_at timestamptz NOT NULL DEFAULT now())',
-    # a conversation table from before `state` existed needs the column backfilled (idempotent)
-    'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS state jsonb',
-    'CREATE TABLE IF NOT EXISTS "chat"."user_conversation" ('
-    ' user_id text NOT NULL REFERENCES "chat"."user_profile"(user_id),'
-    ' conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id),'
-    ' created_at timestamptz NOT NULL DEFAULT now(),'
-    ' PRIMARY KEY (user_id, conversation_id))',
-    'CREATE INDEX IF NOT EXISTS ix_user_conv ON "chat"."user_conversation" (user_id, created_at DESC)',
-)
-
 # conversation_id is also a Postgres schema name — keep it a safe, fixed-shape identifier.
 _ID_RE = re.compile(r"^c_[0-9a-f]{32}$")
 
 
 class NotOwned(Exception):
     """The conversation does not exist, or is not owned by this user (we do not distinguish — no enumeration)."""
-
-
-def _ensure(cur):
-    for ddl in _CHAT_DDL:
-        cur.execute(ddl)
 
 
 def _new_id():
@@ -81,7 +58,6 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
     try:
         try:
             cur = conn.cursor()
-            _ensure(cur)
             cur.execute('INSERT INTO "chat"."user_profile" (user_id) VALUES (%s) '
                         'ON CONFLICT (user_id) DO UPDATE SET last_seen = now()', (user_id,))
             if conversation_id:
@@ -121,7 +97,6 @@ def list_conversations(user_id, limit=50):
     conn = _pg()
     try:
         cur = conn.cursor()
-        _ensure(cur)
         cur.execute('SELECT c.conversation_id, c.initial_prompt, c.created_at '
                     'FROM "chat"."conversation" c '
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
@@ -142,7 +117,6 @@ def delete_conversation(user_id, conversation_id):
     try:
         try:
             cur = conn.cursor()
-            _ensure(cur)
             cur.execute('SELECT 1 FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
                         (conversation_id, user_id))
             if not cur.fetchone():
@@ -169,7 +143,6 @@ def delete_all_conversations(user_id):
     try:
         try:
             cur = conn.cursor()
-            _ensure(cur)
             cur.execute('SELECT conversation_id FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
             ids = [r[0] for r in cur.fetchall() if _ID_RE.match(r[0] or "")]
             for cid in ids:
@@ -197,7 +170,6 @@ def get_conversation(user_id, conversation_id):
     conn = _pg()
     try:
         cur = conn.cursor()
-        _ensure(cur)
         cur.execute('SELECT c.initial_prompt, c.tables, c.state FROM "chat"."conversation" c '
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                     'WHERE uc.user_id = %s AND c.conversation_id = %s', (user_id, conversation_id))
@@ -221,7 +193,6 @@ def save_state(user_id, conversation_id, state):
     try:
         try:
             cur = conn.cursor()
-            _ensure(cur)
             cur.execute('SELECT 1 FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
                         (conversation_id, user_id))
             if not cur.fetchone():

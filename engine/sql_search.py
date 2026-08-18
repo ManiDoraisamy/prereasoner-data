@@ -348,7 +348,8 @@ class SQLSearcher:
             ):
                 continue
             if all(any(
-                fk.from_column == option.column and fk.to_column.table in target_tables
+                any(child == option.column for child, _ in fk.column_pairs)
+                and fk.to_column.table in target_tables
                 for fk in self.schema.foreign_keys
             ) for option in left.options):
                 suppressed.add(left.position)

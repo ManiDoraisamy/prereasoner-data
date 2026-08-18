@@ -739,6 +739,21 @@ def _assign_route_values(
     return source, destination
 
 
+def _aliased_additional(
+    foreign_key: ForeignKey, base_alias: str, other_alias: str
+) -> tuple[tuple[ColumnRef, ColumnRef], ...]:
+    """Re-alias a (possibly composite) FK's SECONDARY column pairs onto the self-join aliases,
+    mirroring the primary pair, so a composite FK renders a complete ``ON a=b AND c=d`` rather
+    than a silent partial join. Empty for scalar FKs, so the SQL is byte-identical on the
+    reachable (non-composite) path — the ``is_composite`` guard in ``_self_join_candidates``
+    keeps composite FKs out today; this makes the helper correct if that ever changes."""
+    return tuple(
+        (ColumnRef(base_alias, child.name, child.type),
+         ColumnRef(other_alias, parent.name, parent.type))
+        for child, parent in foreign_key.additional_columns
+    )
+
+
 def _route_self_join(
     child_table: str,
     parent_table: str,
@@ -756,12 +771,14 @@ def _route_self_join(
             ColumnRef(base_alias, source_fk.from_column.name, source_fk.from_column.type),
             ColumnRef(source_alias, source_fk.to_column.name, source_fk.to_column.type),
             alias=source_alias,
+            additional=_aliased_additional(source_fk, base_alias, source_alias),
         ),
         Join(
             parent_table,
             ColumnRef(base_alias, destination_fk.from_column.name, destination_fk.from_column.type),
             ColumnRef(destination_alias, destination_fk.to_column.name, destination_fk.to_column.type),
             alias=destination_alias,
+            additional=_aliased_additional(destination_fk, base_alias, destination_alias),
         ),
     )
     source_column = ColumnRef(source_alias, source_value[1].name, source_value[1].type)
@@ -794,12 +811,14 @@ def _relationship_self_join(
             ColumnRef(base_alias, source_fk.from_column.name, source_fk.from_column.type),
             ColumnRef(source_alias, source_fk.to_column.name, source_fk.to_column.type),
             alias=source_alias,
+            additional=_aliased_additional(source_fk, base_alias, source_alias),
         ),
         Join(
             parent_table,
             ColumnRef(base_alias, relationship_fk.from_column.name, relationship_fk.from_column.type),
             ColumnRef(target_alias, relationship_fk.to_column.name, relationship_fk.to_column.type),
             alias=target_alias,
+            additional=_aliased_additional(relationship_fk, base_alias, target_alias),
         ),
     )
     selected = ColumnRef(target_alias, display.name, display.type)

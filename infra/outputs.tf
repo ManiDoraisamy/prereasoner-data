@@ -22,3 +22,18 @@ output "db_password_secret" {
   description = "Secret Manager secret id holding the postgres password (access: gcloud secrets versions access latest --secret=<this>)."
   value       = google_secret_manager_secret.db_password.secret_id
 }
+
+output "serving_db_role" {
+  description = "Non-superuser role the engine serves as when opt-in least-privilege serving is enabled; null means it serves as postgres (default)."
+  value       = local.serving_least_privilege ? var.serving_db_role : null
+}
+
+output "serving_db_password_secret" {
+  description = "Secret Manager secret id holding the serving role's password (null unless serving_db_role is set)."
+  value       = local.serving_least_privilege ? one(google_secret_manager_secret.serving_db_password[*].secret_id) : null
+}
+
+output "enrichment_active_datasets" {
+  description = "Deterministic reference-enrichment deployment allowlist in effect (empty = enrichment off)."
+  value       = var.enrichment_active_datasets
+}
