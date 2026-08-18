@@ -854,6 +854,34 @@ def test_no_enrichment_dataclass_has_a_python311_mutable_default():
                            + "\n  ".join(offenders))
 
 
+def test_serving_modules_have_no_undefined_global_names():
+    # Catches a runtime NameError from a name used inside a function but never imported/defined at
+    # module level — e.g. `os.environ.get(...)` in engine.server.main() that crashed prop13 at boot
+    # (`os` was never imported). compileall and the import-smoke both miss it: the name resolves only
+    # when the function RUNS, and server.main() (models + Postgres) is never executed by the suite.
+    # Dependency-free (dis + builtins), version-independent.
+    import builtins
+    import dis
+    import importlib
+    builtin_names = set(dir(builtins))
+    offenders = []
+    for modname in ("engine.server", "engine.enrichment.runtime", "engine.enrichment.adapters",
+                    "engine.enrichment.select", "engine.enrichment.store", "engine.enrichment.intents"):
+        module = importlib.import_module(modname)
+        defined = set(vars(module)) | builtin_names
+        with open(module.__file__, encoding="utf-8") as handle:
+            code = compile(handle.read(), module.__file__, "exec")
+        stack = [code]
+        while stack:
+            block = stack.pop()
+            for instruction in dis.get_instructions(block):
+                if instruction.opname == "LOAD_GLOBAL" and instruction.argval not in defined:
+                    offenders.append(f"{modname}.<{block.co_name}>: undefined global '{instruction.argval}'")
+            stack.extend(const for const in block.co_consts if hasattr(const, "co_code"))
+    assert not offenders, ("unimported names crash at runtime (NameError):\n  "
+                           + "\n  ".join(sorted(set(offenders))))
+
+
 TESTS = [
     test_registry_validates_and_pins,
     test_snapshot_and_registry_ids_are_content_complete,
@@ -890,6 +918,7 @@ TESTS = [
     test_snapshot_store_detects_unique_contract_violation,
     test_private_product_corpus_is_metadata_only_consent_bound_and_replayable,
     test_no_enrichment_dataclass_has_a_python311_mutable_default,
+    test_serving_modules_have_no_undefined_global_names,
 ]
 
 
