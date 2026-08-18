@@ -49,7 +49,7 @@ class Literal:
 @dataclass(frozen=True)
 class Aggregate:
     function: str
-    operand: ColumnRef | Star
+    operand: ColumnRef | Star | BinaryExpr
     distinct: bool = False
 
     def __post_init__(self) -> None:
@@ -61,7 +61,20 @@ class ScalarSubquery:
     query: "Query"
 
 
-ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery
+ARITHMETIC_OPERATORS = frozenset({"+", "-", "*", "/"})
+
+
+@dataclass(frozen=True)
+class BinaryExpr:
+    """A binary arithmetic expression (e.g. ``amount * rate``). Operands are numeric scalar
+    expressions and the result is numeric, so ``SUM(amount * rate)`` becomes representable —
+    the prerequisite for currency conversion and other per-row arithmetic (roadmap M3a)."""
+    left: "ScalarExpr"
+    operator: str
+    right: "ScalarExpr"
+
+
+ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr
 
 
 @dataclass(frozen=True)
@@ -205,6 +218,12 @@ def expression_type(expr: ScalarExpr) -> SQLType:
         if expr.function == "AVG":
             return SQLType.REAL
         return expression_type(expr.operand)
+    if isinstance(expr, BinaryExpr):
+        if expr.operator == "/":
+            return SQLType.REAL
+        if SQLType.REAL in (expression_type(expr.left), expression_type(expr.right)):
+            return SQLType.REAL
+        return SQLType.INTEGER
     return SQLType.UNKNOWN
 
 
@@ -372,6 +391,19 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
         if (expr.function in {"SUM", "AVG"} and isinstance(expr.operand, ColumnRef)
                 and not expr.operand.type.numeric):
             raise ASTValidationError(f"{expr.function} requires a numeric column")
+        if isinstance(expr.operand, BinaryExpr):
+            _validate_expr(expr.operand, visible)               # e.g. SUM(amount * rate)
+        return
+    if isinstance(expr, BinaryExpr):
+        if expr.operator not in ARITHMETIC_OPERATORS:
+            raise ASTValidationError(f"unsupported arithmetic operator: {expr.operator}")
+        for side in (expr.left, expr.right):
+            if not isinstance(side, (ColumnRef, Literal, BinaryExpr)):
+                raise ASTValidationError("arithmetic operands must be a column, literal, or arithmetic expression")
+            _validate_expr(side, visible)
+            side_type = expression_type(side)
+            if side_type != SQLType.UNKNOWN and not side_type.numeric:
+                raise ASTValidationError("arithmetic operands must be numeric")
         return
     if isinstance(expr, Literal):
         value = expr.value
@@ -439,6 +471,8 @@ def _render_expr(expr: ScalarExpr) -> str:
     if isinstance(expr, Aggregate):
         distinct = "DISTINCT " if expr.distinct else ""
         return f"{expr.function}({distinct}{_render_expr(expr.operand)})"
+    if isinstance(expr, BinaryExpr):
+        return f"({_render_expr(expr.left)} {expr.operator} {_render_expr(expr.right)})"
     if isinstance(expr, ScalarSubquery):
         return f"({_render_query(expr.query)})"
     raise TypeError(f"unsupported expression: {type(expr).__name__}")
@@ -490,6 +524,8 @@ def _has_star_projection(query: Query) -> bool:
 
 
 def _expr_has_aggregate(expression: ScalarExpr) -> bool:
+    if isinstance(expression, BinaryExpr):
+        return _expr_has_aggregate(expression.left) or _expr_has_aggregate(expression.right)
     return isinstance(expression, Aggregate)
 
 
@@ -510,6 +546,8 @@ def _expr_tables(expr: ScalarExpr) -> set[str]:
         return {expr.table}
     if isinstance(expr, Aggregate):
         return _expr_tables(expr.operand)
+    if isinstance(expr, BinaryExpr):
+        return _expr_tables(expr.left) | _expr_tables(expr.right)
     return set()
 
 

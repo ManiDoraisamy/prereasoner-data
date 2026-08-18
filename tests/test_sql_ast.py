@@ -16,6 +16,7 @@ import numpy as np
 from engine.sql_ast import (
     ASTValidationError,
     Aggregate,
+    BinaryExpr,
     ColumnRef,
     Comparison,
     ExistsPredicate,
@@ -298,6 +299,41 @@ def test_composite_self_join_helpers_render_complete_predicates():
         "flights", "airports", source_fk, destination_fk, (0, name, "Aberdeen"), name))
     assert '"relation"."source_region" = "owner"."region"' in relation, relation
     assert '"relation"."dest_region" = "related"."region"' in relation, relation
+
+
+def test_arithmetic_expression_sum_renders_and_executes():
+    # M3a: SUM(amount * rate) — the prerequisite for currency conversion. The AST must render valid
+    # SQL and execute to the per-row-weighted sum, NOT the currency-blind raw SUM(amount).
+    orders = {"name": "orders", "columns": ["ccy", "amount", "rate"],
+              "rows": [["EUR", 100, 1.5], ["EUR", 200, 1.5], ["GBP", 50, 2.0]]}  # 150 + 300 + 100 = 550
+    amount = ColumnRef("orders", "amount", SQLType.REAL)
+    rate = ColumnRef("orders", "rate", SQLType.REAL)
+    query = SelectQuery((SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", rate)), alias="usd"),), "orders")
+    validate_query(query)
+    sql = render_query(query)
+    assert 'SUM(("orders"."amount" * "orders"."rate"))' in sql, sql
+    assert execute([orders], sql) == [(550.0,)]
+
+
+def test_arithmetic_expression_validation():
+    amount = ColumnRef("orders", "amount", SQLType.REAL)
+    name = ColumnRef("orders", "name", SQLType.TEXT)
+    # a valid bare arithmetic projection passes
+    validate_query(SelectQuery((SelectItem(BinaryExpr(amount, "+", Literal(1, SQLType.INTEGER))),), "orders"))
+    for bad in (
+        BinaryExpr(amount, "%", amount),                       # unsupported operator
+        BinaryExpr(amount, "*", Star()),                       # arithmetic on * is invalid
+    ):
+        try:
+            validate_query(SelectQuery((SelectItem(bad),), "orders")); raise AssertionError(bad)
+        except ASTValidationError:
+            pass
+    # a non-numeric operand inside an aggregate is rejected
+    try:
+        validate_query(SelectQuery((SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", name))),), "orders"))
+        raise AssertionError("non-numeric arithmetic operand accepted")
+    except ASTValidationError:
+        pass
 
 
 def test_projection_filter_and_order():
@@ -1560,6 +1596,8 @@ TESTS = [
     test_composite_foreign_key_renders_and_executes_as_one_join,
     test_composite_join_validation_rejects_disconnected_predicate,
     test_composite_self_join_helpers_render_complete_predicates,
+    test_arithmetic_expression_sum_renders_and_executes,
+    test_arithmetic_expression_validation,
     test_projection_filter_and_order,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,
     test_generic_projection_respects_entity_qualifier,
