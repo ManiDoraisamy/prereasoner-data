@@ -1,7 +1,8 @@
 # Spider Results — canonical current report
 
-The current `whole_db` row was measured from source commit `3760b44` with a dirty worktree whose exact planner,
-evaluator, dataset, and encoder hashes are recorded in the result JSON. Numbers below are the serving-faithful
+The current `whole_db` row was measured from source commit `2360e26` with a clean worktree. The exact planner,
+evaluator, dataset, and encoder hashes are recorded in the result JSON at
+`spider/results/deployment_hardening_20260818/whole_db/full_eval_whole_db/`. Numbers below are the serving-faithful
 measurement: `spider/probe/full_eval.py` running the exact production selector on **Spider
 dev (1034 examples, 20 DBs)**, real trained encoder (Qwen2.5-0.5B + LoRA + relational readout, `engine/data/`)
 on **CPU**, denotation compared against the real gold rows. Difficulty labels are the official `eval_hardness`
@@ -70,8 +71,8 @@ report) the source commit + dirty-worktree flag, so a run is traceable to an exa
 - **Structural floor.** Spider's hard/extra tiers are ~50% nested subqueries + set operations; the typed-AST
   planner covers many via `sql_recursive`/`sql_constraints`, but deep multi-step nesting remains the dominant
   miss on those tiers (see the difficulty tables — extra tops out ~28%).
-- **Table selection remains a major whole-db lever.** The previous same-tree oracle ablation was 424 versus 340
-  gold-blind, with many misses caused by unnecessary tables and joins. The oracle row has not yet been rerun on
+- **Table selection remains a major whole-db lever.** The previous oracle ablation was 424 versus 340 on an older
+  tree, with many gold-blind misses caused by unnecessary tables and joins. The oracle row has not yet been rerun on
   the current planner, so its current gap is deliberately not claimed here.
 - **Language-to-role binding remains the main easy/medium failure source.** The current gain came from count
   scope, identity, and source/destination role fixes; projection identity and relationship direction still account
