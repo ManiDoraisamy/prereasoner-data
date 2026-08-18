@@ -16,6 +16,7 @@ from typing import Any, Sequence
 
 from engine.sql_ast import (
     Aggregate,
+    BinaryExpr,
     ColumnRef,
     Comparison,
     Join,
@@ -138,9 +139,10 @@ class SQLSearcher:
         for draft in drafts:
             groups = self._group_choices(tokens, mentions, table_scores, draft)
             for group_columns, group_score, group_evidence in groups:
-                raw_projection = tuple(c for c in draft.projections
-                                       if c not in {a.operand for a in draft.aggregates
-                                                    if isinstance(a.operand, ColumnRef)})
+                aggregated_columns = set().union(
+                    *(_operand_columns(a.operand) for a in draft.aggregates)
+                ) if draft.aggregates else set()
+                raw_projection = tuple(c for c in draft.projections if c not in aggregated_columns)
                 if not draft.aggregates and len(raw_projection) > 1:
                     predicate_columns = {predicate.left for predicate in draft.predicates
                                          if isinstance(predicate.left, ColumnRef)}
@@ -355,6 +357,23 @@ class SQLSearcher:
                 suppressed.add(left.position)
         return tuple(mention for mention in mentions if mention.position not in suppressed)
 
+    def _conversion_rate_column(self, tokens: tuple[str, ...]) -> ColumnRef | None:
+        """Currency-conversion intent + a joinable FX-rate column -> that rate column, else None.
+        Intent: the question names a target-currency word ('usd', 'dollars') or asks to 'convert'.
+        The FX table is recognized STRUCTURALLY — a numeric 'rate' column in a table that a
+        DISCOVERED foreign key points to (a currency column's values are included in its key). No
+        cell values are read here, so this stays deterministic and schema-driven (M3c)."""
+        from engine.sql_rank import wants_currency_conversion    # one owner for the intent predicate
+        if not wants_currency_conversion(tokens):
+            return None
+        for foreign_key in self.schema.foreign_keys:
+            target_table = foreign_key.to_column.table
+            for schema_column in self.schema.columns:
+                ref = schema_column.ref
+                if ref.table == target_table and ref.type.numeric and "rate" in ref.name.lower():
+                    return ref
+        return None
+
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []
         for i, token in enumerate(tokens):
@@ -412,6 +431,7 @@ class SQLSearcher:
         if not cues:
             return [((), 0.0, ())]
 
+        rate_column = self._conversion_rate_column(tokens)     # SUM(measure * rate) offered when set (M3c)
         beam: list[tuple[tuple[Aggregate, ...], float, tuple[str, ...]]] = [((), 0.0, ())]
         for function, position in sorted(cues, key=lambda item: item[1]):
             options: list[tuple[Aggregate, float, str]] = []
@@ -436,6 +456,16 @@ class SQLSearcher:
                         continue
                     options.append((Aggregate(function, option.column), 4.0 + option.score * 0.1,
                                     f"aggregate:{function}({option.column.table}.{option.column.name})"))
+                    if (function == "SUM" and rate_column is not None
+                            and rate_column.table != option.column.table):
+                        # currency conversion (M3c): SUM(amount * rate) over the discovered FX join.
+                        # Scored above the raw SUM so a "... in USD" request prefers the converted total.
+                        options.append((
+                            Aggregate("SUM", BinaryExpr(option.column, "*", rate_column)),
+                            4.6 + option.score * 0.1,
+                            f"aggregate:convert:SUM({option.column.table}.{option.column.name}"
+                            f"*{rate_column.table}.{rate_column.name})",
+                        ))
             expanded = []
             for aggregates, score, evidence in beam:
                 for aggregate, option_score, reason in options:
@@ -705,7 +735,7 @@ class SQLSearcher:
                        table_scores: dict[str, float], draft: _Draft) -> list[tuple[tuple[ColumnRef, ...], float, tuple[str, ...]]]:
         if not draft.aggregates:
             return [((), 0.0, ())]
-        targets = {a.operand for a in draft.aggregates if isinstance(a.operand, ColumnRef)}
+        targets = set().union(*(_operand_columns(a.operand) for a in draft.aggregates))
         projection_groups = _unique_columns(tuple(c for c in draft.projections if c not in targets))
         explicit_positions = []
         for i, token in enumerate(tokens):
@@ -969,11 +999,33 @@ def _expression_tables(expression: Any) -> set[str]:
         return {expression.table}
     if isinstance(expression, Aggregate):
         return _expression_tables(expression.operand)
+    if isinstance(expression, BinaryExpr):                       # SUM(amount * fx.rate): both tables are required
+        return _expression_tables(expression.left) | _expression_tables(expression.right)
     return set()
+
+
+def _operand_columns(operand: Any) -> set:
+    """ColumnRefs consumed by an aggregate operand, including columns nested in a BinaryExpr
+    (e.g. amount and rate in SUM(amount * rate)). Used so an aggregated column is not also treated
+    as a bare projection that would force a spurious GROUP BY."""
+    if isinstance(operand, ColumnRef):
+        return {operand}
+    if isinstance(operand, BinaryExpr):
+        return _operand_columns(operand.left) | _operand_columns(operand.right)
+    return set()
+
+
+def _operand_label(operand: Any) -> str:
+    if isinstance(operand, Star):
+        return "*"
+    if isinstance(operand, ColumnRef):
+        return f"{operand.table}.{operand.name}"
+    if isinstance(operand, BinaryExpr):
+        return f"{_operand_label(operand.left)} {operand.operator} {_operand_label(operand.right)}"
+    return "expr"
 
 
 def _expr_label(expression: ColumnRef | Aggregate) -> str:
     if isinstance(expression, ColumnRef):
         return f"{expression.table}.{expression.name}"
-    operand = "*" if isinstance(expression.operand, Star) else f"{expression.operand.table}.{expression.operand.name}"
-    return f"{expression.function}({operand})"
+    return f"{expression.function}({_operand_label(expression.operand)})"

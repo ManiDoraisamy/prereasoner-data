@@ -11,7 +11,7 @@ import math
 import re
 from typing import Any, Callable, Mapping, Sequence
 
-from engine.sql_ast import Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, Star
+from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Comparison, Query, SelectQuery, SetQuery, Star
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph
 
@@ -92,6 +92,14 @@ def semantic_role_phrases(question: str) -> dict[str, str]:
     if order is not None:
         phrases["order"] = " ".join(words[order:])
     return {role: phrase for role, phrase in phrases.items() if phrase.strip()}
+
+
+def wants_currency_conversion(tokens: Sequence[str]) -> bool:
+    """True when a question asks to express amounts in a target currency ('in US dollars',
+    'converted to USD', 'convert ...'). ONE owner for the intent predicate, shared by the planner
+    (which emits SUM(amount * rate)) and the ranker (which prefers that candidate)."""
+    token_set = set(tokens)
+    return bool({"usd", "dollars", "dollar"} & token_set or {"convert", "converted"} & token_set)
 
 
 class CandidateRanker:
@@ -220,6 +228,16 @@ class CandidateRanker:
             elif targets:
                 features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
                                  3.0 if operand in targets else -3.5))
+
+        # Currency conversion (M3c): when the question asks for a target currency, strongly prefer the
+        # candidate that computes SUM(amount * rate); otherwise a converting candidate must not win.
+        converts = any(isinstance(item.expression, Aggregate)
+                       and isinstance(item.expression.operand, BinaryExpr)
+                       for item in query.select)
+        if wants_currency_conversion(roles.tokens):
+            features.append(("currency_conversion", 8.0 if converts else -8.0))
+        elif converts:
+            features.append(("currency_conversion_unrequested", -8.0))
 
         travel_direction = _travel_direction(roles.tokens)
         if travel_direction:

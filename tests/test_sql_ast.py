@@ -336,6 +336,25 @@ def test_currency_conversion_query_executes_end_to_end():
     assert execute([orders, fx], render_query(query)) == [(980.0,)]
 
 
+def test_planner_emits_currency_conversion_when_requested():
+    # M3c: "... in US dollars" + a joinable FX-rate table -> the planner OFFERS SUM(amount * rate)
+    # over the discovered orders.currency -> fx.currency_code join. Proves the planner produces the
+    # conversion the M3a AST made representable, and that it does NOT fire without a currency cue.
+    orders = {"name": "orders", "columns": ["currency", "amount"],
+              "rows": [["EUR", 310], ["EUR", 210], ["GBP", 100], ["EUR", 95]]}
+    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
+          "rows": [["EUR", 1.5], ["GBP", 2.0], ["USD", 1.0]]}
+    fks = [{"from_table": "orders", "from_col": "currency", "to_table": "fx", "to_col": "currency_code"}]
+    top = best("total order amount in US dollars", [orders, fx], fks)          # ranker must PREFER conversion
+    assert top.sql.startswith('SELECT SUM(("orders"."amount" * "fx"."rate_to_usd"))'), top.sql
+    assert 'JOIN "fx"' in top.sql, top.sql
+    # 310*1.5 + 210*1.5 + 100*2.0 + 95*1.5 = 465 + 315 + 200 + 142.5 = 1122.5
+    assert execute([orders, fx], top.sql) == [(1122.5,)], top.sql
+    # no currency/convert cue -> raw sum wins; the arithmetic conversion must NOT appear (no false positive)
+    plain = best("total order amount", [orders, fx], fks)
+    assert "rate_to_usd" not in plain.sql and "*" not in plain.sql, plain.sql
+
+
 def test_arithmetic_expression_validation():
     amount = ColumnRef("orders", "amount", SQLType.REAL)
     name = ColumnRef("orders", "name", SQLType.TEXT)
@@ -1619,6 +1638,7 @@ TESTS = [
     test_composite_self_join_helpers_render_complete_predicates,
     test_arithmetic_expression_sum_renders_and_executes,
     test_currency_conversion_query_executes_end_to_end,
+    test_planner_emits_currency_conversion_when_requested,
     test_arithmetic_expression_validation,
     test_projection_filter_and_order,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,
