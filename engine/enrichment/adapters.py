@@ -5,7 +5,7 @@ registry lookup into a typed outcome and preserve ambiguity, policy, and provena
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
 from typing import Mapping
@@ -44,7 +44,9 @@ class AdapterResult:
     columns: tuple[str, ...] = ()
     rows: tuple[tuple, ...] = ()
     warnings: tuple[str, ...] = ()
-    provenance: Mapping[str, str] = MappingProxyType({})
+    # default_factory (not a bare MappingProxyType default): Python 3.11 — the container runtime —
+    # rejects a mappingproxy dataclass default as "mutable" (3.14 accepts it). Keep both green.
+    provenance: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def matched(self) -> bool:

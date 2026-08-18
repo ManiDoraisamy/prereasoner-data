@@ -107,6 +107,17 @@ def run_unit_checks():
     from regress.offline_cases import STORES, EMPLOYEES
     print("\n=== UNIT invariants (engine.joins compose-path FK discovery) ===")
     fails = []
+    # STARTUP-IMPORT smoke: the container runs server.main(), which does `from engine.enrichment import ...`.
+    # A mutable dataclass default that Python 3.11 (the container) rejects but local 3.14 accepts otherwise
+    # builds a healthy-looking image that crashes at boot. Importing here — inside the built image, since this
+    # gate runs in the container — turns that boot crash into a BUILD failure. (prop12 regression, 2026-08-18.)
+    import importlib
+    for _startup_module in ("engine.enrichment", "engine.domain_typing", "engine.domain_profiles"):
+        try:
+            importlib.import_module(_startup_module)
+            print(f"  ok   startup import {_startup_module}")
+        except Exception as exc:  # noqa: BLE001
+            fails.append(f"STARTUP import {_startup_module} failed at build: {type(exc).__name__}: {exc}")
     stores, emps = dict(STORES), dict(EMPLOYEES)
     fks = discover_fks([stores, emps])
     # (1) a relationship-named FK must resolve (Manager_ID -> employees.Employee_ID) — the SHIPPED regression

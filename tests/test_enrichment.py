@@ -827,6 +827,33 @@ def test_private_product_corpus_is_metadata_only_consent_bound_and_replayable():
                 pass
 
 
+def test_no_enrichment_dataclass_has_a_python311_mutable_default():
+    # The serving CONTAINER runs Python 3.11, which REJECTS a dataclass field whose default is
+    # mutable/unhashable (list/dict/set/mappingproxy) — default_factory is required. Python 3.14
+    # (local/CI) ACCEPTS such defaults, so `import engine.enrichment` succeeds here while the 3.11
+    # container crashes at startup. This pins the class of bug that failed prop12's first deploy
+    # (engine/enrichment/adapters.py: AdapterResult.provenance = MappingProxyType({})).
+    import importlib
+    import inspect
+    from dataclasses import fields, is_dataclass, MISSING
+    offenders = []
+    for name in ("registry", "adapters", "select", "runtime", "store", "intents", "value_types"):
+        module = importlib.import_module(f"engine.enrichment.{name}")
+        for _, obj in inspect.getmembers(module, is_dataclass):
+            if getattr(obj, "__module__", None) != module.__name__:
+                continue                                   # only dataclasses DEFINED in this module
+            for f in fields(obj):
+                if f.default is MISSING or f.default_factory is not MISSING:
+                    continue
+                try:
+                    hash(f.default)                        # 3.11 rejects an unhashable default
+                except TypeError:
+                    offenders.append(f"{obj.__module__}.{obj.__qualname__}.{f.name}: "
+                                     f"{type(f.default).__name__} default — use default_factory")
+    assert not offenders, ("dataclass mutable defaults crash the Python-3.11 serving container:\n  "
+                           + "\n  ".join(offenders))
+
+
 TESTS = [
     test_registry_validates_and_pins,
     test_snapshot_and_registry_ids_are_content_complete,
@@ -862,6 +889,7 @@ TESTS = [
     test_snapshot_store_pins_release_and_bounds_qualified_lookup,
     test_snapshot_store_detects_unique_contract_violation,
     test_private_product_corpus_is_metadata_only_consent_bound_and_replayable,
+    test_no_enrichment_dataclass_has_a_python311_mutable_default,
 ]
 
 
