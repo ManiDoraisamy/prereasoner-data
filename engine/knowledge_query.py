@@ -577,6 +577,14 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]
+        # Currency-conversion target words ("us dollars", "USD", "euros"…) are REALIZED by a conversion in the
+        # SQL (amount * rate) — exactly like a measure word is realized by has_agg — so they are NOT dropped.
+        # Without this, "us" resolves to the United States (a country) and hijacks a correct SUM(amount*rate)
+        # currency conversion into a spurious clarify (M3c serve integration).
+        _CURRENCY_TARGET = {"us", "usd", "dollar", "dollars", "eur", "euro", "euros",
+                            "gbp", "pound", "pounds", "sterling", "convert", "converted", "converting"}
+        if has_agg and "*" in sqll and _re.search(r"rate", sqll):
+            content = [w for w in content if w not in _CURRENCY_TARGET]
         if not content:
             return []
         nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]
