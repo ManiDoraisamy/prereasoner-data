@@ -315,6 +315,27 @@ def test_arithmetic_expression_sum_renders_and_executes():
     assert execute([orders], sql) == [(550.0,)]
 
 
+def test_currency_conversion_query_executes_end_to_end():
+    # M3: the COMPLETE conversion the engine must eventually build — join orders to an FX-rate table
+    # and SUM(amount * rate). Proves the typed AST already expresses conversion end to end (join +
+    # arithmetic + aggregate); the planner *producing* this is M3c. Rates are exact in float on
+    # purpose so the assertion is precise.
+    orders = {"name": "orders", "columns": ["currency", "amount"],
+              "rows": [["EUR", 310], ["EUR", 210], ["GBP", 100]]}
+    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
+          "rows": [["EUR", 1.5], ["GBP", 2.0], ["USD", 1.0]]}          # 310*1.5 + 210*1.5 + 100*2.0 = 980
+    amount = ColumnRef("orders", "amount", SQLType.REAL)
+    rate = ColumnRef("fx", "rate_to_usd", SQLType.REAL)
+    query = SelectQuery(
+        (SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", rate)), alias="usd_total"),),
+        "orders",
+        joins=(Join("fx", ColumnRef("orders", "currency", SQLType.TEXT),
+                    ColumnRef("fx", "currency_code", SQLType.TEXT)),),
+    )
+    validate_query(query)
+    assert execute([orders, fx], render_query(query)) == [(980.0,)]
+
+
 def test_arithmetic_expression_validation():
     amount = ColumnRef("orders", "amount", SQLType.REAL)
     name = ColumnRef("orders", "name", SQLType.TEXT)
@@ -1597,6 +1618,7 @@ TESTS = [
     test_composite_join_validation_rejects_disconnected_predicate,
     test_composite_self_join_helpers_render_complete_predicates,
     test_arithmetic_expression_sum_renders_and_executes,
+    test_currency_conversion_query_executes_end_to_end,
     test_arithmetic_expression_validation,
     test_projection_filter_and_order,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,
