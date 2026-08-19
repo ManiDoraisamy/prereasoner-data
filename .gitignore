@@ -32,6 +32,9 @@ spider/results/**/*.checkpoint.json
 infra/**/.terraform/
 infra/**/*.tfstate
 infra/**/*.tfstate.backup
+infra/**/*.tfplan
+infra/**/*.tfplan.*
+infra/$plan
 !infra/.terraform.lock.hcl
 
 # Node / tooling
