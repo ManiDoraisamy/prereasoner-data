@@ -26,8 +26,9 @@ from engine.enrichment import (
     AcceptanceThresholds, Activation, AmbiguityPolicy, Capability, DatasetDefinition,
     DateSelection, EmbeddedStorage, Eligibility, ExecutionManifest, ExplicitKeyEdge, LookupCardinality,
     PostgresStorage, QualifiedRelation, SnapshotPin, SnapshotStore, SourceContractError,
-    TemporalContract, TemporalKind, UsagePolicy, LoadedDataset,
+    TemporalContract, TemporalKind, LoadedDataset,
     LookupDisposition, LookupPurpose, SourceAdapters,
+    currency_conversion_target, currency_rate_attribute,
     requested_attribute_evidence, requested_attributes,
     EnrichmentRuntime, RuntimeIdentity, deployment_dataset_allowlist, table_versions,
 )
@@ -375,7 +376,8 @@ def test_benchmark_requires_positive_and_negative_support():
 
 
 def test_source_registry_models_measured_data_shapes_without_enabling_them():
-    assert len(REGISTRY) == 18                                          # +currency_fx_usd (embedded, M3b)
+    assert len(REGISTRY) == 17
+    assert "currency_fx_usd" not in REGISTRY
     source_definitions = [definition for definition in REGISTRY.values()
                           if isinstance(definition.storage, PostgresStorage)]
     assert len(source_definitions) == 16
@@ -466,6 +468,13 @@ def test_requested_attribute_extraction_is_explicit_and_contrastive():
         "Sales by timezone", "Holiday sales revenue", "Total tax amount",
     ):
         assert requested_attributes(question) == frozenset(), question
+    assert currency_conversion_target("total amount in US dollars") == "USD"
+    assert currency_conversion_target("total in EUR converted to U.S. dollars") == "USD"
+    assert currency_conversion_target("convert USD to EUR") == "EUR"
+    assert currency_conversion_target("convert EUR into British pounds") == "GBP"
+    assert currency_conversion_target("total amount in dollars") is None
+    assert currency_conversion_target("convert the amount") is None
+    assert currency_rate_attribute("EUR") == "rate_to_eur"
 
 
 class _AdapterStore:
@@ -721,15 +730,20 @@ def test_runtime_order_shaped_table_abstains_when_values_are_not_currencies():
 
 
 def test_currency_conversion_attaches_fx_rates_and_planner_converts():
-    # M3b+M3c end to end (hermetic): a "... in US dollars" question over multi-currency orders makes
-    # the enrichment ATTACH currency_fx_usd (+ the currency->currency_code edge), and the planner then
-    # emits SUM(amount * rate_to_usd). Enrichment stays OFF in production until the dataset is
-    # allowlisted; this runs in evaluation mode.
+    # Rates are deliberately test-local. Production abstains until the ECB temporal join exists.
     from engine.sql_search import SQLSearcher
+    fx = _dataset(
+        name="currency_fx_usd", keys=("currency_code",), attributes=("rate_to_usd",),
+        rows=(("USD", 1.0), ("EUR", 1.08), ("GBP", 1.27)),
+        eligibility=Eligibility(required=frozenset({CURRENCY_CODE, ATTR_EXCHANGE_RATE})),
+        compatible_roles=frozenset({"order"}),
+    )
+    registry = {fx.name: fx}
     orders = _t("orders", ["order_id", "currency", "amount"],
                 [[1, "EUR", 310], [2, "EUR", 210], [3, "GBP", 100], [4, "EUR", 95]])
     plan = EnrichmentRuntime(
-        SnapshotStore(lambda: None), allow_evaluation=True, identity=RuntimeIdentity("t", "sha256:m"),
+        SnapshotStore(lambda: None), registry=registry, allow_evaluation=True,
+        identity=RuntimeIdentity("t", "sha256:m"),
     ).prepare([orders], "total order amount in US dollars")
     assert plan.used and plan.added_tables == ("currency_fx_usd",)
     assert {(e.from_table, e.from_col, e.to_table, e.to_col) for e in plan.explicit_fks} == {
@@ -739,9 +753,15 @@ def test_currency_conversion_attaches_fx_rates_and_planner_converts():
     assert "rate_to_usd" in top.sql and " * " in top.sql, top.sql          # planner converts
     # a plain total (no conversion cue) does not attach the FX rates
     plain = EnrichmentRuntime(
-        SnapshotStore(lambda: None), allow_evaluation=True, identity=RuntimeIdentity("t", "sha256:m"),
+        SnapshotStore(lambda: None), registry=registry, allow_evaluation=True,
+        identity=RuntimeIdentity("t", "sha256:m"),
     ).prepare([orders], "total order amount")
     assert not plain.used, plain.added_tables
+    unsupported = EnrichmentRuntime(
+        SnapshotStore(lambda: None), registry=registry, allow_evaluation=True,
+        identity=RuntimeIdentity("t", "sha256:m"),
+    ).prepare([orders], "total order amount in EUR")
+    assert not unsupported.used, unsupported.added_tables
 
 
 class _FakeCursor:
@@ -851,61 +871,6 @@ def test_private_product_corpus_is_metadata_only_consent_bound_and_replayable():
                 pass
 
 
-def test_no_enrichment_dataclass_has_a_python311_mutable_default():
-    # The serving CONTAINER runs Python 3.11, which REJECTS a dataclass field whose default is
-    # mutable/unhashable (list/dict/set/mappingproxy) — default_factory is required. Python 3.14
-    # (local/CI) ACCEPTS such defaults, so `import engine.enrichment` succeeds here while the 3.11
-    # container crashes at startup. This pins the class of bug that failed prop12's first deploy
-    # (engine/enrichment/adapters.py: AdapterResult.provenance = MappingProxyType({})).
-    import importlib
-    import inspect
-    from dataclasses import fields, is_dataclass, MISSING
-    offenders = []
-    for name in ("registry", "adapters", "select", "runtime", "store", "intents", "value_types"):
-        module = importlib.import_module(f"engine.enrichment.{name}")
-        for _, obj in inspect.getmembers(module, is_dataclass):
-            if getattr(obj, "__module__", None) != module.__name__:
-                continue                                   # only dataclasses DEFINED in this module
-            for f in fields(obj):
-                if f.default is MISSING or f.default_factory is not MISSING:
-                    continue
-                try:
-                    hash(f.default)                        # 3.11 rejects an unhashable default
-                except TypeError:
-                    offenders.append(f"{obj.__module__}.{obj.__qualname__}.{f.name}: "
-                                     f"{type(f.default).__name__} default — use default_factory")
-    assert not offenders, ("dataclass mutable defaults crash the Python-3.11 serving container:\n  "
-                           + "\n  ".join(offenders))
-
-
-def test_serving_modules_have_no_undefined_global_names():
-    # Catches a runtime NameError from a name used inside a function but never imported/defined at
-    # module level — e.g. `os.environ.get(...)` in engine.server.main() that crashed prop13 at boot
-    # (`os` was never imported). compileall and the import-smoke both miss it: the name resolves only
-    # when the function RUNS, and server.main() (models + Postgres) is never executed by the suite.
-    # Dependency-free (dis + builtins), version-independent.
-    import builtins
-    import dis
-    import importlib
-    builtin_names = set(dir(builtins))
-    offenders = []
-    for modname in ("engine.server", "engine.enrichment.runtime", "engine.enrichment.adapters",
-                    "engine.enrichment.select", "engine.enrichment.store", "engine.enrichment.intents"):
-        module = importlib.import_module(modname)
-        defined = set(vars(module)) | builtin_names
-        with open(module.__file__, encoding="utf-8") as handle:
-            code = compile(handle.read(), module.__file__, "exec")
-        stack = [code]
-        while stack:
-            block = stack.pop()
-            for instruction in dis.get_instructions(block):
-                if instruction.opname == "LOAD_GLOBAL" and instruction.argval not in defined:
-                    offenders.append(f"{modname}.<{block.co_name}>: undefined global '{instruction.argval}'")
-            stack.extend(const for const in block.co_consts if hasattr(const, "co_code"))
-    assert not offenders, ("unimported names crash at runtime (NameError):\n  "
-                           + "\n  ".join(sorted(set(offenders))))
-
-
 TESTS = [
     test_registry_validates_and_pins,
     test_snapshot_and_registry_ids_are_content_complete,
@@ -942,8 +907,6 @@ TESTS = [
     test_snapshot_store_pins_release_and_bounds_qualified_lookup,
     test_snapshot_store_detects_unique_contract_violation,
     test_private_product_corpus_is_metadata_only_consent_bound_and_replayable,
-    test_no_enrichment_dataclass_has_a_python311_mutable_default,
-    test_serving_modules_have_no_undefined_global_names,
 ]
 
 

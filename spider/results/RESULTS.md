@@ -83,8 +83,8 @@ report) the source commit + dirty-worktree flag, so a run is traceable to an exa
 Against the previous accepted `release_review_final5_20260802` row (358 strict / 451 lenient / 224 scalar), the
 current run has one strict gain, two lenient gains, no scalar change, and **zero losses**. Three selected SQL strings
 changed. The gains remove spurious related-table projections and joins for document-template and contestant-name
-questions. The accepted artifact is `enrichment_activation_20260817`; earlier `release_review*` directories are
-superseded diagnostics.
+questions. The accepted artifact is `deployment_hardening_20260818`; earlier evaluation directories are retained in
+Git history rather than duplicated in a public checkout.
 
 ## Historical
 

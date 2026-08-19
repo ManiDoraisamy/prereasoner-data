@@ -59,7 +59,7 @@ class Bridge:
 
     def build(self, table):
         """Materialize the two logical bridge tables for an upload."""
-        cols = table["columns"]; rows = table["rows"]
+        rows = table["rows"]
         connected, unconnected = self.split(table)
         conn_rows = []
         for pk, r in enumerate(rows):

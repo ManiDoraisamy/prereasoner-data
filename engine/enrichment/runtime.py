@@ -13,9 +13,10 @@ from engine.config import DATA_DIR
 from engine.domain_profiles import DOMAIN_PROFILE_VERSION
 from engine.domain_typing import ProfileEvidence, RoleEvidence, detect_profiles, detect_roles
 from engine.enrichment.adapters import AdapterResult, LookupDisposition, SourceAdapters
+from engine.currency_intent import currency_conversion_target, currency_rate_attribute
 from engine.enrichment.intents import requested_attributes
 from engine.enrichment.registry import (
-    Activation, DatasetDefinition, EmbeddedStorage, ExecutionManifest, LookupCardinality,
+    ATTR_EXCHANGE_RATE, Activation, DatasetDefinition, EmbeddedStorage, ExecutionManifest, LookupCardinality,
     REGISTRY, REGISTRY_VERSION, SnapshotPin, TemporalKind,
 )
 from engine.enrichment.select import ExplicitKeyEdge, select_datasets
@@ -164,8 +165,9 @@ class EnrichmentRuntime:
                 and definition.name in self.enabled_datasets) or (
             self.allow_evaluation and definition.activation == Activation.EVALUATION
         )
-    def _single_key_candidates(self, tables, attributes, role_names):
-        for definition in (self.registry[name] for name in sorted(self.registry)):
+    def _single_key_candidates(self, tables, attributes, role_names, registry=None):
+        request_registry = registry if registry is not None else self.registry
+        for definition in (request_registry[name] for name in sorted(request_registry)):
             if (not self._enabled(definition) or definition.temporal.kind != TemporalKind.SNAPSHOT
                     or definition.cardinality != LookupCardinality.ONE
                     or len(definition.lookup_key) != 1
@@ -196,18 +198,26 @@ class EnrichmentRuntime:
             raise ValueError("row_budget must be a positive integer")
         source_tables = tuple(tables or ())
         attributes = requested_attributes(question)
+        conversion_target = currency_conversion_target(question)
         roles = detect_roles(source_tables)
         profiles = detect_profiles(source_tables)
         role_names = frozenset(item.role for item in roles)
         if not attributes or table_budget == 0:
             return EnrichmentPlan(source_tables, (), (), attributes, roles, profiles, (), ())
 
+        request_registry = {
+            name: definition for name, definition in self.registry.items()
+            if self._enabled(definition)
+            and (not definition.compatible_roles or definition.compatible_roles & role_names)
+            and (
+                conversion_target is None
+                or ATTR_EXCHANGE_RATE not in definition.eligibility.required
+                or currency_rate_attribute(conversion_target) in definition.attributes
+            )
+        }
         selections = select_datasets(
             source_tables,
-            registry={name: definition for name, definition in self.registry.items()
-                      if self._enabled(definition)
-                      and (not definition.compatible_roles
-                           or definition.compatible_roles & role_names)},
+            registry=request_registry,
             request_evidence=attributes,
         )
         candidates = []
@@ -219,7 +229,7 @@ class EnrichmentRuntime:
             candidates.append((selection.dataset, selection.source_table,
                                selection.source_column, values, evidence, selection.snapshot))
         for definition, table, candidate in self._single_key_candidates(
-                source_tables, attributes, role_names):
+                source_tables, attributes, role_names, request_registry):
             _, column, values, evidence = candidate
             candidates.append((definition, str(table.get("name")), column, values, evidence, None))
 

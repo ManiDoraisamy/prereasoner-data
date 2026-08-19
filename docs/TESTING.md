@@ -8,6 +8,8 @@ Spider accuracy evaluation. They answer different questions and should not be co
 Run these before involving models, PostgreSQL, or network services:
 
 ```powershell
+pip install -r requirements-ci.txt
+python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
 python -m tests.test_sql_ast
 python -m tests.test_master_ingest
 python -m tests.test_routing
@@ -17,14 +19,13 @@ python -m regress.product_templates
 python -m regress.source_activation
 node --check web/public/lib/workbook.js
 node web/tests/workbook_reference.test.js
-python -m compileall -q engine db training tests orchestrator mcp_server
+python -m compileall -q engine db training tests orchestrator mcp_server regress
 git diff --check
 ```
 
 These cover typed AST behavior, deterministic routing, private-reference selection and validation, workbook
-reference state, JavaScript syntax, and Python syntax. Some imported engine modules require packages from
-`requirements.txt`, but the tests do not require a running database or model weights unless stated otherwise by
-their output.
+reference state, JavaScript syntax, and Python syntax. `requirements-ci.txt` is intentionally independent of the
+model stack. Live engine suites still require `requirements.txt`, model artifacts, and PostgreSQL.
 
 `regress.product_templates` runs 35 source-cited public-template development cases, five for
 each domain profile. These fixtures measure deterministic recognition but are not customer
@@ -47,6 +48,14 @@ separate 25-positive/100-negative IANA selection and candidate-pool gate.
 python -m tests.run_all
 ```
 
+For the CI-equivalent public-checkout run:
+
+```powershell
+$env:RUN_ENGINE_TESTS = "0"
+$env:RUN_ORCHESTRATOR_TESTS = "0"
+python -m tests.run_all
+```
+
 The runner executes the canonical suites in this order:
 
 | Suite | Primary boundary |
@@ -59,14 +68,15 @@ The runner executes the canonical suites in this order:
 | `tests.test_enrichment` | M0 profile/role contracts, intent contrastives, value typing, bounded adapters, domain gates, request-local materialization, tuple edges, replay manifests, and serving-shaped benchmarks |
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
 | `tests.test_mcp` | MCP response shape and engine adapter |
-| `tests.test_orchestrator` | Tool-use policy and HTTP envelope |
+| `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |
 | `tests.test_nongeo` | Non-geographic world resolution and lazy fill |
 | `tests.test_world_joins` | Country, continent, and state world-table joins |
 | `tests.test_route_wired` | Model-driven route to SQL end to end |
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 
-The live suites need runtime weights and a seeded PostgreSQL knowledgebase. Some also need network access for an
+The live suites need runtime weights and a seeded PostgreSQL knowledgebase. The orchestrator suite is also
+external and can be excluded with `RUN_ORCHESTRATOR_TESTS=0`. Some live suites need network access for an
 uncached Wikidata entity. The runner reports unavailable suites as skipped so local development can continue, but a
 skip is not a passing integration test. Record exact skips and prerequisites in a pull request.
 
@@ -165,8 +175,12 @@ docker compose config
 docker build -t prereasoner-engine:test .
 docker build -f Dockerfile.orchestrator -t prereasoner-orchestrator:test .
 terraform -chdir=infra fmt -check
+terraform -chdir=infra init -backend=false -input=false
 terraform -chdir=infra validate
 ```
+
+CI also runs credential-free, no-refresh plans to prove that the default creates no chat
+resources and that `enable_orchestrator=true` fails unless `anthropic_api_key` is supplied.
 
 If Docker or Terraform is unavailable, say so explicitly. Static parsing and unit tests do not replace an image
 build or Terraform validation.

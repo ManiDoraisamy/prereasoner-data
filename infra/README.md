@@ -1,14 +1,9 @@
 # infra/ — deploying PreReasoner to Google Cloud
 
-Terraform for the **one** Cloud Run service (`prereasoner-api`, the consolidated engine)
-plus its Cloud SQL Postgres, Artifact Registry repo, Secret Manager password and a
-dedicated runtime service account. The Firebase pieces (Auth, Realtime Database,
-Hosting for `web/`) are managed outside Terraform — see step 1.
-
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=GITHUB_URL_PLACEHOLDER&cloudshell_tutorial=infra/README.md)
-
-> `GITHUB_URL_PLACEHOLDER` — replace with the repo's public GitHub URL
-> (e.g. `https://github.com/you/prereasoner`) once the repo is published.
+Terraform creates the core Cloud Run engine (`prereasoner-api`), Cloud SQL Postgres,
+Artifact Registry, secrets, and runtime identity. A separate third-party chat orchestrator
+is optional (`enable_orchestrator=false` by default). Firebase Auth, Realtime Database, and
+Hosting for `web/` are managed outside Terraform; see step 1.
 
 ## Architecture
 
@@ -30,7 +25,8 @@ browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run 
 ## Prerequisites
 
 - `gcloud` (authenticated: `gcloud auth login && gcloud config set project <PROJECT>`),
-  Terraform >= 1.5, and the `firebase` CLI (`npm i -g firebase-tools`) for the web step.
+  Terraform >= 1.5 (CI uses 1.15.8 and the checked-in provider lock), and the `firebase`
+  CLI (`npm i -g firebase-tools`) for the web step.
 - A GCP project with billing enabled.
 - **Manual Firebase step (Terraform does not do this):** add Firebase to the project at
   <https://console.firebase.google.com> ("Add project" → pick the existing GCP project).
@@ -68,6 +64,11 @@ image).
 
 ### 2. Terraform apply
 
+**State comes first.** This configuration defaults to local state for a new environment.
+Never run `apply` against an existing project from an empty state: configure the team's
+backend and import existing resources first. Otherwise Terraform will propose duplicate
+Cloud Run, Cloud SQL, secret, IAM, and repository resources.
+
 ```bash
 cd infra
 terraform init
@@ -75,7 +76,8 @@ terraform apply -var project_id=<PROJECT> \
   -var rtdb_url=https://<project>-default-rtdb.firebaseio.com   # omit to disable streaming
 ```
 
-Outputs: `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`.
+Outputs: `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`, and
+`chat_url` (`null` while the optional orchestrator is disabled).
 
 The service will deploy but return errors on `/api/reason`/`/api/knowledge` until the
 database is seeded (next step) — `/healthz` and `/api/dimension` work immediately.
@@ -111,6 +113,18 @@ Full sync variant (several hours) and per-type syncs: `db/README.md` §3.
 here because the seed is a one-time, long-running, Wikidata-rate-limited task that is
 easier to babysit interactively.
 
+### 3a. Optional chat orchestrator
+
+The engine does not require an Anthropic key. To create the separate orchestrator and its
+secret, IAM identity, and Cloud Run service, build its image and opt in explicitly:
+
+```bash
+gcloud builds submit --config cloudbuild.orchestrator.yaml
+cd infra
+terraform apply -var project_id=<PROJECT> -var enable_orchestrator=true \
+  -var anthropic_api_key="$ANTHROPIC_API_KEY"
+```
+
 ### 4. Deploy the web frontend
 
 `web/firebase.json` already rewrites `/api/**` to the Cloud Run service
@@ -142,9 +156,9 @@ a no-op.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
   per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
 
-> Terraform is not validated in this repo's dev environment. Run `terraform validate &&
-> terraform plan` before every apply below, and note the grant bootstrap can only be verified
-> against the live instance.
+> CI and the release review run `terraform fmt -check` and `terraform validate` against the
+> checked-in lock file. Run `terraform plan` against the correct restored state before every
+> apply; validation alone cannot detect missing imports or verify live grants.
 
 ### 6a. Non-superuser serving role
 

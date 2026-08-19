@@ -103,7 +103,7 @@ def run_unit_checks():
     The end-to-end 'by title' case routes to the typed-AST planner (engine.relations, unchanged), so the
     joins.py regression is only visible here — a compose-routed share/having question over these sheets would
     hit it."""
-    from engine.joins import discover_fks, join_plan
+    from engine.joins import discover_fks
     from regress.offline_cases import STORES, EMPLOYEES
     print("\n=== UNIT invariants (engine.joins compose-path FK discovery) ===")
     fails = []

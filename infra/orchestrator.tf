@@ -7,13 +7,21 @@
 #
 # Deploy order (see infra/README.md):
 #   1. gcloud builds submit --config cloudbuild.orchestrator.yaml   # builds+pushes the chat image (tests-gated)
-#   2. terraform apply -var="anthropic_api_key=$(...)"              # this file + main.tf
+#   2. terraform apply -var="enable_orchestrator=true" \
+#        -var="anthropic_api_key=$(...)"                            # this file + main.tf
 #   3. cd web && firebase deploy --only hosting,database            # ships chat.html + the /chat rewrite
 
+variable "enable_orchestrator" {
+  description = "Create the optional third-party chat orchestrator and its secret/IAM resources."
+  type        = bool
+  default     = false
+}
+
 variable "anthropic_api_key" {
-  description = "Anthropic API key for the Sonnet orchestrator. REQUIRED (no default). Pass at apply time, e.g. -var=\"anthropic_api_key=$(grep ^ANTHROPIC_API_KEY .env | cut -d= -f2)\"."
+  description = "Anthropic API key for the optional orchestrator. Required only when enable_orchestrator=true."
   type        = string
   sensitive   = true
+  default     = ""
 }
 
 variable "chat_service_name" {
@@ -40,6 +48,7 @@ locals {
 
 # ---------- Secret Manager: the Anthropic key ----------
 resource "google_secret_manager_secret" "anthropic_key" {
+  count     = var.enable_orchestrator ? 1 : 0
   secret_id = "${var.chat_service_name}-anthropic-key"
   replication {
     auto {}
@@ -48,32 +57,43 @@ resource "google_secret_manager_secret" "anthropic_key" {
 }
 
 resource "google_secret_manager_secret_version" "anthropic_key" {
-  secret      = google_secret_manager_secret.anthropic_key.id
+  count       = var.enable_orchestrator ? 1 : 0
+  secret      = google_secret_manager_secret.anthropic_key[0].id
   secret_data = var.anthropic_api_key
+
+  lifecycle {
+    precondition {
+      condition     = length(trimspace(var.anthropic_api_key)) > 0
+      error_message = "anthropic_api_key must be set when enable_orchestrator=true."
+    }
+  }
 }
 
 # ---------- Service account for the orchestrator ----------
 resource "google_service_account" "chat_run" {
+  count        = var.enable_orchestrator ? 1 : 0
   account_id   = "${var.chat_service_name}-run"
   display_name = "PreReasoner orchestrator (Cloud Run)"
   depends_on   = [google_project_service.apis]
 }
 
 resource "google_secret_manager_secret_iam_member" "chat_anthropic_key" {
-  secret_id = google_secret_manager_secret.anthropic_key.id
+  count     = var.enable_orchestrator ? 1 : 0
+  secret_id = google_secret_manager_secret.anthropic_key[0].id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.chat_run.email}"
+  member    = "serviceAccount:${google_service_account.chat_run[0].email}"
 }
 
 # ---------- Cloud Run v2: the orchestrator ----------
 resource "google_cloud_run_v2_service" "chat" {
+  count               = var.enable_orchestrator ? 1 : 0
   name                = var.chat_service_name
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = false
 
   template {
-    service_account = google_service_account.chat_run.email
+    service_account = google_service_account.chat_run[0].email
 
     scaling {
       min_instance_count = 0
@@ -108,7 +128,7 @@ resource "google_cloud_run_v2_service" "chat" {
         name = "ANTHROPIC_API_KEY"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.anthropic_key.secret_id
+            secret  = google_secret_manager_secret.anthropic_key[0].secret_id
             version = "latest"
           }
         }
@@ -143,13 +163,14 @@ resource "google_cloud_run_v2_service" "chat" {
 # Unauthenticated at the network layer: Firebase Hosting's /chat rewrite calls it anonymously, and auth
 # happens at the application layer (the browser's Firebase ID token flows through to the engine).
 resource "google_cloud_run_v2_service_iam_member" "chat_invoker" {
-  name     = google_cloud_run_v2_service.chat.name
-  location = google_cloud_run_v2_service.chat.location
+  count    = var.enable_orchestrator ? 1 : 0
+  name     = google_cloud_run_v2_service.chat[0].name
+  location = google_cloud_run_v2_service.chat[0].location
   role     = "roles/run.invoker"
   member   = "allUsers"
 }
 
 output "chat_url" {
   description = "The orchestrator's Cloud Run URL."
-  value       = google_cloud_run_v2_service.chat.uri
+  value       = var.enable_orchestrator ? google_cloud_run_v2_service.chat[0].uri : null
 }

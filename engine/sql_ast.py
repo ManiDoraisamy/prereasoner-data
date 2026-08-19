@@ -402,6 +402,10 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
                 raise ASTValidationError("arithmetic operands must be a column, literal, or arithmetic expression")
             _validate_expr(side, visible)
             side_type = expression_type(side)
+            if (side_type == SQLType.UNKNOWN and isinstance(side, Literal)
+                    and side.value is not None
+                    and not (isinstance(side.value, Real) and not isinstance(side.value, bool))):
+                raise ASTValidationError("arithmetic literal operands must be numeric")
             if side_type != SQLType.UNKNOWN and not side_type.numeric:
                 raise ASTValidationError("arithmetic operands must be numeric")
         return
@@ -472,6 +476,10 @@ def _render_expr(expr: ScalarExpr) -> str:
         distinct = "DISTINCT " if expr.distinct else ""
         return f"{expr.function}({distinct}{_render_expr(expr.operand)})"
     if isinstance(expr, BinaryExpr):
+        if expr.operator == "/":
+            # SQLite and PostgreSQL perform integer division for integer operands.
+            # The AST contract declares division REAL, so force portable real arithmetic.
+            return f"(CAST({_render_expr(expr.left)} AS REAL) / {_render_expr(expr.right)})"
         return f"({_render_expr(expr.left)} {expr.operator} {_render_expr(expr.right)})"
     if isinstance(expr, ScalarSubquery):
         return f"({_render_query(expr.query)})"

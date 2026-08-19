@@ -33,6 +33,9 @@ from engine.entities import EntityQuery, WORLD_TABLE_TYPE, TYPE_TO_FRIENDLY
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 from engine.encoder_overlay import EncoderQuery, load_encoder
 from engine.bridge import STOP
+from engine.currency_intent import (
+    currency_conversion_target, currency_conversion_words, currency_rate_attribute,
+)
 
 
 def _norm_vec(v):
@@ -211,7 +214,6 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         if not cr:                                                        # only the country-filtered non-geo agg for now
             return None
         ql = question.lower()
-        tmap = self._world_type_map()
         try:
             r = self._router()
         except Exception:                                                # noqa: BLE001
@@ -265,7 +267,7 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
         e.g. hospitals.csv(hospital, beds) + 'total beds for hospitals in United States' -> resolve each hospital to
         knowledgebase.\"hospital\" (lazy-fill from Wikidata on miss), keep those whose .country = 'United States', SUM(beds)."""
-        t = plan["table"]; col = plan["label"]; label = plan["label"]; country = plan["country"]
+        t = plan["table"]; label = plan["label"]; country = plan["country"]
         ci = t["columns"].index(plan["col"])
         op = (self.read_op_model([t], question)[0]) or "COUNT"
         measure = None
@@ -577,14 +579,13 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]
-        # Currency-conversion target words ("us dollars", "USD", "euros"…) are REALIZED by a conversion in the
-        # SQL (amount * rate) — exactly like a measure word is realized by has_agg — so they are NOT dropped.
-        # Without this, "us" resolves to the United States (a country) and hijacks a correct SUM(amount*rate)
-        # currency conversion into a spurious clarify (M3c serve integration).
-        _CURRENCY_TARGET = {"us", "usd", "dollar", "dollars", "eur", "euro", "euros",
-                            "gbp", "pound", "pounds", "sterling", "convert", "converted", "converting"}
-        if has_agg and "*" in sqll and _re.search(r"rate", sqll):
-            content = [w for w in content if w not in _CURRENCY_TARGET]
+        # Target words are covered only when SQL uses the exact direct-rate column for that
+        # target. Unrelated arithmetic or a rate for another currency cannot bypass clarify.
+        currency_target = currency_conversion_target(question)
+        if (currency_target is not None and has_agg and "*" in sqll
+                and currency_rate_attribute(currency_target) in sqll):
+            realized = currency_conversion_words(currency_target)
+            content = [word for word in content if word not in realized]
         if not content:
             return []
         nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]

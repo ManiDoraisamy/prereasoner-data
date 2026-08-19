@@ -15,17 +15,30 @@ import io
 import json
 import re
 import sqlite3
+from functools import wraps
 from pathlib import Path
 
 import numpy as np
-import torch
 
-from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID
+from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
 from engine.relations import relate
 
 MAX_ROWS, MAX_LEN = 12, 48
 FORBID = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|truncate|vacuum|with)\b", re.I)
+
+
+def _torch_no_grad(function):
+    """Import torch only when a model-backed method is actually invoked."""
+
+    @wraps(function)
+    def wrapped(*args, **kwargs):
+        import torch
+
+        with torch.no_grad():
+            return function(*args, **kwargs)
+
+    return wrapped
 
 
 def qident(s):
@@ -209,7 +222,7 @@ class TableQuery:
         return bool(re.search(r"(^id$|_?id$|^index$|^pk$)", name.lower()))
 
     # ---------- encoding ----------
-    @torch.no_grad()
+    @_torch_no_grad
     def _encode(self, texts):
         if self.qwen is None:
             raise RuntimeError("no encoder loaded — TableQuery must be overlaid with the trained encoder "
@@ -223,8 +236,10 @@ class TableQuery:
             out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().numpy()
         return out
 
-    @torch.no_grad()
+    @_torch_no_grad
     def _layers(self, units, x):
+        import torch
+
         E = edges(units); S = len(units)
         outs = self.model.forward_layers(torch.from_numpy(x)[None], torch.from_numpy(E)[None],
                                          torch.zeros(1, S, dtype=torch.bool))

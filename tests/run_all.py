@@ -12,6 +12,7 @@ this (or `regress.run_regression --require-world`) against a seeded Postgres for
 
 Run:  python -m tests.run_all
 Env:  RUN_ENGINE_TESTS=0 skips the live-Postgres engine suites even if KB_PG_PASSWORD is set.
+      RUN_ORCHESTRATOR_TESTS=0 skips the external Anthropic orchestrator suite.
 """
 from __future__ import annotations
 
@@ -32,6 +33,8 @@ ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_join
 
 def main():
     suites = list(SUITES)
+    if os.environ.get("RUN_ORCHESTRATOR_TESTS", "1") == "0":
+        suites.remove("tests.test_orchestrator")
     if os.environ.get("RUN_ENGINE_TESTS", "1") != "0":
         suites += ENGINE_SUITES
 

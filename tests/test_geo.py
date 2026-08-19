@@ -292,25 +292,21 @@ def main():
         eu = (((reu.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
         ok("Europe -> 2-hop continent sum = 220 (France+Germany, Tokyo excluded)", eu == 220, f"got={eu}")
 
-    # C2b currency conversion (M3, full serve path): "... in US dollars" attaches currency_fx_usd and the
-    # planner converts SUM(amount * rate_to_usd). The clarify gate must NOT hijack it — here "us" is a currency
-    # qualifier, not the United States (the M3c serve-integration regression that this pins).
-    from engine.enrichment import EnrichmentRuntime, SnapshotStore
-    from engine.enrichment.runtime import RuntimeIdentity
-    from engine.pg import _pg as _fx_pg
+    # C2b conversion serve path with a test-local rate table. The clarify gate must not
+    # reinterpret "US" as the country when exact `rate_to_usd` arithmetic realizes it.
+    from engine.enrichment import ExplicitKeyEdge
     _ORD = {"name": "orders", "columns": ["order_id", "currency", "amount"],
             "rows": [[1, "EUR", 310], [2, "EUR", 210], [3, "GBP", 100], [4, "EUR", 95]]}
-    fx_plan = EnrichmentRuntime(SnapshotStore(_fx_pg), allow_evaluation=True,
-                                identity=RuntimeIdentity.current()).prepare([_ORD], "total order amount in US dollars")
-    if ok("fx: enrichment attached currency_fx_usd", fx_plan.used and fx_plan.added_tables == ("currency_fx_usd",),
-          f"added={fx_plan.added_tables}"):
-        rconv = _retry(lambda: qc.serve(list(fx_plan.tables), "total order amount in US dollars", sub,
-                                        explicit_fks=fx_plan.explicit_fks))
-        conv = (((rconv or {}).get("result") or {}).get("rows") or [[None]])[0][0] if rconv else None
-        ok("fx: total in USD converts to 791.2 (615 EUR*1.08 + 100 GBP*1.27), no clarify",
-           bool(rconv) and not rconv.get("clarify")
-           and isinstance(conv, (int, float)) and abs(conv - 791.2) < 0.05,
-           f"got={conv} clarify={(rconv or {}).get('clarify')}")
+    _FX = {"name": "fx_rates", "columns": ["currency_code", "rate_to_usd"],
+           "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27]]}
+    _FX_EDGE = ExplicitKeyEdge("orders", ("currency",), "fx_rates", ("currency_code",))
+    rconv = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in US dollars", sub,
+                                    explicit_fks=(_FX_EDGE,)))
+    conv = (((rconv or {}).get("result") or {}).get("rows") or [[None]])[0][0] if rconv else None
+    ok("fx: total in USD converts to 791.2 (615 EUR*1.08 + 100 GBP*1.27), no clarify",
+       bool(rconv) and not rconv.get("clarify")
+       and isinstance(conv, (int, float)) and abs(conv - 791.2) < 0.05,
+       f"got={conv} clarify={(rconv or {}).get('clarify')}")
 
     # C3 hospital ROUTER typing (the robust, deterministic regression — end-to-end non-geo serve is lazy-fill-slow).
     from engine.router import Router

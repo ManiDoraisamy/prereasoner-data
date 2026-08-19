@@ -114,12 +114,12 @@ def test_contrastive_abbreviation_still_needs_world():
 _REPEAT_SCRIPT = (
     "import os, sys\n"
     "sys.path.insert(0, os.environ['PR_ROOT'])\n"
-    "import torch; torch.manual_seed(0)\n"
-    "from engine.encoder_overlay import EncoderQuery\n"
-    "enc = EncoderQuery()\n"
+    "from engine.tables import TableQuery\n"
+    "from engine.sql_search import SQLSearcher\n"
+    "planner = TableQuery()\n"
     "tables=[{'name':'t','columns':['city','amount'],'rows':[['Paris',100],['Lyon',80],['Paris',50]]}]\n"
-    "norm,fks=enc.ingest(tables); sch,_,tmap=enc.schema(norm,fks)\n"
-    "c=enc.search_ast('total amount in Paris', sch, norm, fks, max_candidates=25)\n"
+    "norm,fks=planner.ingest(tables)\n"
+    "c=SQLSearcher.from_tables(norm,fks,max_candidates=25).search('total amount in Paris')\n"
     "print('SQL::' + (c[0].sql if c else 'NONE'))\n"
 )
 

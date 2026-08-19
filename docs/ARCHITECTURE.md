@@ -68,9 +68,9 @@ dataset, but deployment still requires `ENRICHMENT_ACTIVE_DATASETS=iana_country`
 empty allowlist keeps current production answers unchanged.
 The production request flow now contains the guarded integration boundary: explicit intent,
 domain-role recognition, database-backed registry selection, request-local materialization,
-trusted-edge propagation, and serving provenance. The embedded currency fixture remains
-evaluation-only because the synchronized CLDR source needs a reviewed logical projection
-across code, localized-name, symbol, and fraction tables before it can replace the fixture.
+trusted-edge propagation, and serving provenance. No exchange-rate fixture is registered in
+production policy. The synchronized ECB series remains planner-ineligible until row-level
+effective-date selection, currency direction, and rounding are represented and evaluated.
 
 The source materialization design makes the currently ambiguous database boundary explicit: physical shared schemas are source-
 owned (`wikidata` after migration and the publisher schemas in `SOURCE_DATA.md`), while domain roles describe request-private
@@ -159,7 +159,8 @@ start of enrichment.
 
 Source capabilities are intentionally different: exact dimensions, ambiguous relations, numbering-pattern metadata,
 temporal series, temporal rule sets, bounded calendars, terminology hierarchies, and rights-bearing document graphs.
-`engine/enrichment/intents.py` extracts only explicit requested attributes; ordinary own-data grouping does not activate
+`engine/enrichment/intents.py` extracts only explicit requested attributes; `engine/currency_intent.py`
+owns explicit output-currency parsing shared by search, ranking, enrichment, and clarify. Ordinary own-data grouping does not activate
 enrichment. `engine/enrichment/adapters.py` returns typed match, absence, ambiguity, policy-denial, and ineligibility
 outcomes while retaining snapshot and license provenance. Temporal capabilities still abstain because row-level temporal
 AST semantics are not implemented.
@@ -208,7 +209,8 @@ requests and responses.
 | `training/` | Offline datasets, fitting, and calibration | A competing serving implementation |
 | `spider/` | Serving-faithful evaluation and research artifacts | Production selection shortcuts |
 
-The engine container includes the complete runtime. The orchestrator container copies only the auth, trace, and
+The engine container includes the complete runtime. The orchestrator is opt-in in Docker Compose and Terraform;
+the engine does not require an Anthropic key. The orchestrator container copies only the auth, trace, and
 configuration modules it imports; it does not contain planner weights or engine implementation modules.
 
 ## Concurrency And Failure Behavior

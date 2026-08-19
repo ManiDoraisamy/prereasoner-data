@@ -140,6 +140,7 @@ The AST, validator, renderer, and search rules support:
 
 - multiple projections and `DISTINCT`;
 - `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
+- typed `+`, `-`, `*`, and real-valued `/` expressions, including aggregates over expressions;
 - typed comparisons, ranges, dates, categorical values, `AND`, and `OR`;
 - grouping, `HAVING`, ordering, and limits;
 - direct and multi-hop foreign-key joins;
@@ -151,6 +152,12 @@ The AST, validator, renderer, and search rules support:
 
 Grammar support does not imply perfect language coverage. A valid AST can still be absent
 because the question was linked to the wrong role or no search rule proposed that shape.
+
+Currency conversion is deliberately conservative. A candidate is generated only for an
+explicit target phrase and an exact `source.currency -> rates.currency_code` edge with a
+numeric `rate_to_<target>` column. Bare `dollars`, untargeted `convert`, and unrelated tax,
+discount, or interest rates do not activate conversion. Production currently registers no
+static FX table; ECB history remains disabled until temporal row selection and rounding exist.
 
 ## Validation and safety
 
@@ -188,22 +195,14 @@ not depend on one another's private internals.
 
 ## Spider results
 
-The reported numbers are the **serving-faithful** measurement: `full_eval.py` running the exact
-serving selector (byte-for-byte `engine/tables.py:_serve_ast`) — top-1, `--max-candidates 25` — over
-all 1,034 Spider dev examples with denotation evaluation. This accuracy is entirely the deterministic
-planner's; no trained proposer or learned ranker is involved.
+[`spider/results/RESULTS.md`](../spider/results/RESULTS.md) is the single authoritative benchmark
+record, including exact configuration, source commit, artifact hashes, and dirty-worktree state.
+Do not copy changing accuracy figures into architecture documentation. The standard comparison is
+the serving-faithful `whole_db` run: all database tables, top-1 selection, 25 candidates, and no gold
+table hints. `gold_tables` is an oracle table-selection diagnostic, not a standard Spider result.
 
-| Configuration | Strict | Lenient | Scalar-gold |
-|---|---:|---:|---:|
-| **whole_db** — gold-blind, all DB tables fed (standard Spider) | 358/1034 (34.6%) | 451/1034 (43.6%) | 224/408 (54.9%) |
-| **gold_tables** — oracle table selection, last verified before this planner change | 424/1034 (41.0%) | 544/1034 (52.6%) | 240/408 (58.8%) |
-
-The **whole_db** row is the number to compare against other Spider systems: it is gold-blind and
-feeds every table in the database, so it also pays the cost of table selection. The **gold_tables**
-row is an oracle-table-selection configuration that feeds only the tables the gold SQL references;
-this is the closer analogue to the product, where a user uploads exactly the relevant sheets, and it
-is an upper bound relative to standard Spider, not a standard-Spider result. The displayed oracle row
-is from commit `37570f8`; rerun it before claiming a current table-selection gap.
+The measured accuracy belongs to the deterministic planner. The frozen encoder supplies repeatable
+similarity features, but there is no trained SQL proposer or learned candidate ranker in serving.
 
 > **Historical note.** Earlier "profile-expansion / pool-recall" experiments (a "pool 180" candidate
 > pool reaching ~55% strict pool-oracle) depended on a trained research **proposer** that has since

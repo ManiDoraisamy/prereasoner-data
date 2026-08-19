@@ -100,7 +100,7 @@ def main():
         labeled.append(("neg", col, False))
     for col in PROBE_NEG:                                                   # adversarial + realistic non-geo
         labeled.append(("neg", col, True))
-    print(f"calibration columns: " + ", ".join(f"{lf}={sum(1 for l,_,_ in labeled if l==lf)}"
+    print("calibration columns: " + ", ".join(f"{lf}={sum(1 for l,_,_ in labeled if l==lf)}"
                                                 for lf in WORLD_LEAVES + ["neg"]))
 
     # profile every column once -> the per-dim readout s; record the 3 world-leaf raw dims. Cache the (slow, CPU)

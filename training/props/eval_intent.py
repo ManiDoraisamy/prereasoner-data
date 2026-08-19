@@ -22,9 +22,8 @@ handcrafted serving probes). NEVER train on that file.
   python -m training.props.eval_intent --ckpt engine   # the shipped engine/data model (baseline)
 """
 from __future__ import annotations
-import argparse, json, os
+import argparse, os
 
-import numpy as np
 import torch
 
 from training.lib.edges import fam_dims_map
@@ -154,7 +153,7 @@ def main():
 
     packed = load_eval(aid, fam_dims, nc, args.eval)
     if not packed:
-        print(f"no eval graphs (run `python -m training.props.augment_intent` first)"); return 1
+        print("no eval graphs (run `python -m training.props.augment_intent` first)"); return 1
     acc, per, probes, i_auc = intent_metrics(enc, m, packed, aid, nc, enc.hdim, dev)
     print(f"\nckpt={args.ckpt} ({os.path.basename(model_p)}, nc={nc}) | eval graphs: {len(packed)}")
     print(f"intent op-accuracy (read_op_model mirror): {acc:.3f}   mean intent AUC: {i_auc:.3f}")

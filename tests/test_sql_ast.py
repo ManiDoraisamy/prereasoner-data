@@ -20,7 +20,6 @@ from engine.sql_ast import (
     ColumnRef,
     Comparison,
     ExistsPredicate,
-    InPredicate,
     Join,
     Literal,
     OrderTerm,
@@ -315,6 +314,16 @@ def test_arithmetic_expression_sum_renders_and_executes():
     assert execute([orders], sql) == [(550.0,)]
 
 
+def test_arithmetic_division_preserves_real_semantics():
+    values = {"name": "values", "columns": ["numerator", "denominator"], "rows": [[5, 2]]}
+    numerator = ColumnRef("values", "numerator", SQLType.INTEGER)
+    denominator = ColumnRef("values", "denominator", SQLType.INTEGER)
+    query = SelectQuery((SelectItem(BinaryExpr(numerator, "/", denominator)),), "values")
+    sql = render_query(query)
+    assert "CAST(" in sql and " AS REAL) / " in sql, sql
+    assert execute([values], sql) == [(2.5,)]
+
+
 def test_currency_conversion_query_executes_end_to_end():
     # M3: the COMPLETE conversion the engine must eventually build — join orders to an FX-rate table
     # and SUM(amount * rate). Proves the typed AST already expresses conversion end to end (join +
@@ -355,6 +364,33 @@ def test_planner_emits_currency_conversion_when_requested():
     assert "rate_to_usd" not in plain.sql and "*" not in plain.sql, plain.sql
 
 
+def test_planner_requires_exact_currency_target_and_key_shape():
+    orders = {"name": "orders", "columns": ["currency", "amount"],
+              "rows": [["USD", 100], ["EUR", 100]]}
+    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd", "rate_to_eur"],
+          "rows": [["USD", 1.0, 0.9], ["EUR", 1.1, 1.0]]}
+    edge = [{"from_table": "orders", "from_col": "currency",
+             "to_table": "fx", "to_col": "currency_code"}]
+    eur = best("convert total order amount to EUR", [orders, fx], edge)
+    assert "rate_to_eur" in eur.sql and "rate_to_usd" not in eur.sql, eur.sql
+
+    only_usd = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
+                "rows": [["USD", 1.0], ["EUR", 1.1]]}
+    unsupported = best("total order amount in EUR", [orders, only_usd], edge)
+    assert "rate_to_usd" not in unsupported.sql and "*" not in unsupported.sql, unsupported.sql
+    ambiguous = best("total order amount in dollars", [orders, only_usd], edge)
+    assert "rate_to_usd" not in ambiguous.sql and "*" not in ambiguous.sql, ambiguous.sql
+    untargeted = best("convert total order amount", [orders, only_usd], edge)
+    assert "rate_to_usd" not in untargeted.sql and "*" not in untargeted.sql, untargeted.sql
+
+    tax = {"name": "tax_rates", "columns": ["tax_code", "tax_rate"],
+           "rows": [["USD", 0.2], ["EUR", 0.1]]}
+    tax_edge = [{"from_table": "orders", "from_col": "currency",
+                 "to_table": "tax_rates", "to_col": "tax_code"}]
+    not_fx = best("total order amount in US dollars", [orders, tax], tax_edge)
+    assert "tax_rate" not in not_fx.sql and "*" not in not_fx.sql, not_fx.sql
+
+
 def test_arithmetic_expression_validation():
     amount = ColumnRef("orders", "amount", SQLType.REAL)
     name = ColumnRef("orders", "name", SQLType.TEXT)
@@ -363,6 +399,7 @@ def test_arithmetic_expression_validation():
     for bad in (
         BinaryExpr(amount, "%", amount),                       # unsupported operator
         BinaryExpr(amount, "*", Star()),                       # arithmetic on * is invalid
+        BinaryExpr(amount, "+", Literal("not a number")),      # UNKNOWN text literal is invalid
     ):
         try:
             validate_query(SelectQuery((SelectItem(bad),), "orders")); raise AssertionError(bad)
@@ -1637,8 +1674,10 @@ TESTS = [
     test_composite_join_validation_rejects_disconnected_predicate,
     test_composite_self_join_helpers_render_complete_predicates,
     test_arithmetic_expression_sum_renders_and_executes,
+    test_arithmetic_division_preserves_real_semantics,
     test_currency_conversion_query_executes_end_to_end,
     test_planner_emits_currency_conversion_when_requested,
+    test_planner_requires_exact_currency_target_and_key_shape,
     test_arithmetic_expression_validation,
     test_projection_filter_and_order,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,

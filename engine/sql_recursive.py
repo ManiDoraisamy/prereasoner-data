@@ -688,7 +688,6 @@ def _value_mentions(schema: SchemaGraph, question: str) -> list[tuple[int, Colum
     occupied = set()
     selected = []
     for position, column, value, length in matches:
-        span = set(range(position, position + length))
         key = (position, column.table, column.name, str(value))
         if key in occupied:
             continue

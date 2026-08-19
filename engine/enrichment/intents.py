@@ -4,6 +4,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+from engine.currency_intent import currency_conversion_target
+
 from engine.enrichment.registry import (
     ATTR_ASSESSMENT,
     ATTR_COUNTRY_METADATA,
@@ -30,11 +32,7 @@ class IntentEvidence:
 
 _RULES = (
     (ATTR_EXCHANGE_RATE, "exchange-rate", re.compile(
-        r"\b(?:exchange|fx)\s+rates?\b"
-        r"|\bconvert(?:ed|ing)?\b.{0,40}\b(?:currenc(?:y|ies)|amount|usd|eur|gbp)\b"
-        # "... amount in US dollars", "total in USD", "convert to euros" — the target-currency phrasing
-        # that a conversion question uses. Still gated by a currency column via the dataset eligibility.
-        r"|\b(?:in|to|into)\s+(?:us\s+)?(?:dollars?|usd|euros?|eur|pounds?(?:\s+sterling)?|gbp)\b",
+        r"\b(?:exchange|fx)\s+rates?\b",
         re.I,
     )),
     (ATTR_CURRENCY_METADATA, "currency-metadata", re.compile(
@@ -104,6 +102,9 @@ def requested_attribute_evidence(question: str) -> tuple[IntentEvidence, ...]:
         match = pattern.search(normalized)
         if match is not None:
             evidence.append(IntentEvidence(attribute, match.group(0), rule))
+    target = currency_conversion_target(normalized)
+    if target is not None and not any(item.attribute == ATTR_EXCHANGE_RATE for item in evidence):
+        evidence.append(IntentEvidence(ATTR_EXCHANGE_RATE, target, "currency-conversion"))
     return tuple(evidence)
 
 

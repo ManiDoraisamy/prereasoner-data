@@ -18,7 +18,6 @@ from engine.sql_ast import (
     Literal,
     OrderTerm,
     Predicate,
-    Query,
     SQLType,
     ScalarSubquery,
     SelectItem,
@@ -37,9 +36,7 @@ from engine.sql_expansion import (
     entity_join_key as _entity_join_key,
     explicit_order as _explicit_order,
     expression_table as _expression_table,
-    is_id as _is_id,
     linker_noise as _linker_noise,
-    name_tokens as _name_tokens,
     parse_number as _parse_number,
     physical_tables as _physical_tables,
     projection_window as _projection_window,
@@ -126,9 +123,6 @@ class ConstraintQueryExpander(ExpansionSupport):
                             continue
                         group_options = self.group_options(
                             question, entity_table, counted_table, joins, projection_options[0]
-                        )
-                        select_options = self.having_select_options(
-                            question, projection_options
                         )
                         count = Aggregate("COUNT", Star())
                         having_terms = tuple(

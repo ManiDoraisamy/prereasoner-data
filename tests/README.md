@@ -4,8 +4,7 @@ Run commands from the repository root.
 
 ## Hermetic Suites
 
-These need no PostgreSQL and no network. Some imported modules still require the Python packages in
-`requirements.txt`.
+These need no PostgreSQL, model weights, or network. Install `requirements-ci.txt`.
 
 | Command | Covers |
 |---|---|
@@ -15,13 +14,15 @@ These need no PostgreSQL and no network. Some imported modules still require the
 | `python -m tests.test_converse` | Reference autofill/presentation parsing with a mocked model stream |
 | `python -m tests.test_master_ingest` | Reference validation, direct/multi-hop selection, caps, and failure disclosure |
 | `python -m tests.test_mcp` | MCP adapter contract |
-| `python -m tests.test_orchestrator` | Orchestrator behavior; skips without `ANTHROPIC_API_KEY` where applicable |
 
 The frontend state regression is separate because it runs under Node:
 
 ```powershell
 node web/tests/workbook_reference.test.js
 ```
+
+`python -m tests.test_orchestrator` is an external integration, not a hermetic suite. It requires
+`ANTHROPIC_API_KEY` and may call Anthropic.
 
 ## Live Engine Suites
 
@@ -53,13 +54,15 @@ Use this for a deliberate hermetic-only pass:
 
 ```powershell
 $env:RUN_ENGINE_TESTS = "0"
+$env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 ```
 
 ## Other Gates
 
 ```powershell
-python -m compileall -q engine db training tests orchestrator mcp_server
+python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
+python -m compileall -q engine db training tests orchestrator mcp_server regress
 node --check web/public/lib/workbook.js
 git diff --check
 ```

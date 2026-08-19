@@ -15,6 +15,9 @@ from engine.enrichment.registry import (
 from engine.enrichment.value_types import detect_column
 from engine.enrichment.select import ExplicitKeyEdge, SelectedDataset, select_datasets, to_tabs
 from engine.enrichment.store import LoadedDataset, SnapshotStore, SourceContractError
+from engine.currency_intent import (
+    currency_conversion_target, currency_conversion_words, currency_rate_attribute,
+)
 from engine.enrichment.intents import IntentEvidence, requested_attribute_evidence, requested_attributes
 from engine.enrichment.adapters import (
     AdapterResult, LookupDisposition, LookupPurpose, SourceAdapters,
@@ -32,7 +35,8 @@ __all__ = [
     "SnapshotPin", "ExecutionManifest", "evidence_vocab", "registry_version", "detect_column",
     "ExplicitKeyEdge", "SelectedDataset", "select_datasets", "to_tabs",
     "SnapshotStore", "LoadedDataset", "SourceContractError",
-    "IntentEvidence", "requested_attribute_evidence", "requested_attributes",
+    "IntentEvidence", "currency_conversion_target", "currency_conversion_words",
+    "currency_rate_attribute", "requested_attribute_evidence", "requested_attributes",
     "AdapterResult", "LookupDisposition", "LookupPurpose", "SourceAdapters",
     "EnrichmentPlan", "EnrichmentRuntime", "RuntimeIdentity", "deployment_dataset_allowlist",
     "request_hash", "table_versions",

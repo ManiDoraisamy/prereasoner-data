@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from training.lib.router import Router                                          # noqa: E402
-from training.corpus.build_review import name_like, NODE_DIMS, STRUCT, LEAF_PATH  # noqa: E402
+from training.corpus.build_review import name_like, NODE_DIMS, LEAF_PATH  # noqa: E402
 
 R19 = ROOT / "training/data"
 COLSIZE = 8

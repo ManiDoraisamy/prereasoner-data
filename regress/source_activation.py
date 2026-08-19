@@ -5,7 +5,7 @@ import sqlite3
 from dataclasses import dataclass
 
 from engine.enrichment import (
-    EnrichmentRuntime, LoadedDataset, REGISTRY, RuntimeIdentity, SnapshotPin,
+    EnrichmentRuntime, LoadedDataset, RuntimeIdentity, SnapshotPin,
 )
 from engine.sql_search import SQLSearcher
 

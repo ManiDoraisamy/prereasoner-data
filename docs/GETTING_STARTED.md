@@ -14,7 +14,7 @@ You do not need the entire production stack for every change.
 
 | Work | Required |
 |---|---|
-| Typed AST, routing, reference selection | Python dependencies used by the imported engine modules; no Postgres |
+| Typed AST, routing, reference selection | `requirements-ci.txt`; no model weights or Postgres |
 | Source parser or synchronizer | `db/sync/requirements.txt`; PostgreSQL only for an actual load |
 | Browser state and static UI | Node 20 and a static/Firebase server |
 | Full engine request | Runtime weights and PostgreSQL |
@@ -25,13 +25,24 @@ Start with hermetic tests. Add infrastructure only when the owner you are changi
 
 ## 2. Install
 
+Use Python 3.11, which is the shared development, CI, and container target. Newer
+interpreters are not a substitute for the 3.11 compatibility gate.
+
 ```powershell
 git clone <repository-url>
 Set-Location prereasoner-data
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
 Copy-Item .env.example .env
+```
+
+Install `requirements-ci.txt` for deterministic development and CI-equivalent tests. Install
+`requirements.txt` only when running the model-backed engine or live world suites:
+
+```powershell
+pip install -r requirements-ci.txt
+# Full runtime only:
+pip install -r requirements.txt
 ```
 
 Runtime artifacts are deliberately not committed. Fetch the manifest-pinned bundle:
@@ -53,7 +64,8 @@ python -m tests.test_routing
 python -m tests.test_enrichment
 python -m tests.test_source_sync
 node web/tests/workbook_reference.test.js
-python -m compileall -q engine db training tests orchestrator mcp_server
+python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
+python -m compileall -q engine db training tests orchestrator mcp_server regress
 ```
 
 These establish the planner, routing, reference-data, frontend-state, and syntax baseline without a live database.
@@ -66,6 +78,9 @@ The shortest path is Docker Compose:
 docker compose up --build
 docker compose --profile seed run --rm seed
 ```
+
+The separate conversational orchestrator is not part of the default stack. Set
+`ANTHROPIC_API_KEY` and run `docker compose --profile chat up --build` only when testing it.
 
 The seed is a one-time operation. It builds the resolution index, taxonomy, and world tables described in
 [../db/README.md](../db/README.md). The engine listens on `http://localhost:8080` and Compose sets the development-
@@ -164,7 +179,8 @@ The frontend has no build step. `reason.html` and `knowledge.html` load the shar
 | Saved references | `engine/master.py` | `tests.test_master_ingest` |
 | Routing | `engine/routing.py` | `tests.test_routing` |
 | Shared enrichment policy | `engine/enrichment/registry.py` | `tests.test_enrichment` |
-| Requested enrichment intent | `engine/enrichment/intents.py` | `tests.test_enrichment` |
+| Currency target semantics | `engine/currency_intent.py` | `tests.test_sql_ast`, `tests.test_enrichment` |
+| Requested enrichment attributes | `engine/enrichment/intents.py` | `tests.test_enrichment` |
 | Source lookup policy and ambiguity | `engine/enrichment/adapters.py` | `tests.test_enrichment` |
 | Domain profiles and role evidence | `engine/domain_profiles.py`, `engine/domain_typing.py` | `tests.test_enrichment` |
 | Public and opted-in metadata evaluation | `regress/product_templates.py` | `tests.test_enrichment` |
@@ -181,9 +197,12 @@ the same principle: extend the current owner, migrate every caller, and delete t
 ## 9. Validate Before A Pull Request
 
 ```powershell
+$env:RUN_ENGINE_TESTS = "0"
+$env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 node web/tests/workbook_reference.test.js
-python -m compileall -q engine db training tests orchestrator mcp_server
+python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
+python -m compileall -q engine db training tests orchestrator mcp_server regress
 git diff --check
 git status --short
 ```

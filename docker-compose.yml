@@ -63,6 +63,7 @@ services:
   # in .env. Local: chat UI + /chat on http://localhost:8090; the engine runs with AUTH_TEST_SUB so no
   # Firebase token is needed and RTDB is unset (the reasoning player rebuilds from the returned views).
   chat:
+    profiles: ["chat"]
     build:
       context: .
       dockerfile: Dockerfile.orchestrator

@@ -28,7 +28,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from training.corpus.discover_csv_types import col_values, SCAN, name_like  # noqa: E402
+from training.corpus.discover_csv_types import name_like  # noqa: E402
 # _pg (psycopg2) was unused here; normalize_surface (embedder/torch) is used ONLY by leaf_of_values (the Postgres path),
 # so it is LAZY-imported there. Result: importing build_review for the taxonomy CONSTANTS (LEAF_PATH / NODE_DIMS / ...)
 # needs neither Postgres nor torch — so training.lib.router and training.calibrate.validate_data load clean off a bare env.

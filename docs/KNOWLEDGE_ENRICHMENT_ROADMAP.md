@@ -633,9 +633,9 @@ least 0.99 and profile recall at least 0.95 on the held-out corpus.
 2. Keep the implemented per-source `release` contract and source DDL. Use the implemented
    versioned migration runner so schema/index changes do not depend on downloading the source again.
    `db/init.sql` must not create empty source schemas speculatively.
-3. Replace the embedded currency spike only after implementing and reviewing a CLDR logical
-   projection across `currency_code`, locale-specific names/symbols, and fraction metadata.
-   The live data audit showed that `cldr.currency_code` alone cannot preserve fixture semantics.
+3. Keep exchange rates out of the production registry until the ECB temporal series has
+   row-level date selection, direction, rounding, and replay tests. Hermetic planner tests use
+   explicit test-local rate tables; no embedded rate snapshot is a source of production facts.
 4. Implemented: requested-attribute extraction returns inspectable phrase/rule evidence;
    contrastives keep ordinary own-data grouping such as `amount by currency`, `customers by
    country`, and `orders by postal code` unchanged.
@@ -655,7 +655,7 @@ least 0.99 and profile recall at least 0.95 on the held-out corpus.
     request-local planner tabs, passes trusted edges through the existing serving stack, and
     emits source/profile/model/private-reference replay identity. `iana_country` requires both
     registry approval and `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default empty allowlist
-    selects nothing. The temporary currency fixture remains `EVALUATION` only.
+    selects nothing. There is no production registry definition for static FX rates.
 
 Gate: no-intent requests are byte-for-byte unchanged; renamed keys use only validated
 explicit edges; routing transitions are unchanged; serving performs zero network calls.
@@ -715,9 +715,10 @@ SQL candidate generation.
 
 ### Gated research
 
-FX starts only after measured demand and requires typed arithmetic,
-aggregate-over-expression, composite temporal joins, currency direction, previous-business-
-day policy, rounding, and SQLite/Postgres parity. Product GTIN and legal-entity work remain
+FX activation starts only after measured demand. Typed arithmetic and aggregate-over-expression
+are implemented, including exact target-rate recognition; composite temporal joins, currency
+direction over the ECB EUR base, previous-business-day policy, rounding, and SQLite/Postgres
+parity remain required. Product GTIN and legal-entity work remain
 demand-gated. Medical terminology is materialized where public and import-ready where
 licensed, but planner use still requires explicit-code intent, privacy, and harm evaluation.
 

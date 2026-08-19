@@ -11,7 +11,8 @@ import math
 import re
 from typing import Any, Callable, Mapping, Sequence
 
-from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Comparison, Query, SelectQuery, SetQuery, Star
+from engine.currency_intent import currency_conversion_target, currency_rate_attribute
+from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Comparison, Query, SelectQuery, SetQuery
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph
 
@@ -94,12 +95,22 @@ def semantic_role_phrases(question: str) -> dict[str, str]:
     return {role: phrase for role, phrase in phrases.items() if phrase.strip()}
 
 
-def wants_currency_conversion(tokens: Sequence[str]) -> bool:
-    """True when a question asks to express amounts in a target currency ('in US dollars',
-    'converted to USD', 'convert ...'). ONE owner for the intent predicate, shared by the planner
-    (which emits SUM(amount * rate)) and the ranker (which prefers that candidate)."""
-    token_set = set(tokens)
-    return bool({"usd", "dollars", "dollar"} & token_set or {"convert", "converted"} & token_set)
+def _conversion_targets(query: SelectQuery) -> frozenset[str]:
+    """Targets implemented by canonical ``SUM(measure * rate_to_<target>)`` expressions."""
+    targets = set()
+    for item in query.select:
+        expression = item.expression
+        if (not isinstance(expression, Aggregate) or expression.function != "SUM"
+                or not isinstance(expression.operand, BinaryExpr)
+                or expression.operand.operator != "*"):
+            continue
+        for side in (expression.operand.left, expression.operand.right):
+            if not isinstance(side, ColumnRef):
+                continue
+            match = re.fullmatch(r"rate_to_([a-z]{3})", side.name.lower())
+            if match is not None:
+                targets.add(match.group(1).upper())
+    return frozenset(targets)
 
 
 class CandidateRanker:
@@ -229,14 +240,19 @@ class CandidateRanker:
                 features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
                                  3.0 if operand in targets else -3.5))
 
-        # Currency conversion (M3c): when the question asks for a target currency, strongly prefer the
-        # candidate that computes SUM(amount * rate); otherwise a converting candidate must not win.
-        converts = any(isinstance(item.expression, Aggregate)
-                       and isinstance(item.expression.operand, BinaryExpr)
-                       for item in query.select)
-        if wants_currency_conversion(roles.tokens):
-            features.append(("currency_conversion", 8.0 if converts else -8.0))
-        elif converts:
+        # Reward only a canonical direct-rate expression for the explicitly requested target.
+        # Other arithmetic aggregates (for example quantity * price) are unrelated.
+        requested_target = currency_conversion_target(roles.tokens)
+        conversion_targets = _conversion_targets(query)
+        if requested_target is not None:
+            expected_rate = currency_rate_attribute(requested_target)
+            features.append((
+                f"currency_conversion:{expected_rate}",
+                8.0 if requested_target in conversion_targets else -8.0,
+            ))
+            if conversion_targets - {requested_target}:
+                features.append(("currency_conversion_wrong_target", -12.0))
+        elif conversion_targets:
             features.append(("currency_conversion_unrequested", -8.0))
 
         travel_direction = _travel_direction(roles.tokens)

@@ -26,12 +26,13 @@ training/props/data/*
 .firebase/
 firebase-debug.log
 .claude/
+spider/results/**/*.checkpoint.json
 
 # Terraform
 infra/**/.terraform/
 infra/**/*.tfstate
 infra/**/*.tfstate.backup
-infra/**/.terraform.lock.hcl
+!infra/.terraform.lock.hcl
 
 # Node / tooling
 node_modules/

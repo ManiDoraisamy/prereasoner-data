@@ -181,7 +181,6 @@ def main():
     # 2. per candidate header: sample CSVs, resolve values, dominant P31 -> the column's type
     types = defaultdict(lambda: {"qid": None, "columns": 0, "headers": Counter(), "examples": []})
     for hi, hkey in enumerate(cand):
-        col_keys = [(k, orig) for (k, orig) in hdr_files if k == hkey][:1]
         done = 0
         for (k, orig) in [ck for ck in hdr_files if ck[0] == hkey]:
             for hx in hdr_files[(k, orig)]:

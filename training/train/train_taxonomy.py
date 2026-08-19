@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import argparse, json, random, sys
 from pathlib import Path
-import numpy as np, torch, torch.nn as nn
+import torch, torch.nn as nn
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 if str(ROOT) not in sys.path:
@@ -26,7 +26,7 @@ from training.lib.edges import fam_dims_map                           # noqa: E4
 from training.lib.relblock import RelBlockModel                         # noqa: E402
 from training.train.train_multitask import load, fam_report                       # noqa: E402
 from training.train.train_unified import pack, pack_csv, collate_live, evaluate, recall_at_1   # noqa: E402
-from training.lib.encoder import LiveQwen, MODEL_ID                           # noqa: E402  (canonical encoder — shared w/ router)
+from training.lib.encoder import LiveQwen                           # noqa: E402  (canonical encoder — shared w/ router)
 
 R9, R10, R11, R17, R19 = (ROOT / "training/data", ROOT / "training/data", ROOT / "training/data",
                           ROOT / "training/data", ROOT / "training/data")

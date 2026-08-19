@@ -13,7 +13,7 @@ others resolve cells to their family table's qids. Written to BOTH the DATA dir 
   out: training/props/data/families.json + engine/data/families.json (staged)   (KB_PG_PASSWORD not needed)
 """
 import csv, json, os
-from collections import defaultdict, Counter
+from collections import defaultdict
 
 HERE = os.path.dirname(os.path.abspath(__file__))              # training/props/
 TRAIN_DIR = os.environ.get("PREREASONER_TRAIN_DIR", HERE)

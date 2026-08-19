@@ -19,10 +19,8 @@ from engine.sql_ast import (
     BinaryExpr,
     ColumnRef,
     Comparison,
-    Join,
     Literal,
     OrderTerm,
-    Query,
     SQLType,
     SelectItem,
     SelectQuery,
@@ -31,9 +29,10 @@ from engine.sql_ast import (
     render_query,
     validate_query,
 )
+from engine.currency_intent import currency_conversion_target, currency_rate_attribute
 from engine.sql_candidate import ScoredQuery
 from engine.sql_profile_expansion import ProfileSearchConfig
-from engine.sql_schema import ForeignKey, JoinTree, SchemaColumn, SchemaGraph
+from engine.sql_schema import SchemaGraph
 
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
@@ -357,21 +356,28 @@ class SQLSearcher:
                 suppressed.add(left.position)
         return tuple(mention for mention in mentions if mention.position not in suppressed)
 
-    def _conversion_rate_column(self, tokens: tuple[str, ...]) -> ColumnRef | None:
-        """Currency-conversion intent + a joinable FX-rate column -> that rate column, else None.
-        Intent: the question names a target-currency word ('usd', 'dollars') or asks to 'convert'.
-        The FX table is recognized STRUCTURALLY — a numeric 'rate' column in a table that a
-        DISCOVERED foreign key points to (a currency column's values are included in its key). No
-        cell values are read here, so this stays deterministic and schema-driven (M3c)."""
-        from engine.sql_rank import wants_currency_conversion    # one owner for the intent predicate
-        if not wants_currency_conversion(tokens):
+    def _conversion_rate_column(
+        self, tokens: tuple[str, ...], source_table: str
+    ) -> ColumnRef | None:
+        """Return the exact direct-rate column for a typed currency-code edge.
+
+        Target phrase, source table, edge endpoints, and ``rate_to_<target>`` must agree.
+        Cell values are not read here, so search remains deterministic and schema-driven.
+        """
+        target = currency_conversion_target(tokens)
+        if target is None:
             return None
+        rate_name = currency_rate_attribute(target)
         for foreign_key in self.schema.foreign_keys:
+            source_name = foreign_key.from_column.name.lower()
+            if (foreign_key.from_column.table != source_table
+                    or foreign_key.to_column.name.lower() != "currency_code"
+                    or not ("currency" in source_name or source_name in {"ccy", "ccy_code"})):
+                continue
             target_table = foreign_key.to_column.table
-            for schema_column in self.schema.columns:
-                ref = schema_column.ref
-                if ref.table == target_table and ref.type.numeric and "rate" in ref.name.lower():
-                    return ref
+            schema_column = self.schema.column_map.get((target_table, rate_name))
+            if schema_column is not None and schema_column.ref.type.numeric:
+                return schema_column.ref
         return None
 
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
@@ -431,7 +437,6 @@ class SQLSearcher:
         if not cues:
             return [((), 0.0, ())]
 
-        rate_column = self._conversion_rate_column(tokens)     # SUM(measure * rate) offered when set (M3c)
         beam: list[tuple[tuple[Aggregate, ...], float, tuple[str, ...]]] = [((), 0.0, ())]
         for function, position in sorted(cues, key=lambda item: item[1]):
             options: list[tuple[Aggregate, float, str]] = []
@@ -456,6 +461,7 @@ class SQLSearcher:
                         continue
                     options.append((Aggregate(function, option.column), 4.0 + option.score * 0.1,
                                     f"aggregate:{function}({option.column.table}.{option.column.name})"))
+                    rate_column = self._conversion_rate_column(tokens, option.column.table)
                     if (function == "SUM" and rate_column is not None
                             and rate_column.table != option.column.table):
                         # currency conversion (M3c): SUM(amount * rate) over the discovered FX join.

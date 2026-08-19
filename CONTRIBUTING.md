@@ -18,12 +18,16 @@ The detailed machine-agent rules in [CLAUDE.md](CLAUDE.md) express the same owne
 
 ## Setup
 
+Python 3.11 is the supported runtime and the version used by CI and both containers.
+
 ```powershell
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-ci.txt
 Copy-Item .env.example .env
 ```
+
+Install `requirements.txt` in addition when working on model-backed or live engine paths.
 
 Use Docker Compose for PostgreSQL and the engine, or follow the native setup in
 [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md). Runtime weights are described in
@@ -33,7 +37,7 @@ Use Docker Compose for PostgreSQL and the engine, or follow the native setup in
 
 | Change | Required checks |
 |---|---|
-| Python-only utility | focused tests and `python -m compileall -q engine db training tests orchestrator mcp_server` |
+| Python-only utility | focused tests, Ruff fatal checks, and `python -m compileall -q engine db training tests orchestrator mcp_server regress` |
 | Planner/search/ranker | `python -m tests.test_sql_ast` |
 | Routing/compose | `python -m tests.test_routing` and `python -m tests.test_compose` |
 | Saved references | `python -m tests.test_master_ingest` |

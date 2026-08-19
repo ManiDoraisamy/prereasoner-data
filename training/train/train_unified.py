@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
 from training.lib.walker import build_from_units                       # noqa: E402
 from training.lib.edges import edges, fam_dims_map                 # noqa: E402
 from training.lib.relblock import RelBlockModel                        # noqa: E402
-from training.train.train_multitask import load, auc, fam_report                 # noqa: E402
+from training.train.train_multitask import load, fam_report                 # noqa: E402
 
 MODEL_ID = os.environ.get("BASE_MODEL_ID", "Qwen/Qwen2.5-0.5B")
 R9, R10, R11, R17 = ROOT / "training/data", ROOT / "training/data", ROOT / "training/data", ROOT / "training/data"

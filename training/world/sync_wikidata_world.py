@@ -217,7 +217,7 @@ def main():
     props = discover(a.qid)
     print("  faithful columns:", [c for _p, c, _l, _t in props], flush=True)
     if not props:
-        print(f"  no real-attribute properties (abstract type?) — skipped"); return 0
+        print("  no real-attribute properties (abstract type?) — skipped"); return 0
 
     if a.schema_only:                                          # FULL SCHEMA MIRROR: create the table, data stays lazy
         conn = _pg(); conn.autocommit = True; cur = conn.cursor()

@@ -43,8 +43,6 @@ def main():
         for q in (r["added_for"] or "").split(";"):
             if q:
                 absorbed_to[q] = r["qid"]
-    covered = active | set(absorbed_to)
-
     wd = WD()
 
     def rn(cid):

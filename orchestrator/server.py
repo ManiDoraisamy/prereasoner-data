@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
