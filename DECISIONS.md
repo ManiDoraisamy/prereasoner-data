@@ -97,3 +97,36 @@ and large binaries. This repo starts clean; the private repos remain as archives
 ## License
 
 Apache 2.0 — the patent grant matters for research code intended for broad reuse.
+
+## The Schema.org named-property head supersedes the 9-family router
+
+Two learned typers exist today. `engine/router.py` decodes an uploaded COLUMN to one of 9 families over a
+71-dimension basis derived almost entirely from Wikidata; `engine/schema_model.py` decodes a TABLE to
+Schema.org classes over a URI-indexed basis compiled from Schema.org 30.0 and trained on all active
+publisher releases. They share an architecture — consensus over calibrated per-property firing — and they
+now share a granularity, because the corpus emits column-shaped instances rendered by the same
+`summarize_table` serving function the interpreter uses.
+
+The decision is that the head is the successor and the router is scheduled for retirement, for three
+reasons that are properties of the design rather than of the current metrics:
+
+* **One ontology, validated.** The router's basis was assembled without checking terms against Schema.org,
+  so it carries dimensions that are not properties at all — `GeoCoordinates` is a class, `taxonName` is not
+  a Schema.org term in any version — and dimensions whose supervision came from a hardcoded modal stamp
+  over a corpus file that no longer exists in the repository. The head rejects both by construction.
+* **One coordinate space.** Families are a closed 9-way partition; the head's coordinates are 1,521
+  property URIs with inheritance, so a new domain extends the basis instead of needing a new family.
+* **One evidence contract.** Coverage is explicit per class (servable / calibration-failed /
+  observed-insufficient / representable-unobserved) rather than implied by a family's existence.
+
+Retirement is gated on measurement, not on this decision: the head must match or beat the router on
+column typing under the same held-out split before `engine/knowledge_query.py` routing migrates onto it.
+Until that is measured and recorded in `spider/results/RESULTS.md`, the router remains the production owner
+of world-join column typing and its `alloc.json` / `props_thr.json` / `families.json` bundle stays pinned.
+Two owners is a documented, expiring state — not a permanent boundary.
+
+**Removal condition:** the head matches or beats the router on per-column family typing under one held-out
+split, reported in `spider/results/RESULTS.md`. **Removal date: 2026-11-19.** If the comparison has not been
+run by then, the duplication is no longer "pending measurement" and one of the two owners must be removed
+regardless — the QID->class mapping is currently held in two places (`WIKIDATA_MAPPINGS` and
+`families.json`) which disagree about the right QID for seven classes.

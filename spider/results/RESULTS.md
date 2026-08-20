@@ -86,6 +86,24 @@ changed. The gains remove spurious related-table projections and joins for docum
 questions. The accepted artifact is `deployment_hardening_20260818`; earlier evaluation directories are retained in
 Git history rather than duplicated in a public checkout.
 
+### Schema.org named-dimension evidence — non-regression re-measurement
+
+`schema_evidence_20260819` re-measured `whole_db` after the Schema.org named-property head, class decoder, and
+typing-evidence capture were added (`engine/schema_*.py`, `training/schema_org/`, evidence surfaced through
+`engine/knowledge_query.py` and `engine/knowledge.py`). The result is **identical on every reported figure**:
+
+| Run | strict | lenient | scalar-gold | routed | answered |
+|---|---:|---:|---:|---|---:|
+| `deployment_hardening_20260818` (accepted) | 359 | 453 | 224/408 | `{ast: 1034}` | 1000 |
+| `schema_evidence_20260819` | 359 | 453 | 224/408 | `{ast: 1034}` | 1000 |
+
+Every difficulty tier matches exactly (easy 121/138, medium 128/179, hard 63/88, extra 47/48 strict/lenient), as
+do the error count (34, all `ast_search`) and over-budget count (3). The recorded `encoder`/`encoder_meta` hashes
+equal the promoted `weights_manifest.json` entries, confirming the measurement ran against the promoted runtime
+bundle. This is the expected outcome rather than a lucky one: the additions are evidence-only — Spider imports
+none of the new modules, and the changed engine files delete no decision logic (the family-consensus, abstain,
+and grounding boundaries are untouched). The new head is **not** part of the promoted bundle.
+
 ## Historical
 
 Earlier diagnostics for the **retired** slot-filler + compose-routing era (the "13.5% strict", the tier-1/

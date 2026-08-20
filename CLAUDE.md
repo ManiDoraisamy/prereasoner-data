@@ -40,6 +40,12 @@ Extend these owners. Do not build parallel replacements.
 | Runtime model loading and overlay | `engine/encoder_overlay.py` |
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |
 | Property-model training pipeline | `training/props/` |
+| Schema.org ontology contract (compiled vocabulary + inheritance) | `engine/schema_org.py` + `engine/data/schema_org_v30.json` |
+| Schema.org class decode + serving table interpretation (evidence-only) | `engine/schema_decode.py` + `engine/schema_model.py`, captured via `engine/knowledge_query.py` typing buffer |
+| Schema.org semantic corpus + named-property-head training | `training/schema_org/` (candidates only, in `training/schema_org/data/experiments/<corpus>/`) |
+| Wikidata type QID -> schema.org class, CORPUS side | `training/schema_org/source_adapters.py:WIKIDATA_MAPPINGS` (the snapshot's populated leaf QIDs) |
+| Wikidata type QID -> schema.org class, ROUTER side | `engine/data/families.json` (canonical QIDs; 17 of its 27 resolve to zero rows in the snapshot) |
+| Promotion of a Schema.org candidate into the runtime bundle | `training/schema_org/promote.py` — the ONE writer of `engine/data/schema_{property_head.pt,property_model.json,class_signatures.json}` |
 | Serving-faithful Spider evaluation | `spider/probe/full_eval.py` |
 | Hermetic SQL planner regression suite | `tests/test_sql_ast.py` |
 | Workbook and reference-data browser lifecycle | `web/public/lib/workbook.js` |

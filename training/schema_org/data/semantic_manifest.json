@@ -1,0 +1,1541 @@
+{
+  "caps": {
+    "anon_every": 4,
+    "baseline_entities": 100,
+    "column_every": 8,
+    "max_facets": 3,
+    "max_values_per_property": 3,
+    "per_property_entities": 100,
+    "variant_every": 4,
+    "wikidata_columns_per_property": 6
+  },
+  "corpus": {
+    "instances": 45772,
+    "path": "training/schema_org/data/semantic_instances.jsonl",
+    "sha256": "088cfeb5b8d8e31ed854294e3970d459c53fa19988b1ea4e4a8ce7a4cb62008d"
+  },
+  "counts": {
+    "class": {
+      "https://schema.org/AdministrativeArea": 357,
+      "https://schema.org/AuthorizeAction": 1,
+      "https://schema.org/BankOrCreditUnion": 891,
+      "https://schema.org/City": 816,
+      "https://schema.org/CollegeOrUniversity": 1603,
+      "https://schema.org/ContactPoint": 2,
+      "https://schema.org/Country": 266,
+      "https://schema.org/DefinedTerm": 1737,
+      "https://schema.org/DeliveryChargeSpecification": 1,
+      "https://schema.org/DigitalDocument": 510,
+      "https://schema.org/DigitalDocumentPermission": 1,
+      "https://schema.org/Drug": 1,
+      "https://schema.org/Event": 946,
+      "https://schema.org/EventReservation": 3,
+      "https://schema.org/ExchangeRateSpecification": 1105,
+      "https://schema.org/FoodEstablishmentReservation": 1,
+      "https://schema.org/GeoCoordinates": 5146,
+      "https://schema.org/Hospital": 1727,
+      "https://schema.org/Language": 408,
+      "https://schema.org/LocalBusiness": 1,
+      "https://schema.org/LodgingReservation": 1,
+      "https://schema.org/MedicalCode": 991,
+      "https://schema.org/MedicalCondition": 1,
+      "https://schema.org/MenuItem": 1,
+      "https://schema.org/MonetaryAmount": 1,
+      "https://schema.org/Movie": 1390,
+      "https://schema.org/MusicGroup": 578,
+      "https://schema.org/MusicRecording": 974,
+      "https://schema.org/Order": 1,
+      "https://schema.org/OrderItem": 1,
+      "https://schema.org/Organization": 3,
+      "https://schema.org/ParcelDelivery": 1,
+      "https://schema.org/Patient": 1,
+      "https://schema.org/PaymentChargeSpecification": 1,
+      "https://schema.org/Periodical": 1165,
+      "https://schema.org/Person": 4,
+      "https://schema.org/Place": 4242,
+      "https://schema.org/PoliticalParty": 945,
+      "https://schema.org/PostalAddress": 2809,
+      "https://schema.org/Product": 705,
+      "https://schema.org/ProgramMembership": 1,
+      "https://schema.org/PropertyValueSpecification": 2194,
+      "https://schema.org/QuantitativeValue": 178,
+      "https://schema.org/Reservation": 1,
+      "https://schema.org/Restaurant": 1082,
+      "https://schema.org/Schedule": 1,
+      "https://schema.org/School": 1082,
+      "https://schema.org/SkiResort": 381,
+      "https://schema.org/SoftwareApplication": 1016,
+      "https://schema.org/SportsOrganization": 208,
+      "https://schema.org/SportsTeam": 150,
+      "https://schema.org/Taxon": 528,
+      "https://schema.org/UnitPriceSpecification": 1105,
+      "https://schema.org/WebSite": 1750
+    },
+    "group": 32699,
+    "property": {
+      "https://schema.org/about": 884,
+      "https://schema.org/actor": 34,
+      "https://schema.org/address": 2865,
+      "https://schema.org/addressCountry": 2775,
+      "https://schema.org/addressLocality": 1359,
+      "https://schema.org/addressRegion": 2,
+      "https://schema.org/affiliation": 1,
+      "https://schema.org/aggregateRating": 697,
+      "https://schema.org/alternateName": 933,
+      "https://schema.org/archivedAt": 26,
+      "https://schema.org/audience": 11,
+      "https://schema.org/audio": 47,
+      "https://schema.org/author": 138,
+      "https://schema.org/award": 6,
+      "https://schema.org/birthDate": 580,
+      "https://schema.org/birthPlace": 111,
+      "https://schema.org/brand": 9,
+      "https://schema.org/byArtist": 225,
+      "https://schema.org/character": 2,
+      "https://schema.org/children": 226,
+      "https://schema.org/citation": 4,
+      "https://schema.org/codeValue": 1079,
+      "https://schema.org/codingSystem": 791,
+      "https://schema.org/commentCount": 1,
+      "https://schema.org/competitor": 1,
+      "https://schema.org/connectedTo": 4,
+      "https://schema.org/contentLocation": 282,
+      "https://schema.org/contributor": 2,
+      "https://schema.org/copyrightHolder": 6,
+      "https://schema.org/countryOfOrigin": 3364,
+      "https://schema.org/creator": 8,
+      "https://schema.org/currency": 824,
+      "https://schema.org/currentExchangeRate": 1174,
+      "https://schema.org/dateCreated": 2524,
+      "https://schema.org/dateModified": 107,
+      "https://schema.org/datePublished": 2606,
+      "https://schema.org/deathDate": 154,
+      "https://schema.org/deathPlace": 22,
+      "https://schema.org/depth": 19,
+      "https://schema.org/description": 25189,
+      "https://schema.org/dissolutionDate": 1114,
+      "https://schema.org/distance": 7,
+      "https://schema.org/downloadUrl": 37,
+      "https://schema.org/duns": 8,
+      "https://schema.org/duration": 1162,
+      "https://schema.org/editor": 4,
+      "https://schema.org/email": 968,
+      "https://schema.org/encodingFormat": 14,
+      "https://schema.org/endDate": 920,
+      "https://schema.org/faxNumber": 290,
+      "https://schema.org/founder": 35,
+      "https://schema.org/foundingLocation": 464,
+      "https://schema.org/genre": 156,
+      "https://schema.org/geo": 8055,
+      "https://schema.org/hasOccupation": 5,
+      "https://schema.org/hasPart": 267,
+      "https://schema.org/height": 598,
+      "https://schema.org/homeLocation": 3,
+      "https://schema.org/identifier": 3717,
+      "https://schema.org/image": 8705,
+      "https://schema.org/inCodeSet": 791,
+      "https://schema.org/inLanguage": 2946,
+      "https://schema.org/isBasedOn": 123,
+      "https://schema.org/isPartOf": 482,
+      "https://schema.org/isicV4": 37,
+      "https://schema.org/isrcCode": 138,
+      "https://schema.org/issn": 1111,
+      "https://schema.org/itemLocation": 32,
+      "https://schema.org/knowsLanguage": 316,
+      "https://schema.org/latitude": 2217,
+      "https://schema.org/layoutImage": 1,
+      "https://schema.org/leiCode": 543,
+      "https://schema.org/location": 1437,
+      "https://schema.org/locationCreated": 6,
+      "https://schema.org/logo": 2183,
+      "https://schema.org/longitude": 2197,
+      "https://schema.org/mainEntityOfPage": 2466,
+      "https://schema.org/material": 2,
+      "https://schema.org/memberOf": 244,
+      "https://schema.org/name": 34138,
+      "https://schema.org/nationality": 3,
+      "https://schema.org/numberOfEmployees": 860,
+      "https://schema.org/operatingSystem": 4,
+      "https://schema.org/owns": 48,
+      "https://schema.org/pagination": 3,
+      "https://schema.org/parentOrganization": 454,
+      "https://schema.org/parentTaxon": 135,
+      "https://schema.org/participant": 1,
+      "https://schema.org/position": 2,
+      "https://schema.org/postalCode": 1420,
+      "https://schema.org/previousItem": 2,
+      "https://schema.org/price": 1174,
+      "https://schema.org/priceCurrency": 1130,
+      "https://schema.org/producer": 62,
+      "https://schema.org/productionCompany": 50,
+      "https://schema.org/provider": 192,
+      "https://schema.org/publisher": 198,
+      "https://schema.org/recordedAt": 3,
+      "https://schema.org/recordingOf": 4,
+      "https://schema.org/relevantSpecialty": 6,
+      "https://schema.org/review": 1,
+      "https://schema.org/runtimePlatform": 23,
+      "https://schema.org/sameAs": 854,
+      "https://schema.org/servesCuisine": 3,
+      "https://schema.org/sibling": 16,
+      "https://schema.org/slogan": 4,
+      "https://schema.org/softwareVersion": 338,
+      "https://schema.org/sponsor": 18,
+      "https://schema.org/sport": 7,
+      "https://schema.org/startDate": 1775,
+      "https://schema.org/startTime": 20,
+      "https://schema.org/subOrganization": 275,
+      "https://schema.org/taxonRank": 534,
+      "https://schema.org/telephone": 1245,
+      "https://schema.org/termCode": 1801,
+      "https://schema.org/termsOfService": 1,
+      "https://schema.org/timeRequired": 1168,
+      "https://schema.org/translator": 1,
+      "https://schema.org/unitText": 141,
+      "https://schema.org/uploadDate": 4,
+      "https://schema.org/url": 247,
+      "https://schema.org/value": 226,
+      "https://schema.org/valueRequired": 1320,
+      "https://schema.org/version": 280,
+      "https://schema.org/video": 198,
+      "https://schema.org/volumeNumber": 1,
+      "https://schema.org/weight": 264,
+      "https://schema.org/width": 553,
+      "https://schema.org/workExample": 15,
+      "https://schema.org/worksFor": 1,
+      "https://schema.org/yearlyRevenue": 1
+    },
+    "source": {
+      "cdc": 1625,
+      "cdc_columns": 160,
+      "cldr": 928,
+      "cldr_columns": 143,
+      "demo_uploads": 45,
+      "demo_uploads_columns": 7,
+      "ec_tedb": 467,
+      "ec_tedb_columns": 18,
+      "ecb": 1105,
+      "ecb_columns": 94,
+      "geonames": 5152,
+      "geonames_columns": 877,
+      "google_libphonenumber": 44,
+      "google_libphonenumber_columns": 14,
+      "iana": 87,
+      "iana_columns": 10,
+      "nager_date": 1064,
+      "nager_date_columns": 151,
+      "nlm_cde": 5228,
+      "nlm_cde_columns": 301,
+      "product_templates": 24,
+      "wikidata": 26248,
+      "wikidata_columns": 1980
+    },
+    "split": {
+      "test": 4723,
+      "train": 36496,
+      "validation": 4553
+    }
+  },
+  "dropped": {
+    "class_stripped_generic_only": 8013,
+    "columns_beyond_max_facets": 5332,
+    "duplicate_text": 5441,
+    "instance_no_mapped_property": 1431,
+    "instance_unevidenced": 18,
+    "label_domain_inadmissible": 54204,
+    "value_out_of_range_date": 299,
+    "value_unresolvable_qid": 1055959
+  },
+  "evidence_gate": "token-accurate at emission (Qwen/Qwen2.5-0.5B, 112-token budget)",
+  "ontology": {
+    "classes": 926,
+    "contract_sha256": "4045fe8ff4c674e13fd7a4c2ec5842897255a4af5ff1369b3b2db57a313b3f56",
+    "properties": 1521,
+    "source_sha256": "0f0c97a4f666b2f8563573fe48453782fd51b87a504523cf0c9aff6a71c3eec4",
+    "version": "30.0"
+  },
+  "property_group_support": {
+    "https://schema.org/about": {
+      "test": 94,
+      "train": 709,
+      "validation": 74
+    },
+    "https://schema.org/actor": {
+      "test": 2,
+      "train": 30,
+      "validation": 2
+    },
+    "https://schema.org/address": {
+      "test": 270,
+      "train": 2314,
+      "validation": 263
+    },
+    "https://schema.org/addressCountry": {
+      "test": 242,
+      "train": 1865,
+      "validation": 247
+    },
+    "https://schema.org/addressLocality": {
+      "test": 105,
+      "train": 794,
+      "validation": 104
+    },
+    "https://schema.org/addressRegion": {
+      "train": 2
+    },
+    "https://schema.org/affiliation": {
+      "train": 1
+    },
+    "https://schema.org/aggregateRating": {
+      "test": 70,
+      "train": 552,
+      "validation": 66
+    },
+    "https://schema.org/alternateName": {
+      "test": 71,
+      "train": 530,
+      "validation": 86
+    },
+    "https://schema.org/archivedAt": {
+      "test": 3,
+      "train": 21,
+      "validation": 1
+    },
+    "https://schema.org/audience": {
+      "train": 8,
+      "validation": 2
+    },
+    "https://schema.org/audio": {
+      "test": 2,
+      "train": 38,
+      "validation": 5
+    },
+    "https://schema.org/author": {
+      "test": 15,
+      "train": 109,
+      "validation": 10
+    },
+    "https://schema.org/award": {
+      "test": 1,
+      "train": 4,
+      "validation": 1
+    },
+    "https://schema.org/birthDate": {
+      "test": 61,
+      "train": 469,
+      "validation": 49
+    },
+    "https://schema.org/birthPlace": {
+      "test": 17,
+      "train": 84,
+      "validation": 8
+    },
+    "https://schema.org/brand": {
+      "test": 1,
+      "train": 7,
+      "validation": 1
+    },
+    "https://schema.org/byArtist": {
+      "test": 19,
+      "train": 185,
+      "validation": 20
+    },
+    "https://schema.org/character": {
+      "train": 2
+    },
+    "https://schema.org/children": {
+      "test": 25,
+      "train": 185,
+      "validation": 14
+    },
+    "https://schema.org/citation": {
+      "train": 4
+    },
+    "https://schema.org/codeValue": {
+      "test": 64,
+      "train": 488,
+      "validation": 73
+    },
+    "https://schema.org/codingSystem": {
+      "test": 64,
+      "train": 488,
+      "validation": 73
+    },
+    "https://schema.org/commentCount": {
+      "train": 1
+    },
+    "https://schema.org/competitor": {
+      "test": 1
+    },
+    "https://schema.org/connectedTo": {
+      "test": 1,
+      "train": 3
+    },
+    "https://schema.org/contentLocation": {
+      "test": 18,
+      "train": 233,
+      "validation": 29
+    },
+    "https://schema.org/contributor": {
+      "train": 1,
+      "validation": 1
+    },
+    "https://schema.org/copyrightHolder": {
+      "test": 2,
+      "train": 4
+    },
+    "https://schema.org/countryOfOrigin": {
+      "test": 327,
+      "train": 2713,
+      "validation": 310
+    },
+    "https://schema.org/creator": {
+      "train": 8
+    },
+    "https://schema.org/currency": {
+      "test": 54,
+      "train": 503,
+      "validation": 70
+    },
+    "https://schema.org/currentExchangeRate": {
+      "test": 53,
+      "train": 502,
+      "validation": 70
+    },
+    "https://schema.org/dateCreated": {
+      "test": 238,
+      "train": 2041,
+      "validation": 232
+    },
+    "https://schema.org/dateModified": {
+      "test": 10,
+      "train": 80,
+      "validation": 8
+    },
+    "https://schema.org/datePublished": {
+      "test": 252,
+      "train": 2103,
+      "validation": 240
+    },
+    "https://schema.org/deathDate": {
+      "test": 21,
+      "train": 112,
+      "validation": 19
+    },
+    "https://schema.org/deathPlace": {
+      "test": 5,
+      "train": 15,
+      "validation": 1
+    },
+    "https://schema.org/depth": {
+      "test": 3,
+      "train": 12,
+      "validation": 3
+    },
+    "https://schema.org/description": {
+      "test": 2414,
+      "train": 18825,
+      "validation": 2258
+    },
+    "https://schema.org/dissolutionDate": {
+      "test": 123,
+      "train": 867,
+      "validation": 113
+    },
+    "https://schema.org/distance": {
+      "test": 1,
+      "train": 5,
+      "validation": 1
+    },
+    "https://schema.org/downloadUrl": {
+      "test": 8,
+      "train": 24,
+      "validation": 4
+    },
+    "https://schema.org/duns": {
+      "test": 2,
+      "train": 6
+    },
+    "https://schema.org/duration": {
+      "test": 111,
+      "train": 938,
+      "validation": 109
+    },
+    "https://schema.org/editor": {
+      "train": 3,
+      "validation": 1
+    },
+    "https://schema.org/email": {
+      "test": 103,
+      "train": 766,
+      "validation": 86
+    },
+    "https://schema.org/encodingFormat": {
+      "test": 3,
+      "train": 10,
+      "validation": 1
+    },
+    "https://schema.org/endDate": {
+      "test": 62,
+      "train": 551,
+      "validation": 65
+    },
+    "https://schema.org/faxNumber": {
+      "test": 33,
+      "train": 220,
+      "validation": 34
+    },
+    "https://schema.org/founder": {
+      "test": 3,
+      "train": 27,
+      "validation": 4
+    },
+    "https://schema.org/foundingLocation": {
+      "test": 48,
+      "train": 357,
+      "validation": 54
+    },
+    "https://schema.org/genre": {
+      "test": 10,
+      "train": 124,
+      "validation": 20
+    },
+    "https://schema.org/geo": {
+      "test": 803,
+      "train": 6450,
+      "validation": 778
+    },
+    "https://schema.org/hasOccupation": {
+      "test": 2,
+      "train": 3
+    },
+    "https://schema.org/hasPart": {
+      "test": 20,
+      "train": 210,
+      "validation": 34
+    },
+    "https://schema.org/height": {
+      "test": 51,
+      "train": 489,
+      "validation": 56
+    },
+    "https://schema.org/homeLocation": {
+      "train": 3
+    },
+    "https://schema.org/identifier": {
+      "test": 278,
+      "train": 2053,
+      "validation": 277
+    },
+    "https://schema.org/image": {
+      "test": 871,
+      "train": 6970,
+      "validation": 828
+    },
+    "https://schema.org/inCodeSet": {
+      "test": 64,
+      "train": 488,
+      "validation": 73
+    },
+    "https://schema.org/inLanguage": {
+      "test": 268,
+      "train": 2225,
+      "validation": 265
+    },
+    "https://schema.org/isBasedOn": {
+      "test": 9,
+      "train": 99,
+      "validation": 11
+    },
+    "https://schema.org/isPartOf": {
+      "test": 51,
+      "train": 362,
+      "validation": 54
+    },
+    "https://schema.org/isicV4": {
+      "test": 6,
+      "train": 25,
+      "validation": 4
+    },
+    "https://schema.org/isrcCode": {
+      "test": 12,
+      "train": 115,
+      "validation": 9
+    },
+    "https://schema.org/issn": {
+      "test": 114,
+      "train": 898,
+      "validation": 97
+    },
+    "https://schema.org/itemLocation": {
+      "test": 1,
+      "train": 28,
+      "validation": 3
+    },
+    "https://schema.org/knowsLanguage": {
+      "test": 33,
+      "train": 254,
+      "validation": 26
+    },
+    "https://schema.org/latitude": {
+      "test": 166,
+      "train": 1276,
+      "validation": 182
+    },
+    "https://schema.org/layoutImage": {
+      "train": 1
+    },
+    "https://schema.org/leiCode": {
+      "test": 55,
+      "train": 419,
+      "validation": 60
+    },
+    "https://schema.org/location": {
+      "test": 128,
+      "train": 1022,
+      "validation": 125
+    },
+    "https://schema.org/locationCreated": {
+      "train": 5,
+      "validation": 1
+    },
+    "https://schema.org/logo": {
+      "test": 239,
+      "train": 1707,
+      "validation": 220
+    },
+    "https://schema.org/longitude": {
+      "test": 166,
+      "train": 1270,
+      "validation": 182
+    },
+    "https://schema.org/mainEntityOfPage": {
+      "test": 230,
+      "train": 1987,
+      "validation": 205
+    },
+    "https://schema.org/material": {
+      "test": 1,
+      "train": 1
+    },
+    "https://schema.org/memberOf": {
+      "test": 20,
+      "train": 196,
+      "validation": 26
+    },
+    "https://schema.org/name": {
+      "test": 3103,
+      "train": 24392,
+      "validation": 2982
+    },
+    "https://schema.org/nationality": {
+      "test": 1,
+      "train": 1,
+      "validation": 1
+    },
+    "https://schema.org/numberOfEmployees": {
+      "test": 95,
+      "train": 668,
+      "validation": 89
+    },
+    "https://schema.org/operatingSystem": {
+      "train": 4
+    },
+    "https://schema.org/owns": {
+      "test": 7,
+      "train": 33,
+      "validation": 8
+    },
+    "https://schema.org/pagination": {
+      "train": 1,
+      "validation": 2
+    },
+    "https://schema.org/parentOrganization": {
+      "test": 44,
+      "train": 366,
+      "validation": 40
+    },
+    "https://schema.org/parentTaxon": {
+      "test": 10,
+      "train": 116,
+      "validation": 9
+    },
+    "https://schema.org/participant": {
+      "test": 1
+    },
+    "https://schema.org/position": {
+      "train": 2
+    },
+    "https://schema.org/postalCode": {
+      "test": 111,
+      "train": 814,
+      "validation": 107
+    },
+    "https://schema.org/previousItem": {
+      "train": 2
+    },
+    "https://schema.org/price": {
+      "test": 53,
+      "train": 502,
+      "validation": 70
+    },
+    "https://schema.org/priceCurrency": {
+      "test": 53,
+      "train": 502,
+      "validation": 70
+    },
+    "https://schema.org/producer": {
+      "test": 5,
+      "train": 48,
+      "validation": 8
+    },
+    "https://schema.org/productionCompany": {
+      "test": 4,
+      "train": 44,
+      "validation": 2
+    },
+    "https://schema.org/provider": {
+      "test": 13,
+      "train": 165,
+      "validation": 14
+    },
+    "https://schema.org/publisher": {
+      "test": 22,
+      "train": 155,
+      "validation": 18
+    },
+    "https://schema.org/recordedAt": {
+      "train": 3
+    },
+    "https://schema.org/recordingOf": {
+      "train": 4
+    },
+    "https://schema.org/relevantSpecialty": {
+      "test": 2,
+      "train": 3,
+      "validation": 1
+    },
+    "https://schema.org/review": {
+      "train": 1
+    },
+    "https://schema.org/runtimePlatform": {
+      "test": 2,
+      "train": 18,
+      "validation": 2
+    },
+    "https://schema.org/sameAs": {
+      "test": 93,
+      "train": 684,
+      "validation": 68
+    },
+    "https://schema.org/servesCuisine": {
+      "train": 2,
+      "validation": 1
+    },
+    "https://schema.org/sibling": {
+      "test": 1,
+      "train": 11,
+      "validation": 3
+    },
+    "https://schema.org/slogan": {
+      "train": 2,
+      "validation": 2
+    },
+    "https://schema.org/softwareVersion": {
+      "test": 43,
+      "train": 268,
+      "validation": 26
+    },
+    "https://schema.org/sponsor": {
+      "test": 1,
+      "train": 16,
+      "validation": 1
+    },
+    "https://schema.org/sport": {
+      "train": 7
+    },
+    "https://schema.org/startDate": {
+      "test": 141,
+      "train": 1236,
+      "validation": 149
+    },
+    "https://schema.org/startTime": {
+      "test": 1,
+      "train": 15,
+      "validation": 4
+    },
+    "https://schema.org/subOrganization": {
+      "test": 22,
+      "train": 215,
+      "validation": 34
+    },
+    "https://schema.org/taxonRank": {
+      "test": 59,
+      "train": 429,
+      "validation": 45
+    },
+    "https://schema.org/telephone": {
+      "test": 122,
+      "train": 990,
+      "validation": 114
+    },
+    "https://schema.org/termCode": {
+      "test": 138,
+      "train": 1094,
+      "validation": 136
+    },
+    "https://schema.org/termsOfService": {
+      "train": 1
+    },
+    "https://schema.org/timeRequired": {
+      "test": 111,
+      "train": 943,
+      "validation": 110
+    },
+    "https://schema.org/translator": {
+      "train": 1
+    },
+    "https://schema.org/unitText": {
+      "test": 12,
+      "train": 92,
+      "validation": 10
+    },
+    "https://schema.org/uploadDate": {
+      "test": 1,
+      "train": 1,
+      "validation": 2
+    },
+    "https://schema.org/url": {
+      "test": 21,
+      "train": 198,
+      "validation": 24
+    },
+    "https://schema.org/value": {
+      "test": 13,
+      "train": 96,
+      "validation": 10
+    },
+    "https://schema.org/valueRequired": {
+      "test": 113,
+      "train": 788,
+      "validation": 98
+    },
+    "https://schema.org/version": {
+      "test": 17,
+      "train": 154,
+      "validation": 24
+    },
+    "https://schema.org/video": {
+      "test": 18,
+      "train": 156,
+      "validation": 19
+    },
+    "https://schema.org/volumeNumber": {
+      "train": 1
+    },
+    "https://schema.org/weight": {
+      "test": 25,
+      "train": 214,
+      "validation": 25
+    },
+    "https://schema.org/width": {
+      "test": 46,
+      "train": 447,
+      "validation": 57
+    },
+    "https://schema.org/workExample": {
+      "test": 2,
+      "train": 11,
+      "validation": 2
+    },
+    "https://schema.org/worksFor": {
+      "train": 1
+    },
+    "https://schema.org/yearlyRevenue": {
+      "train": 1
+    }
+  },
+  "schema_version": 1,
+  "source_manifest": {
+    "absent_sources": [],
+    "active_sources": {
+      "cdc": {
+        "release_id": "2026-04-01+sha256:0b50672322cd53b222d007fe703e2708dfa3b34f296eb2016bb3cf2109f0fd64",
+        "source_version": "2026-04-01"
+      },
+      "cldr": {
+        "release_id": "48.2+sha256:a8b46be1ffce58a22c9e89dc991f0d7df15c6f455314032eda0764d6cc3cfe9a",
+        "source_version": "48.2"
+      },
+      "ec_tedb": {
+        "release_id": "2026-08-17+sha256:43b13e5a8b70083d763543bf31183fff3e10ccfe0d387b9b53a67fac401993a0",
+        "source_version": "2026-08-17"
+      },
+      "ecb": {
+        "release_id": "2026-08-14+sha256:58a72c2b69dbbb065754fa56d1f23fc76a6547c00b504f4c389b0af9adb77a65",
+        "source_version": "2026-08-14"
+      },
+      "geonames": {
+        "release_id": "2026-08-17+sha256:71a95d6d7ac2eb5d968ef199366122fda5a06e820910f328247c1e70097c3b72",
+        "source_version": "2026-08-17"
+      },
+      "google_libphonenumber": {
+        "release_id": "9.0.31+sha256:ddea80186d7f56154ad927df1ba8e106c7fde062deecff6c9bbc13076ba80441",
+        "source_version": "9.0.31"
+      },
+      "iana": {
+        "release_id": "2026c+sha256:e4a178a4477f3d0ea77cc31828ff72aa38feff8d61aa13e7e99e142e9d902be4",
+        "source_version": "2026c"
+      },
+      "nager_date": {
+        "release_id": "2025-2027+sha256:a209678faad15903e8935ad8539f898950bf83c60779ed032f8d9bac849cb9f9",
+        "source_version": "2025-2027"
+      },
+      "nlm_cde": {
+        "release_id": "2026-08-17+sha256:dcfadd001e76038d56353ba087b559a32d60fbb9063e19f055590f4c95593929",
+        "source_version": "2026-08-17"
+      }
+    },
+    "mapping_version": "sha256:d014387aafa93bcab385f8af536986b00c039060587e774043dd427d1353a073",
+    "mappings": [
+      {
+        "classes": [
+          "Country"
+        ],
+        "columns": [
+          [
+            "alpha2",
+            [
+              "identifier"
+            ]
+          ],
+          [
+            "name",
+            [
+              "name"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "alpha2"
+        ],
+        "max_rows": 5000,
+        "relation": "country_code",
+        "source": "iana",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "DefinedTerm"
+        ],
+        "columns": [
+          [
+            "timezone_id",
+            [
+              "termCode",
+              "name"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "timezone_id"
+        ],
+        "max_rows": 5000,
+        "relation": "zone",
+        "source": "iana",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "Country"
+        ],
+        "columns": [
+          [
+            "territory_code",
+            [
+              "identifier"
+            ]
+          ],
+          [
+            "alpha3",
+            [
+              "alternateName"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "territory_code"
+        ],
+        "max_rows": 5000,
+        "relation": "territory_code",
+        "source": "cldr",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "DefinedTerm"
+        ],
+        "columns": [
+          [
+            "currency_code",
+            [
+              "termCode",
+              "name"
+            ]
+          ],
+          [
+            "numeric_code",
+            [
+              "identifier"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "currency_code"
+        ],
+        "max_rows": 5000,
+        "relation": "currency_code",
+        "source": "cldr",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "DefinedTerm"
+        ],
+        "columns": [
+          [
+            "currency_code",
+            [
+              "termCode"
+            ]
+          ],
+          [
+            "name",
+            [
+              "name"
+            ]
+          ],
+          [
+            "locale",
+            [
+              "inLanguage"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "locale",
+          "currency_code",
+          "plural_count",
+          "alt"
+        ],
+        "max_rows": 5000,
+        "relation": "currency_name",
+        "source": "cldr",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "DefinedTerm"
+        ],
+        "columns": [
+          [
+            "source_unit",
+            [
+              "termCode",
+              "name"
+            ]
+          ],
+          [
+            "base_unit",
+            [
+              "isPartOf"
+            ]
+          ],
+          [
+            "description",
+            [
+              "description"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "source_unit"
+        ],
+        "max_rows": 5000,
+        "relation": "unit_conversion",
+        "source": "cldr",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "DefinedTerm"
+        ],
+        "columns": [
+          [
+            "territory_id",
+            [
+              "termCode"
+            ]
+          ],
+          [
+            "country_calling_code",
+            [
+              "identifier"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "territory_id",
+          "country_calling_code"
+        ],
+        "max_rows": 5000,
+        "relation": "territory",
+        "source": "google_libphonenumber",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": [
+          "leading_digits",
+          "international_prefix",
+          "national_prefix"
+        ]
+      },
+      {
+        "classes": [
+          "Place",
+          "GeoCoordinates"
+        ],
+        "columns": [
+          [
+            "geoname_id",
+            [
+              "identifier"
+            ]
+          ],
+          [
+            "name",
+            [
+              "name"
+            ]
+          ],
+          [
+            "ascii_name",
+            [
+              "alternateName"
+            ]
+          ],
+          [
+            "latitude",
+            [
+              "latitude"
+            ]
+          ],
+          [
+            "longitude",
+            [
+              "longitude"
+            ]
+          ],
+          [
+            "country_code",
+            [
+              "addressCountry"
+            ]
+          ],
+          [
+            "population",
+            [
+              "population"
+            ]
+          ],
+          [
+            "timezone_id",
+            [
+              "timezone"
+            ]
+          ],
+          [
+            "modified_on",
+            [
+              "dateModified"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "geoname_id"
+        ],
+        "max_rows": 5000,
+        "relation": "place",
+        "source": "geonames",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "PostalAddress",
+          "GeoCoordinates"
+        ],
+        "columns": [
+          [
+            "country_code",
+            [
+              "addressCountry"
+            ]
+          ],
+          [
+            "postal_code",
+            [
+              "postalCode"
+            ]
+          ],
+          [
+            "place_name",
+            [
+              "addressLocality",
+              "name"
+            ]
+          ],
+          [
+            "admin_name1",
+            [
+              "addressRegion"
+            ]
+          ],
+          [
+            "latitude",
+            [
+              "latitude"
+            ]
+          ],
+          [
+            "longitude",
+            [
+              "longitude"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "source_order"
+        ],
+        "max_rows": 8000,
+        "relation": "postal_code",
+        "source": "geonames",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "ExchangeRateSpecification",
+          "UnitPriceSpecification"
+        ],
+        "columns": [
+          [
+            "quote_currency",
+            [
+              "priceCurrency"
+            ]
+          ],
+          [
+            "units_per_eur",
+            [
+              "currentExchangeRate",
+              "price"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "effective_date",
+          "quote_currency"
+        ],
+        "max_rows": 5000,
+        "relation": "exchange_rate",
+        "source": "ecb",
+        "static_properties": [
+          "currency"
+        ],
+        "static_text": [
+          [
+            "base_currency",
+            "EUR"
+          ]
+        ],
+        "text_columns": [
+          "effective_date"
+        ]
+      },
+      {
+        "classes": [
+          "QuantitativeValue"
+        ],
+        "columns": [
+          [
+            "rate_percent",
+            [
+              "value"
+            ]
+          ],
+          [
+            "category_description",
+            [
+              "name"
+            ]
+          ],
+          [
+            "comment",
+            [
+              "description"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "source_order"
+        ],
+        "max_rows": 5000,
+        "relation": "vat_rate",
+        "source": "ec_tedb",
+        "static_properties": [
+          "unitText"
+        ],
+        "static_text": [
+          [
+            "unit",
+            "percent"
+          ]
+        ],
+        "text_columns": [
+          "member_state",
+          "rate_class",
+          "rate_type",
+          "effective_date",
+          "category_id"
+        ]
+      },
+      {
+        "classes": [
+          "Event"
+        ],
+        "columns": [
+          [
+            "name",
+            [
+              "name"
+            ]
+          ],
+          [
+            "holiday_date",
+            [
+              "startDate",
+              "endDate"
+            ]
+          ],
+          [
+            "country_code",
+            [
+              "location"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "holiday_id"
+        ],
+        "max_rows": 5000,
+        "relation": "holiday",
+        "source": "nager_date",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": []
+      },
+      {
+        "classes": [
+          "MedicalCode"
+        ],
+        "columns": [
+          [
+            "code",
+            [
+              "codeValue"
+            ]
+          ],
+          [
+            "description",
+            [
+              "name"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "code"
+        ],
+        "max_rows": 5000,
+        "relation": "icd10cm_code",
+        "source": "cdc",
+        "static_properties": [
+          "codingSystem",
+          "inCodeSet"
+        ],
+        "static_text": [
+          [
+            "coding_system",
+            "ICD-10-CM"
+          ]
+        ],
+        "text_columns": [
+          "parent_code",
+          "effective_from",
+          "effective_to"
+        ]
+      },
+      {
+        "classes": [
+          "DefinedTerm"
+        ],
+        "columns": [
+          [
+            "tiny_id",
+            [
+              "termCode",
+              "identifier"
+            ]
+          ],
+          [
+            "preferred_name",
+            [
+              "name"
+            ]
+          ],
+          [
+            "preferred_definition",
+            [
+              "description"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "tiny_id"
+        ],
+        "max_rows": 5000,
+        "relation": "cde",
+        "source": "nlm_cde",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": [
+          "datatype",
+          "steward_organization",
+          "registration_status"
+        ]
+      },
+      {
+        "classes": [
+          "DigitalDocument"
+        ],
+        "columns": [
+          [
+            "tiny_id",
+            [
+              "identifier"
+            ]
+          ],
+          [
+            "preferred_name",
+            [
+              "name"
+            ]
+          ],
+          [
+            "version",
+            [
+              "version"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "tiny_id"
+        ],
+        "max_rows": 5000,
+        "relation": "form",
+        "source": "nlm_cde",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": [
+          "steward_organization",
+          "registration_status"
+        ]
+      },
+      {
+        "classes": [
+          "PropertyValueSpecification"
+        ],
+        "columns": [
+          [
+            "label",
+            [
+              "name"
+            ]
+          ],
+          [
+            "required",
+            [
+              "valueRequired"
+            ]
+          ],
+          [
+            "cde_tiny_id",
+            [
+              "identifier"
+            ]
+          ]
+        ],
+        "id_columns": [
+          "form_tiny_id",
+          "element_path"
+        ],
+        "max_rows": 8000,
+        "relation": "form_element",
+        "source": "nlm_cde",
+        "static_properties": [],
+        "static_text": [],
+        "text_columns": [
+          "element_type",
+          "datatype"
+        ]
+      }
+    ],
+    "schema_version": 1
+  },
+  "split_policy": {
+    "key": "group_id(instance_id) = text left of the first '#'",
+    "salt": "schema-org-corpus:v2",
+    "text_collision_examples": [
+      "cdc.icd10cm_code:A18.52..A18.81#v3 == cdc.icd10cm_code:A18.52..A18.81#v1",
+      "cdc.icd10cm_code:A31.2..A32.12#v3 == cdc.icd10cm_code:A31.2..A32.12#v1",
+      "cdc.icd10cm_code:A37.0..A37.80#v2+facet=1 == cdc.icd10cm_code:A37.0..A37.80#v1+facet=1",
+      "cdc.icd10cm_code:A37.0..A37.80#v3 == cdc.icd10cm_code:A37.0..A37.80#v1",
+      "cdc.icd10cm_code:A37.0..A37.80#v3+facet=1 == cdc.icd10cm_code:A37.0..A37.80#v1+facet=1"
+    ],
+    "text_collisions_dropped": 5441
+  },
+  "unavailable_sources": {
+    "gleif": "not-materialized",
+    "loinc": "licensed-archive-required",
+    "openfoodfacts": "not-materialized",
+    "who": "credentials-required"
+  },
+  "wikidata": {
+    "instances": 28229,
+    "release_id": "capped-sample+sha256:b9235992a059bc2e5ec8be3d28bdeed711fc4b2f4abc610e4574c4c1b91a0268",
+    "status": "sample-pinned-from-legacy-capped-snapshot"
+  }
+}

@@ -97,6 +97,22 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
             r = self._column_router = Router(shared=(self.qwen, self.tok, self.model))
         return r
 
+    def _schema_interpreter(self):
+        """The Schema.org class interpreter (engine.schema_model) also REUSES the one loaded Qwen. It decodes a
+        TABLE to its servable schema.org classes through named property firing — pure evidence for the answer's
+        typing record, never a serving dependency. A load failure (missing/mismatched artifacts) latches to
+        disabled LOUDLY so serving continues without class evidence rather than hard-failing."""
+        si = self.__dict__.get("_schema_interp", None)
+        if si is None:
+            try:
+                from engine.schema_model import SchemaInterpreter
+                si = SchemaInterpreter(shared=(self.qwen, self.tok))
+            except Exception as e:                                          # noqa: BLE001 — evidence-only, never fatal
+                print(f"[knowledge_query] schema interpreter unavailable -> class evidence off: {e!r}", flush=True)
+                si = False
+            self._schema_interp = si
+        return si or None
+
     def _grounds(self, cells, wtype):
         """does the column GROUND? i.e. do enough of its cells resolve to real `wtype` entities? Cheap exact-
         normalized membership over knowledgebase."words" (the bridge does the fuzzy remainder later). The MODEL decides
@@ -110,20 +126,51 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         hit = cur.fetchone()[0]
         return hit >= max(2, self.GROUND_FRAC * len(norms))
 
+    @staticmethod
+    def _table_sig(table):
+        """(name, columns, values-hash) — the routing cache key: the model types a given (schema, data) ONCE."""
+        import hashlib
+        return (table["name"], tuple(table["columns"]),
+                hashlib.sha1(repr([tuple(r) for r in table["rows"]]).encode("utf-8", "replace")).hexdigest()[:12])
+
+    def begin_typing(self):
+        """Open a per-serve capture buffer for the model's typing evidence. Bracket ONE serve; serves are
+        serialized (server WORLD_LOCK + per-sub advisory lock), so a single instance buffer is safe."""
+        self._typing_run = []
+
+    def take_typing(self):
+        """Close the buffer and return the typing evidence captured during the serve (deduped by column)."""
+        return self.__dict__.pop("_typing_run", None) or []
+
+    def _emit_typing(self, records):
+        """Feed typing records to the active capture buffer (if a serve opened one), deduped by (table,column).
+        Called on BOTH route-cache miss and hit, so a repeat query on cached data still surfaces its typing."""
+        buf = self.__dict__.get("_typing_run")
+        if buf is None or not records:
+            return
+        seen = {(r["table"], r["column"]) for r in buf}
+        for rec in records:
+            if (rec["table"], rec["column"]) not in seen:
+                buf.append(rec)
+
     def route(self, table):
         """MODEL-DRIVEN routing — the TRAINED model types each string column to its world table, and THAT drives
         the world join + the world_qid FK (NOT value-membership). The model decides the TYPE; a typed column
         only JOINS if its cells GROUND to that type (_grounds) — so a loose false-positive (name->city) is
         dropped because the names don't resolve, never a wrong answer. super()'s value-membership routing fills
         ONLY columns the model leaves untyped (coverage). Any model failure (or KB_MODEL_ROUTE=0) falls back
-        to pure value-membership so the live demo can never hard-break."""
-        import hashlib
-        sig = (table["name"], tuple(table["columns"]),
-               hashlib.sha1(repr([tuple(r) for r in table["rows"]]).encode("utf-8", "replace")).hexdigest()[:12])
+        to pure value-membership so the live demo can never hard-break.
+
+        As a SIDE-EFFECT (never affecting the routes it returns) it records the model's per-property TYPING
+        EVIDENCE — which schema.org properties fired to decode each column's family, and whether that family
+        grounded to a world table — so the LEARNED world-grounding decision is auditable (take_typing)."""
+        sig = self._table_sig(table)
         cache = self.__dict__.setdefault("_route_cache", {})               # per-table routing cache: the router runs ONCE
+        tcache = self.__dict__.setdefault("_typing_cache", {})             # per-table typing evidence, keyed identically
         if sig in cache:                                                   # per (schema,values), not on every query
+            self._emit_typing(tcache.get(sig, []))
             return dict(cache[sig])
-        routes = {}
+        routes, typing = {}, []
         if kb_model_route_enabled():
             try:
                 r = self._router()
@@ -136,21 +183,41 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
                     o = r.route(cells, header=col)                         # property consensus -> family (None = abstain/literal)
                     if not o:
                         continue
+                    grounded = None
                     for wtype in ("city", "country", "state"):             # GEO: an entity column that GROUNDS to a geo type
                         friendly = TYPE_TO_FRIENDLY.get(wtype)             # (the family primed entity-vs-literal; grounding is decisive)
                         if friendly in self.words and self._grounds(cells, wtype):
                             routes[(table["name"], col)] = friendly
+                            grounded = friendly
                             break
+                    typing.append({"table": table["name"], "column": col, "family": o["family"],
+                                   "frac": o["frac"], "geo": o["geo"], "grounded_to": grounded,
+                                   "evidence": o.get("evidence", [])})     # the model's auditable per-property 'why'
             except Exception as e:                                         # NEVER silent: log loudly so a degradation
                 import traceback                                           # to value-membership is visible in the logs
                 print(f"[knowledge_query] !! MODEL ROUTING FAILED -> value-membership fallback: {e!r}", flush=True)
                 traceback.print_exc()
-                routes = {}
+                routes, typing = {}, []
+            si = self._schema_interpreter()                                # TABLE-level schema.org class decode —
+            if si is not None:                                             # independent of column routing, so a column
+                try:                                                       # failure never kills the class evidence
+                    rep = si.interpret_table(table)
+                    typing.append({"table": table["name"], "column": "*", "kind": "schema_class",
+                                   "classes": rep["classes"],
+                                   "properties": [p for p in rep["properties"] if p["fired"]],
+                                   "abstained": rep["abstained"],
+                                   "ontology_version": rep["ontology_version"],
+                                   "model_artifact_sha256": rep["model_artifact_sha256"],
+                                   "input_sha256": rep["input_sha256"]})
+                except Exception as e:                                     # noqa: BLE001 — evidence-only, never fatal
+                    print(f"[knowledge_query] schema class evidence failed (skipped): {e!r}", flush=True)
         for k, v in super().route(table).items():
             routes.setdefault(k, v)                                        # coverage fallback (never override the model)
         if len(cache) > 100:
-            cache.clear()
+            cache.clear(); tcache.clear()
         cache[sig] = dict(routes)
+        tcache[sig] = typing
+        self._emit_typing(typing)
         return routes
 
     # ---------------- NON-GEO world join + LAZY fill ----------------

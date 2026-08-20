@@ -145,6 +145,49 @@ World lookup may depend on Wikidata availability for an uncached entity. Existin
 successful results reproducible, but external source availability is an operational dependency rather than model
 entropy.
 
+## Named-Dimension Typing And Its Evidence
+
+Typing is learned in named Schema.org coordinates, and every typing decision the engine makes is reported as the
+firing that produced it. Two owners share that contract at different granularity; neither is a router, and neither
+can change an answer.
+
+**Column families (`engine/router.py`).** One trained encoder reads the 71 schema.org property dimensions of
+`engine/data/alloc.json` off a column, and the family is decoded by consensus: the fraction of a family's
+distinctive properties firing above their per-property Youden-J thresholds (`props_thr.json`). `route()` returns
+that per-property evidence — property, score, threshold, fired — so a decode such as "place at 1.0" is reducible to
+the named properties that produced it. Grounding, not the family, remains the decisive gate for a world join.
+
+**Table classes (`engine/schema_decode.py`, `engine/schema_model.py`).** The compiled Schema.org 30.0 contract
+(`engine/schema_org.py`, `engine/data/schema_org_v30.json`) defines 1,521 property URIs and 926 classes as stable
+coordinates. A frozen-Qwen linear head emits a calibrated probability per trained property URI, and a class is a
+deterministic superposition of those coordinates: its score is the weighted fraction of its signature properties
+that fire above their calibrated thresholds — the same consensus rule the family router uses. Because the score is
+exactly the weighted fired fraction, the surfaced fired/missing records are the computation, not a narration of it;
+`tests/test_schema_decode.py` asserts that recomputation and the intervention property (suppressing
+`schema:currency` collapses `ExchangeRateSpecification` while leaving disjoint classes numerically identical).
+
+Coverage is explicit rather than implied. Every ontology class is representable; a class is servable only after it
+clears held-out precision and recall gates, and the artifact records each class as servable, calibration-failed,
+observed-insufficient, or representable-unobserved. Unservable classes abstain. The corpus
+(`training/schema_org/`) projects active publisher releases into class-labelled semantic instances, Wikidata
+entities into per-entity and per-property column instances, and the committed demo uploads into class-free
+negatives.
+
+Two corpus invariants are enforced at build time, because a leaking corpus trains cleanly and scores *better*
+for leaking. **Splits are drawn per derivation group, never per instance:** the group is everything left of the
+first `#` in an instance id, so a table, its columns, its presentation variants and its row windows share one
+draw. `SemanticInstance.validate` re-derives the split and rejects any assigned value, which makes the previous
+"inherit the parent's split" patch — one policy with two implementations — unrepresentable. **Every labelled
+property must be evidenced in the text the encoder actually reads:** labels whose values appear nowhere, or only
+past the `max_len=128` truncation point, are wrong supervision rather than weak, so the builder drops them and
+packs wide relations into facets that each fit the budget. The build additionally refuses to write a corpus in
+which identical text spans two splits, or in which the realized split shares drift out of bounds.
+
+Mutable facts stay outside model weights. The model learns that `quote_currency + effective_date + units_per_eur`
+is an exchange-rate shape; the rate for a date still comes from the pinned `ecb.exchange_rate` release. Class
+evidence is captured through the typing buffer in `engine/knowledge_query.py` and attached to the answer by
+`engine/knowledge.py`; a load or decode failure disables the evidence loudly and never fails a request.
+
 ## Deterministic Reference Enrichment
 
 Publisher-owned reference facts remain in publisher-named schemas. `engine/enrichment/registry.py` is the single

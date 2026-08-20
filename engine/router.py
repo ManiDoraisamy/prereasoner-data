@@ -87,6 +87,20 @@ class Router:
                 scores[F] = sum(1 for p in dp if s[self.di[p]] >= self.thr.get(p, 0.5)) / len(dp)
         return scores
 
+    def _evidence(self, s, family):
+        """The per-property firing that DROVE the decode — the model's auditable 'why'. For each of the
+        family's distinctive schema.org properties: the read strength, its calibrated Youden-J threshold,
+        and whether it fired. This is computed inside _consensus; surfacing it makes the LEARNED typing
+        decision inspectable (not a black box) — fired properties first, then by strength."""
+        out = []
+        for p in self.fams[family]["distinctive"]:
+            if p in self.di:
+                score = float(s[self.di[p]])
+                threshold = float(self.thr.get(p, 0.5))
+                out.append({"property": p, "score": round(score, 3),
+                            "threshold": round(threshold, 3), "fired": score >= threshold})
+        return sorted(out, key=lambda e: (not e["fired"], -e["score"]))
+
     def route(self, values, header=None, world_only=False, min_fire=0.0):
         """Decode the FAMILY by property consensus. Returns {family, frac, geo, is_entity, scores} or None (a
         literal column whose best family fires < ABSTAIN of its distinctive props). `world_only`/`min_fire` are
@@ -102,7 +116,8 @@ class Router:
         if scores[best] < ABSTAIN:                                          # literal / non-entity -> abstain
             return None
         return {"family": best, "frac": round(float(scores[best]), 3), "geo": bool(self.fams[best]["geo"]),
-                "is_entity": True, "scores": {k: round(float(v), 3) for k, v in scores.items()}}
+                "is_entity": True, "scores": {k: round(float(v), 3) for k, v in scores.items()},
+                "evidence": self._evidence(s, best)}                        # the auditable per-property 'why'
 
 
 def main():

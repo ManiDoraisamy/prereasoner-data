@@ -43,12 +43,25 @@ class KnowledgeReasoner:
                         "model": "engine - conversational (not a data query)"}
         except Exception as e:                                              # noqa: BLE001 — never block a real query
             print("coverage pre-gate skipped:", e, flush=True)
-        res = (self.composed.serve(
-            tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks
-        ) if explicit_fks else self.composed.serve(
-            tables, question, sub, as_of=as_of, emit=emit
-        ))
-        return self._tag_present(res, question, tables)
+        self.qw.begin_typing()                                              # capture the model's per-column typing
+        try:                                                                # evidence emitted while this serve routes
+            res = (self.composed.serve(
+                tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks
+            ) if explicit_fks else self.composed.serve(
+                tables, question, sub, as_of=as_of, emit=emit
+            ))
+        finally:
+            typing = self.qw.take_typing()
+        res = self._tag_present(res, question, tables)
+        return self._attach_typing(res, typing)
+
+    def _attach_typing(self, res, typing):
+        """Surface the LEARNED world-grounding decision: for each column the trained model typed, WHICH
+        schema.org properties fired to decode its family and whether it grounded to a world table. Additive +
+        best-effort (mirrors _tag_present) — an own-data query types nothing, so `typing` is simply absent."""
+        if isinstance(res, dict) and typing:
+            res["typing"] = typing
+        return res
 
     def _tag_present(self, res, question, tables=None):
         """PRESENT signal: the answer is real, but the phrasing is emotional/human — flag it so the UI routes

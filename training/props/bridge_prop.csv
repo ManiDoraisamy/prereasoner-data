@@ -106,7 +106,6 @@ http://www.wikidata.org/entity/P576,https://schema.org/dissolutionDate
 http://www.wikidata.org/entity/P4945,https://schema.org/downloadUrl
 http://www.wikidata.org/entity/P582,https://schema.org/endDate
 http://www.wikidata.org/entity/P625,https://schema.org/geo
-http://www.wikidata.org/entity/P625,https://schema.org/GeoCoordinates
 http://www.wikidata.org/entity/P527,https://schema.org/hasPart
 http://www.wikidata.org/entity/P551,https://schema.org/homeLocation
 http://www.wikidata.org/entity/P511,https://schema.org/honorificPrefix
@@ -180,3 +179,5 @@ http://www.wikidata.org/entity/P747,https://schema.org/workExample
 http://www.wikidata.org/entity/P348,https://schema.org/softwareVersion
 http://www.wikidata.org/entity/P178,https://schema.org/author
 http://www.wikidata.org/entity/P400,https://schema.org/runtimePlatform
+http://www.wikidata.org/entity/P105,https://schema.org/taxonRank
+http://www.wikidata.org/entity/P171,https://schema.org/parentTaxon

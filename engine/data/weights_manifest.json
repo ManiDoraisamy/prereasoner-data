@@ -1,7 +1,4 @@
 {
-  "version": 1,
-  "repository": "prereasoner/prereasoner-weights",
-  "revision": "4ba037a642aa0dc332f7b0084ca8d95a0f882a93",
   "files": {
     "anchor_assignment.npz": "8b529b8f71c0c8a7997230ef536e0aad5843a7c83e18dac5c3bc22a25354f788",
     "encoder.pt": "53fd3d37c64525be45a372d487b3e4f1e7f39b13fdccb8c9eaacf89e22c953b2",
@@ -9,5 +6,26 @@
     "primitives.npz": "2daecaa89b465dafd65a22427ca144a97018d82a9bf192120bfef5e5366d7ebc",
     "qwen_lora/adapter_config.json": "9e9d1bb22602d4cb1a01b48af9d8ecb460a6c3dfe1320f6840727bdfb086e266",
     "qwen_lora/adapter_model.safetensors": "1ef13f8bf69b6e51d6e2a61d7170a82f32bb6cfb393e7542d28b7bb447c51ce4"
-  }
+  },
+  "pending_publication": {
+    "schema_class_signatures.json": {
+      "note": "class signatures + calibrated class thresholds; SchemaInterpreter refuses to load it against a model built from a different corpus",
+      "produced_by": "training/schema_org/signatures.py + train_property_head.py -> promote.py",
+      "status": "generated; untracked and NOT gitignored \u2014 decide commit-vs-ignore before release"
+    },
+    "schema_property_head.pt": {
+      "consequence": "engine/schema_model.SchemaInterpreter fails to load on a fresh clone, CI or a deploy, so engine/knowledge_query logs loudly and serves without class evidence",
+      "produced_by": "training/schema_org/train_property_head.py -> promote.py",
+      "status": "local-only; NOT in the deployed bundle",
+      "to_publish": "upload to the weights repo, move this entry into `files` with its sha256, and add it to the Dockerfile required-artifact list so a deploy fails loudly without it"
+    },
+    "schema_property_model.json": {
+      "note": "calibrated thresholds + per-property metrics; must ship with the head and the signatures, all three fitted to one corpus_sha256",
+      "produced_by": "training/schema_org/train_property_head.py -> promote.py",
+      "status": "generated; untracked and NOT gitignored \u2014 decide commit-vs-ignore before release"
+    }
+  },
+  "repository": "prereasoner/prereasoner-weights",
+  "revision": "4ba037a642aa0dc332f7b0084ca8d95a0f882a93",
+  "version": 1
 }

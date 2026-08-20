@@ -72,6 +72,45 @@ def main():
     if not any(wt == "city" and wq == "Q515" for wt, wq in bridge):
         fails.append(f"(3) bridge world_qid != Q515 for city (got {bridge})")
 
+    # (4) the LEARNED decision is AUDITABLE: the model's typing evidence is captured during the serve — for the
+    # city column, the decoded family + WHICH schema.org properties fired + the world table it grounded to.
+    Q.begin_typing()
+    try:
+        Q.serve([CUST], "how many customers in France", schema=schema)
+    finally:
+        typing = Q.take_typing()
+    city_t = next((t for t in typing if t["column"] == "city"), None)
+    print(f"\ntyping evidence for 'city': {city_t}")
+    if not city_t:
+        fails.append("(4) no typing evidence captured for the 'city' column")
+    else:
+        if city_t.get("family") != "place":
+            fails.append(f"(4) city typed family != place (got {city_t.get('family')!r})")
+        if city_t.get("grounded_to") != "city":
+            fails.append(f"(4) city grounded_to != 'city' (got {city_t.get('grounded_to')!r})")
+        fired = [e["property"] for e in city_t.get("evidence", []) if e.get("fired")]
+        if not fired:
+            fails.append(f"(4) no distinctive property fired in the city evidence: {city_t.get('evidence')}")
+        else:
+            print(f"   place decoded because these properties fired: {fired}")
+
+    # (5) the TABLE-level schema.org class decode is captured too (kind=schema_class). A customers upload is
+    # not a servable class, so the honest outcome is abstained=True (or a genuine servable decode) — what must
+    # NEVER happen is the record being absent (evidence off) or internally inconsistent.
+    tbl_t = next((t for t in typing if t.get("kind") == "schema_class"), None)
+    print(f"table-level class evidence: "
+          f"{ {k: tbl_t[k] for k in ('table', 'abstained', 'ontology_version')} if tbl_t else None }")
+    if not tbl_t:
+        fails.append("(5) no table-level schema_class evidence captured during the serve")
+    else:
+        if tbl_t.get("abstained") and tbl_t.get("classes"):
+            fails.append(f"(5) abstained but classes non-empty: {tbl_t['classes']}")
+        for c in tbl_t.get("classes", []):
+            if not c.get("servable"):
+                fails.append(f"(5) non-servable class in the decode: {c}")
+        if not tbl_t.get("model_artifact_sha256") or not tbl_t.get("input_sha256"):
+            fails.append("(5) class evidence must pin the model artifact + input hashes")
+
     print("\n" + ("PASS — the model drives the live world routing end to end" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0

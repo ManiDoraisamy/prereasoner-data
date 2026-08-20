@@ -15,11 +15,19 @@ engine/data/*.pt
 engine/data/*.db
 engine/data/*.npz
 engine/data/qwen_lora/
+engine/data/*.previous
 !engine/data/README.md
 
 # training/props pipeline scratch — generated corpus + weights (rebuild via training/props/pipeline.md)
 training/props/data/*
 !training/props/data/.gitkeep
+
+# training/schema_org scratch — the regenerable semantic corpus + embedding cache (rebuild:
+# python -m training.schema_org.corpus). semantic_manifest.json IS committed: it is the corpus
+# identity/provenance record the model meta and class signatures hash-reference.
+training/schema_org/data/*
+!training/schema_org/data/.gitkeep
+!training/schema_org/data/semantic_manifest.json
 
 # Logs & local state
 *.log

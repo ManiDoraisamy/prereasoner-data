@@ -23,12 +23,12 @@ import sys
 import engine.config  # noqa: F401 — autoloads repo .env so KB_PG_PASSWORD/ANTHROPIC_API_KEY reach the
 # spawned suites; without it the world suites silently SKIP (or return 1) and the gate falsely looks green.
 
-SUITES = ["tests.test_sql_ast", "tests.test_routing", "tests.test_compose", "tests.test_converse",
-          "tests.test_master_ingest", "tests.test_enrichment", "tests.test_source_sync",
-          "tests.test_app_migrations",
+SUITES = ["tests.test_sql_ast", "tests.test_routing", "tests.test_router_evidence", "tests.test_schema_decode",
+          "tests.test_schema_coverage", "tests.test_compose", "tests.test_converse", "tests.test_master_ingest",
+          "tests.test_enrichment", "tests.test_source_sync", "tests.test_app_migrations",
           "tests.test_mcp", "tests.test_orchestrator"]
 ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
-                 "tests.test_route_wired", "tests.test_geo"]
+                 "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes"]
 
 
 def main():

@@ -44,3 +44,18 @@ Notes:
   by the `db/sync` pipeline — not in this directory.
 - Training corpora, embedding caches and intermediate build artifacts intentionally do not ship (see
   docs/notes/engine.md for the dropped-files list).
+
+## Schema.org named-property head (not yet in the deployed bundle)
+
+`schema_property_head.pt`, `schema_property_model.json` and `schema_class_signatures.json` are produced by
+`training/schema_org/` and installed by `python -m training.schema_org.promote <corpus>`, which is the only
+writer of these three files. Training itself writes candidates to
+`training/schema_org/data/experiments/<corpus-sha>/` and never touches this directory.
+
+None of the three reaches a deploy today, but for different reasons, and the difference matters: the head
+is **gitignored** (`engine/data/*.pt`), while `schema_property_model.json` and `schema_class_signatures.json`
+are merely **untracked and un-ignored** — `git add -A` would commit them. All three are absent from the
+`files` map in `weights_manifest.json` and from the Dockerfile's required-artifact assertion. A fresh clone, CI run
+or deploy therefore has no head, `SchemaInterpreter` fails to construct, and `engine/knowledge_query`
+logs the failure and serves without class evidence rather than failing the request. See
+`weights_manifest.json:pending_publication` for what publishing it requires.

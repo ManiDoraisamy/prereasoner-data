@@ -15,15 +15,16 @@ The router (`engine/router.py`) does **superposition-decode**: ONE trained encod
 column's **family** is decoded by *consensus* — the fraction of a family's DISTINCTIVE properties that fire,
 calibrated by per-property Youden-J thresholds. Nothing is anchored as a "type"; the type **emerges** from the
 properties. A column that fires no family's distinctive props (a literal — amount/id/status) **abstains**.
-The shipped model has **8 families** (film, music, org, organism, person, place, product, publication) over a
-**67-property / 86-content-dim** basis: `alloc.json` is **nc=86 = 9 struct + 67 property + 10 intent**. (Adding a
-type grows the basis — the worked software example below rebuilds it to **71 property dims / nc=90**.)
+The shipped model has **9 families** (film, music, org, organism, person, place, product, publication,
+software) over a **71-property / 90-content-dim** basis: `alloc.json` is **nc=90 = 9 struct + 71 property +
+10 intent**. (The worked software example below is the add-a-type run that grew the basis from the earlier
+8-family / 67-property / nc=86 state to this one.)
 
 ## The artifacts the engine loads (`engine/data/`)
 
 | Artifact | What it is | Produced by |
 |---|---|---|
-| `alloc.json` | the dim allocation (names/families/ids), nc=86 (9 struct + 67 property + 10 intent) | `training/props/build_from_props.py` |
+| `alloc.json` | the dim allocation (names/families/ids), nc=90 (9 struct + 71 property + 10 intent) | `training/props/build_from_props.py` |
 | `encoder.pt` | RelBlock readout state_dict — the property fine-tune of the gen20 RelBlock | `training/props/train_props_gpu.py` |
 | `encoder_meta.pt` | `{alloc, cfg}` (constructor config) | `training/props/train_props_gpu.py` |
 | `qwen_lora/` | the fine-tuned LoRA adapter — the property fine-tune of the gen20 LoRA | `training/props/train_props_gpu.py` |
@@ -31,7 +32,7 @@ type grows the basis — the worked software example below rebuilds it to **71 p
 | `families.json` | family → distinctive props + join tables | `training/props/build_families.py` |
 | `anchor_assignment.npz` | per-dim thresholds for the legacy `/api/dimension` readout (**not** used by the property router) | gen20 `anchor/anchor_head.py` |
 
-> On-disk detail: in `alloc.json` the 67 property dims carry the internal `family` tag `"taxonomy"` — a
+> On-disk detail: in `alloc.json` the 71 property dims carry the internal `family` tag `"taxonomy"` — a
 > warm-start/harness-compatibility label inherited from the gen20 lineage (`build_from_props.py` keeps it so the
 > trainer runs unchanged; `build_families.py` selects the props via `family == "taxonomy"`). The router keys on the
 > property **name**, not this tag, so the literal on-disk label differs harmlessly from the "property" term used here.
