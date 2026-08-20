@@ -2,8 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Sequence
-
+from typing import Iterable, Sequence
 
 _CURRENCY_ALIASES = {
     "USD": (r"usd", r"u\.?\s*s\.?\s+dollars?", r"united\s+states\s+dollars?"),
@@ -45,6 +44,45 @@ def currency_rate_attribute(target: str) -> str:
     if code not in _CURRENCY_ALIASES:
         raise ValueError(f"unsupported currency target: {target!r}")
     return f"rate_to_{code.lower()}"
+
+
+def is_currency_source_column(name: str) -> bool:
+    """Whether a fact-table column can carry a source currency code."""
+    normalized = str(name).strip().lower()
+    return "currency" in normalized or normalized in {"ccy", "ccy_code"}
+
+
+def is_currency_reference_key(name: str) -> bool:
+    """Whether a reference-table key has the supported currency-code shape."""
+    return str(name).strip().lower() in {"currency", "currency_code"}
+
+
+def currency_rate_binding(
+    question: str | Sequence[str],
+    source_table: str,
+    edges: Iterable[tuple[str, str, str, str]],
+    numeric_columns: Iterable[tuple[str, str]],
+) -> tuple[str, str] | None:
+    """Resolve one unambiguous direct-rate table for a source measure table.
+
+    Edges are ``(from_table, from_column, to_table, to_column)`` tuples. The
+    function is deliberately independent of either planner's schema classes so
+    both serving paths enforce the same deterministic eligibility policy.
+    """
+    target = currency_conversion_target(question)
+    if target is None:
+        return None
+    rate_column = currency_rate_attribute(target)
+    numeric = set(numeric_columns)
+    matches = {
+        (to_table, rate_column)
+        for from_table, from_column, to_table, to_column in edges
+        if from_table == source_table
+        and is_currency_source_column(from_column)
+        and is_currency_reference_key(to_column)
+        and (to_table, rate_column) in numeric
+    }
+    return next(iter(matches)) if len(matches) == 1 else None
 
 
 def currency_conversion_words(target: str) -> frozenset[str]:

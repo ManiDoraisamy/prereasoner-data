@@ -154,8 +154,9 @@ Grammar support does not imply perfect language coverage. A valid AST can still 
 because the question was linked to the wrong role or no search rule proposed that shape.
 
 Currency conversion is deliberately conservative. A candidate is generated only for an
-explicit target phrase and an exact `source.currency -> rates.currency_code` edge with a
-numeric `rate_to_<target>` column. Bare `dollars`, untargeted `convert`, and unrelated tax,
+explicit target phrase and an exact `source.currency -> rates.currency` (or
+`rates.currency_code`) edge with a numeric `rate_to_<target>` column. Bare `dollars`,
+untargeted `convert`, ambiguous matching rate tables, and unrelated tax,
 discount, or interest rates do not activate conversion. Production currently registers no
 static FX table; ECB history remains disabled until temporal row selection and rounding exist.
 

@@ -364,6 +364,50 @@ def test_planner_emits_currency_conversion_when_requested():
     assert "rate_to_usd" not in plain.sql and "*" not in plain.sql, plain.sql
 
 
+def test_planner_discovers_and_executes_same_name_currency_edge():
+    orders = {"name": "orders", "columns": ["currency", "amount"],
+              "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
+    rates = {"name": "illustrative fx rates", "columns": ["currency", "rate_to_usd"],
+             "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
+    tables, fks = TableQuery().ingest([orders, rates])
+    assert any(
+        fk["from_table"] == "orders" and fk["from_col"] == "currency"
+        and fk["to_table"] == "illustrative_fx_rates" and fk["to_col"] == "currency"
+        for fk in fks
+    ), fks
+
+    top = SQLSearcher.from_tables(tables, fks).search("total order amount in US dollars")[0]
+    assert 'SUM(("orders"."amount" * "illustrative_fx_rates"."rate_to_usd"))' in top.sql, top.sql
+    rows = execute(tables, top.sql)
+    assert len(rows) == 1 and abs(rows[0][0] - 1174.6) < 1e-9, (top.sql, rows)
+
+
+def test_world_aggregate_currency_binding_is_typed_and_unambiguous():
+    from engine.knowledge_tables import KnowledgeTableQuery
+
+    schema = [
+        {"table": "orders", "name": "amount", "affinity": "REAL"},
+        {"table": "rates", "name": "rate_to_usd", "affinity": "REAL"},
+    ]
+    edge = {"from_table": "orders", "from_col": "currency",
+            "to_table": "rates", "to_col": "currency"}
+    aggregate = ("SUM", "orders", "amount")
+    assert KnowledgeTableQuery._currency_conversion_binding(
+        "total amount in US dollars", aggregate, schema, [edge]
+    ) == ("rates", "rate_to_usd")
+    assert KnowledgeTableQuery._currency_conversion_binding(
+        "total amount", aggregate, schema, [edge]
+    ) is None
+
+    duplicate_schema = schema + [
+        {"table": "other_rates", "name": "rate_to_usd", "affinity": "REAL"},
+    ]
+    duplicate_edge = {**edge, "to_table": "other_rates"}
+    assert KnowledgeTableQuery._currency_conversion_binding(
+        "total amount in US dollars", aggregate, duplicate_schema, [edge, duplicate_edge]
+    ) is None
+
+
 def test_planner_requires_exact_currency_target_and_key_shape():
     orders = {"name": "orders", "columns": ["currency", "amount"],
               "rows": [["USD", 100], ["EUR", 100]]}
@@ -389,6 +433,15 @@ def test_planner_requires_exact_currency_target_and_key_shape():
                  "to_table": "tax_rates", "to_col": "tax_code"}]
     not_fx = best("total order amount in US dollars", [orders, tax], tax_edge)
     assert "tax_rate" not in not_fx.sql and "*" not in not_fx.sql, not_fx.sql
+
+    other_fx = {"name": "other_fx", "columns": ["currency", "rate_to_usd"],
+                "rows": [["USD", 1.0], ["EUR", 1.2]]}
+    other_edge = [{"from_table": "orders", "from_col": "currency",
+                   "to_table": "other_fx", "to_col": "currency"}]
+    ambiguous_rates = best(
+        "total order amount in US dollars", [orders, only_usd, other_fx], edge + other_edge
+    )
+    assert "rate_to_usd" not in ambiguous_rates.sql and "*" not in ambiguous_rates.sql, ambiguous_rates.sql
 
 
 def test_arithmetic_expression_validation():
@@ -1677,6 +1730,8 @@ TESTS = [
     test_arithmetic_division_preserves_real_semantics,
     test_currency_conversion_query_executes_end_to_end,
     test_planner_emits_currency_conversion_when_requested,
+    test_planner_discovers_and_executes_same_name_currency_edge,
+    test_world_aggregate_currency_binding_is_typed_and_unambiguous,
     test_planner_requires_exact_currency_target_and_key_shape,
     test_arithmetic_expression_validation,
     test_projection_filter_and_order,

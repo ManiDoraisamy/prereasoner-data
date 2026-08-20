@@ -10,10 +10,13 @@ pool without changing its grammar.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
 import re
+from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
+from engine.currency_intent import (
+    currency_rate_binding,
+)
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -21,19 +24,17 @@ from engine.sql_ast import (
     Comparison,
     Literal,
     OrderTerm,
-    SQLType,
     SelectItem,
     SelectQuery,
+    SQLType,
     Star,
     and_predicates,
     render_query,
     validate_query,
 )
-from engine.currency_intent import currency_conversion_target, currency_rate_attribute
 from engine.sql_candidate import ScoredQuery
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph
-
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
@@ -205,9 +206,9 @@ class SQLSearcher:
         base = sorted(dedup.values(), key=lambda c: (-c.score, c.sql))[:pool_size]
         pool = base
         if expand_recursive or expand_constraints or expand_extrema:
-            from engine.sql_recursive import RecursiveQueryExpander
             from engine.sql_constraints import ConstraintQueryExpander
             from engine.sql_extrema import ExtremaQueryExpander
+            from engine.sql_recursive import RecursiveQueryExpander
 
             expansion_pipeline = (
                 (expand_recursive, RecursiveQueryExpander),
@@ -364,21 +365,25 @@ class SQLSearcher:
         Target phrase, source table, edge endpoints, and ``rate_to_<target>`` must agree.
         Cell values are not read here, so search remains deterministic and schema-driven.
         """
-        target = currency_conversion_target(tokens)
-        if target is None:
-            return None
-        rate_name = currency_rate_attribute(target)
-        for foreign_key in self.schema.foreign_keys:
-            source_name = foreign_key.from_column.name.lower()
-            if (foreign_key.from_column.table != source_table
-                    or foreign_key.to_column.name.lower() != "currency_code"
-                    or not ("currency" in source_name or source_name in {"ccy", "ccy_code"})):
-                continue
-            target_table = foreign_key.to_column.table
-            schema_column = self.schema.column_map.get((target_table, rate_name))
-            if schema_column is not None and schema_column.ref.type.numeric:
-                return schema_column.ref
-        return None
+        binding = currency_rate_binding(
+            tokens,
+            source_table,
+            (
+                (
+                    foreign_key.from_column.table,
+                    foreign_key.from_column.name,
+                    foreign_key.to_column.table,
+                    foreign_key.to_column.name,
+                )
+                for foreign_key in self.schema.foreign_keys
+            ),
+            (
+                (column.ref.table, column.ref.name)
+                for column in self.schema.columns
+                if column.ref.type.numeric
+            ),
+        )
+        return self.schema.column_map[binding].ref if binding is not None else None
 
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []

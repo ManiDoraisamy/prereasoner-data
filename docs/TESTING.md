@@ -18,6 +18,7 @@ python -m tests.test_source_sync
 python -m regress.product_templates
 python -m regress.source_activation
 node --check web/public/lib/workbook.js
+node web/tests/home_demo.test.js
 node web/tests/workbook_reference.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server regress
 git diff --check

@@ -11,13 +11,22 @@ class — `SELECT … FROM csv JOIN city ON lower(csv.city)=lower(city.name) WHE
 that the live Postgres layers (engine.pg / engine.entities) then execute against the real world DB.
 """
 from __future__ import annotations
+
 import datetime
 import json
 import re
 import sqlite3
 
 from engine.config import DATA_DIR
-from engine.tables import TableQuery, csv_table, qident, qlit, name_words, wmatch  # noqa: F401  (csv_table re-exported)
+from engine.currency_intent import currency_rate_binding
+from engine.tables import (  # noqa: F401  (csv_table re-exported)
+    TableQuery,
+    csv_table,
+    name_words,
+    qident,
+    qlit,
+    wmatch,
+)
 
 WORD_DIR = DATA_DIR
 CITY_CONCEPTS = {"city", "place", "location", "municipality", "urban_area", "urban area",
@@ -220,6 +229,30 @@ class KnowledgeTableQuery:
                     descs.append(f'{fk["from_table"]}.{fk["from_col"]} = {fk["to_table"]}.{fk["to_col"]}')
                     inc.append(r); remaining.remove(r); progress = True
         return f'FROM {qident(involved[0])}' + ((' ' + ' '.join(clauses)) if clauses else ''), descs, inc
+
+    @staticmethod
+    def _currency_conversion_binding(question, agg, sch, fks):
+        """Find the one direct-rate column that can convert a world-filtered SUM."""
+        if not agg or agg[0] != "SUM" or not agg[1] or not agg[2]:
+            return None
+        return currency_rate_binding(
+            question,
+            agg[1],
+            (
+                (
+                    str(fk.get("from_table", "")),
+                    str(fk.get("from_col", "")),
+                    str(fk.get("to_table", "")),
+                    str(fk.get("to_col", "")),
+                )
+                for fk in fks
+            ),
+            (
+                (str(column["table"]), str(column["name"]))
+                for column in sch
+                if column.get("affinity") in ("INTEGER", "REAL")
+            ),
+        )
 
     def read_op_all(self, question, sch):
         """an aggregate (cue + a numeric MEASURE searched across ALL uploaded sheets, excluding key/id cols).
@@ -458,6 +491,7 @@ class KnowledgeTableQuery:
                 if j["right_table"] not in [x["right_table"] for x in joins]:
                     joins.append(j)
         own_filters = [(t, c, v) for (t, c, v) in own if not mf or v.lower() != mf["value"].lower()]
+        conversion = self._currency_conversion_binding(question, agg, sch, fks)
         if wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
@@ -474,6 +508,16 @@ class KnowledgeTableQuery:
             proj = "COUNT( * )"
             pdesc = ("aggregate", "COUNT(*)", "count cue word")
             involved = [mtab, agg[1]] if (agg[1] and agg[1] != mtab) else [mtab]
+        elif agg and conversion:
+            rate_table, rate_col = conversion
+            proj = (f'SUM( {qident(agg[1])}.{qident(agg[2])} * '
+                    f'{qident(rate_table)}.{qident(rate_col)} )')
+            pdesc = (
+                "aggregate",
+                f'SUM({agg[1]}.{agg[2]} * {rate_table}.{rate_col})',
+                "explicit currency target + typed direct-rate edge",
+            )
+            involved = list(dict.fromkeys((mtab, agg[1], rate_table)))
         elif agg:
             proj = f'{agg[0]}( {qident(agg[1])}.{qident(agg[2])} )'
             pdesc = ("aggregate", f'{agg[0]}({agg[1]}.{agg[2]})', "cue word + is_num feature")

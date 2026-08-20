@@ -50,7 +50,7 @@
     <div class=h1>Interpretable AI for spreadsheets</div>
     <div class=sub>Unlike black-box AI, ours shows how the result is derived.</div>
     <div class=promptcard id=pc>
-      <textarea class=qbox id=q spellcheck=false placeholder="Attach a spreadsheet and ask a question. Watch how our model arrives at the answer.">total amount in France</textarea>
+      <textarea class=qbox id=q spellcheck=false placeholder="Attach a spreadsheet and ask a question. Watch how our model arrives at the answer.">total amount in France in US dollars</textarea>
       <div class=attachbar>
         <span class=addwrap>
           <button class=addbtn type=button id=addbtn aria-haspopup=true aria-expanded=false><span class=pl>+</span> Add data</button>
@@ -77,9 +77,11 @@
 <script src="lib/shared.js"></script>
 <script>
 const CUST='customer ID,name,city,tier\n1,Sherlock Holmes,London,Gold\n2,Dr. John Watson,London,Silver\n3,Hercule Poirot,Brussels,Gold\n4,Inspector Clouseau,Paris,Bronze\n5,Chuck Bartowski,Burbank,Silver\n6,Nancy Drew,Toledo,Gold\n7,Scooby-Doo,Cleveland,Bronze\n8,Byomkesh Bakshi,Kolkata,Silver\n9,Arsene Lupin,Paris,Gold';
-const ORD='order ID,customer,ordered,amount\n101,Sherlock Holmes,"Magnifying Glass, Brass",118\n102,Sherlock Holmes,Calabash Pipe,95\n103,Sherlock Holmes,Deerstalker Cap,72\n104,Dr. John Watson,Webley Service Revolver,340\n105,Dr. John Watson,Leather Medical Bag,185\n106,Hercule Poirot,Moustache Wax (waxed tips),38\n107,Hercule Poirot,Tisane Set,64\n108,Hercule Poirot,Patent Leather Shoes,220\n109,Inspector Clouseau,Gabardine Trench Coat,310\n110,Inspector Clouseau,Disguise Kit,210\n111,Chuck Bartowski,Nerd Herd Tie,25\n112,Chuck Bartowski,Handheld Spy Computer,480\n113,Nancy Drew,Blue Roadster (restored),2850\n114,Nancy Drew,Pocket Flashlight,40\n115,Nancy Drew,"Magnifying Glass, Brass",118\n116,Scooby-Doo,Scooby Snacks,35\n117,Scooby-Doo,Dog Collar (SD tag),60\n118,Scooby-Doo,The Mystery Machine (van),3400\n119,Byomkesh Bakshi,Case Notebook,40\n120,Byomkesh Bakshi,Reading Glasses,85\n121,Arsene Lupin,Top Hat,180\n122,Arsene Lupin,Monocle,95\n123,Arsene Lupin,"Lockpick Set, Professional",175';
+const ORD='order ID,customer,ordered,currency,amount\n101,Sherlock Holmes,"Magnifying Glass, Brass",GBP,118\n102,Sherlock Holmes,Calabash Pipe,GBP,95\n103,Sherlock Holmes,Deerstalker Cap,GBP,72\n104,Dr. John Watson,Webley Service Revolver,GBP,340\n105,Dr. John Watson,Leather Medical Bag,GBP,185\n106,Hercule Poirot,Moustache Wax (waxed tips),EUR,38\n107,Hercule Poirot,Tisane Set,EUR,64\n108,Hercule Poirot,Patent Leather Shoes,EUR,220\n109,Inspector Clouseau,Gabardine Trench Coat,EUR,310\n110,Inspector Clouseau,Disguise Kit,EUR,210\n111,Chuck Bartowski,Nerd Herd Tie,USD,25\n112,Chuck Bartowski,Handheld Spy Computer,USD,480\n113,Nancy Drew,Blue Roadster (restored),USD,2850\n114,Nancy Drew,Pocket Flashlight,USD,40\n115,Nancy Drew,"Magnifying Glass, Brass",USD,118\n116,Scooby-Doo,Scooby Snacks,USD,35\n117,Scooby-Doo,Dog Collar (SD tag),USD,60\n118,Scooby-Doo,The Mystery Machine (van),USD,3400\n119,Byomkesh Bakshi,Case Notebook,INR,40\n120,Byomkesh Bakshi,Reading Glasses,INR,85\n121,Arsene Lupin,Top Hat,EUR,180\n122,Arsene Lupin,Monocle,EUR,95\n123,Arsene Lupin,"Lockpick Set, Professional",EUR,175';
+// Illustrative request-local demo data, not a production exchange-rate source.
+const FX='currency,rate_to_usd\nUSD,1\nEUR,1.08\nGBP,1.27\nINR,0.012';
 const $=id=>document.getElementById(id);
-let SHEETS=[{name:'customers',data:CUST},{name:'orders',data:ORD}], isSample=true;  // default sample (detective/gear demo data); first real upload replaces them
+let SHEETS=[{name:'customers',data:CUST},{name:'orders',data:ORD},{name:'illustrative fx rates',data:FX}], isSample=true;  // first real upload replaces the demo
 function loginSoon(){ alert("Sign-in is coming soon. The live version will ask you to log in after you ask."); }
 function renderChips(){
   $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span></span>').join('');

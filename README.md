@@ -113,6 +113,11 @@ The default weight repository is currently private. Source code can be developed
 run without it, but a fresh public deployment requires publishing a compatible weight bundle or configuring
 `PREREASONER_WEIGHTS_REPO`. See [engine/data/README.md](engine/data/README.md).
 
+The home-page workbook includes an `illustrative fx rates` input solely to demonstrate a
+typed join and `SUM(amount * rate_to_usd)`. It is synthetic request-local demo data, not a
+production reference source. Production exchange-rate enrichment abstains until temporal ECB
+selection, direction, and rounding are implemented.
+
 Docker Compose exposes the engine on `http://localhost:8080` with the test-only principal `localdev`. After the
 engine is healthy:
 

@@ -45,6 +45,7 @@ jobs:
             echo "checking $f"
             node --check "$f"
           done
+          node web/tests/home_demo.test.js
           node web/tests/workbook_reference.test.js
       # database.rules.json is JSONC (Firebase tooling allows /* */ comments in rules
       # files), so strip block comments before the strict JSON.parse.

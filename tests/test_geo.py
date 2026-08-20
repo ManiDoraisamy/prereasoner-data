@@ -308,6 +308,24 @@ def main():
        and isinstance(conv, (int, float)) and abs(conv - 791.2) < 0.05,
        f"got={conv} clarify={(rconv or {}).get('clarify')}")
 
+    # C2c conversion composed with a world filter and automatically discovered uploaded FKs.
+    _FX_CUSTOMERS = {"name": "customers", "columns": ["name", "city"],
+                     "rows": [["Clouseau", "Paris"], ["Lupin", "Paris"], ["Holmes", "London"]]}
+    _FX_ORDERS = {"name": "orders", "columns": ["customer", "currency", "amount"],
+                  "rows": [["Clouseau", "EUR", 520], ["Lupin", "EUR", 450], ["Holmes", "GBP", 100]]}
+    _FX_RATES = {"name": "illustrative fx rates", "columns": ["currency", "rate_to_usd"],
+                 "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
+    rconv_world = _retry(lambda: qc.serve(
+        [_FX_CUSTOMERS, _FX_ORDERS, _FX_RATES],
+        "total amount in France in US dollars",
+        sub,
+    ))
+    conv_world = (((rconv_world or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("fx+world: France total converts to 1047.6 USD through discovered joins, no clarify",
+       bool(rconv_world) and not rconv_world.get("clarify")
+       and isinstance(conv_world, (int, float)) and abs(conv_world - 1047.6) < 0.05,
+       f"got={conv_world} clarify={(rconv_world or {}).get('clarify')}")
+
     # C3 hospital ROUTER typing (the robust, deterministic regression — end-to-end non-geo serve is lazy-fill-slow).
     from engine.router import Router
     rtr = Router()
