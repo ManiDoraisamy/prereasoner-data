@@ -382,6 +382,24 @@ def test_planner_discovers_and_executes_same_name_currency_edge():
     assert len(rows) == 1 and abs(rows[0][0] - 1174.6) < 1e-9, (top.sql, rows)
 
 
+def test_currency_conversion_survives_uploaded_column_case():
+    # REGRESSION: engine.tables normalizes TABLE names but preserves COLUMN case, while the rate column is
+    # synthesized lowercase ("rate_to_usd"). An exact-case membership test therefore bound nothing for an FX
+    # sheet headed "Rate_To_USD", and the planner silently answered with the UNCONVERTED SUM — a wrong
+    # number, no clarify. Same rows as the lowercase test above, headers cased the way a spreadsheet export
+    # actually arrives.
+    orders = {"name": "orders", "columns": ["Currency", "Amount"],
+              "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
+    rates = {"name": "illustrative fx rates", "columns": ["Currency", "Rate_To_USD"],
+             "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
+    tables, fks = TableQuery().ingest([orders, rates])
+    top = SQLSearcher.from_tables(tables, fks).search("total order amount in US dollars")[0]
+    # the identifier must be rendered as the schema spells it, or the SQL will not execute
+    assert 'SUM(("orders"."Amount" * "illustrative_fx_rates"."Rate_To_USD"))' in top.sql, top.sql
+    rows = execute(tables, top.sql)
+    assert len(rows) == 1 and abs(rows[0][0] - 1174.6) < 1e-9, (top.sql, rows)
+
+
 def test_world_aggregate_currency_binding_is_typed_and_unambiguous():
     from engine.knowledge_tables import KnowledgeTableQuery
 
@@ -1731,6 +1749,7 @@ TESTS = [
     test_currency_conversion_query_executes_end_to_end,
     test_planner_emits_currency_conversion_when_requested,
     test_planner_discovers_and_executes_same_name_currency_edge,
+    test_currency_conversion_survives_uploaded_column_case,
     test_world_aggregate_currency_binding_is_typed_and_unambiguous,
     test_planner_requires_exact_currency_target_and_key_shape,
     test_arithmetic_expression_validation,

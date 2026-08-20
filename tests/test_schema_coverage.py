@@ -154,6 +154,31 @@ def test_entity_properties_clear_the_support_floor():
           f"instances and independent groups")
 
 
+def test_class_evidence_excludes_every_universal_property():
+    # REGRESSION: the class-evidence gate keeps a facet's class when it shows any NON-generic property, and
+    # "generic" was a hand-picked set of six. It missed `identifier` — also domain Thing — so 2,785 facets
+    # asserted PropertyValueSpecification / GeoCoordinates / Place / Country on an opaque id column alone,
+    # which is the exact pathology the gate exists to prevent. Derived from the ontology it cannot be
+    # incomplete: a property whose only domain is Thing applies to everything and establishes nothing.
+    from engine.schema_org import load_contract
+    from training.schema_org.source_adapters import generic_evidence
+    contract = load_contract()
+    generic = generic_evidence(contract)
+    missing = [name for name in ("name", "description", "image", "alternateName", "mainEntityOfPage",
+                                 "url", "identifier")
+               if _uri(name) not in generic]
+    assert not missing, f"universal (domain-Thing) properties absent from the generic set: {missing}"
+    for uri in generic:
+        domains = tuple(contract.properties[uri].domains)
+        assert domains == (_uri("Thing"),), \
+            f"{uri} is treated as generic but its domain is {domains} — it DOES establish a class"
+    # and a class-bearing property must never be swept in
+    for name in ("codeValue", "currentExchangeRate", "latitude", "taxonRank"):
+        assert _uri(name) not in generic, f"{name} is class-bearing evidence and must not be generic"
+    print(f"  PASS  generic set derived from the ontology: {len(generic)} domain-Thing properties, "
+          f"including identifier")
+
+
 def test_excluded_dims_stay_excluded():
     # The exclusions above are load-bearing claims, not conveniences. Re-verify each against the compiled
     # ontology so an exclusion can never quietly become a way to dodge the ratchet: a dim excluded as
@@ -195,6 +220,43 @@ def test_corpus_carries_column_level_instances():
     print(f"  PASS  corpus carries column-level instances: {column_sources}")
 
 
+def test_split_is_drawn_per_derivation_group():
+    """REGRESSION for the leakage repair, which had no test guarding it.
+
+    Splits are drawn per DERIVATION GROUP — everything left of the first '#' — so a table, its columns, its
+    presentation variants and its row windows share one draw. Keying on the whole instance id instead let a
+    table sit in train while a column built from the SAME rows sat in test: the column's text is a
+    byte-identical substring of the table's, and the head is one linear layer over a FROZEN encoder, so it
+    could satisfy the held-out gate by memorising the surface form.
+
+    `SemanticInstance.validate` re-derives the split with the same function, so it cannot catch a revert of
+    `group_id`; nothing else in the suite could either. These assertions fail if the grouping is removed.
+    """
+    from training.schema_org.instances import (
+        DERIVATION_SEP, SPLIT_SALT, deterministic_split, group_id,
+    )
+    parent = "geonames.place:100399..101322"
+    derived = [f"{parent}#col=latitude", f"{parent}#facet=1", f"{parent}#v1", f"{parent}#v2+facet=2"]
+    for instance_id in derived:
+        assert group_id(instance_id) == parent, f"{instance_id} must reduce to its parent group"
+        assert deterministic_split(instance_id) == deterministic_split(parent), (
+            f"{instance_id} drew a different split from its parent — a column and the table it came from "
+            f"would sit on opposite sides of the held-out boundary"
+        )
+    # the separator is what makes the grouping work; a group id may not contain it
+    assert DERIVATION_SEP == "#" and SPLIT_SALT
+    try:
+        deterministic_split("has space")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a group id with characters outside the id grammar must be rejected")
+    # distinct groups must still land independently (the grouping must not collapse the corpus)
+    draws = {deterministic_split(f"src.rel:{n}") for n in range(200)}
+    assert draws == {"train", "validation", "test"}, f"grouping collapsed the split space: {draws}"
+    print("  PASS  split drawn per derivation group; derived instances inherit their parent's draw")
+
+
 def test_artifacts_agree_on_corpus_identity():
     # The ratchet is meaningless if the metrics describe a different corpus than the manifest.
     meta = json.loads(MODEL_META.read_text(encoding="utf-8"))
@@ -211,8 +273,10 @@ TESTS = [
     test_trained_basis_covers_the_legacy_one,
     test_entity_properties_are_trained_not_starved,
     test_entity_properties_clear_the_support_floor,
+    test_class_evidence_excludes_every_universal_property,
     test_excluded_dims_stay_excluded,
     test_corpus_carries_column_level_instances,
+    test_split_is_drawn_per_derivation_group,
     test_artifacts_agree_on_corpus_identity,
 ]
 

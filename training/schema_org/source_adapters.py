@@ -341,13 +341,32 @@ WIKIDATA_MAPPINGS = (
     WikidataMapping("Industry", "Q268592"),
 )
 
-# Properties essentially every entity carries. They cannot ESTABLISH a class, so a facet showing only
-# these is not evidence of one — labeling it with the entity's class creates a positive the model cannot
-# possibly recall, and (worse) teaches the signature builder that `name`/`description` are distinctive.
-# Both showed up: WebSite's learned signature was literally description(0.86) + name(0.85), and Place
-# recall fell to 0.02 because 41% of its positives were name-and-description-only facets.
-GENERIC_EVIDENCE = frozenset(schema_uri(n) for n in
-                             ("name", "description", "image", "alternateName", "mainEntityOfPage", "url"))
+_GENERIC_EVIDENCE: dict[str, frozenset[str]] = {}
+
+
+def generic_evidence(contract: SchemaContract) -> frozenset[str]:
+    """Properties that cannot ESTABLISH any class, DERIVED from the ontology rather than hand-listed.
+
+    A property whose only declared domain is Thing applies to every entity in the vocabulary, so a facet
+    showing nothing else is not evidence of a class: labeling it with the entity's class creates a positive
+    the model cannot recall, and teaches the signature builder that universal properties are distinctive.
+    Both happened — WebSite's learned signature was literally description(0.86) + name(0.85), and Place
+    recall fell to 0.02 because 41% of its positives were name-and-description-only facets.
+
+    This was a hand-picked set of six, and the omission it invited duly appeared: `identifier` is also
+    domain-Thing, so 2,785 facets asserted PropertyValueSpecification / GeoCoordinates / Place / Country on
+    an opaque id column alone — the very pathology the set exists to prevent. Asking the ontology yields
+    those six plus identifier, additionalType, disambiguatingDescription, owner, potentialAction, sameAs and
+    subjectOf, and stays correct when the vocabulary changes."""
+    # emit_instance calls this once per candidate instance (~50k per build) and the scan is over 1,521
+    # properties, so memoize on the contract identity (SchemaContract itself is unhashable).
+    cached = _GENERIC_EVIDENCE.get(contract.contract_sha256)
+    if cached is None:
+        cached = _GENERIC_EVIDENCE[contract.contract_sha256] = frozenset(
+            uri for uri in contract.property_order
+            if tuple(contract.properties[uri].domains) == (schema_uri("Thing"),)
+        )
+    return cached
 
 PER_PROPERTY_ENTITIES = 100     # per (pool, P-id): 10% validation share x 100 = ~10 = 2x the floor of 5
 BASELINE_ENTITIES = 100         # per pool, qid-ordered: guarantees class-shape coverage independent of props
@@ -506,7 +525,7 @@ def emit_instance(*, columns, text: str, contract: SchemaContract, **fields):
     # instances teach the signature builder that `name`/`description` are class-distinctive — WebSite's
     # learned signature became literally description + name. A facet keeps its class only when it shows
     # something beyond the generic surface properties every entity has.
-    if not (properties - GENERIC_EVIDENCE):
+    if not (properties - generic_evidence(contract)):
         if fields.get("classes"):
             DROPPED["class_stripped_generic_only"] += 1
         fields = {**fields, "classes": ()}

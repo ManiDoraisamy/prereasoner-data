@@ -73,9 +73,14 @@ def currency_rate_binding(
     if target is None:
         return None
     rate_column = currency_rate_attribute(target)
-    numeric = set(numeric_columns)
+    # Column headers keep the case the user uploaded — engine.tables normalizes TABLE names, not columns —
+    # while `rate_column` is synthesized lowercase. Comparing them exactly meant an FX sheet headed
+    # `Rate_To_USD` bound nothing, and "total amount in US dollars" answered with the UNCONVERTED sum: a
+    # wrong number, silently, with no clarify. Match case-insensitively but return the column as the schema
+    # actually spells it, so the rendered SQL references a real identifier.
+    numeric = {(table, str(column).lower()): (table, column) for table, column in numeric_columns}
     matches = {
-        (to_table, rate_column)
+        numeric[(to_table, rate_column)]
         for from_table, from_column, to_table, to_column in edges
         if from_table == source_table
         and is_currency_source_column(from_column)

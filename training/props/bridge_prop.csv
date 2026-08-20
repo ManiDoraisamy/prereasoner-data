@@ -181,3 +181,4 @@ http://www.wikidata.org/entity/P178,https://schema.org/author
 http://www.wikidata.org/entity/P400,https://schema.org/runtimePlatform
 http://www.wikidata.org/entity/P105,https://schema.org/taxonRank
 http://www.wikidata.org/entity/P171,https://schema.org/parentTaxon
+http://www.wikidata.org/entity/P625,https://schema.org/GeoCoordinates

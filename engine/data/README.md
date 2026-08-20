@@ -52,10 +52,12 @@ Notes:
 writer of these three files. Training itself writes candidates to
 `training/schema_org/data/experiments/<corpus-sha>/` and never touches this directory.
 
-None of the three reaches a deploy today, but for different reasons, and the difference matters: the head
-is **gitignored** (`engine/data/*.pt`), while `schema_property_model.json` and `schema_class_signatures.json`
-are merely **untracked and un-ignored** — `git add -A` would commit them. All three are absent from the
-`files` map in `weights_manifest.json` and from the Dockerfile's required-artifact assertion. A fresh clone, CI run
-or deploy therefore has no head, `SchemaInterpreter` fails to construct, and `engine/knowledge_query`
-logs the failure and serves without class evidence rather than failing the request. See
-`weights_manifest.json:pending_publication` for what publishing it requires.
+`schema_property_model.json`, `schema_class_signatures.json` and `schema_org_v30.json` are **committed**
+and their hashes recorded under `committed_artifacts` in `weights_manifest.json` — they travel with the
+source. `schema_property_head.pt` is **gitignored** (`engine/data/*.pt`) and is not in the weights repo, so
+it is the one bundle artifact that cannot reach a fresh clone, CI or a deploy; it is recorded under
+`pending_publication` and is absent from the Dockerfile's required-artifact assertion.
+
+Consequence when the head is missing: `SchemaInterpreter` fails to construct, `engine/knowledge_query` logs
+the failure loudly and serves without class evidence, and answers are unaffected. That degradation is the
+contract, so `tests/test_route_wired.py` asserts the class evidence only when the head is actually present.
