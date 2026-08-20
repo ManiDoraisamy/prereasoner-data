@@ -22,6 +22,7 @@ from engine.config import DATA_DIR
 from engine.encoder import LiveQwen
 from engine.schema_decode import ClassDecoder
 from engine.schema_model import NamedPropertyHead
+from engine.artifact_provenance import canonical_json_sha256
 from engine.schema_org import load_contract
 from training.schema_org.instances import group_id, read_jsonl
 from training.schema_org.paths import (
@@ -44,12 +45,6 @@ MIN_PROPERTY_PRECISION = 0.90
 MIN_PROPERTY_RECALL = 0.60
 MIN_CLASS_PRECISION = 0.90
 MIN_CLASS_RECALL = 0.60
-
-
-def _canonical_hash(value) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, ensure_ascii=True, separators=(",", ":")
-    ).encode("utf-8")).hexdigest()
 
 
 def _precision_threshold(scores: np.ndarray, labels: np.ndarray,
@@ -152,19 +147,14 @@ def _embeddings(instances, *, cache_path: Path, device, batch_size: int) -> np.n
     else:
         print(f"using cached embeddings {cache_path}", flush=True)
     embeddings = np.stack([known[h] for h in hashes]).astype(np.float32)
+    if not missing and cache_path.exists():
+        return embeddings          # nothing new to persist; recompressing ~170MB buys nothing
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     unique = dict(zip(hashes, embeddings))                          # one row per distinct text
     np.savez_compressed(cache_path, embeddings=np.stack(list(unique.values())),
                         text_hashes=np.array(list(unique.keys())),
                         texts_sha256=np.array(texts_hash))
     return embeddings
-
-
-def _class_score(profile: dict[str, float], signature: list[dict],
-                 thresholds: dict[str, float]) -> float:
-    # the ONE scoring definition (weighted fired-fraction over calibrated thresholds) — training calibrates
-    # exactly what serving computes.
-    return ClassDecoder.score_signature(profile, signature, thresholds)
 
 
 def main() -> None:
@@ -313,7 +303,7 @@ def main() -> None:
                 "qualified_property_count": len(row["signature"]),
             }
             continue
-        scores = np.array([_class_score(profile, row["signature"], thresholds) for profile in profiles])
+        scores = np.array([ClassDecoder.score_signature(profile, row["signature"], thresholds) for profile in profiles])
         truth = np.array([1 if uri in item.classes else 0 for item in instances], dtype=np.int8)
         threshold, feasible = _precision_threshold(
             scores[split_index["validation"]], truth[split_index["validation"]],
@@ -342,7 +332,7 @@ def main() -> None:
         }
     signatures.pop("artifact_sha256", None)
     signatures["property_model_pending"] = False
-    signatures["artifact_sha256"] = _canonical_hash(signatures)
+    signatures["artifact_sha256"] = canonical_json_sha256(signatures)
     signatures_path.write_text(json.dumps(signatures, sort_keys=True, ensure_ascii=True,
                                           separators=(",", ":")) + "\n", encoding="utf-8")
 
@@ -374,7 +364,7 @@ def main() -> None:
     }
     state_bytes = model_path.read_bytes()
     meta["weights_sha256"] = hashlib.sha256(state_bytes).hexdigest()
-    meta["artifact_sha256"] = _canonical_hash(meta)
+    meta["artifact_sha256"] = canonical_json_sha256(meta)
     meta_path.write_text(json.dumps(meta, sort_keys=True, ensure_ascii=True,
                                     separators=(",", ":")) + "\n", encoding="utf-8")
     passed_properties = len(qualified_properties)

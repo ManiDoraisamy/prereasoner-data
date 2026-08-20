@@ -8,6 +8,7 @@ import json
 import math
 from pathlib import Path
 
+from engine.artifact_provenance import canonical_json_sha256
 from engine.schema_org import load_contract
 from training.schema_org.instances import read_jsonl
 from training.schema_org.paths import CORPUS_PATH, MANIFEST_PATH, experiment_dir
@@ -20,12 +21,6 @@ MIN_TEST = 5
 MIN_PROPERTY_COUNT = 5
 MIN_PROPERTY_FREQUENCY = 0.10
 MIN_LIFT = 1.25
-
-
-def _canonical_hash(value) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, ensure_ascii=True, separators=(",", ":")
-    ).encode("utf-8")).hexdigest()
 
 
 def build(*, corpus_path: str | Path = CORPUS_PATH,
@@ -108,7 +103,7 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
         },
         "classes": classes,
     }
-    artifact["artifact_sha256"] = _canonical_hash(artifact)
+    artifact["artifact_sha256"] = canonical_json_sha256(artifact)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(artifact, sort_keys=True, ensure_ascii=True,

@@ -13,6 +13,27 @@ from engine.schema_org import load_contract, schema_name
 MODEL_PATH = DATA_DIR / "schema_property_head.pt"
 MODEL_META_PATH = DATA_DIR / "schema_property_model.json"
 MAX_SAMPLE_VALUES = 6
+MAX_VALUE_CHARS = 160   # the [:160] truncation every caller used to re-implement
+
+
+def sample_values(values, limit: int = MAX_SAMPLE_VALUES) -> list[str]:
+    """The ONE rule for turning raw cells into the strings a table summary shows.
+
+    Blank/None skipped, whitespace collapsed, truncated at MAX_VALUE_CHARS, de-duplicated in order, capped.
+    Training extracts the same values to check the evidence invariant (does a labelled property's value
+    actually appear in the text the encoder reads?), so a second copy of this rule that drifts by even one
+    character makes that check compare against something the renderer never produced — which is how labels
+    came to be attached to text the encoder could not see. One definition, imported by every caller."""
+    out: list[str] = []
+    for value in values:
+        if value is None or not str(value).strip():
+            continue
+        text = str(value).strip().replace("\n", " ")[:MAX_VALUE_CHARS]
+        if text not in out:
+            out.append(text)
+        if len(out) == limit:
+            break
+    return out
 
 
 def summarize_table(table: dict) -> str:
@@ -22,15 +43,7 @@ def summarize_table(table: dict) -> str:
     rows = table.get("rows") or ()
     parts = ["table " + name.replace("_", " ")]
     for index, column in enumerate(columns):
-        values = []
-        for row in rows:
-            if index >= len(row) or row[index] is None or not str(row[index]).strip():
-                continue
-            value = str(row[index]).strip().replace("\n", " ")[:160]
-            if value not in values:
-                values.append(value)
-            if len(values) == MAX_SAMPLE_VALUES:
-                break
+        values = sample_values(row[index] if index < len(row) else None for row in rows)
         parts.append(f"{column.replace('_', ' ')}: {'; '.join(values)}" if values else
                      column.replace("_", " "))
     return " | ".join(parts)[:16_000]

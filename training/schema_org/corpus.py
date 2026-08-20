@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+import re
 from dataclasses import replace
 import hashlib
 import json
@@ -13,7 +14,7 @@ from engine.pg import _pg
 from engine.schema_org import CONTRACT_PATH, load_contract, schema_uri
 from regress.product_templates import CASES
 from engine.domain_profiles import PROFILES
-from engine.schema_model import MAX_SAMPLE_VALUES
+from engine.schema_model import sample_values
 from training.schema_org.instances import (
     SPLIT_SALT, SemanticInstance, group_id, write_jsonl,
 )
@@ -56,15 +57,7 @@ def _evidence_columns(table, contract):
         uris = _column_properties([column], contract)
         if not uris:
             continue
-        values = []
-        for row in table["rows"]:
-            if index >= len(row) or row[index] is None or not str(row[index]).strip():
-                continue
-            value = str(row[index]).strip().replace("\n", " ")[:160]
-            if value not in values:
-                values.append(value)
-            if len(values) == MAX_SAMPLE_VALUES:
-                break
+        values = sample_values(row[index] if index < len(row) else None for row in table["rows"])
         if values:
             out.append((column, values, uris))
     return out
@@ -126,7 +119,7 @@ def product_template_instances(contract):
 
 
 _DEMO_HTML = Path("web/public/index.html")
-_DEMO_CONST = __import__("re").compile(r"const\s+(CUST|ORD|FX)\s*=\s*'((?:[^'\\]|\\.)*)'")
+_DEMO_CONST = re.compile(r"const\s+(CUST|ORD|FX)\s*=\s*'((?:[^'\\]|\\.)*)'")
 _DEMO_NAMES = {"CUST": "customers", "ORD": "orders", "FX": "illustrative fx rates"}
 _DEMO_WINDOW = 6
 
@@ -214,15 +207,7 @@ def demo_column_instances(contract):
             properties = _column_properties([column], contract)
             if not properties:
                 continue
-            values = []
-            for row in table["rows"]:
-                if ci >= len(row) or row[ci] is None or not str(row[ci]).strip():
-                    continue
-                text = str(row[ci]).strip().replace("\n", " ")[:160]
-                if text not in values:
-                    values.append(text)
-                if len(values) == MAX_SAMPLE_VALUES:
-                    break
+            values = sample_values(row[ci] if ci < len(row) else None for row in table["rows"])
             if len(values) < 2:
                 continue
             instance = emit_instance(

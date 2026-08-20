@@ -165,11 +165,15 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         EVIDENCE — which schema.org properties fired to decode each column's family, and whether that family
         grounded to a world table — so the LEARNED world-grounding decision is auditable (take_typing)."""
         sig = self._table_sig(table)
-        cache = self.__dict__.setdefault("_route_cache", {})               # per-table routing cache: the router runs ONCE
-        tcache = self.__dict__.setdefault("_typing_cache", {})             # per-table typing evidence, keyed identically
-        if sig in cache:                                                   # per (schema,values), not on every query
-            self._emit_typing(tcache.get(sig, []))
-            return dict(cache[sig])
+        # ONE cache holding (routes, typing) together. Two dicts keyed by the same signature had to be
+        # written, read and purged in lockstep at three sites by discipline alone; any future writer that
+        # updated one and not the other would serve cached routes with stale or missing evidence, and no
+        # test would notice because the routing output would be unchanged.
+        cache = self.__dict__.setdefault("_route_cache", {})               # per (schema, values): router runs ONCE
+        if sig in cache:
+            routes, typing = cache[sig]
+            self._emit_typing(typing)
+            return dict(routes)
         routes, typing = {}, []
         if kb_model_route_enabled():
             try:
@@ -214,9 +218,8 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         for k, v in super().route(table).items():
             routes.setdefault(k, v)                                        # coverage fallback (never override the model)
         if len(cache) > 100:
-            cache.clear(); tcache.clear()
-        cache[sig] = dict(routes)
-        tcache[sig] = typing
+            cache.clear()
+        cache[sig] = (dict(routes), typing)
         self._emit_typing(typing)
         return routes
 

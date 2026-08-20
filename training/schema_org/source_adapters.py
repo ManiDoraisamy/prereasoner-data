@@ -7,13 +7,14 @@ facts into serving artifacts.
 from __future__ import annotations
 
 from collections import Counter
+import re
 from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
 from typing import Iterable
 
-from engine.schema_model import MAX_SAMPLE_VALUES
+from engine.schema_model import MAX_SAMPLE_VALUES, sample_values
 from engine.schema_org import SchemaContract, schema_uri
 from training.schema_org.instances import SemanticInstance
 
@@ -185,16 +186,7 @@ def _source_columns(mapping: SourceMapping, rows: list[dict], contract: SchemaCo
         tuple(c for c, _ in mapping.columns) + ((), mapping.text_columns)[not drop_text]
     ))
     for column in names:
-        values = []
-        for row in rows:
-            value = row.get(column)
-            if value is None or not str(value).strip():
-                continue
-            text = str(value).strip().replace("\n", " ")[:160]
-            if text not in values:
-                values.append(text)
-            if len(values) == MAX_SAMPLE_VALUES:
-                break
+        values = sample_values(row.get(column) for row in rows)
         if not values:
             continue
         uris = tuple(sorted({schema_uri(n) for n in declared.get(column, ())}
@@ -374,9 +366,9 @@ MAX_VALUES_PER_PROPERTY = 3
 MAX_FACETS = 3
 ENCODER_BUDGET_TOKENS = 112     # headroom under the encoder's max_len=128 (training AND serving)
 
-_QID = __import__("re").compile(r"^Q\d+$")
-_WD_TIME = __import__("re").compile(r"^([+-])(\d{4,})-(\d\d)-(\d\d)T")
-_WD_QUANTITY = __import__("re").compile(r"^[+-]\d+(\.\d+)?$")
+_QID = re.compile(r"^Q\d+$")
+_WD_TIME = re.compile(r"^([+-])(\d{4,})-(\d\d)-(\d\d)T")
+_WD_QUANTITY = re.compile(r"^[+-]\d+(\.\d+)?$")
 
 
 def _domain_ok(targets, classes, contract: SchemaContract) -> tuple[str, ...]:
@@ -696,14 +688,9 @@ def source_column_instances(cur, contract: SchemaContract, *, mappings=SOURCE_MA
                 targets = tuple(sorted({schema_uri(n) for n in properties} & set(contract.properties)))
                 if not targets:
                     continue
-                values = []
-                for row in group:
-                    value = row.get(column)
-                    if value is None or not str(value).strip():
-                        continue
-                    text = str(value).strip().replace("\n", " ")[:160]
-                    if text not in values:
-                        values.append(text)
+                # limit=len(group): a source COLUMN instance may show every row of its group, unlike a table
+                # summary which caps each column at MAX_SAMPLE_VALUES.
+                values = sample_values((row.get(column) for row in group), limit=len(group))
                 if len(values) < 2:
                     continue
                 instance = emit_instance(

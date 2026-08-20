@@ -109,7 +109,8 @@ def _determinism(fails):
     import subprocess
     import sys
     root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    env = {**os.environ, "PR_ROOT": root, "PYTHONHASHSEED": "0", "OMP_NUM_THREADS": "1"}
+    env = {**os.environ, "PR_ROOT": root, "PYTHONHASHSEED": "0",
+           "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}   # same pinning as test_routing.py
     outs = []
     for _ in range(2):
         proc = subprocess.run([sys.executable, "-c", _DET_SCRIPT], capture_output=True, text=True,
