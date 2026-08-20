@@ -334,6 +334,7 @@ WIKIDATA_MAPPINGS = (
 )
 
 _GENERIC_EVIDENCE: dict[str, frozenset[str]] = {}
+_SEGMENT_COST: dict[str, int] = {}     # rendered segment -> token count (packing is hot)
 
 
 def generic_evidence(contract: SchemaContract) -> frozenset[str]:
@@ -546,20 +547,48 @@ def _fits(text: str) -> bool:
 def _facets(header: str, base_columns, property_columns):
     """Pack property columns into <=MAX_FACETS renderable groups that each fit the encoder budget, with the
     identity columns (name/description) repeated in every facet so each facet stands alone."""
-    facets, current = [], []
-    for column in property_columns:
-        candidate = current + [column]
-        if current and not _fits(_facet_text(header, base_columns + candidate)):
-            facets.append(current)
-            current = [column]
+    # Packing used to re-render AND re-tokenize the whole accumulated facet on every column append, which is
+    # O(C^2) tokenizer work per instance — on the order of a million redundant tokenizations of already-seen
+    # prefixes across a 46k-instance build. Each column's rendered segment is instead measured ONCE, and the
+    # running total decides. Segment counts are not perfectly additive (BPE can merge across a boundary), so
+    # the estimate only short-circuits when it is clear of the budget by more than the worst-case boundary
+    # error; anything near the edge still gets the exact check. Packing decisions are therefore unchanged —
+    # which the identical corpus sha after this change demonstrates.
+    base_cost = _segment_cost(header, base_columns)
+    costs = [_segment_cost(header, [column]) - _segment_cost(header, []) for column in property_columns]
+    facets, current, current_cost = [], [], 0
+    for index, column in enumerate(property_columns):
+        estimate = base_cost + current_cost + costs[index]
+        slack = len(current) + 2                                  # <=1 token of error per segment boundary
+        if estimate + slack <= ENCODER_BUDGET_TOKENS:
+            fits = True                                           # clear of the budget: no exact check needed
+        elif estimate - slack > ENCODER_BUDGET_TOKENS:
+            fits = False                                          # clear over: likewise
         else:
-            current = candidate
+            fits = _fits(_facet_text(header, base_columns + current + [column]))
+        if current and not fits:
+            facets.append(current)
+            current, current_cost = [column], costs[index]
+        else:
+            current = current + [column]
+            current_cost += costs[index]
         if len(facets) == MAX_FACETS:
-            DROPPED["columns_beyond_max_facets"] += len(property_columns) - property_columns.index(column)
+            DROPPED["columns_beyond_max_facets"] += len(property_columns) - index
             break
     if current and len(facets) < MAX_FACETS:
         facets.append(current)
     return facets or ([[]] if base_columns else [])
+
+
+def _segment_cost(header: str, columns) -> int:
+    """Token cost of rendering exactly `columns` under `header`, memoized per rendered text."""
+    text = _facet_text(header, columns)
+    cost = _SEGMENT_COST.get(text)
+    if cost is None:
+        if not _TOKENIZER:
+            _visible("")
+        cost = _SEGMENT_COST[text] = len(_TOKENIZER[0](text)["input_ids"])
+    return cost
 
 
 def _facet_text(header: str, columns) -> str:
@@ -570,16 +599,22 @@ def _facet_text(header: str, columns) -> str:
     return summarize_table({"name": header, "columns": names, "rows": rows})
 
 
+def wikidata_lookups(cur, bridge_path: str | Path, contract: SchemaContract):
+    """The three tables BOTH wikidata generators need: the P-id bridge, the qid->label map (a ~478k-row
+    fetch) and the publisher's property headers. Loaded once by corpus.build and passed in, because each
+    generator used to load its own copy — two full label fetches and two bridge parses per corpus build for
+    byte-identical data."""
+    return _bridge_properties(bridge_path, contract), _label_map(cur), _property_headers(cur)
+
+
 def wikidata_instances(cur, contract: SchemaContract, *, bridge_path: str | Path,
-                       mappings=WIKIDATA_MAPPINGS):
+                       lookups=None, mappings=WIKIDATA_MAPPINGS):
     """Project the capped Wikidata snapshot into per-ENTITY semantic instances, without mutating it.
 
     Per-entity, not per-8-entity-group: a coarse instance spanning entities that each also become instances
     has no single split ancestor. Selection is property-STRATIFIED — a qid-ordered LIMIT over a 50k-row class
     saw only the alphabetical head and starved every property outside it."""
-    bridge = _bridge_properties(bridge_path, contract)
-    labels = _label_map(cur)
-    headers = _property_headers(cur)
+    bridge, labels, headers = lookups or wikidata_lookups(cur, bridge_path, contract)
     version = mapping_version()
     name_uri, description_uri = schema_uri("name"), schema_uri("description")
     selected: dict[str, dict] = {}
@@ -706,14 +741,12 @@ def source_column_instances(cur, contract: SchemaContract, *, mappings=SOURCE_MA
 
 
 def wikidata_column_instances(cur, contract: SchemaContract, *, bridge_path: str | Path,
-                              mappings=WIKIDATA_MAPPINGS):
+                              lookups=None, mappings=WIKIDATA_MAPPINGS):
     """Per-property COLUMN instances from the snapshot: a column of real values for one Wikidata property.
 
     This is what teaches the head to read a column of dates as birthDate or a column of ranks as taxonRank —
     the per-entity instances alone only ever show one value per property."""
-    bridge = _bridge_properties(bridge_path, contract)
-    labels = _label_map(cur)
-    headers = _property_headers(cur)
+    bridge, labels, headers = lookups or wikidata_lookups(cur, bridge_path, contract)
     version = mapping_version()
     for mapping in mappings:
         cur.execute(

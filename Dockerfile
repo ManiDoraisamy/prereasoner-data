@@ -9,7 +9,7 @@
 # drops pip's wheel/build leftovers and keeps a single apt layer out of the final image.
 #
 # Model weights (engine/data/encoder.pt, encoder_meta.pt, primitives.npz,
-# anchor_assignment.npz, qwen_lora/) are GITIGNORED: present in a full working copy,
+# anchor_assignment.npz, qwen_lora/, schema_property_head.pt) are GITIGNORED: present in a full working copy,
 # absent in a fresh clone/CI. `COPY engine/` succeeds either way, so the *build* never
 # fails on missing weights — instead the entrypoint checks for them at container START
 # and exits with a clear, actionable message. See engine/data/README.md.
@@ -79,7 +79,7 @@ COPY <<'EOF' /app/entrypoint.sh
 set -e
 DATA_DIR="${PREREASONER_DATA_DIR:-/app/engine/data}"
 missing=""
-for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora; do
+for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora schema_property_head.pt; do
     [ -e "$DATA_DIR/$f" ] || missing="$missing $f"
 done
 if [ -n "$missing" ]; then

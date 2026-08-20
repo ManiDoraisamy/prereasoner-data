@@ -23,7 +23,7 @@ from training.schema_org.source_adapters import (
     emit_instance,
     active_source_manifest, drop_counts, reset_drop_counts,
     source_column_instances, source_instances,
-    wikidata_column_instances, wikidata_instances,
+    wikidata_column_instances, wikidata_instances, wikidata_lookups,
 )
 
 
@@ -314,9 +314,11 @@ def build(*, corpus_path: str | Path = DEFAULT_CORPUS,
         bridge_path = Path("training/props/bridge_prop.csv")
         source = list(source_instances(cur, contract))
         source += list(source_column_instances(cur, contract))
-        wikidata = list(wikidata_instances(cur, contract, bridge_path=bridge_path))
+        lookups = wikidata_lookups(cur, bridge_path, contract)      # loaded ONCE for both generators
+        wikidata = list(wikidata_instances(cur, contract, bridge_path=bridge_path, lookups=lookups))
         wikidata = _pin_wikidata(wikidata)
-        wikidata += list(wikidata_column_instances(cur, contract, bridge_path=bridge_path))
+        wikidata += list(wikidata_column_instances(cur, contract, bridge_path=bridge_path,
+                                                   lookups=lookups))
         source_manifest = active_source_manifest(cur)
     finally:
         cur.close()

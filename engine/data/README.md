@@ -54,10 +54,12 @@ writer of these three files. Training itself writes candidates to
 
 `schema_property_model.json`, `schema_class_signatures.json` and `schema_org_v30.json` are **committed**
 and their hashes recorded under `committed_artifacts` in `weights_manifest.json` — they travel with the
-source. `schema_property_head.pt` is **gitignored** (`engine/data/*.pt`) and is not in the weights repo, so
-it is the one bundle artifact that cannot reach a fresh clone, CI or a deploy; it is recorded under
-`pending_publication` and is absent from the Dockerfile's required-artifact assertion.
+source. `schema_property_head.pt` is **gitignored** (`engine/data/*.pt`) and, like every other weight, is
+**published to the weights repo and pinned by sha256 in the `files` map**, so `python -m
+engine.fetch_weights` retrieves it and `validate_weight_bundle` verifies it. It is also in the Dockerfile's
+required-artifact assertion, so a container that somehow lacks it fails at start rather than serving
+silently degraded.
 
-Consequence when the head is missing: `SchemaInterpreter` fails to construct, `engine/knowledge_query` logs
-the failure loudly and serves without class evidence, and answers are unaffected. That degradation is the
-contract, so `tests/test_route_wired.py` asserts the class evidence only when the head is actually present.
+A working copy that has not fetched weights still degrades safely rather than crashing:
+`SchemaInterpreter` fails to construct, `engine/knowledge_query` logs it loudly, and answers are unaffected
+— which is why `tests/test_route_wired.py` asserts the class evidence only when the head is present.

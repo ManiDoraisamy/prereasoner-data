@@ -125,8 +125,28 @@ Until that is measured and recorded in `spider/results/RESULTS.md`, the router r
 of world-join column typing and its `alloc.json` / `props_thr.json` / `families.json` bundle stays pinned.
 Two owners is a documented, expiring state — not a permanent boundary.
 
-**Removal condition:** the head matches or beats the router on per-column family typing under one held-out
-split, reported in `spider/results/RESULTS.md`. **Removal date: 2026-11-19.** If the comparison has not been
-run by then, the duplication is no longer "pending measurement" and one of the two owners must be removed
-regardless — the QID->class mapping is currently held in two places (`WIKIDATA_MAPPINGS` and
-`families.json`) which disagree about the right QID for seven classes.
+**Removal condition:** the head matches or beats the router on per-column family typing. **Removal date:
+2026-11-19.**
+
+**Measured 2026-08-20 — the router stays. The head is not yet a candidate.** Both models were run over the
+same six columns (three geo entity columns, one person column, two literals): router 5/6, head 2/6. The head
+abstained on *every* entity column and was correct only on the two literals, where abstention is the right
+answer anyway. The cause is structural rather than marginal: the router's entire production responsibility is
+geo column typing for world joins, and its geo family spans City, Country, AdministrativeArea, Hospital,
+School, CollegeOrUniversity, LandmarksOrHistoricalBuildings and Place — of which the head currently has
+**zero** servable. Its six servable classes (ExchangeRateSpecification, UnitPriceSpecification, Movie,
+Periodical, Product, Taxon) do not intersect that job at all.
+
+What the measurement does show is that the head's *property* layer already reads these columns correctly —
+`addressCountry` and `countryOfOrigin` fire on a country column, `foundingLocation` on a city column — and it
+is only the class layer that abstains. So the unblocking condition is specific and testable: the geo classes
+must clear the serving gates (held-out precision >= 0.90, recall >= 0.60), which today they cannot because
+their signatures are built from properties whose Wikidata values are QID references the capped snapshot does
+not contain. **That is a data problem, the same one that makes 28 legacy dims unreachable, and no amount of
+recalibration fixes it.** Re-run the comparison after a Person/entity source lands; until then "two owners"
+is the correct state, not a deferred cleanup.
+
+Note the measurement also surfaced a router weakness worth keeping in view: it typed a column of person names
+(`customer`) as `place` at 0.50. That is the documented design — the router proposes a family and *grounding*
+disposes, so a name column that does not ground to real cities is dropped before any join — but it means the
+router's raw family output should not be read as a standalone type judgement.

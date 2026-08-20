@@ -19,17 +19,10 @@
     "encoder_meta.pt": "0ce503fd3939bf402da992ba05d4605072d08f24f21788a08316809480f3a5cb",
     "primitives.npz": "2daecaa89b465dafd65a22427ca144a97018d82a9bf192120bfef5e5366d7ebc",
     "qwen_lora/adapter_config.json": "9e9d1bb22602d4cb1a01b48af9d8ecb460a6c3dfe1320f6840727bdfb086e266",
-    "qwen_lora/adapter_model.safetensors": "1ef13f8bf69b6e51d6e2a61d7170a82f32bb6cfb393e7542d28b7bb447c51ce4"
-  },
-  "pending_publication": {
-    "schema_property_head.pt": {
-      "consequence": "engine/schema_model.SchemaInterpreter fails to construct, engine/knowledge_query logs the failure and serves WITHOUT class evidence; answers are unaffected",
-      "produced_by": "training/schema_org/train_property_head.py -> promote.py",
-      "status": "gitignored (engine/data/*.pt) and NOT in the weights repo \u2014 the ONLY bundle artifact that cannot reach a fresh clone, CI or a deploy",
-      "to_publish": "upload to the weights repo, move this entry into `files` with its sha256, bump `revision`, and add it to the Dockerfile required-artifact list so a deploy fails loudly rather than silently degrading"
-    }
+    "qwen_lora/adapter_model.safetensors": "1ef13f8bf69b6e51d6e2a61d7170a82f32bb6cfb393e7542d28b7bb447c51ce4",
+    "schema_property_head.pt": "a7eb4bc295a3bc1a3d8b773925a323099828b471f2317f49e02644fc42fe30e5"
   },
   "repository": "prereasoner/prereasoner-weights",
-  "revision": "4ba037a642aa0dc332f7b0084ca8d95a0f882a93",
+  "revision": "9c3d65b9924ee5f35b2d821ac8fbfe85b0f102b6",
   "version": 1
 }
