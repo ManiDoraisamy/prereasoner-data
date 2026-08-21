@@ -64,10 +64,7 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
         if j.get("conversation_id"):
             out["conversation_id"] = j["conversation_id"]    # so the orchestrator reuses ONE conversation for the whole session (no per-call minting)
     elif status == "clarify":
-        # `unmet` carries WHY the requirement could not be met (which rate is missing, which exist).
-        # Without it the orchestrator sees only a rephrasing and must guess the reason — exactly the
-        # guessing the clarify channel exists to prevent.
-        out["clarify"] = {k: j.get(k) for k in ("proposed", "dropped", "bindings", "original_sql", "unmet")
+        out["clarify"] = {k: j.get(k) for k in ("proposed", "dropped", "bindings", "original_sql")
                           if j.get(k) is not None}
         out["trace"] = {"jobId": job_id}
         if j.get("conversation_id"):

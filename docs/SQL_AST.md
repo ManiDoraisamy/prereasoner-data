@@ -171,11 +171,6 @@ declines through the clarify channel instead of returning a number that answers 
 A question stating no requirement is unaffected, so candidate ordering — and therefore Spider — is
 unchanged.
 
-Whatever the engine proposes must itself be answerable. `available` is therefore derived from
-`currency_rate_bindings` — the same eligibility rule the binder uses — and not from a looser scan for
-`rate_to_*` columns: an unjoinable sheet carrying `rate_to_eur` would otherwise be advertised as
-available, and the proposed euro question would decline in turn.
-
 The mechanism is scenario-agnostic by construction: the serving gate reads `name`, `detail`,
 `available`, and `proposal` without knowing what the requirement is about, so a future producer
 inherits the decline without touching the gate. Currency conversion is the only producer today, and
