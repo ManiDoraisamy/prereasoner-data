@@ -809,24 +809,6 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         # to EncoderQuery's metric-space operator via MRO.
         res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
                                 explicit_fks=explicit_fks)
-        # Clarify gate (REQUIREMENT): the question stated something the answer MUST realize and NO candidate in the
-        # pool could realize it, so the attached data cannot supply it. Distinct from the COVERAGE gate below in both
-        # confidence and meaning: coverage acts on the model's SUB-THRESHOLD signals ("I am not sure which column you
-        # meant"), whereas this fires on a fully parsed requirement checked against the whole candidate pool ("I know
-        # exactly what you asked for and the data cannot answer it"). Returning the best available number here would
-        # answer a DIFFERENT question — the unconverted total is not the total in euros — so it declines instead.
-        # Deliberately outside the `if schema:` guard: this is a statement about the uploaded data, not the world path.
-        unmet = (res or {}).get("unmet") or []
-        if unmet:
-            requirement = unmet[0]
-            return {"question": question, "as_of": as_of, "clarify": True,
-                    "original_sql": (res or {}).get("sql"),
-                    "proposed": requirement.get("proposal") or "",
-                    "bindings": [{"token": requirement.get("requested", ""), "kind": requirement.get("name", ""),
-                                  "target": requirement.get("detail", ""),
-                                  "available": requirement.get("available", [])}],
-                    "dropped": [requirement.get("requested", "")], "unmet": unmet,
-                    "model": "engine - clarify (the data cannot supply what the question requires)"}
         # Clarify gate (COVERAGE): if the query silently DROPPED part of the question — a degenerate SELECT *
         # ('German sales'), OR a measure word with no aggregate ('French sales' -> SELECT name WHERE France) — offer
         # a best-guess unambiguous rephrasing (from the model's sub-threshold signals) for the user to confirm,

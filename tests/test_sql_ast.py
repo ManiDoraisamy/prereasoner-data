@@ -40,7 +40,6 @@ from engine.sql_rank import (
     SemanticSignals,
     analyze_question,
     execute_and_rerank,
-    unmet_requirements,
 )
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
@@ -363,57 +362,6 @@ def test_planner_emits_currency_conversion_when_requested():
     # no currency/convert cue -> raw sum wins; the arithmetic conversion must NOT appear (no false positive)
     plain = best("total order amount", [orders, fx], fks)
     assert "rate_to_usd" not in plain.sql and "*" not in plain.sql, plain.sql
-
-
-def test_unsatisfiable_conversion_is_an_unmet_requirement_not_a_wrong_number():
-    # Regression: "total order amount in euros" against a USD-only rate sheet returned the raw
-    # mixed-currency SUM (9235 on the shipped demo) as if it were the euro total. The ranker already
-    # KNEW -- it scored the served candidate -8.0 for failing rate_to_eur -- but a penalty applied to
-    # every candidate cancels out and tables.py serves candidates[0] unconditionally. The judgement is
-    # now a Requirement the serving layer can act on.
-    orders = {"name": "orders", "columns": ["currency", "amount"],
-              "rows": [["EUR", 310], ["GBP", 100], ["USD", 95]]}
-    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
-          "rows": [["EUR", 1.5], ["GBP", 2.0], ["USD", 1.0]]}
-    fks = [{"from_table": "orders", "from_col": "currency", "to_table": "fx", "to_col": "currency_code"}]
-
-    unmet = unmet_requirements(SQLSearcher.from_tables([orders, fx], fks).search(
-        "total order amount in euros"))
-    assert len(unmet) == 1, unmet
-    assert unmet[0].name == "currency_conversion" and unmet[0].detail == "rate_to_eur", unmet[0]
-    assert unmet[0].requested == "EUR" and unmet[0].available == ("USD",), unmet[0]
-    # the proposal must KEEP the conversion; proposing the bare total would bless the original bug
-    assert unmet[0].proposal == "total order amount in US dollars", unmet[0].proposal
-
-    # CUE ABSENT: no requirement is stated, so nothing may decline. This is the contrastive case that
-    # keeps the gate from swallowing every question that merely aggregates.
-    assert unmet_requirements(SQLSearcher.from_tables([orders, fx], fks).search(
-        "total order amount")) == ()
-
-    # CUE SATISFIED: a target the sheet can supply must answer, not decline.
-    assert unmet_requirements(SQLSearcher.from_tables([orders, fx], fks).search(
-        "total order amount in US dollars")) == ()
-
-
-def test_unmet_requirement_is_pool_aware_not_top_candidate_only():
-    # A requirement the TOP candidate misses but some other candidate satisfies is a ranking miss, not
-    # a statement about the data: serve the better candidate rather than declining. Only a requirement
-    # no candidate can satisfy means the data cannot supply it.
-    orders = {"name": "orders", "columns": ["currency", "amount"],
-              "rows": [["EUR", 310], ["GBP", 100], ["USD", 95]]}
-    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd", "rate_to_eur"],
-          "rows": [["EUR", 1.5, 1.0], ["GBP", 2.0, 1.3], ["USD", 1.0, 0.9]]}
-    fks = [{"from_table": "orders", "from_col": "currency", "to_table": "fx", "to_col": "currency_code"}]
-    candidates = SQLSearcher.from_tables([orders, fx], fks).search("total order amount in euros")
-    assert any(not requirement.satisfied
-               for candidate in candidates for requirement in candidate.requirements), \
-        "expected some candidate to miss the conversion, else the test proves nothing"
-    assert unmet_requirements(candidates) == (), "a satisfiable target must not decline"
-    # and a target NO column supports still declines over the very same two-rate sheet
-    gbp = unmet_requirements(SQLSearcher.from_tables([orders, fx], fks).search(
-        "convert total order amount into British pounds"))
-    assert len(gbp) == 1 and gbp[0].detail == "rate_to_gbp", gbp
-    assert gbp[0].available == ("EUR", "USD"), gbp[0]
 
 
 def test_planner_discovers_and_executes_same_name_currency_edge():
@@ -1531,30 +1479,27 @@ def test_shared_spider_evaluation_contract():
     }]
 
 
-class HermeticTableQuery(TableQuery):
-    """TableQuery.serve without the encoder: real ingest, real planner, real envelope, zeroed qvecs."""
-
-    def schema(self, tables, fks):
-        columns = []
-        index = 0
-        for table in tables:
-            for name in table["columns"]:
-                values = [row[table["columns"].index(name)] for row in table["rows"]]
-                numeric = values and all(isinstance(value, (int, float)) for value in values)
-                columns.append({
-                    "table": table["name"], "name": name, "idx": index,
-                    "struct": set(), "affinity": "INTEGER" if numeric else "TEXT",
-                    "ace": [], "is_date": False,
-                    "qvec": np.zeros(2, dtype=np.float32), "values": values,
-                })
-                index += 1
-        return columns, {}, {table["name"]: table for table in tables}
-
-    def ast_semantic_signals(self, question, sch):
-        return SemanticSignals.empty()
-
-
 def test_live_table_query_ast_mode_executes_typed_candidate():
+    class HermeticTableQuery(TableQuery):
+        def schema(self, tables, fks):
+            columns = []
+            index = 0
+            for table in tables:
+                for name in table["columns"]:
+                    values = [row[table["columns"].index(name)] for row in table["rows"]]
+                    numeric = values and all(isinstance(value, (int, float)) for value in values)
+                    columns.append({
+                        "table": table["name"], "name": name, "idx": index,
+                        "struct": set(), "affinity": "INTEGER" if numeric else "TEXT",
+                        "ace": [], "is_date": False,
+                        "qvec": np.zeros(2, dtype=np.float32), "values": values,
+                    })
+                    index += 1
+            return columns, {}, {table["name"]: table for table in tables}
+
+        def ast_semantic_signals(self, question, sch):
+            return SemanticSignals.empty()
+
     response = HermeticTableQuery().serve([PEOPLE], "list person names")
     assert response["valid"] is True
     assert response["error"] is None
@@ -1565,28 +1510,6 @@ def test_live_table_query_ast_mode_executes_typed_candidate():
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
-
-
-def test_serving_envelope_carries_the_unmet_requirement():
-    # The gate in knowledge_query reads res["unmet"], so the requirement has to survive the envelope.
-    # Without this the decline is unreachable in production no matter how correct the ranker is.
-    orders = {"name": "orders", "columns": ["currency", "amount"],
-              "rows": [["EUR", 310], ["GBP", 100], ["USD", 95]]}
-    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
-          "rows": [["EUR", 1.5], ["GBP", 2.0], ["USD", 1.0]]}
-    fks = [{"from_table": "orders", "from_col": "currency", "to_table": "fx", "to_col": "currency_code"}]
-
-    declined = HermeticTableQuery().serve([orders, fx], "total order amount in euros", explicit_fks=fks)
-    assert len(declined["unmet"]) == 1, declined["unmet"]
-    assert declined["unmet"][0]["detail"] == "rate_to_eur", declined["unmet"]
-    assert declined["unmet"][0]["available"] == ["USD"], declined["unmet"]
-    assert declined["unmet"][0]["proposal"] == "total order amount in US dollars", declined["unmet"]
-    # the wrong number is still computed and returned in the envelope; the gate is what withholds it,
-    # so the trace panel can still show WHAT was declined
-    assert declined["sql"], declined
-
-    answered = HermeticTableQuery().serve([orders, fx], "total order amount", explicit_fks=fks)
-    assert answered["unmet"] == [], answered["unmet"]
 
 
 def test_weight_manifest_detects_tampered_bundle():
@@ -1903,9 +1826,6 @@ TESTS = [
     test_ast_failure_profiles_share_structural_and_schema_vocabulary,
     test_ast_failure_profiles_align_spider_and_typed_joins,
     test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks,
-    test_unsatisfiable_conversion_is_an_unmet_requirement_not_a_wrong_number,
-    test_unmet_requirement_is_pool_aware_not_top_candidate_only,
-    test_serving_envelope_carries_the_unmet_requirement,
 ]
 
 
