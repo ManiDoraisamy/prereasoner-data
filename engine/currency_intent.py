@@ -57,18 +57,44 @@ def currency_rate_target(column_name: str) -> str | None:
     NOT restricted to the codes this module can parse out of a question: a ``rate_to_jpy`` column
     still names a conversion, and a candidate that performs one nobody asked for must stay
     penalizable. Callers that need a code the engine can also *talk* about use
-    :func:`supported_currency_targets`.
+    :func:`currency_rate_bindings`.
     """
     match = re.fullmatch(r"rate_to_([a-z]{3})", str(column_name).strip().lower())
     return match.group(1).upper() if match is not None else None
 
 
-def supported_currency_targets(column_names: Iterable[str]) -> frozenset[str]:
-    """Codes these columns can convert into AND the engine can name in a proposed question."""
-    return frozenset(
-        code for code in (currency_rate_target(name) for name in column_names)
-        if code in _CURRENCY_PHRASES
-    )
+def currency_rate_bindings(
+    source_table: str,
+    edges: Iterable[tuple[str, str, str, str]],
+    numeric_columns: Iterable[tuple[str, str]],
+) -> dict[str, tuple[str, str]]:
+    """Every target ``source_table`` can be converted into, under the SAME eligibility rule.
+
+    Availability and binding must be decided by one rule. Deriving "what could this data convert to"
+    from a looser test — say, any ``rate_to_*`` column anywhere in the schema — lets the engine offer
+    the user a rephrasing the binder then rejects, so the proposed question declines in turn.
+    """
+    # Column headers keep the case the user uploaded — engine.tables normalizes TABLE names, not columns —
+    # while the synthesized rate column is lowercase. Comparing them exactly meant an FX sheet headed
+    # `Rate_To_USD` bound nothing, and "total amount in US dollars" answered with the UNCONVERTED sum: a
+    # wrong number, silently, with no clarify. Match case-insensitively but return the column as the schema
+    # actually spells it, so the rendered SQL references a real identifier.
+    numeric = {(table, str(column).lower()): (table, column) for table, column in numeric_columns}
+    reference_tables = {
+        to_table
+        for from_table, from_column, to_table, to_column in edges
+        if from_table == source_table
+        and is_currency_source_column(from_column)
+        and is_currency_reference_key(to_column)
+    }
+    bindings = {}
+    for code in _CURRENCY_ALIASES:
+        rate_column = currency_rate_attribute(code)
+        matches = {numeric[(table, rate_column)]
+                   for table in reference_tables if (table, rate_column) in numeric}
+        if len(matches) == 1:
+            bindings[code] = next(iter(matches))
+    return bindings
 
 
 def substitute_currency_target(question: str, code: str) -> str | None:
@@ -115,22 +141,7 @@ def currency_rate_binding(
     target = currency_conversion_target(question)
     if target is None:
         return None
-    rate_column = currency_rate_attribute(target)
-    # Column headers keep the case the user uploaded — engine.tables normalizes TABLE names, not columns —
-    # while `rate_column` is synthesized lowercase. Comparing them exactly meant an FX sheet headed
-    # `Rate_To_USD` bound nothing, and "total amount in US dollars" answered with the UNCONVERTED sum: a
-    # wrong number, silently, with no clarify. Match case-insensitively but return the column as the schema
-    # actually spells it, so the rendered SQL references a real identifier.
-    numeric = {(table, str(column).lower()): (table, column) for table, column in numeric_columns}
-    matches = {
-        numeric[(to_table, rate_column)]
-        for from_table, from_column, to_table, to_column in edges
-        if from_table == source_table
-        and is_currency_source_column(from_column)
-        and is_currency_reference_key(to_column)
-        and (to_table, rate_column) in numeric
-    }
-    return next(iter(matches)) if len(matches) == 1 else None
+    return currency_rate_bindings(source_table, edges, numeric_columns).get(target)
 
 
 def currency_conversion_words(target: str) -> frozenset[str]:

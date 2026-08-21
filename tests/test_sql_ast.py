@@ -416,6 +416,36 @@ def test_unmet_requirement_is_pool_aware_not_top_candidate_only():
     assert gbp[0].available == ("EUR", "USD"), gbp[0]
 
 
+def test_every_proposal_the_engine_offers_is_itself_answerable():
+    # Regression: `available` was read off any rate_to_* column ANYWHERE in the schema, while BINDING
+    # additionally requires a currency edge from the measure table. An unrelated sheet carrying
+    # rate_to_eur therefore made the engine propose "…in euros", which declined in turn and proposed
+    # something else — a loop of unanswerable suggestions. Availability and binding now share one rule
+    # (currency_rate_bindings), so this asserts the invariant rather than the single case: whatever the
+    # engine offers, running it must not decline again.
+    orders = {"name": "orders", "columns": ["currency", "amount"],
+              "rows": [["EUR", 310], ["GBP", 100], ["USD", 95]]}
+    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
+          "rows": [["EUR", 1.5], ["GBP", 2.0], ["USD", 1.0]]}
+    # carries rate_to_eur but has NO currency edge from orders — it can never satisfy a conversion
+    orphan = {"name": "legacy_archive", "columns": ["archive_id", "rate_to_eur"],
+              "rows": [["a1", 0.9], ["a2", 0.95]]}
+    fks = [{"from_table": "orders", "from_col": "currency", "to_table": "fx", "to_col": "currency_code"}]
+    tables = [orders, fx, orphan]
+
+    unmet = unmet_requirements(SQLSearcher.from_tables(tables, fks).search(
+        "total order amount in British pounds"))
+    assert len(unmet) == 1, unmet
+    assert unmet[0].available == ("USD",), \
+        f"an unjoinable rate_to_eur must not be advertised as available: {unmet[0].available}"
+
+    # the invariant: follow the proposal and it must ANSWER, not decline again
+    proposal = unmet[0].proposal
+    assert proposal, "a decline with a usable alternative must offer it"
+    assert unmet_requirements(SQLSearcher.from_tables(tables, fks).search(proposal)) == (), \
+        f"the engine proposed {proposal!r}, which itself declines"
+
+
 def test_planner_discovers_and_executes_same_name_currency_edge():
     orders = {"name": "orders", "columns": ["currency", "amount"],
               "rows": [["EUR", 520], ["EUR", 450], ["GBP", 100]]}
@@ -1906,6 +1936,7 @@ TESTS = [
     test_unsatisfiable_conversion_is_an_unmet_requirement_not_a_wrong_number,
     test_unmet_requirement_is_pool_aware_not_top_candidate_only,
     test_serving_envelope_carries_the_unmet_requirement,
+    test_every_proposal_the_engine_offers_is_itself_answerable,
 ]
 
 

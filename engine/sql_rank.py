@@ -15,8 +15,8 @@ from engine.currency_intent import (
     currency_conversion_target,
     currency_rate_attribute,
     currency_rate_target,
+    currency_rate_bindings,
     substitute_currency_target,
-    supported_currency_targets,
 )
 from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Comparison, Query, SelectQuery, SetQuery
 from engine.sql_candidate import Requirement, ScoredQuery
@@ -133,7 +133,19 @@ def requirements_for(question: str, query: Query, roles: QuestionRoles,
     requested = currency_conversion_target(roles.tokens)
     if requested is None:
         return ()
-    available = supported_currency_targets(column.ref.name for column in schema.columns)
+    # What this data can ACTUALLY convert this candidate's measure table into, decided by the same
+    # binder the planner uses. Reading it off "any rate_to_* column in the schema" instead was a real
+    # defect: an unjoinable sheet carrying rate_to_eur made the engine propose a euro question that
+    # then declined in turn, leaving the user in a loop of unanswerable suggestions.
+    source_table = query.from_table if isinstance(query.from_table, str) else None
+    available = frozenset(currency_rate_bindings(
+        source_table,
+        ((foreign_key.from_column.table, foreign_key.from_column.name,
+          foreign_key.to_column.table, foreign_key.to_column.name)
+         for foreign_key in schema.foreign_keys),
+        ((column.ref.table, column.ref.name)
+         for column in schema.columns if column.ref.type.numeric),
+    )) if source_table else frozenset()
     # Alphabetical is an arbitrary but EXPLICIT tie-break, as ranking determinism requires; any rule
     # is fine here as long as the same schema always proposes the same alternative.
     alternative = min(available - {requested}, default="")
