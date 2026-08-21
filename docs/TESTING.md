@@ -20,6 +20,7 @@ python -m regress.source_activation
 node --check web/public/lib/workbook.js
 node web/tests/home_demo.test.js
 node web/tests/workbook_reference.test.js
+node web/tests/clarify_fallback.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server regress
 git diff --check
 ```
@@ -102,7 +103,12 @@ The workbook reference tests run in a Node VM with a minimal browser/Firebase ha
 
 ```powershell
 node web/tests/workbook_reference.test.js
+node web/tests/clarify_fallback.test.js
 ```
+
+`clarify_fallback.test.js` pins the text shown when `/api/converse` is unavailable: an unmet
+requirement must name the missing rate and what the data does carry, never the generic "couldn't map
+that to a query" line, which would be false for a question the engine understood.
 
 They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, and snapshot restoration. Run
 `node --check` on every changed JavaScript file as well.

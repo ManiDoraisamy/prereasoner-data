@@ -468,6 +468,7 @@ class KnowledgeTableQuery:
                  if explicit_fks else self.q11.serve(tables, question))
             return {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
                     "error": r.get("error"), "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()},
+                    "unmet": r.get("unmet", []),         # forwarded so the requirement gate can decline
                     "dims": coldims, "meaning_join": None, "provenance": None, "warnings": [],
                     "planner": {
                         "ast": r.get("ast"),

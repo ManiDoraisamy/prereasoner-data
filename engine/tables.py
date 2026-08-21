@@ -501,6 +501,8 @@ class TableQuery:
 
     def serve(self, tables, question, explicit_fks=()):
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
+        from engine.sql_rank import unmet_requirements
+
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
         try:
@@ -517,6 +519,14 @@ class TableQuery:
             "valid": candidate is not None and err is None,
             "error": err,
             "result": result,
+            # Hard requirements the question stated that NO candidate could satisfy. The number below
+            # answers a different question than the one asked, so serving declines on this rather
+            # than presenting it. Empty for every question that states no requirement.
+            "unmet": [{"name": requirement.name, "detail": requirement.detail,
+                       "requested": requirement.requested,
+                       "available": list(requirement.available),
+                       "proposal": requirement.proposal}
+                      for requirement in unmet_requirements(candidates)],
             "tables": [{
                 "name": table["name"], "columns": table["columns"],
                 "n_rows": len(table["rows"]), "dropped": table.get("_dedup_dropped", 0),

@@ -11,9 +11,15 @@ import math
 import re
 from typing import Any, Callable, Mapping, Sequence
 
-from engine.currency_intent import currency_conversion_target, currency_rate_attribute
+from engine.currency_intent import (
+    currency_conversion_target,
+    currency_rate_attribute,
+    currency_rate_target,
+    substitute_currency_target,
+    supported_currency_targets,
+)
 from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Comparison, Query, SelectQuery, SetQuery
-from engine.sql_candidate import ScoredQuery
+from engine.sql_candidate import Requirement, ScoredQuery
 from engine.sql_schema import SchemaGraph
 
 
@@ -107,10 +113,65 @@ def _conversion_targets(query: SelectQuery) -> frozenset[str]:
         for side in (expression.operand.left, expression.operand.right):
             if not isinstance(side, ColumnRef):
                 continue
-            match = re.fullmatch(r"rate_to_([a-z]{3})", side.name.lower())
-            if match is not None:
-                targets.add(match.group(1).upper())
+            target = currency_rate_target(side.name)
+            if target is not None:
+                targets.add(target)
     return frozenset(targets)
+
+
+def requirements_for(question: str, query: Query, roles: QuestionRoles,
+                     schema: SchemaGraph) -> tuple[Requirement, ...]:
+    """Hard requirements this question states, and whether ``query`` satisfies each.
+
+    The ONE definition of what a requirement is. The ranker turns these into scoring features and
+    serving turns the unsatisfied ones into a decline, so a candidate's score and the decision to
+    show it cannot drift apart. Currency conversion is the only producer today; adding another means
+    returning another Requirement here, with no change to the ranker or the serving gate.
+    """
+    if not isinstance(query, SelectQuery):
+        return ()
+    requested = currency_conversion_target(roles.tokens)
+    if requested is None:
+        return ()
+    available = supported_currency_targets(column.ref.name for column in schema.columns)
+    # Alphabetical is an arbitrary but EXPLICIT tie-break, as ranking determinism requires; any rule
+    # is fine here as long as the same schema always proposes the same alternative.
+    alternative = min(available - {requested}, default="")
+    proposal = substitute_currency_target(question, alternative) or "" if alternative else ""
+    return (
+        Requirement(
+            name="currency_conversion",
+            detail=currency_rate_attribute(requested),
+            satisfied=requested in _conversion_targets(query),
+            requested=requested,
+            available=tuple(sorted(available)),
+            proposal=proposal,
+        ),
+    )
+
+
+def unmet_requirements(candidates: Sequence[ScoredQuery]) -> tuple[Requirement, ...]:
+    """Requirements NO candidate in the pool satisfies — i.e. the attached data cannot supply them.
+
+    Pool-aware on purpose. A requirement unmet by the top candidate ALONE is a ranking miss, and the
+    right response is to serve the candidate that does satisfy it. A requirement unmet by EVERY
+    candidate is a statement about the data rather than about the ranking, and that is the only case
+    where declining is better than answering.
+    """
+    satisfiable = {
+        requirement.name
+        for candidate in candidates
+        for requirement in candidate.requirements
+        if requirement.satisfied
+    }
+    unmet, seen = [], set()
+    for candidate in candidates:
+        for requirement in candidate.requirements:
+            if requirement.name in satisfiable or requirement.name in seen:
+                continue
+            seen.add(requirement.name)
+            unmet.append(requirement)
+    return tuple(unmet)
 
 
 class CandidateRanker:
@@ -122,11 +183,13 @@ class CandidateRanker:
         roles = analyze_question(question, self.schema)
         ranked = []
         for candidate in candidates:
-            features = self._semantic_features(candidate.query, roles)
+            requirements = requirements_for(question, candidate.query, roles, self.schema)
+            features = self._semantic_features(candidate.query, roles, requirements)
             score = candidate.score + sum(value for _, value in features)
             evidence = candidate.evidence + tuple(f"rank:{name}={value:+.3f}" for name, value in features if value)
             ranked.append(replace(candidate, score=score, evidence=evidence,
-                                  features=candidate.features + features))
+                                  features=candidate.features + features,
+                                  requirements=candidate.requirements + requirements))
         return sorted(ranked, key=lambda candidate: (-candidate.score, candidate.sql))
 
     def rank_executions(self, question: str, executions: Sequence[ExecutedCandidate]) -> list[ExecutedCandidate]:
@@ -143,7 +206,8 @@ class CandidateRanker:
             ranked.append(replace(execution, candidate=candidate))
         return sorted(ranked, key=lambda item: (-item.candidate.score, item.candidate.sql))
 
-    def _semantic_features(self, query: Query, roles: QuestionRoles) -> tuple[tuple[str, float], ...]:
+    def _semantic_features(self, query: Query, roles: QuestionRoles,
+                           requirements: tuple[Requirement, ...] = ()) -> tuple[tuple[str, float], ...]:
         if isinstance(query, SetQuery):
             if query.operator == "INTERSECT":
                 aligned = "both" in roles.tokens or "and" in roles.tokens
@@ -151,6 +215,7 @@ class CandidateRanker:
                 aligned = "either" in roles.tokens or "or" in roles.tokens
             else:
                 aligned = bool(set(roles.tokens) & {"except", "without", "no", "not", "never"})
+            # Requirements are stated about the whole question, not a branch of a set operation.
             left = self._semantic_features(query.left, roles)
             right = self._semantic_features(query.right, roles)
             return (
@@ -244,12 +309,12 @@ class CandidateRanker:
         # Other arithmetic aggregates (for example quantity * price) are unrelated.
         requested_target = currency_conversion_target(roles.tokens)
         conversion_targets = _conversion_targets(query)
+        # A stated requirement scores as a HARD one: same magnitude as before, but read off the same
+        # record serving uses to decline, so the number shown and the reason it was shown agree.
+        for requirement in requirements:
+            features.append((f"requires:{requirement.name}:{requirement.detail}",
+                             8.0 if requirement.satisfied else -8.0))
         if requested_target is not None:
-            expected_rate = currency_rate_attribute(requested_target)
-            features.append((
-                f"currency_conversion:{expected_rate}",
-                8.0 if requested_target in conversion_targets else -8.0,
-            ))
             if conversion_targets - {requested_target}:
                 features.append(("currency_conversion_wrong_target", -12.0))
         elif conversion_targets:

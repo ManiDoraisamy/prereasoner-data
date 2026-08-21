@@ -9,6 +9,9 @@ _CURRENCY_ALIASES = {
     "EUR": (r"eur", r"euros?"),
     "GBP": (r"gbp", r"pounds?\s+sterling", r"british\s+pounds?"),
 }
+# The phrase used when the engine writes a currency back into a question it proposes to the user.
+# Rendering a bare ISO code there reads like an error message, not like a question a person would ask.
+_CURRENCY_PHRASES = {"USD": "US dollars", "EUR": "euros", "GBP": "British pounds"}
 _CURRENCY_TARGET = re.compile(
     r"\b(?:in|into|to)\s+(?:the\s+)?(?P<target>"
     + "|".join(alias for aliases in _CURRENCY_ALIASES.values() for alias in aliases)
@@ -44,6 +47,46 @@ def currency_rate_attribute(target: str) -> str:
     if code not in _CURRENCY_ALIASES:
         raise ValueError(f"unsupported currency target: {target!r}")
     return f"rate_to_{code.lower()}"
+
+
+def currency_rate_target(column_name: str) -> str | None:
+    """Inverse of :func:`currency_rate_attribute`: the code a direct-rate column converts into.
+
+    The ``rate_to_<code>`` convention is written in one place and read in several, so the parse lives
+    next to the constructor rather than being re-expressed as a regex at each reader. Deliberately
+    NOT restricted to the codes this module can parse out of a question: a ``rate_to_jpy`` column
+    still names a conversion, and a candidate that performs one nobody asked for must stay
+    penalizable. Callers that need a code the engine can also *talk* about use
+    :func:`supported_currency_targets`.
+    """
+    match = re.fullmatch(r"rate_to_([a-z]{3})", str(column_name).strip().lower())
+    return match.group(1).upper() if match is not None else None
+
+
+def supported_currency_targets(column_names: Iterable[str]) -> frozenset[str]:
+    """Codes these columns can convert into AND the engine can name in a proposed question."""
+    return frozenset(
+        code for code in (currency_rate_target(name) for name in column_names)
+        if code in _CURRENCY_PHRASES
+    )
+
+
+def substitute_currency_target(question: str, code: str) -> str | None:
+    """Rewrite the question's conversion target to ``code``, keeping the rest of it intact.
+
+    Used to propose a question the attached data can actually answer. Rewriting the target preserves
+    the user's intent to CONVERT; dropping the phrase instead would propose the unconverted total,
+    which is the very answer that made the original question wrong.
+    """
+    phrase = _CURRENCY_PHRASES.get(str(code).strip().upper())
+    if phrase is None:
+        return None
+    text = " ".join(str(question).split())
+    matches = tuple(_CURRENCY_TARGET.finditer(text))
+    if not matches:
+        return None
+    start, end = matches[-1].span("target")
+    return text[:start] + phrase + text[end:]
 
 
 def is_currency_source_column(name: str) -> bool:

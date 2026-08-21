@@ -160,6 +160,23 @@ untargeted `convert`, ambiguous matching rate tables, and unrelated tax,
 discount, or interest rates do not activate conversion. Production currently registers no
 static FX table; ECB history remains disabled until temporal row selection and rounding exist.
 
+When the question names a target the attached data cannot supply, the planner still ranks the
+non-converting candidates normally, but the ranker records the miss as a `Requirement`
+(`engine/sql_candidate.py`) rather than only as a score. A penalty alone cannot express this: it is
+applied to every candidate, so it cancels out, and serving takes `candidates[0]` unconditionally.
+`unmet_requirements` keeps a requirement only when NO candidate in the pool satisfies it — one missed
+by the top candidate alone is a ranking miss, and the answer is to serve the candidate that does
+satisfy it. What survives reaches the serving envelope as `unmet`, and `engine/knowledge_query.py`
+declines through the clarify channel instead of returning a number that answers a different question.
+A question stating no requirement is unaffected, so candidate ordering — and therefore Spider — is
+unchanged.
+
+The mechanism is scenario-agnostic by construction: the serving gate reads `name`, `detail`,
+`available`, and `proposal` without knowing what the requirement is about, so a future producer
+inherits the decline without touching the gate. Currency conversion is the only producer today, and
+only on the own-data path; the world-knowledge branch builds its SQL separately and does not yet
+emit requirements.
+
 ## Validation and safety
 
 Before rendering, recursive validation checks:

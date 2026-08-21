@@ -940,7 +940,8 @@ async function conversationalReply(c){
   try{
     const token=await window.ensureToken();
     const body={question:c.question,
-      clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null}:null,
+      clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null,
+                         unmet:c.unmet||null}:null,
       error:c.error||null, tables:SHEETS, conversation_id:convId()};
     if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
@@ -959,6 +960,14 @@ async function conversationalReply(c){
 }
 function clarifyFallbackText(c){
   const p=(c&&c.proposed)||'';
+  // An UNMET requirement is not a failure to understand the question — the engine understood it and
+  // the reference data cannot answer it. Saying "I couldn't map that" here would be plainly false.
+  const u=(c&&c.unmet&&c.unmet[0])||null;
+  if(u){
+    let t='Your reference data can’t convert to '+(u.requested||u.detail)+'. ';
+    t += (u.available&&u.available.length) ? ('It only carries '+u.available.join(', ')+'. ') : '';
+    return t + (p ? ('Did you mean “'+p+'”? ') : 'Add a rate column for it, or ask for one of the rates you have. ');
+  }
   let t = p ? ('Did you mean “'+p+'”? ') : 'I couldn’t map that to a query over your sheets. ';
   t += 'Rephrase it as a question about your data — a total, count, average, or filter — or tap a step in the trace panel to see how a value was derived.';
   return t;
