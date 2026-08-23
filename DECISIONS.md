@@ -66,6 +66,21 @@ values used for schema linking and FK discovery. Selecting in one place keeps pl
 prevents unrelated cross-conversation references from entering a request. The browser saves dirty references before
 submitting; a failed save aborts the turn rather than falling back to a stale persisted copy.
 
+## Calculation correctness is verified after ranking
+
+Candidate scores are preferences, not answer-validity proofs. Calculation families therefore implement
+one registry contract: detect an explicit intent, bind typed operands, propose an AST expression, and
+verify the completed AST after ranking. `engine/calculations/` owns this contract. It chooses the first
+ranked candidate satisfying every detected calculation and clarifies when none is admissible.
+
+The shared Qwen encoder may order already eligible operand bindings, but it cannot authorize an
+identifier as a measure, invent a join, choose rate units, or certify an answer. Those decisions remain
+deterministic and inspectable. Verification preserves every set-operation branch and requires the same
+typed expression on every branch. Currency conversion, ratio-of-sums, and flat tax/commission/explicit
+one-year simple-interest application are registered specifications; piecewise schedules and unbound
+temporal rates abstain. This separation keeps recognition, search preference, and answer admissibility
+independently testable.
+
 ## Config is environment-only
 
 The old code defaulted to a hardcoded Cloud SQL IP and a hardcoded Firebase RTDB URL. All

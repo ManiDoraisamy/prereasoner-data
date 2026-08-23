@@ -24,6 +24,21 @@ CARS = {"name": "cars", "columns": ["Car_ID", "Model", "Year", "Price"],
                  ["4", "D", 1990, 20], ["5", "E", 1995, 25]]}
 ORDERS = {"name": "orders", "columns": ["Order_ID", "Amount"],
           "rows": [["O1", 100], ["O2", 150], ["O3", 50]]}
+FX_ORDERS = {"name": "fx_orders", "columns": ["Order_ID", "currency", "amount"],
+             "rows": [["O1", "USD", 5], ["O2", "EUR", 10], ["O3", "USD", 7]]}
+FX_RATES = {"name": "fx_rates", "columns": ["currency", "rate_to_usd"],
+            "rows": [["USD", 1.0], ["EUR", 2.0]]}
+PRODUCTS = {"name": "products", "columns": ["Product", "Revenue"],
+            "rows": [["A", 100], ["B", 250]]}
+ECONOMY = {"name": "economy", "columns": ["Country", "GDP", "Population"],
+           "rows": [["France", 3000, 60], ["Germany", 4000, 80]]}
+TAXABLE = {"name": "taxable_sales", "columns": ["Country", "Amount", "Tax_Percent"],
+           "rows": [["France", 100, 20], ["Germany", 200, 19]]}
+COMMISSIONABLE = {
+    "name": "payments",
+    "columns": ["Instrument", "Transaction_Amount", "Commission_Fraction"],
+    "rows": [["card", 100, 0.03], ["bank", 200, 0.01]],
+}
 
 CASES = [
     # --- GUARD: relationship-named FK join on the SLOT path (engine.relations) still groups correctly.
@@ -60,4 +75,29 @@ CASES = [
     {"name": "filtered_count_country", "tables": [SINGER],
      "question": "how many singers are from France", "expect_scalar": 3,
      "note": "WHERE Country='France' value-matched -> COUNT=3."},
+
+    # --- CURRENCY POLICY: ranking chooses candidates; typed admissibility decides release. ---
+    {"name": "currency_direct_conversion", "tables": [FX_ORDERS, FX_RATES],
+     "question": "total order amount in US dollars", "expect_scalar": 32,
+     "note": "SUM(amount * rate_to_usd) over the typed currency edge."},
+    {"name": "currency_positive_filter", "tables": [FX_ORDERS, FX_RATES],
+     "question": "how many orders in USD", "expect_scalar": 2,
+     "note": "COUNT plus a directional currency phrase is a row filter, not conversion."},
+    {"name": "currency_negated_filter", "tables": [FX_ORDERS, FX_RATES],
+     "question": "how many orders not in USD", "expect_scalar": 1,
+     "note": "Post-ranking admissibility skips an invalid EXCEPT and selects COUNT WHERE currency != USD."},
+    {"name": "currency_unit_annotation", "tables": [PRODUCTS],
+     "question": "total revenue in euros", "expect_scalar": 350,
+     "note": "Without a source-currency dimension, EUR states the unit of the monetary measure."},
+
+    # --- GENERIC CALCULATION REGISTRY: the same expansion/verifier owns non-currency arithmetic. ---
+    {"name": "ratio_gdp_per_capita", "tables": [ECONOMY],
+     "question": "GDP per capita", "expect_scalar": 50,
+     "note": "SUM(GDP) / SUM(Population), with a derived currency/person output unit."},
+    {"name": "rate_tax_percent", "tables": [TAXABLE],
+     "question": "total tax amount", "expect_scalar": 58,
+     "note": "SUM(Amount * Tax_Percent / 100) through the registered rate specification."},
+    {"name": "rate_commission_fraction", "tables": [COMMISSIONABLE],
+     "question": "total commission amount", "expect_scalar": 5,
+     "note": "SUM(Transaction_Amount * Commission_Fraction), without percent rescaling."},
 ]

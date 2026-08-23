@@ -18,7 +18,9 @@ import re
 import sqlite3
 
 from engine.config import DATA_DIR
-from engine.currency_intent import currency_rate_binding
+from engine.currency_intent import (
+    currency_rate_binding, is_currency_measure_column,
+)
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
     csv_table,
@@ -215,8 +217,8 @@ class KnowledgeTableQuery:
 
     def _uploaded_from(self, involved, fks):
         """FROM the involved uploaded sheets, chained by their discovered foreign keys. IDs join with plain
-        equality (no lower()). -> (from_clause, [join descs], [tables actually joined])."""
-        inc = [involved[0]]; clauses, descs = [], []
+        equality (no lower()). Returns the exact selected FK records for calculation evidence."""
+        inc = [involved[0]]; clauses, descs, selected = [], [], []
         remaining = [t for t in involved[1:] if t != involved[0]]
         progress = True
         while remaining and progress:
@@ -225,15 +227,32 @@ class KnowledgeTableQuery:
                 fk = next((f for f in fks if (f["from_table"] == r and f["to_table"] in inc)
                            or (f["to_table"] == r and f["from_table"] in inc)), None)
                 if fk:
-                    clauses.append(f'JOIN {qident(r)} ON {qident(fk["from_table"])}.{qident(fk["from_col"])} = {qident(fk["to_table"])}.{qident(fk["to_col"])}')
-                    descs.append(f'{fk["from_table"]}.{fk["from_col"]} = {fk["to_table"]}.{fk["to_col"]}')
+                    from_cols = tuple(fk.get("from_cols") or (fk["from_col"],))
+                    to_cols = tuple(fk.get("to_cols") or (fk["to_col"],))
+                    predicates = tuple(
+                        f'{qident(fk["from_table"])}.{qident(left)} = '
+                        f'{qident(fk["to_table"])}.{qident(right)}'
+                        for left, right in zip(from_cols, to_cols)
+                    )
+                    clauses.append(f'JOIN {qident(r)} ON ' + " AND ".join(predicates))
+                    descs.append(" AND ".join(
+                        f'{fk["from_table"]}.{left} = {fk["to_table"]}.{right}'
+                        for left, right in zip(from_cols, to_cols)
+                    ))
+                    selected.append(fk)
                     inc.append(r); remaining.remove(r); progress = True
-        return f'FROM {qident(involved[0])}' + ((' ' + ' '.join(clauses)) if clauses else ''), descs, inc
+        return (
+            f'FROM {qident(involved[0])}' + ((' ' + ' '.join(clauses)) if clauses else ''),
+            descs,
+            inc,
+            selected,
+        )
 
     @staticmethod
     def _currency_conversion_binding(question, agg, sch, fks):
         """Find the one direct-rate column that can convert a world-filtered SUM."""
-        if not agg or agg[0] != "SUM" or not agg[1] or not agg[2]:
+        if (not agg or agg[0] != "SUM" or not agg[1] or not agg[2]
+                or not is_currency_measure_column(agg[2])):
             return None
         return currency_rate_binding(
             question,
@@ -466,7 +485,7 @@ class KnowledgeTableQuery:
         if mf is None and wtarget is None:                   # neither a world filter NOR a world column asked ->
             r = (self.q11.serve(tables, question, explicit_fks=explicit_fks)
                  if explicit_fks else self.q11.serve(tables, question))
-            return {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
+            response = {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
                     "error": r.get("error"), "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()},
                     "dims": coldims, "meaning_join": None, "provenance": None, "warnings": [],
                     "planner": {
@@ -477,6 +496,11 @@ class KnowledgeTableQuery:
                     "debug": self._debug_input(norm, question, [],   # own-data path: no world table, no meaning plan
                         [{"col": f'{t["name"]}.{c}', "dims": coldims.get(c)} for t in norm for c in t["columns"] if coldims.get(c)], [], True),
                     "model": r.get("model", "engine - own-data planner (own-data SQL; no world-knowledge join)")}
+            if r.get("calculations") is not None:
+                response["calculations"] = r["calculations"]
+            if r.get("currency") is not None:  # compatibility projection of calculations
+                response["currency"] = r["currency"]
+            return response
         # ---- WORLD-KNOWLEDGE path — uploaded FK joins + the meaning joins, WHERE from the world filter (if any)
         # AND any own-sheet values the question also quoted ("GOLD customers in France") ----
         mtab = mf["csv_table"] if mf else wtarget["path"][0]["left_table"]   # the sheet holding the routed city column
@@ -492,6 +516,8 @@ class KnowledgeTableQuery:
                     joins.append(j)
         own_filters = [(t, c, v) for (t, c, v) in own if not mf or v.lower() != mf["value"].lower()]
         conversion = self._currency_conversion_binding(question, agg, sch, fks)
+        selected_measure = None
+        selected_conversion = False
         if wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
@@ -500,6 +526,7 @@ class KnowledgeTableQuery:
             proj = f'{agg[0]}( {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # AVG("city"."population")
             pdesc = ("aggregate", f'{agg[0]}({wtarget["table"]}.{wtarget["col"]})', "agg cue + world measure named")
             involved = [mtab]
+            selected_measure = (wtarget["table"], wtarget["col"])
         elif wtarget:
             proj = f'DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])}'      # SELECT DISTINCT the world attribute
             pdesc = ("select", f'DISTINCT {wtarget["table"]}.{wtarget["col"]}', "world column named")
@@ -518,10 +545,13 @@ class KnowledgeTableQuery:
                 "explicit currency target + typed direct-rate edge",
             )
             involved = list(dict.fromkeys((mtab, agg[1], rate_table)))
+            selected_measure = (agg[1], agg[2])
+            selected_conversion = True
         elif agg:
             proj = f'{agg[0]}( {qident(agg[1])}.{qident(agg[2])} )'
             pdesc = ("aggregate", f'{agg[0]}({agg[1]}.{agg[2]})', "cue word + is_num feature")
             involved = [mtab, agg[1]] if (agg[1] and agg[1] != mtab) else [mtab]
+            selected_measure = (agg[1], agg[2])
         elif (subjcol := self._subject_col(question, mtab, route_col, sch, routes)) or namecol:
             selcol = subjcol or namecol                          # routed subject column ("cities in US" -> City),
             proj = f'{qident(mtab)}.{qident(selcol)}'            # else the first text column (unchanged default)
@@ -533,7 +563,9 @@ class KnowledgeTableQuery:
             pdesc = ("select", "*", "no projection named")
             involved = [mtab]
         involved += [t for (t, c, v) in own_filters if t not in involved]   # own filters pull their sheet into the FROM
-        upfrom, updescs, joined = self._uploaded_from(involved, fks)  # FROM <measure sheet> JOIN <city sheet> ON <uploaded FK>
+        upfrom, updescs, joined, selected_fks = self._uploaded_from(
+            involved, fks,
+        )  # FROM <measure sheet> JOIN <city sheet> ON <uploaded FK>
         unjoined = [t for t in involved if t not in joined]
         if unjoined:                                          # a clean error beats SQLite's "no such column"
             return {"question": question, "as_of": as_of, "sql": None, "result": None,
@@ -587,11 +619,52 @@ class KnowledgeTableQuery:
         feats = [{"col": f'{t["name"]}.{c}', "dims": coldims.get(c)} for t in norm for c in t["columns"] if coldims.get(c)]
         feats += [{"col": k, "dims": v} for k, v in world_dims.items() if "." in k]   # + the world columns' read dims
         plan = self._build_plan(pdesc, updescs, joins, mf, own_filters)
-        return {"question": question, "as_of": as_of, "sql": sql, "result": result, "error": err,
+        response = {"question": question, "as_of": as_of, "sql": sql, "result": result, "error": err,
                 "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()}, "dims": coldims,
                 "meaning_join": join_desc, "provenance": prov, "warnings": warnings,
                 "debug": self._debug_input(norm, question, world_sections, feats, plan, False),
                 "model": "engine - CSV -> world meaning join + bitemporal/freshness"}
+        from engine.calculations import (
+            BranchEvidence, ComputationEvidence, JoinFact, OutputEvidence, PredicateFact,
+            assess_calculations,
+        )
+        from engine.calculations.core import aggregate_functions, expression_columns
+        from engine.calculations.registry import attach_calculation_evidence
+        from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SQLType
+        from engine.sql_schema import SchemaGraph
+        outputs = ()
+        if selected_measure:
+            measure = ColumnRef(selected_measure[0], selected_measure[1], SQLType.REAL)
+            expression = Aggregate(agg[0], measure)
+            if selected_conversion and conversion:
+                rate = ColumnRef(conversion[0], conversion[1], SQLType.REAL)
+                expression = Aggregate("SUM", BinaryExpr(measure, "*", rate))
+            outputs = (OutputEvidence(
+                expression, True, aggregate_functions(expression), expression_columns(expression),
+            ),)
+        predicates = frozenset(
+            PredicateFact(table, column, "=", value)
+            for table, column, value in own_filters
+        )
+        graph = SchemaGraph.from_planner(sch, fks)
+        join_facts = []
+        for foreign_key in selected_fks:
+            from_cols = tuple(foreign_key.get("from_cols") or (foreign_key["from_col"],))
+            to_cols = tuple(foreign_key.get("to_cols") or (foreign_key["to_col"],))
+            pairs = tuple(
+                (
+                    graph.column_map[(foreign_key["from_table"], left)].ref,
+                    graph.column_map[(foreign_key["to_table"], right)].ref,
+                )
+                for left, right in zip(from_cols, to_cols)
+            )
+            join_facts.append(JoinFact(pairs))
+        computation = ComputationEvidence((BranchEvidence(outputs, predicates, tuple(join_facts)),))
+        assessments = assess_calculations(
+            question, norm, graph, computation,
+        )
+        attach_calculation_evidence(response, assessments)
+        return response
 
     def _connect(self, tablemap, sch, attach_world):
         """in-memory SQLite with the uploaded sheet(s); ATTACH words.db whenever the SQL joins ANY world table

@@ -100,7 +100,10 @@ replay. The legacy Wikidata schema migration is still pending.
    dependency that needs multi-step operations. Self-contained uploaded/reference data stays on the AST path.
 6. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
    the explicitly reachable shared knowledge tables.
-7. The engine returns rows, SQL, route evidence, and intermediate views. Trace writes are best effort and do not
+7. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
+   scores, the shared registry selects the highest-ranked candidate that realizes every detected calculation. An
+   unmet or ambiguous calculation replaces the numeric result with a structured clarification.
+8. The engine returns rows, SQL, route evidence, and intermediate views. Trace writes are best effort and do not
    determine the answer.
 
 ## Own-Data SQL Planner
@@ -202,9 +205,15 @@ start of enrichment.
 
 Source capabilities are intentionally different: exact dimensions, ambiguous relations, numbering-pattern metadata,
 temporal series, temporal rule sets, bounded calendars, terminology hierarchies, and rights-bearing document graphs.
-`engine/enrichment/intents.py` extracts only explicit requested attributes; `engine/currency_intent.py`
-owns explicit output-currency parsing shared by search, ranking, enrichment, and clarify. Ordinary own-data grouping does not activate
-enrichment. `engine/enrichment/adapters.py` returns typed match, absence, ambiguity, policy-denial, and ineligibility
+`engine/enrichment/intents.py` extracts only explicit requested attributes. `engine/calculations/` owns
+typed arithmetic intent, AST expansion, and post-ranking proof. Its registered specifications currently
+cover currency filter/conversion, ratios including per-capita measures, and flat tax, commission, and
+explicit annual one-year simple-interest amounts. The shared encoder can order eligible operands; typed
+columns, unit rules, complete join keys, and all-branch evidence determine admissibility. A planner route
+without typed computation evidence fails closed. `engine/currency_intent.py` remains the currency
+specification's ISO syntax and `rate_to_<code>` convention, not a second verifier. Ordinary own-data
+grouping does not activate enrichment.
+`engine/enrichment/adapters.py` returns typed match, absence, ambiguity, policy-denial, and ineligibility
 outcomes while retaining snapshot and license provenance. Temporal capabilities still abstain because row-level temporal
 AST semantics are not implemented.
 

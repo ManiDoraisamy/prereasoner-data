@@ -267,7 +267,9 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py")
+                   "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
+                   "calculations/core.py", "calculations/registry.py",
+                   "calculations/search.py", "calculations/specifications.py")
     checkpoint_contract["artifacts"] = {
         **fingerprint_paths({
             "dev": os.path.join(args.data, "dev.json"),

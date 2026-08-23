@@ -13,9 +13,11 @@ into this directory (see `engine/fetch_weights.py`). `weights_manifest.json` pin
 source revision and SHA-256 of every runtime weight; both existing and downloaded bundles
 must validate completely before use. The default source repo is
 **`prereasoner/prereasoner-weights`** (currently **private** — set `HF_TOKEN` to a token with read access;
-override the repo with `PREREASONER_WEIGHTS_REPO`). To (re)publish after a retrain:
-`huggingface_hub.upload_folder(folder_path='engine/data', repo_id='prereasoner/prereasoner-weights',
-allow_patterns=['*.pt','*.npz','qwen_lora/*'])`. To (re)train from scratch, see `docs/TRAINING.md`.
+override the repo with `PREREASONER_WEIGHTS_REPO`). After retraining, first run
+`python -m training.props.promote --local-only` and complete local gates. Upload those exact large files,
+then run `python -m training.props.promote --revision <immutable-hf-commit>` and commit the updated
+manifest. A local-only manifest intentionally refuses fresh-clone download. To retrain from scratch, see
+`docs/TRAINING.md`.
 
 | File | Size | Purpose | In git? |
 |---|---|---|---|

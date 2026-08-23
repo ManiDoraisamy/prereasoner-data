@@ -18,12 +18,13 @@ New contributors should read these in order:
 1. [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - install, run, make a first request, and locate code.
 2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - the serving flow and ownership boundaries.
 3. [docs/SQL_AST.md](docs/SQL_AST.md) - typed AST search, ranking, and Spider evaluation.
-4. [docs/TESTING.md](docs/TESTING.md) - hermetic, integration, and browser validation.
-5. [docs/MCP.md](docs/MCP.md) - MCP adapter and optional conversational orchestration.
-6. [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md) - synchronized publishers, schemas, tables, scope, licensing, and commands.
-7. [docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md](docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md) - market-led domain profiles and deterministic serving integration.
-8. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request expectations.
-9. [docs/OPEN_SOURCE_RELEASE.md](docs/OPEN_SOURCE_RELEASE.md) - public-release checklist and external artifacts.
+4. [docs/CALCULATIONS.md](docs/CALCULATIONS.md) - deterministic arithmetic, learned operand ordering, and verification.
+5. [docs/TESTING.md](docs/TESTING.md) - hermetic, integration, and browser validation.
+6. [docs/MCP.md](docs/MCP.md) - MCP adapter and optional conversational orchestration.
+7. [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md) - synchronized publishers, schemas, tables, scope, licensing, and commands.
+8. [docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md](docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md) - market-led domain profiles and deterministic serving integration.
+9. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request expectations.
+10. [docs/OPEN_SOURCE_RELEASE.md](docs/OPEN_SOURCE_RELEASE.md) - public-release checklist and external artifacts.
 
 ## How A Request Works
 

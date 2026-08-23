@@ -14,9 +14,6 @@ import re
 from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
-from engine.currency_intent import (
-    currency_rate_binding,
-)
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -220,6 +217,11 @@ class SQLSearcher:
                     continue
                 generated = expander_type(self.schema, pool_size).expand(question, pool)
                 pool = _merge_candidates(pool, generated)
+        from engine.calculations.search import CalculationQueryExpander
+        pool = _merge_candidates(
+            pool,
+            CalculationQueryExpander(self.schema, pool_size, semantic_signals).expand(question, pool),
+        )
         profile_baseline = tuple(pool)
         profile_requested = bool(
             profile_config is not None
@@ -357,34 +359,6 @@ class SQLSearcher:
                 suppressed.add(left.position)
         return tuple(mention for mention in mentions if mention.position not in suppressed)
 
-    def _conversion_rate_column(
-        self, tokens: tuple[str, ...], source_table: str
-    ) -> ColumnRef | None:
-        """Return the exact direct-rate column for a typed currency-code edge.
-
-        Target phrase, source table, edge endpoints, and ``rate_to_<target>`` must agree.
-        Cell values are not read here, so search remains deterministic and schema-driven.
-        """
-        binding = currency_rate_binding(
-            tokens,
-            source_table,
-            (
-                (
-                    foreign_key.from_column.table,
-                    foreign_key.from_column.name,
-                    foreign_key.to_column.table,
-                    foreign_key.to_column.name,
-                )
-                for foreign_key in self.schema.foreign_keys
-            ),
-            (
-                (column.ref.table, column.ref.name)
-                for column in self.schema.columns
-                if column.ref.type.numeric
-            ),
-        )
-        return self.schema.column_map[binding].ref if binding is not None else None
-
     def _aggregate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         cues: list[tuple[str, int]] = []
         for i, token in enumerate(tokens):
@@ -466,17 +440,6 @@ class SQLSearcher:
                         continue
                     options.append((Aggregate(function, option.column), 4.0 + option.score * 0.1,
                                     f"aggregate:{function}({option.column.table}.{option.column.name})"))
-                    rate_column = self._conversion_rate_column(tokens, option.column.table)
-                    if (function == "SUM" and rate_column is not None
-                            and rate_column.table != option.column.table):
-                        # currency conversion (M3c): SUM(amount * rate) over the discovered FX join.
-                        # Scored above the raw SUM so a "... in USD" request prefers the converted total.
-                        options.append((
-                            Aggregate("SUM", BinaryExpr(option.column, "*", rate_column)),
-                            4.6 + option.score * 0.1,
-                            f"aggregate:convert:SUM({option.column.table}.{option.column.name}"
-                            f"*{rate_column.table}.{rate_column.name})",
-                        ))
             expanded = []
             for aggregates, score, evidence in beam:
                 for aggregate, option_score, reason in options:

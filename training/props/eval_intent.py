@@ -9,8 +9,8 @@ is the missing selection signal:
   * per-question OPERATOR prediction exactly like engine/encoder_overlay.read_op_model:
     score(op) = max over CANDIDATE question-token rows (operand tokens — column names + their
     split words — excluded, as serving does; fall back to all q rows if all collide) of the final
-    content readout at that intent dim; accept iff score >= gate (COUNT 0.05, SUM 0.30, AVG 0.30 —
-    the serving gates) OR the dominance arm (score >= 0.5 and margin over runner-up >= 0.4);
+    content readout at that intent dim; accept iff score >= the checkpoint's independently calibrated
+    gate;
     prediction = accepted argmax else None. Correct iff prediction == the variant's "expect".
   * per-dim intent AUC over the same held-out graphs (the smooth signal), via the shared
     evaluate()/fam_report() harness.
@@ -38,8 +38,8 @@ DATA = os.path.join(TRAIN_DIR, "data")
 REPO = os.path.dirname(os.path.dirname(HERE))
 ENGINE_DATA = os.environ.get("PREREASONER_ENGINE_DATA", os.path.join(REPO, "engine", "data"))
 
-# serving gates + dominance arm — keep in lockstep with engine/encoder_overlay.py
-THR = {"COUNT": 0.05, "SUM": 0.30, "AVG": 0.30}
+# Backward-compatible gates for checkpoints predating calibrated metadata.
+LEGACY_THRESHOLDS = {"COUNT": 0.05, "SUM": 0.30, "AVG": 0.30}
 OPS = {"COUNT": "intent_agg_count", "SUM": "intent_agg_sum", "AVG": "intent_agg_avg"}
 
 
@@ -68,24 +68,22 @@ def pack_eval(graphs, aid, fam_dims, nc, max_units=128):
     return out
 
 
-@torch.no_grad()
-def read_op_mirror(scores):
+def read_op_mirror(scores, thresholds=None):
     """The read_op_model accept rule on a {op: score} dict -> COUNT|SUM|AVG|None."""
+    thresholds = thresholds or LEGACY_THRESHOLDS
     op, sc = max(scores.items(), key=lambda kv: kv[1])
-    runner = max((v for k, v in scores.items() if k != op), default=0.0)
-    accept = sc >= THR[op] or (sc >= 0.5 and (sc - runner) >= 0.4)
-    return op if accept else None
+    return op if sc >= thresholds[op] else None
 
 
 @torch.no_grad()
-def intent_metrics(enc, model, packed, aid, nc, hdim, dev):
-    """-> (probe_acc, per_class_acc, probe_rows, intent_mean_auc). probe_rows = the named
-    handcrafted probes with raw scores, for the log."""
+def intent_score_rows(enc, model, packed, aid, nc, hdim, dev):
+    """Collect serving-faithful scores while keeping checkpoint evaluation deterministic."""
+    encoder_training = enc.qwen.training
+    model_training = model.training
+    enc.qwen.eval()
     model.eval()
     did = {op: aid[d] for op, d in OPS.items()}
-    n = ok = 0
-    per = {}
-    probe_rows = []
+    rows = []
     for i in range(0, len(packed), 4):
         batch = packed[i:i + 4]
         texts = sorted({t for p in batch for t in p["texts"]})
@@ -101,20 +99,74 @@ def intent_metrics(enc, model, packed, aid, nc, hdim, dev):
             for op, d in did.items():
                 col = cp[b, cand, d]
                 scores[op] = float(col.max()) if col.numel() else 0.0   # empty-cand guard (== serving default 0.0)
-            pred = read_op_mirror(scores)
-            correct = pred == p["expect"]
-            n += 1; ok += correct
-            key = str(p["expect"])
-            a, t = per.get(key, (0, 0)); per[key] = (a + correct, t + 1)
-            if p["probe"]:
-                probe_rows.append((p["probe"], p["expect"], pred, scores, correct))
+            rows.append((p["expect"], p["probe"], scores))
+    enc.qwen.train(encoder_training)
+    model.train(model_training)
+    return rows
+
+
+def thresholds_from_score_rows(rows):
+    """Fit conservative per-op gates on an independent calibration split.
+
+    Argmax chooses the operation before thresholding at serving time, so each gate is calibrated
+    only on rows where that operation wins. Ties prefer the higher threshold.
+    """
+    thresholds = {}
+    for op in OPS:
+        relevant = [
+            (float(scores[op]), expect == op)
+            for expect, _probe, scores in rows
+            if max(scores, key=scores.get) == op
+        ]
+        if not relevant:
+            thresholds[op] = LEGACY_THRESHOLDS[op]
+            continue
+        values = sorted({score for score, _ in relevant})
+        epsilon = max(1.0, *(abs(value) for value in values)) * 1e-6
+        candidates = (
+            [values[0] - epsilon]
+            + [(left + right) / 2.0 for left, right in zip(values, values[1:])]
+            + [values[-1] + epsilon]
+        )
+        best_correct, best_threshold = -1, LEGACY_THRESHOLDS[op]
+        for threshold in candidates:
+            correct = sum((score >= threshold) == positive for score, positive in relevant)
+            if (correct, threshold) > (best_correct, best_threshold):
+                best_correct, best_threshold = correct, threshold
+        thresholds[op] = float(best_threshold)
+    return thresholds
+
+
+def calibrate_intent_thresholds(enc, model, packed, aid, nc, hdim, dev):
+    if not packed:
+        raise ValueError("intent calibration split is empty")
+    return thresholds_from_score_rows(
+        intent_score_rows(enc, model, packed, aid, nc, hdim, dev)
+    )
+
+
+@torch.no_grad()
+def intent_metrics(enc, model, packed, aid, nc, hdim, dev, thresholds=None):
+    """Return heldout accuracy, per-class accuracy, named probes, and mean intent AUC."""
+    thresholds = thresholds or LEGACY_THRESHOLDS
+    rows = intent_score_rows(enc, model, packed, aid, nc, hdim, dev)
+    n = ok = 0
+    per = {}
+    probe_rows = []
+    for expect, probe, scores in rows:
+        pred = read_op_mirror(scores, thresholds)
+        correct = pred == expect
+        n += 1; ok += correct
+        key = str(expect)
+        a, total = per.get(key, (0, 0)); per[key] = (a + correct, total + 1)
+        if probe:
+            probe_rows.append((probe, expect, pred, scores, correct))
     acc = ok / max(n, 1)
     # smooth signal: per-dim AUC over the same graphs (intent family; dims with positives)
     alloc_stub = {"dims": [{"name": k, "family": "intent", "dim_id": v} for k, v in aid.items()
                            if k.startswith("intent")]}
     means, _ = fam_report(alloc_stub, *evaluate(enc, model, packed, nc, hdim, dev), fams={"intent"})
     i_auc = means.get("intent")
-    model.train()
     return acc, {k: (a / t if t else 0.0, t) for k, (a, t) in per.items()}, probe_rows, (i_auc or 0.0)
 
 
@@ -154,8 +206,14 @@ def main():
     packed = load_eval(aid, fam_dims, nc, args.eval)
     if not packed:
         print("no eval graphs (run `python -m training.props.augment_intent` first)"); return 1
-    acc, per, probes, i_auc = intent_metrics(enc, m, packed, aid, nc, enc.hdim, dev)
+    thresholds = meta.get("intent_thresholds", LEGACY_THRESHOLDS)
+    acc, per, probes, i_auc = intent_metrics(
+        enc, m, packed, aid, nc, enc.hdim, dev, thresholds,
+    )
     print(f"\nckpt={args.ckpt} ({os.path.basename(model_p)}, nc={nc}) | eval graphs: {len(packed)}")
+    print("intent thresholds: " + " ".join(
+        f"{op}={float(thresholds[op]):.4f}" for op in OPS
+    ))
     print(f"intent op-accuracy (read_op_model mirror): {acc:.3f}   mean intent AUC: {i_auc:.3f}")
     for k in ("COUNT", "SUM", "AVG", "None"):
         if k in per:

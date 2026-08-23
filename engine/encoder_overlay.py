@@ -32,12 +32,20 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     obj.sid = {dm["name"]: dm["dim_id"] for dm in obj.dims}
     z = np.load(d / "anchor_assignment.npz", allow_pickle=True)           # per-dim Youden-J thresholds (incl. intent)
     obj.thr = {str(n): float(t) for n, t in zip(z["dims"], z["thr"])}
-    # OPERATOR gate: anchor_assignment's intent thresholds (~0.017) were calibrated on per-CELL tokens, so they
-    # let NON-aggregate QUESTIONS clear the gate (false is_agg -> hybrid/clarify hijack). On questions, real
-    # SUM/AVG fire 0.8+, real COUNT ~0.07, and non-aggregates <0.08 — so gate SUM/AVG at 0.30 and COUNT at 0.05
-    # (COUNT's signal is weak, like the city dim). Read off THIS model; separates total/how-many/average from
-    # 'who complained…'/'list customers'/'customers in France'.
-    obj.thr.update({"intent_agg_sum": 0.30, "intent_agg_avg": 0.30, "intent_agg_count": 0.05})
+    # Operator gates are calibrated on question graphs for this exact checkpoint. Older bundles did not
+    # carry them, so retain their historical values only as a compatibility fallback.
+    intent_thresholds = pt.get("intent_thresholds") or {
+        "COUNT": 0.05,
+        "SUM": 0.30,
+        "AVG": 0.30,
+    }
+    required_ops = {"COUNT", "SUM", "AVG"}
+    if set(intent_thresholds) != required_ops:
+        raise ValueError("encoder metadata has invalid intent_thresholds")
+    obj.thr.update({
+        f"intent_agg_{op.lower()}": float(intent_thresholds[op])
+        for op in sorted(required_ops)
+    })
     obj.model = RelationalModel(**pt["cfg"])
     obj.model.load_state_dict(torch.load(d / "encoder.pt", map_location="cpu")); obj.model.eval()
     obj.nL = pt["cfg"]["layers"] + 1
@@ -98,13 +106,7 @@ class EncoderQuery(TableQuery):
         scores = {op: score(dim) for op, dim in self.INTENT_OPS.items()}
         op, sc = max(scores.items(), key=lambda kv: kv[1])
         thr = self.thr.get(self.INTENT_OPS[op], 0.5)
-        runner = max((v for k, v in scores.items() if k != op), default=0.0)
-        # accept on the calibrated Youden-J threshold OR on clear dominance: the intent is plainly present
-        # (>=0.5) AND unambiguous (margin over the runner-up op >=0.4). The dominance arm recovers high-
-        # confidence aggregates that land a hair under a tight cut (e.g. "how many orders" at 0.873 vs a 0.874
-        # COUNT threshold) while admitting NO non-aggregates — their argmax intent stays <0.5 (max observed 0.32).
-        accept = sc >= thr or (sc >= 0.5 and (sc - runner) >= 0.4)
-        return (op if accept else None), scores
+        return (op if sc >= thr else None), scores
 
     def _salient_evo(self, layers, ui):
         """Override: use PER-DIM calibrated thresholds (self.thr) instead of the hardcoded 0.4/0.5. The

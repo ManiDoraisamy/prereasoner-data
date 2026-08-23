@@ -109,6 +109,9 @@ def collate_live(batch, tv, nc, hin, dev):
 
 @torch.no_grad()
 def evaluate(enc, model, pool, nc, hin, dev):
+    encoder_training = enc.qwen.training
+    model_training = model.training
+    enc.qwen.eval()
     model.eval()
     ps = [[] for _ in range(nc)]; pl = [[] for _ in range(nc)]
     for i in range(0, len(pool), 4):
@@ -122,7 +125,8 @@ def evaluate(enc, model, pool, nc, hin, dev):
             if m.any():
                 ps[cid].extend(cp[:, :, cid][m].float().cpu().numpy().tolist())
                 pl[cid].extend((ct[:, :, cid][m] >= 0.5).int().cpu().numpy().tolist())
-    model.train()
+    enc.qwen.train(encoder_training)
+    model.train(model_training)
     return ps, pl
 
 

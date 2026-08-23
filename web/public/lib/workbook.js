@@ -940,7 +940,9 @@ async function conversationalReply(c){
   try{
     const token=await window.ensureToken();
     const body={question:c.question,
-      clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null}:null,
+      clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null,
+        reason:c.reason||null,unmet:c.unmet||null,calculations:c.calculations||null,
+        currency:c.currency||null}:null,
       error:c.error||null, tables:SHEETS, conversation_id:convId()};
     if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
@@ -959,7 +961,9 @@ async function conversationalReply(c){
 }
 function clarifyFallbackText(c){
   const p=(c&&c.proposed)||'';
-  let t = p ? ('Did you mean “'+p+'”? ') : 'I couldn’t map that to a query over your sheets. ';
+  let t = (c&&c.reason) ? (String(c.reason)+'. ') :
+    (p ? ('Did you mean “'+p+'”? ') : 'I couldn’t map that to a query over your sheets. ');
+  if(p&&c&&c.reason)t+='Try “'+p+'”. ';
   t += 'Rephrase it as a question about your data — a total, count, average, or filter — or tap a step in the trace panel to see how a value was derived.';
   return t;
 }

@@ -315,13 +315,13 @@ def test_arithmetic_expression_sum_renders_and_executes():
 
 
 def test_arithmetic_division_preserves_real_semantics():
-    values = {"name": "values", "columns": ["numerator", "denominator"], "rows": [[5, 2]]}
+    values = {"name": "values", "columns": ["numerator", "denominator"], "rows": [[5, 2], [5, 0]]}
     numerator = ColumnRef("values", "numerator", SQLType.INTEGER)
     denominator = ColumnRef("values", "denominator", SQLType.INTEGER)
     query = SelectQuery((SelectItem(BinaryExpr(numerator, "/", denominator)),), "values")
     sql = render_query(query)
-    assert "CAST(" in sql and " AS REAL) / " in sql, sql
-    assert execute([values], sql) == [(2.5,)]
+    assert "CAST(" in sql and " AS REAL) / NULLIF(" in sql, sql
+    assert execute([values], sql) == [(2.5,), (None,)]
 
 
 def test_currency_conversion_query_executes_end_to_end():
@@ -482,6 +482,16 @@ def test_arithmetic_expression_validation():
         raise AssertionError("non-numeric arithmetic operand accepted")
     except ASTValidationError:
         pass
+    # aggregate arithmetic is row-scoped; aggregate-over-aggregate stays outside SUM/AVG.
+    for nested in (
+        Aggregate("SUM", Aggregate("SUM", amount)),
+        Aggregate("SUM", BinaryExpr(Aggregate("SUM", amount), "/", amount)),
+    ):
+        try:
+            validate_query(SelectQuery((SelectItem(nested),), "orders"))
+            raise AssertionError("nested aggregate accepted")
+        except ASTValidationError:
+            pass
 
 
 def test_projection_filter_and_order():
@@ -1552,6 +1562,7 @@ def test_world_own_data_route_preserves_ast_observability():
                 "candidate_count": 7,
                 "evidence": ["extrema:projection"],
                 "features": {"projection": 1.0},
+                "calculations": [{"specification": "ratio", "status": "satisfied"}],
                 "model": "typed planner",
             }
 
@@ -1592,6 +1603,7 @@ def test_world_own_data_route_preserves_ast_observability():
         "features": {"projection": 1.0},
     }
     assert response["model"] == "typed planner"
+    assert response["calculations"] == [{"specification": "ratio", "status": "satisfied"}]
 
 
 def test_schema_graph_resolves_normalized_foreign_key_names():

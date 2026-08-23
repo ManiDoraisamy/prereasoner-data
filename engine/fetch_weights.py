@@ -87,6 +87,13 @@ def main() -> int:
     if _MANIFEST is None:
         print("weights_manifest.json is required for an atomic verified download", file=sys.stderr)
         return 2
+    if _MANIFEST.get("unpublished_local"):
+        print(
+            "weights_manifest.json describes a local-only candidate; publish the exact bundle and "
+            "promote it with its immutable revision before fetching on another machine",
+            file=sys.stderr,
+        )
+        return 2
     with tempfile.TemporaryDirectory(prefix=".weights-", dir=DATA_DIR) as temporary:
         staging = Path(temporary)
         for rel in WEIGHTS:

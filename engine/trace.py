@@ -58,7 +58,10 @@ def stream_final(emit, res):
         if res.get("low_confidence"):
             emit("low_confidence", True); emit("status", "clarify")   # conversational (not a data query) -> in-chat fallback
         elif res.get("clarify"):
-            emit("clarify", {k: res.get(k) for k in ("proposed", "bindings", "dropped", "original_sql")
+            emit("clarify", {k: res.get(k) for k in (
+                "proposed", "bindings", "dropped", "original_sql", "reason", "unmet",
+                "calculations", "currency",
+            )
                              if res.get(k) is not None})
             emit("status", "clarify")
         elif res.get("error"):

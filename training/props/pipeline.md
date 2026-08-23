@@ -32,10 +32,14 @@ order.
                               │
        sql_graphs_train.jsonl │ join_graphs_train.jsonl
                     └──► (2c) augment_intent.py ──► data/intent_aug_train.jsonl (→ train pool)
-                              │                      data/intent_eval.jsonl      (→ held-out selection, never trained)
+                              │                      data/intent_calibration.jsonl (→ gates only)
+                              │                      data/intent_eval.jsonl      (→ held-out selection only)
+          calculation specs ──► (2d) calculation_contrastive.py
+                              │       ├─► data/calculation_contrastive_train.jsonl
+                              │       └─► data/calculation_contrastive_eval.jsonl (held out)
                               ▼
                   (3) train_props_gpu.py  (GPU)  ── warm-starts from the base gen20 LoRA + RelBlock in data/
-                              │   keep-best selects on property AUC + held-out intent op-accuracy (eval_intent.py)
+                              │   keep-best selects on property AUC + intent accuracy + calculation retrieval
                               │                       (qwen_lora/, unified_meta.pt, unified_model.pt) + HF weights
                               ▼
         data/{encoder_props.pt, encoder_props_meta.pt, qwen_lora_props/}
@@ -61,14 +65,16 @@ data dir via cross-references; here that is collapsed to one). Override it with 
 | — | `build_assignment_pg.py` | `bridge_prop.csv`, Postgres `capped.entity` | `data/pg_per_instance.jsonl` (per-instance schema.org props) |
 | 1 | `build_assignment21_v2.py` | `bridge_prop.csv`, `data/columns.csv`, Postgres `capped.entity` | `data/alloc21_dims.json` (**the property basis** — a prop is a dim iff ≥25 instances carry it), `assignment21.csv`, `inference21.csv`, `assignment21_report.json` |
 | 2 | `build_from_props.py` | `data/alloc21_dims.json`, `data/pg_per_instance.jsonl`, base gen20 `data/{assignment.csv, inference.csv, alloc.json}`, Postgres `knowledgebase.{human,taxon}` | `data/alloc.json` (nc), `units_train.jsonl`, `units_test.jsonl`, `assignment.csv`, `inference.csv` (base corpus backed up to `*.taxbak` on first run) |
-| 2c | `augment_intent.py` | `data/{sql_graphs_train,join_graphs_train}.jsonl` | `data/intent_aug_train.jsonl` (anchors the SERVING phrasings: "how many"/"number of"→COUNT, "sum of"/"how much"→SUM, "in ‹place›"→NONE), `data/intent_eval.jsonl` (hash-held-out variants + serving probes — **never trained on**) |
-| 3 | `train_props_gpu.py` (GPU) | `data/alloc20.json`, base LoRA+RelBlock `data/{qwen_lora/, unified_meta.pt, unified_model.pt}`, `units_{train,test}.jsonl`, `sql_graphs_train.jsonl`, `join_graphs_train.jsonl`, `intent_aug_train.jsonl` (pool), `intent_eval.jsonl` (selection), HF Qwen2.5-0.5B | `data/encoder_props.pt`, `encoder_props_meta.pt`, `qwen_lora_props/` — keep-best selects on **property AUC + held-out intent op-accuracy** (`eval_intent.intent_metrics`, a `read_op_model` mirror) |
+| 2c | `augment_intent.py` | `data/{sql_graphs_train,join_graphs_train}.jsonl` | query-disjoint `intent_aug_train.jsonl`, `intent_calibration.jsonl`, and `intent_eval.jsonl`; ranking/limit questions are explicit `None` contrasts, and named serving probes exist only in eval |
+| 2d | `calculation_contrastive.py` | registered calculation prototypes and curated same-domain operand alternatives | deterministic query-disjoint `data/calculation_contrastive_{train,eval}.jsonl` |
+| 3 | `train_props_gpu.py` (GPU) | `data/alloc20.json`, base LoRA+RelBlock `data/{qwen_lora/, unified_meta.pt, unified_model.pt}`, property/SQL/join/intent corpora, calculation contrastive train/eval, HF Qwen2.5-0.5B | `data/encoder_props.pt`, `encoder_props_meta.pt`, `qwen_lora_props/` — keep-best requires the intent and calculation floors, then maximizes **property AUC + held-out intent accuracy + held-out calculation retrieval accuracy** |
 | 4 | `build_families.py` | `data/alloc.json`, `data/assignment.csv`, `data/type_table_map.csv` | `data/families.json`, `engine/data/families.json` |
 | 5 | `calibrate_props.py` | `data/{encoder_props_meta.pt, encoder_props.pt, qwen_lora_props/, units_test.jsonl}`, HF Qwen2.5-0.5B | `data/props_thr.json`, `engine/data/props_thr.json` |
 
 The engine-shipped `encoder.pt` / `encoder_meta.pt` / `qwen_lora/` are the Stage-3 outputs
-`encoder_props.pt` / `encoder_props_meta.pt` / `qwen_lora_props/` copied into `engine/data/` under the engine's
-names (final deploy step; see `docs/TRAINING.md`).
+`python -m training.props.promote --local-only` installs the Stage-3 files under their engine names,
+installs the calibrated thresholds, updates hashes, and verifies the complete destination. A published
+release uses `--revision <immutable-hf-commit>` instead; manual copying is not a supported release path.
 
 ## Model / harness code — reused, not re-vendored
 
@@ -85,11 +91,13 @@ them (they are byte-equivalent to flat-data's `runtime20/*`):
 No distinct property model class was vendored — the property fine-tune only differs in the corpus, the LoRA
 un-freeze, and the held-out keep-best loop, all of which live in `train_props_gpu.py` itself.
 
-## The intent guard (why stages 2c + the combined keep-best exist)
+## Representation guards (why stages 2c/2d + combined keep-best exist)
 
 The engine reads the aggregate operator off the encoder's **intent dims** (`engine/encoder_overlay.read_op_model`:
-max over candidate question tokens — operand tokens excluded — gates COUNT 0.05 / SUM 0.30 / AVG 0.30, plus a
-dominance arm). The base corpus anchors each op with exactly ONE cue token (`count`/`total`/`average`), and no
+max over candidate question tokens, with operand tokens excluded). The three acceptance gates are calibrated for
+each checkpoint on `intent_calibration.jsonl`, stored in `encoder_meta.pt`, and evaluated on the disjoint
+`intent_eval.jsonl`; serving does not use historical constants or a separate dominance exception. The base corpus
+anchors each op with exactly ONE cue token (`count`/`total`/`average`), and no
 aggregate cue ever co-occurs with an "in ‹place›" filter — serving phrasings like "how many … in France" were
 **emergent**, not trained. The first fine-tune run selected checkpoints on property AUC alone (its test set
 has zero intent examples): property AUC hit 0.938 but the emergent intent behavior drifted — SUM (0.121) edged
@@ -97,9 +105,22 @@ COUNT (0.110) on "how many customers in France" and the None-class collapsed (0.
 overall op-accuracy 0.808 → 0.697), so serving lost COUNT aggregates and gained spurious fires. Note the RelBlock readout is `h[:, :, -nc:]` (END-aligned channels): the 10 intent
 dims land on the same channels across the nc=86→90 change, so they warm-start intact and are lost only to
 *drift under weak anchoring* — exactly what 2c (anchoring) + the combined keep-best (selection) prevent.
-`eval_intent.py` mirrors `read_op_model`'s gates + dominance arm + operand exclusion (deliberately without the
+`eval_intent.py` mirrors `read_op_model`'s calibrated gate and operand exclusion (deliberately without the
 n-gram-span machinery, which `read_op_model` itself does not use — that lives in `primitive_head.py`): on the
 drifted checkpoint it reproduces the live failure scores to three decimals (COUNT 0.110 vs SUM 0.121).
+
+`calculation_contrastive.py` adds operation-family and role-specific operand retrieval without adding
+a second model. Labels are names and schema-column phrases, never SQL strings or numeric answers.
+`eval_calculations.py` reports a query-disjoint heldout score. At serving time these similarities only
+order operands that a deterministic calculation specification already considers eligible; typed units,
+joins, arithmetic, and post-ranking proof are unaffected by the learned score.
+
+Training batches are explicitly stratified (`--anch-n 20 --intent-n 6 --calculation-n 6` by default):
+property anchors and ordinary SQL/join graphs share the RelBlock MSE batch, intent anchors occupy a
+fixed class-balanced quota (`None`/COUNT/SUM/AVG = 2/2/1/1), and calculation pairs contribute their
+own contrastive loss. Intent rows are not merely mixed into the much larger graph pool. Every
+keep-best evaluator sets both Qwen and the RelBlock to
+evaluation mode and restores their prior modes, so LoRA dropout cannot influence checkpoint selection.
 
 ## Required external inputs (place in `training/props/data/` before running)
 
@@ -146,10 +167,11 @@ python -m training.props.build_from_props
 # 2b. the alloc swap the trainer reads
 cp training/props/data/alloc.json training/props/data/alloc20.json
 
-# 2c. intent augmentation + the held-out intent eval (anchors "how many"/"in <place>" etc.;
-#     without it, keep-best falls back to property-AUC-only and CAN ship drifted intent — the
-#     failure mode of the first fine-tune run)
+# 2c. query-disjoint train/calibration/eval intent corpora; includes LIMIT-vs-COUNT contrasts
 python -m training.props.augment_intent
+
+# 2d. deterministic calculation intent/operand contrastive train + heldout sets
+python -m training.props.calculation_contrastive
 
 # 3. GPU: un-freeze qwen_lora + MSE-anchor the property corpus  (needs a GPU, base warm-start in data/, HF weights)
 python -m training.props.train_props_gpu --steps 600 --lr 2e-4
@@ -157,13 +179,18 @@ python -m training.props.train_props_gpu --steps 600 --lr 2e-4
 #    (verify any checkpoint against the serving-mirror intent eval at any time:)
 python -m training.props.eval_intent --ckpt props     # the fresh checkpoint
 python -m training.props.eval_intent --ckpt engine    # the shipped model, as the baseline
+python -m training.props.eval_calculations --ckpt props
+python -m training.props.eval_calculations --ckpt engine
 
 # 4. family-decode table  (→ data/ + engine/data/)
 python -m training.props.build_families
 
 # 5. per-property Youden-J thresholds  (→ data/ + engine/data/)
 python -m training.props.calibrate_props
+
+# 6. atomically install and hash the exact local release candidate
+python -m training.props.promote --local-only
 ```
 
-Final deploy (copy Stage-3 outputs under the engine's names, then run the engine tests) is described in
-`docs/TRAINING.md`.
+After all release gates pass, upload the exact large files and replace local-only promotion with
+`--revision <immutable-hf-commit>`. The full verification order is in `docs/TRAINING.md`.

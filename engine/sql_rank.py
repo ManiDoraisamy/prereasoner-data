@@ -6,13 +6,12 @@ the structural reasons a candidate won.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import math
 import re
 from typing import Any, Callable, Mapping, Sequence
 
-from engine.currency_intent import currency_conversion_target, currency_rate_attribute
-from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Comparison, Query, SelectQuery, SetQuery
+from engine.sql_ast import Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph
 
@@ -27,10 +26,12 @@ class SemanticSignals:
     column_roles: Mapping[str, Mapping[ColumnKey, float]]
     table_global: Mapping[str, float]
     sketch_profiles: tuple[Mapping[str, int], ...] = ()
+    calculation_intents: Mapping[str, float] = field(default_factory=dict)
+    calculation_operands: Mapping[str, Mapping[ColumnKey, float]] = field(default_factory=dict)
 
     @classmethod
     def empty(cls) -> "SemanticSignals":
-        return cls({}, {}, ())
+        return cls({}, {}, (), {}, {})
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class ExecutedCandidate:
 
 @dataclass(frozen=True)
 class QuestionRoles:
+    question: str
     tokens: tuple[str, ...]
     aggregate_positions: Mapping[str, tuple[int, ...]]
     count_requested: bool
@@ -93,24 +95,6 @@ def semantic_role_phrases(question: str) -> dict[str, str]:
     if order is not None:
         phrases["order"] = " ".join(words[order:])
     return {role: phrase for role, phrase in phrases.items() if phrase.strip()}
-
-
-def _conversion_targets(query: SelectQuery) -> frozenset[str]:
-    """Targets implemented by canonical ``SUM(measure * rate_to_<target>)`` expressions."""
-    targets = set()
-    for item in query.select:
-        expression = item.expression
-        if (not isinstance(expression, Aggregate) or expression.function != "SUM"
-                or not isinstance(expression.operand, BinaryExpr)
-                or expression.operand.operator != "*"):
-            continue
-        for side in (expression.operand.left, expression.operand.right):
-            if not isinstance(side, ColumnRef):
-                continue
-            match = re.fullmatch(r"rate_to_([a-z]{3})", side.name.lower())
-            if match is not None:
-                targets.add(match.group(1).upper())
-    return frozenset(targets)
 
 
 class CandidateRanker:
@@ -240,20 +224,8 @@ class CandidateRanker:
                 features.append((f"aggregate_target:{aggregate.function}:{_column_label(operand)}",
                                  3.0 if operand in targets else -3.5))
 
-        # Reward only a canonical direct-rate expression for the explicitly requested target.
-        # Other arithmetic aggregates (for example quantity * price) are unrelated.
-        requested_target = currency_conversion_target(roles.tokens)
-        conversion_targets = _conversion_targets(query)
-        if requested_target is not None:
-            expected_rate = currency_rate_attribute(requested_target)
-            features.append((
-                f"currency_conversion:{expected_rate}",
-                8.0 if requested_target in conversion_targets else -8.0,
-            ))
-            if conversion_targets - {requested_target}:
-                features.append(("currency_conversion_wrong_target", -12.0))
-        elif conversion_targets:
-            features.append(("currency_conversion_unrequested", -8.0))
+        from engine.calculations.registry import calculation_rank_features
+        features.extend(calculation_rank_features(roles.question, query, self.schema, self.signals))
 
         travel_direction = _travel_direction(roles.tokens)
         if travel_direction:
@@ -420,6 +392,7 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
                   and bool({"name", "names"} & set(tokens)))
     frozen_positions = {function: tuple(positions) for function, positions in aggregate_positions.items() if positions}
     return QuestionRoles(
+        question=question,
         tokens=tokens,
         aggregate_positions=frozen_positions,
         count_requested=bool(aggregate_positions["COUNT"]),

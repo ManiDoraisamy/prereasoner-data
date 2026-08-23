@@ -153,12 +153,25 @@ The AST, validator, renderer, and search rules support:
 Grammar support does not imply perfect language coverage. A valid AST can still be absent
 because the question was linked to the wrong role or no search rule proposed that shape.
 
-Currency conversion is deliberately conservative. A candidate is generated only for an
-explicit target phrase and an exact `source.currency -> rates.currency` (or
-`rates.currency_code`) edge with a numeric `rate_to_<target>` column. Bare `dollars`,
-untargeted `convert`, ambiguous matching rate tables, and unrelated tax,
-discount, or interest rates do not activate conversion. Production currently registers no
-static FX table; ECB history remains disabled until temporal row selection and rounding exist.
+Arithmetic is handled by `engine/calculations/`, not by SQL-string templates. A specification
+detects explicit syntax, binds role-named numeric columns, and proposes a `BinaryExpr` tree. The
+shared expander obtains complete join trees from `SchemaGraph`; composite keys remain one typed
+foreign-key edge. The post-ranking verifier describes the selected AST and requires the expected
+expression plus a complete registered-key path between its bound operands on every `UNION`,
+`INTERSECT`, or `EXCEPT` branch before a number can be released.
+
+Registered forms are `SUM(amount * rate_to_<target>)` for direct currency conversion,
+`SUM(numerator) / SUM(denominator)` for ratios and per-capita measures, and
+`SUM(amount * rate)` for flat tax/commission or explicit annual one-year simple interest. Percent
+columns are divided by 100; fraction/decimal columns are not. A temporal rate table is eligible only
+when the typed foreign key includes its temporal coordinate. Piecewise tax schedules, unspecified
+interest periods, and latest-prior/as-of joins are not silently approximated; they clarify. Currency
+also retains its filter, identity, and stated-unit realizations. ISO parsing and the canonical
+`rate_to_<code>` convention live in `engine/currency_intent.py`.
+
+Qwen similarities can order eligible operand bindings. They do not create intent by themselves,
+change unit normalization, supply a missing key, or satisfy verification. This is why retraining can
+improve recognition without moving arithmetic correctness into a stochastic decoder.
 
 ## Validation and safety
 
@@ -188,6 +201,11 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_constraints.py` | `HAVING`, disjunction, scalar, and membership rules. |
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
 | `engine/sql_rank.py` | Hand-written semantic and execution features. |
+| `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
+| `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |
+| `engine/calculations/search.py` | Calculation-plan expansion into validated AST candidates. |
+| `engine/calculations/registry.py` | Shared selection, verification, ranking features, and clarify policy. |
+| `engine/currency_intent.py` | Currency syntax and canonical rate-column rules used by the currency specification. |
 | `engine/sql_profile.py` | Structural AST profiles. |
 | `engine/sql_profile_expansion.py` | Deterministic exact-profile candidate expansion (`ProfileSearchConfig`). |
 

@@ -96,11 +96,21 @@ const checks = `
     const step = BOOK.find(s => s.cls === 'deriv');
     if (!step) throw new Error('a typed-AST answer (sql+answer, no views) must surface a reasoning step');
     if (!/SUM/.test(step.sql) || step.rows[0][0] !== 892) throw new Error('the surfaced step lost the SQL or the result');
+
+    const currencyClarify = clarifyFallbackText({
+      reason:'the selected computation does not convert mixed source currencies to EUR',
+      proposed:'total order amount in US dollars'
+    });
+    if (!currencyClarify.includes('does not convert') || !currencyClarify.includes('Try'))
+      throw new Error('typed currency reason or answerable proposal was hidden by the browser fallback');
+    const ordinaryClarify = clarifyFallbackText({proposed:'total revenue by country'});
+    if (!ordinaryClarify.includes('Did you mean'))
+      throw new Error('ordinary clarification lost its existing proposal fallback');
     __finish();
   } catch (error) { __finish(error); }
 }());`;
 
 vm.runInContext(source + checks, context, {filename: 'workbook.js'});
 
-done.then(() => console.log('workbook reference state: 9 passed, 0 failed'))
+done.then(() => console.log('workbook reference state: 11 passed, 0 failed'))
   .catch(error => { console.error(error.stack || error); process.exitCode = 1; });

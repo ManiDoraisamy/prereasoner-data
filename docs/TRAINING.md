@@ -48,6 +48,7 @@ build_assignment21_v2.py  ─► data/alloc21_dims.json       (◄ THE property 
                                                             becomes a dim iff ≥25 training instances carry it)
 build_from_props.py       ─► data/{alloc.json (nc), units_{train,test}.jsonl, assignment.csv, inference.csv}
    ── cp data/alloc.json data/alloc20.json  (the trainer reads alloc20.json) ──
+calculation_contrastive.py ─► data/calculation_contrastive_{train,eval}.jsonl
 train_props_gpu.py  (GPU) ─► data/{encoder_props.pt, encoder_props_meta.pt, qwen_lora_props/}   (un-freezes + fine-tunes the gen20 LoRA)
 build_families.py  ─► data/families.json + engine/data/families.json
 calibrate_props.py ─► data/props_thr.json + engine/data/props_thr.json
@@ -90,23 +91,36 @@ controlled by the `TYPES` map (`build_assignment21_v2.py:41–46`, Wikidata qid 
 3. ✅ `python -m training.props.build_from_props` — corpus written to `data/units_{train,test}.jsonl`
    (**nc=90** = 9 struct + 71 prop + 10 intent, ~1.1 MB).
 4. ✅ `cp training/props/data/alloc.json training/props/data/alloc20.json` (the trainer reads `alloc20.json`).
-5. **(GPU — REMAINING)** `python -m training.props.augment_intent` (anchors the serving intent phrasings +
-   writes the held-out intent eval), then `python -m training.props.train_props_gpu --steps 600 --lr 2e-4`.
-   The trainer's keep-best selects on **property AUC + held-out intent op-accuracy** (a
+5. **GPU:** run `python -m training.props.augment_intent` and
+   `python -m training.props.calculation_contrastive`, then
+   `python -m training.props.train_props_gpu --steps 600 --lr 2e-4`.
+   The trainer's keep-best selects on **property AUC + held-out intent op-accuracy + held-out
+   calculation retrieval accuracy** and enforces explicit floors for the latter two (a
    `read_op_model` mirror) — the first run selected on property AUC alone and regressed COUNT intent at
-   serving; see `training/props/pipeline.md` § "The intent guard". Gate the checkpoint with
-   `python -m training.props.eval_intent --ckpt props` — intent op-accuracy must be **≥ the 0.808
-   engine baseline** AND the `howmany_customers_france` probe must be OK.
+   serving; see `training/props/pipeline.md` § "Representation guards". Gate the checkpoint with
+   both `python -m training.props.eval_intent --ckpt props` and
+   `python -m training.props.eval_calculations --ckpt props`.
 6. `python -m training.props.build_families` + `python -m training.props.calibrate_props` (both stage their
    outputs into `engine/data/`; override with `PREREASONER_ENGINE_DATA`).
-7. Copy the GPU-train (`train_props_gpu`) outputs into `engine/data/` under the engine's names:
-   `encoder_props.pt`→`encoder.pt`, `encoder_props_meta.pt`→`encoder_meta.pt`, `qwen_lora_props/*`→`qwen_lora/`,
-   `data/alloc.json`→`alloc.json`. (`families.json` + `props_thr.json` are written to `engine/data/` by step 6.)
-   Do **not** touch `anchor_assignment.npz` (legacy, unused by the router).
+7. Promote with `python -m training.props.promote --local-only` for local release evaluation. This
+   atomically installs the readout, metadata, LoRA, calibrated thresholds, and hashes. After uploading
+   those exact large files, rerun with `--revision <immutable-hf-commit>`; that clears the local-only
+   marker and pins fresh-clone provisioning. Do **not** touch `anchor_assignment.npz` (legacy, unused by
+   the property router).
 8. Verify: `python -m tests.test_world` + `python -m tests.test_geo` — the software assertion (`test_world.py:50`)
    must flip from `None` to a routed family, with no regression on the other assertions — **and**
    `python -m tests.test_route_wired` (the COUNT world-join aggregate "how many customers in France" must still
    answer, i.e. return the French-customer count; the first run passed test_world/test_geo but broke exactly this).
+
+The calculation corpus trains the same LoRA used by the property and intent tasks; it does not create
+another model artifact. It teaches operation and role-specific operand similarity only. Runtime
+arithmetic, unit normalization, join completeness, and answer release remain deterministic in
+`engine/calculations/`.
+
+`train_props_gpu.py` samples property, ordinary graph, and intent anchors as explicit batch strata;
+calculation pairs use a separate InfoNCE term. Checkpoint evaluation disables Qwen/LoRA dropout and
+requires the heldout intent floor, zero failing named intent probes, and the calculation floor before
+a checkpoint can be saved. Do not replace those gates with a last-step checkpoint.
 
 ## Independence — what is vendored, what stays external
 

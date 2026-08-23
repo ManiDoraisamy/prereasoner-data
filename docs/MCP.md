@@ -29,11 +29,12 @@ Local tests can use the engine's `AUTH_TEST_SUB` bypass. Production refuses that
 `prereasoner_query` normalizes engine responses into one of:
 
 - `answered`: result rows, SQL, views, and trace metadata;
-- `clarify`: the engine rejected a query that would drop part of the question;
+- `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.
 
 An empty or unknown response shape is an error, never a fabricated answer. Clarification is passed through rather
-than smoothed into a guess.
+than smoothed into a guess. Its `reason`, `unmet`, and typed evidence fields survive HTTP, MCP, RTDB streaming, and
+the browser fallback; adapters must not reduce it to a generic rephrase message.
 
 ## Routing Discipline
 

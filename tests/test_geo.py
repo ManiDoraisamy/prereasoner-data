@@ -308,6 +308,33 @@ def main():
        and isinstance(conv, (int, float)) and abs(conv - 791.2) < 0.05,
        f"got={conv} clarify={(rconv or {}).get('clarify')}")
 
+    # The currency verifier must run before the older generic coverage gate. Otherwise all three
+    # cases become the same unhelpful "query dropped words" clarify and lose their typed evidence.
+    rmissing = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in euros", sub,
+                                       explicit_fks=(_FX_EDGE,)))
+    ok("fx: unavailable EUR conversion declines with typed evidence and no numeric result",
+       bool(rmissing) and rmissing.get("clarify") is True and not rmissing.get("result")
+       and "does not convert" in (rmissing.get("reason") or "")
+       and (rmissing.get("currency") or {}).get("target") == "EUR",
+       f"result={rmissing}")
+
+    rfilter = _retry(lambda: qc.serve([_ORD, _FX], "how many orders in EUR", sub,
+                                      explicit_fks=(_FX_EDGE,)))
+    filter_value = (((rfilter or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("fx: COUNT in EUR is a filter, not a conversion decline",
+       bool(rfilter) and not rfilter.get("clarify") and filter_value == 3
+       and (rfilter.get("currency") or {}).get("realization") == "currency_filter",
+       f"result={rfilter}")
+
+    _PRODUCTS = {"name": "products", "columns": ["product", "revenue"],
+                 "rows": [["A", 100], ["B", 250]]}
+    runits = _retry(lambda: qc.serve([_PRODUCTS], "total revenue in euros", sub))
+    unit_value = (((runits or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("fx: no currency dimension treats EUR as a unit annotation",
+       bool(runits) and not runits.get("clarify") and unit_value == 350
+       and (runits.get("currency") or {}).get("realization") == "unit_annotation",
+       f"result={runits}")
+
     # C2c conversion composed with a world filter and automatically discovered uploaded FKs.
     _FX_CUSTOMERS = {"name": "customers", "columns": ["name", "city"],
                      "rows": [["Clouseau", "Paris"], ["Lupin", "Paris"], ["Holmes", "London"]]}

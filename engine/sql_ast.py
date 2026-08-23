@@ -66,9 +66,12 @@ ARITHMETIC_OPERATORS = frozenset({"+", "-", "*", "/"})
 
 @dataclass(frozen=True)
 class BinaryExpr:
-    """A binary arithmetic expression (e.g. ``amount * rate``). Operands are numeric scalar
-    expressions and the result is numeric, so ``SUM(amount * rate)`` becomes representable —
-    the prerequisite for currency conversion and other per-row arithmetic (roadmap M3a)."""
+    """Numeric arithmetic at row or aggregate scope.
+
+    Both ``SUM(amount * rate)`` and ``SUM(gdp) / SUM(population)`` are represented without
+    falling back to SQL strings. Nested aggregates remain invalid because ``Aggregate.operand``
+    cannot itself be an aggregate.
+    """
     left: "ScalarExpr"
     operator: str
     right: "ScalarExpr"
@@ -384,6 +387,8 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
     if isinstance(expr, Aggregate):
         if expr.function not in AGGREGATES:
             raise ASTValidationError(f"unsupported aggregate: {expr.function}")
+        if not isinstance(expr.operand, (ColumnRef, Star, BinaryExpr)):
+            raise ASTValidationError("aggregate operands must be a column, star, or row expression")
         if isinstance(expr.operand, Star) and expr.function != "COUNT":
             raise ASTValidationError(f"{expr.function}(*) is not valid")
         if isinstance(expr.operand, Star) and expr.distinct:
@@ -392,14 +397,18 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
                 and not expr.operand.type.numeric):
             raise ASTValidationError(f"{expr.function} requires a numeric column")
         if isinstance(expr.operand, BinaryExpr):
+            if _expr_has_aggregate(expr.operand):
+                raise ASTValidationError("nested aggregates are not valid")
             _validate_expr(expr.operand, visible)               # e.g. SUM(amount * rate)
         return
     if isinstance(expr, BinaryExpr):
         if expr.operator not in ARITHMETIC_OPERATORS:
             raise ASTValidationError(f"unsupported arithmetic operator: {expr.operator}")
         for side in (expr.left, expr.right):
-            if not isinstance(side, (ColumnRef, Literal, BinaryExpr)):
-                raise ASTValidationError("arithmetic operands must be a column, literal, or arithmetic expression")
+            if not isinstance(side, (ColumnRef, Literal, Aggregate, BinaryExpr)):
+                raise ASTValidationError(
+                    "arithmetic operands must be a column, literal, aggregate, or arithmetic expression"
+                )
             _validate_expr(side, visible)
             side_type = expression_type(side)
             if (side_type == SQLType.UNKNOWN and isinstance(side, Literal)
@@ -478,8 +487,17 @@ def _render_expr(expr: ScalarExpr) -> str:
     if isinstance(expr, BinaryExpr):
         if expr.operator == "/":
             # SQLite and PostgreSQL perform integer division for integer operands.
-            # The AST contract declares division REAL, so force portable real arithmetic.
-            return f"(CAST({_render_expr(expr.left)} AS REAL) / {_render_expr(expr.right)})"
+            # The AST contract declares division REAL, so force portable real arithmetic. A
+            # data-dependent zero denominator yields NULL instead of aborting the whole query.
+            right = _render_expr(expr.right)
+            if not (
+                isinstance(expr.right, Literal)
+                and isinstance(expr.right.value, Real)
+                and not isinstance(expr.right.value, bool)
+                and expr.right.value != 0
+            ):
+                right = f"NULLIF({right}, 0)"
+            return f"(CAST({_render_expr(expr.left)} AS REAL) / {right})"
         return f"({_render_expr(expr.left)} {expr.operator} {_render_expr(expr.right)})"
     if isinstance(expr, ScalarSubquery):
         return f"({_render_query(expr.query)})"

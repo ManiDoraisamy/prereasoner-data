@@ -27,8 +27,9 @@ an aggregate" signal is as strong as the aggregate signal and spans all places.
 Skipped on purpose: "mean"/"avg" as AVG cues — they occur 17x/8x in the corpus as NONE (data
 column names in questions); labeling them AVG would contradict.
 
-Split: deterministic sha1 of the QUESTION TEXT — ~15% of phrasings to data/intent_eval.jsonl
-(NEVER trained on), the rest to data/intent_aug_train.jsonl. Keying on the question text (not the
+Split: deterministic sha1 of the QUESTION TEXT — 10% of phrasings calibrate the three operator
+gates, the next 15% are held out in data/intent_eval.jsonl, and the rest go to
+data/intent_aug_train.jsonl. Keying on the question text (not the
 variant id) is load-bearing: corpus questions are template-generated, so the same text recurs
 across many schemas — a per-variant split leaked 42% of eval questions verbatim into train. The
 eval is deduped to one graph per question text, and per-question-text duplicates in TRAIN are
@@ -50,8 +51,10 @@ DATA = os.path.join(TRAIN_DIR, "data"); os.makedirs(DATA, exist_ok=True)
 
 PLACES = ["France", "Germany", "Japan", "Italy", "Spain", "India",
           "Brazil", "Canada", "Texas", "California", "Europe", "Asia"]
+RELATIONS = ["country", "continent", "region", "category", "department", "group"]
 AGG = {"intent_agg_count": "COUNT", "intent_agg_sum": "SUM", "intent_agg_avg": "AVG"}
-EVAL_PCT = 15                                                  # sha1(question text) % 100 < 15 -> eval split
+CALIBRATION_PCT = 10                                          # first hash bucket; never gradient-trained
+EVAL_PCT = 15                                                 # next bucket; never calibrates or trains
 DUP_CAP = 4                                                    # max TRAIN graphs per identical question text
 
 
@@ -127,6 +130,8 @@ def make_variants(g, i, next_place):
         out.append(variant(g, "howmany", hm, "COUNT", i))
         out.append(variant(g, "howmany_place", place_tail(hm, next_place(), tk), "COUNT", i))
         out.append(variant(g, "numberof", pre + [qunit("number", [dim], tenkey=tk), qunit("of", tenkey=tk)] + post, "COUNT", i))
+        out.append(variant(g, "countof", pre + [qunit("count", [dim], tenkey=tk), qunit("of", tenkey=tk)] + post, "COUNT", i))
+        out.append(variant(g, "countthe", pre + [qunit("count", [dim], tenkey=tk), qunit("the", tenkey=tk)] + post, "COUNT", i))
     elif op == "SUM":
         out.append(variant(g, "sumof", pre + [qunit("sum", [dim], tenkey=tk), qunit("of", tenkey=tk)] + post, "SUM", i))
         out.append(variant(g, "howmuch_place",
@@ -149,6 +154,53 @@ def none_variant(g, i, place, alt):
     if alt or not rest:
         return variant(g, "show_place", place_tail([qunit("show", tenkey=tk)] + rest, place, tk), None, i)
     return variant(g, "bare_place", place_tail(rest, place, tk), None, i)
+
+
+def relation_none_variant(g, i, place):
+    """Heldout-pattern support: relation questions are projections, never aggregates.
+
+    Entity names and relation nouns rotate independently of the handcrafted Kyoto probe, and the
+    exact probe text remains excluded by the ordinary question-text leakage guard.
+    """
+    _, q = split_units(g)
+    tk = is_tenkey(q)
+    noun = RELATIONS[i % len(RELATIONS)]
+    tokens = [
+        qunit("which", tenkey=tk),
+        qunit(noun, tenkey=tk),
+        qunit("is", tenkey=tk),
+        qunit(place, tenkey=tk),
+        qunit("in", tenkey=tk),
+    ]
+    return variant(g, "which_relation", tokens, None, i)
+
+
+RANKING_ENTITIES = (
+    "cities", "products", "singers", "customers", "orders", "hospitals",
+    "employees", "books", "flights", "restaurants", "schools", "countries",
+)
+RANKING_MEASURES = (
+    "population", "revenue", "concert count", "order value", "bed count", "salary",
+    "rating", "duration", "price", "transaction volume", "enrollment", "area",
+)
+
+
+def ranking_none_variant(g, i):
+    """Suppression contrast: a numeric top/bottom bound is LIMIT, not COUNT intent."""
+    _, q = split_units(g)
+    tk = is_tenkey(q)
+    direction = ("top", "highest", "lowest", "largest")[i % 4]
+    number = str(2 + ((i // 4) % 9))
+    entity = RANKING_ENTITIES[(i // 36) % len(RANKING_ENTITIES)]
+    measure = RANKING_MEASURES[(i // 7) % len(RANKING_MEASURES)]
+    tokens = [
+        qunit(direction, tenkey=tk),
+        qunit(number, tenkey=tk),
+        qunit(entity, tenkey=tk),
+        qunit("by", tenkey=tk),
+        *(qunit(word, tenkey=tk) for word in measure.split()),
+    ]
+    return variant(g, "ranking_limit", tokens, None, i)
 
 
 # ---- handcrafted probes: live serving cases + HELD-OUT templates (never trained) ----
@@ -177,6 +229,12 @@ PROBES = [
           [("average", ["intent_agg_avg"]), ("population", []), ("of", []), ("cities", [])], "AVG"),
     probe("which_continent_kyoto", CITY,
           [("which", []), ("continent", []), ("is", []), ("Kyoto", []), ("in", [])], None),
+    probe("top3_cities_population", CITY,
+          [("top", []), ("3", []), ("cities", []), ("by", []), ("population", [])], None),
+    probe("largest5_hospitals_beds", CITY,
+          [("largest", []), ("5", []), ("hospitals", []), ("by", []), ("bed", []), ("count", [])], None),
+    probe("lowest4_products_price", CITY,
+          [("lowest", []), ("4", []), ("products", []), ("by", []), ("price", [])], None),
     # HELD-OUT TEMPLATES (novel phrasings — cue words trained, template never trained)
     probe("howmany_there_products_spain", CUST,
           [("how", []), ("many", ["intent_agg_count"]), ("products", []), ("are", []), ("there", []),
@@ -216,15 +274,22 @@ def main():
         nv = none_variant(g, i, next_place(), alt=(i % 2 == 0))   # a None variant for EVERY source
         if nv:
             all_variants += [nv]
+        all_variants.append(relation_none_variant(g, i, next_place()))
+        all_variants.append(ranking_none_variant(g, i))
 
-    # split by question text; dedupe eval; cap train duplicates; keep PROBES strictly held out
+    # Split by question text; calibration and eval are separately deduped. Named probes are eval-only.
     probe_texts = {qtext(p) for p in PROBES}
-    train, ev, ev_seen, train_qcount = [], [], set(), Counter()
+    train, calibration, ev = [], [], []
+    calibration_seen, ev_seen, train_qcount = set(), set(), Counter()
     for v in all_variants:
         qt = qtext(v)
         if qt in probe_texts:                                # never train a probe's exact phrasing
             continue
-        if int(hashlib.sha1(qt.encode()).hexdigest(), 16) % 100 < EVAL_PCT:
+        bucket = int(hashlib.sha1(qt.encode()).hexdigest(), 16) % 100
+        if bucket < CALIBRATION_PCT:
+            if qt not in calibration_seen:
+                calibration_seen.add(qt); calibration.append(v)
+        elif bucket < CALIBRATION_PCT + EVAL_PCT:
             if qt not in ev_seen:
                 ev_seen.add(qt); ev.append(v)
         else:
@@ -233,11 +298,20 @@ def main():
     ev += PROBES
 
     train_texts = {qtext(v) for v in train}
-    leak = (train_texts & ev_seen) | (train_texts & probe_texts)
+    leak = (
+        (train_texts & calibration_seen)
+        | (train_texts & ev_seen)
+        | (train_texts & probe_texts)
+        | (calibration_seen & ev_seen)
+        | (calibration_seen & probe_texts)
+    )
     assert not leak, f"question-text leakage across split: {sorted(leak)[:3]}"
 
     with open(os.path.join(DATA, "intent_aug_train.jsonl"), "w", encoding="utf-8") as f:
         for g in train:
+            f.write(json.dumps(g) + "\n")
+    with open(os.path.join(DATA, "intent_calibration.jsonl"), "w", encoding="utf-8") as f:
+        for g in calibration:
             f.write(json.dumps(g) + "\n")
     with open(os.path.join(DATA, "intent_eval.jsonl"), "w", encoding="utf-8") as f:
         for g in ev:
@@ -246,8 +320,10 @@ def main():
     def dist(rows, key):
         return dict(Counter(key(g) for g in rows).most_common())
     print(f"sources: {len(agg_srcs)} agg intent graphs (of {len(srcs)} intent)")
-    print(f"train {len(train)} | eval {len(ev)} (incl {len(PROBES)} probes)")
+    print(f"train {len(train)} | calibration {len(calibration)} | "
+          f"eval {len(ev)} (incl {len(PROBES)} probes)")
     print(f"train class: {dist(train, lambda g: str(g['expect']))}")
+    print(f"cal   class: {dist(calibration, lambda g: str(g['expect']))}")
     print(f"eval  class: {dist([g for g in ev if not g.get('probe')], lambda g: str(g['expect']))}")
     # place ⊥ class audit: place -> class counts across "in <place>" train variants
     pc_by_class = {}

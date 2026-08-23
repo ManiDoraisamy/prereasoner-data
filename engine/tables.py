@@ -339,6 +339,10 @@ class TableQuery:
 
     def ast_semantic_signals(self, question, sch):
         """Encode role-specific question phrases in the same metric space as schema columns."""
+        from engine.calculations.registry import (
+            CALCULATION_INTENT_PROTOTYPES,
+            calculation_operand_queries,
+        )
         from engine.sql_rank import SemanticSignals, semantic_role_phrases
         phrases = semantic_role_phrases(question)
         columns = [c for c in sch if c.get("qvec") is not None]
@@ -346,7 +350,15 @@ class TableQuery:
             return SemanticSignals.empty()
         tables = sorted({c["table"] for c in sch})
         roles = list(phrases)
-        vectors = self._encode([phrases[role] for role in roles] + tables)
+        calculation_names = list(CALCULATION_INTENT_PROTOTYPES)
+        calculation_phrases = [CALCULATION_INTENT_PROTOTYPES[name] for name in calculation_names]
+        operand_queries = calculation_operand_queries(question)
+        vectors = self._encode(
+            [phrases[role] for role in roles]
+            + tables
+            + calculation_phrases
+            + [phrase for _, phrase in operand_queries]
+        )
         role_vectors = {role: vectors[i] for i, role in enumerate(roles)}
         table_vectors = {table: vectors[len(roles) + i] for i, table in enumerate(tables)}
 
@@ -360,7 +372,27 @@ class TableQuery:
         }
         global_vector = role_vectors["global"]
         table_global = {table: cosine(global_vector, vector) for table, vector in table_vectors.items()}
-        return SemanticSignals(column_roles, table_global)
+        calculation_start = len(roles) + len(tables)
+        calculation_intents = {
+            name: cosine(global_vector, vectors[calculation_start + index])
+            for index, name in enumerate(calculation_names)
+        }
+        operand_start = calculation_start + len(calculation_names)
+        calculation_operands = {
+            key: {
+                (column["table"], column["name"]): cosine(
+                    vectors[operand_start + index], column["qvec"]
+                )
+                for column in columns
+            }
+            for index, (key, _) in enumerate(operand_queries)
+        }
+        return SemanticSignals(
+            column_roles,
+            table_global,
+            calculation_intents=calculation_intents,
+            calculation_operands=calculation_operands,
+        )
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, rank_candidates=True, expand_recursive=True,
@@ -396,7 +428,11 @@ class TableQuery:
         )
         if not candidates:
             return None, None, "planner: no valid AST candidate", ()
-        candidate = candidates[0]
+        from engine.calculations import select_calculation_candidate
+        from engine.sql_schema import SchemaGraph
+        candidate, _, _ = select_calculation_candidate(
+            question, norm, SchemaGraph.from_planner(sch, fks), candidates,
+        )
         ok, why = self.guard(candidate.sql)
         if not ok:
             return candidate, None, "guard: " + why, candidates
@@ -511,7 +547,7 @@ class TableQuery:
             candidate, result, candidates = None, None, ()
             err = f"{type(exc).__name__}: {exc}"
         sql = candidate.sql if candidate is not None else None
-        return {
+        response = {
             "question": question,
             "sql": sql,
             "valid": candidate is not None and err is None,
@@ -538,6 +574,18 @@ class TableQuery:
             "features": dict(candidate.features) if candidate is not None else {},
             "model": "engine - deterministic typed SQL AST planner",
         }
+        if candidate is not None:
+            from engine.calculations import assess_calculations, describe_computation
+            from engine.calculations.registry import attach_calculation_evidence
+            from engine.sql_schema import SchemaGraph
+            assessments = assess_calculations(
+                question,
+                norm,
+                SchemaGraph.from_planner(sch, fks),
+                describe_computation(candidate.query),
+            )
+            attach_calculation_evidence(response, assessments)
+        return response
 
 
 def sch_col_of(agg, sch):

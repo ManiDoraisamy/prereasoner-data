@@ -37,7 +37,7 @@ adding software to the training basis. Every CPU step is done + validated; only 
 deployed candidate passed both software assertions (test_world 15/15, test_geo 35/35) — but it **regressed
 COUNT-aggregate intent** ("how many customers in France" → the free-text path instead of `COUNT(*)`), because
 keep-best selected on property AUC alone while the un-frozen LoRA drifted the (weakly-anchored) intent dims.
-The fix is in place — see "The intent guard" in [`pipeline.md`](pipeline.md): `augment_intent.py` anchors the
+The fix is in place — see "Representation guards" in [`pipeline.md`](pipeline.md): `augment_intent.py` anchors the
 serving phrasings + holds out a serving-mirror intent eval, and the trainer's keep-best now selects on
 **property AUC + intent op-accuracy** combined. `eval_intent.py` reproduces the live failure on the drifted
 checkpoint (COUNT 0.110 vs SUM 0.121, to three decimals): shipped baseline **0.808**, drifted **0.697** (the

@@ -36,6 +36,7 @@ from engine.bridge import STOP
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
 )
+from engine.calculations import calculation_clarify
 
 
 def _norm_vec(v):
@@ -809,6 +810,12 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         # to EncoderQuery's metric-space operator via MRO.
         res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
                                 explicit_fks=explicit_fks)
+        if isinstance(res, dict) and res.get("clarify"):
+            return res
+        calculations = tuple((res or {}).get("calculations") or ()) if isinstance(res, dict) else ()
+        if calculations and any(row.get("status") != "satisfied" for row in calculations):
+            return calculation_clarify(question, res, calculations)
+        currency = (res or {}).get("currency") if isinstance(res, dict) else None
         # Clarify gate (COVERAGE): if the query silently DROPPED part of the question — a degenerate SELECT *
         # ('German sales'), OR a measure word with no aggregate ('French sales' -> SELECT name WHERE France) — offer
         # a best-guess unambiguous rephrasing (from the model's sub-threshold signals) for the user to confirm,
@@ -816,6 +823,9 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         if schema:
             try:
                 dropped = self._uncovered(question, sch, (res or {}).get("sql"))
+                if currency and currency.get("status") == "satisfied":
+                    realized = currency_conversion_words(currency["target"])
+                    dropped = [word for word in dropped if word not in realized]
             except Exception as e:                           # noqa: BLE001 — the gate must never break the world path
                 print("coverage check failed:", e, flush=True); dropped = []
             if dropped:

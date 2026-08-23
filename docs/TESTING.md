@@ -11,6 +11,7 @@ Run these before involving models, PostgreSQL, or network services:
 pip install -r requirements-ci.txt
 python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
 python -m tests.test_sql_ast
+python -m tests.test_calculations
 python -m tests.test_master_ingest
 python -m tests.test_routing
 python -m tests.test_enrichment
@@ -62,6 +63,7 @@ The runner executes the canonical suites in this order:
 | Suite | Primary boundary |
 |---|---|
 | `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
+| `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
 | `tests.test_routing` | Shared route authority and cross-process determinism |
 | `tests.test_compose` | Composed operations and relationship discovery |
 | `tests.test_converse` | Optional presentation/fill behavior |
@@ -94,7 +96,8 @@ python -m regress.run_regression --require-world
 
 `--require-world` makes missing live prerequisites fail rather than silently reducing the gate to offline tests.
 The gate covers core FK invariants, representative own-data SQL, canonical world answers, world-table joins, route
-wiring, and non-geographic grounding.
+wiring, and non-geographic grounding. Its own-data tier uses the same post-ranking calculation admissibility selector
+as live `TableQuery` serving; the gate must not execute raw rank 1 through a parallel policy path.
 
 ## Browser State Tests
 

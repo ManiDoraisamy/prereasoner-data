@@ -13,8 +13,16 @@ detectors live on ComposedKnowledgeQuery; KnowledgeReasoner applies them across 
 from __future__ import annotations
 import re
 
+from engine.calculations import (
+    ComputationEvidence,
+    assess_calculations,
+    calculation_clarify,
+    detect_calculations,
+)
+from engine.calculations.registry import attach_calculation_evidence
 from engine.knowledge_compose import ComposedKnowledgeQuery
 from engine.pg import _pg
+from engine.sql_schema import SchemaGraph
 
 NEAR = re.compile(r"\b(near(?:est|by)?|closest|around|close to)\b", re.I)
 STOP = {"cities", "city", "towns", "town", "places", "show", "find", "list", "me", "the", "biggest", "big",
@@ -53,7 +61,36 @@ class KnowledgeReasoner:
         finally:
             typing = self.qw.take_typing()
         res = self._tag_present(res, question, tables)
+        res = self._verify_calculations(res, tables, question, explicit_fks)
         return self._attach_typing(res, typing)
+
+    def _verify_calculations(self, res, tables, question, explicit_fks):
+        """Apply one route-independent gate to every registered calculation intent."""
+        if not isinstance(res, dict) or res.get("error"):
+            return res
+        if not detect_calculations(question):
+            return res
+        assessments = tuple(res.get("calculations") or ())
+        if not assessments:
+            # A route that cannot expose typed arithmetic must fail closed. Its SQL/result may be useful
+            # context for clarification, but it is not evidence that a requested calculation occurred.
+            graph = SchemaGraph.from_tables(tables or (), explicit_fks or ())
+            assessments = assess_calculations(
+                question,
+                tables,
+                graph,
+                ComputationEvidence.unverified(),
+            )
+            assessments = tuple({
+                **assessment,
+                "planner_fallback": "route supplied no typed calculation evidence",
+            } for assessment in assessments)
+        if not assessments:
+            return res
+        attach_calculation_evidence(res, assessments)
+        if any(assessment.get("status") != "satisfied" for assessment in assessments):
+            return calculation_clarify(question, res, assessments)
+        return res
 
     def _attach_typing(self, res, typing):
         """Surface the LEARNED world-grounding decision: for each column the trained model typed, WHICH

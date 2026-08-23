@@ -31,6 +31,9 @@ _ISO4217_CODES = frozenset((
     "XBC", "XBD", "XCD", "XDR", "XOF", "XPD", "XPF", "XPT", "XSU", "XTS", "XUA", "XXX",
     "YER", "ZAR", "ZMW"
 ))
+# Public immutable contract reused by deterministic currency parsing. The values remain generated
+# from the pinned CLDR snapshot above; consumers must not maintain a second hand-written code list.
+ISO4217_CODES = _ISO4217_CODES
 _ISO3166_A2 = frozenset((
     "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT",
     "AU", "AW", "AX", "AZ", "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI",

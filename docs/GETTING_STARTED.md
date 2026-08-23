@@ -179,7 +179,8 @@ The frontend has no build step. `reason.html` and `knowledge.html` load the shar
 | Saved references | `engine/master.py` | `tests.test_master_ingest` |
 | Routing | `engine/routing.py` | `tests.test_routing` |
 | Shared enrichment policy | `engine/enrichment/registry.py` | `tests.test_enrichment` |
-| Currency target semantics | `engine/currency_intent.py` | `tests.test_sql_ast`, `tests.test_enrichment` |
+| Typed calculation registry, expansion, and verification | `engine/calculations/` | `tests.test_calculations`, `tests.test_sql_ast` |
+| Currency syntax and rate-column convention | `engine/currency_intent.py` | `tests.test_calculations`, `tests.test_enrichment` |
 | Requested enrichment attributes | `engine/enrichment/intents.py` | `tests.test_enrichment` |
 | Source lookup policy and ambiguity | `engine/enrichment/adapters.py` | `tests.test_enrichment` |
 | Domain profiles and role evidence | `engine/domain_profiles.py`, `engine/domain_typing.py` | `tests.test_enrichment` |
