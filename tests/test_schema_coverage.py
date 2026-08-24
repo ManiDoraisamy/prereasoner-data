@@ -17,8 +17,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+import tempfile
+from types import SimpleNamespace
 
+import numpy as np
+
+from engine.artifact_provenance import sha256_file
 from engine.config import DATA_DIR
+from engine.fetch_weights import WEIGHTS
 
 MANIFEST = Path("training/schema_org/data/semantic_manifest.json")
 MODEL_META = DATA_DIR / "schema_property_model.json"
@@ -268,6 +274,71 @@ def test_artifacts_agree_on_corpus_identity():
     print(f"  PASS  model meta and manifest agree on corpus {meta['corpus_sha256'][:16]}")
 
 
+def test_runtime_bundle_is_fully_fetchable_and_pinned():
+    manifest = json.loads((DATA_DIR / "weights_manifest.json").read_text(encoding="utf-8"))
+    assert set(WEIGHTS) == set(manifest["files"]), (
+        "fetch_weights must provision every external file in the promoted manifest; "
+        f"missing={sorted(set(manifest['files']) - set(WEIGHTS))}, "
+        f"unmanifested={sorted(set(WEIGHTS) - set(manifest['files']))}"
+    )
+    meta = json.loads(MODEL_META.read_text(encoding="utf-8"))
+    assert meta["weights_sha256"] == manifest["files"]["schema_property_head.pt"], (
+        "Schema.org model metadata and the runtime manifest pin different property heads"
+    )
+    for name, record in manifest["committed_artifacts"].items():
+        assert sha256_file(DATA_DIR / name) == record["sha256"], (
+            f"committed runtime artifact {name} does not match weights_manifest.json"
+        )
+    print("  PASS  every promoted runtime artifact is fetchable or committed and hash-pinned")
+
+
+def test_schema_embedding_cache_is_bound_to_its_encoder():
+    from training.schema_org.train_property_head import _cached_embeddings
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "cache.npz"
+        np.savez(
+            path,
+            embeddings=np.array([[1.0, 2.0]], dtype=np.float32),
+            text_hashes=np.array(["text-sha"]),
+            encoder_artifact_sha256=np.array("encoder-a"),
+        )
+        assert set(_cached_embeddings(path, "encoder-a")) == {"text-sha"}
+        assert not _cached_embeddings(path, "encoder-b"), (
+            "embeddings from a different encoder adapter were reused"
+        )
+        legacy = Path(directory) / "legacy.npz"
+        np.savez(
+            legacy,
+            embeddings=np.array([[1.0, 2.0]], dtype=np.float32),
+            text_hashes=np.array(["text-sha"]),
+        )
+        assert not _cached_embeddings(legacy, "encoder-a"), (
+            "an unversioned legacy embedding cache was accepted"
+        )
+    print("  PASS  Schema.org embedding caches are invalidated when the encoder changes")
+
+
+def test_source_entity_cannot_span_semantic_splits():
+    from training.schema_org.corpus import _verify_splits
+
+    items = [
+        SimpleNamespace(
+            instance_id=f"group{i}", split=("train" if i < 80 else "validation" if i < 90 else "test"),
+            text=f"text {i}", provenance_ids=(f"row:{i}",),
+        )
+        for i in range(100)
+    ]
+    items[-1].provenance_ids = items[0].provenance_ids
+    try:
+        _verify_splits(items)
+    except ValueError as exc:
+        assert "source row" in str(exc) and "occurs in splits" in str(exc), str(exc)
+    else:
+        raise AssertionError("the same source entity was accepted in train and test")
+    print("  PASS  source entity identities cannot cross semantic splits")
+
+
 TESTS = [
     test_legacy_basis_is_the_documented_size,
     test_trained_basis_covers_the_legacy_one,
@@ -278,6 +349,9 @@ TESTS = [
     test_corpus_carries_column_level_instances,
     test_split_is_drawn_per_derivation_group,
     test_artifacts_agree_on_corpus_identity,
+    test_runtime_bundle_is_fully_fetchable_and_pinned,
+    test_schema_embedding_cache_is_bound_to_its_encoder,
+    test_source_entity_cannot_span_semantic_splits,
 ]
 
 if __name__ == "__main__":

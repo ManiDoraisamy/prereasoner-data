@@ -25,7 +25,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from urllib.parse import urlparse, parse_qs
 
-from engine.config import HOST, PORT
+from engine.config import HOST, PORT, external_llm_enabled
 from engine.auth import _verify_principal, _bearer
 from engine.tables import csv_table, table_name
 from engine.trace import emitter, stream_final, set_ctx
@@ -33,6 +33,10 @@ from engine.conversations import (resolve_conversation, list_conversations, get_
                                    delete_conversation, delete_all_conversations, save_state, NotOwned)
 from engine import master
 from engine import admin
+
+
+def _external_llm_allowed(req):
+    return external_llm_enabled() and req.get("external_llm_consent") is True
 
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
@@ -126,7 +130,7 @@ class H(BaseHTTPRequestHandler):
             if n > MAX_BODY:
                 self._send(200, json.dumps({"error": "payload too large"})); return
             req = json.loads(self.rfile.read(n) or b"{}") if n else {}
-            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
             if path == "/api/master/delete":
@@ -151,7 +155,7 @@ class H(BaseHTTPRequestHandler):
             if n > MAX_BODY:
                 self._send(200, json.dumps({"error": "payload too large"})); return
             req = json.loads(self.rfile.read(n) or b"{}") if n else {}
-            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
             try:
@@ -166,13 +170,15 @@ class H(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(n) or b"{}") if n else {}
-            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
             if path == "/api/conversation/delete-all":
-                self._send(200, json.dumps(delete_all_conversations(sub))); return
+                self._send(200, json.dumps(delete_all_conversations(sub, rtdb_uid=uid))); return
             try:
-                self._send(200, json.dumps(delete_conversation(sub, req.get("id", ""))))
+                self._send(200, json.dumps(
+                    delete_conversation(sub, req.get("id", ""), rtdb_uid=uid)
+                ))
             except NotOwned:
                 self._send(404, json.dumps({"error": "conversation not found"}))
         except Exception as e:                               # noqa: BLE001
@@ -253,6 +259,10 @@ class H(BaseHTTPRequestHandler):
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
+            if not _external_llm_allowed(req):
+                self._send(503, json.dumps({
+                    "error": "external LLM processing is disabled or this request lacks explicit consent"
+                })); return
             from engine import converse
             try:
                 text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
@@ -282,6 +292,10 @@ class H(BaseHTTPRequestHandler):
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
+            if not _external_llm_allowed(req):
+                self._send(503, json.dumps({
+                    "error": "external LLM processing is disabled or this request lacks explicit consent"
+                })); return
             emit = emitter(uid, req.get("jobId"))            # no-op if RTDB/jobId absent; else streams past the 60s proxy
             emit("status", "running")
             from engine import converse

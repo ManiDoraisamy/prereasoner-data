@@ -59,10 +59,15 @@ reconfigured before a third party can reproduce the complete application from a 
 
 ```powershell
 python -m tests.test_sql_ast
+python -m tests.test_calculations
 python -m tests.test_master_ingest
 python -m tests.test_routing
+python -m tests.test_router_evidence
+python -m tests.test_schema_decode
+python -m tests.test_schema_coverage
 python -m tests.test_enrichment
 python -m tests.test_source_sync
+python -m tests.test_app_migrations
 node web/tests/workbook_reference.test.js
 python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
 python -m compileall -q engine db training tests orchestrator mcp_server regress

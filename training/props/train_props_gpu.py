@@ -17,7 +17,7 @@ The base alloc must be present as `alloc20.json` — do `cp DATA/alloc.json DATA
   $env:PYTHONUTF8=1; python -m training.props.train_props_gpu --steps 600 --lr 2e-4
 """
 from __future__ import annotations
-import argparse, json, os, random
+import argparse, json, os, random, subprocess
 import numpy as np, torch
 import torch.nn.functional as F
 
@@ -26,6 +26,8 @@ from training.lib.relblock import RelBlockModel                   # noqa: E402  
 from training.train.train_multitask import load, fam_report       # noqa: E402
 from training.train.train_unified import pack, pack_csv, collate_live, evaluate   # noqa: E402
 from training.lib.encoder import LiveQwen                         # noqa: E402
+from engine.artifact_provenance import sha256_file, sha256_tree   # noqa: E402
+from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION   # noqa: E402
 from training.props.eval_intent import (  # noqa: E402
     calibrate_intent_thresholds,
     intent_metrics,
@@ -270,6 +272,57 @@ def main():
                     },
                     os.path.join(R, "encoder_props_meta.pt"),
                 )
+                corpus_names = (
+                    "alloc20.json", "units_train.jsonl", "units_test.jsonl",
+                    "sql_graphs_train.jsonl", "join_graphs_train.jsonl",
+                    "intent_aug_train.jsonl", "intent_calibration.jsonl", "intent_eval.jsonl",
+                    "calculation_contrastive_train.jsonl", "calculation_contrastive_eval.jsonl",
+                )
+                missing_report_inputs = [name for name in corpus_names if not os.path.isfile(os.path.join(R, name))]
+                if missing_report_inputs:
+                    raise SystemExit(f"release report inputs missing: {missing_report_inputs}")
+                commit = subprocess.check_output(
+                    ["git", "rev-parse", "HEAD"], cwd=REPO, text=True
+                ).strip()
+                dirty = bool(subprocess.check_output(
+                    ["git", "status", "--porcelain"], cwd=REPO, text=True
+                ).strip())
+                report = {
+                    "schema_version": 1,
+                    "code_commit": commit,
+                    "dirty_worktree": dirty,
+                    "base_model": {"id": QWEN_MODEL_ID, "revision": QWEN_REVISION},
+                    "seed": args.seed,
+                    "training_args": vars(args),
+                    "corpora": {
+                        name: sha256_file(os.path.join(R, name)) for name in corpus_names
+                    },
+                    "metrics": {
+                        "property_mean_auc": m[0],
+                        "property_auc_ge_075": m[1],
+                        "property_auc_ge_085": m[2],
+                        "property_evaluated": m[3],
+                        "intent_accuracy": it[0],
+                        "intent_mean_auc": it[1],
+                        "intent_bad_probes": list(it[4]),
+                        "calculation_accuracy": calc[0],
+                        "calculation_by_kind": calc[1],
+                    },
+                    "gates": {
+                        "min_intent_accuracy": args.min_intent_accuracy,
+                        "max_bad_intent_probes": args.max_bad_intent_probes,
+                        "min_calculation_accuracy": args.min_calculation_accuracy,
+                        "passed": True,
+                    },
+                    "artifacts": {
+                        "encoder_props.pt": sha256_file(os.path.join(R, "encoder_props.pt")),
+                        "encoder_props_meta.pt": sha256_file(os.path.join(R, "encoder_props_meta.pt")),
+                        "qwen_lora_props": sha256_tree(os.path.join(R, "qwen_lora_props")),
+                    },
+                }
+                with open(os.path.join(R, "release_report.json"), "w", encoding="utf-8") as target:
+                    json.dump(report, target, indent=2, sort_keys=True)
+                    target.write("\n")
                 flag = "  <- best saved"
             print(f"[{step:4d}] mse={mse.item():.4f} calc-loss={calculation_loss.item():.4f} "
                   f"prop mean-AUC(n>=5)={m[0]:.3f}  >=0.75:{m[1]}  >=0.85:{m[2]}"

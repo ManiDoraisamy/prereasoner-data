@@ -1,5 +1,4 @@
-"""The retrieval embedder used to build/extend knowledgebase."words" (standalone copy of the
-engine's embed16 module, so db/ needs no engine import).
+"""The retrieval embedder used to build/extend knowledgebase."words".
 
 bge-small-en-v1.5 sentence embedding = the [CLS] token of last_hidden_state,
 L2-normalized (per the model card), so cosine similarity == dot product. 384-dim,
@@ -13,7 +12,7 @@ import re
 
 import numpy as np
 
-_MODEL_ID = "BAAI/bge-small-en-v1.5"
+from engine.model_revisions import BGE_MODEL_ID as _MODEL_ID, BGE_REVISION as _MODEL_REVISION
 
 
 def normalize_surface(s):
@@ -32,8 +31,10 @@ class Embedder:
         import torch
         from transformers import AutoTokenizer, AutoModel
         self._torch = torch
-        self.tok = AutoTokenizer.from_pretrained(_MODEL_ID)
-        self.mdl = AutoModel.from_pretrained(_MODEL_ID, low_cpu_mem_usage=True).eval()
+        self.tok = AutoTokenizer.from_pretrained(_MODEL_ID, revision=_MODEL_REVISION)
+        self.mdl = AutoModel.from_pretrained(
+            _MODEL_ID, revision=_MODEL_REVISION, low_cpu_mem_usage=True
+        ).eval()
         self.dim = self.mdl.config.hidden_size          # 384
 
     @classmethod

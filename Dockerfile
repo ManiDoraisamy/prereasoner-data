@@ -35,15 +35,24 @@ RUN pip install -r /tmp/requirements.txt \
 # and at first embedding (bge-small). Cloud Run containers must NOT download models at
 # boot — the startup probe times out and HF rate limits unauthenticated pulls.
 ENV HF_HOME=/opt/hf
+COPY engine/model_revisions.py /tmp/prereasoner_model_revisions.py
 # Authenticate the model pull with an HF token, mounted as a BuildKit SECRET (never baked into the image
 # layers or history). Unauthenticated HF pulls are rate-limited to a crawl (~40 min → build timeout);
 # authenticated is a couple of minutes. Degrades to unauthenticated if the secret is absent (e.g. a local
 # `docker build` without --secret), so the build still works, just slowly.
 RUN --mount=type=secret,id=hf_token \
-    HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" python - <<'PY'
+    HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" PYTHONPATH=/tmp python - <<'PY'
 from transformers import AutoModel, AutoTokenizer
-for mid in ("Qwen/Qwen2.5-0.5B", "BAAI/bge-small-en-v1.5"):
-    AutoModel.from_pretrained(mid); AutoTokenizer.from_pretrained(mid)
+from prereasoner_model_revisions import (
+    BGE_MODEL_ID, BGE_REVISION, QWEN_MODEL_ID, QWEN_REVISION,
+)
+models = (
+    (QWEN_MODEL_ID, QWEN_REVISION),
+    (BGE_MODEL_ID, BGE_REVISION),
+)
+for mid, revision in models:
+    AutoModel.from_pretrained(mid, revision=revision)
+    AutoTokenizer.from_pretrained(mid, revision=revision)
 PY
 
 # ---------- runtime ----------

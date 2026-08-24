@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import threading
+import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
@@ -108,6 +109,11 @@ def _test_server(key, model, engine_base):
     os.environ["ENGINE_BASE_URL"] = engine_base
     os.environ["ORCH_PORT"] = "8813"
     os.environ.setdefault("AUTH_TEST_SUB", "localdev")   # /chat now requires a verified identity; local/test mode uses the bypass (as in docker-compose + real local dev)
+    # Relaying the message to Anthropic is egress, so /chat requires BOTH the deployment opt-in and
+    # per-request consent. Set explicitly rather than setdefault: the test must not pass or fail on
+    # whatever the developer happens to have exported.
+    previous_egress = os.environ.get("EXTERNAL_LLM_ENABLED")
+    os.environ["EXTERNAL_LLM_ENABLED"] = "1"
     # reimport config so ENGINE_BASE_URL/ORCH_PORT take effect
     import importlib
     from engine import config as _cfg
@@ -116,15 +122,39 @@ def _test_server(key, model, engine_base):
     importlib.reload(_srv)
     httpd = ThreadingHTTPServer(("127.0.0.1", 8813), _srv.H)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    def post(payload, timeout=120):
+        request = urllib.request.Request(
+            "http://127.0.0.1:8813/chat", data=json.dumps(payload).encode(),
+            headers={"content-type": "application/json"})
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as resp:
+                return resp.status, json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            return exc.code, json.loads(exc.read() or b"{}")
+
     try:
-        body = json.dumps({"message": "Say hello in one short sentence. Do not call any tool.",
-                           "tables": TABLES, "history": []}).encode()
-        req = urllib.request.Request("http://127.0.0.1:8813/chat", data=body,
-                                     headers={"content-type": "application/json"})
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            j = json.loads(resp.read())
-        ok("reply" in j and isinstance(j.get("history"), list), "POST /chat returns {reply, history}")
+        message = {"message": "Say hello in one short sentence. Do not call any tool.",
+                   "tables": TABLES, "history": []}
+        _, granted = post({**message, "external_llm_consent": True})
+        ok("reply" in granted and isinstance(granted.get("history"), list),
+           "POST /chat returns {reply, history}")
+
+        # The gate is a privacy control, so it needs a NEGATIVE test: withholding consent must refuse
+        # rather than quietly forward the user's message and tables to Anthropic.
+        status, refused = post(message, timeout=30)
+        ok(status == 503 and "reply" not in refused,
+           "POST /chat without external_llm_consent is refused and returns no model reply")
+
+        os.environ["EXTERNAL_LLM_ENABLED"] = "0"
+        status, disabled = post({**message, "external_llm_consent": True}, timeout=30)
+        ok(status == 503 and "reply" not in disabled,
+           "per-request consent cannot override the deployment-level egress switch")
     finally:
+        if previous_egress is None:
+            os.environ.pop("EXTERNAL_LLM_ENABLED", None)
+        else:
+            os.environ["EXTERNAL_LLM_ENABLED"] = previous_egress
         httpd.shutdown()
 
 

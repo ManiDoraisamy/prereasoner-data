@@ -8,8 +8,9 @@ Everything the serving engine opens at runtime lives here (override the location
 ```
 HF_TOKEN=<read-token> python -m engine.fetch_weights
 ```
-This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`, and `primitives.npz`
-into this directory (see `engine/fetch_weights.py`). `weights_manifest.json` pins the
+This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`,
+`primitives.npz`, and `schema_property_head.pt` into this directory (see
+`engine/fetch_weights.py`). `weights_manifest.json` pins the
 source revision and SHA-256 of every runtime weight; both existing and downloaded bundles
 must validate completely before use. The default source repo is
 **`prereasoner/prereasoner-weights`** (currently **private** — set `HF_TOKEN` to a token with read access;
@@ -47,10 +48,11 @@ Notes:
 - Training corpora, embedding caches and intermediate build artifacts intentionally do not ship (see
   docs/notes/engine.md for the dropped-files list).
 
-## Schema.org named-property head (not yet in the deployed bundle)
+## Schema.org named-property head
 
 `schema_property_head.pt`, `schema_property_model.json` and `schema_class_signatures.json` are produced by
-`training/schema_org/` and installed by `python -m training.schema_org.promote <corpus>`, which is the only
+`training/schema_org/` and installed by
+`python -m training.schema_org.promote <corpus> --revision <immutable-bundle-commit>`, which is the only
 writer of these three files. Training itself writes candidates to
 `training/schema_org/data/experiments/<corpus-sha>/` and never touches this directory.
 

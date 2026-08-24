@@ -9,6 +9,7 @@ Run:  python -m tests.test_converse
 from __future__ import annotations
 
 import json
+import os
 import sys
 import types
 
@@ -121,6 +122,80 @@ def test_no_entities_returns_empty_without_calling_the_model():
     assert "user" not in cap, "the model was called for an empty entity list"
 
 
+def test_external_llm_requires_deployment_opt_in_and_request_consent():
+    import engine.config as cfg
+    from engine.server import _external_llm_allowed
+
+    previous = os.environ.get("EXTERNAL_LLM_ENABLED")
+    try:
+        os.environ.pop("EXTERNAL_LLM_ENABLED", None)
+        assert not cfg.external_llm_enabled()
+        assert not _external_llm_allowed({"external_llm_consent": True})
+        os.environ["EXTERNAL_LLM_ENABLED"] = "true"
+        assert cfg.external_llm_enabled()
+        assert not _external_llm_allowed({})
+        assert not _external_llm_allowed({"external_llm_consent": "true"})
+        assert _external_llm_allowed({"external_llm_consent": True})
+    finally:
+        if previous is None:
+            os.environ.pop("EXTERNAL_LLM_ENABLED", None)
+        else:
+            os.environ["EXTERNAL_LLM_ENABLED"] = previous
+
+
+def test_trace_deletion_filters_by_conversation_and_supports_delete_all():
+    import engine.trace as trace
+
+    records = {
+        "job-a": {"conversation_id": "c_" + "a" * 32},
+        "job-b": {"conversation_id": "c_" + "b" * 32},
+    }
+
+    class _Ref:
+        def __init__(self, job=None):
+            self.job = job
+            self.match = None
+        def order_by_child(self, key):
+            assert key == "conversation_id"
+            return self
+        def equal_to(self, value):
+            self.match = value
+            return self
+        def get(self, shallow=False):
+            if self.match is not None:
+                return {key: value for key, value in records.items()
+                        if value.get("conversation_id") == self.match}
+            return {key: True for key in records} if shallow else dict(records)
+        def child(self, job):
+            return _Ref(job)
+        def delete(self):
+            if self.job is None:
+                records.clear()
+            else:
+                records.pop(self.job, None)
+
+    fake_admin = types.ModuleType("firebase_admin")
+    fake_admin.db = types.SimpleNamespace(reference=lambda path: _Ref())
+    previous_module = sys.modules.get("firebase_admin")
+    previous_url = trace.RTDB_URL
+    previous_ensure = trace.ensure_app
+    try:
+        sys.modules["firebase_admin"] = fake_admin
+        trace.RTDB_URL = "https://example.invalid"
+        trace.ensure_app = lambda: None
+        assert trace.delete_traces("uid", "c_" + "a" * 32) == 1
+        assert set(records) == {"job-b"}
+        assert trace.delete_traces("uid") == 1
+        assert not records
+    finally:
+        trace.RTDB_URL = previous_url
+        trace.ensure_app = previous_ensure
+        if previous_module is None:
+            sys.modules.pop("firebase_admin", None)
+        else:
+            sys.modules["firebase_admin"] = previous_module
+
+
 TESTS = [
     test_preserves_existing_and_fills_empty,
     test_preserves_by_column_name_even_if_model_reorders,
@@ -132,6 +207,8 @@ TESTS = [
     test_fallback_when_model_returns_one_nested_json_blob,
     test_fallback_handles_a_code_fence,
     test_no_entities_returns_empty_without_calling_the_model,
+    test_external_llm_requires_deployment_opt_in_and_request_consent,
+    test_trace_deletion_filters_by_conversation_and_supports_delete_all,
 ]
 
 

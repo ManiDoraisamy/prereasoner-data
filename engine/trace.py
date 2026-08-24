@@ -49,6 +49,29 @@ def emitter(uid, job_id):
     return emit
 
 
+def delete_traces(uid, conversation_id=None):
+    """Delete one conversation's indexed traces, or every trace for the verified Firebase uid.
+
+    Unlike streaming writes, deletion is not best-effort: callers must not report a successful
+    privacy deletion while a configured RTDB store still retains the matching records.
+    """
+    if not RTDB_URL:
+        return 0
+    if not uid:
+        raise ValueError("verified Firebase uid is required to delete RTDB traces")
+    ensure_app()
+    from firebase_admin import db
+    base = db.reference(f"runs/{uid}")
+    if conversation_id is None:
+        existing = base.get(shallow=True) or {}
+        base.delete()
+        return len(existing)
+    matches = base.order_by_child("conversation_id").equal_to(conversation_id).get() or {}
+    for job_id in matches:
+        base.child(str(job_id)).delete()
+    return len(matches)
+
+
 def stream_final(emit, res):
     """Emit the TERMINAL state (clarify / error / result+done) so the client renders the answer even if the
     HTTP response 502s at the 60s proxy. The engine already streamed `status` + each `view` live during serve."""

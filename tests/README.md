@@ -9,10 +9,17 @@ These need no PostgreSQL, model weights, or network. Install `requirements-ci.tx
 | Command | Covers |
 |---|---|
 | `python -m tests.test_sql_ast` | Typed AST validation/rendering, search, ranking, execution checks, and failure profiles |
+| `python -m tests.test_calculations` | Typed calculation intent, operands, joins, grain, evidence, and abstention |
 | `python -m tests.test_routing` | The one shared serving/evaluation route decision |
+| `python -m tests.test_router_evidence` | Property-family consensus and inspectable route evidence |
+| `python -m tests.test_schema_decode` | Schema.org property/class evidence and deterministic abstention |
+| `python -m tests.test_schema_coverage` | Ontology/corpus coverage, split discipline, and bundle provenance |
 | `python -m tests.test_compose` | Composition DAG and explicit world-dependency records |
 | `python -m tests.test_converse` | Reference autofill/presentation parsing with a mocked model stream |
 | `python -m tests.test_master_ingest` | Reference validation, direct/multi-hop selection, caps, and failure disclosure |
+| `python -m tests.test_enrichment` | Source policy, intent, bounded materialization, and replay provenance |
+| `python -m tests.test_source_sync` | Source parser, release, rights, and rejection invariants |
+| `python -m tests.test_app_migrations` | Application migrations and least-privilege database grants |
 | `python -m tests.test_mcp` | MCP adapter contract |
 
 The frontend state regression is separate because it runs under Node:
@@ -36,6 +43,7 @@ These require the manifest-pinned runtime artifacts and a seeded PostgreSQL know
 | `python -m tests.test_world_joins` | Join coverage for routable world tables |
 | `python -m tests.test_route_wired` | Trained model driving routing end to end |
 | `python -m tests.test_geo` | Geo SQL oracles and concurrency regression |
+| `python -m tests.test_schema_probes` | Live property/class generalization and deterministic evidence |
 
 First runs can be slow because Qwen, PEFT, sentence-transformers, and spaCy load on CPU. `test_geo` intentionally
 constructs a second model instance for its deadlock regression.

@@ -102,7 +102,8 @@ syntax. PreReasoner trades some raw coverage (it's a 0.5B model) for an auditabl
 ## The one caveat in this example: world queries
 
 `"total amount in France"` is a **world** query — `France` is *not* a value in the uploaded cities, so it can
-only be reached by resolving `city → country` against the world knowledge base. The shared router
+only be reached by resolving `city → country` against the Wikidata-backed entity store, with
+Schema.org-named typing evidence. The shared router
 ([`engine/routing.py:route`](../engine/routing.py)) detects a **necessary world dependency** and hands the query
 to the `ComposeEngine`, which builds a **view-stack** (`world_join → world_filter → group_agg`) instead of a
 single `SelectQuery`. The readout underneath is identical, and the view stack is still a *typed tree/DAG of

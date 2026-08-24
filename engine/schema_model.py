@@ -5,7 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
-from engine.config import DATA_DIR, DEVICE
+from engine.artifact_provenance import semantic_encoder_fingerprint
+from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR, DEVICE
 from engine.schema_decode import SIGNATURES_PATH, ClassDecoder
 from engine.schema_org import load_contract, schema_name
 
@@ -69,6 +70,15 @@ class SchemaInterpreter:
         meta = json.loads(Path(meta_path).read_text(encoding="utf-8"))
         if meta["ontology_contract_sha256"] != self.contract.contract_sha256:
             raise ValueError("Schema.org property model and ontology contract differ")
+        recorded_encoder = meta.get("encoder_artifact_sha256")
+        if recorded_encoder is not None:
+            live_encoder = semantic_encoder_fingerprint(
+                DATA_DIR, BASE_MODEL_ID, BASE_MODEL_REVISION
+            )
+            if recorded_encoder != live_encoder:
+                raise ValueError(
+                    "Schema.org property head was trained against a different encoder adapter"
+                )
         self.meta = meta
         # The head's thresholds and the class signatures are calibrated together against ONE corpus.
         # Rebuilding either alone leaves a pair that loads without complaint and then behaves incoherently

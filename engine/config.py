@@ -20,12 +20,15 @@ Env contract:
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
   DEVICE               torch device for the encoder                  (default cpu)
   BASE_MODEL_ID        Hugging Face id of the base encoder LM        (default Qwen/Qwen2.5-0.5B)
+  BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
 
   --- Anthropic / Sonnet (the /api/converse conversational layer — ARCHITECTURE §10 — and the MCP orchestrator) ---
   ANTHROPIC_API_KEY    Anthropic key. OPTIONAL for the engine: powers the /api/converse conversational fallback +
                        answer presentation; unset ⇒ /api/converse 503s and the UI degrades gracefully. REQUIRED
                        only to run the separate MCP orchestrator chat backend (docs/MCP.md). No default.
+  EXTERNAL_LLM_ENABLED Deployment opt-in; default false. Each request must also carry literal
+                       external_llm_consent=true. See PRIVACY.md.
   ANTHROPIC_MODEL      Sonnet model id for /api/converse + the orchestrator   (default claude-sonnet-5)
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
@@ -38,6 +41,7 @@ Env contract:
 from __future__ import annotations
 import os
 from pathlib import Path
+from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 
 
 def _autoload_dotenv():
@@ -100,7 +104,8 @@ def auth_test_sub():
 # ---------- model / data ----------
 DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve().parent / "data")
 DEVICE = os.environ.get("DEVICE", "cpu")
-BASE_MODEL_ID = os.environ.get("BASE_MODEL_ID", "Qwen/Qwen2.5-0.5B")
+BASE_MODEL_ID = os.environ.get("BASE_MODEL_ID", QWEN_MODEL_ID)
+BASE_MODEL_REVISION = os.environ.get("BASE_MODEL_REVISION", QWEN_REVISION)
 
 
 def kb_model_route_enabled():
@@ -124,6 +129,11 @@ ORCH_PORT = int(os.environ.get("ORCH_PORT", "8090"))
 # whether the engine is on loopback. The orchestrator exposes this to the UI at GET /config.
 ORCH_AUTH_MODE = os.environ.get("ORCH_AUTH_MODE") or (
     "test" if ("127.0.0.1" in ENGINE_BASE_URL or "localhost" in ENGINE_BASE_URL) else "firebase")
+
+
+def external_llm_enabled() -> bool:
+    """External data egress is opt-in at deployment and still requires per-request consent."""
+    return os.environ.get("EXTERNAL_LLM_ENABLED", "").strip().lower() in {"1", "true", "yes"}
 
 
 def anthropic_api_key():

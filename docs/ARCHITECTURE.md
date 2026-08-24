@@ -58,6 +58,30 @@ bounded set, applies the production foreign-key detector to uploaded and saved t
 connected to the request. Selection runs to a fixed point, so a valid multi-hop chain can be included. Selected
 references then become ordinary typed planner tables; there is no reference-specific SQL generator.
 
+## Semantic Contract: Ontology, Observations, And Facts
+
+The semantic architecture has three layers that must not be conflated:
+
+1. **Schema.org is the semantic shell.** The pinned Schema.org 30.0 contract defines the class,
+   property, inheritance, domain, and range coordinates that training and serving name. A coordinate
+   remains representable even when no training source currently supplies examples for it.
+2. **Source-owned datasets supply observations.** Wikidata properties are mapped into Schema.org
+   properties, and publisher relations are projected through explicit source mappings. Wikidata is
+   currently the largest single corpus contributor and the public entity-identity bridge; it is not
+   the ontology or the authority for facts owned by IANA, CLDR, GeoNames, ECB, CDC, NLM, or another
+   publisher.
+3. **Versioned source releases supply answer facts.** Models learn semantic shapes, not mutable
+   values. A model may recognize an exchange-rate relation, but a dated rate must still come from a
+   pinned ECB release and pass deterministic temporal and calculation checks.
+
+There are currently two learned consumers of this contract. The unified column router uses a
+71-property Schema.org basis derived primarily from the capped Wikidata entity corpus, plus
+structural, intent, and calculation training. The separate table-evidence head uses the newer
+multi-source Schema.org corpus. It can emit auditable class evidence but does not route a request or
+change an answer. These are distinct shipped artifacts, not evidence that the unified router has
+already been retrained on every publisher source. See [TRAINING.md](TRAINING.md) and
+[MODEL_CARD.md](MODEL_CARD.md).
+
 ## Domain Semantics And Enrichment
 
 Market-led domain profiles and deterministic shared-reference enrichment are specified in
@@ -150,15 +174,20 @@ entropy.
 
 ## Named-Dimension Typing And Its Evidence
 
-Typing is learned in named Schema.org coordinates, and every typing decision the engine makes is reported as the
-firing that produced it. Two owners share that contract at different granularity; neither is a router, and neither
-can change an answer.
+Typing is intended to use named Schema.org coordinates, and every typing decision is reported as
+the firing that produced it. The two current consumers have different authority: the legacy column
+family model actively selects candidate world tables and can therefore change routing, while the
+newer table-class head is evidence-only and cannot change an answer.
 
-**Column families (`engine/router.py`).** One trained encoder reads the 71 schema.org property dimensions of
+**Column families (`engine/router.py`).** One trained encoder reads the legacy 71-coordinate basis of
 `engine/data/alloc.json` off a column, and the family is decoded by consensus: the fraction of a family's
 distinctive properties firing above their per-property Youden-J thresholds (`props_thr.json`). `route()` returns
 that per-property evidence — property, score, threshold, fired — so a decode such as "place at 1.0" is reducible to
 the named properties that produced it. Grounding, not the family, remains the decisive gate for a world join.
+This basis predates strict ontology validation: `GeoCoordinates` is a Schema.org class rather than
+a property, and `taxonName` is not in Schema.org 30.0. The active router therefore does not yet
+fully conform to the ontology-only architecture. Migrating it requires a controlled retrain and
+serving transition; the URI-indexed evidence head must not be represented as that migration.
 
 **Table classes (`engine/schema_decode.py`, `engine/schema_model.py`).** The compiled Schema.org 30.0 contract
 (`engine/schema_org.py`, `engine/data/schema_org_v30.json`) defines 1,521 property URIs and 926 classes as stable
@@ -169,7 +198,9 @@ exactly the weighted fired fraction, the surfaced fired/missing records are the 
 `tests/test_schema_decode.py` asserts that recomputation and the intervention property (suppressing
 `schema:currency` collapses `ExchangeRateSpecification` while leaving disjoint classes numerically identical).
 
-Coverage is explicit rather than implied. Every ontology class is representable; a class is servable only after it
+The table head's current trained basis contains 75 named properties. It is not the same checkpoint or
+property basis as the 71-property unified router. Coverage is explicit rather than implied. Every
+ontology class is representable; a class is servable only after it
 clears held-out precision and recall gates, and the artifact records each class as servable, calibration-failed,
 observed-insufficient, or representable-unobserved. Unservable classes abstain. The corpus
 (`training/schema_org/`) projects active publisher releases into class-labelled semantic instances, Wikidata

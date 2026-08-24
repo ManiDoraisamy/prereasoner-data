@@ -9,6 +9,18 @@ rows, verifies all declared table counts, and switches the active release in one
 `completeness` always refers to the stated `import_scope`; it never means that every file a
 publisher has ever released was copied.
 
+## Relationship To Schema.org And Training
+
+Schema.org owns the semantic vocabulary; the sources below own observations and facts. Training
+adapters may project a source relation into Schema.org classes and properties, but that projection
+does not transfer factual authority to Schema.org or to the model. Wikidata is treated the same way:
+its P-ids and entity types are mapped into the ontology, and its QIDs provide cross-source identity,
+but it is not the primary semantic schema.
+
+The training projection is read-only. It does not copy mutable source values into serving artifacts.
+At answer time, dated rates, code assignments, holidays, medical classifications, and similar facts
+must still be read from a pinned source release under that source's terms and planner policy.
+
 ## Active Sources
 
 The following releases were active in the `world` database after the 2026-08-17 sync.

@@ -98,11 +98,9 @@ def main():
     # (5) the TABLE-level schema.org class decode is captured too (kind=schema_class). A customers upload is
     # not a servable class, so the honest outcome is abstained=True (or a genuine servable decode) — what must
     # NEVER happen is the record being absent (evidence off) or internally inconsistent.
-    # The head is gitignored (engine/data/*.pt) and deliberately absent from weights_manifest.json, so on
-    # every machine except one that has trained it the interpreter cannot load and serving degrades — loudly
-    # logged, evidence off, answer unaffected. That degradation is the DOCUMENTED contract
-    # (engine/data/README.md), so asserting the evidence unconditionally would make this suite permanently
-    # red everywhere and contradict the thing it is meant to protect. Assert the contract, not the artifact.
+    # The head is gitignored (engine/data/*.pt) but is part of the external manifest-pinned bundle.
+    # Source-only CI deliberately has no large weights, so serving degrades loudly with evidence off and
+    # answers unaffected. A provisioned runtime must carry the head; source-only test runs may skip it.
     head_present = (Path(__file__).resolve().parents[1]
                     / "engine" / "data" / "schema_property_head.pt").exists()
     tbl_t = next((t for t in typing if t.get("kind") == "schema_class"), None)

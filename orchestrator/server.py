@@ -115,6 +115,10 @@ class H(BaseHTTPRequestHandler):
                 sub, uid = None, None
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
+            if not config.external_llm_enabled() or req.get("external_llm_consent") is not True:
+                self._send(503, json.dumps({
+                    "error": "external LLM processing is disabled or this request lacks explicit consent"
+                })); return
             # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME verified uid the browser subscribes
             # to (never client-supplied). Each engine call is announced there. Best-effort; a no-op if RTDB is absent.
             if turn_id and uid:

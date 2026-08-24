@@ -3,15 +3,17 @@
 PreReasoner's source code is licensed under [Apache-2.0](LICENSE). That license does not replace the terms of
 models, datasets, hosted services, or Python and JavaScript packages used with the project.
 
-The principal runtime and training inputs are:
+The principal runtime and training inputs are listed below. Schema.org defines the semantic
+coordinate system. Wikidata and the publisher datasets provide observations projected into that
+system; no source's facts are relicensed merely because they are used for training.
 
 | Component | Use | Upstream terms |
 |---|---|---|
 | [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) | Base encoder for the trained LoRA adapter | Apache-2.0 |
 | [BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) | Entity-resolution embeddings | MIT |
 | [spaCy en_core_web_md](https://spacy.io/models/en#en_core_web_md) | English parsing and entity candidates | MIT; the installed wheel contains its license and source notices |
-| [Wikidata](https://www.wikidata.org/wiki/Wikidata:Copyright) | Structured world knowledge and identifiers | Structured data is CC0; other Wikidata content can have different terms |
-| [Schema.org](https://schema.org/docs/terms.html) | Property vocabulary used by the type model | CC BY-SA 3.0 |
+| [Wikidata](https://www.wikidata.org/wiki/Wikidata:Copyright) | Entity identifiers and the largest current set of property-labelled training observations | Structured data is CC0; other Wikidata content can have different terms |
+| [Schema.org](https://schema.org/docs/terms.html) | Versioned ontology shell: named classes, properties, and inheritance used by training and evidence | CC BY-SA 3.0 |
 
 The database synchronizers can ingest additional publisher snapshots. Those snapshots are
 not distributed with this repository and remain subject to their publisher terms:

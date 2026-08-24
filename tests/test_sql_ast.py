@@ -1525,9 +1525,18 @@ def test_live_table_query_ast_mode_executes_typed_candidate():
 def test_weight_manifest_detects_tampered_bundle():
     with tempfile.TemporaryDirectory() as directory:
         artifact = os.path.join(directory, "model.bin")
+        committed = os.path.join(directory, "model.json")
         with open(artifact, "wb") as handle:
             handle.write(b"correct")
-        manifest = {"version": 1, "files": {"model.bin": sha256_file(artifact)}}
+        with open(committed, "wb") as handle:
+            handle.write(b'{"correct":true}')
+        manifest = {
+            "version": 1,
+            "files": {"model.bin": sha256_file(artifact)},
+            "committed_artifacts": {
+                "model.json": {"sha256": sha256_file(committed), "note": "tracked test artifact"}
+            },
+        }
         fingerprint = validate_weight_bundle(directory, manifest)
         assert len(fingerprint) == 64
         with open(artifact, "wb") as handle:
@@ -1538,6 +1547,16 @@ def test_weight_manifest_detects_tampered_bundle():
             assert "model.bin" in str(exc)
         else:
             raise AssertionError("tampered model bundle was accepted")
+        with open(artifact, "wb") as handle:
+            handle.write(b"correct")
+        with open(committed, "wb") as handle:
+            handle.write(b'{"tampered":true}')
+        try:
+            validate_weight_bundle(directory, manifest)
+        except RuntimeError as exc:
+            assert "model.json" in str(exc)
+        else:
+            raise AssertionError("tampered committed model artifact was accepted")
 
 
 def test_world_own_data_route_preserves_ast_observability():

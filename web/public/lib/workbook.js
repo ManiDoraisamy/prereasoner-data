@@ -54,6 +54,28 @@ const ORCH = (()=>{ try{
   const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false;
 }catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
+// ---- external-LLM consent: /chat, /api/converse and /api/master/generate send the user's message AND
+// sheet data to Anthropic's Claude API, and the server refuses them (503) without BOTH the deployment
+// switch (EXTERNAL_LLM_ENABLED) and a per-request external_llm_consent:true — see PRIVACY.md. Consent is
+// asked ONCE, in plain words, at the first action that would actually send data (never on page load),
+// and remembered in localStorage 'pr_llm_consent' ('1' yes / '0' no). Declining is a first-class path:
+// the deterministic engine (/api/reason) answers every data question locally, so "No" only turns off
+// the conversational layer, never the product. ?chat=1 (the documented force-orchestrated flag) clears
+// a remembered "No" so the choice can be revisited.
+let LLM_CONSENT=(()=>{ try{
+  if(new URLSearchParams(location.search).get('chat')==='1'){ localStorage.removeItem('pr_llm_consent'); return null; }
+  const v=localStorage.getItem('pr_llm_consent'); if(v==='1')return true; if(v==='0')return false;
+}catch(_){} return null; })();
+function askLlmConsent(revisit){
+  if(LLM_CONSENT===true) return true;
+  if(LLM_CONSENT===false && !revisit) return false;          // remembered "No": don't nag per turn...
+  const yes=confirm('Use the AI assistant?\n\n'                // ...but an explicit AI action re-asks
+    +'Your questions and the data in your sheets will be sent to Anthropic (Claude) to power '
+    +'conversational answers. Nothing is sent without this consent, and the engine still answers '
+    +'data questions locally either way.\n\nOK = use the assistant    Cancel = stay local-only');
+  LLM_CONSENT=!!yes; try{ localStorage.setItem('pr_llm_consent', yes?'1':'0'); }catch(_){}
+  return LLM_CONSENT;
+}
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
@@ -685,6 +707,8 @@ function openGenModal(sh){
 // so it survives every per-row re-render.
 async function runGenerate(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
+  // Autofill IS the AI: clicking it invites reconsidering a remembered "No", hence revisit=true.
+  if(!askLlmConsent(true)){ sh._gen='Autofill needs the AI assistant'; sh._genBusy=false; renderSheet(); return; }
   const ta=document.getElementById('genta'); const instruction=ta?ta.value:'';
   closeGenModal();                                            // reveal the sheet so the user watches it fill
   const nReal=(sh.rows||[]).filter(r=>hasCellValue((r||[])[0])).length;
@@ -720,7 +744,8 @@ async function runGenerate(id){
     timer=setTimeout(()=>{ if(!done){ finish(); setGen('Autofill failed — retry',false); saveConvState(); } }, 180000);
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
-      body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
+      body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId,
+        external_llm_consent:LLM_CONSENT===true})})
       .then(async r=>{ if(!r.ok){ if(!done&&!uid) setGen('Autofill failed — retry',false); return; }
         const j=await r.json(); if(!j||!j.columns||done) return;
         if(!uid){ complete(j); return; }                    // no RTDB at all -> the HTTP body IS the result
@@ -937,13 +962,16 @@ async function conversationalReply(c){
   }
   CONV=null; CONVPROP=(c&&c.proposed)||null; CONVPENDING=true; STATUS=present?'Putting it in context…':'Thinking…'; renderRail();
   let reply=null;
-  try{
+  // A background presentation nicety must never be the thing that prompts for AI consent — without a
+  // stored "Yes" it is skipped entirely (no data leaves) and the local fallback text below is used.
+  try{ if(LLM_CONSENT!==true) throw new Error('no LLM consent');
     const token=await window.ensureToken();
     const body={question:c.question,
       clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null,
         reason:c.reason||null,unmet:c.unmet||null,calculations:c.calculations||null,
         currency:c.currency||null}:null,
-      error:c.error||null, tables:SHEETS, conversation_id:convId()};
+      error:c.error||null, tables:SHEETS, conversation_id:convId(),
+      external_llm_consent:true};
     if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
       headers:{'content-type':'application/json','Authorization':'Bearer '+token},
@@ -988,7 +1016,8 @@ async function startTurn(){
   const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text(); return (r.ok&&t.trim().charAt(0)==='{')?JSON.parse(t):null; }catch(_){ return null; } };
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId, conversation_id:convId()})}).then(parseBody).catch(()=>null);
+    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId, conversation_id:convId(),
+      external_llm_consent:LLM_CONSENT===true})}).then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
   // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
@@ -1063,7 +1092,7 @@ function markTurnDone(){                                      // the turn finish
 async function startRun(){
   try{ await autosaveRefs(); }                                // reference state is part of this turn: never reason against a stale saved copy
   catch(e){ fail('Could not save reference data, so the query was not run: '+(e&&e.message||e)); return; }
-  if(ORCH) return startTurn();                                // orchestrated front-door (flag; direct path below is unchanged)
+  if(ORCH && askLlmConsent()) return startTurn();             // orchestrated front-door needs consent; "No" falls through to the local direct path below, which answers without any external LLM
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
   LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute

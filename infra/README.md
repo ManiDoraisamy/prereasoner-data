@@ -73,6 +73,7 @@ Cloud Run, Cloud SQL, secret, IAM, and repository resources.
 cd infra
 terraform init
 terraform apply -var project_id=<PROJECT> \
+  -var image=<region>-docker.pkg.dev/<project>/<repo>/engine@sha256:<digest> \
   -var rtdb_url=https://<project>-default-rtdb.firebaseio.com   # omit to disable streaming
 ```
 
@@ -115,15 +116,23 @@ easier to babysit interactively.
 
 ### 3a. Optional chat orchestrator
 
-The engine does not require an Anthropic key. To create the separate orchestrator and its
-secret, IAM identity, and Cloud Run service, build its image and opt in explicitly:
+The engine does not require an Anthropic key. Provision the optional orchestrator key out of band
+so its value never enters Terraform configuration or state, then build the image and opt in:
 
 ```bash
+gcloud secrets create prereasoner-chat-anthropic-key --replication-policy=automatic
+printf '%s' "$ANTHROPIC_API_KEY" | \
+  gcloud secrets versions add prereasoner-chat-anthropic-key --data-file=-
 gcloud builds submit --config cloudbuild.orchestrator.yaml
 cd infra
 terraform apply -var project_id=<PROJECT> -var enable_orchestrator=true \
-  -var anthropic_api_key="$ANTHROPIC_API_KEY"
+  -var image=<engine-image@sha256:digest> -var chat_image=<chat-image@sha256:digest> \
+  -var anthropic_secret_id=prereasoner-chat-anthropic-key
 ```
+
+Create the Secret Manager secret itself first if it does not exist. The chat API still requires
+the authenticated request's literal `external_llm_consent: true`; do not enable the hosting route
+until the UI presents the disclosure in `PRIVACY.md` and captures that consent.
 
 ### 4. Deploy the web frontend
 
@@ -146,13 +155,13 @@ curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
 # /api/reason & /api/knowledge need a Firebase ID token — use the hosted web UI.
 ```
 
-## 6. Least-privilege serving + enrichment activation (opt-in)
+## 6. Least-privilege serving + enrichment activation
 
-By default the engine serves as the `postgres` superuser and reference **enrichment is off**.
-Two independent opt-ins harden this; both default to today's behavior, so leaving them unset is
-a no-op.
+The engine always serves as a dedicated **non-superuser** role (`serving` by default). There is
+no Terraform option that gives the internet-facing service the `postgres` administration
+credential. Reference enrichment remains off by default.
 
-- `serving_db_role` — run serving as a **non-superuser** Cloud SQL role.
+- `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
   per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
 
@@ -160,7 +169,7 @@ a no-op.
 > checked-in lock file. Run `terraform plan` against the correct restored state before every
 > apply; validation alone cannot detect missing imports or verify live grants.
 
-### 6a. Non-superuser serving role
+### 6a. Bootstrap the serving role
 
 Serving is **not** read-only — it creates per-conversation and per-user `m_<hash>` master
 schemas at request time (`engine/pg.py`, `engine/master.py`). So the role needs `CREATE` on the
@@ -171,7 +180,7 @@ points at it):
 ```bash
 cd infra
 # 1. Create the role + its secret WITHOUT repointing Cloud Run yet (-target skips the service).
-terraform apply -var project_id=<PROJECT> -var serving_db_role=serving \
+terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest> -var serving_db_role=serving \
   -target=google_sql_user.serving \
   -target=google_secret_manager_secret_version.serving_db_password
 
@@ -191,11 +200,11 @@ psql "$PROXY_CONN" <<'SQL'
 SQL
 
 # 3. Now repoint Cloud Run at the (grant-ready) role.
-terraform apply -var project_id=<PROJECT> -var serving_db_role=serving
+terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest> -var serving_db_role=serving
 ```
 
 The privileged `postgres` credential stays reserved for sync/migration/grants jobs (via
-`SYNC_PG_*`, see `.env.example` and `db/sync/_conn.py`); serving never uses it once flipped.
+`SYNC_PG_*`, see `.env.example` and `db/sync/_conn.py); serving never receives it.
 
 ### 6b. Activate a reference dataset
 
@@ -207,7 +216,7 @@ SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.reference_grants \
   --role serving --datasets iana_country
 
 # Add it to the deployment allowlist and redeploy.
-cd infra && terraform apply -var project_id=<PROJECT> -var serving_db_role=serving \
+cd infra && terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest> -var serving_db_role=serving \
   -var enrichment_active_datasets=iana_country
 ```
 
@@ -215,20 +224,19 @@ cd infra && terraform apply -var project_id=<PROJECT> -var serving_db_role=servi
 
 - **Disable enrichment only** (fast, keeps the role): re-apply with
   `-var enrichment_active_datasets=""`. Answers revert to own-data + world immediately.
-- **Back to superuser serving**: re-apply with `-var serving_db_role=""`. Cloud Run flips back to
-  `postgres`; the serving secret is destroyed. Dropping the DB role itself can fail while it owns
-  ephemeral conversation/master schemas — reassign or drop those first, or simply leave the role
-  in place (unused) and rely on the enrichment-off rollback.
+- There is no superuser-serving rollback. Roll back to the previous image while retaining the
+  least-privilege role and grants.
 
 ## Teardown
 
 ```bash
-cd infra && terraform destroy -var project_id=<PROJECT> [-var rtdb_url=...]
+cd infra && terraform destroy -var project_id=<PROJECT> -var image=<engine-image@sha256:digest> [-var rtdb_url=...]
 ```
 
 Notes:
-- `deletion_protection` is `false` on both Cloud SQL and Cloud Run so destroy is
-  one-step. Flip it on in `main.tf` once you care about the seeded DB.
+- `deletion_protection` defaults to `true` on Cloud SQL and Cloud Run. An intentional teardown
+  requires first applying `-var deletion_protection=false`, reviewing that plan, and then
+  running destroy.
 - Cloud SQL reserves a deleted instance's **name for about a week** — re-applying
   immediately needs `-var sql_instance_name=<new-name>`.
 - Enabled APIs stay enabled (`disable_on_destroy = false`).

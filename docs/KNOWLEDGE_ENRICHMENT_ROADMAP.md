@@ -205,16 +205,20 @@ ambiguous relationship unique; it only makes an incorrect policy repeatable.
 
 ## 3. Semantic model
 
-### 3.1 Two semantic layers
+### 3.1 Three semantic layers
 
-The engine needs two layers with different ownership:
+The engine separates three meanings with different ownership:
 
+- **Schema.org shell** defines interoperable class/property coordinates, inheritance, and permitted
+  mappings. It is the semantic authority, not an instance or factual source.
 - **Domain roles** describe private operational tables such as orders, patients, signers,
   leads, and inspections. They guide joins, typed AST expansion, and ranking. They do not
   create global reference data.
-- **Reference datasets** add deterministic public facts such as country, postal area,
+- **Reference and instance sources** add deterministic public facts such as country, postal area,
   timezone, unit, or currency metadata. Facts remain in their source schema; domain and
-  Schema.org meaning lives in the registry. Every used source release is manifest-pinned.
+  Schema.org meaning lives in the registry. Wikidata supplies the largest current training
+  instance pool and QID bridge but does not define the vocabulary. Every used source release is
+  manifest-pinned.
 
 `engine/domain_profiles.py` is the sole registry for domain profiles and internal
 roles. `engine/enrichment/registry.py` remains the sole registry for external reference

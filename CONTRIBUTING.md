@@ -2,6 +2,7 @@
 
 Thanks for improving PreReasoner. Begin with [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md), then read the
 owner for the behavior you intend to change and its tests.
+Participation is governed by the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Development Principles
 

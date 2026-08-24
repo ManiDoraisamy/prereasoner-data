@@ -24,13 +24,13 @@ output "db_password_secret" {
 }
 
 output "serving_db_role" {
-  description = "Non-superuser role the engine serves as when opt-in least-privilege serving is enabled; null means it serves as postgres (default)."
-  value       = local.serving_least_privilege ? var.serving_db_role : null
+  description = "Mandatory non-superuser role used by the engine."
+  value       = var.serving_db_role
 }
 
 output "serving_db_password_secret" {
-  description = "Secret Manager secret id holding the serving role's password (null unless serving_db_role is set)."
-  value       = local.serving_least_privilege ? one(google_secret_manager_secret.serving_db_password[*].secret_id) : null
+  description = "Secret Manager secret id holding the serving role's password."
+  value       = google_secret_manager_secret.serving_db_password.secret_id
 }
 
 output "enrichment_active_datasets" {

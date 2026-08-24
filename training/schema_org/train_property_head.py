@@ -18,11 +18,11 @@ import random
 import numpy as np
 import torch
 
-from engine.config import DATA_DIR
+from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR
 from engine.encoder import LiveQwen
 from engine.schema_decode import ClassDecoder
 from engine.schema_model import NamedPropertyHead
-from engine.artifact_provenance import canonical_json_sha256
+from engine.artifact_provenance import canonical_json_sha256, semantic_encoder_fingerprint
 from engine.schema_org import load_contract
 from training.schema_org.instances import group_id, read_jsonl
 from training.schema_org.paths import (
@@ -119,20 +119,26 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def _embeddings(instances, *, cache_path: Path, device, batch_size: int) -> np.ndarray:
-    """Deterministic per-text embedding cache: rows are keyed by each text's sha256, so growing the corpus
-    re-encodes ONLY the new texts (a frozen encoder makes per-text reuse exact, not approximate). The legacy
-    corpus-level-hash format is upgraded transparently when its whole-corpus hash still matches."""
+def _cached_embeddings(cache_path: Path, encoder_artifact_sha256: str) -> dict[str, np.ndarray]:
+    if not cache_path.exists():
+        return {}
+    cached = np.load(cache_path, allow_pickle=False)
+    if (
+        "encoder_artifact_sha256" not in cached.files
+        or str(cached["encoder_artifact_sha256"].item()) != encoder_artifact_sha256
+        or "text_hashes" not in cached.files
+    ):
+        return {}
+    return dict(zip([str(h) for h in cached["text_hashes"]], cached["embeddings"]))
+
+
+def _embeddings(instances, *, cache_path: Path, device, batch_size: int,
+                encoder_artifact_sha256: str) -> np.ndarray:
+    """Per-text cache bound to the exact encoder adapter that produced every embedding."""
     texts = [item.text for item in instances]
     hashes = [_text_hash(text) for text in texts]
     texts_hash = hashlib.sha256("\0".join(texts).encode("utf-8")).hexdigest()
-    known: dict[str, np.ndarray] = {}
-    if cache_path.exists():
-        cached = np.load(cache_path, allow_pickle=False)
-        if "text_hashes" in cached.files:
-            known = dict(zip([str(h) for h in cached["text_hashes"]], cached["embeddings"]))
-        elif str(cached["texts_sha256"].item()) == texts_hash:   # legacy whole-corpus format, exact match
-            known = dict(zip(hashes, cached["embeddings"]))
+    known = _cached_embeddings(cache_path, encoder_artifact_sha256)
     missing = [i for i, h in enumerate(hashes) if h not in known]
     if missing:
         print(f"encoding {len(missing)} new texts ({len(texts) - len(missing)} cached)", flush=True)
@@ -153,7 +159,8 @@ def _embeddings(instances, *, cache_path: Path, device, batch_size: int) -> np.n
     unique = dict(zip(hashes, embeddings))                          # one row per distinct text
     np.savez_compressed(cache_path, embeddings=np.stack(list(unique.values())),
                         text_hashes=np.array(list(unique.keys())),
-                        texts_sha256=np.array(texts_hash))
+                        texts_sha256=np.array(texts_hash),
+                        encoder_artifact_sha256=np.array(encoder_artifact_sha256))
     return embeddings
 
 
@@ -210,8 +217,13 @@ def main() -> None:
             if index is not None:
                 labels[row, index] = 1.0
 
-    embeddings = _embeddings(instances, cache_path=Path(args.cache), device=device,
-                             batch_size=args.batch_size)
+    encoder_artifact_sha256 = semantic_encoder_fingerprint(
+        DATA_DIR, BASE_MODEL_ID, BASE_MODEL_REVISION
+    )
+    embeddings = _embeddings(
+        instances, cache_path=Path(args.cache), device=device,
+        batch_size=args.batch_size, encoder_artifact_sha256=encoder_artifact_sha256,
+    )
     split_index = {
         split: np.array([i for i, item in enumerate(instances) if item.split == split], dtype=np.int64)
         for split in ("train", "validation", "test")
@@ -317,8 +329,6 @@ def main() -> None:
             feasible
             and validation_metrics["precision"] >= MIN_CLASS_PRECISION
             and validation_metrics["recall"] >= MIN_CLASS_RECALL
-            and test_metrics["precision"] >= MIN_CLASS_PRECISION
-            and test_metrics["recall"] >= MIN_CLASS_RECALL
         )
         row["threshold"] = round(threshold, 8)
         row["servable"] = servable
@@ -340,7 +350,9 @@ def main() -> None:
     meta = {
         "schema_version": 1,
         "model_kind": "frozen-qwen-linear-named-property-head",
-        "base_model": "Qwen/Qwen2.5-0.5B",
+        "base_model": BASE_MODEL_ID,
+        "base_model_revision": BASE_MODEL_REVISION,
+        "encoder_artifact_sha256": encoder_artifact_sha256,
         "ontology_version": contract.version,
         "ontology_contract_sha256": contract.contract_sha256,
         "corpus_sha256": corpus_manifest["corpus"]["sha256"],

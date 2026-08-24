@@ -21,8 +21,8 @@ if str(ROOT) not in sys.path:
 from training.lib.walker import build_from_units
 from training.lib.edges import edges, fam_dims_map
 from training.lib.relblock import RelBlockModel
+from engine.model_revisions import QWEN_MODEL_ID as MODEL_ID, QWEN_REVISION as MODEL_REVISION
 
-MODEL_ID = os.environ.get("BASE_MODEL_ID", "Qwen/Qwen2.5-0.5B")
 
 
 def auc(scores, labels):
@@ -113,10 +113,12 @@ def fam_report(alloc, ps, pl, fams=None):
 
 def encode(texts, dev, bs=256, max_len=24):
     from transformers import AutoModel, AutoTokenizer
-    tok = AutoTokenizer.from_pretrained(MODEL_ID)
+    tok = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
     if tok.pad_token is None:
         tok.pad_token = tok.eos_token
-    qwen = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True).float().to(dev).eval()
+    qwen = AutoModel.from_pretrained(
+        MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
+    ).float().to(dev).eval()
     hdim = qwen.config.hidden_size
     out = np.zeros((len(texts), hdim), np.float32)
     with torch.no_grad():

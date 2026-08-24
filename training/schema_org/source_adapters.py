@@ -14,9 +14,10 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 from engine.schema_model import MAX_SAMPLE_VALUES, sample_values
 from engine.schema_org import SchemaContract, schema_uri
-from training.schema_org.instances import SemanticInstance
+from training.schema_org.instances import SemanticInstance, deterministic_split
 
 
 MAPPING_SCHEMA_VERSION = 2          # v2: deterministic presentation variants (name/aux-column diversity)
@@ -132,7 +133,7 @@ def mapping_version(mappings=SOURCE_MAPPINGS) -> str:
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _active_release(cur, source: str) -> tuple[str, str] | None:
+def _active_release(cur, source: str) -> dict | None:
     cur.execute(
         "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
         "WHERE table_schema=%s AND table_name='release')", (source,),
@@ -140,10 +141,22 @@ def _active_release(cur, source: str) -> tuple[str, str] | None:
     if not cur.fetchone()[0]:
         return None
     cur.execute(
-        f'SELECT release_id, source_version FROM "{source}".release WHERE status=%s',
+        f'SELECT release_id, source_version, source_url, content_sha256, license_name, license_url '
+        f'FROM "{source}".release WHERE status=%s',
         ("active",),
     )
-    return cur.fetchone()
+    row = cur.fetchone()
+    if row is None:
+        return None
+    keys = ("release_id", "source_version", "source_url", "content_sha256",
+            "license_name", "license_url")
+    record = dict(zip(keys, row))
+    missing = [key for key, value in record.items() if not str(value or "").strip()]
+    if missing:
+        raise ValueError(f"active source {source!r} lacks release provenance: {missing}")
+    if not re.fullmatch(r"[0-9a-f]{64}", str(record["content_sha256"])):
+        raise ValueError(f"active source {source!r} has invalid content_sha256")
+    return record
 
 
 def _column_names(mapping: SourceMapping) -> tuple[str, ...]:
@@ -209,7 +222,7 @@ def source_instances(cur, contract: SchemaContract, *, mappings=SOURCE_MAPPINGS)
         active = _active_release(cur, mapping.source)
         if active is None:
             continue
-        release_id, _source_version = active
+        release_id = active["release_id"]
         columns = _column_names(mapping)
         quoted = ",".join(f'"{column}"' for column in columns)
         order = ",".join(f'"{column}"' for column in mapping.id_columns)
@@ -484,7 +497,9 @@ def _visible(text: str) -> str:
     if not _TOKENIZER:
         try:
             from transformers import AutoTokenizer
-            _TOKENIZER.append(AutoTokenizer.from_pretrained("Qwen/Qwen2.5-0.5B"))
+            _TOKENIZER.append(
+                AutoTokenizer.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
+            )
         except Exception as exc:                                # a corpus is a training artifact, never a
             raise RuntimeError(                                 # serving path: silently switching to a
                 "the evidence gate needs the real tokenizer (Qwen/Qwen2.5-0.5B) — a character proxy "
@@ -676,6 +691,7 @@ def wikidata_instances(cur, contract: SchemaContract, *, bridge_path: str | Path
                 relation=f"wikidata.{entry['pool']}",
                 instance_id=f"wikidata:{qid}" + (f"#facet={index}" if index else ""),
                 classes=tuple(sorted(entry["classes"])), mapping_version=version,
+                provenance_ids=(f"wikidata:{qid}",),
             )
             if instance is not None:
                 yield instance
@@ -703,7 +719,7 @@ def source_column_instances(cur, contract: SchemaContract, *, mappings=SOURCE_MA
         active = _active_release(cur, mapping.source)
         if active is None:
             continue
-        release_id, _source_version = active
+        release_id = active["release_id"]
         columns = _column_names(mapping)
         quoted = ",".join(f'"{column}"' for column in columns)
         order = ",".join(f'"{column}"' for column in mapping.id_columns)
@@ -754,35 +770,44 @@ def wikidata_column_instances(cur, contract: SchemaContract, *, bridge_path: str
             "ON t.entity_qid=e.qid WHERE t.type_qid=%s ORDER BY e.qid",
             (mapping.type_qid,),
         )
-        pending: dict[str, list] = {}
+        pending: dict[tuple[str, str], list[tuple[str, str]]] = {}
         emitted = Counter()
         for qid, properties in cur:
+            qid = str(qid)
+            entity_split = deterministic_split(f"wikidata:{qid}")
             for pid in sorted(properties or {}):
                 if pid not in bridge or emitted[pid] >= WIKIDATA_COLUMNS_PER_PROPERTY:
                     continue
                 rendered = _render_values((properties or {}).get(pid), labels)
                 if not rendered:
                     continue
-                block = pending.setdefault(pid, [])
-                if rendered[0] not in block:
-                    block.append(rendered[0])
-                if len(block) < COLUMN_BLOCK:
+                pending_key = (pid, entity_split)
+                block_rows = pending.setdefault(pending_key, [])
+                if rendered[0] not in {value for _qid, value in block_rows}:
+                    block_rows.append((qid, rendered[0]))
+                if len(block_rows) < COLUMN_BLOCK:
                     continue
                 index = emitted[pid]
                 emitted[pid] += 1
-                pending[pid] = []
+                pending[pending_key] = []
+                block_qids = [row_qid for row_qid, _value in block_rows]
+                block = [value for _row_qid, value in block_rows]
                 targets = _domain_ok(bridge[pid],
                                      {schema_uri(c) for c in mapping.classes}, contract)
                 if not targets:
                     continue
                 header = headers.get(pid, pid)
-                group = f"wikidata:{mapping.pool}:{pid}:{index:03d}"
+                # Group on the first contributing entity and build blocks only from entities with the
+                # same deterministic split. The explicit provenance IDs let the corpus verifier prove
+                # that no QID occurs in different splits through another entity or column instance.
+                group = f"wikidata:{block_qids[0]}#column={mapping.pool}:{pid}:{index:03d}"
                 instance = emit_instance(
                     columns=[(header, block, targets)], contract=contract,
                     text=_column_text(f"wikidata {mapping.pool}", header, block),
                     source="wikidata_columns", release_id="capped.entity:live-audited",
                     relation=f"wikidata.{mapping.pool}.{pid}", instance_id=group,
                     classes=(), mapping_version=version,
+                    provenance_ids=tuple(f"wikidata:{row_qid}" for row_qid in block_qids),
                 )
                 if instance is None:
                     continue
@@ -811,7 +836,7 @@ def active_source_manifest(cur, *, mappings=SOURCE_MAPPINGS) -> dict:
         if row is None:
             absent.append(source)
         else:
-            active[source] = {"release_id": row[0], "source_version": row[1]}
+            active[source] = row
     return {
         "schema_version": 1, "mapping_version": mapping_version(mappings),
         "active_sources": active, "absent_sources": absent,

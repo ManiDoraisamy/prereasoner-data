@@ -108,7 +108,7 @@ def list_conversations(user_id, limit=50):
         conn.close()
 
 
-def delete_conversation(user_id, conversation_id):
+def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
     """Delete a conversation the user OWNS: its metadata + its data schema. Ownership-checked (no IDOR);
     conversation_id is validated to the strict c_<32 hex> shape before it reaches SQL/DROP SCHEMA."""
     if not _ID_RE.match(conversation_id or ""):
@@ -121,12 +121,14 @@ def delete_conversation(user_id, conversation_id):
                         (conversation_id, user_id))
             if not cur.fetchone():
                 raise NotOwned("conversation not found")       # not yours OR absent — same answer
+            from engine.trace import delete_traces
+            trace_count = delete_traces(rtdb_uid, conversation_id)
             cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
                         (conversation_id, user_id))
             cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (conversation_id,))
             cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % conversation_id)   # validated c_<32hex> above
             conn.commit()
-            return {"deleted": conversation_id}
+            return {"deleted": conversation_id, "deleted_traces": trace_count}
         except Exception:
             try:
                 conn.rollback()
@@ -137,7 +139,7 @@ def delete_conversation(user_id, conversation_id):
         conn.close()
 
 
-def delete_all_conversations(user_id):
+def delete_all_conversations(user_id, *, rtdb_uid=None):
     """Delete ALL of a user's conversations (bulk cleanup). Only touches rows owned by user_id."""
     conn = _pg()
     try:
@@ -145,12 +147,14 @@ def delete_all_conversations(user_id):
             cur = conn.cursor()
             cur.execute('SELECT conversation_id FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
             ids = [r[0] for r in cur.fetchall() if _ID_RE.match(r[0] or "")]
+            from engine.trace import delete_traces
+            trace_count = delete_traces(rtdb_uid)
             for cid in ids:
                 cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s', (cid, user_id))
                 cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
                 cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % cid)
             conn.commit()
-            return {"deleted": len(ids)}
+            return {"deleted": len(ids), "deleted_traces": trace_count}
         except Exception:
             try:
                 conn.rollback()

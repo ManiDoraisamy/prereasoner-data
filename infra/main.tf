@@ -13,15 +13,10 @@ locals {
     "iam.googleapis.com",              # dedicated service account
   ]
 
-  # Default image = what cloudbuild.yaml pushes. Override with -var image=... to pin a tag.
-  image = var.image != "" ? var.image : "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_repo}/engine:latest"
+  image = var.image
 
-  # Opt-in least-privilege serving. When serving_db_role is set, Cloud Run authenticates as a
-  # NON-superuser role and reads its password from a dedicated secret; otherwise it stays on the
-  # `postgres` superuser (current behavior). `one(...[*]...)` is null-safe when the count is 0.
-  serving_least_privilege = var.serving_db_role != ""
-  serving_user            = local.serving_least_privilege ? var.serving_db_role : google_sql_user.postgres.name
-  serving_secret_id       = local.serving_least_privilege ? one(google_secret_manager_secret.serving_db_password[*].secret_id) : google_secret_manager_secret.db_password.secret_id
+  serving_user      = var.serving_db_role
+  serving_secret_id = google_secret_manager_secret.serving_db_password.secret_id
 }
 
 resource "google_project_service" "apis" {
@@ -49,8 +44,7 @@ resource "google_sql_database_instance" "world" {
   region           = var.region
   database_version = "POSTGRES_16"
 
-  # Set true once the DB is seeded and you care about it; false keeps `terraform destroy` one-step.
-  deletion_protection = false
+  deletion_protection = var.deletion_protection
 
   settings {
     tier              = var.db_tier
@@ -81,39 +75,35 @@ resource "random_password" "db" {
   special = false # keep it copy/paste- and URL-safe for psql/proxy use during seeding
 }
 
-# Sets the password of the built-in postgres superuser-ish role (cloudsqlsuperuser),
-# which init.sql needs for CREATE EXTENSION and the engine needs for CREATE SCHEMA.
+# Sets the password of the built-in postgres administration role. It is reserved for
+# migrations, extension setup, source synchronization, and grants; Cloud Run never receives it.
 resource "google_sql_user" "postgres" {
   name     = "postgres"
   instance = google_sql_database_instance.world.name
   password = random_password.db.result
 }
 
-# ---------- Opt-in: non-superuser serving role (least privilege) ----------
-# Created only when var.serving_db_role is set. The engine then authenticates as this role
-# instead of `postgres`. Cloud SQL's google_sql_user is NOT a superuser. Least privilege is
+# ---------- Non-superuser serving role (least privilege) ----------
+# The engine always authenticates as this role instead of `postgres`. Cloud SQL's
+# google_sql_user is NOT a superuser. Least privilege is
 # enforced by a one-time SQL bootstrap (infra/README.md §6), not by Terraform: the role is
 # granted CREATE on the database (so serving can still make runtime conversation/master
 # schemas), SELECT on the `knowledgebase` schema, chat DML after the admin migration, and
 # SELECT-only on activated enrichment sources via `python -m db.reference_grants`. Applying this
-# resource alone does NOT run that bootstrap; until it is run + this secret is live, keep
-# serving_db_role empty.
+# resource alone does NOT run that bootstrap; deployment is not ready until the bootstrap passes.
 
 resource "random_password" "serving" {
-  count   = local.serving_least_privilege ? 1 : 0
   length  = 32
   special = false
 }
 
 resource "google_sql_user" "serving" {
-  count    = local.serving_least_privilege ? 1 : 0
   name     = var.serving_db_role
   instance = google_sql_database_instance.world.name
-  password = random_password.serving[0].result
+  password = random_password.serving.result
 }
 
 resource "google_secret_manager_secret" "serving_db_password" {
-  count     = local.serving_least_privilege ? 1 : 0
   secret_id = "${var.service_name}-serving-db-password"
 
   replication {
@@ -124,14 +114,12 @@ resource "google_secret_manager_secret" "serving_db_password" {
 }
 
 resource "google_secret_manager_secret_version" "serving_db_password" {
-  count       = local.serving_least_privilege ? 1 : 0
-  secret      = google_secret_manager_secret.serving_db_password[0].id
-  secret_data = random_password.serving[0].result
+  secret      = google_secret_manager_secret.serving_db_password.id
+  secret_data = random_password.serving.result
 }
 
 resource "google_secret_manager_secret_iam_member" "run_serving_db_password" {
-  count     = local.serving_least_privilege ? 1 : 0
-  secret_id = google_secret_manager_secret.serving_db_password[0].id
+  secret_id = google_secret_manager_secret.serving_db_password.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.run.email}"
 }
@@ -190,7 +178,7 @@ resource "google_cloud_run_v2_service" "api" {
   name                = var.service_name
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
+  deletion_protection = var.deletion_protection
 
   template {
     service_account = google_service_account.run.email
@@ -294,8 +282,7 @@ resource "google_cloud_run_v2_service" "api" {
     google_project_service.apis,
     google_secret_manager_secret_version.db_password,
     google_secret_manager_secret_iam_member.run_db_password,
-    # No-ops when serving_db_role is empty (count 0); ensure the serving secret + access exist
-    # before the service references them.
+    # Ensure the serving secret and access exist before the service references them.
     google_secret_manager_secret_version.serving_db_password,
     google_secret_manager_secret_iam_member.run_serving_db_password,
   ]

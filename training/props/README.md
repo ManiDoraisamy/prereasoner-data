@@ -14,10 +14,13 @@ Stage 3 (`train_props_gpu.py`) warm-starts from the prebuilt **gen20** LoRA + Re
 as `qwen_lora/`, `encoder.pt`, `encoder_meta.pt`) — that gen20 taxonomy pipeline is legacy and kept only as this
 warm-start base (see the repo-level [`training/README.md`](../README.md)).
 
-## Status: adding "software" — VALIDATED end-to-end on CPU (GPU train pending)
+## Software Experiment Status — Not Promoted
 
-The engine's 8-family property router could not type a **software** column (it abstained). This was fixed by
-adding software to the training basis. Every CPU step is done + validated; only the GPU encoder-train remains.
+The router originally had eight families and abstained on **software** columns. The corpus and
+family configuration were expanded to nine families, but the GPU candidate regressed shared intent
+signals and was not promoted. The currently manifested stable weights therefore must not be
+described as the completed software retrain merely because `alloc.json` and `families.json` contain
+the new coordinate and family definitions.
 
 **What was done + proven (live, this repo's Postgres `capped.entity`):**
 1. `bridge_prop.csv` here maps the 5 software P-ids: `P306`→operatingSystem, `P277`→programmingLanguage,
@@ -43,7 +46,7 @@ serving phrasings + holds out a serving-mirror intent eval, and the trainer's ke
 checkpoint (COUNT 0.110 vs SUM 0.121, to three decimals): shipped baseline **0.808**, drifted **0.697** (the
 None class collapsed 0.769 → 0.138 — spurious fires), on a question-text-split eval with zero verbatim leakage.
 
-**What remains (the re-run — turns the software test green with aggregates intact):**
+**What remains before any promotion:**
 6. `python -m training.props.augment_intent` (once per corpus refresh), then the **GPU encoder-train**
    (`python -m training.props.train_props_gpu --steps 600`) on the nc=90 corpus; needs a GPU (e.g. RunPod).
    ~20 MB up (corpus + base LoRA), ~90 MB back. Remember the `cp data/alloc.json data/alloc20.json` swap first.

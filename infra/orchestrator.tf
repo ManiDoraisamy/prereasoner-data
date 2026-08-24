@@ -8,7 +8,7 @@
 # Deploy order (see infra/README.md):
 #   1. gcloud builds submit --config cloudbuild.orchestrator.yaml   # builds+pushes the chat image (tests-gated)
 #   2. terraform apply -var="enable_orchestrator=true" \
-#        -var="anthropic_api_key=$(...)"                            # this file + main.tf
+#        -var="anthropic_secret_id=existing-secret-id"              # this file + main.tf
 #   3. cd web && firebase deploy --only hosting,database            # ships chat.html + the /chat rewrite
 
 variable "enable_orchestrator" {
@@ -17,10 +17,9 @@ variable "enable_orchestrator" {
   default     = false
 }
 
-variable "anthropic_api_key" {
-  description = "Anthropic API key for the optional orchestrator. Required only when enable_orchestrator=true."
+variable "anthropic_secret_id" {
+  description = "Existing Secret Manager secret ID containing the Anthropic API key. Provision its version out-of-band; required when enable_orchestrator=true."
   type        = string
-  sensitive   = true
   default     = ""
 }
 
@@ -31,42 +30,20 @@ variable "chat_service_name" {
 }
 
 variable "chat_image" {
-  description = "Full image ref for the orchestrator (built by cloudbuild.orchestrator.yaml). Empty = the default tag: <region>-docker.pkg.dev/<project>/<repo>/chat:latest."
+  description = "Immutable orchestrator image digest. Required when enable_orchestrator=true."
   type        = string
   default     = ""
+
+  validation {
+    condition     = !var.enable_orchestrator || can(regex("@sha256:[0-9a-f]{64}$", var.chat_image))
+    error_message = "chat_image must be an immutable digest when the orchestrator is enabled."
+  }
 }
 
 variable "anthropic_model" {
   description = "Sonnet model id the orchestrator uses."
   type        = string
   default     = "claude-sonnet-5"
-}
-
-locals {
-  chat_image = var.chat_image != "" ? var.chat_image : "${var.region}-docker.pkg.dev/${var.project_id}/${var.artifact_repo}/chat:latest"
-}
-
-# ---------- Secret Manager: the Anthropic key ----------
-resource "google_secret_manager_secret" "anthropic_key" {
-  count     = var.enable_orchestrator ? 1 : 0
-  secret_id = "${var.chat_service_name}-anthropic-key"
-  replication {
-    auto {}
-  }
-  depends_on = [google_project_service.apis]
-}
-
-resource "google_secret_manager_secret_version" "anthropic_key" {
-  count       = var.enable_orchestrator ? 1 : 0
-  secret      = google_secret_manager_secret.anthropic_key[0].id
-  secret_data = var.anthropic_api_key
-
-  lifecycle {
-    precondition {
-      condition     = length(trimspace(var.anthropic_api_key)) > 0
-      error_message = "anthropic_api_key must be set when enable_orchestrator=true."
-    }
-  }
 }
 
 # ---------- Service account for the orchestrator ----------
@@ -79,7 +56,7 @@ resource "google_service_account" "chat_run" {
 
 resource "google_secret_manager_secret_iam_member" "chat_anthropic_key" {
   count     = var.enable_orchestrator ? 1 : 0
-  secret_id = google_secret_manager_secret.anthropic_key[0].id
+  secret_id = var.anthropic_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.chat_run[0].email}"
 }
@@ -90,7 +67,14 @@ resource "google_cloud_run_v2_service" "chat" {
   name                = var.chat_service_name
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
-  deletion_protection = false
+  deletion_protection = var.deletion_protection
+
+  lifecycle {
+    precondition {
+      condition     = length(trimspace(var.anthropic_secret_id)) > 0
+      error_message = "anthropic_secret_id must name an out-of-band secret when enable_orchestrator=true."
+    }
+  }
 
   template {
     service_account = google_service_account.chat_run[0].email
@@ -106,7 +90,7 @@ resource "google_cloud_run_v2_service" "chat" {
     timeout                          = "300s" # a multi-hop tool loop can run tens of seconds
 
     containers {
-      image = local.chat_image
+      image = var.chat_image
 
       resources {
         limits = {
@@ -125,10 +109,14 @@ resource "google_cloud_run_v2_service" "chat" {
         value = var.anthropic_model
       }
       env {
+        name  = "EXTERNAL_LLM_ENABLED"
+        value = "true"
+      }
+      env {
         name = "ANTHROPIC_API_KEY"
         value_source {
           secret_key_ref {
-            secret  = google_secret_manager_secret.anthropic_key[0].secret_id
+            secret  = var.anthropic_secret_id
             version = "latest"
           }
         }
@@ -155,7 +143,6 @@ resource "google_cloud_run_v2_service" "chat" {
 
   depends_on = [
     google_project_service.apis,
-    google_secret_manager_secret_version.anthropic_key,
     google_secret_manager_secret_iam_member.chat_anthropic_key,
   ]
 }

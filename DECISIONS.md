@@ -116,7 +116,8 @@ Apache 2.0 — the patent grant matters for research code intended for broad reu
 ## The Schema.org named-property head supersedes the 9-family router
 
 Two learned typers exist today. `engine/router.py` decodes an uploaded COLUMN to one of 9 families over a
-71-dimension basis derived almost entirely from Wikidata; `engine/schema_model.py` decodes a TABLE to
+71-coordinate Schema.org-property-named basis whose supervision instances come primarily from
+Wikidata (Wikidata is not the vocabulary authority); `engine/schema_model.py` decodes a TABLE to
 Schema.org classes over a URI-indexed basis compiled from Schema.org 30.0 and trained on all active
 publisher releases. They share an architecture — consensus over calibrated per-property firing — and they
 now share a granularity, because the corpus emits column-shaped instances rendered by the same

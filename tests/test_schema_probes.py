@@ -128,8 +128,8 @@ def main():
         from engine.schema_model import SchemaInterpreter, summarize_table
         interp = SchemaInterpreter()
     except (FileNotFoundError, ImportError) as e:
-        # The ONLY legitimate skip: the head is local-only (gitignored, absent from weights_manifest), so a
-        # fresh clone or CI has no artifact. Every OTHER exception is deliberate — SchemaInterpreter raises
+        # The ONLY legitimate skip: the head is external (gitignored but manifest-pinned), so source-only CI
+        # has no artifact until weights are provisioned. Every OTHER exception is deliberate — SchemaInterpreter raises
         # on an ontology or corpus mismatch and ClassDecoder raises on an uncalibrated artifact — and a bare
         # `except: return 0` turned each of those loud integrity failures into a green generalization gate.
         print(f"SKIP: schema head not present ({type(e).__name__}: {e})"); return 0

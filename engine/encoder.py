@@ -10,7 +10,7 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from engine.config import BASE_MODEL_ID as MODEL_ID
+from engine.config import BASE_MODEL_ID as MODEL_ID, BASE_MODEL_REVISION as MODEL_REVISION
 
 
 class LiveQwen(nn.Module):
@@ -27,10 +27,12 @@ class LiveQwen(nn.Module):
             self.hdim = self.qwen.config.hidden_size if hasattr(self.qwen, "config") else 896
             return
         from transformers import AutoModel, AutoTokenizer
-        self.tok = AutoTokenizer.from_pretrained(MODEL_ID)
+        self.tok = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
         if self.tok.pad_token is None:
             self.tok.pad_token = self.tok.eos_token
-        m = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True).float()
+        m = AutoModel.from_pretrained(
+            MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
+        ).float()
         if warm_lora and Path(warm_lora).exists():
             from peft import PeftModel
             m = PeftModel.from_pretrained(m, str(warm_lora), is_trainable=not serving)   # serving => frozen adapter

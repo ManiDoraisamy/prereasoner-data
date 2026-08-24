@@ -1,5 +1,10 @@
 # Security policy
 
+## Supported versions
+
+Security fixes are applied to the current `main` branch. Historical commits, private model
+candidates, and untagged deployment images are not supported releases.
+
 ## Reporting a vulnerability
 
 Please report vulnerabilities privately to mani.doraisamy@gmail.com. Do not open public issues

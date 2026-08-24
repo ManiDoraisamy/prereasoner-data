@@ -16,13 +16,13 @@ variable "service_name" {
 }
 
 variable "image" {
-  description = <<-EOT
-    Full image ref for the engine (built by `gcloud builds submit --config cloudbuild.yaml`).
-    Empty = the default tag cloudbuild.yaml pushes:
-    <region>-docker.pkg.dev/<project>/<repo>/engine:latest
-  EOT
+  description = "Immutable engine image reference ending in @sha256:<64 lowercase hex characters>."
   type        = string
-  default     = ""
+
+  validation {
+    condition     = can(regex("@sha256:[0-9a-f]{64}$", var.image))
+    error_message = "image must be an immutable registry digest reference, not a mutable tag."
+  }
 }
 
 variable "artifact_repo" {
@@ -51,22 +51,27 @@ variable "rtdb_url" {
 
 variable "serving_db_role" {
   description = <<-EOT
-    Opt-in least-privilege serving. Empty (default) = the engine serves as the `postgres`
-    superuser (current behavior). Set to a lowercase role name (e.g. "serving") to have
-    Terraform create a NON-superuser Cloud SQL login role and point Cloud Run's KB_PG_USER at
-    it. The role still needs the admin-run application migration and one-time SQL bootstrap
+    Mandatory least-privilege serving role. Terraform creates this NON-superuser Cloud SQL login
+    and points Cloud Run's KB_PG_USER at it. The role still needs the admin-run application
+    migration and one-time SQL bootstrap
     (CREATE on the database for runtime conversation/master schemas, chat DML, SELECT on
     `knowledgebase`, and `python -m db.reference_grants` for activated enrichment sources) — see
     infra/README.md §6. Applying with this set changes only the serving credential; it does NOT
     run the bootstrap.
   EOT
   type        = string
-  default     = ""
+  default     = "serving"
 
   validation {
-    condition     = var.serving_db_role == "" || can(regex("^[a-z][a-z0-9_]*$", var.serving_db_role))
-    error_message = "serving_db_role must be empty or a lowercase PostgreSQL identifier."
+    condition     = can(regex("^[a-z][a-z0-9_]*$", var.serving_db_role)) && var.serving_db_role != "postgres"
+    error_message = "serving_db_role must be a non-postgres lowercase PostgreSQL identifier."
   }
+}
+
+variable "deletion_protection" {
+  description = "Protect customer-bearing Cloud SQL and Cloud Run resources from accidental deletion."
+  type        = bool
+  default     = true
 }
 
 variable "enrichment_active_datasets" {

@@ -36,6 +36,17 @@ def sha256_tree(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def semantic_encoder_fingerprint(
+    data_dir: str | Path, base_model_id: str, base_model_revision: str
+) -> str:
+    """Identity of the encoder inputs a separately trained head depends on."""
+    return canonical_json_sha256({
+        "base_model_id": base_model_id,
+        "base_model_revision": base_model_revision,
+        "qwen_lora_sha256": sha256_tree(Path(data_dir) / "qwen_lora"),
+    })
+
+
 def canonical_json_sha256(value: Any) -> str:
     payload = json.dumps(
         value, ensure_ascii=True, separators=(",", ":"), sort_keys=True
@@ -64,7 +75,13 @@ def validate_weight_bundle(
     if not manifest:
         return None
     failures = []
-    for relative, expected in sorted(manifest["files"].items()):
+    expected_files = dict(manifest["files"])
+    for relative, record in manifest.get("committed_artifacts", {}).items():
+        if not isinstance(record, Mapping) or not isinstance(record.get("sha256"), str):
+            failures.append(f"{relative}: invalid committed-artifact record")
+            continue
+        expected_files[relative] = record["sha256"]
+    for relative, expected in sorted(expected_files.items()):
         path = root / relative
         if not path.is_file():
             failures.append(f"{relative}: missing")

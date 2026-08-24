@@ -292,7 +292,16 @@ def _verify_splits(instances) -> None:
                 f"identical text in splits {prior[0]!r} and {item.split!r}: {prior[1]!r} vs "
                 f"{item.instance_id!r} — the frozen encoder would see the same vector on both sides"
             )
-    shares = Counter(item.split for item in instances)               # 3. grouping must not skew the ratios
+    by_provenance: dict[str, tuple[str, str]] = {}
+    for item in instances:                                          # 3. one split per source entity/row
+        for provenance_id in item.provenance_ids:
+            prior = by_provenance.setdefault(provenance_id, (item.split, item.instance_id))
+            if prior[0] != item.split:
+                raise ValueError(
+                    f"source row {provenance_id!r} occurs in splits {prior[0]!r} and {item.split!r}: "
+                    f"{prior[1]!r} vs {item.instance_id!r}"
+                )
+    shares = Counter(item.split for item in instances)               # 4. grouping must not skew the ratios
     total = max(len(instances), 1)
     for split, (low, high) in _SHARE_BOUNDS.items():
         share = shares[split] / total

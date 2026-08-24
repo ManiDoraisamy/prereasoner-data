@@ -14,13 +14,18 @@ python -m tests.test_sql_ast
 python -m tests.test_calculations
 python -m tests.test_master_ingest
 python -m tests.test_routing
+python -m tests.test_router_evidence
+python -m tests.test_schema_decode
+python -m tests.test_schema_coverage
 python -m tests.test_enrichment
 python -m tests.test_source_sync
+python -m tests.test_app_migrations
 python -m regress.product_templates
 python -m regress.source_activation
 node --check web/public/lib/workbook.js
 node web/tests/home_demo.test.js
 node web/tests/workbook_reference.test.js
+node web/tests/llm_consent.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server regress
 git diff --check
 ```
@@ -65,11 +70,15 @@ The runner executes the canonical suites in this order:
 | `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
 | `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
 | `tests.test_routing` | Shared route authority and cross-process determinism |
+| `tests.test_router_evidence` | Property-family consensus and surfaced routing evidence |
+| `tests.test_schema_decode` | URI-indexed property evidence, deterministic class scoring, abstention, and artifact identity |
+| `tests.test_schema_coverage` | Ontology coverage, corpus support, split grouping, and complete bundle provenance |
 | `tests.test_compose` | Composed operations and relationship discovery |
 | `tests.test_converse` | Optional presentation/fill behavior |
 | `tests.test_master_ingest` | Private-reference validation, storage, and fixed-point selection |
 | `tests.test_enrichment` | M0 profile/role contracts, intent contrastives, value typing, bounded adapters, domain gates, request-local materialization, tuple edges, replay manifests, and serving-shaped benchmarks |
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
+| `tests.test_app_migrations` | Application schema migrations and least-privilege grants |
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |
@@ -77,6 +86,7 @@ The runner executes the canonical suites in this order:
 | `tests.test_world_joins` | Country, continent, and state world-table joins |
 | `tests.test_route_wired` | Model-driven route to SQL end to end |
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
+| `tests.test_schema_probes` | Live property/class generalization and cross-process determinism |
 
 The live suites need runtime weights and a seeded PostgreSQL knowledgebase. The orchestrator suite is also
 external and can be excluded with `RUN_ORCHESTRATOR_TESTS=0`. Some live suites need network access for an

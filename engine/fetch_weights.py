@@ -8,6 +8,7 @@ word_*.json) are committed. The large binaries are gitignored and must be fetche
     qwen_lora/              the LoRA adapter for the Qwen2.5-0.5B encoder (~17 MB)
     anchor_assignment.npz   per-dim Youden-J thresholds for /api/dimension
     primitives.npz          the learned 10-primitive head
+    schema_property_head.pt calibrated Schema.org named-property evidence head
 
 Usage:
     python -m engine.fetch_weights                 # download any missing weights into engine/data/
@@ -45,6 +46,7 @@ WEIGHTS = [
     "encoder_meta.pt",
     "anchor_assignment.npz",
     "primitives.npz",
+    "schema_property_head.pt",
     "qwen_lora/adapter_config.json",
     "qwen_lora/adapter_model.safetensors",
 ]

@@ -1,14 +1,37 @@
-# Training the typing model — and how to add a new type
+# Training Data And Models
 
-This document explains how the schema.org-**property** typing model is trained, and gives a validated,
-step-by-step runbook for adding a new entity type (worked example: **software / SoftwareApplication**).
+Schema.org is the semantic shell for training. The pinned ontology defines the names and
+relationships of properties and classes; it does not provide factual training rows. Training
+observations are projected into that shell from source-owned data:
 
-> Status: the property pipeline is **vendored** into this repo at [`training/props/`](../training/props/) — it
-> rebuilds the shipped model standalone. [`training/props/pipeline.md`](../training/props/pipeline.md) is the
-> operational contract (per-stage consumes/produces, external inputs, exact command order); this doc is the
-> conceptual walkthrough + the add-a-type runbook. The encoder-train step (Stage 3) needs a GPU.
+- Wikidata entity properties are mapped from P-ids to Schema.org property URIs.
+- Publisher relations from IANA, CLDR, GeoNames, ECB, EU TEDB, Nager.Date, CDC, NLM CDE, and
+  libphonenumber are mapped column-by-column to Schema.org properties and classes.
+- Synthetic SQL graphs and calculation contrastive pairs teach analytical intent and operand roles,
+  not world facts.
 
-## What the model does (the architecture, in one paragraph)
+Wikidata is the largest current observation source and the entity-identity bridge. It is not the
+semantic authority, and a Wikidata value does not override a publisher-owned fact. Mutable values
+remain in pinned database releases; weights learn relation and column shapes.
+
+The repository contains two training tracks:
+
+1. [`training/props/`](../training/props/) produces the unified encoder used for column-family
+   routing, structural intent, ranking signals, and calculation operand retrieval.
+2. [`training/schema_org/`](../training/schema_org/) trains a separate named-property head used for
+   table-level Schema.org evidence. That evidence is observational only: it cannot route, plan, or
+   release an answer.
+
+These tracks currently share the Schema.org vocabulary but not one checkpoint or one corpus. The
+shipped unified router's 71-property basis is derived primarily from capped Wikidata entities. The
+newer 75-property table head is trained on the multi-source semantic corpus. Do not describe the
+current router as already trained on all publisher sources.
+
+[`training/props/pipeline.md`](../training/props/pipeline.md) is the operational contract for the
+unified encoder. The Schema.org corpus and head have their own build, train, and promotion commands
+below. GPU training is required; promotion is a separate explicit action.
+
+## Track A: Unified Column Router And Intent Encoder
 
 The router (`engine/router.py`) does **superposition-decode**: ONE trained encoder (Qwen-0.5B + a
 `RelationalModel` readout) reads a fixed set of **schema.org property dimensions** off each column, and the
@@ -32,12 +55,51 @@ software) over a **71-property / 90-content-dim** basis: `alloc.json` is **nc=90
 | `families.json` | family → distinctive props + join tables | `training/props/build_families.py` |
 | `anchor_assignment.npz` | per-dim thresholds for the legacy `/api/dimension` readout (**not** used by the property router) | gen20 `anchor/anchor_head.py` |
 
+The promoted encoder metadata contains constructor configuration and the dimension allocation, but
+the currently published stable bundle does **not** carry a complete machine-readable identity for
+the router's source corpus, split, seed, or held-out metrics. The immutable repository revision and
+file hashes prove which bytes are loaded; they do not by themselves prove how those bytes were
+trained. This provenance gap must be closed before claiming independent reproduction of the router
+checkpoint.
+
+## Track B: Multi-Source Schema.org Evidence Head
+
+`training/schema_org/corpus.py` compiles the pinned Schema.org 30.0 vocabulary and emits semantic
+instances from explicit source adapters. The committed `semantic_manifest.json` records corpus
+identity, source releases, mapping versions, split counts, drop reasons, and ontology identity.
+Instances are split by derivation group so a table, its columns, row windows, and presentation
+variants cannot cross train/validation/test boundaries. Every property label must remain visible in
+the encoder input after truncation.
+
+The current corpus contains 45,772 instances: 36,496 train, 4,553 validation, and 4,723 test.
+Wikidata contributes the largest number of column instances; the publisher adapters collectively
+add independently sourced relation shapes. The model trains 75 named Schema.org properties against
+the frozen Qwen encoder. `schema_property_model.json` records per-property and per-class held-out
+metrics, thresholds, support, seed, ontology hash, corpus hash, and weight hash. Deterministic class
+signatures cover all 926 ontology classes, but only classes that clear support, precision, and recall
+gates are servable; all others abstain.
+
+```powershell
+python -m training.schema_org.corpus
+python -m training.schema_org.train_property_head
+python -m training.schema_org.promote <corpus-prefix> --revision <immutable-bundle-commit>
+python -m tests.test_schema_coverage
+python -m tests.test_schema_decode
+```
+
+Training writes candidates only under
+`training/schema_org/data/experiments/<corpus-sha>/`. Promotion is the sole path into the runtime
+bundle and must keep the head, calibrated metadata, signatures, manifest hashes, and immutable
+external revision coherent.
+
+## Track A Operational Pipeline
+
 > On-disk detail: in `alloc.json` the 71 property dims carry the internal `family` tag `"taxonomy"` — a
 > warm-start/harness-compatibility label inherited from the gen20 lineage (`build_from_props.py` keeps it so the
 > trainer runs unchanged; `build_families.py` selects the props via `family == "taxonomy"`). The router keys on the
 > property **name**, not this tag, so the literal on-disk label differs harmlessly from the "property" term used here.
 
-## The pipeline (DAG)
+### Pipeline DAG
 
 The runnable, parameterized pipeline lives at [`training/props/`](../training/props/); see
 [`training/props/pipeline.md`](../training/props/pipeline.md) for the full per-stage contract. In outline:
@@ -54,20 +116,20 @@ build_families.py  ─► data/families.json + engine/data/families.json
 calibrate_props.py ─► data/props_thr.json + engine/data/props_thr.json
 ```
 
-## Where the property basis is selected
+### Where the property basis is selected
 
 `training/props/build_assignment21_v2.py` (`PER_TYPE, MIN_SUPPORT = 250, 25`; dim-selection ~L130–132): a
-schema.org prop becomes a model dim **iff ≥25 training instances carry it** (`MIN_SUPPORT=25`). Instances (with
-their properties) come from Postgres `capped.entity`, mapped Wikidata-P-id → schema.org name via `bridge_prop.csv`
+Schema.org property becomes a model dimension **iff ≥25 training instances carry it** (`MIN_SUPPORT=25`).
+Instances in this track come from Postgres `capped.entity`, mapped Wikidata-P-id → Schema.org name via `bridge_prop.csv`
 (committed at [`training/props/bridge_prop.csv`](../training/props/bridge_prop.csv)). **Which types are pulled** is
 controlled by the `TYPES` map (`build_assignment21_v2.py:41–46`, Wikidata qid → coarse family).
 
-## Runbook: add a new type (worked example — software) — VALIDATED on CPU
+## Historical Runbook: Adding Software To The Unified Router
 
-> Steps 1–4 below have been **run and validated** (see `training/props/README.md` for the evidence). The basis
-> grew **67 → 71 props**, the corpus regenerated at **nc=90**, and software came out with a distinctive property
-> **`operatingSystem` (0.27 in-family vs 0.00 out)** — so consensus decoding will type it. Only the GPU
-> encoder-train (step 5) remains.
+This records the corpus and training procedure that expanded the basis from 67 to 71 properties.
+It is a maintenance runbook, not the current release status and not evidence that a partially
+completed local run is deployed. The stable promoted bundle is identified only by
+`engine/data/weights_manifest.json`.
 
 **Validated preconditions (checked live):**
 - The software type is Wikidata **`Q7397` ("software"), 13,958 instances** — **not** `Q166142` (which has 0
@@ -75,23 +137,23 @@ controlled by the `TYPES` map (`build_assignment21_v2.py:41–46`, Wikidata qid 
   programmingLanguage, `P348` softwareVersion, `P178` author, `P400` runtimePlatform. Of these,
   `operatingSystem/softwareVersion/programmingLanguage/author` clear `MIN_SUPPORT=25` and enter the basis.
 
-**Blockers to running it:**
+**Requirements to reproduce it:**
 1. **GPU** — `train_props_gpu.py` back-props through Qwen-0.5B (~600 steps). CPU is a multi-hour job; use a
-   GPU box (e.g. RunPod). Every other step is CPU/Postgres and is **done**.
+   GPU box (e.g. RunPod).
 2. **Two Postgres DBs**: `WORLD_PG_PASSWORD` for `capped.entity`, `KB_PG_PASSWORD` for `knowledgebase.*` (env).
 
-**Steps (1–4 done, 5–8 remaining):**
-1. ✅ Code edits: added `"Q7397": "software"` to `TYPES` (`training/props/build_assignment21_v2.py`); the 5
+**Procedure:**
+1. Add `"Q7397": "software"` to `TYPES` (`training/props/build_assignment21_v2.py`); the 5
    software P-ids are mapped in `training/props/bridge_prop.csv` (`P306`→operatingSystem, `P277`→programmingLanguage,
    `P348`→softwareVersion, `P178`→author, `P400`→runtimePlatform). Also done: software is its own family in
    `training/props/build_families.py` (`TYPE_FAM["software"]="software"` +
    `FAM_SCHEMATYPES["software"]=["SoftwareApplication"]`, moved out of `product`).
-2. ✅ `python -m training.props.build_assignment_pg` → `python -m training.props.build_assignment21_v2` — basis
+2. Run `python -m training.props.build_assignment_pg` then `python -m training.props.build_assignment21_v2` — basis
    grew **67 → 71** props; the software props appear in `data/alloc21_dims.json`.
-3. ✅ `python -m training.props.build_from_props` — corpus written to `data/units_{train,test}.jsonl`
+3. Run `python -m training.props.build_from_props` — corpus written to `data/units_{train,test}.jsonl`
    (**nc=90** = 9 struct + 71 prop + 10 intent, ~1.1 MB).
-4. ✅ `cp training/props/data/alloc.json training/props/data/alloc20.json` (the trainer reads `alloc20.json`).
-5. **GPU:** run `python -m training.props.augment_intent` and
+4. Copy `training/props/data/alloc.json` to `training/props/data/alloc20.json` (the trainer reads `alloc20.json`).
+5. On a GPU, run `python -m training.props.augment_intent` and
    `python -m training.props.calculation_contrastive`, then
    `python -m training.props.train_props_gpu --steps 600 --lr 2e-4`.
    The trainer's keep-best selects on **property AUC + held-out intent op-accuracy + held-out

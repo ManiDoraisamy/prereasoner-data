@@ -27,11 +27,11 @@ These are the property model's artifacts (`engine/data/`):
 
 | artifact | what it is | produced by |
 |---|---|---|
-| `alloc.json` | the **86**-dim allocation — 9 struct + 67 property + 10 intent (names/families/ids) | `training/props/build_from_props.py` |
+| `alloc.json` | the **90**-dim allocation — 9 struct + 71 legacy property-named coordinates + 10 intent (names/families/ids) | `training/props/build_from_props.py` |
 | `encoder.pt` | RelBlock readout weights — the **property** fine-tune of the gen20 RelBlock | `training/props/train_props_gpu.py` |
 | `encoder_meta.pt` | `{alloc, cfg}` companion the loader reads | `training/props/train_props_gpu.py` |
 | `qwen_lora/` | LoRA adapter — the **property** fine-tune of the gen20 LoRA | `training/props/train_props_gpu.py` |
-| `families.json` | family → distinctive schema.org props + geo/join tables (8 families) | `training/props/build_families.py` |
+| `families.json` | family → distinctive property coordinates + geo/join tables (9 families) | `training/props/build_families.py` |
 | `props_thr.json` | per-property Youden-J firing thresholds | `training/props/calibrate_props.py` |
 | `anchor_assignment.npz` | per-dim thresholds for the legacy `/api/dimension` readout (**not** used by the property router) | gen20 `anchor/anchor_head.py` |
 

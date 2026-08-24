@@ -5,6 +5,12 @@
 > [../training/README.md](../training/README.md). This doc is the argument and the evidence —
 > written so a reviewer can find every claim's ground and every caveat.
 
+> **Current-status boundary.** The taxonomy re-anchor in section 6 is historical lineage, not the
+> shipped model. Production currently uses a 90-coordinate property/intent encoder for column
+> routing and a separate URI-indexed Schema.org head for evidence. The router still contains two
+> legacy non-property coordinates and is not yet the ontology-clean multi-source target described
+> in `ARCHITECTURE.md`.
+
 ## Contents
 
 1. [The core claim](#1-the-core-claim-name-the-dimensions-then-query-them) ·
@@ -35,8 +41,9 @@ step by step, not only inspects in an artifact afterward.
 The research program ran this mechanism across several settings before this system (color
 channels in a small language model, parsed code); those earlier proofs-of-concept are outside
 this repository. The released incarnation is the tabular one: an uploaded spreadsheet + a
-natural-language question become **interpretable SQL** over the user's own data joined to an
-implicit Wikidata "world" knowledge DB. The model is a small encoder with named, interpretable
+natural-language question become **interpretable SQL** over the user's own data joined to a
+source-owned world store: Wikidata entity instances and QID bridges today, plus gated publisher
+references typed in Schema.org coordinates. The model is a small encoder with named, interpretable
 dimensions; the named dims *are the product* — they drive the typing, the operator choice, and
 the entity resolution that assemble the query. Concretely, "total amount in France" over
 `customers + orders` becomes
@@ -82,8 +89,11 @@ hand-built graph prior — so we don't claim that.
 
 ## 3. Why this is not RAG (it's closer to the inverse)
 
-The only trait shared with RAG is "fetch world facts from an external store instead of
-memorizing them in weights" — but that is just *using a database*, which predates RAG by decades.
+The intended factual boundary is "fetch world facts from an external store instead of generating
+them from weights" — but that is just *using a database*, which predates RAG by decades. The
+legacy router's entity-name supervision can still absorb entity-to-property associations, so the
+stronger claim that no mutable fact signal exists in any weight is not justified until that
+supervision is replaced.
 On every operative axis the two are opposites:
 
 | | **RAG** | **PreReasoner** |
@@ -98,10 +108,9 @@ querying possible — RAG can only approximate because its dimensions are unname
 write `WHERE dim_247 = …`). Anchor the dimension and the approximate-retrieve-then-generate
 stack collapses into one exact query. RAG searches; this queries.*
 
-**One honest caveat.** There is a single learned, *soft* step: **type classification + entity
-resolution** — which world table a column routes to (via its anchored taxonomy dims, gated by
-per-leaf calibrated thresholds, `engine/data/route_thresholds.json` /
-`dim_thresholds.json`) and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
+**One honest caveat.** Learned, *soft* steps include **type classification + entity
+resolution** — which world table a column routes to (via legacy property-family consensus and
+calibrated thresholds) and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
 match first, then a bge-small cosine nearest-neighbour above threshold). Both steps are
 interpretable, and they are *classification / resolution*, not answer-generation; once the cell
 is resolved to a **QID**, the row match and the computation that follow are exact equality joins.
@@ -157,7 +166,7 @@ keeps these world tables from clashing with the user's own table names.
 
 ---
 
-## 6. The taxonomy re-anchor: from non-discriminative to AUC 1.0
+## 6. Historical taxonomy re-anchor: from non-discriminative to AUC 1.0
 
 The clearest evidence that anchoring is doing real work — and the clearest cautionary tale about
 *what you anchor on* — is the taxonomy re-anchor.
@@ -192,16 +201,10 @@ Two claims fall out of this, and both are load-bearing:
   firing thresholds on the *served* model (`training/calibrate/calibrate_dims.py`,
   `calibrate_route.py`) rather than trusting stale ones.
 
-**The unified encoder.** The encoder is a **frozen-base Qwen2.5-0.5B + a LoRA adapter** feeding a
-10-layer bidirectional relational transformer, trained jointly with **contrastive InfoNCE** on
-Wikidata altLabel pairs (the metric geometry for entity resolution) and **MSE anchoring** of the
-named dims on the column-graph corpus (the typing) plus reused SQL/join graphs (the
-operator/intent dims). The allocation is **93 content dims**: 9 struct + 74 taxonomy + 10 intent.
-The decoupling discipline matters: the dense contrastive loss overwhelms the sparse anchoring
-gradient if mixed naively, so the taxonomy readout is re-anchored with the encoder **frozen**
-(above). The claim is therefore: the encoder is learned-by-contrastive-objective AND
-legible-by-MSE — the two objectives are compatible if and only if they are decoupled at training
-time.
+This experiment used a **93-content-dimension** taxonomy checkpoint: 9 structural, 74 Wikidata
+P279 taxonomy, and 10 intent dimensions. It established a historical result about re-anchoring a
+fixed representation; it is not the current runtime allocation and its AUC must not be quoted as
+the held-out performance of the shipped 90-coordinate property model.
 
 ---
 
@@ -230,55 +233,38 @@ The tabular system's load-bearing fragilities, stated plainly:
 
 ---
 
-## 8. Reproducing the model
+## 8. Reproducing the models
 
-The full pipeline that produced the shipped artifacts (`engine/data/qwen_lora`, `encoder.pt`,
-`encoder_meta.pt`, `alloc.json`) is released in [`training/`](../training/README.md):
+There are two current training tracks and one historical warm start:
 
-1. **World DB** (`training/world/`, `db/sync/`) — the Wikidata import, taxonomy sync, and
-   resolution index.
-2. **Corpus discovery** (`training/corpus/`) — CSV type discovery, column clustering, and the
-   clean-instance corpus.
-3. **Taxonomy** (`training/taxonomy/`) — reconcile → rollup → the dim allocation.
-4. **Encoder training** (`training/train/`, GPU) — the multitask → unified → taxonomy chain that
-   produced the LoRA adapter.
-5. **Readout anchoring** (`training/anchor/`) — produced the shipped relational readout.
-6. **Calibration + release gates** (`training/calibrate/`) — routing/threshold calibration,
-   artifact-consistency validation, and the served-model routing gate; orchestrated
-   transactionally by `training/tools/pipeline.py` (snapshot → retrain → promote only if the
-   gates pass, roll back otherwise).
+1. **Source databases** — `db/README.md` and `SOURCE_DATA.md` build the Wikidata entity store and
+   publisher-owned releases.
+2. **Unified column router** — `training/props/pipeline.md` maps capped Wikidata observations into
+   the legacy property-named basis, adds intent and calculation supervision, trains on GPU, and
+   promotes one manifest-pinned encoder bundle.
+3. **Schema.org evidence head** — `python -m training.schema_org.corpus` builds the group-disjoint
+   multi-source corpus; `train_property_head.py` trains the URI-indexed head; `promote.py` installs
+   the calibrated evidence artifacts.
+4. **Historical gen20 taxonomy** — `training/train/`, `training/taxonomy/`, and
+   `training/anchor/` supply the warm-start lineage. They do not reproduce the shipped property
+   model by themselves.
 
-`training/README.md` states plainly which stages re-run self-contained from this release and
-which historical bootstrap artifacts ship as data rather than as regenerable code.
+The current stable router bundle is byte-pinned but lacks complete machine-readable corpus, split,
+seed, and metric provenance. The Schema.org head carries those records. See `TRAINING.md`,
+`MODEL_CARD.md`, and `DATA_CARD.md` for the release boundary.
 
 ---
 
 ## 9. Summary for reviewers
 
-> PreReasoner factorizes table understanding into two interpretable components with deliberately
-> different epistemic status. First, a **learned-but-legible representation**: a single unified
-> encoder — a frozen Qwen2.5-0.5B base with a LoRA adapter, trained jointly by contrastive
-> InfoNCE on Wikidata altLabel pairs (a metric space for entity resolution) — feeds a small
-> bidirectional relational transformer whose reserved output dimensions are anchored, via
-> mean-squared error on raw activations, to named interpretable targets: nine datatype dims, 74
-> Wikidata P279 taxonomy-path nodes (co-firing root→leaf, so a value reads as *populated_place →
-> city*), and ten query-intent dims. Each clean unit (a column name, or a single cell value) is
-> encoded and its subtokens mean-pooled into one vector, so names and numbers are never split at
-> the anchoring level even though a pretrained subword tokenizer is used. The two training
-> objectives are decoupled: the dense contrastive loss shapes the encoder, after which the
-> encoder is frozen and only the relational transformer's readout is re-anchored on clean
-> Wikidata P31 instances — a step that moved taxonomy separability from AUC 0.886 to 1.0 without
-> touching the encoder. These dimensions are *learned* yet directly readable, so one can inspect
-> what the system believes each cell and column to be, with no separate post-hoc probe. Second, a
-> **specified, auditable relational structure**: the joins among cells, columns, and tables —
-> including cross-table foreign keys and the links into an external Wikidata world store whose
-> tables are qid-primary-keyed with qid foreign keys — are *not* learned but computed by a
-> deterministic algorithm (inclusion-dependency tests with name/type heuristics) and supplied to
-> the network as a fixed attention prior; the network learns only *how strongly* to weight each
-> given relation, never *which* relations exist. The final query is assembled by a deterministic
-> template from the learned readout (type, resolved qid, operator) and the specified structure,
-> then executed against the database; there is no autoregressive generation at inference, and a
-> coverage gate refuses with a clarifying rephrasing rather than emit a query that silently
-> dropped part of the question. The system's interpretability is therefore of two kinds —
-> learned-yet-legible for *what the data is*, and specified-and-auditable for *how it relates* —
-> and conflating them overstates the learned content of the joins.
+> PreReasoner combines learned semantic signals with specified relational structure. The current
+> production column router reads a 90-coordinate Qwen/LoRA plus relational-model representation and
+> actively selects candidate world tables; a separate multi-source Schema.org head emits
+> URI-indexed table evidence but does not route or answer. Foreign-key discovery, typed AST search,
+> calculation verification, and execution are deterministic. Schema.org defines the semantic
+> vocabulary; Wikidata and publisher datasets provide observations, QID bridges, and pinned facts.
+> The architecture target is one ontology-valid semantic path, but the current router predates that
+> target, contains two invalid property coordinates, and was trained with entity-name supervision
+> that does not always expose the labelled property value. Those are release limitations, not
+> interpretability claims. The historical 93-dimension taxonomy re-anchor remains evidence about an
+> earlier experiment only.

@@ -58,15 +58,18 @@ class SemanticInstance:
     properties: tuple[str, ...]
     split: str
     mapping_version: str
+    provenance_ids: tuple[str, ...] = ()
 
     @classmethod
     def create(cls, *, source: str, release_id: str, relation: str, instance_id: str,
-               text: str, classes, properties, mapping_version: str) -> "SemanticInstance":
+               text: str, classes, properties, mapping_version: str,
+               provenance_ids=()) -> "SemanticInstance":
         return cls(
             source.strip(), release_id.strip(), relation.strip(), instance_id.strip(), text.strip(),
             tuple(sorted({schema_uri(value) for value in classes})),
             tuple(sorted({schema_uri(value) for value in properties})),
             deterministic_split(instance_id.strip()), mapping_version.strip(),
+            tuple(sorted({str(value).strip() for value in provenance_ids if str(value).strip()})),
         )
 
     def validate(self, contract: SchemaContract) -> None:
@@ -75,6 +78,9 @@ class SemanticInstance:
                              ("mapping_version", self.mapping_version)):
             if not value or (label in {"source", "relation", "instance_id"} and not _ID.fullmatch(value)):
                 raise ValueError(f"invalid semantic instance {label}: {value!r}")
+        invalid_provenance = [value for value in self.provenance_ids if not _ID.fullmatch(value)]
+        if invalid_provenance:
+            raise ValueError(f"invalid semantic provenance ids: {invalid_provenance!r}")
         if not self.text or len(self.text) > 16_000:
             raise ValueError("semantic instance text must contain 1..16000 characters")
         if self.split not in SPLITS:
@@ -107,6 +113,7 @@ class SemanticInstance:
             "relation": self.relation, "instance_id": self.instance_id,
             "text": self.text, "classes": self.classes, "properties": self.properties,
             "split": self.split, "mapping_version": self.mapping_version,
+            "provenance_ids": self.provenance_ids,
         }
 
     @classmethod
@@ -114,7 +121,7 @@ class SemanticInstance:
         return cls(
             record["source"], record["release_id"], record["relation"], record["instance_id"],
             record["text"], tuple(record["classes"]), tuple(record["properties"]),
-            record["split"], record["mapping_version"],
+            record["split"], record["mapping_version"], tuple(record.get("provenance_ids", ())),
         )
 
 

@@ -24,8 +24,8 @@ from training.lib.walker import build_from_units                       # noqa: E
 from training.lib.edges import edges, fam_dims_map                 # noqa: E402
 from training.lib.relblock import RelBlockModel                        # noqa: E402
 from training.train.train_multitask import load, fam_report                 # noqa: E402
+from engine.model_revisions import QWEN_MODEL_ID as MODEL_ID, QWEN_REVISION as MODEL_REVISION  # noqa: E402
 
-MODEL_ID = os.environ.get("BASE_MODEL_ID", "Qwen/Qwen2.5-0.5B")
 R9, R10, R11, R17 = ROOT / "training/data", ROOT / "training/data", ROOT / "training/data", ROOT / "training/data"
 
 
@@ -35,10 +35,12 @@ class LiveQwen(nn.Module):
     def __init__(self, dev, lora=True, lora_r=16):
         super().__init__()
         from transformers import AutoModel, AutoTokenizer
-        self.tok = AutoTokenizer.from_pretrained(MODEL_ID)
+        self.tok = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
         if self.tok.pad_token is None:
             self.tok.pad_token = self.tok.eos_token
-        m = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True).float()
+        m = AutoModel.from_pretrained(
+            MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
+        ).float()
         if lora:
             from peft import LoraConfig, get_peft_model
             cfg = LoraConfig(r=lora_r, lora_alpha=2 * lora_r, lora_dropout=0.05, bias="none",
