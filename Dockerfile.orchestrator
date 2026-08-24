@@ -22,7 +22,10 @@ RUN pip install --no-cache-dir -r orchestrator/requirements.txt
 # static UI and rewrites only /chat + /api to this service, so the container never serves static files
 # (and web/ is excluded from the build upload by .gcloudignore). Local dev serves web/ from the repo tree.
 RUN mkdir -p /app/engine
-COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py /app/engine/
+# model_revisions is a constants-only module engine.config imports at module load; omitting it is a
+# BOOT failure (ModuleNotFoundError at container start), which the build's test step cannot catch
+# because it runs from the full repo tree, not from this image.
+COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py engine/model_revisions.py /app/engine/
 COPY mcp_server/ /app/mcp_server/
 COPY orchestrator/ /app/orchestrator/
 
