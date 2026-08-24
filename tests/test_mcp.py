@@ -96,12 +96,29 @@ def test_integration(base):
     ok(bad["status"] == "error", "unreachable engine -> status 'error' (no crash)")
 
 
+def test_mcp_server_module_imports():
+    """The orchestrator spawns mcp_server/server.py as a stdio SUBPROCESS, so a broken import there
+    is invisible to every test that only exercises the pure adapter — which is exactly how an
+    unpinned `mcp` resolved 2.0.0 (FastMCP moved) and killed every live /chat turn while this suite
+    stayed green. Import the real module so a dependency bump fails the BUILD, not production."""
+    import importlib
+
+    try:
+        module = importlib.import_module("mcp_server.server")
+    except Exception as exc:  # noqa: BLE001 - the failure mode under test is any import error
+        ok(False, f"mcp_server.server imports: {type(exc).__name__}: {exc}")
+        return
+    ok(hasattr(module, "mcp") or hasattr(module, "main"),
+       "mcp_server.server exposes its server object after import")
+
+
 def main():
     port = 8811
     srv = _start_stub(port)
     base = f"http://127.0.0.1:{port}"
     try:
         test_shape()
+        test_mcp_server_module_imports()
         test_integration(base)
     finally:
         srv.shutdown()
