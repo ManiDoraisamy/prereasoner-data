@@ -632,21 +632,32 @@ class KnowledgeTableQuery:
         from engine.calculations.registry import attach_calculation_evidence
         from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SQLType
         from engine.sql_schema import SchemaGraph
-        outputs = ()
-        if selected_measure:
-            measure = ColumnRef(selected_measure[0], selected_measure[1], SQLType.REAL)
-            expression = Aggregate(agg[0], measure)
-            if selected_conversion and conversion:
-                rate = ColumnRef(conversion[0], conversion[1], SQLType.REAL)
-                expression = Aggregate("SUM", BinaryExpr(measure, "*", rate))
-            outputs = (OutputEvidence(
-                expression, True, aggregate_functions(expression), expression_columns(expression),
-            ),)
         predicates = frozenset(
             PredicateFact(table, column, "=", value)
             for table, column, value in own_filters
         )
         graph = SchemaGraph.from_planner(sch, fks)
+
+        def _typed(table, column):
+            """The column as the SCHEMA declares it.
+
+            ColumnRef is a frozen dataclass, so its equality covers the declared SQL type. Synthesizing
+            the measure as REAL made an integer-typed column (the demo's whole-currency amounts) compare
+            unequal to the planned expression, so a correct SUM(amount * rate_to_usd) was reported as
+            not converting and the world path declined a right answer.
+            """
+            entry = graph.column_map.get((table, column))
+            return entry.ref if entry is not None else ColumnRef(table, column, SQLType.REAL)
+
+        outputs = ()
+        if selected_measure:
+            measure = _typed(*selected_measure)
+            expression = Aggregate(agg[0], measure)
+            if selected_conversion and conversion:
+                expression = Aggregate("SUM", BinaryExpr(measure, "*", _typed(*conversion)))
+            outputs = (OutputEvidence(
+                expression, True, aggregate_functions(expression), expression_columns(expression),
+            ),)
         join_facts = []
         for foreign_key in selected_fks:
             from_cols = tuple(foreign_key.get("from_cols") or (foreign_key["from_col"],))

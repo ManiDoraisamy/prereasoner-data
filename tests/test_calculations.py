@@ -27,6 +27,8 @@ from engine.sql_schema import SchemaGraph
 from engine.sql_rank import SemanticSignals
 from engine.sql_search import SQLSearcher
 from engine.trace import stream_final
+from engine.artifact_provenance import canonical_json_sha256, sha256_file, sha256_tree
+from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 from mcp_server.engine_client import shape_reason_response
 from training.props.calculation_contrastive import build_rows, write_rows
 from training.props.eval_intent import read_op_mirror, thresholds_from_score_rows
@@ -466,6 +468,133 @@ def test_temporal_rate_requires_and_accepts_composite_alignment():
        "dated rates are admissible only when the complete temporal key is present in the join")
 
 
+def test_a_calculation_at_the_wrong_grain_is_not_satisfied():
+    # Regression: the verifier checked the ratio EXPRESSION but never the requested GRAIN, so
+    # "gdp per capita by country" was certified satisfied while the query computed one global
+    # SUM(gdp)/SUM(population) = 43.54 instead of France 43.28 / Germany 49.40 / Italy 35.59.
+    # A figure at the wrong grain is a different quantity, not a coarser version of the right one.
+    countries = {"name": "countries", "columns": ["country", "gdp", "population"],
+                 "rows": [["France", 2900.0, 67.0], ["Germany", 4100.0, 83.0],
+                          ["Italy", 2100.0, 59.0]]}
+    graph = SchemaGraph.from_tables((countries,), ())
+
+    def column(name):
+        return graph.column_map[("countries", name)].ref
+
+    ratio = BinaryExpr(Aggregate("SUM", column("gdp")), "/", Aggregate("SUM", column("population")))
+    ungrouped = SelectQuery((SelectItem(ratio, alias="per_capita"),), "countries")
+    grouped = SelectQuery(
+        (SelectItem(column("country")), SelectItem(ratio, alias="per_capita")),
+        "countries",
+        group_by=(column("country"),),
+    )
+
+    question = "gdp per capita by country"
+    rows = assess_calculations(question, (countries,), graph, describe_computation(ungrouped))
+    ok(bool(rows) and rows[0]["status"] != "satisfied",
+       "a ratio computed over every row does not answer a per-country question")
+    ok(bool(rows) and "countries.country" in (rows[0].get("reason") or ""),
+       "the decline names the grain the question asked for")
+
+    # the SAME calculation at the requested grain is satisfied — this must not simply ban ratios
+    grouped_rows = assess_calculations(question, (countries,), graph, describe_computation(grouped))
+    ok(bool(grouped_rows) and grouped_rows[0]["status"] == "satisfied",
+       "the same ratio grouped by country is satisfied")
+
+    # Every set-operation branch must preserve the requested grain. Merely projecting `country`
+    # beside an aggregate is not grouping and cannot let an ungrouped branch borrow evidence from
+    # the correctly grouped branch.
+    projected_ungrouped = SelectQuery(
+        (SelectItem(column("country")), SelectItem(ratio, alias="per_capita")),
+        "countries",
+    )
+    mixed_grain = SetQuery(grouped, "UNION", projected_ungrouped)
+    mixed_rows = assess_calculations(
+        question, (countries,), graph, describe_computation(mixed_grain),
+    )
+    ok(bool(mixed_rows) and mixed_rows[0]["status"] != "satisfied",
+       "one grouped set branch cannot certify an ungrouped branch")
+
+    # a question requesting NO grain is unaffected, so the check cannot swallow plain aggregates
+    plain = assess_calculations("gdp per capita", (countries,), graph,
+                                describe_computation(ungrouped))
+    ok(bool(plain) and plain[0]["status"] == "satisfied",
+       "an ungrouped question is still answered by an ungrouped ratio")
+
+
+def test_grain_check_accepts_a_dimension_grouped_by_its_display_column():
+    # Regression: the grain check demanded that the query group by one of the columns the phrase
+    # LEXICALLY bound. "by customer" binds customers.customer_id (analyze_question strips the "id"
+    # token) but the correct query groups by customers.name, which is not a join key and so was
+    # unreachable. Every candidate in the pool became inadmissible and a correct, correctly-grouped
+    # answer turned into a decline. CandidateRanker._group_alignment already accepts a grouping
+    # column by TABLE — and ranks this very query first — so the verifier must not contradict it.
+    orders = {"name": "orders", "columns": ["order_id", "customer_id", "currency", "amount"],
+              "rows": [["o1", "c1", "EUR", 310.0], ["o2", "c1", "GBP", 100.0],
+                       ["o3", "c2", "USD", 95.0]]}
+    customers = {"name": "customers", "columns": ["customer_id", "name"],
+                 "rows": [["c1", "Acme"], ["c2", "Globex"]]}
+    fx = {"name": "fx", "columns": ["currency_code", "rate_to_usd"],
+          "rows": [["EUR", 1.08], ["GBP", 1.27], ["USD", 1.0]]}
+    fks = ({"from_table": "orders", "from_col": "currency",
+            "to_table": "fx", "to_col": "currency_code"},
+           {"from_table": "orders", "from_col": "customer_id",
+            "to_table": "customers", "to_col": "customer_id"})
+    tables = (orders, customers, fx)
+    graph = SchemaGraph.from_tables(tables, fks)
+
+    question = "total order amount in US dollars by customer"
+    candidate, rows, _ = select_calculation_candidate(
+        question, tables, graph, SQLSearcher(graph).search(question),
+    )
+    ok(bool(rows) and all(row["status"] == "satisfied" for row in rows),
+       "a dimension grouped by its display column realizes the requested grain")
+    ok(candidate is not None and "GROUP BY" in candidate.sql,
+       "the served candidate still groups rather than collapsing to one figure")
+
+    # the guard must remain a guard: the SAME schema with no grouping at all still declines
+    ungrouped = SelectQuery(
+        (SelectItem(Aggregate("SUM", BinaryExpr(
+            graph.column_map[("orders", "amount")].ref, "*",
+            graph.column_map[("fx", "rate_to_usd")].ref)), alias="total_usd"),),
+        "orders",
+        joins=(Join("fx", graph.column_map[("orders", "currency")].ref,
+                    graph.column_map[("fx", "currency_code")].ref),),
+    )
+    flat = assess_calculations(question, tables, graph, describe_computation(ungrouped))
+    ok(bool(flat) and flat[0]["status"] != "satisfied",
+       "the same question answered by one global figure still declines")
+
+
+def test_grain_check_accepts_either_side_of_an_equality_join():
+    # "by country" binds to BOTH sales.country and tax_rates.country; grouping by either yields the
+    # same grain, so requiring literal identity would report every joined calculation as ungrouped.
+    sales = {"name": "sales", "columns": ["country", "amount"],
+             "rows": [["France", 100.0], ["Germany", 200.0]]}
+    rates = {"name": "tax_rates", "columns": ["country", "tax_rate"],
+             "rows": [["France", 0.2], ["Germany", 0.19]]}
+    edge = {"from_table": "sales", "from_cols": ["country"],
+            "to_table": "tax_rates", "to_cols": ["country"]}
+    graph = SchemaGraph.from_tables((sales, rates), (edge,))
+
+    def column(table, name):
+        return graph.column_map[(table, name)].ref
+
+    grouped = SelectQuery(
+        (SelectItem(column("sales", "country")),
+         SelectItem(Aggregate("SUM", BinaryExpr(column("sales", "amount"), "*",
+                                                column("tax_rates", "tax_rate"))),
+                    alias="tax_amount")),
+        "sales",
+        joins=(Join("tax_rates", column("sales", "country"), column("tax_rates", "country")),),
+        group_by=(column("sales", "country"),),
+    )
+    rows = assess_calculations("total tax on sales by country", (sales, rates), graph,
+                               describe_computation(grouped))
+    ok(bool(rows) and rows[0]["status"] == "satisfied",
+       "grouping by one side of an equality join realizes the requested grain")
+
+
 def test_verifier_rejects_arithmetic_over_an_incomplete_join():
     sales = {"name": "sales", "columns": ["country", "effective_date", "amount"],
              "rows": [["FR", "2024-01-01", 100]]}
@@ -617,6 +746,37 @@ def test_model_promotion_is_atomic_and_marks_unpublished_candidates():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(payload)
         (source / "props_thr.json").write_text('{"name": 0.5}', encoding="utf-8")
+        (source / "units_train.jsonl").write_text('{"unit":1}\n', encoding="utf-8")
+        report = {
+            "schema_version": 1,
+            "code_commit": "a" * 40,
+            "dirty_worktree": False,
+            "base_model": {"id": QWEN_MODEL_ID, "revision": QWEN_REVISION},
+            "seed": 17,
+            "training_args": {"seed": 17},
+            "corpora": {"units_train.jsonl": sha256_file(source / "units_train.jsonl")},
+            "metrics": {
+                "intent_accuracy": 0.9, "intent_bad_probes": [],
+                "calculation_accuracy": 0.9,
+            },
+            "gates": {
+                "min_intent_accuracy": 0.8, "max_bad_intent_probes": 0,
+                "min_calculation_accuracy": 0.8, "passed": True,
+            },
+            "artifacts": {
+                "encoder_props.pt": sha256_file(source / "encoder_props.pt"),
+                "encoder_props_meta.pt": sha256_file(source / "encoder_props_meta.pt"),
+                "qwen_lora_props": sha256_tree(source / "qwen_lora_props"),
+            },
+        }
+        (source / "release_report.json").write_text(json.dumps(report), encoding="utf-8")
+        (destination / "schema_property_model.json").write_text(json.dumps({
+            "encoder_artifact_sha256": canonical_json_sha256({
+                "base_model_id": QWEN_MODEL_ID,
+                "base_model_revision": QWEN_REVISION,
+                "qwen_lora_sha256": report["artifacts"]["qwen_lora_props"],
+            })
+        }), encoding="utf-8")
         files = {
             "encoder.pt": "",
             "encoder_meta.pt": "",
@@ -631,6 +791,9 @@ def test_model_promotion_is_atomic_and_marks_unpublished_candidates():
            "local model promotion cannot masquerade as a published revision")
         ok(all(manifest["files"].values()) and (destination / "props_thr.json").is_file(),
            "promotion installs and hashes the complete runtime checkpoint")
+        ok((destination / "unified_release_report.json").is_file()
+           and manifest["training_run"]["code_commit"] == "a" * 40,
+           "promotion binds trainer-generated provenance into the runtime manifest")
 
 
 TESTS = [
@@ -646,6 +809,9 @@ TESTS = [
     test_learned_operand_signal_orders_only_typed_eligible_plans,
     test_rate_application_supports_percent_and_fraction_units,
     test_temporal_rate_requires_and_accepts_composite_alignment,
+    test_a_calculation_at_the_wrong_grain_is_not_satisfied,
+    test_grain_check_accepts_a_dimension_grouped_by_its_display_column,
+    test_grain_check_accepts_either_side_of_an_equality_join,
     test_verifier_rejects_arithmetic_over_an_incomplete_join,
     test_complex_and_temporally_unbound_rates_abstain,
     test_unverified_non_currency_calculation_fails_closed,

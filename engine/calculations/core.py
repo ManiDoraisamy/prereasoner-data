@@ -142,6 +142,10 @@ class BranchEvidence:
     outputs: tuple[OutputEvidence, ...]
     predicates: frozenset[PredicateFact] = frozenset()
     joins: tuple[JoinFact, ...] = ()
+    # The GRAIN this branch computes at. A calculation only answers the question asked if it is
+    # computed at the requested grain: "gdp per capita BY COUNTRY" answered by a single global
+    # SUM(gdp)/SUM(population) is a different quantity, not a coarser version of the same one.
+    grouping: tuple[ColumnRef, ...] = ()
 
     def record(self) -> dict[str, Any]:
         return {
@@ -151,6 +155,8 @@ class BranchEvidence:
                 key=lambda fact: (fact.table, fact.column, fact.operator, repr(fact.value)),
             )],
             "joins": [fact.record() for fact in self.joins],
+            "grouping": [{"table": column.table, "column": column.name}
+                         for column in self.grouping],
         }
 
 
@@ -332,4 +338,6 @@ def describe_computation(query: Query) -> ComputationEvidence:
         for item in query.select
     )
     joins = tuple(JoinFact(join.predicates) for join in query.joins)
-    return ComputationEvidence((BranchEvidence(outputs, guaranteed_predicates(query.where), joins),))
+    return ComputationEvidence((BranchEvidence(
+        outputs, guaranteed_predicates(query.where), joins, tuple(query.group_by),
+    ),))

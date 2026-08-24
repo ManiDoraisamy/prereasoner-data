@@ -63,16 +63,91 @@ def plans_for(question: str, graph: SchemaGraph, semantic_signals=None):
     )
 
 
+def _unrealized_grain(question: str, graph: SchemaGraph, evidence: ComputationEvidence):
+    """Group-by columns the question asked for that a branch does not compute at.
+
+    Shared across every specification because the grain is not family-specific: a per-country
+    question answered by one global figure is the wrong quantity whether the calculation is a ratio,
+    a conversion, or a rate application. Verifying the expression while ignoring the grain certifies
+    a number that answers a different question — the exact failure this registry exists to prevent.
+    """
+    from engine.sql_rank import analyze_question
+
+    roles = analyze_question(question, graph)
+    requested = roles.group_columns
+    if not requested or not evidence.branches:
+        return ()
+    # Compare on (table, name): ColumnRef equality also covers the declared SQL type, and the same
+    # column reached through the question roles and through the AST can carry different types.
+    key = lambda column: (column.table, column.name)                              # noqa: E731
+    known_pairs = {
+        frozenset((key(left), key(right)))
+        for foreign_key in graph.foreign_keys
+        for left, right in foreign_key.column_pairs
+    }
+    requested_keys = {key(column) for column in requested}
+    for branch in evidence.branches:
+        if not branch.grouping:
+            return tuple(sorted(requested, key=key))       # one figure over every row
+        # "by country" can bind to both sides of an equality join. Grouping by either side has the
+        # same grain, but only when this branch actually realizes that registered-key join.
+        equivalent = {}
+        for join in branch.joins:
+            for left, right in join.column_pairs:
+                left_key, right_key = key(left), key(right)
+                if frozenset((left_key, right_key)) not in known_pairs:
+                    continue
+                equivalent.setdefault(left_key, set()).add(right_key)
+                equivalent.setdefault(right_key, set()).add(left_key)
+        reachable = {key(column) for column in branch.grouping}
+        pending = list(reachable)
+        while pending:
+            for neighbor in equivalent.get(pending.pop(), ()):
+                if neighbor not in reachable:
+                    reachable.add(neighbor)
+                    pending.append(neighbor)
+        # The requested columns are the lexical CANDIDATES for one grouping phrase, not a
+        # conjunction: "by country" matches the country column of every table that has one, and
+        # grouping by any single one of them answers the question. Requiring all of them declined
+        # correct answers as soon as a second table carried the same column name.
+        if reachable & requested_keys:
+            continue
+        # A dimension is routinely grouped by its DISPLAY column while the phrase binds to its key:
+        # "by customer" binds customers.customer_id (the "id" token is stripped) but the right query
+        # groups by customers.name. CandidateRanker._group_alignment already accepts a grouping
+        # column by TABLE for exactly this reason, and ranks that query first — so requiring a column
+        # match here contradicted the ranker and turned correct answers into declines.
+        if any(column.table in roles.group_tables for column in branch.grouping):
+            continue
+        return tuple(sorted(requested, key=key))
+    return ()
+
+
 def assess_calculations(
     question: str,
     tables,
     graph: SchemaGraph,
     evidence: ComputationEvidence,
 ) -> tuple[dict[str, Any], ...]:
-    return tuple(
-        _BY_NAME[intent.specification].assess(intent, evidence, tables, graph)
-        for intent in detect_calculations(question)
-    )
+    missing_grain = _unrealized_grain(question, graph, evidence)
+    rows = []
+    for intent in detect_calculations(question):
+        row = _BY_NAME[intent.specification].assess(intent, evidence, tables, graph)
+        if missing_grain and row.get("status") == "satisfied":
+            ungrouped = any(not branch.grouping for branch in evidence.branches)
+            row = {**row, "status": "unmet", "realization": None,
+                   "reason": "the question asks for "
+                             + " or ".join(f"{c.table}.{c.name}" for c in missing_grain)
+                             + (" but the selected query computes one figure over every row"
+                                if ungrouped else
+                                " but the selected query groups at a different grain"),
+                   # the specification's own proposal answers ITS failure (say, a different output
+                   # currency); offering it here would rephrase the wrong part of the question
+                   "proposal": "",
+                   "unrealized_grouping": [{"table": c.table, "column": c.name}
+                                           for c in missing_grain]}
+        rows.append(row)
+    return tuple(rows)
 
 
 def _query_realizes_plan(query: Query, plan, graph: SchemaGraph) -> bool:

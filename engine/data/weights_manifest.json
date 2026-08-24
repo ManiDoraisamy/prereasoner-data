@@ -1,35 +1,28 @@
 {
   "committed_artifacts": {
     "schema_class_signatures.json": {
-      "note": "tracked in git (not fetched); part of the promoted bundle, written only by training/schema_org/promote.py",
-      "sha256": "c9db3cbfc517f22c149678ee5e3cbba99c6fd36e83d4899a2d815d758adf3374"
+      "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
+      "sha256": "e99988e9861bdff72612ffc4db4988a1d1f0a126122600e567727d214cfeb21a"
     },
     "schema_org_v30.json": {
-      "note": "tracked in git (not fetched); part of the promoted bundle, written only by training/schema_org/promote.py",
-      "sha256": "2ee93fb8d3602f5e89f3b63df9ad040ec5edf78eccff1d9994c1259c981d1358"
+      "note": "tracked in git (not fetched); compiled from the pinned Schema.org source by training/schema_org/compile_contract.py",
+      "sha256": "daad493bf1971662b58576c14ad2443bd612777bbe3863d89657c41d41b4e8b9"
     },
     "schema_property_model.json": {
-      "note": "tracked in git (not fetched); part of the promoted bundle, written only by training/schema_org/promote.py",
-      "sha256": "ffae74c4738ad3e283ea856273c49eddf8f4b5961b786375edf2ebf5bcb43ec3"
+      "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
+      "sha256": "4a2bf8f40e2192ea0ed068a762271c54cb8a7531a2e915740f92f20c75e1676b"
     }
   },
   "files": {
     "anchor_assignment.npz": "8b529b8f71c0c8a7997230ef536e0aad5843a7c83e18dac5c3bc22a25354f788",
-    "encoder.pt": "e954e0a7321920ac22a502eaff3d5d294e8bee8d249553da12e02202983a927d",
+    "encoder.pt": "53fd3d37c64525be45a372d487b3e4f1e7f39b13fdccb8c9eaacf89e22c953b2",
     "encoder_meta.pt": "0ce503fd3939bf402da992ba05d4605072d08f24f21788a08316809480f3a5cb",
     "primitives.npz": "2daecaa89b465dafd65a22427ca144a97018d82a9bf192120bfef5e5366d7ebc",
-    "qwen_lora/adapter_config.json": "0806b65e0bd82336ec1441bd020df620e4231b32d1b0bbdce5b4be791f5e89e4",
-    "qwen_lora/adapter_model.safetensors": "0a800a38b30414e4acebad2f231e0fbba0378b5eeb3f0ffa082f7a611602c34f",
+    "qwen_lora/adapter_config.json": "9e9d1bb22602d4cb1a01b48af9d8ecb460a6c3dfe1320f6840727bdfb086e266",
+    "qwen_lora/adapter_model.safetensors": "1ef13f8bf69b6e51d6e2a61d7170a82f32bb6cfb393e7542d28b7bb447c51ce4",
     "schema_property_head.pt": "a7eb4bc295a3bc1a3d8b773925a323099828b471f2317f49e02644fc42fe30e5"
   },
   "repository": "prereasoner/prereasoner-weights",
-  "revision": null,
-  "training_corpora": {
-    "calculation_contrastive_eval.jsonl": "46630c7e8993d2076556168dac784579be876f50cd1f2fdc3d38ce5092d2b385",
-    "calculation_contrastive_train.jsonl": "b1a9c05106a1e9ae13b452298bd6437d800157d04fbb8ab91cd13299937ce0be",
-    "intent_aug_train.jsonl": "048aae4ef77edf1deffd934d22a7b82a1ab87ab4052aca0c78498411c1f1197e",
-    "intent_eval.jsonl": "6b09539d27f09b017e11e92ceb4d126360fe4098507f1fb4813f815c5c4af301"
-  },
-  "unpublished_local": true,
+  "revision": "9c3d65b9924ee5f35b2d821ac8fbfe85b0f102b6",
   "version": 1
 }
