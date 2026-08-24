@@ -264,6 +264,7 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .warn{margin-top:9px;padding:9px 12px;border-radius:9px;background:#fdf3e6;border:1px solid #f5ddb8;color:#8a5a13;font:12px/1.45 var(--disp)}
 .failbox{margin-top:9px;padding:11px 13px;border-radius:9px;background:#fdeaea;border:1px solid #f2c4c4;color:#8f2020;font:13px/1.5 var(--disp)}
 .retry{all:unset;cursor:pointer;display:inline-block;margin-top:9px;padding:7px 16px;background:var(--brand);color:#fff;border-radius:9999px;font:600 11px var(--mono);letter-spacing:1px;text-transform:uppercase}
+.llmnotice{margin-top:9px;padding:8px 13px;border-radius:9px;background:#f6f4fd;border:1px dashed #d9d0f2;color:#6a5f8a;font:12.5px/1.5 var(--disp)}.llmnotice a{color:#5b47a5;font-weight:600;text-decoration:none;margin-left:2px}.llmnotice a:hover{text-decoration:underline}
 .convmsg{margin-top:9px;padding:11px 13px;border-radius:11px;background:#faf9ff;border:1px solid #efeafa;color:var(--card-ink);font:14px/1.55 var(--disp)}
 .convrun{margin-top:8px}
 .convrun button{all:unset;cursor:pointer;display:inline-block;padding:7px 14px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);border-radius:9999px;font:600 12px var(--disp)}

@@ -245,30 +245,30 @@ function attachReplays(turnEl, traces){
   });
   turnEl.appendChild(wrap);
 }
-// Same consent contract as the main workbook (PRIVACY.md): /chat sends the message + tables to
-// Anthropic's Claude API and the server 503s without external_llm_consent:true. Shares the same
-// localStorage key, so a choice made on either page holds on both. This page IS the assistant demo,
-// so unlike the workbook there is no local fallback to offer on decline.
-function llmConsent(){
+// Same notice-and-choice contract as the main workbook (PRIVACY.md): /chat sends the message +
+// tables to Anthropic's Claude API and the server 503s without external_llm_consent:true. Shares
+// the workbook's localStorage key, so a choice made on either page holds on both. This page IS the
+// assistant demo, so an opt-out ('0') simply refuses here; the first turn shows a one-time inline
+// notice instead of any dialog.
+function llmOptedOut(){ try{ return localStorage.getItem("pr_llm_consent") === "0"; }catch(_){ return false; } }
+function llmNoticeOnce(){
   try{
-    const v = localStorage.getItem("pr_llm_consent");
-    if(v === "1") return true;
-    if(v === "0") return false;
-    const yes = confirm("Use the AI assistant?\n\nYour messages and the session tables will be sent "
-      + "to Anthropic (Claude). Nothing is sent without this consent.");
-    localStorage.setItem("pr_llm_consent", yes ? "1" : "0");
-    return yes;
-  }catch(_){ return false; }
+    if(localStorage.getItem("pr_llm_consent") !== null) return;
+    localStorage.setItem("pr_llm_consent", "1");
+    addTurn("assistant", "Heads up: this assistant sends your messages and the session tables to Anthropic (Claude). Reload with ?chat=0 for the local-only workbook instead.");
+  }catch(_){}
 }
 async function send(text){
   addTurn("user", text);
   $("send").disabled = true;
-  const thinking = addTurn("assistant", "…");
-  if(!llmConsent()){
-    thinking.querySelector(".msg").textContent = "The AI assistant is off — no consent to send data to the model provider. Use the main page for local-only answers.";
+  if(llmOptedOut()){
+    const off = addTurn("assistant", "");
+    off.querySelector(".msg").textContent = "The AI assistant is off (local-only mode). Reload with ?chat=1 to re-enable it.";
     $("send").disabled = false;
     return;
   }
+  llmNoticeOnce();
+  const thinking = addTurn("assistant", "…");
   try{
     const r = await fetch("/chat", {
       method: "POST",

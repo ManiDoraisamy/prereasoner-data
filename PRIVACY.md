@@ -41,6 +41,15 @@ Enabling these features for a hosted service requires a user-facing consent flow
 minimization review, applicable Anthropic terms and data-processing agreement, and a documented
 retention policy. Setting the environment variable alone is not a substitute for those controls.
 
+The reference deployment (chat.prereasoner.com) implements the consent flow as notice-and-choice:
+AI-assisted answers work immediately, a one-time dismissible notice in the answer rail states that
+the question and sheet data are sent to Anthropic, and a one-click "Use local-only" switch turns
+the conversational layer off (stored in the browser; revisited with `?chat=1`). While opted out,
+the client calls none of the gated endpoints — the deterministic local path answers instead, and
+no data leaves the deployment for Anthropic. Self-hosters who require ask-first opt-in rather than
+notice-and-choice should keep `EXTERNAL_LLM_ENABLED` unset or adapt the client flow before
+exposing the service.
+
 ## Retention and Deletion
 
 Conversation deletion removes owned PostgreSQL metadata, its per-conversation schema, and RTDB
