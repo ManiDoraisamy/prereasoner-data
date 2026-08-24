@@ -19,7 +19,7 @@ import sqlite3
 
 from engine.config import DATA_DIR
 from engine.currency_intent import (
-    currency_rate_binding, is_currency_measure_column,
+    currency_rate_binding, is_currency_measure_column, is_currency_source_column,
 )
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
@@ -48,6 +48,14 @@ WORLD_SKIP_COLS = {"name", "is_primary", "updated_at", "source", "valid_from", "
 AGG_CUES = {"COUNT": {"count", "counts", "number", "many"}, "SUM": {"sum", "total", "totals"} | MEASURE_NOUNS,
             "AVG": {"avg", "average", "mean", "averages"}}
 STALE_DAYS = 730                                          # a fact last verified > ~2y before the decision = stale
+# every rate_to_<code> column the physical knowledgebase."exchange_rate" table carries
+# (db/sync/build_exchange_rate.py builds one per ECB series + EUR)
+_ECB_CODES = frozenset({
+    "AUD", "BGN", "BRL", "CAD", "CHF", "CNY", "CYP", "CZK", "DKK", "EEK", "EUR", "GBP", "HKD",
+    "HRK", "HUF", "IDR", "ILS", "INR", "ISK", "JPY", "KRW", "LTL", "LVL", "MTL", "MXN", "MYR",
+    "NOK", "NZD", "PHP", "PLN", "ROL", "RON", "RUB", "SEK", "SGD", "SIT", "SKK", "THB", "TRL",
+    "TRY", "USD", "ZAR",
+})
 
 # the world-knowledge tables in the generated SQL are the qid-keyed `wikipedia` schema, named by the EXACT Wikidata
 # label (knowledgebase."city" / knowledgebase."country"). The planner's logical slugs (word_city/word_country) remap here; the
@@ -56,7 +64,8 @@ STALE_DAYS = 730                                          # a fact last verified
 # knowledgebase."u_s_state" (built by db/sync/build_u_s_state.py; state qid PK, country/continent qid FKs) — so a
 # state column joins qid-keyed and filters by country/continent, same as city/country. word_element still
 # uses the friendly name-keyed family. The naming families are documented in docs/notes/naming.md.
-WORLD_NAMES = {"word_city": "city", "word_country": "country", "word_state": "u_s_state"}
+WORLD_NAMES = {"word_city": "city", "word_country": "country", "word_state": "u_s_state",
+               "word_exchange_rate": "exchange_rate"}
 
 
 def _friendly(t):
@@ -247,6 +256,39 @@ class KnowledgeTableQuery:
             inc,
             selected,
         )
+
+    def _world_rate_binding(self, question, agg, sch):
+        """Bind the conversion to knowledgebase."exchange_rate" when the upload has no rate sheet.
+
+        The knowledgebase table joins exactly like a tenant table — conversation + tenant +
+        knowledgebase is the ONE join shape — on the fact table's (currency, date) pair. Requires an
+        OUTPUT-kind currency intent, a monetary SUM, a currency-code column and a date column on the
+        fact table, and the exchange_rate table registered in the words index. Uploaded rate sheets
+        always win: this is only consulted after _currency_conversion_binding returns None.
+        """
+        from engine.currency_intent import CurrencyIntentKind, currency_intent
+
+        if "exchange_rate" not in getattr(self, "words", {}):
+            return None                              # no registry (hermetic stub) = no knowledgebase tables
+        if (not agg or agg[0] != "SUM" or not agg[1] or not agg[2]
+                or not is_currency_measure_column(agg[2])):
+            return None
+        intent = currency_intent(question)
+        if intent is None or intent.kind != CurrencyIntentKind.OUTPUT:
+            return None
+        fact = agg[1]
+        ccy_col = next((c["name"] for c in sch if c["table"] == fact
+                        and is_currency_source_column(c["name"])), None)
+        # A dated fact table joins the rate of each row's own date; an undated one pins the request's
+        # as_of date — the same bitemporal semantics every world join already uses (_join_cond).
+        date_col = next((c["name"] for c in sch if c["table"] == fact and c.get("is_date")), None)
+        if not ccy_col:
+            return None
+        rate_col = f"rate_to_{intent.target.lower()}"
+        if rate_col not in [c.lower() for c in self.words["exchange_rate"].get("columns", [])]                 and intent.target.upper() not in _ECB_CODES:
+            return None
+        return {"fact": fact, "ccy_col": ccy_col, "date_col": date_col,
+                "rate_col": rate_col, "target": intent.target.upper()}
 
     @staticmethod
     def _currency_conversion_binding(question, agg, sch, fks):
@@ -462,7 +504,21 @@ class KnowledgeTableQuery:
         routes, coldims = {}, {}
         for t in norm:                                        # route cities + collect hover dims across ALL sheets
             routes.update(self.route(t)); coldims.update(self.column_dims(sch, t["name"]))
-        mf = self.meaning_filter(question, routes)
+        agg = self.read_op_all(question, sch)                # (fn, table, col) | ("COUNT", table|None, None) | None
+        world_rate = None                                     # knowledgebase-supplied conversion: only when NO uploaded
+        conversion_early = self._currency_conversion_binding(question, agg, sch, fks)
+        if conversion_early is None:                          # rate sheet binds (own data first)
+            world_rate = self._world_rate_binding(question, agg, sch)
+        q_for_mf = question
+        if conversion_early or world_rate:
+            # The conversion phrase is CLAIMED by the conversion: "in US dollars" must not also read
+            # as the country United States. A country named OUTSIDE the phrase still filters.
+            from engine.currency_intent import currency_intent as _ci
+            intent = _ci(question)
+            if intent is not None and getattr(intent, "phrase", None):
+                q_for_mf = question.replace(intent.phrase, " ")
+        self._q_meaning = q_for_mf                            # the entities layer resolves values from this
+        mf = self.meaning_filter(q_for_mf, routes)
         own = self._own_value_matches(question, norm)         # values quoted in the question that live in the upload
         if mf is not None and any(mf["value"].lower() in v.lower() for _, _, v in own):
             mf = None                                         # the value (or a longer own value CONTAINING it — world
@@ -482,7 +538,7 @@ class KnowledgeTableQuery:
                            for c in sch for w in name_words(c["name"])):
             wtarget = None                                   # the upload has its OWN column of that name ("unique
                                                              # countries" + a Country column) -> own data wins
-        if mf is None and wtarget is None:                   # neither a world filter NOR a world column asked ->
+        if mf is None and wtarget is None and world_rate is None:   # neither a world filter NOR a world column NOR a
             r = (self.q11.serve(tables, question, explicit_fks=explicit_fks)
                  if explicit_fks else self.q11.serve(tables, question))
             response = {"question": question, "as_of": as_of, "sql": r.get("sql"), "result": r.get("result"),
@@ -503,9 +559,10 @@ class KnowledgeTableQuery:
             return response
         # ---- WORLD-KNOWLEDGE path — uploaded FK joins + the meaning joins, WHERE from the world filter (if any)
         # AND any own-sheet values the question also quoted ("GOLD customers in France") ----
-        mtab = mf["csv_table"] if mf else wtarget["path"][0]["left_table"]   # the sheet holding the routed city column
-        route_col = mf["csv_col"] if mf else wtarget["path"][0]["left_col"]
-        agg = self.read_op_all(question, sch)                # (fn, table, col) | ("COUNT", table|None, None) | None
+        mtab = (mf["csv_table"] if mf else wtarget["path"][0]["left_table"] if wtarget
+                else world_rate["fact"])                     # conversion-only: the fact sheet drives the join
+        route_col = (mf["csv_col"] if mf else wtarget["path"][0]["left_col"] if wtarget
+                     else world_rate["ccy_col"])
         if proj_world_col and agg and agg[0] == "COUNT":     # an interrogative projection is DISTINCT, not a COUNT
             agg = None                                       # (the permissive count gate fires on 'which continent…')
         namecol = next((c["name"] for c in sch if c["table"] == mtab and c["affinity"] == "TEXT"), None)
@@ -535,6 +592,17 @@ class KnowledgeTableQuery:
             proj = "COUNT( * )"
             pdesc = ("aggregate", "COUNT(*)", "count cue word")
             involved = [mtab, agg[1]] if (agg[1] and agg[1] != mtab) else [mtab]
+        elif agg and world_rate:
+            proj = (f'SUM( {qident(agg[1])}.{qident(agg[2])} * '
+                    f'{qident("exchange_rate")}.{qident(world_rate["rate_col"])} )')
+            pdesc = (
+                "aggregate",
+                f'SUM({agg[1]}.{agg[2]} * exchange_rate.{world_rate["rate_col"]})',
+                "explicit currency target + knowledgebase daily rate (code, date) join",
+            )
+            involved = list(dict.fromkeys((mtab, agg[1])))   # exchange_rate joins as a WORLD table, not a sheet
+            selected_measure = (agg[1], agg[2])
+            selected_conversion = True
         elif agg and conversion:
             rate_table, rate_col = conversion
             proj = (f'SUM( {qident(agg[1])}.{qident(agg[2])} * '
@@ -574,15 +642,33 @@ class KnowledgeTableQuery:
                     "meaning_join": None, "provenance": None, "warnings": [],
                     "debug": self._debug_input(norm, question, [], [], [], False),
                     "model": "engine - CSV -> world meaning join + bitemporal/freshness"}
-        fw, disamb, warnings = self._world_joins(upfrom, joins, sch, norm, mtab, route_col, as_of, mf)
+        if joins:
+            fw, disamb, warnings = self._world_joins(upfrom, joins, sch, norm, mtab, route_col, as_of, mf)
+        else:
+            fw, disamb, warnings = upfrom, None, []          # conversion-only: no meaning joins to walk
+        fw_no_rate = fw
+        if world_rate:
+            # The knowledgebase table joins like any other table in the conversation: by VALUE on the
+            # (code, date) pair. The date compares as ISO text on both engines (Postgres date::text is
+            # ISO; SQLite stores dates as text) — non-ISO upload dates simply fail to join and are
+            # caught by the row-coverage check below, which declines rather than dropping rows.
+            date_side = (f'{qident(world_rate["fact"])}.{qident(world_rate["date_col"])}'
+                         if world_rate["date_col"] else qlit(as_of))
+            fw += (f' JOIN {qident("exchange_rate")} ON '
+                   f'lower({qident(world_rate["fact"])}.{qident(world_rate["ccy_col"])}) = '
+                   f'lower({qident("exchange_rate")}.{qident("currency_code")})'
+                   f' AND CAST({qident("exchange_rate")}.{qident("date")} AS text) = {date_side}')
         conds = ([f'{qident(mf["filter_table"])}.{qident(mf["attr"])} = {qlit(mf["value"])}'] if mf else [])
         conds += [f'lower({qident(t)}.{qident(c)}) = lower({qlit(v)})' for (t, c, v) in own_filters]
         if conds:
-            fw += " WHERE " + " AND ".join(conds)
+            where_clause = " WHERE " + " AND ".join(conds)
+            fw += where_clause
+            fw_no_rate += where_clause
         mdesc = " ; ".join(f'{j["left_table"]}.{j["left_col"]} = {j["right_table"]}.{j["right_col"]}' for j in joins)
         join_desc = ("; ".join(updescs) + " ; " if updescs else "") + mdesc
-        ft = mf["filter_table"] if mf else wtarget["table"]
-        prov = {"table": ft, "attr": (mf["attr"] if mf else wtarget["col"]),
+        ft = mf["filter_table"] if mf else wtarget["table"] if wtarget else "exchange_rate"
+        prov = {"table": ft, "attr": (mf["attr"] if mf else wtarget["col"] if wtarget
+                                      else world_rate["rate_col"]),
                 "value": (mf["value"] if mf else None), "hops": len(joins),
                 "disambiguated_by": (f'{mtab}.{disamb[0]}' if disamb else None),
                 "source": self.words[ft].get("source"), "as_of": as_of}
@@ -590,9 +676,10 @@ class KnowledgeTableQuery:
 
         ok, why = self.q11.guard(sql)
         result, err = None, None
+        coverage_gap = None
         if ok:
             try:
-                con = self._connect(tablemap, sch, attach_world=bool(joins))
+                con = self._connect(tablemap, sch, attach_world=bool(joins) or bool(world_rate))
                 cur = con.execute(sql)
                 cols = [d[0] for d in cur.description]
                 result = {"columns": cols, "rows": [["" if v is None else v for v in r] for r in cur.fetchall()[:50]]}
@@ -607,6 +694,10 @@ class KnowledgeTableQuery:
                             nm, uv = max(stale, key=lambda x: self._days(x[1], as_of))
                             warnings.append(f"freshness: '{nm}' ({ft}) was last verified {uv}, {self._days(uv, as_of)} "
                                             f"days before the as-of date {as_of} — may be stale")
+                if world_rate and result is not None:
+                    base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}').fetchone()[0]
+                    conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
+                    coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None
             except Exception as e:
                 err = f"{type(e).__name__}: {e}"
         else:
@@ -636,6 +727,22 @@ class KnowledgeTableQuery:
             PredicateFact(table, column, "=", value)
             for table, column, value in own_filters
         )
+        if world_rate:
+            # The graph mirrors how the SQL uses the table: the date column appears only when the fact
+            # is dated (composite join). For an undated fact the as_of pin is a constant predicate, so
+            # the verifier sees the same plain (code -> rate) shape an uploaded rate sheet has.
+            sch = list(sch) + [
+                {"table": "exchange_rate", "name": "currency_code", "affinity": "TEXT", "values": []},
+                {"table": "exchange_rate", "name": world_rate["rate_col"], "affinity": "REAL", "values": []},
+            ] + ([{"table": "exchange_rate", "name": "date", "affinity": "TEXT", "is_date": True,
+                   "values": []}] if world_rate["date_col"] else [])
+            pair_from = [world_rate["ccy_col"]] + ([world_rate["date_col"]] if world_rate["date_col"] else [])
+            pair_to = ["currency_code"] + (["date"] if world_rate["date_col"] else [])
+            world_fk = {"from_table": world_rate["fact"], "to_table": "exchange_rate",
+                        "from_col": world_rate["ccy_col"], "to_col": "currency_code",
+                        "from_cols": pair_from, "to_cols": pair_to, "conf": 1.0}
+            fks = list(fks) + [world_fk]
+            selected_fks = list(selected_fks) + [world_fk]
         graph = SchemaGraph.from_planner(sch, fks)
 
         def _typed(table, column):
@@ -653,8 +760,9 @@ class KnowledgeTableQuery:
         if selected_measure:
             measure = _typed(*selected_measure)
             expression = Aggregate(agg[0], measure)
-            if selected_conversion and conversion:
-                expression = Aggregate("SUM", BinaryExpr(measure, "*", _typed(*conversion)))
+            rate_binding = conversion or (world_rate and ("exchange_rate", world_rate["rate_col"]))
+            if selected_conversion and rate_binding:
+                expression = Aggregate("SUM", BinaryExpr(measure, "*", _typed(*rate_binding)))
             outputs = (OutputEvidence(
                 expression, True, aggregate_functions(expression), expression_columns(expression),
             ),)
@@ -674,6 +782,14 @@ class KnowledgeTableQuery:
         assessments = assess_calculations(
             question, norm, graph, computation,
         )
+        if world_rate and coverage_gap:
+            gap, base = coverage_gap
+            assessments = tuple(list(assessments) + [{
+                "specification": "currency", "status": "unmet", "realization": None,
+                "reason": (f"{gap} of {base} rows have no ECB reference rate for their "
+                           f"(currency, date) — outside published coverage"),
+                "proposal": "",
+            }])
         attach_calculation_evidence(response, assessments)
         return response
 

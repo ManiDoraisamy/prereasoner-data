@@ -1,0 +1,13 @@
+{
+  "table": "word_exchange_rate",
+  "key": "currency_code",
+  "columns": ["currency_code", "date", "rate_to_usd", "rate_to_eur", "rate_to_gbp", "rate_to_jpy",
+              "rate_to_inr", "rate_to_aud", "rate_to_cad", "rate_to_chf", "rate_to_cny",
+              "updated_at", "source"],
+  "links": [],
+  "concept": ["currency", "currency_code", "exchange_rate"],
+  "filter_attrs": [],
+  "filter_values": {},
+  "_note": "Daily cross-rate world table built by db/sync/build_exchange_rate.py from the ECB history (db/sync/sources/ecb). One row per (ISO code, CALENDAR day): weekends carry the previous business day forward with updated_at keeping the true source date, retired series stop at their own last print, and rate_to_<code> columns exist for every ECB code + EUR (the columns list above names the common ones; the physical table carries all 42). Joined by VALUE on (code, date) - codes are self-identifying, no bridge needed.",
+  "source": "ECB euro foreign exchange reference rates (daily sync)"
+}

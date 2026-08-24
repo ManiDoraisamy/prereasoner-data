@@ -147,7 +147,9 @@ class EntityQuery(RoutedQuery):
     def _find_value(self, low_q, w):
         """resolve a where value via embedding NN over the world `words` index for any ENTITY-typed filter attr;
         fall back to the plain matcher (bypassing the alias table) for non-entity attrs."""
-        q = getattr(self, "_q_orig", None) or low_q
+        # _q_meaning = the question with spans already CLAIMED by another reading removed (the
+        # conversion phrase: "in US dollars" must not also resolve as the country United States).
+        q = getattr(self, "_q_meaning", None) or getattr(self, "_q_orig", None) or low_q
         best = None                                  # (attr, canonical, sim)
         for attr in w.get("filter_attrs", []):
             t = ENTITY_TYPES.get(attr)

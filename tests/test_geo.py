@@ -308,15 +308,24 @@ def main():
        and isinstance(conv, (int, float)) and abs(conv - 791.2) < 0.05,
        f"got={conv} clarify={(rconv or {}).get('clarify')}")
 
-    # The currency verifier must run before the older generic coverage gate. Otherwise all three
-    # cases become the same unhelpful "query dropped words" clarify and lose their typed evidence.
-    rmissing = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in euros", sub,
-                                       explicit_fks=(_FX_EDGE,)))
-    ok("fx: unavailable EUR conversion declines with typed evidence and no numeric result",
-       bool(rmissing) and rmissing.get("clarify") is True and not rmissing.get("result")
-       and "does not convert" in (rmissing.get("reason") or "")
-       and (rmissing.get("currency") or {}).get("target") == "EUR",
-       f"result={rmissing}")
+    # A target the uploaded sheet cannot express is COMPLETED from the knowledgebase — the uploaded
+    # sheet wins where it overlaps (USD above), but it does not veto knowledge it does not cover,
+    # exactly as a city sheet without population still reads population from the world tables.
+    rkb = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in euros", sub,
+                                  explicit_fks=(_FX_EDGE,)))
+    kb_value = (((rkb or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("fx: EUR conversion is completed from knowledgebase ECB rates (USD-only sheet cannot veto)",
+       bool(rkb) and not rkb.get("clarify") and isinstance(kb_value, (int, float)) and kb_value > 0
+       and "exchange_rate" in (rkb.get("sql") or "")
+       and "ECB" in ((rkb.get("provenance") or {}).get("source") or ""),
+       f"result={rkb}")
+
+    # A target NEITHER the sheet NOR the ECB series ever published still declines with evidence.
+    rkwd = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in KWD", sub,
+                                   explicit_fks=(_FX_EDGE,)))
+    ok("fx: a target outside sheet AND knowledgebase coverage declines, never a number",
+       bool(rkwd) and rkwd.get("clarify") is True and not rkwd.get("result"),
+       f"result={rkwd}")
 
     rfilter = _retry(lambda: qc.serve([_ORD, _FX], "how many orders in EUR", sub,
                                       explicit_fks=(_FX_EDGE,)))
