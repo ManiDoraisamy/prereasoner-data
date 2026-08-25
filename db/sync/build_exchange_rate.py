@@ -4,7 +4,8 @@ The ECB source table (db/sync/sources/ecb) is the raw synced history: one row pe
 (business day, quote currency) with `units_per_eur`. This builds the world-table projection the
 serving SQL joins, in the same family as knowledgebase."city"/"country"/"u_s_state":
 
-  knowledgebase."exchange_rate"(currency_code, date, rate_to_<code>..., updated_at, source)
+  knowledgebase."exchange_rate"(currency_code, date, rate_to_<code>...,
+                                  updated_at, source, source_release_id)
 
   - one row per (currency_code, CALENDAR day): weekends/holidays carry the previous business
     day's rates forward, so the serving join stays a plain equality on (code, date) — no
@@ -37,6 +38,13 @@ except ImportError:
 SOURCE = "ECB euro foreign exchange reference rates"
 TABLE = 'knowledgebase."exchange_rate"'
 _CURRENCY_CODE = re.compile(r"^[A-Z]{3}$")
+ACTIVE_HISTORY_SQL = """
+SELECT x.release_id, x.effective_date, x.quote_currency, x.units_per_eur
+FROM ecb.exchange_rate AS x
+JOIN ecb.release AS r ON r.release_id = x.release_id
+WHERE r.status = 'active'
+ORDER BY x.effective_date, x.quote_currency
+"""
 
 
 def cross_rates(units_by_code: dict[str, float], codes: list[str]) -> dict[str, float | None]:
@@ -94,12 +102,30 @@ def build_rows(history, today=None):
     return rows, codes
 
 
+def load_active_history(cur):
+    """Return the one ledger-selected ECB release and its observations.
+
+    Release IDs are content hashes, so lexical ``MAX(release_id)`` is never a version
+    selector. The source release ledger is the only authority for active content.
+    """
+    cur.execute(ACTIVE_HISTORY_SQL)
+    rows = cur.fetchall()
+    release_ids = {str(row[0]) for row in rows}
+    if len(release_ids) != 1:
+        raise RuntimeError(
+            f"expected one non-empty active ECB release, found {len(release_ids)}"
+        )
+    release_id = next(iter(release_ids))
+    return release_id, [(row[1], row[2], row[3]) for row in rows]
+
+
 DDL = """
 CREATE TABLE IF NOT EXISTS {table} (
     currency_code text NOT NULL,
     "date"        date NOT NULL,
     updated_at    date NOT NULL,
     source        text NOT NULL,
+    source_release_id text NOT NULL,
     PRIMARY KEY (currency_code, "date")
 )
 """
@@ -123,6 +149,7 @@ def ensure_rate_columns(cur, codes: list[str]) -> list[str]:
     """
     columns = [rate_column_name(code) for code in codes]
     cur.execute(DDL.format(table=TABLE))
+    cur.execute(f'ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS source_release_id text')
     for column in columns:
         cur.execute(f'ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS "{column}" double precision')
     return columns
@@ -132,21 +159,20 @@ def main() -> int:
     connection = connect()
     try:
         cur = connection.cursor()
-        cur.execute("""SELECT effective_date, quote_currency, units_per_eur FROM ecb.exchange_rate
-                       WHERE release_id = (SELECT MAX(release_id) FROM ecb.exchange_rate)
-                       ORDER BY effective_date""")
-        rows, codes = build_rows(cur.fetchall())
+        release_id, history = load_active_history(cur)
+        rows, codes = build_rows(history)
         rate_columns = ensure_rate_columns(cur, codes)
         cur.execute(f"TRUNCATE {TABLE}")
         column_list = (["currency_code", '"date"'] + [f'"{column}"' for column in rate_columns]
-                       + ["updated_at", "source"])
+                       + ["updated_at", "source", "source_release_id"])
         execute_values(
             cur,
             f'INSERT INTO {TABLE} ({", ".join(column_list)}) VALUES %s',
-            [(code, day, *[rates.get(target) for target in codes], source_day, SOURCE)
+            [(code, day, *[rates.get(target) for target in codes], source_day, SOURCE, release_id)
              for code, day, rates, source_day in rows],
             page_size=2000,
         )
+        cur.execute(f'ALTER TABLE {TABLE} ALTER COLUMN source_release_id SET NOT NULL')
         connection.commit()
         cur.execute(f'SELECT COUNT(*), MIN("date"), MAX("date") FROM {TABLE}')
         count, lo, hi = cur.fetchone()

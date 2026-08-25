@@ -167,7 +167,8 @@ class PgQuery(KnowledgeTableQuery):
         out, seeds = [], [str(v).lower() for v in seed_values if v not in (None, "")]
         for idx, j in enumerate(joins):
             wt, key, w = j["right_table"], j["right_col"], self.words[j["right_table"]]
-            cols = [c for c in w["columns"] if c not in ("updated_at", "source", "valid_from", "valid_to")]
+            cols = [c for c in w["columns"]
+                    if c not in ("updated_at", "source", "source_release_id", "valid_from", "valid_to")]
             seedset = sorted(set(seeds))
             if not seedset:
                 break

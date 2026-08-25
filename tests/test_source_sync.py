@@ -28,7 +28,7 @@ from db.sync.sources.nager_date.sync import parse_snapshot as parse_nager
 from db.sync.sources.nlm_cde.sync import parse_snapshot as parse_nlm
 from db.sync.sources.loinc.sync import parse_archive as parse_loinc
 from db.sync.sources.who.sync import parse_snapshot as parse_who
-from db.sync.build_exchange_rate import ensure_rate_columns, rate_column_name
+from db.sync.build_exchange_rate import ensure_rate_columns, load_active_history, rate_column_name
 from db.sync.migrations import MIGRATIONS, latest_schema_version
 from db.sync._conn import _connection_kwargs
 from db.sync.releases import activate_validated_release
@@ -157,11 +157,27 @@ def test_ecb_parser_expands_non_missing_rates_only():
 
 
 class _RecordingCursor:
-    def __init__(self):
+    def __init__(self, rows=()):
         self.statements = []
+        self.rows = list(rows)
 
     def execute(self, statement, params=None):
         self.statements.append(str(statement))
+
+    def fetchall(self):
+        return list(self.rows)
+
+
+def test_exchange_rate_builder_uses_the_active_release_ledger():
+    cursor = _RecordingCursor([
+        ("sha256:z-old", date(2026, 1, 1), "USD", Decimal("1.2")),
+        ("sha256:z-old", date(2026, 1, 1), "JPY", Decimal("180")),
+    ])
+    release_id, history = load_active_history(cursor)
+    assert release_id == "sha256:z-old"
+    assert history[0] == (date(2026, 1, 1), "USD", Decimal("1.2"))
+    assert "r.status = 'active'" in cursor.statements[0]
+    assert "MAX(release_id)" not in cursor.statements[0]
 
 
 def test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert():
@@ -170,6 +186,7 @@ def test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert():
     assert columns == ["rate_to_eur", "rate_to_usd", "rate_to_jpy"]
     assert "CREATE TABLE IF NOT EXISTS knowledgebase.\"exchange_rate\"" in cursor.statements[0]
     assert cursor.statements[1:] == [
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS source_release_id text',
         'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_eur" double precision',
         'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_usd" double precision',
         'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_jpy" double precision',
@@ -426,6 +443,7 @@ TESTS = [
     test_cldr_parser_keeps_codes_displays_temporal_rows_and_units_separate,
     test_cldr_validation_rejects_duplicate_semantic_keys,
     test_ecb_parser_expands_non_missing_rates_only,
+    test_exchange_rate_builder_uses_the_active_release_ledger,
     test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert,
     test_cdc_parser_preserves_hierarchy_and_metadata,
     test_libphonenumber_parser_uses_calling_code_for_non_geographic_keys,

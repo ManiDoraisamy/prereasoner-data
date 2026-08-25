@@ -88,13 +88,17 @@ Market-led domain profiles and deterministic shared-reference enrichment are spe
 [KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMENT_ROADMAP.md). The active publisher
 inventory is recorded in [SOURCE_DATA.md](SOURCE_DATA.md). A physical source release being
 active does not make it planner-visible. `iana_country` is the first code-approved logical
-dataset, but deployment still requires `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default
-empty allowlist keeps current production answers unchanged.
+dataset in the generic enrichment registry, but deployment still requires
+`ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default empty allowlist keeps that path off.
 The production request flow now contains the guarded integration boundary: explicit intent,
 domain-role recognition, database-backed registry selection, request-local materialization,
-trusted-edge propagation, and serving provenance. No exchange-rate fixture is registered in
-production policy. The synchronized ECB series remains planner-ineligible until row-level
-effective-date selection, currency direction, and rounding are represented and evaluated.
+trusted-edge propagation, and serving provenance. Currency conversion is a deliberately
+bounded exception to the still-disabled generic temporal registry: the ECB sync is transformed
+offline into a release-labelled daily `knowledgebase.exchange_rate` projection, and the world
+planner joins dated facts on the exact `(currency, date)` pair. It carries the prior published
+business-day value only during projection construction, never through request-time network or
+latest-prior SQL. The calculation verifier proves direction and aggregate arithmetic; missing
+coverage fails closed. No embedded or demo FX fixture is a production fact source.
 
 The source materialization design makes the currently ambiguous database boundary explicit: physical shared schemas are source-
 owned (`wikidata` after migration and the publisher schemas in `SOURCE_DATA.md`), while domain roles describe request-private
@@ -245,8 +249,11 @@ without typed computation evidence fails closed. `engine/currency_intent.py` rem
 specification's ISO syntax and `rate_to_<code>` convention, not a second verifier. Ordinary own-data
 grouping does not activate enrichment.
 `engine/enrichment/adapters.py` returns typed match, absence, ambiguity, policy-denial, and ineligibility
-outcomes while retaining snapshot and license provenance. Temporal capabilities still abstain because row-level temporal
-AST semantics are not implemented.
+outcomes while retaining snapshot and license provenance. Temporal capabilities still abstain
+because row-level temporal AST semantics are not implemented in the generic enrichment planner.
+The ECB daily projection above avoids that unsupported operation by materializing exact-date rows
+offline; VAT rules, holidays, and other temporal source definitions remain disabled until their
+own semantics and evaluation gates are complete.
 
 Trusted composite edges pass separately to `TableQuery.ingest`; they are not accepted from a client table payload.
 `SchemaGraph` stores their ordered column pairs as one foreign key, and `sql_ast.Join` validates and renders them as one

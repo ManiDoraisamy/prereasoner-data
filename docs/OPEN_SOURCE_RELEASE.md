@@ -51,12 +51,13 @@ deployment. The source and deterministic non-model test path are reproducible to
   restricted browser keys, live auth/isolation tests, and a release-database regression run.
 
 The source tree is ready for an open-source code release, but a hosted launch remains conditional.
-External LLM calls are disabled unless deployment opt-in and per-request consent are both present,
-Terraform uses a non-superuser serving role, Cloud SQL backups/PITR are configured, and RTDB cleanup
-is provisioned when trace streaming is enabled. Remaining launch gates are external or deployment-
-specific: publish or provision the private model bundle, resolve Spider-derived redistribution,
-verify browser-key restrictions, run live auth/isolation tests against the restored state, and record
-a seeded release-database regression.
+External LLM calls are disabled unless deployment opt-in and per-request consent are both present.
+The target Terraform configuration uses dedicated service accounts, a non-superuser serving role,
+regional Cloud SQL with backups/PITR, immutable image digests, and RTDB cleanup when trace streaming
+is enabled. Those are code-level guarantees only until a plan against the restored production state
+is reviewed and applied. Remaining launch gates are external or deployment-specific: publish or
+provision the private model bundle, resolve Spider-derived redistribution, verify browser-key
+restrictions, run live auth/isolation tests, and record a seeded release-database regression.
 
 Schema.org should be described as the semantic shell. Wikidata and publisher datasets supply
 training observations and runtime facts under their own terms; Wikidata is not the primary ontology.
@@ -85,7 +86,9 @@ trained primarily from mapped Wikidata observations. Do not merge those claims.
 ## Deployment Boundary
 
 Terraform defaults to creating the core engine only. Set `enable_orchestrator=true` and
-provide `anthropic_api_key` to create the optional chat resources. Reference enrichment is
+provide an immutable `chat_image` plus the ID of an out-of-band
+`anthropic_secret_id` to create the optional chat resources. The secret value never belongs
+in Terraform variables or state. Reference enrichment is
 also independently opt-in through code approval, database grants, and
 `ENRICHMENT_ACTIVE_DATASETS`.
 

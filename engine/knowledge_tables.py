@@ -44,7 +44,8 @@ WORLD_COL_SYN = {"currency": "currency_name", "currencies": "currency_name", "po
                  "populations": "population", "inhabitants": "population", "continent": "continent",
                  "continents": "continent", "hemisphere": "hemisphere", "country": "country",
                  "countries": "country", "latitude": "lat", "longitude": "lng"}
-WORLD_SKIP_COLS = {"name", "is_primary", "updated_at", "source", "valid_from", "valid_to"}
+WORLD_SKIP_COLS = {"name", "is_primary", "updated_at", "source", "source_release_id",
+                   "valid_from", "valid_to"}
 AGG_CUES = {"COUNT": {"count", "counts", "number", "many"}, "SUM": {"sum", "total", "totals"} | MEASURE_NOUNS,
             "AVG": {"avg", "average", "mean", "averages"}}
 STALE_DAYS = 730                                          # a fact last verified > ~2y before the decision = stale
@@ -695,6 +696,10 @@ class KnowledgeTableQuery:
                             warnings.append(f"freshness: '{nm}' ({ft}) was last verified {uv}, {self._days(uv, as_of)} "
                                             f"days before the as-of date {as_of} — may be stale")
                 if world_rate and result is not None:
+                    release_row = con.execute(
+                        f'SELECT source_release_id FROM {qident("exchange_rate")} LIMIT 1'
+                    ).fetchone()
+                    prov["release_id"] = release_row[0] if release_row else None
                     base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}').fetchone()[0]
                     conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
                     coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None

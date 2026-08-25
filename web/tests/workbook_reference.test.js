@@ -6,6 +6,10 @@ const vm = require('vm');
 const path = require('path');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+assert(!source.includes("world_join:'wikipedia lookup'"),
+  'shared-data joins must not label non-Wikidata sources such as ECB as Wikipedia');
+assert(source.includes("world_join:'reference lookup'"),
+  'shared-data joins must use source-neutral provenance language');
 let finish;
 const done = new Promise((resolve, reject) => { finish = error => error ? reject(error) : resolve(); });
 const storage = new Map();

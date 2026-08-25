@@ -265,6 +265,7 @@ CREATE TABLE IF NOT EXISTS knowledgebase."exchange_rate" (
   "date"        date NOT NULL,
   updated_at    date NOT NULL,
   source        text NOT NULL,
+  source_release_id text NOT NULL,
   PRIMARY KEY (currency_code, "date")
 );
 

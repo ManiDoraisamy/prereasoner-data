@@ -35,7 +35,7 @@ from engine.conversations import (resolve_conversation, list_conversations, get_
                                    QuotaExceeded)
 from engine import master
 from engine import admin
-from engine.request_limits import SlidingWindowLimiter, allowed_origin
+from engine.request_limits import JSONBodyError, SlidingWindowLimiter, allowed_origin, read_json_object
 
 
 def _external_llm_allowed(req):
@@ -78,6 +78,14 @@ class H(BaseHTTPRequestHandler):
             self.send_header("Retry-After", str(retry_after))
         self.send_header("Content-Length", str(len(b))); self.end_headers()
         self.wfile.write(b)
+
+    def _read_json(self):
+        """Read the shared bounded request shape and send client errors consistently."""
+        try:
+            return read_json_object(self.rfile, self.headers.get("Content-Length"), MAX_BODY)
+        except JSONBodyError as exc:
+            self._send(exc.status_code, json.dumps({"error": str(exc)}))
+            return None
 
     def do_OPTIONS(self):
         self.send_response(204); self._cors(); self.send_header("Content-Length", "0"); self.end_headers()
@@ -141,10 +149,9 @@ class H(BaseHTTPRequestHandler):
         """POST /api/master {name, columns, rows} → create-or-replace a master table.
         POST /api/master/delete {name} → drop it. Both uid-scoped to the verified subject."""
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            req = self._read_json()
+            if req is None:
+                return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -167,10 +174,9 @@ class H(BaseHTTPRequestHandler):
         """POST /api/conversation/state {id, state} -> persist the client's renderable snapshot so a reload
         restores the conversation instead of re-running. uid-scoped; `state` is opaque display JSON."""
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            req = self._read_json()
+            if req is None:
+                return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -187,8 +193,9 @@ class H(BaseHTTPRequestHandler):
     def _post_conv_delete(self, path):
         """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            req = self._read_json()
+            if req is None:
+                return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -250,8 +257,9 @@ class H(BaseHTTPRequestHandler):
 
     def _post_admin_delete(self):
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            req = self._read_json()
+            if req is None:
+                return
             if not self._require_admin(req):
                 return
             target = req.get("target")
@@ -274,10 +282,9 @@ class H(BaseHTTPRequestHandler):
         instead of redirecting. No model/Postgres — a single Anthropic call; the deterministic path is
         unchanged. Firebase-auth'd like the reasoning routes; a missing key degrades to a clear 503."""
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            req = self._read_json()
+            if req is None:
+                return
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -308,10 +315,9 @@ class H(BaseHTTPRequestHandler):
         key degrades to a clear 503 (+ an RTDB error) so the popup re-enables."""
         emit = None
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}") if n else {}
+            req = self._read_json()
+            if req is None:
+                return
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -342,13 +348,9 @@ class H(BaseHTTPRequestHandler):
     def _post_world(self):
         emit = None                                          # so the except can stream a terminal error to RTDB
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                self._send(413, json.dumps({"error": "payload too large"})); return
-            try:
-                req = json.loads(self.rfile.read(n) or b"{}")
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                self._send(400, json.dumps({"error": "invalid JSON payload"})); return
+            req = self._read_json()
+            if req is None:
+                return
             sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = VERIFIED user id (auth); uid = RTDB /runs key
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
@@ -455,13 +457,9 @@ class H(BaseHTTPRequestHandler):
     # ---------------- /api/dimension (stateless, authenticated) ----------------
     def _post_dimension(self):
         try:
-            n = int(self.headers.get("Content-Length", 0))
-            if n > MAX_BODY:
-                self._send(413, json.dumps({"error": "payload too large"})); return
-            try:
-                req = json.loads(self.rfile.read(n) or b"{}")
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                self._send(400, json.dumps({"error": "invalid JSON payload"})); return
+            req = self._read_json()
+            if req is None:
+                return
             sub, _uid = _verify_principal(_bearer(self.headers, None))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -470,6 +468,8 @@ class H(BaseHTTPRequestHandler):
                 self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
                 return
             data = req.get("data", "")
+            if not isinstance(data, str):
+                self._send(400, json.dumps({"error": "CSV data must be text"})); return
             if not data.strip():
                 self._send(400, json.dumps({"error": "no CSV (need {data, mode:'analyze'})"})); return
             tbl = csv_table(data, table_name(req.get("table", "data"), 0))

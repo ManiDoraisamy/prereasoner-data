@@ -43,6 +43,17 @@ variable "db_tier" {
   default     = "db-custom-1-3840"
 }
 
+variable "db_availability_type" {
+  description = "Cloud SQL availability. REGIONAL is the production default because this database contains customer conversation state as well as rebuildable public data; use ZONAL only for disposable development environments."
+  type        = string
+  default     = "REGIONAL"
+
+  validation {
+    condition     = contains(["REGIONAL", "ZONAL"], var.db_availability_type)
+    error_message = "db_availability_type must be REGIONAL or ZONAL."
+  }
+}
+
 variable "rtdb_url" {
   description = "Firebase Realtime Database URL for live trace streaming. Empty disables streaming; when set, Terraform also creates the scheduled retention cleanup job."
   type        = string

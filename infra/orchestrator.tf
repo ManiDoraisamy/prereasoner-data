@@ -109,6 +109,10 @@ resource "google_cloud_run_v2_service" "chat" {
         value = var.anthropic_model
       }
       env {
+        name  = "APP_ENV"
+        value = "production"
+      }
+      env {
         name  = "EXTERNAL_LLM_ENABLED"
         value = "true"
       }
@@ -128,10 +132,11 @@ resource "google_cloud_run_v2_service" "chat" {
         value = google_cloud_run_v2_service.api.uri
       }
 
-      # The orchestrator's /healthz returns immediately (no model load) — a short cold start.
+      # Readiness imports the actual MCP server module and verifies the injected API key is present.
+      # This catches per-turn subprocess breakage that a shallow HTTP liveness probe cannot see.
       startup_probe {
         http_get {
-          path = "/healthz"
+          path = "/readyz"
         }
         initial_delay_seconds = 5
         period_seconds        = 5

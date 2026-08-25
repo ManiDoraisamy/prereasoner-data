@@ -1,5 +1,5 @@
-# PreReasoner GCP deployment — ONE Cloud Run service (the consolidated engine) + ONE
-# Cloud SQL Postgres. The Firebase pieces (Auth, RTDB, Hosting for web/) are managed
+# PreReasoner GCP deployment — the core Cloud Run engine + one Cloud SQL Postgres.
+# The optional chat service is declared in orchestrator.tf. Firebase Auth, RTDB, and Hosting are managed
 # OUTSIDE Terraform: enabling Firebase on a project is a one-time console/CLI step and
 # `firebase deploy` owns hosting — see infra/README.md.
 
@@ -49,8 +49,8 @@ resource "google_sql_database_instance" "world" {
 
   settings {
     tier              = var.db_tier
-    availability_type = "ZONAL" # single-zone: cheapest; this is a rebuildable cache of Wikidata
-    disk_size         = 20      # GB — full sync is ~2-3 GB (db/README.md §4); 20 GB is comfortable
+    availability_type = var.db_availability_type
+    disk_size         = 20 # GB — full sync is ~2-3 GB (db/README.md §4); 20 GB is comfortable
     disk_autoresize   = true
 
     backup_configuration {
@@ -64,8 +64,8 @@ resource "google_sql_database_instance" "world" {
       # Public IP with ZERO authorized networks: nothing can reach it over plain TCP.
       # All access goes through the Cloud SQL connector paths (Cloud Run's /cloudsql
       # unix-socket mount, cloud-sql-proxy for seeding) which authenticate via IAM.
-      # This avoids the ~$10/mo VPC connector + private-services-access setup that a
-      # private-IP instance would require — see docs/notes/infra.md for the trade-off.
+      # This avoids the VPC connector + private-services-access setup that a private-IP
+      # instance requires; infra/README.md documents the supported access path.
       ipv4_enabled = true
     }
   }
@@ -169,6 +169,7 @@ resource "google_project_iam_member" "run_cloudsql" {
 # SA needs RTDB access. Also covers Firebase Auth token verification's cert fetch (public,
 # but firebase-admin init wants credentials). Scoped to the whole project's RTDB instances.
 resource "google_project_iam_member" "run_rtdb" {
+  count   = var.rtdb_url != "" ? 1 : 0
   project = var.project_id
   role    = "roles/firebasedatabase.admin"
   member  = "serviceAccount:${google_service_account.run.email}"

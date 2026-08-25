@@ -119,7 +119,6 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
     discovers each engine call and subscribes to its live `/runs/{uid}/{jobId}` trace. The engine streams
     that trace exactly as on the direct path. The final Sonnet text + terminal status are emitted too.
     `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
-    client = AsyncAnthropic(api_key=api_key)
     traces: list[dict[str, Any]] = []
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
@@ -131,7 +130,10 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
             except Exception:                                # noqa: BLE001 — never break the answer on a stream write
                 pass
 
-    async with stdio_client(_mcp_params(engine_base_url, bearer_token)) as (read, write):
+    async with (
+        AsyncAnthropic(api_key=api_key) as client,
+        stdio_client(_mcp_params(engine_base_url, bearer_token)) as (read, write),
+    ):
         async with ClientSession(read, write) as session:
             await session.initialize()
 

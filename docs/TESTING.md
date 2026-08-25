@@ -194,7 +194,9 @@ terraform -chdir=infra validate
 ```
 
 CI also runs credential-free, no-refresh plans to prove that the default creates no chat
-resources and that `enable_orchestrator=true` fails unless `anthropic_api_key` is supplied.
+resources, that `enable_orchestrator=true` fails without `anthropic_secret_id`, and that a
+complete optional-chat configuration produces the expected resources. Both image inputs are
+dummy immutable digests in this structural plan; no image is pulled.
 
 If Docker or Terraform is unavailable, say so explicitly. Static parsing and unit tests do not replace an image
 build or Terraform validation.

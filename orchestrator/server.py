@@ -26,7 +26,9 @@ from pathlib import Path
 import httpx
 
 from engine import config
-from engine.request_limits import SlidingWindowLimiter, allowed_origin
+from engine.request_limits import (
+    JSONBodyError, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
+)
 from orchestrator.orchestrator import run_chat
 from orchestrator.validation import validate_chat_request
 
@@ -73,6 +75,13 @@ class H(BaseHTTPRequestHandler):
         h = self.headers.get("Authorization") or self.headers.get("authorization") or ""
         return h[7:].strip() if h.lower().startswith("bearer ") else None
 
+    def _read_json(self):
+        try:
+            return read_json_object(self.rfile, self.headers.get("Content-Length"), MAX_BODY)
+        except JSONBodyError as exc:
+            self._send(exc.status_code, json.dumps({"error": str(exc)}))
+            return None
+
     def do_OPTIONS(self):
         self.send_response(204); self._cors(); self.send_header("Content-Length", "0"); self.end_headers()
 
@@ -114,14 +123,9 @@ class H(BaseHTTPRequestHandler):
         fut = None
         acquired = False
         try:
-            n = int(self.headers.get("Content-Length", 0) or 0)
-            if n > MAX_BODY:
-                self._send(413, json.dumps({"error": "payload too large"})); return
-            raw = self.rfile.read(n) if n else b"{}"
-            try:
-                req = json.loads(raw)
-            except (UnicodeDecodeError, json.JSONDecodeError):
-                self._send(400, json.dumps({"error": "invalid JSON payload"})); return
+            req = self._read_json()
+            if req is None:
+                return
             try:
                 message, tables, history, turn_id, conversation_id = validate_chat_request(req)
             except ValueError as exc:
@@ -197,9 +201,10 @@ class H(BaseHTTPRequestHandler):
                 headers["Authorization"] = self.headers["Authorization"]
             body = None
             if method == "POST":
-                n = int(self.headers.get("Content-Length", 0) or 0)
-                if n > MAX_BODY:
-                    self._send(413, json.dumps({"error": "payload too large"})); return
+                try:
+                    n = parse_content_length(self.headers.get("Content-Length"), MAX_BODY)
+                except JSONBodyError as exc:
+                    self._send(exc.status_code, json.dumps({"error": str(exc)})); return
                 body = self.rfile.read(n) if n else None
                 headers["content-type"] = self.headers.get("content-type", "application/json")
             r = httpx.request(method, url, content=body, headers=headers, timeout=180)

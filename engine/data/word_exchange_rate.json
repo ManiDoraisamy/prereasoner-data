@@ -3,7 +3,7 @@
   "key": "currency_code",
   "columns": ["currency_code", "date", "rate_to_usd", "rate_to_eur", "rate_to_gbp", "rate_to_jpy",
               "rate_to_inr", "rate_to_aud", "rate_to_cad", "rate_to_chf", "rate_to_cny",
-              "updated_at", "source"],
+              "updated_at", "source", "source_release_id"],
   "links": [],
   "concept": ["currency", "currency_code", "exchange_rate"],
   "filter_attrs": [],

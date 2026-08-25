@@ -77,14 +77,26 @@ jobs:
         env:
           GOOGLE_OAUTH_ACCESS_TOKEN: offline-plan-placeholder
         run: |
+          ENGINE_IMAGE='us-central1-docker.pkg.dev/opensource-ci/prereasoner/engine@sha256:0000000000000000000000000000000000000000000000000000000000000000'
+          CHAT_IMAGE='us-central1-docker.pkg.dev/opensource-ci/prereasoner/chat@sha256:1111111111111111111111111111111111111111111111111111111111111111'
           terraform plan -refresh=false -lock=false -input=false \
-            -var='project_id=opensource-ci' -out=/tmp/default.tfplan
+            -var='project_id=opensource-ci' -var="image=$ENGINE_IMAGE" -out=/tmp/default.tfplan
           terraform show -json /tmp/default.tfplan > /tmp/default.json
           jq -e '[.resource_changes[] | select(.address | test("chat|anthropic"))] | length == 0' \
             /tmp/default.json
+          jq -e '[.resource_changes[] | select(.address == "google_project_iam_member.run_rtdb")] | length == 0' \
+            /tmp/default.json
           if terraform plan -refresh=false -lock=false -input=false \
-            -var='project_id=opensource-ci' -var='enable_orchestrator=true' \
+            -var='project_id=opensource-ci' -var="image=$ENGINE_IMAGE" \
+            -var='enable_orchestrator=true' -var="chat_image=$CHAT_IMAGE" \
             -out=/tmp/invalid.tfplan; then
-            echo "expected enable_orchestrator without anthropic_api_key to fail" >&2
+            echo "expected enable_orchestrator without anthropic_secret_id to fail" >&2
             exit 1
           fi
+          terraform plan -refresh=false -lock=false -input=false \
+            -var='project_id=opensource-ci' -var="image=$ENGINE_IMAGE" \
+            -var='enable_orchestrator=true' -var="chat_image=$CHAT_IMAGE" \
+            -var='anthropic_secret_id=ci-anthropic-key' -out=/tmp/chat.tfplan
+          terraform show -json /tmp/chat.tfplan > /tmp/chat.json
+          jq -e '[.resource_changes[] | select(.address | test("chat|anthropic"))] | length > 0' \
+            /tmp/chat.json

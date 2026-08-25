@@ -76,7 +76,7 @@ docs/TRAINING.md), `taxonomy.csv`, `anchor_assignment.npz`, `assignment.csv`,
 `dim_thresholds.json`, `route_thresholds.json`, `primitives.npz`, and
 `word_{city,country,state,element}.json`. The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
 has none) — the entrypoint gate reports missing weights at startup (see
-docs/notes/infra.md).
+`infra/README.md`).
 
 ## Model-loading format
 

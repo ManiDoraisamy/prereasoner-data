@@ -35,7 +35,7 @@ New contributors should read these in order:
 11. [docs/DATA_CARD.md](docs/DATA_CARD.md) - training sources, split discipline, known bias, and licensing.
 12. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request expectations.
 13. [docs/OPEN_SOURCE_RELEASE.md](docs/OPEN_SOURCE_RELEASE.md) - public-release checklist and external artifacts.
-14. [PRIVACY.md](PRIVACY.md) - data flows, external processors, retention gaps, and operator duties.
+14. [PRIVACY.md](PRIVACY.md) - data flows, external processors, retention controls, and operator duties.
 
 ## How A Request Works
 
@@ -72,7 +72,7 @@ One PostgreSQL database contains:
 
 | Scope | Schema | Purpose |
 |---|---|---|
-| Derived Wikidata serving data | `knowledgebase`; `public.settlement` | Internal resolver index, taxonomy, QID entity projections, and geo projection. These are derived runtime schemas, not publisher names; the coordinated target is `wikidata` |
+| Curated shared serving projections | `knowledgebase`; `public.settlement` | Internal resolver index, taxonomy, Wikidata-derived QID/geo projections, and the release-labelled ECB daily exchange-rate projection. These are legacy derived runtime schemas, not source owners; the coordinated Wikidata target is `wikidata` |
 | Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. IANA country-name lookup is code-approved; deployment enablement is empty by default. See `docs/SOURCE_DATA.md` |
 | Conversation | `c_<32hex>` | Uploaded tables and world-resolution bridges for one authorized conversation |
 | User | `m_<md5(sub)>` | Private reference dimensions such as product-to-category or SKU-to-region |
@@ -125,10 +125,12 @@ The default weight repository is currently private. Source code can be developed
 run without it, but a fresh public deployment requires publishing a compatible weight bundle or configuring
 `PREREASONER_WEIGHTS_REPO`. See [engine/data/README.md](engine/data/README.md).
 
-The home-page workbook includes an `illustrative fx rates` input solely to demonstrate a
-typed join and `SUM(amount * rate_to_usd)`. It is synthetic request-local demo data, not a
-production reference source. Production exchange-rate enrichment abstains until temporal ECB
-selection, direction, and rounding are implemented.
+The home-page workbook contains orders with dates, ISO currency codes, and amounts, but no
+rate sheet. Currency conversion is grounded in the synchronized ECB release through the
+daily `knowledgebase.exchange_rate` projection. The projection expands each published rate
+through the next applicable calendar days, retains the true ECB business date, joins each
+dated fact row on `(currency, date)`, verifies `SUM(amount * rate_to_target)`, and reports the
+pinned source release. Uploaded rate tables still take precedence as the user's own data.
 
 Docker Compose exposes the engine on `http://localhost:8080` with the test-only principal `localdev`. After the
 engine is healthy:

@@ -108,7 +108,7 @@ function renderGrid(m){
       continue; }
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
-                        :(pv?' title="'+(pv==='src'?'From your data':'Added by AI (Wikipedia lookup / derivation) — worth a sanity-check')+'"':''))
+                        :(pv?' title="'+(pv==='src'?'From your data':'Added by a public-source lookup or deterministic derivation — worth a sanity-check')+'"':''))
       +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+(pv==='src'?'SRC':'AI')+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
@@ -135,8 +135,8 @@ function tokCls(tk){const u=tk.toUpperCase();
   const m=tk.match(/^"([^"]+)"$/); if(m&&TABNAMES.includes(m[1].toLowerCase()))return 'tbl';
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
-const KINDLBL={input:'Your data',deriv:'AI derived',ref:'Wikipedia',master:'Reference'};   // A3: one term per concept ("Reference", not "Your wiki")
-function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/wikipedia lookup/i.test(n)) n='enriched'; return n; }   // A3: derived step != the Wikipedia source
+const KINDLBL={input:'Your data',deriv:'Derived',ref:'Public source',master:'Reference'};
+function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|reference) lookup/i.test(n)) n='enriched'; return n; }
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
@@ -862,9 +862,9 @@ function dropStale(){
   BOOK=BOOK.filter(s=>!s.stale);
   if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
 }
-// Short, logical step names (by op) — readable at a glance ("combined", "wikipedia lookup", "filtered",
+// Short, logical step names (by op) — readable at a glance ("combined", "reference lookup", "filtered",
 // "total") instead of the engine's verbose "join orders + customers" / "where country = 'France'".
-const SHORTLBL={join:'combined',world_join:'wikipedia lookup',world_filter:'filtered',filter:'filtered',
+const SHORTLBL={join:'combined',world_join:'reference lookup',world_filter:'filtered',filter:'filtered',
   time_filter:'date filter',having:'filtered',group_agg:'total',yoy:'year-over-year',running:'running total',
   divide:'ratio',share:'share',topn:'top results',sort:'sorted'};
 function stepLabel(v){
@@ -877,7 +877,7 @@ function humanCond(c){ return String(c||'').replace(/\s*<>\s*/,' is not ').repla
 function stepDesc(v){
   const lbl=(v&&v.label)||'', op=v&&v.op;
   if(op==='join'){ const t=lbl.replace(/^join\s+/i,'').replace(/\s*\+\s*/g,' and '); return 'Combined '+(t||'your tables')+' into one table.'; }
-  if(op==='world_join'){ const m=lbl.match(/on\s+(.+)$/i); return 'Looked up world facts for each '+(m?m[1].trim():'entity')+' — country, currency, population and more — from Wikipedia.'; }
+  if(op==='world_join'){ const m=lbl.match(/on\s+(.+)$/i); return 'Looked up shared facts for each '+(m?m[1].trim():'entity')+' from the source named in the answer provenance.'; }
   if(op==='world_filter'||op==='filter'||op==='having'){ const m=lbl.match(/where\s+(.+)$/i); return m?('Kept only the rows where '+humanCond(m[1])+'.'):'Filtered to the matching rows.'; }
   if(op==='time_filter'){ return 'Kept only the rows in that time period.'; }
   if(op==='group_agg'){ return ({count:'Counted the rows.',average:'Averaged the values.',extremes:'Found the highest and lowest values.'})[stepLabel(v)]||'Added up the values to get the total.'; }

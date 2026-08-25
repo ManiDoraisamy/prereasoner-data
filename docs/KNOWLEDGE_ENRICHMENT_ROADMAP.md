@@ -16,9 +16,10 @@ PostgreSQL-backed references, typed source capabilities, cardinality and ambigui
 temporal and row-usage contracts, qualified relations, release/schema/contract snapshot
 pins, a bounded read-only `SnapshotStore`, deterministic requested-attribute extraction,
 and policy-aware source adapters with typed match/ambiguity/denial outcomes. The canonical
-schema graph and SQL AST now preserve tuple foreign keys as one `AND` join. Sixteen
-source-backed definitions are registered; fifteen are `DISABLED`, while `iana_country`
-requires an additional deployment key. Registration alone is not serving activation. Seven immutable domain profiles, conservative role evidence, compatible-role
+schema graph and SQL AST now preserve tuple foreign keys as one `AND` join. Seventeen
+definitions are registered: fifteen are `DISABLED`, the embedded ISO currency fixture is
+`EVALUATION`-only, and `iana_country` is `ACTIVE` but still requires a deployment key.
+Registration alone is not serving activation. Seven immutable domain profiles, conservative role evidence, compatible-role
 dataset gates, request-local materialization, trusted-edge propagation, and complete replay
 manifests are implemented and wired behind those activation states. The generated contract
 corpus, 35-case public-template development corpus, and IANA activation gate are green.
@@ -389,7 +390,7 @@ These require a separate demand, source, license, and correctness gate:
 | Importer ready, archive-gated | future LOINC tables | Licensed LOINC Complete archive required; includes standardized assessment panels and answer lists |
 | Compiler-gated | future `iana.zone_transition` | tzdb source rules must be compiled reproducibly into tested non-overlapping intervals; the source archive does not publish this as a table |
 | Demand-gated | `openfoodfacts.product` | useful for packaged goods only; exact GTIN required; Open Food Facts contract must pass redistribution review |
-| Materialized, planner-gated | `ecb.exchange_rate` | source history is active; cross-currency analytics still needs temporal AST and typed arithmetic |
+| Materialized, bounded serving path | `ecb.exchange_rate` plus derived `knowledgebase.exchange_rate` | active source history is projected to exact calendar-date cross rates with release provenance; the generic temporal registry remains disabled |
 | Demand-gated | `gleif.legal_entity` | LEI has weak coverage for the portfolio's SMB, nonprofit, school, restaurant, and private-practice buyers |
 | Materialized, unwired | `geonames.postal_code` and `geonames.place` | CC BY attribution and ambiguity/accuracy abstention are required in serving |
 | Materialized, unwired | `google_libphonenumber.territory`, patterns, and formats | possibility/format only, never reachability, subscriber, or current carrier |
@@ -605,7 +606,7 @@ Implementation status on 2026-08-17:
 | IANA country-name release gate | passed hermetically: 25 positives, 100 negatives, 1.0 selection/pool/top-1, zero harmful selections, deterministic replay; live materialization spike passed |
 | Least-privilege grants and validated-release rollback | implemented; real database grant/write-denial audit passed transactionally; production role application pending |
 | Opted-in product-held-out evaluation | strict metadata-only loader implemented; actual consented corpus pending and still required for domain-profile production claims |
-| Compiled IANA transitions and temporal AST | gated; not started |
+| Compiled IANA transitions and generic temporal AST | gated; not started; ECB uses an exact-date offline projection instead of this capability |
 
 The source-storage slice of M1 was deliberately performed before planner integration so the
 architecture could be corrected from actual data. This does not waive the M0A-C gates
@@ -637,9 +638,11 @@ least 0.99 and profile recall at least 0.95 on the held-out corpus.
 2. Keep the implemented per-source `release` contract and source DDL. Use the implemented
    versioned migration runner so schema/index changes do not depend on downloading the source again.
    `db/init.sql` must not create empty source schemas speculatively.
-3. Keep exchange rates out of the production registry until the ECB temporal series has
-   row-level date selection, direction, rounding, and replay tests. Hermetic planner tests use
-   explicit test-local rate tables; no embedded rate snapshot is a source of production facts.
+3. Implemented as a bounded world projection, not generic temporal-registry activation:
+   `db.sync.build_exchange_rate` selects the ledger-active ECB release, materializes exact
+   calendar-date cross rates, preserves source date and release ID, and the world planner proves
+   direction and typed arithmetic. Hermetic generic-planner tests may still use explicit local
+   rate tables; no embedded rate snapshot is a source of production facts.
 4. Implemented: requested-attribute extraction returns inspectable phrase/rule evidence;
    contrastives keep ordinary own-data grouping such as `amount by currency`, `customers by
    country`, and `orders by postal code` unchanged.
@@ -659,7 +662,8 @@ least 0.99 and profile recall at least 0.95 on the held-out corpus.
     request-local planner tabs, passes trusted edges through the existing serving stack, and
     emits source/profile/model/private-reference replay identity. `iana_country` requires both
     registry approval and `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default empty allowlist
-    selects nothing. There is no production registry definition for static FX rates.
+    selects nothing. There is no production registry definition for static FX rates; the
+    separately documented ECB world projection is source-derived and release-labelled.
 
 Gate: no-intent requests are byte-for-byte unchanged; renamed keys use only validated
 explicit edges; routing transitions are unchanged; serving performs zero network calls.
@@ -719,10 +723,11 @@ SQL candidate generation.
 
 ### Gated research
 
-FX activation starts only after measured demand. Typed arithmetic and aggregate-over-expression
-are implemented, including exact target-rate recognition; composite temporal joins, currency
-direction over the ECB EUR base, previous-business-day policy, rounding, and SQLite/Postgres
-parity remain required. Product GTIN and legal-entity work remain
+Generic temporal-source activation remains gated. The production ECB world path now covers
+typed arithmetic, target direction over the EUR base, per-row exact-date composite joins,
+previous-business-day projection, source-release provenance, missing-row abstention, and
+SQLite/Postgres tests. This does not activate arbitrary latest-prior joins or VAT/interest
+temporal policies. Product GTIN and legal-entity work remain
 demand-gated. Medical terminology is materialized where public and import-ready where
 licensed, but planner use still requires explicit-code intent, privacy, and harm evaluation.
 

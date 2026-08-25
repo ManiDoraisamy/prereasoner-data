@@ -1,10 +1,13 @@
 """Hermetic security and resource-bound tests."""
 from __future__ import annotations
 
+from io import BytesIO
 from unittest.mock import patch
 
 from engine import config
-from engine.request_limits import SlidingWindowLimiter, allowed_origin
+from engine.request_limits import (
+    JSONBodyError, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
+)
 from orchestrator.validation import validate_chat_request
 
 
@@ -52,11 +55,30 @@ def test_chat_validation_normalizes_and_bounds_inputs():
             pass
 
 
+def test_json_body_guard_rejects_bad_lengths_payloads_and_shapes():
+    assert parse_content_length(None, 10) == 0
+    assert parse_content_length("4", 10) == 4
+    for value, status in (("-1", 400), ("abc", 400), ("11", 413)):
+        try:
+            parse_content_length(value, 10)
+            raise AssertionError
+        except JSONBodyError as exc:
+            assert exc.status_code == status
+    assert read_json_object(BytesIO(b'{"ok":true}'), "11", 20) == {"ok": True}
+    for raw in (b"[1]", b"{bad"):
+        try:
+            read_json_object(BytesIO(raw), str(len(raw)), 20)
+            raise AssertionError
+        except JSONBodyError as exc:
+            assert exc.status_code == 400
+
+
 TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
     test_cors_requires_exact_configured_origin,
     test_auth_test_sub_is_ignored_outside_explicit_nonproduction,
     test_chat_validation_normalizes_and_bounds_inputs,
+    test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
 ]
 
 

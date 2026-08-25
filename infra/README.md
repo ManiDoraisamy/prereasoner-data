@@ -18,6 +18,9 @@ browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run 
 - Cloud SQL has a public IP with **zero authorized networks**: unreachable over plain
   TCP; all access is via the IAM-authenticated connector (Cloud Run's `/cloudsql`
   socket, `cloud-sql-proxy` for seeding). No VPC connector needed.
+- Cloud SQL defaults to regional high availability because it stores customer conversations
+  and saved state in addition to rebuildable public reference data. Set
+  `db_availability_type=ZONAL` only for disposable development environments.
 - Cloud Run allows **unauthenticated invocations on purpose** — auth is application
   level (Firebase ID tokens verified by `engine/auth.py`), and the Hosting rewrite
   requires it.
@@ -64,10 +67,11 @@ image).
 
 ### 2. Terraform apply
 
-**State comes first.** This configuration defaults to local state for a new environment.
-Never run `apply` against an existing project from an empty state: configure the team's
-backend and import existing resources first. Otherwise Terraform will propose duplicate
-Cloud Run, Cloud SQL, secret, IAM, and repository resources.
+**State comes first.** This configuration defaults to local state for disposable development.
+Production state contains generated database credentials, so store it in a versioned,
+access-restricted backend. Never run `apply` against an existing project from an empty state:
+restore the production backend and import existing resources first. Otherwise Terraform will
+propose duplicate Cloud Run, Cloud SQL, secret, IAM, and repository resources.
 
 ```bash
 cd infra
@@ -78,12 +82,12 @@ terraform apply -var project_id=<PROJECT> \
   -var rtdb_trace_retention_days=7                         # omit rtdb_url to disable streaming
 ```
 
-Outputs: `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`, and the
-serving-role secret. The separately managed optional chat service has no Terraform output.
+Outputs include `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`,
+and the serving-role secret. `chat_url` is null unless the optional orchestrator is enabled.
 
 The service will deploy but return errors on `/api/reason`/`/api/knowledge` until the
-database is seeded (next step). `/healthz` works immediately; `/api/dimension` also requires
-the caller's Firebase ID token.
+database is seeded (next step). `/api/healthz` reports readiness once the models are loaded;
+`/api/dimension` also requires the caller's Firebase ID token.
 
 ### 3. Seed the world database (one-time, ~15–45 min)
 
@@ -118,23 +122,37 @@ easier to babysit interactively.
 
 ### 3a. Optional chat orchestrator
 
-The engine does not require an Anthropic key. The current Terraform module manages the engine only;
-deploy the optional chat service separately so its secret never enters Terraform state:
+The engine does not require an Anthropic key. Terraform can create the optional chat service,
+its dedicated service account, and least-privilege access to an **existing** Secret Manager
+secret. The secret value is provisioned out of band and never enters Terraform configuration
+or state.
 
 ```bash
 gcloud secrets create prereasoner-chat-anthropic-key --replication-policy=automatic
 printf '%s' "$ANTHROPIC_API_KEY" | \
   gcloud secrets versions add prereasoner-chat-anthropic-key --data-file=-
 gcloud builds submit --config cloudbuild.orchestrator.yaml
-gcloud run deploy prereasoner-chat --region us-central1 \
-  --image <chat-image@sha256:digest> --allow-unauthenticated \
-  --set-env-vars APP_ENV=production,ENGINE_BASE_URL=<engine-service-url>,EXTERNAL_LLM_ENABLED=false \
-  --set-secrets ANTHROPIC_API_KEY=prereasoner-chat-anthropic-key:latest
+
+# Resolve the pushed tag to an immutable digest, then use the same backend/state and
+# engine variables as the core apply in step 2.
+gcloud artifacts docker images describe \
+  us-central1-docker.pkg.dev/<project>/prereasoner/chat:latest
+terraform -chdir=infra apply \
+  -var project_id=<PROJECT> \
+  -var image=<engine-image@sha256:digest> \
+  -var enable_orchestrator=true \
+  -var chat_image=<chat-image@sha256:digest> \
+  -var anthropic_secret_id=prereasoner-chat-anthropic-key
 ```
 
-Grant the chat service account access to the secret before deployment. The chat API still requires
-the authenticated request's literal `external_llm_consent: true`; do not enable the hosting route
-until the UI presents the disclosure in `PRIVACY.md` and captures that consent.
+Enabling the module is the deployment-level external-LLM opt-in. The chat API still requires
+an authenticated request containing literal `external_llm_consent: true`. Before exposing the
+Hosting route, adopt and document an appropriate consent experience: the checked-in client uses
+the notice-and-choice flow described in `PRIVACY.md`; deployments requiring ask-first consent must
+adapt that client first.
+
+The chat startup probe calls `/readyz`, which checks the injected key and imports the real MCP
+server module. `/healthz` is liveness only and must not be used as the deployment readiness gate.
 
 ### 4. Deploy the web frontend
 
@@ -151,7 +169,7 @@ firebase deploy --only hosting,database    # hosting + RTDB security rules
 
 ```bash
 URL=$(cd infra && terraform output -raw service_url)
-curl "$URL/healthz"          # {"ok": true, ...} once models are loaded
+curl "$URL/api/healthz"      # {"ok": true, ...} once models are loaded
 curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
      -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \
      -d '{"data": "Paris", "mode": "analyze"}'
@@ -250,15 +268,16 @@ Notes:
 
 | Component | Config | Est. monthly |
 |---|---|---|
-| Cloud SQL | `db-custom-1-3840` (1 vCPU / 3.75 GB), zonal, 20 GB SSD | ~$52 + ~$3.40 disk |
+| Cloud SQL | `db-custom-1-3840` (1 vCPU / 3.75 GB), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
 | Cloud Run | 4 Gi / 2 vCPU, min 0 (scale to zero) | $0 idle; ~$0.21/active-hour (light demo use: a few $) |
 | Artifact Registry | ~3–4 GB image | ~$0.40 |
 | Secret Manager | 1 secret, few accesses | < $0.10 |
 | Cloud Build | E2_HIGHCPU_8, ~20 min/build | ~$0.30 per build |
 | Firebase Hosting/Auth/RTDB | demo traffic | $0 within free quotas (Blaze plan required for the rewrite, but usage-billed) |
-| **Total** | | **~$56/mo steady + pennies per use** |
+| **Total** | | Database cost above plus usage-based Cloud Run, build, registry, Firebase, and secret charges |
 
-Cloud SQL dominates. To pause spend between demo sessions:
+Cloud SQL dominates; provider prices change, so use the Google Cloud pricing calculator for
+the selected region and tier before launch. To pause spend between demo sessions:
 `gcloud sql instances patch prereasoner-world --activation-policy=NEVER`
 (and `--activation-policy=ALWAYS` to resume) — storage (~$3.40/mo) still bills.
 `db-f1-micro` (~$9/mo shared-core) technically works for the minimal seed but is slow

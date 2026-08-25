@@ -12,8 +12,8 @@ terraform {
     }
   }
 
-  # State is local by default (fine for a personal deployment). For teams, configure a
-  # GCS backend instead, e.g.:
+  # State is local by default for disposable development only. Production state contains
+  # generated database credentials: use a versioned, access-restricted GCS backend, e.g.:
   #   backend "gcs" { bucket = "<your-tf-state-bucket>", prefix = "prereasoner" }
 }
 

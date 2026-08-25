@@ -179,6 +179,14 @@ creating a schema.
   is not blanket permission to render or redistribute every assessment.
 
 The ECB source history is not itself the serving projection: run `db.sync.build_exchange_rate`
-after the source sync to materialize the joinable `knowledgebase."exchange_rate"` columns.
-None of these other active source tables is planner-visible yet. Runtime selection, explicit key edges,
-snapshot pinning in execution manifests, and production evaluation remain separate work.
+after the source sync to materialize the joinable daily `knowledgebase."exchange_rate"`
+columns. That builder reads the ledger-selected active ECB release, carries rates across
+non-publishing calendar days without extending retired series, stores `source_release_id`,
+and supplies the production currency-conversion world join. This is a curated derived
+projection, not direct planner access to arbitrary `ecb` rows.
+
+Other publisher tables remain planner-invisible unless a code-approved registry definition,
+deployment allowlist, grants, eligibility evidence, bounded request-local materialization,
+and release evaluation all agree. At this revision, `iana_country` is the only such
+source-registry dataset approved for activation; ECB conversion is the explicit derived-world
+exception described above.

@@ -108,7 +108,12 @@ def _test_server(key, model, engine_base):
     os.environ["ANTHROPIC_MODEL"] = model
     os.environ["ENGINE_BASE_URL"] = engine_base
     os.environ["ORCH_PORT"] = "8813"
-    os.environ.setdefault("AUTH_TEST_SUB", "localdev")   # /chat now requires a verified identity; local/test mode uses the bypass (as in docker-compose + real local dev)
+    previous_app_env = os.environ.get("APP_ENV")
+    previous_test_sub = os.environ.get("AUTH_TEST_SUB")
+    # The production guard intentionally ignores AUTH_TEST_SUB. Declare this harness as a test
+    # environment before reloading config so the envelope test exercises chat, not real Firebase.
+    os.environ["APP_ENV"] = "test"
+    os.environ["AUTH_TEST_SUB"] = "localdev"
     # Relaying the message to Anthropic is egress, so /chat requires BOTH the deployment opt-in and
     # per-request consent. Set explicitly rather than setdefault: the test must not pass or fail on
     # whatever the developer happens to have exported.
@@ -156,6 +161,15 @@ def _test_server(key, model, engine_base):
         else:
             os.environ["EXTERNAL_LLM_ENABLED"] = previous_egress
         httpd.shutdown()
+        if previous_app_env is None:
+            os.environ.pop("APP_ENV", None)
+        else:
+            os.environ["APP_ENV"] = previous_app_env
+        if previous_test_sub is None:
+            os.environ.pop("AUTH_TEST_SUB", None)
+        else:
+            os.environ["AUTH_TEST_SUB"] = previous_test_sub
+        importlib.reload(_cfg)
 
 
 if __name__ == "__main__":

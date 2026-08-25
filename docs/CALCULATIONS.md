@@ -31,12 +31,17 @@ Rate application currently recognizes flat tax/VAT, commission, and explicit ann
 interest. Per-capita is a named ratio whose denominator must bind to a population/person measure.
 Division renders with real-valued semantics and a `NULLIF(denominator, 0)` guard.
 
-The engine deliberately abstains on tiered or progressive schedules, compound or variable-period
-interest, gross/net totals, latest-prior/as-of joins, missing temporal alignment, unknown rate units,
+The generic calculation planner deliberately abstains on tiered or progressive schedules,
+compound or variable-period interest, gross/net totals, latest-prior/as-of joins, missing temporal alignment, unknown rate units,
 ambiguous operand bindings, and requests that require composing two calculation specifications.
 Supporting one of these requires a new typed AST/verification rule and tests; adding phrases to the
 training corpus alone is insufficient. A question that merely asks for a tax or commission *rate* is
 an ordinary projection, not a request to apply that rate.
+
+ECB conversion does not weaken that rule. Its offline projection expands the active source release
+to exact calendar-date rows and preserves both the true source business date and release ID. Serving
+therefore performs a normal composite equality join and verifies the same typed currency expression;
+it does not synthesize a latest-prior predicate inside the generic planner.
 
 ## Extension contract
 
