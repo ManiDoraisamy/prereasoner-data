@@ -51,7 +51,9 @@ services:
       KB_PG_USER: postgres
       KB_PG_PASSWORD: ${KB_PG_PASSWORD:-devpassword}
       KB_PG_SSLMODE: prefer        # docker Postgres has no SSL; prefer falls back cleanly
+      APP_ENV: development
       AUTH_TEST_SUB: localdev         # local-only Firebase auth bypass — see header comment
+      CORS_ORIGINS: http://localhost:8090,http://127.0.0.1:8090
       DEVICE: cpu
       # RTDB_URL intentionally unset — streaming no-ops locally.
     depends_on:
@@ -73,8 +75,10 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?set ANTHROPIC_API_KEY in .env}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-5}
       ENGINE_BASE_URL: http://engine:8080
+      APP_ENV: development
       AUTH_TEST_SUB: localdev         # /chat requires a verified identity; local dev has no Google sign-in, so
                                       # the orchestrator uses the same bypass as the engine (refused on Cloud Run)
+      CORS_ORIGINS: http://localhost:8090,http://127.0.0.1:8090
       ORCH_HOST: 0.0.0.0
       ORCH_PORT: "8090"
     depends_on:

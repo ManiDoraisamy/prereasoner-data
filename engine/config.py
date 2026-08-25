@@ -16,7 +16,10 @@ Env contract:
   KB_PG_SSLMODE     libpq sslmode for TCP connections             (default prefer)
   RTDB_URL             Firebase RTDB url for live trace streaming — OPTIONAL. Unset => streaming is a
                        clean no-op; the HTTP response still carries the full JSON answer.
+  RTDB_TRACE_RETENTION_DAYS age-based trace retention (default 7; enforced by the cleanup job).
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
+  APP_ENV              environment name; test bypasses are honored only in development/test.
+  CORS_ORIGINS         comma-separated exact browser origins; empty disables cross-origin responses.
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
   DEVICE               torch device for the encoder                  (default cpu)
   BASE_MODEL_ID        Hugging Face id of the base encoder LM        (default Qwen/Qwen2.5-0.5B)
@@ -64,6 +67,8 @@ _autoload_dotenv()
 # ---------- serving ----------
 HOST = os.environ.get("HOST", "0.0.0.0")
 PORT = int(os.environ.get("PORT", "8080"))
+APP_ENV = os.environ.get("APP_ENV", "production").strip().lower()
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "").strip()
 
 # ---------- world Postgres ----------
 KB_PG_HOST = os.environ.get("KB_PG_HOST", "localhost")
@@ -86,17 +91,26 @@ def kb_pg_password():
 RTDB_URL = os.environ.get("RTDB_URL") or None
 
 
+def rtdb_trace_retention_days() -> int:
+    """Bound the operator-selected trace TTL so an accidental value cannot retain data forever."""
+    try:
+        days = int(os.environ.get("RTDB_TRACE_RETENTION_DAYS", "7"))
+    except ValueError:
+        days = 7
+    return max(1, min(days, 365))
+
+
 def auth_test_sub():
     """TEST-ONLY bypass: when AUTH_TEST_SUB is set, auth returns this fixed principal without verifying a
     token. Read at call time so a test can set it before spawning the server.
 
-    HARD PROD GUARD: the bypass is refused on Cloud Run (K_SERVICE is always set there) so a stray
-    --set-env-vars or a copy-paste from docker-compose can never disable authentication in production —
-    the code no longer trusts operator discipline alone. Local/CI (no K_SERVICE) is unaffected."""
+    HARD PROD GUARD: the bypass is honored only in explicit development/test environments.  Cloud Run
+    defaults to production and Terraform sets it explicitly, so a copied local environment cannot
+    silently disable authentication in a public deployment."""
     sub = os.environ.get("AUTH_TEST_SUB") or None
-    if sub and os.environ.get("K_SERVICE"):                  # running on Cloud Run -> never honor a test bypass
-        print("SECURITY: AUTH_TEST_SUB is set on Cloud Run (K_SERVICE=%s) — IGNORING it; real token "
-              "verification stays enforced." % os.environ.get("K_SERVICE"), flush=True)
+    if sub and APP_ENV not in {"development", "test"}:
+        print("SECURITY: AUTH_TEST_SUB is set outside development/test — IGNORING it; real token "
+              "verification stays enforced.", flush=True)
         return None
     return sub
 

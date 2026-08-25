@@ -26,7 +26,7 @@ def prereasoner_query(question: str, tables: list, job_id: str | None = None,
 
 @mcp.tool(description=DESCRIBE_DESC)
 def prereasoner_describe(tables: list) -> str:
-    """See description. `tables` = [{name, data(raw CSV)}], inline."""
+    """See description. `tables` = [{name, data(raw CSV)}], inline; identity is transport context."""
     return json.dumps(engine_client.call_describe(tables or []))
 
 

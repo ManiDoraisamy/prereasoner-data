@@ -24,7 +24,10 @@ from mcp_server.descriptions import QUERY_DESC, DESCRIBE_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MAX_TOOL_ROUNDS = 8
+# These are hard ceilings, not model preferences. A single authenticated turn may not create an
+# unbounded paid tool loop even when the upstream model keeps requesting tools.
+MAX_TOOL_ROUNDS = 6
+MAX_MODEL_TOKENS = 4096
 
 # Claude-facing tool schemas. NOTE the model only supplies `question` — the orchestrator injects the
 # session `tables` and a fresh `jobId` before calling the MCP server (large CSVs + infra IDs stay out of
@@ -142,7 +145,7 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
             for _ in range(MAX_TOOL_ROUNDS):
                 resp = await client.messages.create(
                     model=model,
-                    max_tokens=8192,
+                    max_tokens=MAX_MODEL_TOKENS,
                     system=SYSTEM_PROMPT,
                     thinking={"type": "adaptive"},
                     tools=CLAUDE_TOOLS,

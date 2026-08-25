@@ -11,6 +11,7 @@ locals {
     "artifactregistry.googleapis.com", # engine image
     "cloudbuild.googleapis.com",       # gcloud builds submit
     "iam.googleapis.com",              # dedicated service account
+    "cloudscheduler.googleapis.com",   # scheduled RTDB trace retention (only when RTDB is enabled)
   ]
 
   image = var.image
@@ -51,6 +52,13 @@ resource "google_sql_database_instance" "world" {
     availability_type = "ZONAL" # single-zone: cheapest; this is a rebuildable cache of Wikidata
     disk_size         = 20      # GB — full sync is ~2-3 GB (db/README.md §4); 20 GB is comfortable
     disk_autoresize   = true
+
+    backup_configuration {
+      enabled                        = true
+      point_in_time_recovery_enabled = true
+      transaction_log_retention_days = 7
+    }
+
 
     ip_configuration {
       # Public IP with ZERO authorized networks: nothing can reach it over plain TCP.
@@ -230,6 +238,14 @@ resource "google_cloud_run_v2_service" "api" {
         value = "/cloudsql/${google_sql_database_instance.world.connection_name}"
       }
       env {
+        name  = "APP_ENV"
+        value = "production"
+      }
+      env {
+        name  = "CORS_ORIGINS"
+        value = var.cors_origins
+      }
+      env {
         name  = "KB_PG_DB"
         value = google_sql_database.world.name
       }
@@ -290,11 +306,67 @@ resource "google_cloud_run_v2_service" "api" {
 
 # Unauthenticated invocations are intentional: authentication happens at the APPLICATION
 # layer (engine/auth.py verifies Firebase ID tokens on /api/reason and /api/knowledge;
-# /api/dimension is stateless and public by design). Firebase Hosting's /api/** rewrite
+# /api/dimension also verifies the Firebase token before running the taxonomy model. Firebase Hosting's /api/** rewrite
 # also requires the service to accept unauthenticated calls.
 resource "google_cloud_run_v2_service_iam_member" "invoker" {
   name     = google_cloud_run_v2_service.api.name
   location = google_cloud_run_v2_service.api.location
   role     = "roles/run.invoker"
   member   = "allUsers"
+}
+
+# RTDB has no native TTL. When trace streaming is enabled, run the same immutable engine image
+# as a small scheduled job so expired trace payloads are deleted with Firebase Admin credentials.
+resource "google_cloud_run_v2_job" "trace_cleanup" {
+  count    = var.rtdb_url != "" ? 1 : 0
+  name     = "${var.service_name}-trace-cleanup"
+  location = var.region
+
+  template {
+    template {
+      service_account = google_service_account.run.email
+      timeout         = "900s"
+
+      containers {
+        image   = local.image
+        command = ["python", "-m", "engine.trace_cleanup"]
+        env {
+          name  = "RTDB_URL"
+          value = var.rtdb_url
+        }
+        env {
+          name  = "RTDB_TRACE_RETENTION_DAYS"
+          value = tostring(var.rtdb_trace_retention_days)
+        }
+      }
+    }
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "trace_cleanup_invoker" {
+  count    = var.rtdb_url != "" ? 1 : 0
+  name     = google_cloud_run_v2_job.trace_cleanup[0].name
+  location = google_cloud_run_v2_job.trace_cleanup[0].location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.run.email}"
+}
+
+resource "google_cloud_scheduler_job" "trace_cleanup" {
+  count     = var.rtdb_url != "" ? 1 : 0
+  name      = "${var.service_name}-trace-cleanup"
+  region    = var.region
+  schedule  = "17 3 * * *"
+  time_zone = "Etc/UTC"
+
+  http_target {
+    uri         = "https://run.googleapis.com/apis/run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.trace_cleanup[0].name}:run"
+    http_method = "POST"
+    oauth_token {
+      service_account_email = google_service_account.run.email
+    }
+  }
+
+  depends_on = [google_cloud_run_v2_job_iam_member.trace_cleanup_invoker]
 }

@@ -57,10 +57,11 @@ jobs indexed to that conversation. Delete-all removes the verified Firebase user
 `/runs/{uid}` subtree. A configured RTDB deletion failure aborts the operation rather than
 reporting privacy deletion as successful.
 
-Automatic age-based trace retention is not yet implemented. Operators must keep RTDB disabled for
-customer data until a short retention TTL/cleanup job is deployed and verified, or document and
-enforce an equivalent external retention control. Traces written by older deployments before the
-conversation index was added may require one-time cleanup.
+When RTDB is enabled, new trace jobs carry a seven-day expiry by default
+(`RTDB_TRACE_RETENTION_DAYS`, bounded to 1–365 days). The Terraform deployment creates a
+Cloud Run cleanup job and a daily Cloud Scheduler trigger; deployments managed outside Terraform
+must run `python -m engine.trace_cleanup` with Firebase Admin credentials on the same cadence.
+Older traces without expiry metadata require a one-time operator cleanup.
 
 Deleting a Firebase account is not currently an application-level request to erase PostgreSQL or
 RTDB data. A hosted operator must implement and test that workflow before claiming account

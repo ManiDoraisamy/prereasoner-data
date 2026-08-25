@@ -46,7 +46,7 @@ browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run 
 
 ### 1. Build + push the engine image
 
-Terraform consumes an image tag; it does not build. From the repo root:
+Terraform consumes an immutable image digest; it does not build. From the repo root:
 
 ```bash
 gcloud services enable cloudbuild.googleapis.com artifactregistry.googleapis.com
@@ -74,14 +74,16 @@ cd infra
 terraform init
 terraform apply -var project_id=<PROJECT> \
   -var image=<region>-docker.pkg.dev/<project>/<repo>/engine@sha256:<digest> \
-  -var rtdb_url=https://<project>-default-rtdb.firebaseio.com   # omit to disable streaming
+  -var rtdb_url=https://<project>-default-rtdb.firebaseio.com \
+  -var rtdb_trace_retention_days=7                         # omit rtdb_url to disable streaming
 ```
 
-Outputs: `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`, and
-`chat_url` (`null` while the optional orchestrator is disabled).
+Outputs: `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`, and the
+serving-role secret. The separately managed optional chat service has no Terraform output.
 
 The service will deploy but return errors on `/api/reason`/`/api/knowledge` until the
-database is seeded (next step) — `/healthz` and `/api/dimension` work immediately.
+database is seeded (next step). `/healthz` works immediately; `/api/dimension` also requires
+the caller's Firebase ID token.
 
 ### 3. Seed the world database (one-time, ~15–45 min)
 
@@ -116,21 +118,21 @@ easier to babysit interactively.
 
 ### 3a. Optional chat orchestrator
 
-The engine does not require an Anthropic key. Provision the optional orchestrator key out of band
-so its value never enters Terraform configuration or state, then build the image and opt in:
+The engine does not require an Anthropic key. The current Terraform module manages the engine only;
+deploy the optional chat service separately so its secret never enters Terraform state:
 
 ```bash
 gcloud secrets create prereasoner-chat-anthropic-key --replication-policy=automatic
 printf '%s' "$ANTHROPIC_API_KEY" | \
   gcloud secrets versions add prereasoner-chat-anthropic-key --data-file=-
 gcloud builds submit --config cloudbuild.orchestrator.yaml
-cd infra
-terraform apply -var project_id=<PROJECT> -var enable_orchestrator=true \
-  -var image=<engine-image@sha256:digest> -var chat_image=<chat-image@sha256:digest> \
-  -var anthropic_secret_id=prereasoner-chat-anthropic-key
+gcloud run deploy prereasoner-chat --region us-central1 \
+  --image <chat-image@sha256:digest> --allow-unauthenticated \
+  --set-env-vars APP_ENV=production,ENGINE_BASE_URL=<engine-service-url>,EXTERNAL_LLM_ENABLED=false \
+  --set-secrets ANTHROPIC_API_KEY=prereasoner-chat-anthropic-key:latest
 ```
 
-Create the Secret Manager secret itself first if it does not exist. The chat API still requires
+Grant the chat service account access to the secret before deployment. The chat API still requires
 the authenticated request's literal `external_llm_consent: true`; do not enable the hosting route
 until the UI presents the disclosure in `PRIVACY.md` and captures that consent.
 
@@ -151,8 +153,9 @@ firebase deploy --only hosting,database    # hosting + RTDB security rules
 URL=$(cd infra && terraform output -raw service_url)
 curl "$URL/healthz"          # {"ok": true, ...} once models are loaded
 curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
+     -H "Authorization: Bearer $FIREBASE_ID_TOKEN" \
      -d '{"data": "Paris", "mode": "analyze"}'
-# /api/reason & /api/knowledge need a Firebase ID token — use the hosted web UI.
+# /api/reason, /api/knowledge, and /api/dimension need a Firebase ID token.
 ```
 
 ## 6. Least-privilege serving + enrichment activation

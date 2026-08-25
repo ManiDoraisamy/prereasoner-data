@@ -22,7 +22,9 @@ Identity is transport context, never a tool argument chosen by the model. The or
 Firebase bearer token and passes it to the engine through the MCP subprocess environment. The engine performs its own
 verification and conversation ownership checks.
 
-Local tests can use the engine's `AUTH_TEST_SUB` bypass. Production refuses that bypass on Cloud Run.
+Local tests can use the engine's `AUTH_TEST_SUB` bypass only with `APP_ENV=development` or `APP_ENV=test`.
+Production defaults to fail-closed. `/api/dimension` is authenticated too; the MCP subprocess forwards the
+verified bearer token through `ENGINE_BEARER_TOKEN` rather than treating “stateless” as public.
 
 ## Tool Outcomes
 
@@ -54,5 +56,9 @@ Start the engine, then provide `ANTHROPIC_API_KEY` and run the orchestrator serv
 python -m tests.test_mcp
 python -m tests.test_orchestrator
 ```
+
+The exact chat image also runs `python -m mcp_server.healthcheck` during its Docker build. That check
+spawns the real stdio server, completes MCP `initialize`, and verifies both published tools; an import-only
+test is insufficient because the server is a child process in production.
 
 The MCP adapter adds no model artifacts, training pipeline, database schema, or persistent state.

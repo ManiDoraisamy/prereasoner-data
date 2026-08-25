@@ -9,7 +9,7 @@ the modules, the env-var contract, and the data files the serving path opens.
 
 | module | classes / responsibility |
 |---|---|
-| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (stateless, own `DIM_LOCK`), `POST /api/converse` (Sonnet fallback/present), `GET /healthz`. CORS + MAX_BODY(10MB)/MAX_SHEETS(8)/MAX_ROWS(5000). |
+| `server.py` | ONE ThreadingHTTPServer. `POST /api/reason`, `POST /api/knowledge` (Firebase auth + RTDB streaming, shared `KnowledgeReasoner` + shared `WORLD_LOCK`), `POST /api/dimension` (authenticated stateless readout, own `DIM_LOCK`), `POST /api/converse` (Sonnet fallback/present), `GET /healthz`. Exact-origin CORS, body/rate/row limits. |
 | `auth.py` | `_verify_principal`, `_bearer` (security-critical). Test bypass via `AUTH_TEST_SUB`. |
 | `config.py` | the ONE env-var reader (see contract below). |
 | `tables.py` | `TableQuery`; canonical `table_name`, `csv_table` / `table_from_rows`, SQL quoting and table parsing. `TableQuery.__init__` defers encoder loading (the encoder overlay supplies the model at serve time). |

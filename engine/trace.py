@@ -9,7 +9,9 @@ to the full-JSON HTTP response.
 """
 from __future__ import annotations
 
-from engine.config import RTDB_URL
+import time
+
+from engine.config import RTDB_URL, rtdb_trace_retention_days
 
 _NOOP = lambda *a, **k: None
 
@@ -40,6 +42,15 @@ def emitter(uid, job_id):
         print(f"[trace] RTDB unavailable, streaming disabled: {e}", flush=True)
         return _NOOP
 
+    created_at = time.time()
+    try:
+        db.reference(base).update({
+            "created_at": created_at,
+            "expires_at": created_at + (rtdb_trace_retention_days() * 86400),
+        })
+    except Exception as e:                           # noqa: BLE001 — streaming is best-effort
+        print(f"[trace] trace metadata write failed: {e}", flush=True)
+
     def emit(node, value, merge=False):
         try:
             ref = db.reference(f"{base}/{node}" if node else base)
@@ -47,6 +58,42 @@ def emitter(uid, job_id):
         except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
             print(f"[trace] emit({node!r}) failed: {e}", flush=True)
     return emit
+
+
+def cleanup_expired_traces(uid=None, *, now=None, max_jobs=2000):
+    """Delete RTDB trace jobs past their explicit expiry timestamp.
+
+    The cleanup job runs with Firebase Admin credentials.  ``shallow=True`` keeps the
+    scan bounded to keys; individual metadata reads avoid downloading trace payloads.
+    """
+    if not RTDB_URL:
+        return 0
+    ensure_app()
+    from firebase_admin import db
+    now = time.time() if now is None else float(now)
+    root = db.reference("runs")
+    user_keys = [str(uid)] if uid else list((root.get(shallow=True) or {}).keys())
+    deleted = 0
+    for user_id in user_keys:
+        user_ref = root.child(user_id)
+        job_keys = list((user_ref.get(shallow=True) or {}).keys())
+        for job_id in job_keys[:max_jobs - deleted]:
+            job_ref = user_ref.child(str(job_id))
+            expiry = job_ref.child("expires_at").get()
+            if expiry is None:
+                created = job_ref.child("created_at").get()
+                expiry = (float(created) + rtdb_trace_retention_days() * 86400
+                          if created is not None else None)
+            try:
+                expired = expiry is not None and float(expiry) <= now
+            except (TypeError, ValueError):
+                expired = False
+            if expired:
+                job_ref.delete()
+                deleted += 1
+        if deleted >= max_jobs:
+            break
+    return deleted
 
 
 def delete_traces(uid, conversation_id=None):

@@ -11,7 +11,7 @@
 
 steps:
   - id: test
-    name: python:3.11
+    name: python:3.11@sha256:a8677eb08a56d04e75df938f9d2af3d50c0f0fba17af8eb9c8e41b65fa32938d
     entrypoint: bash
     args:
       - -c

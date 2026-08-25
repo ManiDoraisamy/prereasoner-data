@@ -10,12 +10,16 @@ Follows the repo's hand-rolled P/F convention (tests/README.md) — no pytest.
 """
 from __future__ import annotations
 
+import asyncio
+import os
 import sys
 import threading
 from http.server import ThreadingHTTPServer
 
 from tests.stub_engine import H
 from mcp_server import engine_client
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
 
 P = 0
 F = 0
@@ -112,6 +116,29 @@ def test_mcp_server_module_imports():
        "mcp_server.server exposes its server object after import")
 
 
+async def _stdio_handshake():
+    env = dict(os.environ)
+    env["PYTHONPATH"] = os.getcwd() + os.pathsep + env.get("PYTHONPATH", "")
+    params = StdioServerParameters(command=sys.executable, args=["-m", "mcp_server.server"],
+                                   env=env, cwd=os.getcwd())
+    async with stdio_client(params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+            result = await session.list_tools()
+            return {tool.name for tool in (getattr(result, "tools", None) or [])}
+
+
+def test_mcp_stdio_handshake():
+    """Exercise the same child-process initialize/list_tools path used by /chat."""
+    try:
+        names = asyncio.run(_stdio_handshake())
+    except Exception as exc:  # noqa: BLE001
+        ok(False, f"MCP stdio handshake: {type(exc).__name__}: {exc}")
+        return
+    ok({"prereasoner_query", "prereasoner_describe"}.issubset(names),
+       "MCP stdio handshake exposes both tools")
+
+
 def main():
     port = 8811
     srv = _start_stub(port)
@@ -119,6 +146,7 @@ def main():
     try:
         test_shape()
         test_mcp_server_module_imports()
+        test_mcp_stdio_handshake()
         test_integration(base)
     finally:
         srv.shutdown()

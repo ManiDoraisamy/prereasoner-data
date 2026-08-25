@@ -18,7 +18,7 @@ shells over the shared workbook (`lib/workbook.js`); `index.html` is the home/de
 `sheets.html` is the Google Sheets import flow.
 
 `/api/dimension` is exposed by the backend but no kept page calls it (it is used programmatically /
-for the dimension model directly).
+for the dimension model directly). It requires the same verified Firebase token as the reasoning routes.
 
 ## Endpoints
 

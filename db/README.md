@@ -166,6 +166,7 @@ python -m db.sync.sources.cldr.sync
 python -m db.sync.sources.google_libphonenumber.sync
 python -m db.sync.sources.geonames.sync
 python -m db.sync.sources.ecb.sync
+python -m db.sync.build_exchange_rate       # project the active ECB release into knowledgebase.exchange_rate
 python -m db.sync.sources.ec_tedb.sync --situation-on 2026-08-17
 python -m db.sync.sources.nager_date.sync --year-start 2025 --year-end 2027
 python -m db.sync.sources.cdc.sync
@@ -191,6 +192,11 @@ does not claim compiled timezone transitions. The CLDR sync fully materializes i
 territory, currency, unit, and localized territory/currency display structures into 14 data
 tables across every locale file; it does not mirror unrelated CLDR calendars, collation,
 annotations, or numbering data.
+
+The ECB synchronizer owns the immutable source history in `ecb.exchange_rate`; the projection
+builder is a separate idempotent step because `knowledgebase."exchange_rate"` is also created
+by `db/init.sql`. It adds missing `rate_to_<currency>` columns before each rebuild, so a fresh
+bootstrap and a rerun use the same migration-safe path.
 
 Source schema migrations are checksummed in each source's `schema_migration` table and run
 independently of source downloads. The runner skips absent source schemas, takes a

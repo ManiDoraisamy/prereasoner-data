@@ -147,6 +147,7 @@ python -m db.sync.sources.cldr.sync
 python -m db.sync.sources.google_libphonenumber.sync
 python -m db.sync.sources.geonames.sync
 python -m db.sync.sources.ecb.sync
+python -m db.sync.build_exchange_rate       # build the joinable daily cross-rate projection
 python -m db.sync.sources.ec_tedb.sync --situation-on 2026-08-17
 python -m db.sync.sources.nager_date.sync --year-start 2025 --year-end 2027
 python -m db.sync.sources.cdc.sync
@@ -177,5 +178,7 @@ creating a schema.
 - NLM form records retain `is_copyrighted` and `no_render_allowed`; availability in the API
   is not blanket permission to render or redistribute every assessment.
 
-None of these active tables is planner-visible yet. Runtime selection, explicit key edges,
+The ECB source history is not itself the serving projection: run `db.sync.build_exchange_rate`
+after the source sync to materialize the joinable `knowledgebase."exchange_rate"` columns.
+None of these other active source tables is planner-visible yet. Runtime selection, explicit key edges,
 snapshot pinning in execution manifests, and production evaluation remain separate work.

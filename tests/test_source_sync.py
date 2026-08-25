@@ -28,6 +28,7 @@ from db.sync.sources.nager_date.sync import parse_snapshot as parse_nager
 from db.sync.sources.nlm_cde.sync import parse_snapshot as parse_nlm
 from db.sync.sources.loinc.sync import parse_archive as parse_loinc
 from db.sync.sources.who.sync import parse_snapshot as parse_who
+from db.sync.build_exchange_rate import ensure_rate_columns, rate_column_name
 from db.sync.migrations import MIGRATIONS, latest_schema_version
 from db.sync._conn import _connection_kwargs
 from db.sync.releases import activate_validated_release
@@ -153,6 +154,30 @@ def test_ecb_parser_expands_non_missing_rates_only():
         ("2026-01-02", "JPY", Decimal("180")),
         ("2026-01-01", "JPY", Decimal("179")),
     )
+
+
+class _RecordingCursor:
+    def __init__(self):
+        self.statements = []
+
+    def execute(self, statement, params=None):
+        self.statements.append(str(statement))
+
+
+def test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert():
+    cursor = _RecordingCursor()
+    columns = ensure_rate_columns(cursor, ["EUR", "USD", "JPY"])
+    assert columns == ["rate_to_eur", "rate_to_usd", "rate_to_jpy"]
+    assert "CREATE TABLE IF NOT EXISTS knowledgebase.\"exchange_rate\"" in cursor.statements[0]
+    assert cursor.statements[1:] == [
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_eur" double precision',
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_usd" double precision',
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_jpy" double precision',
+    ]
+    try:
+        rate_column_name("USD; DROP TABLE"); raise AssertionError
+    except ValueError:
+        pass
 
 
 def test_cdc_parser_preserves_hierarchy_and_metadata():
@@ -401,6 +426,7 @@ TESTS = [
     test_cldr_parser_keeps_codes_displays_temporal_rows_and_units_separate,
     test_cldr_validation_rejects_duplicate_semantic_keys,
     test_ecb_parser_expands_non_missing_rates_only,
+    test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert,
     test_cdc_parser_preserves_hierarchy_and_metadata,
     test_libphonenumber_parser_uses_calling_code_for_non_geographic_keys,
     test_geonames_parser_preserves_source_rows_and_scope,

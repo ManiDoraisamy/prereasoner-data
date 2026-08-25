@@ -15,7 +15,10 @@ Run: python -m orchestrator.server
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import TimeoutError as FutureTimeoutError
+import importlib
 import json
+import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -23,10 +26,15 @@ from pathlib import Path
 import httpx
 
 from engine import config
+from engine.request_limits import SlidingWindowLimiter, allowed_origin
 from orchestrator.orchestrator import run_chat
+from orchestrator.validation import validate_chat_request
 
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
-MAX_BODY = 12 * 1024 * 1024
+MAX_BODY = 8 * 1024 * 1024
+CHAT_TIMEOUT_SECONDS = 240
+CHAT_RATE = SlidingWindowLimiter(limit=10, window_seconds=60)
+CHAT_IN_FLIGHT = threading.BoundedSemaphore(8)
 
 # One asyncio loop in a background thread — the MCP stdio subprocess is spawned on it consistently
 # (avoids per-request loop churn and Windows non-main-thread signal issues).
@@ -43,15 +51,20 @@ class H(BaseHTTPRequestHandler):
         pass
 
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = allowed_origin(self.headers.get("Origin"), config.CORS_ORIGINS)
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype="application/json", retry_after=None):
         b = body if isinstance(body, bytes) else body.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self._cors()
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
@@ -68,6 +81,14 @@ class H(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path.rstrip("/") == "/healthz":
             self._send(200, json.dumps({"ok": True, "service": "orchestrator"}))
+        elif path.rstrip("/") == "/readyz":
+            ready = bool(os.environ.get("ANTHROPIC_API_KEY"))
+            try:
+                module = importlib.import_module("mcp_server.server")
+                ready = ready and (hasattr(module, "mcp") or hasattr(module, "main"))
+            except Exception:  # noqa: BLE001 - readiness must not expose import details
+                ready = False
+            self._send(200 if ready else 503, json.dumps({"ok": ready, "service": "orchestrator"}))
         elif path.rstrip("/") == "/config":
             # The chat UI reads this to decide sign-in: "test" => local AUTH_TEST_SUB bypass,
             # "firebase" => real Google sign-in (talking to the deployed engine).
@@ -90,18 +111,21 @@ class H(BaseHTTPRequestHandler):
     # ---------- /chat ----------
     def _chat(self):
         emit = None
+        fut = None
+        acquired = False
         try:
-            n = int(self.headers.get("Content-Length", 0))
+            n = int(self.headers.get("Content-Length", 0) or 0)
             if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}")
-            message = (req.get("message") or "").strip()
-            if not message:
-                self._send(200, json.dumps({"error": "no message"})); return
-            tables = req.get("tables") or []
-            history = req.get("history") or []
-            turn_id = (req.get("turnId") or "").strip() or None
-            conversation_id = (req.get("conversation_id") or "").strip() or None
+                self._send(413, json.dumps({"error": "payload too large"})); return
+            raw = self.rfile.read(n) if n else b"{}"
+            try:
+                req = json.loads(raw)
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._send(400, json.dumps({"error": "invalid JSON payload"})); return
+            try:
+                message, tables, history, turn_id, conversation_id = validate_chat_request(req)
+            except ValueError as exc:
+                self._send(400, json.dumps({"error": str(exc)})); return
             token = self._bearer()
             # AUTH GATE (required): run_chat drives PAID Sonnet inference on the owner's key, so demand a verified
             # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
@@ -119,6 +143,15 @@ class H(BaseHTTPRequestHandler):
                 self._send(503, json.dumps({
                     "error": "external LLM processing is disabled or this request lacks explicit consent"
                 })); return
+            key = uid or sub or self.client_address[0]
+            allowed, retry_after = CHAT_RATE.allow(key)
+            if not allowed:
+                self._send(429, json.dumps({"error": "chat rate limit exceeded"}), retry_after=retry_after)
+                return
+            if not CHAT_IN_FLIGHT.acquire(blocking=False):
+                self._send(429, json.dumps({"error": "chat capacity temporarily exhausted"}), retry_after=5)
+                return
+            acquired = True
             # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME verified uid the browser subscribes
             # to (never client-supplied). Each engine call is announced there. Best-effort; a no-op if RTDB is absent.
             if turn_id and uid:
@@ -135,15 +168,25 @@ class H(BaseHTTPRequestHandler):
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id),
                 _LOOP,
             )
-            res = fut.result(timeout=300)
+            res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)
             self._send(200, json.dumps(res))
+        except FutureTimeoutError:
+            if fut is not None:
+                fut.cancel()
+            if emit:
+                emit("error", "request timed out"); emit("status", "error")
+            self._send(504, json.dumps({"error": "chat request timed out"}))
         except Exception as e:  # noqa: BLE001
             if emit:
                 try:
-                    emit("error", str(e)); emit("status", "error")
+                    emit("error", "internal server error"); emit("status", "error")
                 except Exception:                            # noqa: BLE001
                     pass
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"orchestrator chat failed: {type(e).__name__} turn={getattr(self, 'path', '-')}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
+        finally:
+            if acquired:
+                CHAT_IN_FLIGHT.release()
 
     # ---------- /api proxy ----------
     def _proxy_api(self, method):
@@ -154,14 +197,17 @@ class H(BaseHTTPRequestHandler):
                 headers["Authorization"] = self.headers["Authorization"]
             body = None
             if method == "POST":
-                n = int(self.headers.get("Content-Length", 0))
+                n = int(self.headers.get("Content-Length", 0) or 0)
+                if n > MAX_BODY:
+                    self._send(413, json.dumps({"error": "payload too large"})); return
                 body = self.rfile.read(n) if n else None
                 headers["content-type"] = self.headers.get("content-type", "application/json")
             r = httpx.request(method, url, content=body, headers=headers, timeout=180)
             self._send(r.status_code, r.content,
                        r.headers.get("content-type", "application/json"))
         except Exception as e:  # noqa: BLE001
-            self._send(502, json.dumps({"error": f"engine proxy failed: {e}"}))
+            print(f"orchestrator engine proxy failed: {type(e).__name__}", flush=True)
+            self._send(502, json.dumps({"error": "engine proxy unavailable"}))
 
     # ---------- static ----------
     def _static(self, path):

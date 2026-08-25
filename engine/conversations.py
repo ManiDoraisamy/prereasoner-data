@@ -29,10 +29,16 @@ from engine.pg import _pg
 
 # conversation_id is also a Postgres schema name — keep it a safe, fixed-shape identifier.
 _ID_RE = re.compile(r"^c_[0-9a-f]{32}$")
+MAX_CONVERSATIONS_PER_USER = 100
+MAX_STATE_BYTES = 1 * 1024 * 1024
 
 
 class NotOwned(Exception):
     """The conversation does not exist, or is not owned by this user (we do not distinguish — no enumeration)."""
+
+
+class QuotaExceeded(ValueError):
+    """The authenticated user has reached a bounded durable-storage quota."""
 
 
 def _new_id():
@@ -74,6 +80,9 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                                 (json.dumps(_store_tables(sheets)), conversation_id))
                 conn.commit()
                 return conversation_id
+            cur.execute('SELECT count(*) FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
+            if int(cur.fetchone()[0]) >= MAX_CONVERSATIONS_PER_USER:
+                raise QuotaExceeded("conversation limit reached")
             cid = _new_id()
             cur.execute('INSERT INTO "chat"."conversation" (conversation_id, initial_prompt, tables) '
                         'VALUES (%s, %s, %s)',
@@ -201,8 +210,11 @@ def save_state(user_id, conversation_id, state):
                         (conversation_id, user_id))
             if not cur.fetchone():
                 raise NotOwned("conversation not found")       # not yours OR absent
+            encoded = json.dumps(state)
+            if len(encoded.encode("utf-8")) > MAX_STATE_BYTES:
+                raise QuotaExceeded("conversation state is too large")
             cur.execute('UPDATE "chat"."conversation" SET state = %s WHERE conversation_id = %s',
-                        (json.dumps(state), conversation_id))
+                        (encoded, conversation_id))
             conn.commit()
             return {"saved": conversation_id}
         except Exception:

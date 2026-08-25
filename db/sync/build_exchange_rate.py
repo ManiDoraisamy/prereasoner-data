@@ -25,6 +25,7 @@ Run AFTER db/sync/sources/ecb/sync.py:  python -m db.sync.build_exchange_rate
 from __future__ import annotations
 
 import datetime
+import re
 
 from psycopg2.extras import execute_values
 
@@ -35,6 +36,7 @@ except ImportError:
 
 SOURCE = "ECB euro foreign exchange reference rates"
 TABLE = 'knowledgebase."exchange_rate"'
+_CURRENCY_CODE = re.compile(r"^[A-Z]{3}$")
 
 
 def cross_rates(units_by_code: dict[str, float], codes: list[str]) -> dict[str, float | None]:
@@ -96,7 +98,6 @@ DDL = """
 CREATE TABLE IF NOT EXISTS {table} (
     currency_code text NOT NULL,
     "date"        date NOT NULL,
-    {rate_columns},
     updated_at    date NOT NULL,
     source        text NOT NULL,
     PRIMARY KEY (currency_code, "date")
@@ -104,30 +105,58 @@ CREATE TABLE IF NOT EXISTS {table} (
 """
 
 
+def rate_column_name(code: str) -> str:
+    """Return the safe projection column for one validated ISO currency code."""
+    normalized = str(code).upper()
+    if not _CURRENCY_CODE.fullmatch(normalized):
+        raise ValueError(f"invalid ECB currency code: {code!r}")
+    return f"rate_to_{normalized.lower()}"
+
+
+def ensure_rate_columns(cur, codes: list[str]) -> list[str]:
+    """Create the invariant table and add the current ECB projection columns.
+
+    ``db/init.sql`` deliberately creates the table spine so the serving schema is always
+    present.  PostgreSQL's ``CREATE TABLE IF NOT EXISTS`` does not merge a later column
+    list into that table, so the builder must perform an idempotent column migration before
+    inserting rows.  Codes are validated before they become identifiers.
+    """
+    columns = [rate_column_name(code) for code in codes]
+    cur.execute(DDL.format(table=TABLE))
+    for column in columns:
+        cur.execute(f'ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS "{column}" double precision')
+    return columns
+
+
 def main() -> int:
     connection = connect()
-    cur = connection.cursor()
-    cur.execute("""SELECT effective_date, quote_currency, units_per_eur FROM ecb.exchange_rate
-                   WHERE release_id = (SELECT MAX(release_id) FROM ecb.exchange_rate)
-                   ORDER BY effective_date""")
-    rows, codes = build_rows(cur.fetchall())
-    rate_columns = ", ".join(f'rate_to_{code.lower()} double precision' for code in codes)
-    cur.execute(DDL.format(table=TABLE, rate_columns=rate_columns))
-    cur.execute(f"TRUNCATE {TABLE}")
-    column_list = (["currency_code", '"date"']
-                   + [f"rate_to_{code.lower()}" for code in codes] + ["updated_at", "source"])
-    execute_values(
-        cur,
-        f'INSERT INTO {TABLE} ({", ".join(column_list)}) VALUES %s',
-        [(code, day, *[rates.get(target) for target in codes], source_day, SOURCE)
-         for code, day, rates, source_day in rows],
-        page_size=2000,
-    )
-    connection.commit()
-    cur.execute(f'SELECT COUNT(*), MIN("date"), MAX("date") FROM {TABLE}')
-    count, lo, hi = cur.fetchone()
-    print(f"knowledgebase.exchange_rate: {count} rows, {lo} .. {hi}, {len(codes)} codes")
-    return 0
+    try:
+        cur = connection.cursor()
+        cur.execute("""SELECT effective_date, quote_currency, units_per_eur FROM ecb.exchange_rate
+                       WHERE release_id = (SELECT MAX(release_id) FROM ecb.exchange_rate)
+                       ORDER BY effective_date""")
+        rows, codes = build_rows(cur.fetchall())
+        rate_columns = ensure_rate_columns(cur, codes)
+        cur.execute(f"TRUNCATE {TABLE}")
+        column_list = (["currency_code", '"date"'] + [f'"{column}"' for column in rate_columns]
+                       + ["updated_at", "source"])
+        execute_values(
+            cur,
+            f'INSERT INTO {TABLE} ({", ".join(column_list)}) VALUES %s',
+            [(code, day, *[rates.get(target) for target in codes], source_day, SOURCE)
+             for code, day, rates, source_day in rows],
+            page_size=2000,
+        )
+        connection.commit()
+        cur.execute(f'SELECT COUNT(*), MIN("date"), MAX("date") FROM {TABLE}')
+        count, lo, hi = cur.fetchone()
+        print(f"knowledgebase.exchange_rate: {count} rows, {lo} .. {hi}, {len(codes)} codes")
+        return 0
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 
 if __name__ == "__main__":

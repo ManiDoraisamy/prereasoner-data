@@ -74,8 +74,8 @@ the *choices* and what could/couldn't be verified on this machine.
   the world/reason paths serialize on one in-process lock, so high concurrency only
   queues behind it.
 - **Auth model:** Cloud Run allows `allUsers` invocation; authentication is application
-  level (engine/auth.py verifies Firebase ID tokens; `/api/dimension` is public by
-  design). The Hosting `/api/**` rewrite requires unauthenticated invoke anyway. The
+  level (engine/auth.py verifies Firebase ID tokens on every model endpoint, including
+  `/api/dimension`). The Hosting `/api/**` rewrite requires unauthenticated invoke anyway. The
   dedicated runtime SA gets exactly `roles/cloudsql.client`, secret accessor on the ONE
   db-password secret, and `roles/firebasedatabase.admin` (engine/trace.py streams to
   RTDB via ADC; also satisfies firebase-admin init for token verification).

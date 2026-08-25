@@ -6,7 +6,7 @@
                         (/runs/{uid}/{jobId}) when RTDB_URL is configured.
   POST /api/knowledge     — the world path (unified-encoder world joins / hybrid semantic SQL). Same auth +
                         conversation + trace contract; both routes share ONE KnowledgeReasoner instance.
-  POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, no auth).
+  POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, auth required).
   GET  /api/conversations       — the signed-in user's conversations (drawer list; ownership-scoped).
   GET  /api/conversation?id=…   — one conversation's opening prompt + stored tables (re-open).
   GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
@@ -25,14 +25,17 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from urllib.parse import urlparse, parse_qs
 
+from engine import config
 from engine.config import HOST, PORT, external_llm_enabled
 from engine.auth import _verify_principal, _bearer
 from engine.tables import csv_table, table_name
 from engine.trace import emitter, stream_final, set_ctx
 from engine.conversations import (resolve_conversation, list_conversations, get_conversation,
-                                   delete_conversation, delete_all_conversations, save_state, NotOwned)
+                                   delete_conversation, delete_all_conversations, save_state, NotOwned,
+                                   QuotaExceeded)
 from engine import master
 from engine import admin
+from engine.request_limits import SlidingWindowLimiter, allowed_origin
 
 
 def _external_llm_allowed(req):
@@ -46,6 +49,10 @@ DIM_LOCK = threading.Lock()        # one request at a time through the dimension
 MAX_BODY = 10 * 1024 * 1024
 MAX_SHEETS = 8
 MAX_ROWS = 5000
+MAX_TABLE_CHARS = 2 * 1024 * 1024
+MAX_TABLE_TOTAL_CHARS = 6 * 1024 * 1024
+WORLD_RATE = SlidingWindowLimiter(limit=30, window_seconds=60)
+DIM_RATE = SlidingWindowLimiter(limit=60, window_seconds=60)
 
 WORLD_ROUTES = ("/api/reason", "/api/knowledge")
 DIM_ROUTE = "/api/dimension"
@@ -56,14 +63,20 @@ class H(BaseHTTPRequestHandler):
         pass
 
     def _cors(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = allowed_origin(self.headers.get("Origin"), config.CORS_ORIGINS)
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype="application/json", retry_after=None):
         b = body.encode("utf-8")
         self.send_response(code); self.send_header("Content-Type", ctype)
-        self._cors(); self.send_header("Content-Length", str(len(b))); self.end_headers()
+        self._cors()
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
+        self.send_header("Content-Length", str(len(b))); self.end_headers()
         self.wfile.write(b)
 
     def do_OPTIONS(self):
@@ -103,7 +116,8 @@ class H(BaseHTTPRequestHandler):
             except NotOwned:
                 self._send(404, json.dumps({"error": "conversation not found"}))   # not yours OR absent
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"conversation lookup failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     # ---------------- master data (per-user reference tables; auth required, uid-scoped) ----------------
     def _get_master(self, qs):
@@ -120,7 +134,8 @@ class H(BaseHTTPRequestHandler):
         except ValueError as e:
             self._send(400, json.dumps({"error": str(e)}))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"master lookup failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     def _post_master(self, path):
         """POST /api/master {name, columns, rows} → create-or-replace a master table.
@@ -145,7 +160,8 @@ class H(BaseHTTPRequestHandler):
                 self._send(400, json.dumps({"error": str(e)})); return
             self._send(200, json.dumps(out))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"master write failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     def _post_conv_state(self):
         """POST /api/conversation/state {id, state} -> persist the client's renderable snapshot so a reload
@@ -162,8 +178,11 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(save_state(sub, req.get("id", ""), req.get("state"))))
             except NotOwned:
                 self._send(404, json.dumps({"error": "conversation not found"}))
+            except QuotaExceeded as exc:
+                self._send(413, json.dumps({"error": str(exc)}))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"conversation state failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     def _post_conv_delete(self, path):
         """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
@@ -182,7 +201,8 @@ class H(BaseHTTPRequestHandler):
             except NotOwned:
                 self._send(404, json.dumps({"error": "conversation not found"}))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"conversation delete failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     def do_POST(self):
         path = self.path.rstrip("/")
@@ -225,7 +245,8 @@ class H(BaseHTTPRequestHandler):
             else:
                 self._send(404, json.dumps({"error": "GET /api/admin/users | conversations[?user=] | orphans"}))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"admin read failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     def _post_admin_delete(self):
         try:
@@ -244,7 +265,8 @@ class H(BaseHTTPRequestHandler):
                 self._send(400, json.dumps({"error": "target must be conversation | user | orphans"})); return
             self._send(200, json.dumps({"ok": True, **out}))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"admin delete failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     # ---------------- /api/converse (Sonnet conversational fallback for the /reason rail) ----------------
     def _post_converse(self):
@@ -269,11 +291,12 @@ class H(BaseHTTPRequestHandler):
                                       error=req.get("error"), tables=req.get("tables"),
                                       answer=req.get("answer"), sql=req.get("sql"))
             except Exception as e:                           # noqa: BLE001 — no key / SDK / upstream: let the client fall back
-                print(f"/api/converse degraded (503): {type(e).__name__}: {e}", flush=True)  # missing key vs down vs rate-limit
-                self._send(503, json.dumps({"error": f"converse unavailable: {type(e).__name__}: {e}"})); return
+                print(f"/api/converse degraded (503): {type(e).__name__}", flush=True)
+                self._send(503, json.dumps({"error": "converse unavailable"})); return
             self._send(200, json.dumps({"reply": text}))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"/api/converse failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     # ---------------- /api/master/generate (Sonnet fills a reference table) ----------------
     def _post_master_generate(self):
@@ -303,16 +326,17 @@ class H(BaseHTTPRequestHandler):
                 out = converse.generate_master(req.get("name", "reference"), req.get("columns") or [],
                                                req.get("rows") or [], instruction=req.get("instruction"), emit=emit)
             except Exception as e:                           # noqa: BLE001 — no key / SDK / bad JSON: let the client re-enable
-                print(f"/api/master/generate degraded (503): {type(e).__name__}: {e}", flush=True)
-                emit("error", f"generate unavailable: {type(e).__name__}"); emit("status", "error")
-                self._send(503, json.dumps({"error": f"generate unavailable: {type(e).__name__}: {e}"})); return
+                print(f"/api/master/generate degraded (503): {type(e).__name__}", flush=True)
+                emit("error", "generate unavailable"); emit("status", "error")
+                self._send(503, json.dumps({"error": "generate unavailable"})); return
             emit("result", out); emit("status", "done")      # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(out))
         except Exception as e:                               # noqa: BLE001
             if emit is not None:
-                try: emit("error", str(e)); emit("status", "error")
+                try: emit("error", "internal server error"); emit("status", "error")
                 except Exception: pass                       # noqa: BLE001 — streaming is best-effort
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"/api/master/generate failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
     # ---------------- /api/reason + /api/knowledge (Firebase auth + RTDB trace stream) ----------------
     def _post_world(self):
@@ -320,20 +344,41 @@ class H(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get("Content-Length", 0))
             if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}")
+                self._send(413, json.dumps({"error": "payload too large"})); return
+            try:
+                req = json.loads(self.rfile.read(n) or b"{}")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._send(400, json.dumps({"error": "invalid JSON payload"})); return
             sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = VERIFIED user id (auth); uid = RTDB /runs key
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
                 return
+            allowed, retry_after = WORLD_RATE.allow(sub or self.client_address[0])
+            if not allowed:
+                self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
+                return
             sheets = req.get("tables")
             if isinstance(sheets, dict):
                 sheets = [sheets]
+            if sheets is not None and (not isinstance(sheets, list) or len(sheets) > MAX_SHEETS):
+                self._send(413, json.dumps({"error": "too many tables"})); return
+            total_chars = 0
+            for sheet in (sheets or []):
+                if not isinstance(sheet, dict) or not isinstance(sheet.get("data", ""), str):
+                    self._send(400, json.dumps({"error": "table data must be text"})); return
+                data_chars = len(sheet.get("data") or "")
+                total_chars += data_chars
+                if data_chars > MAX_TABLE_CHARS or total_chars > MAX_TABLE_TOTAL_CHARS:
+                    self._send(413, json.dumps({"error": "uploaded tables are too large"})); return
             if sheets:
                 tabs = [csv_table(s["data"], table_name(s.get("name"), i))
                         for i, s in enumerate(sheets[:MAX_SHEETS]) if isinstance(s, dict) and (s.get("data") or "").strip()]
             else:
                 data = req.get("data", "")
+                if not isinstance(data, str):
+                    self._send(400, json.dumps({"error": "CSV data must be text"})); return
+                if len(data) > MAX_TABLE_CHARS:
+                    self._send(413, json.dumps({"error": "uploaded table is too large"})); return
                 if not data.strip():
                     self._send(200, json.dumps({"error": "no CSV (need {tables:[…], question})"})); return
                 tabs = [csv_table(data, table_name(req.get("table", "data"), 0))]
@@ -365,6 +410,8 @@ class H(BaseHTTPRequestHandler):
             except NotOwned:
                 # 404 (not 403) to match GET /api/conversation — "not yours" and "absent" look identical (no enumeration).
                 self._send(404, json.dumps({"error": "conversation not found"})); return
+            except QuotaExceeded as exc:
+                self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
             emit = emitter(uid, req.get("jobId"))            # RTDB key = the Firebase uid (== browser auth.uid); no-op if no jobId
             emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
             emit("status", "running")
@@ -399,21 +446,32 @@ class H(BaseHTTPRequestHandler):
         except Exception as e:                           # noqa: BLE001
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error
                 try:
-                    emit("error", str(e)); emit("status", "error")
+                    emit("error", "internal server error"); emit("status", "error")
                 except Exception:                        # noqa: BLE001
                     pass
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"world request failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
-    # ---------------- /api/dimension (stateless, no auth) ----------------
+    # ---------------- /api/dimension (stateless, authenticated) ----------------
     def _post_dimension(self):
         try:
             n = int(self.headers.get("Content-Length", 0))
             if n > MAX_BODY:
-                self._send(200, json.dumps({"error": "payload too large"})); return
-            req = json.loads(self.rfile.read(n) or b"{}")
+                self._send(413, json.dumps({"error": "payload too large"})); return
+            try:
+                req = json.loads(self.rfile.read(n) or b"{}")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._send(400, json.dumps({"error": "invalid JSON payload"})); return
+            sub, _uid = _verify_principal(_bearer(self.headers, None))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            allowed, retry_after = DIM_RATE.allow(sub or self.client_address[0])
+            if not allowed:
+                self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
+                return
             data = req.get("data", "")
             if not data.strip():
-                self._send(200, json.dumps({"error": "no CSV (need {data, mode:'analyze'})"})); return
+                self._send(400, json.dumps({"error": "no CSV (need {data, mode:'analyze'})"})); return
             tbl = csv_table(data, table_name(req.get("table", "data"), 0))
             if len(tbl["rows"]) > MAX_ROWS:
                 tbl["rows"] = tbl["rows"][:MAX_ROWS]
@@ -421,7 +479,8 @@ class H(BaseHTTPRequestHandler):
                 res = DIM_MODEL.analyze(tbl)
             self._send(200, json.dumps(res))
         except Exception as e:                               # noqa: BLE001
-            self._send(500, json.dumps({"error": str(e)}))
+            print(f"dimension request failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
 
 
 def main():

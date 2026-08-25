@@ -15,7 +15,7 @@
 # and exits with a clear, actionable message. See engine/data/README.md.
 
 # ---------- builder: resolve + install the full serving stack ----------
-FROM python:3.11-slim AS builder
+FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76 AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -56,7 +56,7 @@ for mid, revision in models:
 PY
 
 # ---------- runtime ----------
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -87,6 +87,10 @@ COPY <<'EOF' /app/entrypoint.sh
 #!/bin/sh
 set -e
 DATA_DIR="${PREREASONER_DATA_DIR:-/app/engine/data}"
+# The retention job uses Firebase Admin only; it must not load or require the multi-GB model bundle.
+if [ "$1" = "python" ] && [ "$2" = "-m" ] && [ "$3" = "engine.trace_cleanup" ]; then
+    exec "$@"
+fi
 missing=""
 for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora schema_property_head.pt; do
     [ -e "$DATA_DIR/$f" ] || missing="$missing $f"

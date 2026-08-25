@@ -1,13 +1,13 @@
 # The Sonnet orchestrator + the PreReasoner MCP server (they ship in one image; the orchestrator spawns
 # the MCP server as a stdio subprocess). Kept OUT of the engine's requirements.txt so the heavy model
 # image stays lean (docs/MCP.md).
-anthropic>=0.69
+anthropic>=0.69,<1
 # UPPER BOUND IS LOAD-BEARING: mcp 2.0 moved mcp.server.fastmcp, so an unpinned rebuild
 # resolved 2.0.0 and every /chat turn died with ModuleNotFoundError at MCP-subprocess spawn.
 # The image built weeks earlier had pinned nothing and merely got lucky with the then-current 1.x.
-mcp>=1.2,<2
-httpx>=0.27
+mcp==1.29.1
+httpx>=0.27,<1
 # firebase-admin: verify the caller's Firebase token to derive the uid for the LIVE trace stream, and write
 # the turn's RTDB nodes (/runs/{uid}/{turnId}). Optional at runtime — absent/misconfigured => the orchestrator
 # degrades to the non-streaming HTTP response (the browser renders the trace from the /chat body instead).
-firebase-admin>=6.5
+firebase-admin>=6.5,<7

@@ -46,15 +46,17 @@ deployment. The source and deterministic non-model test path are reproducible to
 - **Reproducible model release:** not yet. The default weight repository is private, and the stable
   unified-router checkpoint lacks complete machine-readable training-corpus, split, seed, and metric
   provenance. See `MODEL_CARD.md`.
-- **Production launch:** not established by a source release. It additionally requires an immutable
-  container image, non-superuser database serving, protected state and backups, restricted browser
-  keys, live auth/isolation tests, and a release-database regression run.
+- **Production launch:** not established by a source release. It additionally requires the private model
+  bundle, an immutable tested image, non-superuser database serving, protected state and backups,
+  restricted browser keys, live auth/isolation tests, and a release-database regression run.
 
-Current launch status is **no-go**. External LLM calls are now disabled unless deployment opt-in and
-per-request consent are both present, and Terraform no longer permits superuser serving. Remaining
-release gates include a user-facing privacy/consent flow if LLM features are enabled, automatic
-RTDB trace retention, resolution of Spider-derived redistribution, immutable dependency/image/base
-model pins, externally verified browser-key restrictions, backups, and live isolation tests.
+The source tree is ready for an open-source code release, but a hosted launch remains conditional.
+External LLM calls are disabled unless deployment opt-in and per-request consent are both present,
+Terraform uses a non-superuser serving role, Cloud SQL backups/PITR are configured, and RTDB cleanup
+is provisioned when trace streaming is enabled. Remaining launch gates are external or deployment-
+specific: publish or provision the private model bundle, resolve Spider-derived redistribution,
+verify browser-key restrictions, run live auth/isolation tests against the restored state, and record
+a seeded release-database regression.
 
 Schema.org should be described as the semantic shell. Wikidata and publisher datasets supply
 training observations and runtime facts under their own terms; Wikidata is not the primary ontology.
@@ -70,7 +72,7 @@ trained primarily from mapped Wikidata observations. Do not merge those claims.
    seeded release database. A public checkout without that database must record this gate as skipped.
 5. For planner changes, run a fresh provenance-bearing Spider `whole_db` evaluation and compare per-example losses.
 6. Run `terraform -chdir=infra fmt -check`, `terraform -chdir=infra init -backend=false`, and `terraform -chdir=infra validate`.
-7. Build both containers. The chat image is optional; the engine must build and start without an Anthropic key.
+7. Build both containers. The chat image is optional; its build must pass the real MCP stdio handshake.
 8. Scan tracked files and history for credentials, customer data, database dumps, model binaries, local state, and generated checkpoints.
 9. Review `THIRD_PARTY.md`, source-specific licenses, `MODEL_CARD.md`, `DATA_CARD.md`,
    `SECURITY.md`, and `CITATION.cff`.
@@ -78,7 +80,7 @@ trained primarily from mapped Wikidata observations. Do not merge those claims.
 11. Provision weights into an empty directory with `python -m engine.fetch_weights` and verify every
     external and committed artifact against `weights_manifest.json`.
 12. Confirm Cloud Run serves through a non-superuser database role and deploy an image by digest,
-    not the mutable `latest` tag.
+    not the mutable `latest` tag. If RTDB is enabled, confirm the cleanup job is scheduled.
 
 ## Deployment Boundary
 

@@ -112,13 +112,18 @@ def call_query(question: str, tables: list[dict], job_id: str | None = None,
 
 
 def call_describe(tables: list[dict], *, base_url: str | None = None,
+                  token: str | None = None,
                   timeout: float | None = None) -> dict[str, Any]:
-    """Per-table coverage hint via the engine's stateless /api/dimension (no auth).
+    """Per-table coverage hint via the engine's stateless /api/dimension.
 
     Honest scope limit (docs/MCP.md): this reports what the model TYPES each column as, not which cells
     actually resolved to world entities. Returns one readout per table.
     """
     base = (base_url or _engine_base_url()).rstrip("/")
+    tok = token if token is not None else _bearer_token()
+    headers = {"content-type": "application/json"}
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
     out: list[dict[str, Any]] = []
     for t in tables or []:
         name = t.get("name") or "data"
@@ -128,6 +133,7 @@ def call_describe(tables: list[dict], *, base_url: str | None = None,
         try:
             r = httpx.post(f"{base}/api/dimension",
                            json={"data": data, "table": name, "mode": "analyze"},
+                           headers=headers,
                            timeout=timeout or DEFAULT_TIMEOUT)
             j = r.json()
         except (httpx.HTTPError, ValueError) as e:

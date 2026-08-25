@@ -44,9 +44,26 @@ variable "db_tier" {
 }
 
 variable "rtdb_url" {
-  description = "Firebase Realtime Database URL for live reasoning-trace streaming (e.g. https://<project>-default-rtdb.firebaseio.com). Empty = streaming disabled; responses still carry full JSON."
+  description = "Firebase Realtime Database URL for live trace streaming. Empty disables streaming; when set, Terraform also creates the scheduled retention cleanup job."
   type        = string
   default     = ""
+}
+
+variable "cors_origins" {
+  description = "Comma-separated exact browser origins allowed to call the engine. Empty keeps the API same-origin only."
+  type        = string
+  default     = ""
+}
+
+variable "rtdb_trace_retention_days" {
+  description = "Days before RTDB reasoning traces are removed by the scheduled cleanup job."
+  type        = number
+  default     = 7
+
+  validation {
+    condition     = var.rtdb_trace_retention_days >= 1 && var.rtdb_trace_retention_days <= 365 && floor(var.rtdb_trace_retention_days) == var.rtdb_trace_retention_days
+    error_message = "rtdb_trace_retention_days must be a whole number from 1 through 365."
+  }
 }
 
 variable "serving_db_role" {

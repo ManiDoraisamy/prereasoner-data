@@ -6,7 +6,7 @@
 #
 # Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
 # Run:    docker run -p 8090:8090 -e ANTHROPIC_API_KEY=... -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
-FROM python:3.11-slim
+FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
@@ -25,9 +25,12 @@ RUN mkdir -p /app/engine
 # model_revisions is a constants-only module engine.config imports at module load; omitting it is a
 # BOOT failure (ModuleNotFoundError at container start), which the build's test step cannot catch
 # because it runs from the full repo tree, not from this image.
-COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py engine/model_revisions.py /app/engine/
+COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py engine/request_limits.py engine/model_revisions.py /app/engine/
 COPY mcp_server/ /app/mcp_server/
 COPY orchestrator/ /app/orchestrator/
+
+# Validate the exact final image, including its installed dependency set and stdio child process.
+RUN python -m mcp_server.healthcheck
 
 # Cloud Run injects PORT; the orchestrator binds ORCH_PORT. Map them so the container obeys Cloud Run.
 ENV ORCH_HOST=0.0.0.0 ORCH_PORT=8090
