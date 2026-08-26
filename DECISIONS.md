@@ -90,6 +90,21 @@ Postgres works (set `require` for Cloud SQL public IP), and trace streaming is a
 when `RTDB_URL` is unset (the frontend already falls back to full-JSON responses), so the
 system runs without any Firebase RTDB at all.
 
+## Currency is knowledgebase data, not an uploaded sheet
+
+All knowledgebase data is temporal; only the sync frequency differs (ECB rates daily, city
+population yearly). The join is always the one three-way shape — conversation schema + tenant
+schema + knowledgebase tables — so exchange rates are a world table
+(`knowledgebase."exchange_rate"`, built by `db/sync/build_exchange_rate.py` from the pinned ECB
+release), joined by value on `(currency_code, date)` for dated fact tables and pinned to `as_of`
+for undated ones. No attach/enrichment side-channel exists, and no rate-date policy question is
+asked: the join keys decide. An uploaded rate sheet wins where it overlaps but cannot veto
+knowledge it does not cover. The projection carries each active series forward a bounded
+`CARRY_FORWARD_DAYS` past today (the weekend rule generalized to holidays and sync lag);
+past the bound the coverage check declines rather than converting at an arbitrarily old rate,
+and `updated_at` always keeps the true publication date. The `ecb-rates-refresh` Cloud Run job
+rebuilds the projection daily from the same immutable engine image the service runs.
+
 ## The database contract is now explicit
 
 The world database schema had accreted across generations of setup scripts; no single file

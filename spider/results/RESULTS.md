@@ -104,6 +104,15 @@ bundle. This is the expected outcome rather than a lucky one: the additions are 
 none of the new modules, and the changed engine files delete no decision logic (the family-consensus, abstain,
 and grounding boundaries are untouched). The new head is **not** part of the promoted bundle.
 
+## calc_20260824 — typed-calculation registry lands, planner unchanged
+
+`whole_db`, 1034 dev examples, serving_top1, max-candidates 25, commit `c9d96ce` era
+(calculations registry + grain verification + consent UI in tree): **strict 359 (34.7%),
+lenient 453 (43.8%), scalar 224/408 (54.9%)** — bit-identical to the deployment-hardening
+baseline on every tier, routed `{'ast': 1034}` unchanged. The calculation admissibility layer
+is provably inert on Spider: 0/1034 dev questions parse a directional currency target, so
+`requirements_for`/`assess_calculations` never fire. Raw: `calc_20260824/whole_db/`.
+
 ## Historical
 
 Earlier diagnostics for the **retired** slot-filler + compose-routing era (the "13.5% strict", the tier-1/
