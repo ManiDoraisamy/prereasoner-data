@@ -193,7 +193,7 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.run.email
 
     scaling {
-      min_instance_count = 0 # scale to zero — cold starts (~model load) traded for cost
+      min_instance_count = var.min_instances # default 1: see the variable — cold start is ~96s
       max_instance_count = 3
     }
 
@@ -213,13 +213,14 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
-      # Sizing: the Qwen2.5-0.5B base + LoRA + relational readout + spaCy en_core_web_md
-      # sit at ~1.5-2 GB resident after load; 4Gi leaves headroom for request-time tensors
-      # and the 10 MB request bodies. 2 vCPU keeps CPU inference latency tolerable.
+      # Sizing: the production instance runs 4 vCPU / 8Gi. The two model stacks (world reasoner +
+      # dimension) sit at ~2-3 GB resident and load CPU-bound in ~96s on 4 vCPU — halving the CPU
+      # roughly doubles that, and 8Gi keeps headroom for request-time tensors, 10 MB bodies, and
+      # the in-memory SQLite copies of uploaded sheets.
       resources {
         limits = {
-          cpu    = "2"
-          memory = "4Gi"
+          cpu    = "4"
+          memory = "8Gi"
         }
         startup_cpu_boost = true # model load is CPU-bound; boost cuts cold-start time
       }
@@ -241,6 +242,10 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "APP_ENV"
         value = "production"
+      }
+      env {
+        name  = "EXTERNAL_LLM_ENABLED" # deployment half of the consent gate (PRIVACY.md); the
+        value = "true"                 # per-request half is the client's external_llm_consent
       }
       env {
         name  = "CORS_ORIGINS"
@@ -370,4 +375,102 @@ resource "google_cloud_scheduler_job" "trace_cleanup" {
   }
 
   depends_on = [google_cloud_run_v2_job_iam_member.trace_cleanup_invoker]
+}
+
+# ---------- Scheduled ECB rates refresh ----------
+# The exchange-rate world table is only correct for CARRY_FORWARD_DAYS past its last build
+# (db/sync/build_exchange_rate.py), so it is rebuilt daily from the SAME immutable engine image
+# the service runs — data pipeline and serving code are one artifact. 16:30 UTC is safely after
+# the ECB's ~16:00 CET reference-rate publication in both DST regimes. Live since 2026-08-26
+# (created imperatively first; this block codifies it).
+
+resource "google_cloud_run_v2_job" "ecb_rates_refresh" {
+  name                = "ecb-rates-refresh"
+  location            = var.region
+  deletion_protection = false # stateless projection rebuild; the source ledger is the durable record
+
+  template {
+    template {
+      service_account = google_service_account.run.email
+      timeout         = "1800s"
+      max_retries     = 1
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.world.connection_name]
+        }
+      }
+
+      containers {
+        image   = local.image
+        command = ["bash", "-c", "python -m db.sync.sources.ecb.sync && python -m db.sync.build_exchange_rate"]
+
+        resources {
+          limits = {
+            cpu    = "1"
+            memory = "2Gi"
+          }
+        }
+
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        env {
+          name  = "KB_PG_HOST"
+          value = "/cloudsql/${google_sql_database_instance.world.connection_name}"
+        }
+        env {
+          name  = "KB_PG_DB"
+          value = google_sql_database.world.name
+        }
+        # The sync needs DDL + TRUNCATE on its own schemas (ecb, knowledgebase.exchange_rate),
+        # which the least-privilege serving role deliberately lacks; db/sync/_conn.py honors
+        # SYNC_PG_* overrides, so the job authenticates as the admin role.
+        env {
+          name  = "SYNC_PG_USER"
+          value = "postgres"
+        }
+        env {
+          name = "SYNC_PG_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.db_password.secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [google_secret_manager_secret_version.db_password]
+}
+
+resource "google_cloud_scheduler_job" "ecb_rates_refresh" {
+  name      = "ecb-rates-refresh-daily"
+  region    = var.region
+  schedule  = "30 16 * * *"
+  time_zone = "Etc/UTC"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.ecb_rates_refresh.name}:run"
+
+    oauth_token {
+      service_account_email = google_service_account.run.email
+      scope                 = "https://www.googleapis.com/auth/cloud-platform"
+    }
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_cloud_run_v2_job_iam_member" "ecb_rates_refresh_invoker" {
+  name     = google_cloud_run_v2_job.ecb_rates_refresh.name
+  location = google_cloud_run_v2_job.ecb_rates_refresh.location
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_service_account.run.email}"
 }

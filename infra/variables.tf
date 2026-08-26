@@ -112,3 +112,19 @@ variable "enrichment_active_datasets" {
   type        = string
   default     = ""
 }
+
+variable "min_instances" {
+  description = <<-EOT
+    Minimum warm engine instances. 1 is the production default: the engine loads ~96s of models
+    at cold start (past Firebase Hosting's ~60s proxy timeout, so a first visitor's answer falls
+    back to the RTDB stream). One warm 4-CPU/8Gi instance costs roughly $30-35/month at idle
+    rates and removes that first impression entirely. Use 0 for disposable dev environments.
+  EOT
+  type        = number
+  default     = 1
+
+  validation {
+    condition     = var.min_instances >= 0 && var.min_instances <= 3
+    error_message = "min_instances must be between 0 and 3."
+  }
+}
