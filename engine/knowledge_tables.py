@@ -728,6 +728,13 @@ class KnowledgeTableQuery:
                                       else v for v in row]
                                      for row in calc_cur.fetchall()],
                         }]
+                        # The UI overlays the final Result onto the LAST view, so the total must be
+                        # its own view — otherwise the per-row calculated grid is replaced by the SUM.
+                        response_views.append({
+                            "name": "total", "op": "group_agg", "label": "total", "sql": sql,
+                            "columns": [d[0] for d in cur.description],
+                            "rows": result["rows"],
+                        })
             except Exception as e:
                 err = f"{type(e).__name__}: {e}"
         else:
