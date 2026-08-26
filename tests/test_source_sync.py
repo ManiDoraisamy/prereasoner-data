@@ -28,7 +28,9 @@ from db.sync.sources.nager_date.sync import parse_snapshot as parse_nager
 from db.sync.sources.nlm_cde.sync import parse_snapshot as parse_nlm
 from db.sync.sources.loinc.sync import parse_archive as parse_loinc
 from db.sync.sources.who.sync import parse_snapshot as parse_who
-from db.sync.build_exchange_rate import ensure_rate_columns, load_active_history, rate_column_name
+from db.sync.build_exchange_rate import (
+    CARRY_FORWARD_DAYS, build_rows, ensure_rate_columns, load_active_history, rate_column_name,
+)
 from db.sync.migrations import MIGRATIONS, latest_schema_version
 from db.sync._conn import _connection_kwargs
 from db.sync.releases import activate_validated_release
@@ -195,6 +197,31 @@ def test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert():
         rate_column_name("USD; DROP TABLE"); raise AssertionError
     except ValueError:
         pass
+
+
+def test_exchange_rate_builder_carries_active_series_past_build_day():
+    # Regression: the horizon was max(last_print, today), so a table built on Tuesday had NO rows
+    # for Wednesday's as_of — every (currency, date) join missed and the flagship demo DECLINED the
+    # morning after each build. The horizon must LEAD today by the carry-forward window (the same
+    # rule weekends already used: a day without a print carries the previous business day), and the
+    # window stays bounded so a long-stale table declines rather than converting at an old rate.
+    history = [
+        (date(2026, 8, 14), "USD", Decimal("1.16")),
+        (date(2026, 8, 14), "GBP", Decimal("0.86")),
+        (date(2026, 8, 14), "CYP", Decimal("0.58")),   # retired: no later print
+        (date(2026, 8, 17), "USD", Decimal("1.20")),
+        (date(2026, 8, 17), "GBP", Decimal("0.87")),
+    ]
+    rows, _ = build_rows(history, today=date(2026, 8, 18))
+    by = {(code, day): (rates, source_day) for code, day, rates, source_day in rows}
+
+    assert ("GBP", date(2026, 8, 19)) in by, "the day AFTER the build must be covered"
+    assert ("GBP", date(2026, 8, 18 + CARRY_FORWARD_DAYS)) in by, "the whole window is covered"
+    assert ("GBP", date(2026, 8, 19 + CARRY_FORWARD_DAYS)) not in by,         "past the window it declines, never converts at an arbitrarily old rate"
+    carried, source_day = by[("GBP", date(2026, 8, 19))]
+    assert abs(carried["USD"] - 1.20 / 0.87) < 1e-9, "carried rate is the true last print"
+    assert source_day == date(2026, 8, 17), "updated_at keeps the TRUE publication date"
+    assert ("CYP", date(2026, 8, 19)) not in by, "retired series never fabricate past their last print"
 
 
 def test_cdc_parser_preserves_hierarchy_and_metadata():
@@ -445,6 +472,7 @@ TESTS = [
     test_ecb_parser_expands_non_missing_rates_only,
     test_exchange_rate_builder_uses_the_active_release_ledger,
     test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert,
+    test_exchange_rate_builder_carries_active_series_past_build_day,
     test_cdc_parser_preserves_hierarchy_and_metadata,
     test_libphonenumber_parser_uses_calling_code_for_non_geographic_keys,
     test_geonames_parser_preserves_source_rows_and_scope,

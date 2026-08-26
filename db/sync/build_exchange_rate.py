@@ -56,7 +56,15 @@ def cross_rates(units_by_code: dict[str, float], codes: list[str]) -> dict[str, 
     }
 
 
-def build_rows(history, today=None):
+# How far past the last ECB publication an active series still carries forward. A rate is published
+# per BUSINESS day, so any correct table must answer for non-publication days — that is the same
+# weekend rule, extended to holidays and to sync lag. Bounded on purpose: past this the coverage
+# check declines instead of converting at an arbitrarily old rate. updated_at always carries the
+# TRUE publication date, so provenance never claims a rate was published on a day it was not.
+CARRY_FORWARD_DAYS = 7
+
+
+def build_rows(history, today=None, carry_forward_days=CARRY_FORWARD_DAYS):
     """(code, date, {target: rate}) rows from raw (effective_date, quote_currency, units_per_eur).
 
     Pure so the hermetic test can drive it with a fixture. `history` is an iterable of
@@ -70,7 +78,10 @@ def build_rows(history, today=None):
     days = sorted(by_day)
     first, last = days[0], days[-1]
     today = today or datetime.date.today()
-    horizon = max(last, today)
+    # Horizon must lead TODAY, not equal it: a table built on Tuesday was empty for Wednesday's
+    # as_of, so every row missed its (currency, date) join and the demo declined the morning after
+    # each build. Leading by the carry-forward window makes the table correct until the next sync.
+    horizon = max(last, today + datetime.timedelta(days=carry_forward_days))
     codes = sorted({code for units in by_day.values() for code in units} | {"EUR"})
     last_seen: dict[str, datetime.date] = {}
     for day in days:
@@ -78,7 +89,7 @@ def build_rows(history, today=None):
             last_seen[code] = day
     for code in codes:
         if code == "EUR" or last_seen.get(code) == last:
-            last_seen[code] = horizon                       # active series extend to today
+            last_seen[code] = horizon                       # active series carry forward
 
     rows = []
     carried: dict[str, float] = {}
