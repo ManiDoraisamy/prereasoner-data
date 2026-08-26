@@ -80,6 +80,12 @@ COPY engine/ /app/engine/
 # can run the OFFLINE tier against the real weights right after build (no Postgres needed) — see cloudbuild.yaml.
 COPY regress/ /app/regress/
 
+# db/sync = the scheduled knowledgebase refresh (ecb-rates-refresh Cloud Run job runs
+# `python -m db.sync.sources.ecb.sync && python -m db.sync.build_exchange_rate` on THIS image, so
+# rates data and serving code always come from one artifact). 449K; psycopg2 is already a serving
+# dependency and `requests` arrives with transformers.
+COPY db/ /app/db/
+
 # Startup gate: verify the gitignored model artifacts are actually in the image (or in a
 # mounted PREREASONER_DATA_DIR) BEFORE handing off to the server, so a weights-less image
 # fails fast with instructions instead of a torch FileNotFoundError stack trace.

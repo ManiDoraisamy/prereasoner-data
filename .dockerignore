@@ -1,5 +1,7 @@
 # The image ships ONLY the serving engine + its requirements.
-# db/ is deliberately excluded — the compose "seed" service bind-mounts ./db instead,
+# db/ ships IN the image (449K): the scheduled ecb-rates-refresh Cloud Run job runs
+# db.sync.sources.ecb.sync + db.sync.build_exchange_rate from the same immutable engine
+# image. The compose "seed" service still bind-mounts ./db for local development.
 # so seed-script changes never invalidate the image.
 .git
 .gitignore
@@ -10,7 +12,6 @@
 Dockerfile
 docker-compose.yml
 cloudbuild.yaml
-db
 docs
 infra
 tests
