@@ -678,6 +678,7 @@ class KnowledgeTableQuery:
         ok, why = self.q11.guard(sql)
         result, err = None, None
         coverage_gap = None
+        response_views = None
         if ok:
             try:
                 con = self._connect(tablemap, sch, attach_world=bool(joins) or bool(world_rate))
@@ -703,6 +704,25 @@ class KnowledgeTableQuery:
                     base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}').fetchone()[0]
                     conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
                     coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None
+                    if coverage_gap is None:
+                        # The CALCULATED view: the one non-obvious arithmetic, made a visible
+                        # per-row column — each amount beside the exact rate it was multiplied by
+                        # and that rate's true publication date, so Result is this column summed.
+                        fact_q, er_q = qident(world_rate["fact"]), qident("exchange_rate")
+                        calc_sql = (
+                            f'SELECT {fact_q}.*, {er_q}.{qident(world_rate["rate_col"])}, '
+                            f'{er_q}.{qident("updated_at")} AS rate_published, '
+                            f'({fact_q}.{qident(agg[2])} * {er_q}.{qident(world_rate["rate_col"])}) '
+                            f'AS converted {fw} LIMIT 50'
+                        )
+                        calc_cur = con.execute(calc_sql)
+                        response_views = [{
+                            "name": "calculated", "op": "convert", "label": "calculated",
+                            "sql": calc_sql,
+                            "columns": [d[0] for d in calc_cur.description],
+                            "rows": [["" if v is None else v for v in row]
+                                     for row in calc_cur.fetchall()],
+                        }]
             except Exception as e:
                 err = f"{type(e).__name__}: {e}"
         else:
@@ -716,6 +736,7 @@ class KnowledgeTableQuery:
         feats += [{"col": k, "dims": v} for k, v in world_dims.items() if "." in k]   # + the world columns' read dims
         plan = self._build_plan(pdesc, updescs, joins, mf, own_filters)
         response = {"question": question, "as_of": as_of, "sql": sql, "result": result, "error": err,
+                "views": response_views or [],
                 "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()}, "dims": coldims,
                 "meaning_join": join_desc, "provenance": prov, "warnings": warnings,
                 "debug": self._debug_input(norm, question, world_sections, feats, plan, False),

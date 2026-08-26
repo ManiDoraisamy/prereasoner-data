@@ -880,6 +880,7 @@ function stepDesc(v){
   if(op==='world_join'){ const m=lbl.match(/on\s+(.+)$/i); return 'Looked up shared facts for each '+(m?m[1].trim():'entity')+' from the source named in the answer provenance.'; }
   if(op==='world_filter'||op==='filter'||op==='having'){ const m=lbl.match(/where\s+(.+)$/i); return m?('Kept only the rows where '+humanCond(m[1])+'.'):'Filtered to the matching rows.'; }
   if(op==='time_filter'){ return 'Kept only the rows in that time period.'; }
+  if(op==='convert'){ return 'Converted each amount at its ECB reference rate — the rate and its publication date are columns on this sheet, so the Result is just the converted column summed.'; }
   if(op==='group_agg'){ return ({count:'Counted the rows.',average:'Averaged the values.',extremes:'Found the highest and lowest values.'})[stepLabel(v)]||'Added up the values to get the total.'; }
   if(op==='topn'){ return 'Kept just the top-ranked results.'; }
   if(op==='sort'){ return 'Sorted the results in order.'; }

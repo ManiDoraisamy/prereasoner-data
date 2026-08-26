@@ -410,6 +410,14 @@ class ComposedKnowledgeQuery:
         deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                explicit_fks=explicit_fks)
                  if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
+        # A KNOWLEDGEBASE-converted answer already carries its own richer stack (the per-row
+        # `calculated` view with the exact rate and its publication date) — compose's re-expression
+        # cannot show the rate step, so the delegate wins and its views stream like compose's would.
+        if (deleg.get("currency") or {}).get("realization") == "converted" and deleg.get("views"):
+            if emit:
+                for i, v in enumerate(deleg.get("views") or []):
+                    emit(f"views/{i}", {k: v[k] for k in ("op", "label", "sql", "columns", "rows")})
+            return deleg
         # But a CLEAN world-filtered scalar aggregate (a world join in meaning_join, one number, NO clarify) is
         # re-expressed as the view stack so the reasoning is shown — kept only if it matches the delegate's answer.
         if (not deleg.get("clarify") and not deleg.get("error")

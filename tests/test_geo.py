@@ -320,6 +320,25 @@ def main():
        and "ECB" in ((rkb.get("provenance") or {}).get("source") or ""),
        f"result={rkb}")
 
+    # The conversion explains itself: a `calculated` view carries each row's amount beside the
+    # exact rate it was multiplied by and that rate's PUBLICATION date, so the Result is just the
+    # converted column summed — the one non-obvious arithmetic made checkable by eye.
+    kb_views = rkb.get("views") or []
+    calc = next((v for v in kb_views if v.get("op") == "convert"), None)
+    ok("fx: knowledgebase conversion ships a calculated view (per-row rate + converted)",
+       calc is not None and calc.get("label") == "calculated"
+       and "converted" in (calc.get("columns") or []) and "rate_published" in (calc.get("columns") or []),
+       f"views={[(v.get('label'), v.get('op')) for v in kb_views]}")
+    if calc:
+        cols = calc["columns"]; amt_i = cols.index("amount"); conv_i = cols.index("converted")
+        rate_i = next(i for i, c in enumerate(cols) if c.startswith("rate_to_"))
+        row_ok = all(abs(r[amt_i] * r[rate_i] - r[conv_i]) < 1e-6 for r in calc["rows"] if r[amt_i] != "")
+        ok("fx: every calculated row is exactly amount x rate", row_ok,
+           f"first={calc['rows'][:2]}")
+        total = sum(r[conv_i] for r in calc["rows"] if r[conv_i] != "")
+        ok("fx: the Result equals the calculated column summed",
+           abs(total - kb_value) < 1e-6, f"sum={total} result={kb_value}")
+
     # A target NEITHER the sheet NOR the ECB series ever published still declines with evidence.
     rkwd = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in KWD", sub,
                                    explicit_fks=(_FX_EDGE,)))
