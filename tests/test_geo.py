@@ -323,6 +323,16 @@ def main():
     # The conversion explains itself: a `calculated` view carries each row's amount beside the
     # exact rate it was multiplied by and that rate's PUBLICATION date, so the Result is just the
     # converted column summed — the one non-obvious arithmetic made checkable by eye.
+    # the response crosses JSON boundaries (RTDB stream + HTTP envelope): a row value that
+    # json.dumps rejects is a production 500, not a cosmetic issue — this exact miss shipped once.
+    import json as _json
+    try:
+        _json.dumps(rkb.get("views") or [])
+        views_serializable = True
+    except TypeError:
+        views_serializable = False
+    ok("fx: the calculated view is JSON-serializable (wire format, not just in-process)",
+       views_serializable, f"types={[[type(v).__name__ for v in (rkb.get('views') or [{}])[0].get('rows', [[]])[0]]]}")
     kb_views = rkb.get("views") or []
     calc = next((v for v in kb_views if v.get("op") == "convert"), None)
     ok("fx: knowledgebase conversion ships a calculated view (per-row rate + converted)",

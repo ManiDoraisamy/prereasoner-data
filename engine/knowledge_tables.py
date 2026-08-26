@@ -720,7 +720,12 @@ class KnowledgeTableQuery:
                             "name": "calculated", "op": "convert", "label": "calculated",
                             "sql": calc_sql,
                             "columns": [d[0] for d in calc_cur.description],
-                            "rows": [["" if v is None else v for v in row]
+                            # Postgres returns date objects; the view crosses TWO JSON boundaries
+                            # (the RTDB stream and the HTTP envelope), so serialize here at the
+                            # source — in-process tests see exactly what the wire carries.
+                            "rows": [["" if v is None
+                                      else v.isoformat() if isinstance(v, (datetime.date, datetime.datetime))
+                                      else v for v in row]
                                      for row in calc_cur.fetchall()],
                         }]
             except Exception as e:
