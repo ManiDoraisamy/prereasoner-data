@@ -648,6 +648,7 @@ class KnowledgeTableQuery:
         else:
             fw, disamb, warnings = upfrom, None, []          # conversion-only: no meaning joins to walk
         fw_no_rate = fw
+        fw_join = fw                                         # joins walked, no rate join, no filters — the 'joined' step
         if world_rate:
             # The knowledgebase table joins like any other table in the conversation: by VALUE on the
             # (code, date) pair. The date compares as ISO text on both engines (Postgres date::text is
@@ -705,10 +706,43 @@ class KnowledgeTableQuery:
                     conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
                     coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None
                     if coverage_gap is None:
+                        fact_q, er_q = qident(world_rate["fact"]), qident("exchange_rate")
+
+                        def _wire_rows(c):
+                            # Postgres returns date objects; every view crosses TWO JSON boundaries
+                            # (the RTDB stream and the HTTP envelope), so serialize at the source —
+                            # in-process tests see exactly what the wire carries.
+                            return [["" if v is None
+                                     else v.isoformat() if isinstance(v, (datetime.date, datetime.datetime))
+                                     else v for v in row] for row in c.fetchall()]
+
+                        # The full derivation trail, one sheet per step (the compose stack's
+                        # join -> filter -> aggregate design): the resolution slides stream
+                        # separately from the serving host (knowledge_compose).
+                        response_views = []
+                        if updescs or joins:                 # a real combine happened -> the joined rows
+                            joined_sql = f'SELECT {fact_q}.* {fw_join} LIMIT 50'
+                            jc = con.execute(joined_sql)
+                            response_views.append({
+                                "name": "joined", "op": "join",
+                                "label": "join " + " + ".join(joined),
+                                "sql": joined_sql, "columns": [d[0] for d in jc.description],
+                                "rows": _wire_rows(jc),
+                            })
+                        if conds:                            # the world/own filter -> the kept rows
+                            filtered_sql = f'SELECT {fact_q}.* {fw_no_rate} LIMIT 50'
+                            fc = con.execute(filtered_sql)
+                            flabel = (f'where {mf["attr"]} = {mf["value"]!r}' if mf else
+                                      "where " + " and ".join(f"{c} = {v!r}" for (_t, c, v) in own_filters))
+                            response_views.append({
+                                "name": "filtered", "op": "world_filter" if mf else "filter",
+                                "label": flabel, "sql": filtered_sql,
+                                "columns": [d[0] for d in fc.description],
+                                "rows": _wire_rows(fc),
+                            })
                         # The CALCULATED view: the one non-obvious arithmetic, made a visible
                         # per-row column — each amount beside the exact rate it was multiplied by
                         # and that rate's true publication date, so Result is this column summed.
-                        fact_q, er_q = qident(world_rate["fact"]), qident("exchange_rate")
                         calc_sql = (
                             f'SELECT {fact_q}.*, {er_q}.{qident(world_rate["rate_col"])}, '
                             f'{er_q}.{qident("updated_at")} AS rate_published, '
@@ -716,18 +750,12 @@ class KnowledgeTableQuery:
                             f'AS converted {fw} LIMIT 50'
                         )
                         calc_cur = con.execute(calc_sql)
-                        response_views = [{
+                        response_views.append({
                             "name": "calculated", "op": "convert", "label": "calculated",
                             "sql": calc_sql,
                             "columns": [d[0] for d in calc_cur.description],
-                            # Postgres returns date objects; the view crosses TWO JSON boundaries
-                            # (the RTDB stream and the HTTP envelope), so serialize here at the
-                            # source — in-process tests see exactly what the wire carries.
-                            "rows": [["" if v is None
-                                      else v.isoformat() if isinstance(v, (datetime.date, datetime.datetime))
-                                      else v for v in row]
-                                     for row in calc_cur.fetchall()],
-                        }]
+                            "rows": _wire_rows(calc_cur),
+                        })
                         # The UI overlays the final Result onto the LAST view, so the total must be
                         # its own view — otherwise the per-row calculated grid is replaced by the SUM.
                         response_views.append({

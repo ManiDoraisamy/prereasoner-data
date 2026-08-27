@@ -391,6 +391,46 @@ def main():
        and isinstance(conv_world, (int, float)) and abs(conv_world - 1047.6) < 0.05,
        f"got={conv_world} clarify={(rconv_world or {}).get('clarify')}")
 
+    # A KNOWLEDGEBASE-rate conversion (no uploaded fx sheet — the live demo shape) carries the
+    # FULL derivation trail: joined rows, world-filtered rows, the per-row conversion, then the
+    # total the Result overlays — one sheet per step. The resolution slides stream alongside.
+    from engine.trace import set_ctx
+    slides = []
+    set_ctx(lambda node, value, merge=False: slides.append((node, value)))
+    try:
+        rtrail = _retry(lambda: qc.serve([_FX_CUSTOMERS, _FX_ORDERS],
+                                         "total amount in France in US dollars", sub))
+    finally:
+        set_ctx(None)
+    trail_value = (((rtrail or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("fx+world: knowledgebase-rate France total converts (ECB rate), no clarify",
+       bool(rtrail) and not rtrail.get("clarify") and not rtrail.get("error")
+       and isinstance(trail_value, (int, float)) and trail_value > 0
+       and (rtrail.get("currency") or {}).get("realization") == "converted",
+       f"got={trail_value} error={(rtrail or {}).get('error')}")
+    trail = [(v.get("op"), v.get("name")) for v in (rtrail or {}).get("views") or []]
+    ok("fx+world: the view trail is joined -> filtered -> calculated -> total",
+       [op for op, _ in trail] == ["join", "world_filter", "convert", "group_agg"],
+       f"trail={trail}")
+    wviews = {v.get("name"): v for v in (rtrail or {}).get("views") or []}
+    jrows = (wviews.get("joined") or {}).get("rows") or []
+    frows = (wviews.get("filtered") or {}).get("rows") or []
+    crows = (wviews.get("calculated") or {}).get("rows") or []
+    ok("fx+world: joined shows every order; filtered keeps exactly the rows the conversion uses",
+       len(jrows) == 3 and len(frows) == 2 and len(frows) == len(crows),
+       f"joined={len(jrows)} filtered={len(frows)} calculated={len(crows)}")
+    try:
+        _json.dumps((rtrail or {}).get("views") or [])
+        trail_serializable = True
+    except TypeError:
+        trail_serializable = False
+    ok("fx+world: the full trail is JSON-serializable (wire format)", trail_serializable,
+       f"types={[[type(v).__name__ for v in row] for row in jrows[:1]]}")
+    rslides = [v for n, v in slides if n.startswith("resolve/") and isinstance(v, dict)]
+    ok("fx+world: the converted path streams the knowledgebase resolution slide (city)",
+       any(v.get("wtable") == "city" and v.get("rows") for v in rslides),
+       f"slides={[(v or {}).get('wtable') or 'unconnected' for v in rslides]}")
+
     # C3 hospital ROUTER typing (the robust, deterministic regression — end-to-end non-geo serve is lazy-fill-slow).
     from engine.router import Router
     rtr = Router()
