@@ -175,6 +175,12 @@ resource "google_project_iam_member" "run_rtdb" {
   member  = "serviceAccount:${google_service_account.run.email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "run_anthropic_key" {
+  secret_id = var.anthropic_secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.run.email}"
+}
+
 resource "google_secret_manager_secret_iam_member" "run_db_password" {
   secret_id = google_secret_manager_secret.db_password.id
   role      = "roles/secretmanager.secretAccessor"
@@ -246,6 +252,18 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "EXTERNAL_LLM_ENABLED" # deployment half of the consent gate (PRIVACY.md); the
         value = "true"                 # per-request half is the client's external_llm_consent
+      }
+      # Sonnet presentation (/api/converse) and reference autofill (/api/master/generate) read the
+      # same key the orchestrator uses; without it both degrade to 503 and the UI falls back to
+      # local text. Same out-of-band secret as the chat service (see orchestrator.tf).
+      env {
+        name = "ANTHROPIC_API_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = var.anthropic_secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "CORS_ORIGINS"

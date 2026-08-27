@@ -189,6 +189,11 @@ credential. Reference enrichment remains off by default.
 > CI and the release review run `terraform fmt -check` and `terraform validate` against the
 > checked-in lock file. Run `terraform plan` against the correct restored state before every
 > apply; validation alone cannot detect missing imports or verify live grants.
+>
+> Known benign diff: after any `gcloud run services update-traffic` (tags, pins), the Cloud Run
+> API re-materializes an all-zero service-level `scaling {}` block and every plan shows
+> `- scaling { manual_instance_count = 0 -> null ... }` for both services. Applying it is a
+> no-op that creates no revision; the block returns on the next gcloud service mutation.
 
 ### 6a. Bootstrap the serving role
 

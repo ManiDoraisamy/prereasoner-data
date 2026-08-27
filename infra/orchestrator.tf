@@ -61,6 +61,14 @@ resource "google_secret_manager_secret_iam_member" "chat_anthropic_key" {
   member    = "serviceAccount:${google_service_account.chat_run[0].email}"
 }
 
+# The orchestrator streams turn traces (status, calls, reply, conversation_id) to RTDB.
+resource "google_project_iam_member" "chat_rtdb" {
+  count   = var.enable_orchestrator && var.rtdb_url != "" ? 1 : 0
+  project = var.project_id
+  role    = "roles/firebasedatabase.admin"
+  member  = "serviceAccount:${google_service_account.chat_run[0].email}"
+}
+
 # ---------- Cloud Run v2: the orchestrator ----------
 resource "google_cloud_run_v2_service" "chat" {
   count               = var.enable_orchestrator ? 1 : 0
@@ -130,6 +138,15 @@ resource "google_cloud_run_v2_service" "chat" {
       env {
         name  = "ENGINE_BASE_URL"
         value = google_cloud_run_v2_service.api.uri
+      }
+      # Live turn streaming (/runs/{uid}/{turnId}); empty disables and the browser falls back to
+      # the /chat HTTP body — same contract as the engine's RTDB_URL.
+      dynamic "env" {
+        for_each = var.rtdb_url != "" ? [var.rtdb_url] : []
+        content {
+          name  = "RTDB_URL"
+          value = env.value
+        }
       }
 
       # Readiness imports the actual MCP server module and verifies the injected API key is present.
