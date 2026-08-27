@@ -15,6 +15,15 @@ _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 _WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 _CHAT_TABLES = ("user_profile", "conversation", "user_conversation")
 
+# The ONLY knowledgebase write path serving gets: the admin-owned SECURITY DEFINER
+# lazy-fill functions installed by db.sync.app_migrations (engine/knowledge_sync.py
+# is their one caller).  Direct DML/DDL on the schema stays denied and is audited.
+_LAZY_FILL_FUNCTIONS = (
+    "knowledgebase.lazy_ensure_table(text, text[])",
+    "knowledgebase.lazy_upsert_entity(text, text[], text[])",
+    "knowledgebase.lazy_register_word(text, text, text, text, text, text)",
+)
+
 
 def apply_chat_grants(cur, runtime_role: str) -> None:
     """Grant the serving role only the chat DML it needs after admin migration."""
@@ -53,6 +62,35 @@ def apply_chat_grants(cur, runtime_role: str) -> None:
             raise RuntimeError(f"chat privilege audit failed for {runtime_role} on {qualified}")
 
 
+def apply_lazy_fill_grants(cur, runtime_role: str) -> None:
+    """Grant EXECUTE on the lazy-fill definer functions; prove direct writes stay denied."""
+    if not _IDENTIFIER.fullmatch(runtime_role or ""):
+        raise ValueError("runtime_role must be a lowercase PostgreSQL identifier")
+    role_id = sql.Identifier(runtime_role)
+    for signature in _LAZY_FILL_FUNCTIONS:
+        cur.execute("SELECT to_regprocedure(%s)", (signature,))
+        if cur.fetchone()[0] is None:
+            raise RuntimeError(
+                f"lazy-fill function missing (run db.sync.app_migrations first): {signature}")
+        cur.execute(sql.SQL("GRANT EXECUTE ON FUNCTION {} TO {}").format(
+            sql.SQL(signature), role_id,
+        ))
+    for signature in _LAZY_FILL_FUNCTIONS:
+        cur.execute("SELECT has_function_privilege(%s, %s, 'EXECUTE')",
+                    (runtime_role, signature))
+        if not cur.fetchone()[0]:
+            raise RuntimeError(
+                f"lazy-fill EXECUTE audit failed for {runtime_role} on {signature}")
+    cur.execute(
+        "SELECT has_schema_privilege(%s, 'knowledgebase', 'CREATE'), "
+        "has_table_privilege(%s, 'knowledgebase.words', 'INSERT,UPDATE,DELETE')",
+        (runtime_role, runtime_role),
+    )
+    can_create, can_write = cur.fetchone()
+    if can_create or can_write:
+        raise RuntimeError(f"knowledgebase direct-write audit failed for {runtime_role}")
+
+
 def approved_reference_targets(dataset_names, registry=REGISTRY) -> dict[str, tuple[str, ...]]:
     """Return only the physical relations needed by code-approved datasets."""
     if isinstance(dataset_names, str):
@@ -86,6 +124,7 @@ def apply_reference_grants(cur, runtime_role: str, dataset_names) -> dict[str, t
 
     role_id = sql.Identifier(runtime_role)
     apply_chat_grants(cur, runtime_role)
+    apply_lazy_fill_grants(cur, runtime_role)
     if not targets:
         return targets
     for schema_name, tables in targets.items():

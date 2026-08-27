@@ -211,8 +211,11 @@ terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest
   -target=google_secret_manager_secret_version.serving_db_password
 
 # 2. Run application migrations and bootstrap grants as the privileged postgres role (via
-#    cloud-sql-proxy, as in step 3 above). The migration owns shared chat DDL; the serving role
-#    receives chat DML only and never owns or alters those tables.
+#    cloud-sql-proxy, as in step 3 above). The migration owns shared chat DDL and installs the
+#    admin-owned SECURITY DEFINER lazy-fill functions (knowledgebase.lazy_ensure_table /
+#    lazy_upsert_entity / lazy_register_word — engine/knowledge_sync.py's only write path).
+#    The grants step gives serving chat DML plus EXECUTE on exactly those three functions and
+#    audits that direct knowledgebase writes stay denied.
 SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.sync.app_migrations
 SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.reference_grants --role serving
 

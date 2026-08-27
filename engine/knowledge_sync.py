@@ -6,6 +6,10 @@ CSV cell that didn't resolve in knowledgebase."words" is looked up in Wikidata (
 check), its faithful row is fetched and inserted into knowledgebase."<exact label>" (qid PK + qid FKs), and the
 entity is registered in knowledgebase."words" so it resolves next time. Idempotent, best-effort — a sync miss never
 blocks the query.
+
+All knowledgebase writes here go through the admin-owned SECURITY DEFINER functions installed by
+db.sync.app_migrations (lazy_ensure_table / lazy_upsert_entity / lazy_register_word): the serving role has
+EXECUTE on exactly those three and zero direct INSERT/UPDATE/DELETE/CREATE on the schema (infra/README §6).
 """
 from __future__ import annotations
 import json
@@ -155,9 +159,11 @@ def wlabel(cur, type_qid):
 
 def ensure_table(cur, label, props):
     """the faithful wikipedia table (exact-label name, qid PK + qid-FK columns); created on demand if a type was
-    never mirrored. (The offline schema build pre-creates the known ones; this covers the long tail.)"""
-    coldefs = ['"qid" TEXT PRIMARY KEY', '"name" TEXT'] + [f'"{c}" TEXT' for _p, c, _l, _t in props]
-    cur.execute(f'CREATE TABLE IF NOT EXISTS knowledgebase."{label}" ({", ".join(coldefs)})')
+    never mirrored. (The offline schema build pre-creates the known ones; this covers the long tail.) The DDL runs
+    inside the admin-owned SECURITY DEFINER function (db.sync.app_migrations) — the serving role has no CREATE on
+    knowledgebase."""
+    cur.execute('SELECT knowledgebase.lazy_ensure_table(%s, %s)',
+                (label, [c for _p, c, _l, _t in props]))
 
 
 _PROPS_CACHE = {}                                        # type_qid -> discovered props (avoid re-discovery per entity)
@@ -183,13 +189,12 @@ def ensure_entity(eqid, type_qid, value=None):
                 "AND table_name=%s", (wl,))
     existing = {r[0] for r in cur.fetchall()}                                # insert only into columns that exist
     cols = [c for c in (["qid", "name"] + [c for _p, c, _l, _t in props]) if c in existing]
-    cur.execute(f'INSERT INTO knowledgebase."{wl}" ({", ".join(chr(34)+c+chr(34) for c in cols)}) '
-                f'VALUES ({", ".join(["%s"]*len(cols))}) ON CONFLICT (qid) DO NOTHING',
-                [str(row.get(c)) if row.get(c) is not None else None for c in cols])
+    cur.execute('SELECT knowledgebase.lazy_upsert_entity(%s, %s, %s)',
+                (wl, cols, [str(row.get(c)) if row.get(c) is not None else None for c in cols]))
     nm = row.get("name") or value or eqid
     vec = Embedder.get().encode([nm])[0]
-    cur.execute('INSERT INTO knowledgebase."words"(surface,canonical,type,norm,embedding,qid) VALUES (%s,%s,%s,%s,%s::vector,%s) '
-                'ON CONFLICT DO NOTHING', (value or nm, nm, wl, normalize_surface(nm), pgvector_literal(vec), eqid))
+    cur.execute('SELECT knowledgebase.lazy_register_word(%s, %s, %s, %s, %s, %s)',
+                (value or nm, nm, wl, normalize_surface(nm), pgvector_literal(vec), eqid))
     print(f'  lazy: synced {nm!r} ({eqid}) -> knowledgebase."{wl}"', flush=True)
     return eqid
 

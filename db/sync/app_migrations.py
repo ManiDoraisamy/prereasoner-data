@@ -38,32 +38,119 @@ CHAT_MIGRATIONS = (
     ),
 )
 
+# The ONLY knowledgebase write path the serving role gets (engine/knowledge_sync.py).
+# The functions are SECURITY DEFINER and owned by the admin role that runs this
+# migration; serving receives EXECUTE from db.reference_grants and keeps zero direct
+# INSERT/UPDATE/DELETE/CREATE on the schema.  search_path is pinned so the dynamic
+# SQL cannot be captured; identifiers pass through format(%I).
+_LAZY_ENSURE_TABLE = """
+CREATE OR REPLACE FUNCTION knowledgebase.lazy_ensure_table(label text, cols text[])
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $fn$
+DECLARE
+  coldefs text := '';
+  c text;
+BEGIN
+  IF label IS NULL OR label = '' OR length(label) > 63 THEN
+    RAISE EXCEPTION 'invalid lazy table label';
+  END IF;
+  FOREACH c IN ARRAY coalesce(cols, ARRAY[]::text[]) LOOP
+    IF c IS NULL OR c = '' OR length(c) > 63 OR c IN ('qid', 'name') THEN
+      RAISE EXCEPTION 'invalid lazy column: %', coalesce(c, '<null>');
+    END IF;
+    coldefs := coldefs || format(', %I TEXT', c);
+  END LOOP;
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS knowledgebase.%I (qid TEXT PRIMARY KEY, name TEXT%s)',
+    label, coldefs);
+END
+$fn$
+"""
 
-def migrate_chat(conn) -> tuple[int, ...]:
-    """Apply pending chat migrations in one admin transaction.
+# ON CONFLICT (qid) is a structural guard as well as idempotence: only the
+# entity-shaped lazy tables (qid PRIMARY KEY) have that arbiter, so the function
+# cannot be aimed at curated non-entity tables such as exchange_rate or "words".
+_LAZY_UPSERT_ENTITY = """
+CREATE OR REPLACE FUNCTION knowledgebase.lazy_upsert_entity(label text, cols text[], vals text[])
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $fn$
+DECLARE
+  collist text;
+  sellist text;
+BEGIN
+  IF label IS NULL OR label = '' OR length(label) > 63 THEN
+    RAISE EXCEPTION 'invalid lazy table label';
+  END IF;
+  IF cols IS NULL OR vals IS NULL OR array_length(cols, 1) IS NULL
+     OR array_length(cols, 1) <> array_length(vals, 1)
+     OR array_position(cols, 'qid') IS NULL THEN
+    RAISE EXCEPTION 'lazy entity rows need matching cols/vals including qid';
+  END IF;
+  SELECT string_agg(format('%I', t.c), ', '), string_agg(format('($1)[%s]', t.i), ', ')
+    INTO collist, sellist
+    FROM unnest(cols) WITH ORDINALITY AS t(c, i);
+  EXECUTE format(
+    'INSERT INTO knowledgebase.%I (%s) SELECT %s ON CONFLICT (qid) DO NOTHING',
+    label, collist, sellist) USING vals;
+END
+$fn$
+"""
 
-    The base chat tables must already exist from ``db/init.sql``.  Failing here is
-    deliberate: it prevents a partial application bootstrap from being mistaken for
-    a ready serving database.
+_LAZY_REGISTER_WORD = """
+CREATE OR REPLACE FUNCTION knowledgebase.lazy_register_word(
+  surface text, canonical text, wtype text, norm text, embedding text, qid text)
+RETURNS void LANGUAGE sql SECURITY DEFINER
+SET search_path = pg_catalog, pg_temp
+AS $fn$
+  INSERT INTO knowledgebase."words"(surface, canonical, type, norm, embedding, qid)
+  VALUES ($1, $2, $3, $4, $5::public.vector, $6)
+  ON CONFLICT DO NOTHING
+$fn$
+"""
+
+KNOWLEDGEBASE_MIGRATIONS = (
+    ApplicationMigration(
+        1,
+        "lazy_fill_definer_functions",
+        (
+            _LAZY_ENSURE_TABLE,
+            _LAZY_UPSERT_ENTITY,
+            _LAZY_REGISTER_WORD,
+            "REVOKE ALL ON FUNCTION knowledgebase.lazy_ensure_table(text, text[]) FROM PUBLIC",
+            "REVOKE ALL ON FUNCTION knowledgebase.lazy_upsert_entity(text, text[], text[]) FROM PUBLIC",
+            "REVOKE ALL ON FUNCTION knowledgebase.lazy_register_word(text, text, text, text, text, text) "
+            "FROM PUBLIC",
+        ),
+    ),
+)
+
+
+def _migrate(conn, schema: str, required_tables: tuple[str, ...], migrations) -> tuple[int, ...]:
+    """Apply one schema's pending migrations in one admin transaction.
+
+    The schema and its base tables must already exist (``db/init.sql`` for chat, the
+    seed sync for knowledgebase).  Failing here is deliberate: it prevents a partial
+    application bootstrap from being mistaken for a ready serving database.
     """
     cur = conn.cursor()
     try:
-        cur.execute("SELECT to_regnamespace('chat')")
+        cur.execute("SELECT to_regnamespace(%s)", (schema,))
         if cur.fetchone()[0] is None:
-            raise RuntimeError("chat schema is missing; apply db/init.sql first")
+            raise RuntimeError(f"{schema} schema is missing; seed the database first")
         cur.execute(
-            "SELECT to_regclass('chat.user_profile'), "
-            "to_regclass('chat.conversation'), "
-            "to_regclass('chat.user_conversation')"
+            "SELECT " + ", ".join("to_regclass(%s)" for _ in required_tables),
+            [f"{schema}.{table}" for table in required_tables],
         )
         if any(item is None for item in cur.fetchone()):
-            raise RuntimeError("chat tables are missing; apply db/init.sql first")
+            raise RuntimeError(f"{schema} tables are missing; seed the database first")
 
         cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))",
-                    ("prereasoner-application-migration:chat",))
+                    (f"prereasoner-application-migration:{schema}",))
         cur.execute(
-            """
-            CREATE TABLE IF NOT EXISTS "chat"."schema_migration" (
+            f"""
+            CREATE TABLE IF NOT EXISTS "{schema}"."schema_migration" (
               version integer PRIMARY KEY,
               name text NOT NULL UNIQUE,
               checksum text NOT NULL,
@@ -71,26 +158,26 @@ def migrate_chat(conn) -> tuple[int, ...]:
             )
             """
         )
-        cur.execute('SELECT version, name, checksum FROM "chat"."schema_migration"')
+        cur.execute(f'SELECT version, name, checksum FROM "{schema}"."schema_migration"')
         applied = {int(version): (name, checksum) for version, name, checksum in cur.fetchall()}
-        known_versions = {migration.version for migration in CHAT_MIGRATIONS}
+        known_versions = {migration.version for migration in migrations}
         unknown = set(applied) - known_versions
         if unknown:
-            raise ValueError(f"chat database has unknown migrations {sorted(unknown)}")
+            raise ValueError(f"{schema} database has unknown migrations {sorted(unknown)}")
 
         completed = []
-        for migration in CHAT_MIGRATIONS:
+        for migration in migrations:
             previous = applied.get(migration.version)
             if previous:
                 if previous != (migration.name, migration.checksum):
                     raise ValueError(
-                        f"chat migration {migration.version} checksum/name drift"
+                        f"{schema} migration {migration.version} checksum/name drift"
                     )
                 continue
             for statement in migration.statements:
                 cur.execute(statement)
             cur.execute(
-                'INSERT INTO "chat"."schema_migration"(version,name,checksum) '
+                f'INSERT INTO "{schema}"."schema_migration"(version,name,checksum) '
                 "VALUES (%s,%s,%s)",
                 (migration.version, migration.name, migration.checksum),
             )
@@ -104,20 +191,32 @@ def migrate_chat(conn) -> tuple[int, ...]:
         cur.close()
 
 
+def migrate_chat(conn) -> tuple[int, ...]:
+    return _migrate(conn, "chat", ("user_profile", "conversation", "user_conversation"),
+                    CHAT_MIGRATIONS)
+
+
+def migrate_knowledgebase(conn) -> tuple[int, ...]:
+    return _migrate(conn, "knowledgebase", ("words", "types"), KNOWLEDGEBASE_MIGRATIONS)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true",
                         help="list application migrations without writing")
     args = parser.parse_args()
     if args.dry_run:
-        for migration in CHAT_MIGRATIONS:
-            print(f"chat: v{migration.version}:{migration.name}")
+        for schema, migrations in (("chat", CHAT_MIGRATIONS),
+                                   ("knowledgebase", KNOWLEDGEBASE_MIGRATIONS)):
+            for migration in migrations:
+                print(f"{schema}: v{migration.version}:{migration.name}")
         return
 
     conn = connect()
     try:
-        applied = migrate_chat(conn)
-        print(f"chat: applied {list(applied) if applied else 'none'}", flush=True)
+        for schema, migrate in (("chat", migrate_chat), ("knowledgebase", migrate_knowledgebase)):
+            applied = migrate(conn)
+            print(f"{schema}: applied {list(applied) if applied else 'none'}", flush=True)
     finally:
         conn.close()
 

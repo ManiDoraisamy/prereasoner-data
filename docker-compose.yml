@@ -114,7 +114,8 @@ services:
                && python db/sync/build_words.py --cities
                && python db/sync/sync_types.py
                && python db/sync/unify_words_qid.py
-               && python -m db.sync.build_u_s_state"
+               && python -m db.sync.build_u_s_state
+               && python -m db.sync.app_migrations"
 
 volumes:
   pgdata:

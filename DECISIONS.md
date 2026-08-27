@@ -113,6 +113,21 @@ described it. [db/init.sql](db/init.sql) is now the reconstructed, idempotent co
 what fills lazily from Wikidata at query time versus what must be pre-seeded. Notably, geo
 queries are plain-SQL haversine — no PostGIS — so the stock `pgvector` image suffices.
 
+## Lazy-fill writes go through admin-owned definer functions
+
+The serving role is SELECT-only on `knowledgebase` (infra/README §6), but the entity
+lazy-fill ([engine/knowledge_sync.py](engine/knowledge_sync.py)) must write at request time:
+create long-tail entity tables, insert faithful rows, register words. Discovered live
+2026-08-27, when the first serving-role deployment logged `permission denied for schema
+knowledgebase` on every world query that resolved entities. Rather than granting serving
+INSERT/CREATE (which would let a SQL-injection-level attacker forge curated rows — exchange
+rates included), the three writes are SECURITY DEFINER functions owned by the migration
+admin (`db.sync.app_migrations`), with `search_path` pinned, identifiers routed through
+`format(%I)`, and the entity upsert restricted to qid-PRIMARY-KEY tables by its
+`ON CONFLICT (qid)` arbiter. Serving gets EXECUTE on exactly those three
+(`db.reference_grants`, audited); direct schema writes stay denied. One code path — local
+development as postgres calls the same functions.
+
 ## Reproduction honesty
 
 `training/` reproduces the shipped model from the published checkpoints and documents precisely
