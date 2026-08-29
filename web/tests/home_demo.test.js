@@ -74,4 +74,16 @@ for (const route of ['/sheet', '/excel', '/csv']) {
 assert(!fb.hosting.rewrites.some(r => r.source === '/sheets'),
   '/sheets must reach the picker page directly, with no rewrite in front of it');
 
-console.log("home demo + landing routes: 26 passed, 0 failed");
+// --- picker regressions, both observed live on 2026-08-29 -------------------------------------
+const picker = fs.readFileSync(path.join(__dirname, '..', 'public', 'sheets.html'), 'utf8');
+// (1) One request PER TAB spent the whole 60-reads/min/user Sheets quota on a single multi-tab
+//     workbook and failed with a bare "HTTP 429". Reads go through batchGet now.
+assert(picker.includes('/values:batchGet?'), 'tab values must be read with ONE batchGet per chunk');
+assert(!/\/values\/" \+ encodeURIComponent\(range\)/.test(picker), 'no per-tab values GET may remain');
+assert(/429/.test(picker), 'a rate-limit must be reported in words, not as a bare HTTP code');
+// (2) A stale return path pointing at the picker itself sent a SUCCESSFUL import back into the
+//     sign-in loop instead of home with the sheet attached.
+assert(/p\.toLowerCase\(\) !== location\.pathname\.toLowerCase\(\)/.test(picker),
+  'returnPath must never navigate the picker to itself');
+
+console.log("home demo + landing routes + picker: 30 passed, 0 failed");

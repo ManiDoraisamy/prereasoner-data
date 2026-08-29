@@ -48,14 +48,26 @@ const $ = id => document.getElementById(id);
 function setMsg(m, s){ $("msg").textContent = m; if (s !== undefined) $("sub").textContent = s; }
 function busy(m){ $("actions").style.display = "none"; $("sp").style.display = "block"; setMsg(m, ""); }
 function fail(m){ $("sp").style.display = "none"; setMsg(m, "Pick a sheet to analyze — we read only the one you choose."); $("actions").style.display = "flex"; }
-// Return to the home route that opened the picker (/, /sheets, /excel, /csv) — same-origin paths only.
-function returnPath(){ try{ const p = sessionStorage.getItem(SS.RETURN_TO); if (p && /^\/[a-z]*$/i.test(p)) return p; }catch(_){} return "/"; }
+// Return to the LANDING route that opened the picker (/, /sheet, /excel, /csv) — same-origin paths
+// only, and never this page: a stale return path pointing at the picker sends a successful import
+// straight back into the sign-in loop instead of home with the sheet attached.
+function returnPath(){
+  try{ const p = sessionStorage.getItem(SS.RETURN_TO);
+    if (p && /^\/[a-z]*$/i.test(p) && p.toLowerCase() !== location.pathname.toLowerCase()) return p;
+  }catch(_){}
+  return "/";
+}
 $("home").onclick = () => location.href = returnPath();
 function startAuth(){ busy("Connecting to Google…"); try{ sessionStorage.setItem("pr_sheets_pending","1"); }catch(_){}  // guard EVERY redirect (auto + the manual retry button) so the loop-breaker can't be bypassed
   const p = new GoogleAuthProvider(); p.addScope(SCOPE); signInWithRedirect(auth, p); }
 $("pick").onclick = startAuth;
 
-function api(token, url){ return fetch(url, { headers:{ Authorization:"Bearer " + token } }).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); }); }
+// Sheets quota is 60 reads/min/user and 300/min/project (Google defaults), so a rate-limit is a
+// normal outcome for a big workbook, not a mystery: say so in words the user can act on.
+function api(token, url){ return fetch(url, { headers:{ Authorization:"Bearer " + token } }).then(r => {
+  if (r.status === 429) throw new Error("Google rate-limited this import (too many reads in a minute). Wait a minute and try again.");
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json(); }); }
 function toCSV(rows){ return (rows||[]).map(r => (r||[]).map(c => { c = (c==null?"":String(c)); return /[",\n]/.test(c) ? '"'+c.replace(/"/g,'""')+'"' : c; }).join(",")).join("\n"); }
 function nonEmpty(rows){ return (rows||[]).filter(r => r && r.some(c => String(c==null?"":c).trim()!=="")).length >= 2; }
 
@@ -80,11 +92,18 @@ async function onPick(token, data){
   try{
     const meta = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id + "?fields=properties.title,sheets.properties.title");
     const tabs = ((meta.sheets||[]).map(s => s.properties && s.properties.title).filter(Boolean));
+    // ONE batchGet per chunk of tabs, not one GET per tab: a workbook with more tabs than the
+    // 60-reads-per-minute-per-user quota used to spend its whole budget on a single import and
+    // fail with a bare HTTP 429. Chunked so the query string stays a sane length on wide workbooks.
     const tables = [];
-    for (const t of tabs){
-      const range = "'" + t.replace(/'/g, "''") + "'";
-      const vr = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id + "/values/" + encodeURIComponent(range) + "?valueRenderOption=UNFORMATTED_VALUE");
-      if (nonEmpty(vr.values)) tables.push({ name: tabs.length > 1 ? t : title, data: toCSV(vr.values) });
+    for (let i = 0; i < tabs.length; i += 40){
+      const chunk = tabs.slice(i, i + 40);
+      const qs = chunk.map(t => "ranges=" + encodeURIComponent("'" + t.replace(/'/g, "''") + "'")).join("&");
+      const vr = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id
+                                + "/values:batchGet?" + qs + "&valueRenderOption=UNFORMATTED_VALUE");
+      (vr.valueRanges || []).forEach((r, j) => {                 // batchGet preserves the requested order
+        if (nonEmpty(r.values)) tables.push({ name: tabs.length > 1 ? chunk[j] : title, data: toCSV(r.values) });
+      });
     }
     if (!tables.length){ fail("“" + title + "” has no tab with a header and a data row."); return; }
     sessionStorage.setItem(SS.PENDING_SHEETS, JSON.stringify(tables));   // hand the sheet back to the home page as an attachment
