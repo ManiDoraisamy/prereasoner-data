@@ -12,13 +12,14 @@ deployment identifiers self-hosters need to change.
 
 ## Pages
 
-In `web/public/`: `index.html`, `reason.html`, `knowledge.html`, `picker.html`, `404.html`,
+In `web/public/`: `index.html`, `reason.html`, `knowledge.html`, `sheets.html`, `404.html`,
 `styles.css`, `login_logo.svg`, plus `anthropic-paper.svg` / `interpretability-blog.svg` (static
 cards published for the prereasoner.com marketing site; the app itself does not embed them).
 `reason.html` and `knowledge.html` are thin shells over the shared workbook (`lib/workbook.js`);
 `index.html` is the home/demo page — served at `/` and, via Hosting rewrites, at the
-single-source landings `/sheets`, `/excel` and `/csv` (the "+ Add data" menu collapses to
-"+ Sheet" / "+ Excel" / "+ CSV"); `picker.html` is the Google Sheets import flow.
+single-source landings `/sheet`, `/excel` and `/csv`, where the bare "+" button attaches that one
+source directly; `sheets.html` is the Google Sheets import flow and keeps the `/sheets` URL the
+Google Picker has always been served from (hence the singular `/sheet` landing).
 
 `/api/dimension` is exposed by the backend but no kept page calls it (it is used programmatically /
 for the dimension model directly). It requires the same verified Firebase token as the reasoning routes.

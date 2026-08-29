@@ -145,13 +145,13 @@ $('f').addEventListener('submit',async function(e){
   location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
 });
 // Data-source entry: the button is a bare "+" everywhere. On "/" it opens the source menu
-// (Google Sheets / Excel / CSV); on the /sheets, /excel and /csv single-source landings it
+// (Google Sheets / Excel / CSV); on the /sheet, /excel and /csv single-source landings it
 // triggers that source directly, no menu. One addSource() owns every path.
 function addSource(kind){
   if(kind==='sheets'){
     try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across the picker round-trip
          sessionStorage.setItem(SS.RETURN_TO,location.pathname); }catch(_){}
-    location.href='picker';                                   // pick a Google Sheet -> returns here with it attached as a chip
+    location.href='sheets';                                   // pick a Google Sheet -> returns here with it attached as a chip
   } else {
     $('file').setAttribute('accept', kind==='excel'
       ? '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -159,16 +159,18 @@ function addSource(kind){
     $('file').click();
   }
 }
-const MODE=(function(){const p=location.pathname.replace(/\/+$/,'').slice(1).toLowerCase();
-  return (p==='sheets'||p==='excel'||p==='csv')?p:'';})();
+// Single-source landings, keyed by ROUTE slug. /sheet (singular) is the Google Sheets landing —
+// /sheets stays the picker page itself, the URL the Google Picker has always been served from.
 const MODE_CFG={
-  sheets:{lbl:'Add a Google Sheet', h1:'Attach a Google Sheet and ask a question',
-          ph:'What question do you have about this Sheet?'},
-  excel: {lbl:'Add an Excel file',  h1:'Attach an Excel sheet and ask a question',
-          ph:'What question do you have about this Excel sheet?'},
-  csv:   {lbl:'Add a CSV file',     h1:'Attach a CSV file and ask a question',
-          ph:'What question do you have about this CSV?'}
+  sheet:{src:'sheets', lbl:'Add a Google Sheet', h1:'Attach a Google Sheet and ask a question',
+         ph:'What question do you have about this Sheet?'},
+  excel:{src:'excel',  lbl:'Add an Excel file',  h1:'Attach an Excel sheet and ask a question',
+         ph:'What question do you have about this Excel sheet?'},
+  csv:  {src:'csv',    lbl:'Add a CSV file',     h1:'Attach a CSV file and ask a question',
+         ph:'What question do you have about this CSV?'}
 };
+const MODE=(function(){const p=location.pathname.replace(/\/+$/,'').slice(1).toLowerCase();
+  return Object.prototype.hasOwnProperty.call(MODE_CFG,p)?p:'';})();
 const addbtn=$('addbtn'), addmenu=$('addmenu');
 if(MODE){
   const cfg=MODE_CFG[MODE];
@@ -176,7 +178,7 @@ if(MODE){
   $('q').setAttribute('placeholder',cfg.ph);
   addbtn.setAttribute('aria-label',cfg.lbl); addbtn.setAttribute('title',cfg.lbl);
   addbtn.removeAttribute('aria-haspopup'); addbtn.removeAttribute('aria-expanded');
-  addbtn.onclick=function(){addSource(MODE);};
+  addbtn.onclick=function(){addSource(cfg.src);};
 }else{
   addbtn.onclick=function(e){e.stopPropagation();const o=addmenu.classList.toggle('open');addbtn.setAttribute('aria-expanded',o);};
   document.addEventListener('click',function(){addmenu.classList.remove('open');});

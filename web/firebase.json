@@ -18,7 +18,7 @@
       },
       { "source": "/reason/**", "destination": "/reason.html" },
       { "source": "/knowledge/**", "destination": "/knowledge.html" },
-      { "source": "/sheets", "destination": "/index.html" },
+      { "source": "/sheet", "destination": "/index.html" },
       { "source": "/excel", "destination": "/index.html" },
       { "source": "/csv", "destination": "/index.html" },
       { "source": "/CSV", "destination": "/index.html" }
