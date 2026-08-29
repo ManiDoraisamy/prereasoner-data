@@ -42,13 +42,26 @@ for (const svg of ['anthropic-paper.svg', 'interpretability-blog.svg']) {
 // narrow the bare "+" button to that one source. The Sheets flow round-trips via /picker.
 assert(/p==='sheets'\|\|p==='excel'\|\|p==='csv'/.test(html), 'the route mode must cover sheets|excel|csv');
 assert(html.includes('<span class=pl>+</span></button>'), 'the add button is a bare "+" everywhere');
-assert(/MODE_LBL=\{sheets:'Add a Google Sheet',excel:'Add an Excel file',csv:'Add a CSV file'\}/.test(html),
-  'each landing must keep an accessible label for the bare "+"');
 assert(html.includes("location.href='picker'"), 'the Google Sheets flow must round-trip via /picker');
 assert(html.includes('>Attach a spreadsheet (or excel sheet or Google Sheets or CSV) and ask a question</div>'),
-  'the headline invites the attach-and-ask action');
+  'the generic headline invites the attach-and-ask action');
 assert(html.includes('>Watch how our model arrives at the answer.</div>'),
   'the subline promises the visible derivation');
+assert(html.includes('placeholder="What question do you have about your spreadsheet?"'),
+  'the placeholder must not repeat the headline');
+// Each landing rewrites the headline, placeholder, and the bare "+"'s accessible name to its source.
+for (const [mode, noun, ph] of [
+  ['sheets', 'Attach a Google Sheet and ask a question', 'What question do you have about this Sheet?'],
+  ['excel', 'Attach an Excel sheet and ask a question', 'What question do you have about this Excel sheet?'],
+  ['csv', 'Attach a CSV file and ask a question', 'What question do you have about this CSV?'],
+]) {
+  assert(html.includes(`h1:'${noun}'`), `/${mode} must retitle the headline`);
+  assert(html.includes(`ph:'${ph}'`), `/${mode} must reword the placeholder`);
+}
+assert(/lbl:'Add a Google Sheet'/.test(html) && /lbl:'Add an Excel file'/.test(html) && /lbl:'Add a CSV file'/.test(html),
+  'each landing must keep an accessible label for the bare "+"');
+assert(/\$\('hd'\)\.textContent=cfg\.h1/.test(html) && /\$\('q'\)\.setAttribute\('placeholder',cfg\.ph\)/.test(html),
+  'the mode block must apply the headline and placeholder');
 assert(!fs.existsSync(path.join(__dirname, '..', 'public', 'sheets.html')),
   '/sheets must be a landing rewrite, not the picker page');
 const fb = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'firebase.json'), 'utf8'));
@@ -57,4 +70,4 @@ for (const route of ['/sheets', '/excel', '/csv']) {
     `${route} must rewrite to the home page`);
 }
 
-console.log('home demo + landing routes: 16 passed, 0 failed');
+console.log('home demo + landing routes: 24 passed, 0 failed');
