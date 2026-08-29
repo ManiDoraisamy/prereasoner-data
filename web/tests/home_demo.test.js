@@ -38,12 +38,11 @@ for (const svg of ['anthropic-paper.svg', 'interpretability-blog.svg']) {
   assert(fs.existsSync(path.join(__dirname, '..', 'public', svg)), `${svg} must be published for the marketing site`);
 }
 
-// Single-source landings: /sheet, /excel and /csv serve this page (firebase.json rewrites) and
-// narrow the bare "+" button to that one source. /sheets stays the picker PAGE — the URL the
-// Google Picker has always loaded from — so the landing is /sheet, singular.
+// Single-source landings: /sheets, /excel and /csv serve this page (firebase.json rewrites) and
+// narrow the bare "+" button to that one source. The picker lives at /picker — its path is
+// irrelevant to Google (the browser key is restricted by ORIGIN, not path), measured 2026-08-29.
 assert(html.includes('<span class=pl>+</span></button>'), 'the add button is a bare "+" everywhere');
-assert(html.includes("location.href='sheets'"), 'the Google Sheets flow must open the /sheets picker');
-assert(!/MODE_CFG=\{[^}]*\bsheets:/.test(html), '/sheets must not be a landing route — it is the picker');
+assert(html.includes("location.href='picker'"), 'the Google Sheets flow must round-trip via /picker');
 assert(html.includes('>Attach a spreadsheet and ask a question</div>'),
   'the generic headline invites the attach-and-ask action');
 assert(html.includes('>Watch how our model arrives at the answer.</div>'),
@@ -52,7 +51,7 @@ assert(html.includes('placeholder="What question do you have about your spreadsh
   'the placeholder must not repeat the headline');
 // Each landing rewrites the headline, placeholder, and the bare "+"'s accessible name to its source.
 for (const [mode, noun, ph] of [
-  ['sheet', 'Attach a Google Sheet and ask a question', 'What question do you have about this Sheet?'],
+  ['sheets', 'Attach a Google Sheet and ask a question', 'What question do you have about this Sheet?'],
   ['excel', 'Attach an Excel sheet and ask a question', 'What question do you have about this Excel sheet?'],
   ['csv', 'Attach a CSV file and ask a question', 'What question do you have about this CSV?'],
 ]) {
@@ -64,26 +63,52 @@ assert(/lbl:'Add a Google Sheet'/.test(html) && /lbl:'Add an Excel file'/.test(h
   'each landing must keep an accessible label for the bare "+"');
 assert(/\$\('hd'\)\.textContent=cfg\.h1/.test(html) && /\$\('q'\)\.setAttribute\('placeholder',cfg\.ph\)/.test(html),
   'the mode block must apply the headline and placeholder');
-assert(fs.existsSync(path.join(__dirname, '..', 'public', 'sheets.html')),
-  'the Google Picker must stay at /sheets, the URL it has always been served from');
+assert(fs.existsSync(path.join(__dirname, '..', 'public', 'picker.html')),
+  'the Google Picker page must exist at /picker');
+assert(!fs.existsSync(path.join(__dirname, '..', 'public', 'sheets.html')),
+  '/sheets is the landing rewrite, so no page may shadow it');
 const fb = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'firebase.json'), 'utf8'));
-for (const route of ['/sheet', '/excel', '/csv']) {
+for (const route of ['/sheets', '/excel', '/csv']) {
   assert(fb.hosting.rewrites.some(r => r.source === route && r.destination === '/index.html'),
     `${route} must rewrite to the home page`);
 }
-assert(!fb.hosting.rewrites.some(r => r.source === '/sheets'),
-  '/sheets must reach the picker page directly, with no rewrite in front of it');
+// The superseded singular landing keeps working instead of 404-ing.
+assert(fb.hosting.redirects.some(r => r.source === '/sheet' && r.destination === '/sheets'),
+  '/sheet must redirect to the canonical /sheets landing');
 
 // --- picker regressions, both observed live on 2026-08-29 -------------------------------------
-const picker = fs.readFileSync(path.join(__dirname, '..', 'public', 'sheets.html'), 'utf8');
+const picker = fs.readFileSync(path.join(__dirname, '..', 'public', 'picker.html'), 'utf8');
 // (1) One request PER TAB spent the whole 60-reads/min/user Sheets quota on a single multi-tab
 //     workbook and failed with a bare "HTTP 429". Reads go through batchGet now.
 assert(picker.includes('/values:batchGet?'), 'tab values must be read with ONE batchGet per chunk');
 assert(!/\/values\/" \+ encodeURIComponent\(range\)/.test(picker), 'no per-tab values GET may remain');
 assert(/429/.test(picker), 'a rate-limit must be reported in words, not as a bare HTTP code');
 // (2) A stale return path pointing at the picker itself sent a SUCCESSFUL import back into the
-//     sign-in loop instead of home with the sheet attached.
-assert(/p\.toLowerCase\(\) !== location\.pathname\.toLowerCase\(\)/.test(picker),
-  'returnPath must never navigate the picker to itself');
+//     sign-in loop instead of home with the sheet attached. Assert the BEHAVIOUR, not the source:
+//     lift the real returnPath() out of the page and run it against stubbed browser state, so a
+//     refactor that keeps the guard passes and one that drops it fails.
+const returnPathSrc = picker.match(/function returnPath\(\)\{[\s\S]*?\n\}/);
+assert(returnPathSrc, 'returnPath must be defined in the picker page');
+function runReturnPath(stored, pathname) {
+  const ctx = {
+    SS: { RETURN_TO: 'pr_return_to' },
+    sessionStorage: { getItem: k => (k === 'pr_return_to' ? stored : null) },
+    location: { pathname },
+  };
+  vm.createContext(ctx);
+  return vm.runInContext(returnPathSrc[0] + '\nreturnPath();', ctx);
+}
+for (const [stored, pathname, want, why] of [
+  ['/sheets', '/picker', '/sheets', 'returns to the landing that opened the picker'],
+  ['/excel', '/picker', '/excel', 'any landing round-trips'],
+  ['/picker', '/picker', '/', 'NEVER navigates the picker to itself (the sign-in loop)'],
+  ['/PICKER', '/picker', '/', 'self-navigation check is case-insensitive'],
+  ['https://evil.example', '/picker', '/', 'rejects an absolute off-site URL'],
+  ['//evil.example', '/picker', '/', 'rejects a protocol-relative URL'],
+  ['/a/b', '/picker', '/', 'rejects a multi-segment path'],
+  [null, '/picker', '/', 'falls back home when nothing was stored'],
+]) {
+  assert.strictEqual(runReturnPath(stored, pathname), want, `returnPath(${stored}) — ${why}`);
+}
 
-console.log("home demo + landing routes + picker: 30 passed, 0 failed");
+console.log("home demo + landing routes + picker: 37 passed, 0 failed");

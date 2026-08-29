@@ -12,14 +12,16 @@ deployment identifiers self-hosters need to change.
 
 ## Pages
 
-In `web/public/`: `index.html`, `reason.html`, `knowledge.html`, `sheets.html`, `404.html`,
+In `web/public/`: `index.html`, `reason.html`, `knowledge.html`, `picker.html`, `404.html`,
 `styles.css`, `login_logo.svg`, plus `anthropic-paper.svg` / `interpretability-blog.svg` (static
 cards published for the prereasoner.com marketing site; the app itself does not embed them).
 `reason.html` and `knowledge.html` are thin shells over the shared workbook (`lib/workbook.js`);
 `index.html` is the home/demo page — served at `/` and, via Hosting rewrites, at the
-single-source landings `/sheet`, `/excel` and `/csv`, where the bare "+" button attaches that one
-source directly; `sheets.html` is the Google Sheets import flow and keeps the `/sheets` URL the
-Google Picker has always been served from (hence the singular `/sheet` landing).
+single-source landings `/sheets`, `/excel` and `/csv`, where the bare "+" button attaches that
+one source directly; `picker.html` is the Google Sheets import flow, served at `/picker`. The
+Picker's own path is irrelevant to Google — its browser API key is restricted by ORIGIN, not path
+(measured 2026-08-29: any path under `chat.prereasoner.com` is accepted, `prereasoner.com` and
+`localhost` are not) — so the landing keeps the memorable `/sheets`.
 
 `/api/dimension` is exposed by the backend but no kept page calls it (it is used programmatically /
 for the dimension model directly). It requires the same verified Firebase token as the reasoning routes.
@@ -83,7 +85,8 @@ Deliberate small behavior changes (parity notes):
 Everything is in two files, plus one CLI command (details in `web/README.md`):
 
 1. `web/public/lib/config.js` — their Firebase web config (and Picker key/project number if
-   they want the Google Sheets import; otherwise sheets.html just won't authenticate the picker).
+   they want the Google Sheets import; otherwise `picker.html` — the `/picker` flow, and the only
+   consumer of `PICKER_API_KEY`/`PICKER_APP_ID` — just won't authenticate the Google Picker).
 2. `web/firebase.json` — `serviceId`/`region` if their Cloud Run service differs from
    `prereasoner-api`/`us-central1`.
 3. `firebase use <their-project-id>` (no `.firebaserc` is shipped).
@@ -98,7 +101,8 @@ auto-generated (the generator lives in `training/tools`) and how to run it (brow
 
 ## Verification
 
-- Internal links only reference kept pages (`/`, `reason`, `knowledge`, `sheets`).
+- Internal links only reference kept pages and routes (`/`, the single-source landings `/sheets`,
+  `/excel` and `/csv`, `reason`, `knowledge`, `picker`).
 - No page re-defines anything now in `lib/`; the Firebase config literal appears only in
   `lib/config.js`.
 - `node --check` passes on both classic libs, both ES-module libs, every inline script of every

@@ -18,14 +18,15 @@
       },
       { "source": "/reason/**", "destination": "/reason.html" },
       { "source": "/knowledge/**", "destination": "/knowledge.html" },
-      { "source": "/sheet", "destination": "/index.html" },
+      { "source": "/sheets", "destination": "/index.html" },
       { "source": "/excel", "destination": "/index.html" },
-      { "source": "/csv", "destination": "/index.html" },
-      { "source": "/CSV", "destination": "/index.html" }
+      { "source": "/csv", "destination": "/index.html" }
     ],
     "redirects": [
       { "source": "/world", "destination": "/knowledge", "type": 301 },
-      { "source": "/world/**", "destination": "/knowledge", "type": 301 }
+      { "source": "/world/**", "destination": "/knowledge", "type": 301 },
+      { "source": "/sheet", "destination": "/sheets", "type": 301 },
+      { "source": "/CSV", "destination": "/csv", "type": 301 }
     ],
     "headers": [
       {
@@ -35,6 +36,11 @@
       {
         "comment": "cleanUrls serves pages EXTENSIONLESS (/sheets, /reason), which the glob above cannot match — they were being cached for an hour, so a deploy looked like it had not landed.",
         "source": "**/!(*.*)",
+        "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]
+      },
+      {
+        "comment": "The root's final path segment is EMPTY, so whether !(*.*) above covers it depends on the glob matcher's version. Live Hosting does send no-cache for /, but state it outright rather than rest on that.",
+        "source": "/",
         "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]
       },
       {

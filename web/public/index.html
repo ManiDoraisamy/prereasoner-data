@@ -145,13 +145,13 @@ $('f').addEventListener('submit',async function(e){
   location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
 });
 // Data-source entry: the button is a bare "+" everywhere. On "/" it opens the source menu
-// (Google Sheets / Excel / CSV); on the /sheet, /excel and /csv single-source landings it
+// (Google Sheets / Excel / CSV); on the /sheets, /excel and /csv single-source landings it
 // triggers that source directly, no menu. One addSource() owns every path.
 function addSource(kind){
   if(kind==='sheets'){
     try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across the picker round-trip
          sessionStorage.setItem(SS.RETURN_TO,location.pathname); }catch(_){}
-    location.href='sheets';                                   // pick a Google Sheet -> returns here with it attached as a chip
+    location.href='picker';                                   // pick a Google Sheet -> returns here with it attached as a chip
   } else {
     $('file').setAttribute('accept', kind==='excel'
       ? '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -159,10 +159,11 @@ function addSource(kind){
     $('file').click();
   }
 }
-// Single-source landings, keyed by ROUTE slug. /sheet (singular) is the Google Sheets landing —
-// /sheets stays the picker page itself, the URL the Google Picker has always been served from.
+// Single-source landings, keyed by ROUTE slug. The Google Picker lives at /picker (its path is
+// irrelevant to Google — the browser API key is restricted by ORIGIN, not path), so /sheets is
+// free to be the landing and stay consistent with /excel and /csv.
 const MODE_CFG={
-  sheet:{src:'sheets', lbl:'Add a Google Sheet', h1:'Attach a Google Sheet and ask a question',
+  sheets:{src:'sheets', lbl:'Add a Google Sheet', h1:'Attach a Google Sheet and ask a question',
          ph:'What question do you have about this Sheet?'},
   excel:{src:'excel',  lbl:'Add an Excel file',  h1:'Attach an Excel sheet and ask a question',
          ph:'What question do you have about this Excel sheet?'},
