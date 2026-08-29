@@ -39,10 +39,16 @@ for (const svg of ['anthropic-paper.svg', 'interpretability-blog.svg']) {
 }
 
 // Single-source landings: /sheets, /excel and /csv serve this page (firebase.json rewrites) and
-// narrow the "+ Add data" button to that one source. The Sheets flow round-trips via /picker.
+// narrow the bare "+" button to that one source. The Sheets flow round-trips via /picker.
 assert(/p==='sheets'\|\|p==='excel'\|\|p==='csv'/.test(html), 'the route mode must cover sheets|excel|csv');
-assert(/MODE_LBL=\{sheets:'Sheet',excel:'Excel',csv:'CSV'\}/.test(html), '+ Sheet / + Excel / + CSV labels');
+assert(html.includes('<span class=pl>+</span></button>'), 'the add button is a bare "+" everywhere');
+assert(/MODE_LBL=\{sheets:'Add a Google Sheet',excel:'Add an Excel file',csv:'Add a CSV file'\}/.test(html),
+  'each landing must keep an accessible label for the bare "+"');
 assert(html.includes("location.href='picker'"), 'the Google Sheets flow must round-trip via /picker');
+assert(html.includes('>Attach a spreadsheet (or excel sheet or Google Sheets or CSV) and ask a question</div>'),
+  'the headline invites the attach-and-ask action');
+assert(html.includes('>Watch how our model arrives at the answer.</div>'),
+  'the subline promises the visible derivation');
 assert(!fs.existsSync(path.join(__dirname, '..', 'public', 'sheets.html')),
   '/sheets must be a landing rewrite, not the picker page');
 const fb = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'firebase.json'), 'utf8'));
@@ -51,4 +57,4 @@ for (const route of ['/sheets', '/excel', '/csv']) {
     `${route} must rewrite to the home page`);
 }
 
-console.log('home demo + landing routes: 13 passed, 0 failed');
+console.log('home demo + landing routes: 16 passed, 0 failed');

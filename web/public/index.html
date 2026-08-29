@@ -47,13 +47,13 @@
   <div class=hdr><a class=brand href="/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost onclick=loginSoon()>Login</button></div>
   <div class=hero>
     <form class=hero-left id=f>
-    <div class=h1>Interpretable AI for spreadsheets</div>
-    <div class=sub>Unlike black-box AI, ours shows how the result is derived.</div>
+    <div class=h1>Attach a spreadsheet (or excel sheet or Google Sheets or CSV) and ask a question</div>
+    <div class=sub>Watch how our model arrives at the answer.</div>
     <div class=promptcard id=pc>
       <textarea class=qbox id=q spellcheck=false placeholder="Attach a spreadsheet and ask a question. Watch how our model arrives at the answer.">total amount in France in US dollars</textarea>
       <div class=attachbar>
         <span class=addwrap>
-          <button class=addbtn type=button id=addbtn aria-haspopup=true aria-expanded=false><span class=pl>+</span> Add data</button>
+          <button class=addbtn type=button id=addbtn aria-haspopup=true aria-expanded=false aria-label="Add data" title="Add data"><span class=pl>+</span></button>
           <div class=addmenu id=addmenu role=menu>
             <button type=button data-add=sheets><span class=mi>📊</span> Google Sheets</button>
             <button type=button data-add=excel><span class=mi>📗</span> Excel (.xlsx)</button>
@@ -144,9 +144,9 @@ $('f').addEventListener('submit',async function(e){
   }catch(_){}
   location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
 });
-// Data-source entry: "/" offers the "+ Add data" menu (Google Sheets / Excel / CSV); the /sheets,
-// /excel and /csv routes are single-source landings — the button becomes "+ Sheet" / "+ Excel" /
-// "+ CSV" and triggers that source directly, no menu. One addSource() owns every path.
+// Data-source entry: the button is a bare "+" everywhere. On "/" it opens the source menu
+// (Google Sheets / Excel / CSV); on the /sheets, /excel and /csv single-source landings it
+// triggers that source directly, no menu. One addSource() owns every path.
 function addSource(kind){
   if(kind==='sheets'){
     try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across the picker round-trip
@@ -161,10 +161,10 @@ function addSource(kind){
 }
 const MODE=(function(){const p=location.pathname.replace(/\/+$/,'').slice(1).toLowerCase();
   return (p==='sheets'||p==='excel'||p==='csv')?p:'';})();
-const MODE_LBL={sheets:'Sheet',excel:'Excel',csv:'CSV'};
+const MODE_LBL={sheets:'Add a Google Sheet',excel:'Add an Excel file',csv:'Add a CSV file'};
 const addbtn=$('addbtn'), addmenu=$('addmenu');
 if(MODE){
-  addbtn.innerHTML='<span class=pl>+</span> '+MODE_LBL[MODE];
+  addbtn.setAttribute('aria-label',MODE_LBL[MODE]); addbtn.setAttribute('title',MODE_LBL[MODE]);
   addbtn.removeAttribute('aria-haspopup'); addbtn.removeAttribute('aria-expanded');
   addbtn.onclick=function(){addSource(MODE);};
 }else{
