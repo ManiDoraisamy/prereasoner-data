@@ -21,7 +21,8 @@ const SS = {
   NAME: 'pr_world_name',              // legacy single-table fallback (first sheet's name)
   Q: 'pr_world_q',                    // the question being asked
   PENDING_SHEETS: 'pr_pending_sheets',// JSON [{name,data}] — Google Sheets import -> home
-  PENDING_Q: 'pr_pending_q'           // the typed prompt preserved across the Sheets picker round-trip
+  PENDING_Q: 'pr_pending_q',          // the typed prompt preserved across the Sheets picker round-trip
+  RETURN_TO: 'pr_return_to'           // home route (/, /sheets, /excel, /csv) the picker returns to
 };
 
 // HTML-escape for TEXT NODES (& < >). NOT safe inside an attribute value — use escAttr there.

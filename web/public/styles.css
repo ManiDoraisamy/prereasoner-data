@@ -60,22 +60,17 @@ body{font-family:var(--disp);background:var(--grad);color:var(--ink);min-height:
 .filecard .meta{flex:1;min-width:0}.filecard .nm{font-family:var(--mono);font-size:13.5px;font-weight:600;color:var(--card-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .filecard .sz{font-family:var(--mono);font-size:11.5px;color:var(--card-ink-dim);margin-top:2px}
 .filecard .x{all:unset;cursor:pointer;color:var(--card-ink-dim);font-size:18px;padding:0 6px}.filecard .x:hover{color:#d33}
-/* landing — responsive two-column hero (formfacade.com-style) */
+/* landing — the chat widget is the hero: one centered column, prompt card front and center */
 .page{min-height:100vh;display:flex;flex-direction:column}
-.hero{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:24px 40px 56px;display:flex;align-items:center;gap:56px}
-.hero-left{flex:1.1 1 0;max-width:640px;display:flex;flex-direction:column;align-items:flex-start;gap:24px}
+.hero{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:24px 40px 56px;display:flex;align-items:center;justify-content:center}
+.hero-left{width:100%;max-width:720px;display:flex;flex-direction:column;align-items:center;gap:24px}
 /* match formfacade.com hero headline: Inter 500 (medium), ~44px, -1px tracking */
-.hero-left .h1{font-size:clamp(32px,3.4vw,44px);font-weight:500;line-height:1.3;letter-spacing:-1px;text-align:left;text-wrap:normal}
+.hero-left .h1{font-size:clamp(32px,3.4vw,44px);font-weight:500;line-height:1.3;letter-spacing:-1px;text-align:center;text-wrap:normal}
+.hero-left .sub{text-align:center}
 .hero-left .promptcard{width:100%}
-.hero-left .err{align-self:stretch;text-align:left}
-.hero-right{flex:1 1 0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:0}
-.papers{width:100%;max-width:460px;aspect-ratio:440/560;border:0;display:block}
+.hero-left .err{align-self:stretch;text-align:center}
 @media(max-width:880px){
-  .hero{flex-direction:column;gap:30px;padding:12px 24px 40px;align-items:center}
-  .hero-left{max-width:560px;align-items:center}
-  .hero-left .h1{text-align:center}
-  .hero-left .sub{text-align:center}
-  .papers{max-width:300px}
+  .hero{padding:12px 24px 40px}
 }
 /* analysis screen */
 .stage{flex:0 0 auto;padding:14px 36px 4px;text-align:center}

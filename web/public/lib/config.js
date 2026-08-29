@@ -27,7 +27,7 @@ export const firebaseConfig = {
   databaseURL: "https://prereasoner-inference-default-rtdb.firebaseio.com"
 };
 
-// Google Picker credentials — used ONLY by sheets.html (the Google Sheets import page).
+// Google Picker credentials — used ONLY by picker.html (the Google Sheets import page).
 // Also public client identifiers: a browser API key restricted by HTTP referrer (enable the
 // Picker, Sheets and Drive APIs on it and restrict it to your domain) and the numeric Google
 // Cloud PROJECT NUMBER (required so the narrow drive.file scope can read the picked file).

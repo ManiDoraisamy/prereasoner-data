@@ -37,11 +37,11 @@ the engine requires non-empty, unique keys and unique column names.
 
 | Page | Purpose |
 |---|---|
-| `index.html` | Attach CSV/Excel/Google Sheets data and begin a question |
+| `index.html` | Attach CSV/Excel/Google Sheets data and begin a question — served at `/` and at the single-source landings `/sheets`, `/excel`, `/csv` (Hosting rewrites; the add button narrows to that source) |
 | `reason.html` | Workbook over the general reason endpoint |
 | `knowledge.html` | Same workbook over the knowledge endpoint |
 | `chatui.html` | Orchestrated conversational entry point |
-| `sheets.html` | Google Sheets picker/import flow |
+| `picker.html` | Google Sheets picker/import flow (returns to the route that opened it) |
 | `admin.html` | Allowlisted operational view |
 
 `public/lib/shared.js` owns common storage, escaping, CSV parsing, and navigation helpers. `workbook.js` owns workbook

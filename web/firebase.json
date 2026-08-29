@@ -17,7 +17,11 @@
         "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
       },
       { "source": "/reason/**", "destination": "/reason.html" },
-      { "source": "/knowledge/**", "destination": "/knowledge.html" }
+      { "source": "/knowledge/**", "destination": "/knowledge.html" },
+      { "source": "/sheets", "destination": "/index.html" },
+      { "source": "/excel", "destination": "/index.html" },
+      { "source": "/csv", "destination": "/index.html" },
+      { "source": "/CSV", "destination": "/index.html" }
     ],
     "redirects": [
       { "source": "/world", "destination": "/knowledge", "type": 301 },

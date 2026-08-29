@@ -5,7 +5,7 @@
 <meta property="og:title" content="Prereasoner — Interpretable AI for spreadsheets">
 <meta property="og:description" content="Unlike black-box AI, ours shows how the result is derived.">
 <meta property="og:type" content="website">
-<meta property="og:url" content="https://prereasoner.com/">
+<meta property="og:url" content="https://chat.prereasoner.com/">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="Prereasoner — Interpretable AI for spreadsheets">
 <meta name="twitter:description" content="Unlike black-box AI, ours shows how the result is derived.">
@@ -66,9 +66,6 @@
     </div>
     <div class=err id=err></div>
   </form>
-    <div class=hero-right>
-      <object class=papers type="image/svg+xml" data="interpretable.svg" aria-label="Anthropic and Prereasoner research papers"></object>
-    </div>
   </div>
 </div>
 <input type=file id=file accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple style="display:none">
@@ -95,7 +92,7 @@ function openPreview(i){
   $('preview').style.display='block'; $('pbackdrop').style.display='block';
 }
 function closePreview(){$('preview').style.display='none'; $('pbackdrop').style.display='none';}
-try{                                                       // returning from /sheets: attach the imported Google Sheet + restore the prompt
+try{                                                       // returning from /picker: attach the imported Google Sheet + restore the prompt
   const pend=sessionStorage.getItem(SS.PENDING_SHEETS);
   if(pend){ const t=JSON.parse(pend); if(t&&t.length){ SHEETS=t; isSample=false; } sessionStorage.removeItem(SS.PENDING_SHEETS); }
   const pq=sessionStorage.getItem(SS.PENDING_Q);
@@ -147,23 +144,37 @@ $('f').addEventListener('submit',async function(e){
   }catch(_){}
   location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
 });
-// "+ Add data" menu: Excel/CSV set the file filter then open the picker dialog; Google Sheets -> /sheets (picker)
-const addbtn=$('addbtn'), addmenu=$('addmenu');
-addbtn.onclick=function(e){e.stopPropagation();const o=addmenu.classList.toggle('open');addbtn.setAttribute('aria-expanded',o);};
-document.addEventListener('click',function(){addmenu.classList.remove('open');});
-addmenu.onclick=function(e){e.stopPropagation();};
-[...addmenu.querySelectorAll('button')].forEach(b=>b.onclick=function(){
-  addmenu.classList.remove('open');
-  const kind=b.dataset.add;
+// Data-source entry: "/" offers the "+ Add data" menu (Google Sheets / Excel / CSV); the /sheets,
+// /excel and /csv routes are single-source landings — the button becomes "+ Sheet" / "+ Excel" /
+// "+ CSV" and triggers that source directly, no menu. One addSource() owns every path.
+function addSource(kind){
   if(kind==='sheets'){
-    try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value); }catch(_){}   // preserve the typed prompt across the picker round-trip
-    location.href='sheets';                                   // pick a sheet -> returns to home with it attached as a chip
+    try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across the picker round-trip
+         sessionStorage.setItem(SS.RETURN_TO,location.pathname); }catch(_){}
+    location.href='picker';                                   // pick a Google Sheet -> returns here with it attached as a chip
   } else {
     $('file').setAttribute('accept', kind==='excel'
       ? '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       : '.csv,.tsv,.txt,text/csv,text/plain');
     $('file').click();
   }
-});
+}
+const MODE=(function(){const p=location.pathname.replace(/\/+$/,'').slice(1).toLowerCase();
+  return (p==='sheets'||p==='excel'||p==='csv')?p:'';})();
+const MODE_LBL={sheets:'Sheet',excel:'Excel',csv:'CSV'};
+const addbtn=$('addbtn'), addmenu=$('addmenu');
+if(MODE){
+  addbtn.innerHTML='<span class=pl>+</span> '+MODE_LBL[MODE];
+  addbtn.removeAttribute('aria-haspopup'); addbtn.removeAttribute('aria-expanded');
+  addbtn.onclick=function(){addSource(MODE);};
+}else{
+  addbtn.onclick=function(e){e.stopPropagation();const o=addmenu.classList.toggle('open');addbtn.setAttribute('aria-expanded',o);};
+  document.addEventListener('click',function(){addmenu.classList.remove('open');});
+  addmenu.onclick=function(e){e.stopPropagation();};
+  [...addmenu.querySelectorAll('button')].forEach(b=>b.onclick=function(){
+    addmenu.classList.remove('open');
+    addSource(b.dataset.add);
+  });
+}
 try{ fetch(API_BASE+'/api/reason',{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // home -> /reason: pre-warm that backend
 </script></body></html>
