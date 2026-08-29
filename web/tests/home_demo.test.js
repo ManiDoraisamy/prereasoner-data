@@ -43,7 +43,7 @@ for (const svg of ['anthropic-paper.svg', 'interpretability-blog.svg']) {
 assert(/p==='sheets'\|\|p==='excel'\|\|p==='csv'/.test(html), 'the route mode must cover sheets|excel|csv');
 assert(html.includes('<span class=pl>+</span></button>'), 'the add button is a bare "+" everywhere');
 assert(html.includes("location.href='picker'"), 'the Google Sheets flow must round-trip via /picker');
-assert(html.includes('>Attach a spreadsheet (or excel sheet or Google Sheets or CSV) and ask a question</div>'),
+assert(html.includes('>Attach a spreadsheet and ask a question</div>'),
   'the generic headline invites the attach-and-ask action');
 assert(html.includes('>Watch how our model arrives at the answer.</div>'),
   'the subline promises the visible derivation');
