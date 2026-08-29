@@ -33,6 +33,11 @@
         "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]
       },
       {
+        "comment": "cleanUrls serves pages EXTENSIONLESS (/sheets, /reason), which the glob above cannot match — they were being cached for an hour, so a deploy looked like it had not landed.",
+        "source": "**/!(*.*)",
+        "headers": [ { "key": "Cache-Control", "value": "no-cache, max-age=0, must-revalidate" } ]
+      },
+      {
         "source": "**",
         "headers": [
           { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
