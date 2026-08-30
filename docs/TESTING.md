@@ -25,7 +25,6 @@ python -m regress.source_activation
 node --check web/public/lib/workbook.js
 node web/tests/home_demo.test.js
 node web/tests/workbook_reference.test.js
-node web/tests/llm_consent.test.js
 python -m compileall -q engine db training tests orchestrator mcp_server regress
 git diff --check
 ```

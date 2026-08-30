@@ -111,4 +111,19 @@ for (const [stored, pathname, want, why] of [
   assert.strictEqual(runReturnPath(stored, pathname), want, `returnPath(${stored}) — ${why}`);
 }
 
-console.log("home demo + landing routes + picker: 37 passed, 0 failed");
+// --- external LLM: the in-rail notice-and-choice UI was removed by owner decision on 2026-08-30.
+// Disclosure now lives in the published privacy policy; the SERVER still refuses any request without
+// external_llm_consent:true, so the client must assert it on every Anthropic-bound call.
+const wb = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+for (const gone of ['llmNoticeHtml', 'ackLlmNotice', 'optOutLlm', 'LLM_CONSENT', 'llmnotice']) {
+  assert(!wb.includes(gone), `the removed consent UI must leave no ${gone} behind`);
+}
+assert(!fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8').includes('llmnotice'),
+  'the notice stylesheet rule must be removed too');
+assert.strictEqual((wb.match(/external_llm_consent:true/g) || []).length, 4,
+  'all four Anthropic-bound calls (/chat, /api/converse, /api/reason, /api/master/generate) assert the flag');
+// (the confirm() calls that remain guard destructive deletes, which is unrelated and correct)
+assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(wb),
+  'the external LLM must never be gated behind a blocking dialog');
+
+console.log("home demo + landing routes + picker: 43 passed, 0 failed");

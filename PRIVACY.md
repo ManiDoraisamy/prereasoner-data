@@ -41,13 +41,22 @@ Enabling these features for a hosted service requires a user-facing consent flow
 minimization review, applicable Anthropic terms and data-processing agreement, and a documented
 retention policy. Setting the environment variable alone is not a substitute for those controls.
 
-The reference deployment (chat.prereasoner.com) implements the consent flow as notice-and-choice:
-AI-assisted answers work immediately, a one-time dismissible notice in the answer rail states that
-the question and sheet data are sent to Anthropic, and a one-click "Use local-only" switch turns
-the conversational layer off (stored in the browser; revisited with `?chat=1`). While opted out,
-the client calls none of the gated endpoints — the deterministic local path answers instead, and
-no data leaves the deployment for Anthropic. Self-hosters who require ask-first opt-in rather than
-notice-and-choice should keep `EXTERNAL_LLM_ENABLED` unset or adapt the client flow before
+The reference deployment (chat.prereasoner.com) has **no in-app consent control**. The in-rail
+notice-and-choice line and its one-click "Use local-only" switch were removed on 2026-08-30 by
+operator decision; the client now asserts `external_llm_consent: true` on every gated call. The
+disclosure obligation therefore rests entirely on the operator's published privacy notice, which
+must state that a user's question and sheet data are sent to Anthropic — the application no
+longer says so, and offers the end user no way to decline.
+
+Two controls remain, and neither is an end-user choice:
+
+- `EXTERNAL_LLM_ENABLED` — the operator's server-side switch, and the authoritative one. Unset it
+  and every gated endpoint refuses with 503, so nothing reaches Anthropic whatever a client sends.
+- `?chat=0` — runs the deterministic `/api/reason` path with no orchestrator. This is a debugging
+  flag, not a discoverable or documented privacy control.
+
+Self-hosters who need a user-facing consent flow — which is the norm wherever the data is personal
+or regulated — must keep `EXTERNAL_LLM_ENABLED` unset, or reinstate a client-side flow, before
 exposing the service.
 
 ## Retention and Deletion

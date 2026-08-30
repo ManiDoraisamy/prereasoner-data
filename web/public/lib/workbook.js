@@ -54,28 +54,13 @@ const ORCH = (()=>{ try{
   const o=localStorage.getItem('pr_chat'); if(o==='1')return true; if(o==='0')return false;
 }catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
-// ---- external-LLM notice: /chat, /api/converse and /api/master/generate send the user's message AND
-// sheet data to Anthropic's Claude API, and the server refuses them (503) without BOTH the deployment
-// switch (EXTERNAL_LLM_ENABLED) and a per-request external_llm_consent:true — see PRIVACY.md. The
-// reference deployment uses NOTICE-AND-CHOICE, not an ask-first dialog: the assistant works
-// immediately, a one-time dismissible line in the rail says where the data goes, and one click
-// switches to local-only mode (the deterministic /api/reason path — the product keeps answering,
-// only the conversational layer turns off). localStorage 'pr_llm_consent': '1' acknowledged,
-// '0' opted out, unset = notice still showing. ?chat=1 (the documented force-orchestrated flag)
-// clears an opt-out so the choice can be revisited.
-let LLM_CONSENT=(()=>{ try{
-  if(new URLSearchParams(location.search).get('chat')==='1'){ localStorage.removeItem('pr_llm_consent'); return null; }
-  const v=localStorage.getItem('pr_llm_consent'); if(v==='1')return true; if(v==='0')return false;
-}catch(_){} return null; })();
-function askLlmConsent(){ return LLM_CONSENT!==false; }       // opted out -> local path; otherwise proceed (notice shows until dismissed)
-function llmNoticeHtml(){                                     // one-time, non-blocking, part of the rail — never a popup
-  if(!ORCH || LLM_CONSENT!==null) return '';
-  return '<div class=llmnotice>AI-assisted answers: your question and sheet data are sent to Anthropic (Claude). '
-    +'<a href="javascript:void(0)" onclick="ackLlmNotice()">OK</a> &middot; '
-    +'<a href="javascript:void(0)" onclick="optOutLlm()">Use local-only</a></div>';
-}
-function ackLlmNotice(){ LLM_CONSENT=true; try{ localStorage.setItem('pr_llm_consent','1'); }catch(_){} renderRail(); }
-function optOutLlm(){ try{ localStorage.setItem('pr_llm_consent','0'); localStorage.setItem('pr_chat','0'); }catch(_){} location.reload(); }
+// ---- external LLM: /chat, /api/converse and /api/master/generate send the user's message AND sheet
+// data to Anthropic's Claude API, and the server refuses them (503) without BOTH the deployment
+// switch (EXTERNAL_LLM_ENABLED) and a per-request external_llm_consent:true — see PRIVACY.md.
+// This deployment discloses that transfer in its published privacy policy rather than in the answer
+// rail, so the client always asserts the per-request flag. The kill switches that remain are the
+// operator's EXTERNAL_LLM_ENABLED (server-side, authoritative) and ?chat=0, which runs the
+// deterministic /api/reason path with no orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
@@ -239,8 +224,6 @@ function cotHtml(){
 function toggleCot(){ COTOPEN=!COTOPEN; renderRail(); }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
-  const notice=llmNoticeHtml();
-  if(notice && (CONV||CONVPENDING||STATUS)) return notice+turnHtmlBody();
   return turnHtmlBody();
 }
 function turnHtmlBody(){
@@ -712,7 +695,6 @@ function openGenModal(sh){
 // so it survives every per-row re-render.
 async function runGenerate(id){
   const sh=BOOK.find(s=>s.id===id); if(!sh)return;
-  if(!askLlmConsent()){ sh._gen='Autofill needs the AI assistant (off in local-only mode — reload with ?chat=1 to re-enable)'; sh._genBusy=false; renderSheet(); return; }
   const ta=document.getElementById('genta'); const instruction=ta?ta.value:'';
   closeGenModal();                                            // reveal the sheet so the user watches it fill
   const nReal=(sh.rows||[]).filter(r=>hasCellValue((r||[])[0])).length;
@@ -749,7 +731,7 @@ async function runGenerate(id){
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
       body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId,
-        external_llm_consent:LLM_CONSENT!==false})})
+        external_llm_consent:true})})
       .then(async r=>{ if(!r.ok){ if(!done&&!uid) setGen('Autofill failed — retry',false); return; }
         const j=await r.json(); if(!j||!j.columns||done) return;
         if(!uid){ complete(j); return; }                    // no RTDB at all -> the HTTP body IS the result
@@ -969,14 +951,14 @@ async function conversationalReply(c){
   let reply=null;
   // A background presentation nicety must never be the thing that prompts for AI consent — without a
   // stored "Yes" it is skipped entirely (no data leaves) and the local fallback text below is used.
-  try{ if(LLM_CONSENT===false) throw new Error('LLM opted out');
+  try{
     const token=await window.ensureToken();
     const body={question:c.question,
       clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null,
         reason:c.reason||null,unmet:c.unmet||null,calculations:c.calculations||null,
         currency:c.currency||null}:null,
       error:c.error||null, tables:SHEETS, conversation_id:convId(),
-      external_llm_consent:LLM_CONSENT!==false};
+      external_llm_consent:true};
     if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
       headers:{'content-type':'application/json','Authorization':'Bearer '+token},
@@ -1022,7 +1004,7 @@ async function startTurn(){
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
     body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId, conversation_id:convId(),
-      external_llm_consent:LLM_CONSENT!==false})}).then(parseBody).catch(()=>null);
+      external_llm_consent:true})}).then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
   // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
@@ -1097,7 +1079,7 @@ function markTurnDone(){                                      // the turn finish
 async function startRun(){
   try{ await autosaveRefs(); }                                // reference state is part of this turn: never reason against a stale saved copy
   catch(e){ fail('Could not save reference data, so the query was not run: '+(e&&e.message||e)); return; }
-  if(ORCH && askLlmConsent()) return startTurn();             // orchestrated front-door needs consent; "No" falls through to the local direct path below, which answers without any external LLM
+  if(ORCH) return startTurn();                                // orchestrated front door; ?chat=0 falls through to the direct path below, which uses no external LLM
   const myRun=++RUN;                                          // supersede guard: an old run's async callbacks must not paint
   const live=()=>RUN===myRun&&!SETTLED;
   LASTQ=question; if(EDITED){ syncInputsToSheets(); EDITED=false; showRecalc(false); } stampBaseline();   // pick up any input-cell edits; re-baseline what we're about to compute
