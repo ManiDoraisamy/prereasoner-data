@@ -76,7 +76,7 @@ def test_chat_migration_is_admin_run_and_idempotent():
 
 
 def test_knowledgebase_migration_installs_definer_functions():
-    assert [migration.version for migration in KNOWLEDGEBASE_MIGRATIONS] == [1]
+    assert [migration.version for migration in KNOWLEDGEBASE_MIGRATIONS] == [1, 2]
     assert KNOWLEDGEBASE_MIGRATIONS[0].name == "lazy_fill_definer_functions"
     statements = KNOWLEDGEBASE_MIGRATIONS[0].statements
     definers = [s for s in statements if "SECURITY DEFINER" in s]
@@ -90,9 +90,9 @@ def test_knowledgebase_migration_installs_definer_functions():
     # to entity-shaped (qid PRIMARY KEY) lazy tables.
     assert any("ON CONFLICT (qid) DO NOTHING" in s for s in definers)
     connection = _Connection()
-    assert migrate_knowledgebase(connection) == (1,)
+    assert migrate_knowledgebase(connection) == (1, 2)   # definer functions, then the schedule table
     assert migrate_knowledgebase(connection) == ()
-    # Separate ledgers: the chat and knowledgebase v1 entries must not collide.
+    # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
     assert migrate_chat(connection) == (1,)
 
 
@@ -107,8 +107,9 @@ def test_serving_path_has_no_direct_knowledgebase_writes():
 
 
 class _GrantCursor:
-    def __init__(self, functions_exist=True):
+    def __init__(self, functions_exist=True, schedule_exists=True):
         self.functions_exist = functions_exist
+        self.schedule_exists = schedule_exists
         self.one = None
         self.grants = []
 
@@ -122,6 +123,12 @@ class _GrantCursor:
             self.one = (True,)
         elif "has_schema_privilege" in text:
             self.one = (False, False)           # no CREATE, no direct DML
+        elif "to_regclass" in text:
+            self.one = ("knowledgebase.schedule" if self.schedule_exists else None,)
+        elif "GRANT SELECT ON TABLE" in text:
+            self.grants.append(text)
+        elif "has_table_privilege" in text and "schedule" in text:
+            self.one = (True, False)            # SELECT yes, writes no
 
     def fetchone(self):
         return self.one
@@ -136,7 +143,15 @@ def test_lazy_fill_grants_require_migration_and_audit_direct_writes():
         assert "app_migrations" in str(exc)
     cur = _GrantCursor()
     apply_lazy_fill_grants(cur, "serving")
-    assert len(cur.grants) == len(_LAZY_FILL_FUNCTIONS) == 3
+    assert len([g for g in cur.grants if "GRANT EXECUTE" in g]) == len(_LAZY_FILL_FUNCTIONS) == 3
+    # The serving freshness guard READS the catalog, so the bootstrap must grant it — SELECT only.
+    assert any("GRANT SELECT ON TABLE" in g and "schedule" in g for g in cur.grants)
+    missing = _GrantCursor(schedule_exists=False)
+    try:
+        apply_lazy_fill_grants(missing, "serving")
+        raise AssertionError("a missing schedule table must fail the bootstrap")
+    except RuntimeError as exc:
+        assert "app_migrations" in str(exc)
 
 
 def test_request_path_contains_no_shared_chat_ddl():
@@ -144,11 +159,72 @@ def test_request_path_contains_no_shared_chat_ddl():
     assert not hasattr(conversations, "_ensure")
 
 
+def test_schedule_catalog_is_honest_about_what_it_claims():
+    """The catalog must describe the tables the world path ACTUALLY joins, and must not silently
+    imply upkeep. A lazy-filled table declares cadence None on purpose."""
+    from db.sync.schedule import CATALOG
+    names = {m.table_name for m in CATALOG}
+    # The tables engine/data/word_*.json routes a filter to must all be declared, or the guard
+    # reports "no maintenance record" on ordinary geo questions.
+    for routed in ("city", "country", "u_s_state", "exchange_rate"):
+        assert routed in names, f"{routed} is joined by the world path but undeclared"
+    # The "... in the World" relations are VIEWS over the base tables (db/init.sql); scheduling
+    # them would double-count the same data under two names.
+    assert not any(n.endswith("in the World") for n in names), "views must not be scheduled"
+    by_name = {m.table_name: m for m in CATALOG}
+    assert by_name["exchange_rate"].cadence_hours == 24, "the ECB job runs daily"
+    assert by_name["exchange_rate"].source_schema == "ecb", "must point at the release table"
+    for lazy in ("city", "country"):
+        assert by_name[lazy].cadence_hours is None, f"{lazy} is lazy-filled, not scheduled"
+        assert "never re-verified" in by_name[lazy].note, "the lack of upkeep must be stated"
+    assert all(m.cadence_hours is None or m.cadence_hours > 0 for m in CATALOG)
+
+
+def test_schedule_migration_and_base_schema_agree():
+    """A fresh database (init.sql) and a migrated one must end up with the SAME table, or the two
+    deployment paths quietly diverge."""
+    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
+    import pathlib
+    v2 = [m for m in KNOWLEDGEBASE_MIGRATIONS if m.version == 2]
+    assert v2 and v2[0].name == "maintenance_schedule", "the schedule migration must be v2"
+    ddl = v2[0].statements[0]
+    init = pathlib.Path("db/init.sql").read_text(encoding="utf-8")
+    assert 'CREATE TABLE IF NOT EXISTS knowledgebase."schedule"' in init, "init.sql must declare it"
+    for column in ("table_name", "source", "cadence_hours", "last_refreshed_at",
+                   "last_release_id", "row_count"):
+        assert column in ddl and column in init, f"{column} must exist on both paths"
+    assert "schedule_cadence_positive" in ddl and "schedule_cadence_positive" in init
+
+
+def test_serving_guard_consults_the_catalog_instead_of_skipping():
+    """Regression for the observed gap: a world table with no per-row updated_at produced NO
+    freshness signal at all — the guard simply did not run."""
+    import pathlib
+    kt = pathlib.Path("engine/knowledge_tables.py").read_text(encoding="utf-8")
+    assert "_table_freshness(con, ft, as_of)" in kt, "the no-updated_at branch must consult the catalog"
+    guard = kt[kt.index("FRESHNESS GUARD"):]
+    guard = guard[:guard.index("if world_rate")]
+    assert "else:" in guard, "the missing-updated_at case must be handled, not fall through"
+    pg = pathlib.Path("engine/pg.py").read_text(encoding="utf-8")
+    # The guard runs inside serve()'s try, where an exception costs the user their answer, so the
+    # catalog read must tolerate a database that predates the migration WITHOUT raising.
+    assert "to_regclass('knowledgebase.schedule')" in pg, "must probe before selecting"
+    # It must also reuse the connection the query already holds. Opening a second connection here
+    # turned a transient network blip into a lost answer ("total amount in France" -> None) when
+    # this was first written; the signature carries `con` so that cannot regress.
+    assert "def _table_freshness(self, con, table, as_of)" in pg, "must read via the live connection"
+    assert "_pg()" not in pg[pg.index("def _table_freshness"):pg.index("def _connect")], \
+        "the freshness read must not open its own connection"
+
+
 TESTS = [
     test_chat_migration_is_admin_run_and_idempotent,
     test_knowledgebase_migration_installs_definer_functions,
     test_serving_path_has_no_direct_knowledgebase_writes,
     test_lazy_fill_grants_require_migration_and_audit_direct_writes,
+    test_schedule_catalog_is_honest_about_what_it_claims,
+    test_schedule_migration_and_base_schema_agree,
+    test_serving_guard_consults_the_catalog_instead_of_skipping,
     test_request_path_contains_no_shared_chat_ddl,
 ]
 

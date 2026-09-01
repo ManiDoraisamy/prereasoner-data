@@ -77,7 +77,7 @@ The runner executes the canonical suites in this order:
 | `tests.test_master_ingest` | Private-reference validation, storage, and fixed-point selection |
 | `tests.test_enrichment` | M0 profile/role contracts, intent contrastives, value typing, bounded adapters, domain gates, request-local materialization, tuple edges, replay manifests, and serving-shaped benchmarks |
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
-| `tests.test_app_migrations` | Application schema migrations and least-privilege grants |
+| `tests.test_app_migrations` | Application schema migrations, the world-table maintenance catalog, and least-privilege grants |
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |

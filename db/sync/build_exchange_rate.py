@@ -32,8 +32,10 @@ from psycopg2.extras import execute_values
 
 try:
     from _conn import connect
+    import schedule
 except ImportError:
     from ._conn import connect
+    from . import schedule
 
 SOURCE = "ECB euro foreign exchange reference rates"
 TABLE = 'knowledgebase."exchange_rate"'
@@ -184,6 +186,11 @@ def main() -> int:
             page_size=2000,
         )
         cur.execute(f'ALTER TABLE {TABLE} ALTER COLUMN source_release_id SET NOT NULL')
+        # Record the refresh AFTER the rows are in but BEFORE the commit, so the clock and the data
+        # advance atomically: a rolled-back build must never leave the catalog claiming a refresh
+        # that did not land.
+        schedule.ensure_catalog(cur)
+        schedule.record_refresh(cur, "exchange_rate", release_id=release_id)
         connection.commit()
         cur.execute(f'SELECT COUNT(*), MIN("date"), MAX("date") FROM {TABLE}')
         count, lo, hi = cur.fetchone()

@@ -126,6 +126,37 @@ class PgQuery(KnowledgeTableQuery):
             if self._con is not None:
                 self._con.close(); self._con = None
 
+    def _table_freshness(self, con, table, as_of):
+        """A world table with no per-row updated_at is judged from the maintenance catalog instead
+        of passing silently. Read through the connection the query already holds: this runs inside
+        serve()'s try, where ANY raised exception costs the user their answer, so opening a second
+        connection here would turn a transient network blip into a lost answer. to_regclass keeps
+        the un-migrated case to one ordinary statement rather than a swallowed exception, and the
+        catalog is small enough (one indexed row) that reading it per request beats caching a value
+        that a nightly refresh would leave falsely 'overdue'.
+
+        Only two things are worth saying: the table is past its declared cadence, or nobody declared
+        it. A table declared on-demand (cadence NULL) is an intentional, recorded state — warning
+        about that on every geo query would be noise, not disclosure."""
+        if con.execute("SELECT to_regclass('knowledgebase.schedule')").fetchone()[0] is None:
+            return []                             # un-migrated database: say nothing, invent nothing
+        row = con.execute('SELECT cadence_hours, last_refreshed_at FROM knowledgebase."schedule"'
+                          " WHERE table_name = %s", (table,)).fetchone()
+        if row is None:
+            return [f"freshness: world table '{table}' has no maintenance record — "
+                    f"declare it in db/sync/schedule.py:CATALOG"]
+        cadence, last = row
+        if cadence is None:
+            return []
+        if last is None:
+            return [f"freshness: '{table}' is scheduled every {cadence}h but has never recorded a refresh"]
+        stamp = last.date() if hasattr(last, "date") else last
+        overdue_h = self._days(stamp, as_of) * 24
+        if overdue_h > cadence:
+            return [f"freshness: '{table}' last refreshed {stamp}, {int(overdue_h)}h before the "
+                    f"as-of date {as_of} and past its {cadence}h cadence — may be stale"]
+        return []
+
     def _connect(self, tablemap, sch, attach_world):
         """World path executor → Postgres. The world tables are visible via search_path (no ATTACH)."""
         conn = _pg(); cur = conn.cursor()

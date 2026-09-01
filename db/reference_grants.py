@@ -90,6 +90,21 @@ def apply_lazy_fill_grants(cur, runtime_role: str) -> None:
     if can_create or can_write:
         raise RuntimeError(f"knowledgebase direct-write audit failed for {runtime_role}")
 
+    # The serving freshness guard READS the maintenance catalog on the world path, so the grant is
+    # required — but it must stay SELECT-only: only the sync jobs record a refresh.
+    cur.execute("SELECT to_regclass('knowledgebase.schedule')")
+    if cur.fetchone()[0] is None:
+        raise RuntimeError("knowledgebase.schedule is missing; run db.sync.app_migrations first")
+    cur.execute(sql.SQL('GRANT SELECT ON TABLE knowledgebase."schedule" TO {}').format(role_id))
+    cur.execute(
+        "SELECT has_table_privilege(%s,'knowledgebase.schedule','SELECT'), "
+        "has_table_privilege(%s,'knowledgebase.schedule','INSERT,UPDATE,DELETE')",
+        (runtime_role, runtime_role),
+    )
+    can_read, can_write = cur.fetchone()
+    if not can_read or can_write:
+        raise RuntimeError(f"schedule privilege audit failed for {runtime_role}")
+
 
 def approved_reference_targets(dataset_names, registry=REGISTRY) -> dict[str, tuple[str, ...]]:
     """Return only the physical relations needed by code-approved datasets."""

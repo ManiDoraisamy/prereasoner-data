@@ -269,6 +269,24 @@ CREATE TABLE IF NOT EXISTS knowledgebase."exchange_rate" (
   PRIMARY KEY (currency_code, "date")
 );
 
+-- Maintenance catalog: which world tables are actually kept up to date, how often each is expected
+-- to refresh, and when it last did. Rows are declared by db/sync/schedule.py (the ONE writer) and
+-- read at serving time by the freshness guard, so a table with no per-row updated_at can still be
+-- judged stale instead of silently passing. The "... in the World" VIEWS below and the lazy-fill
+-- entity tables are deliberately excluded — see that module's docstring.
+CREATE TABLE IF NOT EXISTS knowledgebase."schedule" (
+  table_name        text PRIMARY KEY,
+  source            text NOT NULL,
+  source_schema     text,
+  cadence_hours     integer,
+  note              text,
+  last_refreshed_at timestamptz,
+  last_release_id   text,
+  row_count         bigint,
+  recorded_at       timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT schedule_cadence_positive CHECK (cadence_hours IS NULL OR cadence_hours > 0)
+);
+
 CREATE INDEX IF NOT EXISTS ix_world_cities_lname     ON knowledgebase."Cities"(lower(name));
 CREATE INDEX IF NOT EXISTS ix_cities_qid             ON knowledgebase."Cities"(qid);
 CREATE INDEX IF NOT EXISTS ix_world_countries_lname  ON knowledgebase."Countries"(lower(name));

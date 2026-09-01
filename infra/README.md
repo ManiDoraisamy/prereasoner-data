@@ -217,6 +217,10 @@ terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest
 #    The grants step gives serving chat DML plus EXECUTE on exactly those three functions and
 #    audits that direct knowledgebase writes stay denied.
 SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.sync.app_migrations
+#    Seed the world-table maintenance catalog and backfill last_refreshed_at from the evidence
+#    that already exists (each active <source>.release row, else the newest per-row updated_at).
+#    --backfill is safe to repeat: it never overwrites an observed refresh.
+SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.sync.schedule --backfill --show
 SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.reference_grants --role serving
 
 #    The base world grants are still applied directly; verify the schema list against your

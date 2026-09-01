@@ -110,6 +110,21 @@ AS $fn$
 $fn$
 """
 
+_SCHEDULE_TABLE = """
+CREATE TABLE IF NOT EXISTS knowledgebase."schedule" (
+  table_name        text PRIMARY KEY,
+  source            text NOT NULL,
+  source_schema     text,
+  cadence_hours     integer,
+  note              text,
+  last_refreshed_at timestamptz,
+  last_release_id   text,
+  row_count         bigint,
+  recorded_at       timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT schedule_cadence_positive CHECK (cadence_hours IS NULL OR cadence_hours > 0)
+)
+"""
+
 KNOWLEDGEBASE_MIGRATIONS = (
     ApplicationMigration(
         1,
@@ -123,6 +138,11 @@ KNOWLEDGEBASE_MIGRATIONS = (
             "REVOKE ALL ON FUNCTION knowledgebase.lazy_register_word(text, text, text, text, text, text) "
             "FROM PUBLIC",
         ),
+    ),
+    ApplicationMigration(
+        2,
+        "maintenance_schedule",
+        (_SCHEDULE_TABLE,),
     ),
 )
 

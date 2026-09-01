@@ -697,6 +697,11 @@ class KnowledgeTableQuery:
                             nm, uv = max(stale, key=lambda x: self._days(x[1], as_of))
                             warnings.append(f"freshness: '{nm}' ({ft}) was last verified {uv}, {self._days(uv, as_of)} "
                                             f"days before the as-of date {as_of} — may be stale")
+                    else:
+                        # No per-row updated_at: judge the TABLE from the maintenance catalog instead of
+                        # passing silently. An overdue table (past its declared cadence) and one nobody
+                        # maintains are different answers, and both are worth saying out loud.
+                        warnings.extend(self._table_freshness(con, ft, as_of))
                 if world_rate and result is not None:
                     release_row = con.execute(
                         f'SELECT source_release_id FROM {qident("exchange_rate")} LIMIT 1'
@@ -858,6 +863,11 @@ class KnowledgeTableQuery:
             }])
         attach_calculation_evidence(response, assessments)
         return response
+
+    def _table_freshness(self, con, table, as_of):
+        """Warnings from the maintenance catalog for a table with no per-row updated_at. The offline
+        SQLite path has no catalog to consult, so it claims nothing; PgQuery overrides this."""
+        return []
 
     def _connect(self, tablemap, sch, attach_world):
         """in-memory SQLite with the uploaded sheet(s); ATTACH words.db whenever the SQL joins ANY world table
