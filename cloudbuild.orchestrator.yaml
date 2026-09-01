@@ -3,11 +3,10 @@
 #   gcloud builds submit --config cloudbuild.orchestrator.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=latest
 #
-# The `test` step runs the full suite (tests/run_all.py) FIRST — "test all of them every deployment".
-# RUN_ENGINE_TESTS=0 skips the live-Postgres engine suites (no world DB in the build sandbox); test_mcp
-# always runs, and test_orchestrator self-skips unless ANTHROPIC_API_KEY is provided (wire it via a
-# Secret Manager substitution to exercise routing discipline in the gate too). A failing suite fails
-# the build, so a broken orchestrator never ships.
+# The `test` step runs the two suites compatible with this lean image before building. `test_mcp`
+# always runs; `test_orchestrator` self-skips unless ANTHROPIC_API_KEY is provided. Repository CI owns
+# the full hermetic suite, and the release-database regression remains a separate deployment gate.
+# A focused failure here still stops the chat image from being pushed.
 
 steps:
   - id: test

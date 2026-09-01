@@ -1,10 +1,10 @@
 # Build + push the engine image to Artifact Registry.
 #
 #   gcloud builds submit --config cloudbuild.yaml \
-#     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=latest
+#     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=<commit-or-release-id>
 #
-# Run this BEFORE `terraform apply` (Terraform's Cloud Run service consumes the pushed
-# tag via the `image` variable / its default). Full walkthrough: infra/README.md.
+# Run this BEFORE `terraform apply`, resolve the pushed tag to its registry digest, and
+# pass that immutable `@sha256:` reference to Terraform. Full walkthrough: infra/README.md.
 #
 # NOTE: the model weights in engine/data/ are gitignored, and WITHOUT a .gcloudignore
 # `gcloud builds submit` would derive its upload ignore list from .gitignore — silently
@@ -15,18 +15,12 @@ steps:
   - id: build
     name: gcr.io/cloud-builders/docker
     entrypoint: bash
-    # hf-token (Secret Manager) is passed to `docker build` as a BuildKit secret so the model pre-bake
-    # authenticates to HF (unauthenticated pulls are rate-limited to ~40 min and time the build out).
-    secretEnv: ['HF_TOKEN']
     args:
       - -c
       - |
         set -e
-        export DOCKER_BUILDKIT=1   # the Dockerfile uses a COPY heredoc + --mount=secret — BuildKit-only
-        printf '%s' "$$HF_TOKEN" > /workspace/.hf_token
-        docker build --secret id=hf_token,src=/workspace/.hf_token \
-          -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/engine:${_TAG} .
-        rm -f /workspace/.hf_token
+        export DOCKER_BUILDKIT=1   # the Dockerfile uses a COPY heredoc — BuildKit-only
+        docker build -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/engine:${_TAG} .
 
   # REGRESSION GATE (offline tier) — runs the golden non-world text-to-SQL cases + engine.joins invariants
   # INSIDE the freshly built image (real Qwen/LoRA weights are baked in; no Postgres needed). A regression
@@ -53,11 +47,6 @@ steps:
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
 
-availableSecrets:
-  secretManager:
-    - versionName: projects/$PROJECT_ID/secrets/hf-token/versions/latest
-      env: HF_TOKEN
-
 substitutions:
   _REGION: us-central1 # must match infra/ var.region
   _REPO: prereasoner   # must match infra/ var.artifact_repo
@@ -67,7 +56,7 @@ options:
   # The torch/transformers pip layer is the long pole; a bigger machine roughly halves it.
   machineType: E2_HIGHCPU_8
 
-# Headroom for a slow-HF day: even with the auth token, HF egress bandwidth to GCP varies (observed 3.5 min
-# on a good day, >40 min on a bad one). 60 min covers it; override with `--timeout` if HF is pathologically
+# Headroom for a slow-HF day: anonymous HF egress bandwidth to GCP varies. 60 min covers it; override
+# with `--timeout` if HF is pathologically
 # slow, or vendor the models into the image for a fully deterministic build.
 timeout: 3600s

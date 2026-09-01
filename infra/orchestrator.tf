@@ -18,7 +18,7 @@ variable "enable_orchestrator" {
 }
 
 variable "anthropic_secret_id" {
-  description = "Existing Secret Manager secret ID containing the Anthropic API key. Provision its version out-of-band; required when enable_orchestrator=true."
+  description = "Existing Secret Manager secret ID containing the Anthropic API key. Provision its version out-of-band; required when enable_external_llm or enable_orchestrator is true."
   type        = string
   default     = ""
 }

@@ -16,6 +16,10 @@ locals {
 
   image = var.image
 
+  # One deployment decision owns every external-model path. The optional chat service
+  # necessarily enables it; engine-only deployments must opt in explicitly.
+  external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
+
   serving_user      = var.serving_db_role
   serving_secret_id = google_secret_manager_secret.serving_db_password.secret_id
 }
@@ -176,15 +180,16 @@ resource "google_project_iam_member" "run_rtdb" {
 }
 
 resource "google_secret_manager_secret_iam_member" "run_anthropic_key" {
+  count     = local.external_llm_enabled ? 1 : 0
   secret_id = var.anthropic_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.run.email}"
 }
 
-resource "google_secret_manager_secret_iam_member" "run_db_password" {
+resource "google_secret_manager_secret_iam_member" "sync_db_password" {
   secret_id = google_secret_manager_secret.db_password.id
   role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.run.email}"
+  member    = "serviceAccount:${google_service_account.sync.email}"
 }
 
 # ---------- Cloud Run v2: the engine ----------
@@ -194,6 +199,13 @@ resource "google_cloud_run_v2_service" "api" {
   location            = var.region
   ingress             = "INGRESS_TRAFFIC_ALL"
   deletion_protection = var.deletion_protection
+
+  lifecycle {
+    precondition {
+      condition     = !local.external_llm_enabled || length(trimspace(var.anthropic_secret_id)) > 0
+      error_message = "anthropic_secret_id is required when external LLM processing is enabled."
+    }
+  }
 
   template {
     service_account = google_service_account.run.email
@@ -250,24 +262,31 @@ resource "google_cloud_run_v2_service" "api" {
         value = "production"
       }
       env {
-        name  = "EXTERNAL_LLM_ENABLED" # deployment half of the consent gate (PRIVACY.md); the
-        value = "true"                 # per-request half is the client's external_llm_consent
+        name  = "EXTERNAL_LLM_ENABLED" # authoritative deployment switch; see PRIVACY.md
+        value = tostring(local.external_llm_enabled)
       }
       # Sonnet presentation (/api/converse) and reference autofill (/api/master/generate) read the
       # same key the orchestrator uses; without it both degrade to 503 and the UI falls back to
       # local text. Same out-of-band secret as the chat service (see orchestrator.tf).
-      env {
-        name = "ANTHROPIC_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = var.anthropic_secret_id
-            version = "latest"
+      dynamic "env" {
+        for_each = local.external_llm_enabled ? [var.anthropic_secret_id] : []
+        content {
+          name = "ANTHROPIC_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
           }
         }
       }
       env {
         name  = "CORS_ORIGINS"
         value = var.cors_origins
+      }
+      env {
+        name  = "ADMIN_EMAILS"
+        value = var.admin_emails
       }
       env {
         name  = "KB_PG_DB"
@@ -321,10 +340,10 @@ resource "google_cloud_run_v2_service" "api" {
   depends_on = [
     google_project_service.apis,
     google_secret_manager_secret_version.db_password,
-    google_secret_manager_secret_iam_member.run_db_password,
     # Ensure the serving secret and access exist before the service references them.
     google_secret_manager_secret_version.serving_db_password,
     google_secret_manager_secret_iam_member.run_serving_db_password,
+    google_secret_manager_secret_iam_member.run_anthropic_key,
   ]
 }
 
@@ -402,14 +421,27 @@ resource "google_cloud_scheduler_job" "trace_cleanup" {
 # the ECB's ~16:00 CET reference-rate publication in both DST regimes. Live since 2026-08-26
 # (created imperatively first; this block codifies it).
 
+resource "google_service_account" "sync" {
+  account_id   = "${var.service_name}-sync"
+  display_name = "PreReasoner privileged source synchronization"
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_project_iam_member" "sync_cloudsql" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.sync.email}"
+}
+
 resource "google_cloud_run_v2_job" "ecb_rates_refresh" {
-  name                = "ecb-rates-refresh"
+  name                = "${var.service_name}-ecb-rates-refresh"
   location            = var.region
   deletion_protection = false # stateless projection rebuild; the source ledger is the durable record
 
   template {
     template {
-      service_account = google_service_account.run.email
+      service_account = google_service_account.sync.email
       timeout         = "1800s"
       max_retries     = 1
 
@@ -464,11 +496,15 @@ resource "google_cloud_run_v2_job" "ecb_rates_refresh" {
     }
   }
 
-  depends_on = [google_secret_manager_secret_version.db_password]
+  depends_on = [
+    google_secret_manager_secret_version.db_password,
+    google_secret_manager_secret_iam_member.sync_db_password,
+    google_project_iam_member.sync_cloudsql,
+  ]
 }
 
 resource "google_cloud_scheduler_job" "ecb_rates_refresh" {
-  name      = "ecb-rates-refresh-daily"
+  name      = "${var.service_name}-ecb-rates-refresh-daily"
   region    = var.region
   schedule  = "30 16 * * *"
   time_zone = "Etc/UTC"

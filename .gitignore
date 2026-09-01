@@ -45,6 +45,10 @@ infra/**/*.tfplan
 infra/**/*.tfplan.*
 infra/$plan
 !infra/.terraform.lock.hcl
+# deploy/gcp/deploy.sh keeps its per-deployment plan + data dir at the repo root so it never
+# shares infra/.terraform with an operator's existing deployment.
+/.terraform-*.tfplan
+/.terraform-*.data/
 
 # Node / tooling
 node_modules/

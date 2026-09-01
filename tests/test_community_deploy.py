@@ -1,0 +1,258 @@
+"""Hermetic contracts for the public guided GCP deployment."""
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+from db.sync import community_bootstrap as bootstrap_module
+from db.sync import schedule as schedule_module
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _text(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_bootstrap_plan_is_minimal_deterministic_and_non_shell():
+    plan = bootstrap_module.command_plan()
+    assert plan == bootstrap_module.command_plan(), "the build plan must be deterministic"
+    # Every step is an argv tuple invoking a module directly — never a shell string, so no
+    # deployment input can be word-split or expanded into the bootstrap.
+    for command in plan:
+        assert isinstance(command, tuple) and all(isinstance(part, str) for part in command)
+        assert command[:2] == (sys.executable, "-m"), command
+    assert (sys.executable, "-m", "db.sync.sync_wikidata", "--reset", "--high-only") in plan, \
+        "the community seed must stay the bounded --high-only import, not the multi-hour full sync"
+
+
+def test_bootstrap_builds_every_table_the_maintenance_catalog_promises():
+    """A deployment must not advertise upkeep for a table it never built.
+
+    `knowledgebase.schedule` is seeded from `db/sync/schedule.py:CATALOG`, and each non-lazy
+    entry names the `db/sync/<module>.py` that produces it. Those builders must all run in the
+    bootstrap, or the catalog claims a table the community database does not have.
+    """
+    modules = {step[2] for step in bootstrap_module.command_plan()}
+    missing = {}
+    for entry in schedule_module.CATALOG:
+        for builder in re.findall(r"db/sync/([a-z0-9_]+)\.py", entry.note):
+            if f"db.sync.{builder}" not in modules:
+                missing[entry.table_name] = builder
+    assert not missing, f"catalog tables whose builder the bootstrap never runs: {missing}"
+
+
+def test_bootstrap_replays_and_abstains_after_ready_version():
+    class Cursor:
+        def __init__(self, statements):
+            self.statements = statements
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, statement, params=None):
+            self.statements.append((str(statement), params))
+
+    class Connection:
+        def __init__(self):
+            self.statements = []
+            self.commits = 0
+
+        def cursor(self):
+            return Cursor(self.statements)
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.statements.append(("ROLLBACK", None))
+
+    originals = (
+        bootstrap_module._initialize_database,
+        bootstrap_module._ready,
+        bootstrap_module._mark,
+        bootstrap_module._grant_serving_access,
+    )
+    events = []
+    ready = False
+    try:
+        bootstrap_module._initialize_database = lambda connection: events.append("initialize")
+        bootstrap_module._ready = lambda connection: ready
+        bootstrap_module._mark = lambda connection, status, error=None: events.append(
+            (status, error)
+        )
+        bootstrap_module._grant_serving_access = (
+            lambda connection, role, datasets: events.append((role, datasets))
+        )
+        connection = Connection()
+        ran = []
+        assert bootstrap_module.bootstrap(
+            connection, "serving", runner=lambda command: ran.append(tuple(command))
+        )
+        assert tuple(ran) == bootstrap_module.command_plan()
+        assert ("running", None) in events and ("ready", None) in events
+        assert ("serving", frozenset()) in events
+
+        ready = True
+        events.clear()
+        ran.clear()
+        assert not bootstrap_module.bootstrap(
+            connection, "serving", runner=lambda command: ran.append(tuple(command))
+        )
+        assert ran == []
+        assert events == ["initialize"]
+        assert any("pg_advisory_lock" in statement for statement, _ in connection.statements)
+        assert any("pg_advisory_unlock" in statement for statement, _ in connection.statements)
+    finally:
+        (
+            bootstrap_module._initialize_database,
+            bootstrap_module._ready,
+            bootstrap_module._mark,
+            bootstrap_module._grant_serving_access,
+        ) = originals
+
+
+def test_bootstrap_records_failure_and_rejects_privileged_serving_role():
+    original_initialize = bootstrap_module._initialize_database
+    original_ready = bootstrap_module._ready
+    original_mark = bootstrap_module._mark
+    try:
+        bootstrap_module._initialize_database = lambda connection: None
+        bootstrap_module._ready = lambda connection: False
+        marks = []
+        bootstrap_module._mark = lambda connection, status, error=None: marks.append((status, error))
+
+        class Connection:
+            class Cursor:
+                def __enter__(self): return self
+                def __exit__(self, *_): return False
+                def execute(self, *_): return None
+
+            def cursor(self): return self.Cursor()
+            def commit(self): return None
+            def rollback(self): return None
+
+        connection = Connection()
+        try:
+            bootstrap_module.bootstrap(
+                connection,
+                "serving",
+                runner=lambda command: (_ for _ in ()).throw(RuntimeError("source unavailable")),
+            )
+        except RuntimeError as exc:
+            assert str(exc) == "source unavailable"
+        else:
+            raise AssertionError("failed bootstrap was accepted")
+        assert marks == [("running", None), ("failed", "source unavailable")]
+
+        try:
+            bootstrap_module.bootstrap(connection, "postgres")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("postgres was accepted as the serving role")
+    finally:
+        bootstrap_module._initialize_database = original_initialize
+        bootstrap_module._ready = original_ready
+        bootstrap_module._mark = original_mark
+
+
+def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
+    versions = _text("infra/versions.tf")
+    assert 'backend "gcs" {}' in versions
+    assert "prereasoner-inference-tfstate" not in versions
+
+    deploy = _text("deploy/gcp/deploy.sh")
+    for required in (
+        "-backend-config=\"bucket=${STATE_BUCKET}\"",
+        "-backend-config=\"prefix=${STATE_PREFIX}\"",
+        "-var=db_availability_type=ZONAL",
+        "-var=min_instances=0",
+        "-var=enable_external_llm=false",
+        "image_summary.digest",
+        "@${digest}",
+        "terraform -chdir=\"$ROOT/infra\" plan",
+        "Temporary PreReasoner database bootstrap",
+        "cleanup_bootstrap_identity",
+        'build_service_account="${build_service_account##*/}"',
+    ):
+        assert required in deploy
+    assert "Type %s to continue" in deploy
+    assert "gcloud auth login --update-adc" in deploy
+    assert "--allow-unauthenticated" not in deploy
+
+    ci = _text(".github/workflows/ci.yml")
+    assert "sed -i 's/backend \"gcs\" {}/backend \"local\" {}/'" in ci
+    assert 'zz_ci_override.tf' not in ci
+
+
+def test_serving_identity_cannot_read_the_admin_database_secret():
+    terraform = _text("infra/main.tf")
+    assert 'resource "google_secret_manager_secret_iam_member" "run_db_password"' not in terraform
+    sync_binding = terraform.split(
+        'resource "google_secret_manager_secret_iam_member" "sync_db_password"', 1
+    )[1].split("}", 1)[0]
+    assert "google_service_account.sync.email" in sync_binding
+    api = terraform.split('resource "google_cloud_run_v2_service" "api"', 1)[1].split(
+        'resource "google_cloud_run_v2_service_iam_member"', 1
+    )[0]
+    assert "google_secret_manager_secret.db_password.secret_id" not in api
+
+
+def test_public_build_needs_no_hugging_face_secret():
+    dockerfile = _text("Dockerfile")
+    cloudbuild = _text("cloudbuild.yaml")
+    assert "id=hf_token" not in dockerfile
+    assert "secretEnv: ['HF_TOKEN']" not in cloudbuild
+    assert "availableSecrets:" not in cloudbuild
+    assert "engine.fetch_weights" in _text("deploy/gcp/deploy.sh")
+
+
+def test_marketing_button_opens_the_pinned_public_walkthrough():
+    button = _text("deploy/gcp/button.html")
+    start = button.index('href="') + len('href="')
+    href = button[start:button.index('"', start)].replace("&amp;", "&")
+    parsed = urlparse(href)
+    query = parse_qs(parsed.query)
+    assert parsed.netloc == "shell.cloud.google.com"
+    assert query["cloudshell_git_repo"] == [
+        "https://github.com/ManiDoraisamy/prereasoner-data"
+    ]
+    assert query["cloudshell_git_branch"] == ["main"]
+    assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
+    assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
+    assert href in _text("README.md")
+
+
+TESTS = [
+    test_bootstrap_plan_is_minimal_deterministic_and_non_shell,
+    test_bootstrap_builds_every_table_the_maintenance_catalog_promises,
+    test_bootstrap_replays_and_abstains_after_ready_version,
+    test_bootstrap_records_failure_and_rejects_privileged_serving_role,
+    test_public_deployer_has_isolated_state_and_cost_safe_defaults,
+    test_serving_identity_cannot_read_the_admin_database_secret,
+    test_public_build_needs_no_hugging_face_secret,
+    test_marketing_button_opens_the_pinned_public_walkthrough,
+]
+
+
+def main() -> None:
+    failures = []
+    for test in TESTS:
+        try:
+            test()
+            print(f"  ok   {test.__name__}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(test.__name__)
+            print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
+    print(f"\ncommunity deploy: {len(TESTS) - len(failures)} passed, {len(failures)} failed")
+    raise SystemExit(1 if failures else 0)
+
+
+if __name__ == "__main__":
+    main()

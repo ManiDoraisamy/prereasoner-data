@@ -1,5 +1,11 @@
 # infra/ — deploying PreReasoner to Google Cloud
 
+For a new, isolated Community Edition project, the supported guided path is
+[`deploy/gcp/deploy.sh`](../deploy/gcp/README.md). It provisions a private state bucket, builds the
+public source and weights in the caller's project, applies a cost-reduced profile, and runs the
+minimal database bootstrap. The manual production procedure below remains for existing managed
+deployments and advanced operators.
+
 Terraform creates the core Cloud Run engine (`prereasoner-api`), Cloud SQL Postgres,
 Artifact Registry, secrets, and runtime identity. A separate third-party chat orchestrator
 is optional (`enable_orchestrator=false` by default). Firebase Auth, Realtime Database, and
@@ -67,15 +73,17 @@ image).
 
 ### 2. Terraform apply
 
-**State comes first.** This configuration defaults to local state for disposable development.
-Production state contains generated database credentials, so store it in a versioned,
-access-restricted backend. Never run `apply` against an existing project from an empty state:
+**State comes first.** The checked-in GCS backend is partial and has no bucket or prefix. Supply a
+versioned, access-restricted backend at `terraform init`; the Community deployer does this
+automatically. Never run `apply` against an existing project from an empty state:
 restore the production backend and import existing resources first. Otherwise Terraform will
 propose duplicate Cloud Run, Cloud SQL, secret, IAM, and repository resources.
 
 ```bash
 cd infra
-terraform init
+terraform init -reconfigure \
+  -backend-config="bucket=<PRIVATE_VERSIONED_STATE_BUCKET>" \
+  -backend-config="prefix=<DEPLOYMENT_PREFIX>"
 terraform apply -var project_id=<PROJECT> \
   -var image=<region>-docker.pkg.dev/<project>/<repo>/engine@sha256:<digest> \
   -var rtdb_url=https://<project>-default-rtdb.firebaseio.com \
@@ -145,11 +153,9 @@ terraform -chdir=infra apply \
   -var anthropic_secret_id=prereasoner-chat-anthropic-key
 ```
 
-Enabling the module is the deployment-level external-LLM opt-in. The chat API still requires
-an authenticated request containing literal `external_llm_consent: true`. Before exposing the
-Hosting route, adopt and document an appropriate consent experience: the checked-in client uses
-the notice-and-choice flow described in `PRIVACY.md`; deployments requiring ask-first consent must
-adapt that client first.
+Enabling the module is the authoritative deployment switch for external model processing. Publish
+an accurate `/privacy` page and complete the operator review in `PRIVACY.md` before exposing the
+Hosting route. Do not add a generic popup or model-provider choice to the reference client.
 
 The chat startup probe calls `/readyz`, which checks the injected key and imports the real MCP
 server module. `/healthz` is liveness only and must not be used as the deployment readiness gate.
@@ -183,12 +189,32 @@ no Terraform option that gives the internet-facing service the `postgres` admini
 credential. Reference enrichment remains off by default.
 
 - `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
+- `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)
+  disables admin API access; forks never inherit a maintainer identity.
+- `enable_external_llm` - explicit opt-in for engine features that call the configured external
+  model. It defaults to false; enabling the optional orchestrator also enables the same processing
+  boundary and requires `anthropic_secret_id`.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
   per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
 
 > CI and the release review run `terraform fmt -check` and `terraform validate` against the
 > checked-in lock file. Run `terraform plan` against the correct restored state before every
 > apply; validation alone cannot detect missing imports or verify live grants.
+>
+> Upgrade note: an existing engine-only deployment that intentionally uses `/api/converse` or
+> reference autofill must now pass `-var enable_external_llm=true` and its existing
+> `anthropic_secret_id`. Omitting the flag deliberately plans removal of the engine's Anthropic
+> secret binding and sets `EXTERNAL_LLM_ENABLED=false`.
+>
+> Upgrade note: `admin_emails` now reaches the service as an explicit `ADMIN_EMAILS` env var, and
+> `engine/admin.py` no longer carries a hardcoded owner fallback. An existing deployment that used
+> that fallback must pass `-var admin_emails=<owner@example.com>` or lose `/api/admin/*` (it fails
+> closed with 403). This bites on an image-only redeploy too, not just on `terraform apply`.
+>
+> Upgrade note: the ECB refresh resources are now prefixed with `service_name`, so one apply
+> REPLACES the `ecb-rates-refresh` Cloud Run job and the `ecb-rates-refresh-daily` scheduler.
+> Schedule it away from the 16:30 UTC trigger, and re-check the job afterwards — a failed create
+> leaves the deployment with no rates refresh at all.
 >
 > Known benign diff: after any `gcloud run services update-traffic` (tags, pins), the Cloud Run
 > API re-materializes an all-zero service-level `scaling {}` block and every plan shows

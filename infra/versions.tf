@@ -12,13 +12,10 @@ terraform {
     }
   }
 
-  # Production state contains generated database credentials, so it lives in a versioned,
-  # access-restricted GCS bucket (created 2026-08-27; project-private, uniform access).
-  # Self-hosters: point this at your own bucket or delete the block for local dev state.
-  backend "gcs" {
-    bucket = "prereasoner-inference-tfstate"
-    prefix = "prereasoner"
-  }
+  # Partial backend configuration is deliberate. Every deployment supplies its own versioned,
+  # access-restricted bucket and prefix at `terraform init`; a public checkout must never point at
+  # the maintainer's production state. See deploy/gcp/deploy.sh and infra/README.md.
+  backend "gcs" {}
 }
 
 provider "google" {

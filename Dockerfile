@@ -36,12 +36,10 @@ RUN pip install -r /tmp/requirements.txt \
 # boot — the startup probe times out and HF rate limits unauthenticated pulls.
 ENV HF_HOME=/opt/hf
 COPY engine/model_revisions.py /tmp/prereasoner_model_revisions.py
-# Authenticate the model pull with an HF token, mounted as a BuildKit SECRET (never baked into the image
-# layers or history). Unauthenticated HF pulls are rate-limited to a crawl (~40 min → build timeout);
-# authenticated is a couple of minutes. Degrades to unauthenticated if the secret is absent (e.g. a local
-# `docker build` without --secret), so the build still works, just slowly.
-RUN --mount=type=secret,id=hf_token \
-    HF_TOKEN="$(cat /run/secrets/hf_token 2>/dev/null || true)" PYTHONPATH=/tmp python - <<'PY'
+# Both pinned base models and the manifested PreReasoner bundle are public. Builds therefore need no
+# maintainer secret and are reproducible by a third-party Cloud Build project. Hugging Face may apply
+# lower anonymous rate limits, so cloudbuild.yaml keeps a generous timeout.
+RUN PYTHONPATH=/tmp python - <<'PY'
 from transformers import AutoModel, AutoTokenizer
 from prereasoner_model_revisions import (
     BGE_MODEL_ID, BGE_REVISION, QWEN_MODEL_ID, QWEN_REVISION,

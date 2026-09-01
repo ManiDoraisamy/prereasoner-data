@@ -102,8 +102,9 @@ asked: the join keys decide. An uploaded rate sheet wins where it overlaps but c
 knowledge it does not cover. The projection carries each active series forward a bounded
 `CARRY_FORWARD_DAYS` past today (the weekend rule generalized to holidays and sync lag);
 past the bound the coverage check declines rather than converting at an arbitrarily old rate,
-and `updated_at` always keeps the true publication date. The `ecb-rates-refresh` Cloud Run job
-rebuilds the projection daily from the same immutable engine image the service runs.
+and `updated_at` always keeps the true publication date. The `<service_name>-ecb-rates-refresh`
+Cloud Run job (`infra/main.tf`) rebuilds the projection daily from the same immutable engine image
+the service runs.
 
 ## The database contract is now explicit
 

@@ -13,6 +13,11 @@ variable "service_name" {
   description = "Cloud Run service name. web/firebase.json rewrites /api/** to serviceId \"prereasoner-api\", so change both together."
   type        = string
   default     = "prereasoner-api"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,22}[a-z0-9]$", var.service_name))
+    error_message = "service_name must be 2-24 lowercase letters, digits, or hyphens so derived service-account ids remain valid."
+  }
 }
 
 variable "image" {
@@ -64,6 +69,18 @@ variable "cors_origins" {
   description = "Comma-separated exact browser origins allowed to call the engine. Empty keeps the API same-origin only."
   type        = string
   default     = ""
+}
+
+variable "admin_emails" {
+  description = "Comma-separated Firebase-authenticated email allowlist for /api/admin/*. Empty disables admin API access."
+  type        = string
+  default     = ""
+}
+
+variable "enable_external_llm" {
+  description = "Enable engine features that call the configured external LLM. False leaves its secret, IAM grant, and request paths disabled."
+  type        = bool
+  default     = false
 }
 
 variable "rtdb_trace_retention_days" {

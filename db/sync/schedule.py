@@ -39,8 +39,9 @@ class Maintained:
 # and the table carries only the observed facts (when it last refreshed, from which release).
 CATALOG: tuple[Maintained, ...] = (
     Maintained("exchange_rate", "ecb", "ecb", 24,
-               "ECB euro reference rates; Cloud Scheduler ecb-rates-refresh-daily at 16:30 UTC. "
-               "The ECB does not publish at weekends, so a refresh may legitimately find no new print."),
+               "ECB euro reference rates; rebuilt at 16:30 UTC by the <service_name>-ecb-rates-refresh "
+               "Cloud Run job (infra/main.tf). The ECB does not publish at weekends, so a refresh may "
+               "legitimately find no new print."),
     # The three tables the world-filter path actually joins. They are LAZY-FILLED per request by
     # engine/knowledge_sync.py:ensure_entity, so a row is fetched once when first needed and never
     # re-verified. cadence_hours=None states that plainly rather than implying upkeep nobody does.
