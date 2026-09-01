@@ -24,13 +24,14 @@ REPO = os.path.dirname(os.path.dirname(HERE))                  # repo root (trai
 ENGINE_DATA = os.environ.get("PREREASONER_ENGINE_DATA", os.path.join(REPO, "engine", "data"))
 
 R = DATA; dev = torch.device("cpu")
-meta = torch.load(os.path.join(R, "encoder_props_meta.pt"), map_location="cpu", weights_only=False)
+meta = torch.load(os.path.join(R, "encoder_props_meta.pt"), map_location="cpu", weights_only=True)
 alloc, cfg = meta["alloc"], meta["cfg"]; nc = alloc["n_content"]
 di = {d["name"]: d["dim_id"] for d in alloc["dims"]}; fd = fam_dims_map(alloc)
 enc = LiveQwen(dev, warm_lora=os.path.join(R, "qwen_lora_props"), serving=True)
 m = RelBlockModel(in_dim=cfg["in_dim"], H=cfg["H"], layers=cfg["layers"], heads=cfg["heads"],
                   nc=nc, n_edge=cfg["n_edge"]).to(dev)
-m.load_state_dict(torch.load(os.path.join(R, "encoder_props.pt"), map_location="cpu")); m.eval()
+m.load_state_dict(torch.load(
+    os.path.join(R, "encoder_props.pt"), map_location="cpu", weights_only=True)); m.eval()
 test = [p for p in (pack_csv(t, di, fd, nc) for t in load(os.path.join(R, "units_test.jsonl"))) if p]
 ps, pl = evaluate(enc, m, test, nc, enc.hdim, dev)
 thr = {}

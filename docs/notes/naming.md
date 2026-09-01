@@ -1,5 +1,9 @@
 # World-table naming: the two families (and the city/country migration)
 
+> Historical migration record for the still-live legacy names. Use
+> [../ARCHITECTURE.md](../ARCHITECTURE.md) for current request ownership and
+> [../../db/README.md](../../db/README.md) for the supported database workflow.
+
 > **Why this doc exists.** The engine routes an uploaded column to a *world table* by name, and there are
 > **two naming conventions** for those tables living side by side. If you don't know that, the route
 > values look inconsistent (`city` for one column, `States in the World` for another) and tests that

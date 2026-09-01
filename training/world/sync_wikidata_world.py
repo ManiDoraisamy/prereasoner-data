@@ -155,7 +155,7 @@ def wlabel(cur, type_qid):
 
 def ensure_table(cur, label, props):
     """the faithful wikipedia table (exact-label name, qid PK + qid-FK columns); created on demand if a type was never
-    mirrored. (build_wikipedia_schema pre-creates the known ones; this covers the long tail.)"""
+    mirrored. (db/sync/build_wikipedia.py pre-creates the known ones; this covers the long tail.)"""
     coldefs = ['"qid" TEXT PRIMARY KEY', '"name" TEXT'] + [f'"{c}" TEXT' for _p, c, _l, _t in props]
     cur.execute(f'CREATE TABLE IF NOT EXISTS knowledgebase."{label}" ({", ".join(coldefs)})')
 

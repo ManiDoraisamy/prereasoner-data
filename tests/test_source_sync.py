@@ -4,7 +4,9 @@ Run: python -m tests.test_source_sync
 """
 from __future__ import annotations
 
+import contextlib
 import io
+import re
 import sys
 import tarfile
 import zipfile
@@ -28,6 +30,8 @@ from db.sync.sources.nager_date.sync import parse_snapshot as parse_nager
 from db.sync.sources.nlm_cde.sync import parse_snapshot as parse_nlm
 from db.sync.sources.loinc.sync import parse_archive as parse_loinc
 from db.sync.sources.who.sync import parse_snapshot as parse_who
+from db.sync.sources.common import _require_https
+from db.sync import build_wikipedia
 from db.sync.build_exchange_rate import (
     CARRY_FORWARD_DAYS, build_rows, ensure_rate_columns, load_active_history, rate_column_name,
 )
@@ -59,6 +63,16 @@ def _iana_archive(*, unknown_zone: bool = False) -> bytes:
             info.size = len(payload)
             archive.addfile(info, io.BytesIO(payload))
     return target.getvalue()
+
+
+def test_source_downloads_require_absolute_https_urls():
+    assert _require_https("https://example.com/source.zip") == "https://example.com/source.zip"
+    for unsafe in ("http://example.com/source.zip", "file:///tmp/source.zip", "/tmp/source.zip"):
+        try:
+            _require_https(unsafe)
+            raise AssertionError
+        except ValueError:
+            pass
 
 
 def _cldr_archive() -> bytes:
@@ -222,6 +236,118 @@ def test_exchange_rate_builder_carries_active_series_past_build_day():
     assert abs(carried["USD"] - 1.20 / 0.87) < 1e-9, "carried rate is the true last print"
     assert source_day == date(2026, 8, 17), "updated_at keeps the TRUE publication date"
     assert ("CYP", date(2026, 8, 19)) not in by, "retired series never fabricate past their last print"
+
+
+class _CatalogCursor:
+    """A tiny stand-in for the `knowledgebase` schema: {table name -> row count}.
+
+    Models only the additive statements build_wikipedia issues. Quoted identifiers are decoded
+    like PostgreSQL so labels containing quotes exercise the real interpolation boundary.
+    """
+
+    def __init__(self, tables, labels):
+        self.tables = dict(tables)
+        self.labels = dict(labels)
+        self.statements = []
+        self._rows = []
+
+    def execute(self, statement, params=None):
+        sql = " ".join(str(statement).split())
+        self.statements.append(sql)
+        names = [value.replace('""', '"') for value in re.findall(r'"((?:""|[^"])*)"', sql)]
+        if sql.startswith("CREATE SCHEMA") or sql.startswith("ALTER TABLE"):
+            self._rows = []
+        elif sql.startswith("SELECT qid, label FROM"):
+            self._rows = list(self.labels.items())
+        elif "information_schema.tables WHERE table_schema=%s" in sql:
+            self._rows = [(1,)] if params[1] in self.tables else []
+        elif "information_schema.columns" in sql:
+            self._rows = [(1,)] if params[0] in self.tables else []
+        elif sql.startswith("CREATE TABLE"):
+            target, source = names[0], names[-1]
+            if source not in self.tables:
+                raise RuntimeError(f'relation "knowledgebase.{source}" does not exist')
+            self.tables[target] = 0; self._rows = []
+        else:
+            raise AssertionError(f"unmodelled statement: {sql}")
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return list(self._rows)
+
+
+class _CatalogConnection:
+    def __init__(self, cursor):
+        self._cursor = cursor
+
+    def cursor(self):
+        return self._cursor
+
+    def commit(self):
+        pass
+
+
+def _run_wikipedia_build(tables, labels, leaf_qid):
+    """Drive the additive build_wikipedia precreator against the fake catalog."""
+    cursor = _CatalogCursor(tables, labels)
+    with patch.object(build_wikipedia, "connect", lambda: _CatalogConnection(cursor)), \
+            patch.object(build_wikipedia, "_leaf_qid", lambda: dict(leaf_qid)), \
+            patch.object(sys, "argv", ["build_wikipedia.py"]), \
+            contextlib.redirect_stdout(io.StringIO()):
+        build_wikipedia.main()
+    return cursor
+
+
+def test_wikipedia_build_never_drops_a_leaf_named_by_its_own_exact_label():
+    # Regression: `label` is the EXACT Wikidata label and `leaf` the snake mirror name, and BOTH
+    # live in `knowledgebase`. For every single-word label ("city", "country", "film", "taxon")
+    # they are the same string, so the unconditional rebuild dropped the SOURCE table CASCADE and
+    # then ran CREATE TABLE ... (LIKE <the table it had just dropped>).
+    cursor = _run_wikipedia_build(
+        tables={"city": 180, "academic_journal": 25505},
+        labels={"Q515": "city", "Q737498": "academic journal"},
+        leaf_qid={"city": "Q515", "academic_journal": "Q737498"},
+    )
+    assert cursor.tables["city"] == 180, "the source mirror table must survive the rebuild"
+    assert not [s for s in cursor.statements if s.startswith("DROP")]
+    assert cursor.tables["academic journal"] == 0, "a genuine alias is still created, empty"
+
+
+def test_wikipedia_build_preserves_an_existing_alias_table():
+    cursor = _run_wikipedia_build(
+        tables={"academic_journal": 0, "academic journal": 25505},
+        labels={"Q737498": "academic journal"},
+        leaf_qid={"academic_journal": "Q737498"},
+    )
+    assert cursor.tables["academic journal"] == 25505
+    assert not [s for s in cursor.statements if s.startswith("DROP")]
+
+
+def test_wikipedia_build_disambiguates_a_label_owned_by_another_leafs_mirror():
+    # The same collision one step removed: a leaf's exact label matches a DIFFERENT leaf's snake
+    # mirror name. The alias is still wanted, but never under a name that owns a source table.
+    cursor = _run_wikipedia_build(
+        tables={"borough": 0, "city": 42},
+        labels={"Q5195043": "city", "Q515": "city"},
+        leaf_qid={"borough": "Q5195043", "city": "Q515"},
+    )
+    assert cursor.tables["city"] == 42, "another leaf's mirror table is not a drop target"
+    assert "city (Q5195043)" in cursor.tables, "the alias is created under a qid-disambiguated name"
+
+
+def test_wikipedia_build_quotes_labels_and_preserves_disambiguation_suffix():
+    cursor = _run_wikipedia_build(
+        tables={"journal": 0, "borough": 0, "city": 42},
+        labels={"Q1": 'Journal "A"', "Q5195043": "city" * 30, "Q515": "city" * 30},
+        leaf_qid={"journal": "Q1", "borough": "Q5195043", "city": "Q515"},
+    )
+    assert 'Journal "A"' in cursor.tables
+    assert any('"Journal ""A"""' in statement for statement in cursor.statements)
+    collision = next(name for name in cursor.tables if name.endswith(" (Q515)"))
+    assert len(collision.encode("utf-8")) <= 63
+    assert collision != "city"
 
 
 def test_cdc_parser_preserves_hierarchy_and_metadata():
@@ -465,6 +591,7 @@ def test_sync_connection_credentials_override_serving_credentials():
 
 
 TESTS = [
+    test_source_downloads_require_absolute_https_urls,
     test_iana_parser_preserves_source_boundaries,
     test_iana_parser_rejects_unknown_zone,
     test_cldr_parser_keeps_codes_displays_temporal_rows_and_units_separate,
@@ -473,6 +600,10 @@ TESTS = [
     test_exchange_rate_builder_uses_the_active_release_ledger,
     test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert,
     test_exchange_rate_builder_carries_active_series_past_build_day,
+    test_wikipedia_build_never_drops_a_leaf_named_by_its_own_exact_label,
+    test_wikipedia_build_preserves_an_existing_alias_table,
+    test_wikipedia_build_disambiguates_a_label_owned_by_another_leafs_mirror,
+    test_wikipedia_build_quotes_labels_and_preserves_disambiguation_suffix,
     test_cdc_parser_preserves_hierarchy_and_metadata,
     test_libphonenumber_parser_uses_calling_code_for_non_geographic_keys,
     test_geonames_parser_preserves_source_rows_and_scope,

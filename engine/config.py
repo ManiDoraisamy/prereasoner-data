@@ -30,8 +30,7 @@ Env contract:
   ANTHROPIC_API_KEY    Anthropic key. OPTIONAL for the engine: powers the /api/converse conversational fallback +
                        answer presentation; unset ⇒ /api/converse 503s and the UI degrades gracefully. REQUIRED
                        only to run the separate MCP orchestrator chat backend (docs/MCP.md). No default.
-  EXTERNAL_LLM_ENABLED Deployment opt-in; default false. Each request must also carry literal
-                       external_llm_consent=true. See PRIVACY.md.
+  EXTERNAL_LLM_ENABLED Authoritative deployment switch; default false. See PRIVACY.md.
   ANTHROPIC_MODEL      Sonnet model id for /api/converse + the orchestrator   (default claude-sonnet-5)
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
@@ -146,7 +145,7 @@ ORCH_AUTH_MODE = os.environ.get("ORCH_AUTH_MODE") or (
 
 
 def external_llm_enabled() -> bool:
-    """External data egress is opt-in at deployment and still requires per-request consent."""
+    """Return the operator's authoritative switch for external model processing."""
     return os.environ.get("EXTERNAL_LLM_ENABLED", "").strip().lower() in {"1", "true", "yes"}
 
 

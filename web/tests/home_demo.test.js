@@ -111,19 +111,36 @@ for (const [stored, pathname, want, why] of [
   assert.strictEqual(runReturnPath(stored, pathname), want, `returnPath(${stored}) — ${why}`);
 }
 
-// --- external LLM: the in-rail notice-and-choice UI was removed by owner decision on 2026-08-30.
-// Disclosure now lives in the published privacy policy; the SERVER still refuses any request without
-// external_llm_consent:true, so the client must assert it on every Anthropic-bound call.
+// --- external LLM: disclosure has one permanent home and never interrupts the user's workflow.
 const wb = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+const chat = fs.readFileSync(path.join(__dirname, '..', 'public', 'chatui.html'), 'utf8');
+const privacy = fs.readFileSync(path.join(__dirname, '..', 'public', 'privacy.html'), 'utf8');
+assert.strictEqual(fb.hosting.cleanUrls, true, 'privacy.html must be published at the linked /privacy URL');
 for (const gone of ['llmNoticeHtml', 'ackLlmNotice', 'optOutLlm', 'LLM_CONSENT', 'llmnotice']) {
   assert(!wb.includes(gone), `the removed consent UI must leave no ${gone} behind`);
 }
+for (const gone of ['llmNoticeOnce', 'llmOptedOut', 'pr_llm_consent', 'Heads up: this assistant']) {
+  assert(!chat.includes(gone), `the standalone chat must leave no ${gone} notice path behind`);
+}
 assert(!fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8').includes('llmnotice'),
   'the notice stylesheet rule must be removed too');
-assert.strictEqual((wb.match(/external_llm_consent:true/g) || []).length, 4,
-  'all four Anthropic-bound calls (/chat, /api/converse, /api/reason, /api/master/generate) assert the flag');
+assert(!wb.includes('external_llm_consent') && !chat.includes('external_llm_consent'),
+  'ordinary processing must not carry a misleading per-request consent field');
 // (the confirm() calls that remain guard destructive deletes, which is unrelated and correct)
 assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(wb),
   'the external LLM must never be gated behind a blocking dialog');
+assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(chat),
+  'the standalone chat must never show a processor dialog');
+assert(html.includes('href="/privacy"'), 'the home page must link to the published privacy policy');
+for (const page of ['reason.html', 'knowledge.html', 'picker.html', 'chatui.html']) {
+  const body = fs.readFileSync(path.join(__dirname, '..', 'public', page), 'utf8');
+  assert(body.includes('href="/privacy"'), `${page} must link to the published privacy policy`);
+}
+for (const required of ['What we process', 'Anthropic', 'Google Cloud and Firebase', 'Why we process data',
+  'Storage and retention', 'Deletion', 'Customer spreadsheet rows are not included']) {
+  assert(privacy.includes(required), `the published privacy policy must disclose: ${required}`);
+}
+assert(privacy.includes('toward operating this assistant layer locally'),
+  'the policy must state the local-model direction without making it a user setting');
 
-console.log("home demo + landing routes + picker: 43 passed, 0 failed");
+console.log("home demo + landing routes + picker + privacy: passed");

@@ -114,9 +114,8 @@ def _test_server(key, model, engine_base):
     # environment before reloading config so the envelope test exercises chat, not real Firebase.
     os.environ["APP_ENV"] = "test"
     os.environ["AUTH_TEST_SUB"] = "localdev"
-    # Relaying the message to Anthropic is egress, so /chat requires BOTH the deployment opt-in and
-    # per-request consent. Set explicitly rather than setdefault: the test must not pass or fail on
-    # whatever the developer happens to have exported.
+    # Relaying the message to Anthropic is egress, so /chat requires the operator's deployment
+    # switch. Set it explicitly so the test does not depend on the developer's environment.
     previous_egress = os.environ.get("EXTERNAL_LLM_ENABLED")
     os.environ["EXTERNAL_LLM_ENABLED"] = "1"
     # reimport config so ENGINE_BASE_URL/ORCH_PORT take effect
@@ -141,20 +140,14 @@ def _test_server(key, model, engine_base):
     try:
         message = {"message": "Say hello in one short sentence. Do not call any tool.",
                    "tables": TABLES, "history": []}
-        _, granted = post({**message, "external_llm_consent": True})
+        _, granted = post(message)
         ok("reply" in granted and isinstance(granted.get("history"), list),
            "POST /chat returns {reply, history}")
 
-        # The gate is a privacy control, so it needs a NEGATIVE test: withholding consent must refuse
-        # rather than quietly forward the user's message and tables to Anthropic.
-        status, refused = post(message, timeout=30)
-        ok(status == 503 and "reply" not in refused,
-           "POST /chat without external_llm_consent is refused and returns no model reply")
-
         os.environ["EXTERNAL_LLM_ENABLED"] = "0"
-        status, disabled = post({**message, "external_llm_consent": True}, timeout=30)
+        status, disabled = post(message, timeout=30)
         ok(status == 503 and "reply" not in disabled,
-           "per-request consent cannot override the deployment-level egress switch")
+           "the deployment-level egress switch disables chat")
     finally:
         if previous_egress is None:
             os.environ.pop("EXTERNAL_LLM_ENABLED", None)

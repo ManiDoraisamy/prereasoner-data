@@ -1,5 +1,9 @@
 # Architecture
 
+Status: **current runtime architecture**. Future changes are called out as targets or pending work;
+they are not described in the present tense. See the [documentation map](README.md) for the boundary
+between current, opt-in, external, and planned capabilities.
+
 PreReasoner turns a question and tabular data into inspectable SQL, executes that SQL, and returns the rows and
 trace. The engine does not use a decoder to generate SQL or numeric answers. A frozen Qwen model supplies semantic
 signals; typed AST construction, candidate ordering, routing, joins, validation, and execution are deterministic for
@@ -31,7 +35,7 @@ engine/routing.py
         v
 guarded SQL execution in the conversation schema
         |
-        +-- response: rows, SQL, route, views, trace identifiers
+        +-- response: rows and SQL, plus route-specific evidence/provenance
         +-- optional Firebase RTDB progress events
 ```
 
@@ -100,10 +104,12 @@ business-day value only during projection construction, never through request-ti
 latest-prior SQL. The calculation verifier proves direction and aggregate arithmetic; missing
 coverage fails closed. No embedded or demo FX fixture is a production fact source.
 
-The source materialization design makes the currently ambiguous database boundary explicit: physical shared schemas are source-
-owned (`wikidata` after migration and the publisher schemas in `SOURCE_DATA.md`), while domain roles describe request-private
-operational tables and classify source datasets in the planner registry. Each source owns a versioned `release`
-table. PostgreSQL `public` contains no application data. `engine.relations` remains the
+The target source-materialization design makes the database boundary explicit: physical shared
+schemas are source-owned (`wikidata` after its pending migration and the publisher schemas in
+`SOURCE_DATA.md`), while domain roles describe request-private operational tables and classify
+source datasets in the planner registry. Each new publisher source owns a versioned `release`
+table. The target `public` schema contains no application data, but the current runtime still uses
+legacy `public` Wikidata staging and geo tables declared by `db/init.sql`. `engine.relations` remains the
 relationship-graph owner, and the existing typed AST remains the only SQL planner. Enrichment does not add a router,
 planner, or request-time network path.
 
@@ -320,9 +326,10 @@ Runtime model artifacts live under `engine/data/` and are validated by a manifes
 not duplicated under versioned names. Training output becomes serving input only through the documented promotion
 process in [TRAINING.md](TRAINING.md).
 
-The default weight repository is private at the time of writing. Publishing the source therefore does not by itself
-make the full application reproducible; an open compatible bundle or an explicitly configured replacement is still
-required. Hermetic planner, routing, reference, MCP, and browser tests do not require that bundle.
+The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public. The
+source manifest pins an immutable revision and every runtime-file hash, so a fresh clone can provision and
+verify the compatible bundle without credentials. Reproducing the full hosted application still requires a
+locally built knowledge database; hermetic planner, routing, reference, MCP, and browser tests require neither.
 
 ## Change Rules
 

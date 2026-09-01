@@ -184,9 +184,9 @@ def main():
     anch_pool = sql + join + csv
 
     enc = LiveQwen(dev, lora=True, lora_r=args.lora_r)
-    cfg10 = torch.load(R10 / "sql_base_meta.pt", map_location="cpu", weights_only=False)["cfg"]
+    cfg10 = torch.load(R10 / "sql_base_meta.pt", map_location="cpu", weights_only=True)["cfg"]
     model = RelBlockModel(in_dim=enc.hdim, H=cfg10["H"], layers=cfg10["layers"], heads=cfg10["heads"], nc=nc).to(dev)
-    model.load_state_dict(torch.load(R11 / "multitask_model.pt", map_location="cpu"))
+    model.load_state_dict(torch.load(R11 / "multitask_model.pt", map_location="cpu", weights_only=True))
     params = [p for p in enc.parameters() if p.requires_grad] + list(model.parameters())
     opt = torch.optim.AdamW(params, lr=args.lr)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=args.steps)   # decay -> settle (run #1 dipped at end)

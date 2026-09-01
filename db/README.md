@@ -142,7 +142,8 @@ python db/sync/build_wikipedia.py                    # optional: pre-create empt
 
 `import_dump.py` is a legacy alternative bulk import from the
 `philippesaade/wikidata` HF parquet dump (resumable, `CHUNK_DIR` env controls the
-chunk cache dir) — the WDQS path above has better city coverage.
+chunk cache dir). The importer pins an immutable dataset revision; the WDQS path above has
+better city coverage.
 
 ### Per-type / single-entity sync
 

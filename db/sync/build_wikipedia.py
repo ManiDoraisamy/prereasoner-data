@@ -1,29 +1,18 @@
-"""Build the clean qid-keyed `wikipedia` schema: one EMPTY table per taxonomy leaf,
-named by its EXACT Wikidata label, columns copied from the knowledgebase."<leaf>" mirror table
-(create those first with mirror_schema.py / sync_entity.py --schema-only), with
-**qid as PRIMARY KEY (NOT NULL)** — so every join is qid PK/FK. NO data migration:
-lazy sync fills each table on first use.
+"""Pre-create legacy qid-keyed Wikidata serving tables.
 
-OPTIONAL for a fresh instance: sync_entity.ensure_entity creates missing wikipedia
-tables on demand, so a fresh deployment works without this. It exists to pre-create the
-known leaves and, opt-in, to wipe per-user schemas for a fully fresh qid-keyed start.
+For each taxonomy leaf, this adds an empty table named by the exact Wikidata label and
+copies the columns from the existing ``knowledgebase.<snake_label>`` mirror. Lazy entity
+synchronization can also create these tables, so running this command is optional.
 
-SAFETY (the destructive schema drop is OPT-IN):
-  - DEFAULT (no flag) = DRY-RUN: prints which per-user/test schemas WOULD be dropped,
-    drops NOTHING. The non-destructive wikipedia-table creation still runs and commits.
-  - --yes (alias --force) = actually drop the matched schemas.
-  - Only schemas matching a KNOWN generated pattern are ever eligible: a Google `sub`
-    (long all-digit id) or `*_test`. public/world/wikipedia/pg_* are never dropped.
+This builder is deliberately additive: it never drops or replaces a table or schema. An
+existing incompatible alias is an operator-visible error, not permission to destroy data.
 
-Run (after sync_types.py; mirror_schema.py recommended first):
-  export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
-  python db/sync/build_wikipedia.py            # dry-run (creates tables, drops nothing)
-  python db/sync/build_wikipedia.py --yes      # also drop per-user/test schemas
+Run after ``sync_types.py`` (and preferably ``mirror_schema.py``)::
+
+    python -m db.sync.build_wikipedia
 """
 from __future__ import annotations
-import argparse
 import csv
-import re
 from pathlib import Path
 
 try:
@@ -34,8 +23,7 @@ except ImportError:
     from .sync_entity import snake
 
 TAXONOMY = Path(__file__).resolve().parent / "data" / "taxonomy.csv"
-KEEP_SCHEMAS = {"public", "knowledgebase", "information_schema", "pg_catalog", "pg_toast"}
-_GOOGLE_SUB_RE = re.compile(r"^\d{15,}$")          # per-user schemas ARE the verified Google `sub`
+_PG_IDENTIFIER_BYTES = 63
 
 
 def _leaf_qid():
@@ -50,10 +38,27 @@ def _leaf_qid():
     return out
 
 
-def _is_droppable(schema: str) -> bool:
-    if schema in KEEP_SCHEMAS or schema.startswith("pg_"):
-        return False
-    return bool(_GOOGLE_SUB_RE.match(schema)) or schema.endswith("_test")
+def _quote_ident(value: str) -> str:
+    """Quote a trusted catalog-derived PostgreSQL identifier."""
+    return '"' + value.replace('"', '""') + '"'
+
+
+def _identifier(label: str, suffix: str = "") -> str:
+    """Fit a UTF-8 label in PostgreSQL's 63-byte identifier limit, preserving suffix."""
+    suffix_bytes = suffix.encode("utf-8")
+    if len(suffix_bytes) > _PG_IDENTIFIER_BYTES:
+        raise ValueError("identifier suffix exceeds PostgreSQL's 63-byte limit")
+    available = _PG_IDENTIFIER_BYTES - len(suffix_bytes)
+    raw = label.encode("utf-8")[:available]
+    while raw:
+        try:
+            stem = raw.decode("utf-8")
+            break
+        except UnicodeDecodeError:
+            raw = raw[:-1]
+    else:
+        stem = ""
+    return stem + suffix
 
 
 def _exists(cur, schema, table):
@@ -61,13 +66,16 @@ def _exists(cur, schema, table):
     return cur.fetchone() is not None
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Build the clean qid-keyed `wikipedia` schema; optionally drop "
-                                             "per-user (Google-sub) + *_test schemas for a fresh start.")
-    ap.add_argument("--yes", "--force", dest="yes", action="store_true",
-                    help="ACTUALLY drop the matched per-user/test schemas (default: dry-run).")
-    args = ap.parse_args()
+def _has_qid(cur, table):
+    cur.execute(
+        "SELECT 1 FROM information_schema.columns "
+        "WHERE table_schema='knowledgebase' AND table_name=%s AND column_name='qid'",
+        (table,),
+    )
+    return cur.fetchone() is not None
 
+
+def main():
     conn = connect(); cur = conn.cursor()
     leaf_qid = _leaf_qid()
 
@@ -75,54 +83,44 @@ def main():
     cur.execute("CREATE SCHEMA IF NOT EXISTS knowledgebase")
     cur.execute('SELECT qid, label FROM knowledgebase."types"')
     qlabel = {q: l for q, l in cur.fetchall()}
-    created, skipped, seen = 0, 0, {}
+    mirrors = set(leaf_qid)                     # the snake mirror tables are SOURCES — never a DROP target
+    created, existing, skipped, seen = 0, 0, 0, {}
+    exact = 0
     for leaf in sorted(leaf_qid):
         qid = leaf_qid[leaf]
         if not _exists(cur, "knowledgebase", leaf):                         # no faithful schema mirror -> discover later
             skipped += 1; continue
-        cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' AND table_name=%s "
-                    "AND column_name='qid'", (leaf,))
-        if not cur.fetchone():
+        if not _has_qid(cur, leaf):
             skipped += 1; continue
-        label = (qlabel.get(qid) or leaf).strip()[:63]                      # EXACT Wikidata name (<=63 ident limit)
-        if label in seen:
-            label = f"{label} ({qid})"[:63]                                 # disambiguate a shared label
+        label = _identifier((qlabel.get(qid) or leaf).strip() or leaf)
+        if label == leaf:                   # single-word label ("city", "country", "film"): the mirror table ALREADY
+            seen[label] = leaf
+            exact += 1; continue
+        if label in seen or label in mirrors:
+            label = _identifier(label, f" ({qid})")
         seen[label] = leaf
-        cur.execute(f'DROP TABLE IF EXISTS knowledgebase."{label}" CASCADE')    # fresh + idempotent (tables are empty)
-        cur.execute(f'CREATE TABLE knowledgebase."{label}" (LIKE knowledgebase."{leaf}")')   # faithful columns
-        cur.execute(f'ALTER TABLE knowledgebase."{label}" ALTER COLUMN qid SET NOT NULL')
-        cur.execute(f'ALTER TABLE knowledgebase."{label}" ADD PRIMARY KEY (qid)')     # qid PK — joins are qid PK/FK
+        if _exists(cur, "knowledgebase", label):
+            if not _has_qid(cur, label):
+                raise RuntimeError(
+                    f'existing knowledgebase.{label!r} is incompatible: missing qid column'
+                )
+            existing += 1
+            continue
+        qlabel_ident = _quote_ident(label)
+        leaf_ident = _quote_ident(leaf)
+        cur.execute(
+            f'CREATE TABLE knowledgebase.{qlabel_ident} '
+            f'(LIKE knowledgebase.{leaf_ident} INCLUDING DEFAULTS INCLUDING GENERATED)'
+        )
+        cur.execute(f'ALTER TABLE knowledgebase.{qlabel_ident} ALTER COLUMN qid SET NOT NULL')
+        cur.execute(f'ALTER TABLE knowledgebase.{qlabel_ident} ADD PRIMARY KEY (qid)')
         created += 1
-    print(f"wikipedia: {created} EMPTY faithful tables created (qid PK), {skipped} leaves skipped (no mirror schema)", flush=True)
-
-    # ---- 3: DROP every user (Google-sub) + test schema -> fresh, qid-keyed start ----
-    cur.execute("SELECT schema_name FROM information_schema.schemata ORDER BY schema_name")
-    all_schemas = [s for (s,) in cur.fetchall()]
-    targets = [s for s in all_schemas if _is_droppable(s)]
-    skipped_nonmatch = [s for s in all_schemas
-                        if s not in KEEP_SCHEMAS and not s.startswith("pg_") and not _is_droppable(s)]
-    if skipped_nonmatch:
-        print(f"NOT touching {len(skipped_nonmatch)} non-matching schema(s) (kept for safety): {skipped_nonmatch}",
-              flush=True)
-
-    if not args.yes:
-        print(f"DRY-RUN: would DROP {len(targets)} per-user/test schema(s): {targets}", flush=True)
-        print("DRY-RUN: nothing dropped. Re-run with --yes (or --force) to actually drop them.", flush=True)
-        conn.commit()   # persist ONLY the non-destructive wikipedia-table creation
-        cur.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema='knowledgebase'")
-        print(f"committed wikipedia tables only. wikipedia now has {cur.fetchone()[0]} tables "
-              f"(all empty, lazy-fill on demand).", flush=True)
-        return
-
-    dropped = []
-    for s in targets:
-        cur.execute(f'DROP SCHEMA IF EXISTS "{s}" CASCADE')
-        dropped.append(s)
-    print(f"dropped {len(dropped)} user/test schemas: {dropped}", flush=True)
-
+    print(
+        f"wikidata projections: {created} created, {existing} existing, "
+        f"{exact} exact-name mirrors, {skipped} skipped (missing qid mirror)",
+        flush=True,
+    )
     conn.commit()
-    cur.execute("SELECT count(*) FROM information_schema.tables WHERE table_schema='knowledgebase'")
-    print(f"committed. wikipedia now has {cur.fetchone()[0]} tables (all empty, lazy-fill on demand).", flush=True)
 
 
 if __name__ == "__main__":

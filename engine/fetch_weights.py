@@ -20,6 +20,7 @@ below. Publish the weights once with `huggingface_hub.upload_folder(folder_path=
 allow_patterns=['*.pt','*.npz','qwen_lora/*'])`, then a clone runs this to provision them.
 """
 from __future__ import annotations
+
 import argparse
 import os
 import shutil
@@ -31,8 +32,8 @@ from engine.artifact_provenance import load_weights_manifest, validate_weight_bu
 
 DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve().parent / "data")
 
-# The Hugging Face repo holding the weights. Override with PREREASONER_WEIGHTS_REPO.
-# NOTE: this repo is currently PRIVATE — set HF_TOKEN (a token with read access) to fetch from it.
+# The public Hugging Face repo holding the weights. Override with PREREASONER_WEIGHTS_REPO;
+# HF_TOKEN is optional and only needed when an operator selects a private replacement.
 _MANIFEST = load_weights_manifest(DATA_DIR)
 DEFAULT_REPO = os.environ.get(
     "PREREASONER_WEIGHTS_REPO",
@@ -50,6 +51,21 @@ WEIGHTS = [
     "qwen_lora/adapter_config.json",
     "qwen_lora/adapter_model.safetensors",
 ]
+
+
+def _stage_committed_artifacts(
+    source: Path,
+    staging: Path,
+    manifest: dict,
+) -> None:
+    """Copy Git-tracked manifest entries beside downloads for whole-bundle validation."""
+    for relative in manifest.get("committed_artifacts", {}):
+        source_path = source / relative
+        if not source_path.is_file():
+            raise RuntimeError(f"committed runtime artifact is missing: {source_path}")
+        destination = staging / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_path, destination)
 
 
 def _present(rel: str) -> bool:
@@ -98,6 +114,7 @@ def main() -> int:
         return 2
     with tempfile.TemporaryDirectory(prefix=".weights-", dir=DATA_DIR) as temporary:
         staging = Path(temporary)
+        _stage_committed_artifacts(DATA_DIR, staging, _MANIFEST)
         for rel in WEIGHTS:
             dest = staging / rel
             dest.parent.mkdir(parents=True, exist_ok=True)

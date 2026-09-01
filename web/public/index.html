@@ -67,6 +67,7 @@
     <div class=err id=err></div>
   </form>
   </div>
+  <footer class=sitefoot><a href="/privacy">Privacy</a></footer>
 </div>
 <input type=file id=file accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple style="display:none">
 <div class=pbackdrop id=pbackdrop onclick=closePreview()></div>
@@ -104,6 +105,8 @@ function ensureXLSX(){
   if(window.XLSX)return Promise.resolve();
   if(!xlsxLoading)xlsxLoading=new Promise((res,rej)=>{const s=document.createElement('script');
     s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    s.integrity='sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
+    s.crossOrigin='anonymous';
     s.onload=res;s.onerror=()=>rej(new Error('could not load the spreadsheet reader'));document.head.appendChild(s);});
   return xlsxLoading;
 }

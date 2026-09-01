@@ -20,22 +20,32 @@ are never treated as facts memorized by the model.
 
 ## Start Here
 
-New contributors should read these in order:
+Start with the [documentation map](docs/README.md). It labels current, opt-in, external, and
+planned behavior and points each kind of change to its canonical document.
 
-1. [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - install, run, make a first request, and locate code.
-2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - the serving flow and ownership boundaries.
-3. [docs/SQL_AST.md](docs/SQL_AST.md) - typed AST search, ranking, and Spider evaluation.
-4. [docs/CALCULATIONS.md](docs/CALCULATIONS.md) - deterministic arithmetic, learned operand ordering, and verification.
-5. [docs/TESTING.md](docs/TESTING.md) - hermetic, integration, and browser validation.
-6. [docs/MCP.md](docs/MCP.md) - MCP adapter and optional conversational orchestration.
-7. [docs/SOURCE_DATA.md](docs/SOURCE_DATA.md) - synchronized publishers, schemas, tables, scope, licensing, and commands.
-8. [docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md](docs/KNOWLEDGE_ENRICHMENT_ROADMAP.md) - market-led domain profiles and deterministic serving integration.
-9. [docs/TRAINING.md](docs/TRAINING.md) - ontology, training-data projections, model tracks, and promotion.
-10. [docs/MODEL_CARD.md](docs/MODEL_CARD.md) - shipped model artifacts, evidence, limitations, and release status.
-11. [docs/DATA_CARD.md](docs/DATA_CARD.md) - training sources, split discipline, known bias, and licensing.
-12. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request expectations.
-13. [docs/OPEN_SOURCE_RELEASE.md](docs/OPEN_SOURCE_RELEASE.md) - public-release checklist and external artifacts.
-14. [PRIVACY.md](PRIVACY.md) - data flows, external processors, retention controls, and operator duties.
+The core path for a new contributor is:
+
+1. [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - install, run the public-checkout tests, and locate code.
+2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - follow a request and understand ownership boundaries.
+3. [docs/PROMPT_TO_SQL.md](docs/PROMPT_TO_SQL.md) - walk through one question from signals to typed SQL.
+4. [docs/TESTING.md](docs/TESTING.md) - choose the correct hermetic, integration, browser, or accuracy gate.
+5. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request evidence.
+
+Planner, source-data, training, deployment, release, privacy, and roadmap paths are indexed in
+[docs/README.md](docs/README.md). The knowledge-enrichment roadmap is intentionally not required
+reading for a first planner change; it mixes completed foundations with explicitly planned work.
+
+## Deploy To Google Cloud
+
+The supported Community Edition path opens a guided tutorial in Google Cloud Shell. It builds the
+public source and weights in your project, applies a cost-reduced Terraform profile, initializes the
+minimal Wikidata and ECB data, and removes its temporary bootstrap identity. A billing-enabled project and
+Google authorization are required; the marketing website never receives those credentials.
+
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=main&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
+
+Read the [deployment contract](deploy/gcp/README.md), including cost, state, browser-client, and
+teardown boundaries, before presenting the button as a public install path.
 
 ## How A Request Works
 
@@ -54,7 +64,7 @@ engine/knowledge.py              one serving entry point
         +--> own-data typed AST search and deterministic ranking
         |       engine/sql_search.py, engine/sql_ast.py, engine/sql_rank.py
         |
-        +--> world grounding when an uploaded fact is missing
+        +--> world grounding when a public entity relation is required
                 engine/knowledge_query.py, engine/knowledge_compose.py
         |
         v
@@ -105,14 +115,15 @@ $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 ```
 
-The full engine requires the model stack and artifacts:
+The full engine requires the model stack and manifest-pinned runtime artifacts. Provision them before
+building the engine image, then seed the database before making a world-dependent request:
 
 ```powershell
 Copy-Item .env.example .env
-$env:HF_TOKEN = "<read token>"
 python -m engine.fetch_weights
-docker compose up --build
+docker compose up -d db
 docker compose --profile seed run --rm seed
+docker compose up --build engine
 ```
 
 Chat orchestration is optional and is excluded from the default Compose stack. Start it only with an Anthropic key:
@@ -121,9 +132,10 @@ Chat orchestration is optional and is excluded from the default Compose stack. S
 docker compose --profile chat up --build
 ```
 
-The default weight repository is currently private. Source code can be developed and all hermetic planner tests can
-run without it, but a fresh public deployment requires publishing a compatible weight bundle or configuring
-`PREREASONER_WEIGHTS_REPO`. See [engine/data/README.md](engine/data/README.md).
+The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public;
+`engine.fetch_weights` needs no Hugging Face account or token and verifies the complete bundle against
+the immutable revision and hashes in `engine/data/weights_manifest.json`. See
+[engine/data/README.md](engine/data/README.md).
 
 The home-page workbook contains orders with dates, ISO currency codes, and amounts, but no
 rate sheet. Currency conversion is grounded in the synchronized ECB release through the

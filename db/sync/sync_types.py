@@ -36,7 +36,7 @@ except ImportError:
 DATA = Path(__file__).resolve().parent / "data"
 TAXONOMY = DATA / "taxonomy.csv"
 CACHE = DATA / "p279_cache.json"
-UA = "prereasoner-db-sync/1.0 (https://github.com/manidoraisamy/prereasoner)"
+UA = "prereasoner-db-sync/1.0 (https://github.com/ManiDoraisamy/prereasoner-data)"
 
 # world-table mapping for the geo/element spine nodes (rollup_taxonomy.NODE_TABLE)
 NODE_TABLE = {"Q515": "Cities", "Q123964505": "Places", "Q6256": "Countries",

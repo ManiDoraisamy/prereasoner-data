@@ -65,10 +65,12 @@ Mutable source facts are not intended to be memorized as answers.
 large runtime file. It also pins committed Schema.org model artifacts. Runtime validation rejects a
 missing or mismatched file.
 
-The current default weight repository is private. Publishing this source repository therefore does
-not make the complete model-backed application reproducible. A public model release must contain
-the exact manifested files at the exact immutable revision and preserve the base-model and data
-notices in `THIRD_PARTY.md`.
+The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public.
+Revision `95adff733a81f1310993785d07577ea38d8d22a4` contains the exact manifested files and preserves
+the base-model and data notices linked from its model card. `python -m engine.fetch_weights` requires
+no token, downloads from that immutable revision, and rejects any digest mismatch. This makes the
+published runtime artifact reproducible; it does not repair the historical training-provenance gaps
+described above or distribute the seeded knowledge database.
 
 ## Intended Uses
 

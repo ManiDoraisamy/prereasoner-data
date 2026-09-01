@@ -12,7 +12,8 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from engine.config import DATA_DIR
+from engine.artifact_provenance import validate_weight_bundle
+from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR
 from engine.encoder_overlay import EncoderQuery                 # reuse analyze/_layers/_encode
 from engine.encoder_model import RelationalModel
 from engine.tables import MODEL_ID
@@ -26,11 +27,12 @@ class DimensionModel(EncoderQuery):
 
     def __init__(self, deploy_dir=DATA_DIR):
         d = Path(deploy_dir)
-        pt = torch.load(d / "encoder_meta.pt", map_location="cpu", weights_only=False)
+        self.model_bundle_sha256 = validate_weight_bundle(d)
+        pt = torch.load(d / "encoder_meta.pt", map_location="cpu", weights_only=True)
         self.alloc = pt["alloc"]; self.nc = self.alloc["n_content"]
         self.dims = sorted(self.alloc["dims"], key=lambda x: x["dim_id"])
         self.sid = {dm["name"]: dm["dim_id"] for dm in self.dims}
-        z = np.load(d / "anchor_assignment.npz", allow_pickle=True)         # ridge-probe Youden-J thresholds (base, all dims)
+        z = np.load(d / "anchor_assignment.npz", allow_pickle=False)        # ridge-probe Youden-J thresholds (base, all dims)
         self.thr = {str(n): float(t) for n, t in zip(z["dims"], z["thr"])}
         dt = d / "dim_thresholds.json"                                       # OVERRIDE with thresholds calibrated on the
         if dt.exists():                                                      # TRAINED model (calibrate_dims) — the
@@ -38,14 +40,16 @@ class DimensionModel(EncoderQuery):
                              for k, v in json.load(open(dt)).items()})       # this model actually runs
 
         self.model = RelationalModel(**pt["cfg"]); self.model.load_state_dict(
-            torch.load(d / "encoder.pt", map_location="cpu")); self.model.eval()
+            torch.load(d / "encoder.pt", map_location="cpu", weights_only=True)); self.model.eval()
         self.nL = pt["cfg"]["layers"] + 1
         from transformers import AutoModel, AutoTokenizer
         from peft import PeftModel
-        self.tok = AutoTokenizer.from_pretrained(MODEL_ID)
+        self.tok = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
         if self.tok.pad_token is None:
             self.tok.pad_token = self.tok.eos_token
-        base = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True).float()
+        base = AutoModel.from_pretrained(
+            MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
+        ).float()
         self.qwen = PeftModel.from_pretrained(base, str(d / "qwen_lora")).eval()
         self.hdim = base.config.hidden_size
 

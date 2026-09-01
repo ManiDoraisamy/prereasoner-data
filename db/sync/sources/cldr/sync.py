@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import argparse
 import io
-import xml.etree.ElementTree as ET
+from defusedxml import ElementTree as ET
 import zipfile
 from dataclasses import dataclass
 from datetime import date

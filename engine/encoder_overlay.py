@@ -8,12 +8,10 @@ readout, the operator/intent decision, and the free-text bridge embeddings.
 from __future__ import annotations
 
 import numpy as np
-import torch
 
 from engine.artifact_provenance import sha256_tree, validate_weight_bundle
-from engine.config import DATA_DIR
+from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR
 from engine.tables import TableQuery, MODEL_ID
-from engine.encoder_model import RelationalModel
 
 
 def load_encoder(obj, deploy_dir=DATA_DIR):
@@ -22,15 +20,17 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     nL/tok/qwen/hdim) from the shipped artifacts (encoder_meta.pt / encoder.pt / qwen_lora) + the anchor-head
     thresholds (the intent dims fire the operator; verified SUM/COUNT/AVG)."""
     from pathlib import Path
+    import torch
+    from engine.encoder_model import RelationalModel
     d = Path(deploy_dir)
     obj.model_bundle_sha256 = validate_weight_bundle(d)
     obj.encoder_adapter_sha256 = sha256_tree(d / "qwen_lora")
     obj.encoder_data_dir = str(d.resolve())
-    pt = torch.load(d / "encoder_meta.pt", map_location="cpu", weights_only=False)
+    pt = torch.load(d / "encoder_meta.pt", map_location="cpu", weights_only=True)
     obj.alloc = pt["alloc"]; obj.nc = obj.alloc["n_content"]
     obj.dims = sorted(obj.alloc["dims"], key=lambda x: x["dim_id"])
     obj.sid = {dm["name"]: dm["dim_id"] for dm in obj.dims}
-    z = np.load(d / "anchor_assignment.npz", allow_pickle=True)           # per-dim Youden-J thresholds (incl. intent)
+    z = np.load(d / "anchor_assignment.npz", allow_pickle=False)          # per-dim Youden-J thresholds (incl. intent)
     obj.thr = {str(n): float(t) for n, t in zip(z["dims"], z["thr"])}
     # Operator gates are calibrated on question graphs for this exact checkpoint. Older bundles did not
     # carry them, so retain their historical values only as a compatibility fallback.
@@ -47,14 +47,18 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
         for op in sorted(required_ops)
     })
     obj.model = RelationalModel(**pt["cfg"])
-    obj.model.load_state_dict(torch.load(d / "encoder.pt", map_location="cpu")); obj.model.eval()
+    obj.model.load_state_dict(torch.load(
+        d / "encoder.pt", map_location="cpu", weights_only=True
+    )); obj.model.eval()
     obj.nL = pt["cfg"]["layers"] + 1
     from transformers import AutoModel, AutoTokenizer
     from peft import PeftModel
-    obj.tok = AutoTokenizer.from_pretrained(MODEL_ID)
+    obj.tok = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
     if obj.tok.pad_token is None:
         obj.tok.pad_token = obj.tok.eos_token
-    base = AutoModel.from_pretrained(MODEL_ID, low_cpu_mem_usage=True).float()
+    base = AutoModel.from_pretrained(
+        MODEL_ID, revision=MODEL_REVISION, low_cpu_mem_usage=True
+    ).float()
     obj.qwen = PeftModel.from_pretrained(base, str(d / "qwen_lora")).eval()
     obj.hdim = base.config.hidden_size
 

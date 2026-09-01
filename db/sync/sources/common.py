@@ -5,6 +5,7 @@ import hashlib
 import json
 import re
 import urllib.request
+from urllib.parse import urlsplit
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from itertools import islice
@@ -13,7 +14,7 @@ import requests
 from psycopg2 import sql
 from psycopg2.extras import execute_values
 
-USER_AGENT = "prereasoner-source-sync/1.0 (https://github.com/manidoraisamy/prereasoner)"
+USER_AGENT = "prereasoner-source-sync/1.0 (https://github.com/ManiDoraisamy/prereasoner-data)"
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -36,7 +37,15 @@ class SourceRelease:
         return f"{self.version}+sha256:{self.content_sha256}"
 
 
+def _require_https(url: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError(f"source download must use an absolute HTTPS URL: {url!r}")
+    return url
+
+
 def download(url: str, timeout: int = 120) -> bytes:
+    url = _require_https(url)
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.read()
@@ -44,6 +53,7 @@ def download(url: str, timeout: int = 120) -> bytes:
 
 def download_http(url: str, timeout: int = 120) -> bytes:
     """Download through requests for hosts whose TLS chain urllib cannot validate locally."""
+    url = _require_https(url)
     response = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=timeout)
     response.raise_for_status()
     return response.content

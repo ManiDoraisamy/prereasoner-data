@@ -1,5 +1,9 @@
 # training/ — the reproduction pipeline
 
+> Supplementary pipeline history. The current model tracks, artifact promotion contract, and
+> reproducibility limits are canonical in [../TRAINING.md](../TRAINING.md),
+> [../MODEL_CARD.md](../MODEL_CARD.md), and [../DATA_CARD.md](../DATA_CARD.md).
+
 `training/` is the self-contained pipeline that produces the model artifacts the engine serves
 (the `qwen_lora` adapter, the `encoder.pt` readout, the router/dimension calibration files). This
 note maps the packages and scripts and records the pipeline order and the from-scratch caveats.
@@ -40,8 +44,9 @@ Connection params are env-driven (`KB_PG_HOST` default `localhost`, plus `_PORT`
 
 ### `training/world/` — offline world-DB build helpers
 `fetch_properties.py`, `sync_wikidata_world.py`, `mirror_world_schema.py`,
-`build_wikipedia_schema.py`, `sync_world_types.py`, `unify_words_qid.py`. (These overlap with
-`db/sync/`; the world DB is normally built from `db/sync/`.)
+`sync_world_types.py`, `unify_words_qid.py`. (These overlap with `db/sync/`; the world DB is
+normally built from `db/sync/`.) The qid-keyed entity tables are built by
+`db/sync/build_wikipedia.py`, which owns that step outright.
 
 ### `training/tools/`
 `pipeline.py` (orchestrates the reproduction loop transactionally), `runpod_api.py` (RunPod pod
@@ -55,7 +60,7 @@ numbers are written `genN` in prose (README explains).
 
 ## Pipeline order (from the tools/pipeline.py reproduction loop + README)
 
-1. **World DB** (`world/`): fetch_properties → sync_wikidata_world / mirror_world_schema → build_wikipedia_schema → sync_world_types → unify_words_qid.
+1. **World DB** (`world/`): fetch_properties → sync_wikidata_world / mirror_world_schema → `db/sync/build_wikipedia.py` → sync_world_types → unify_words_qid.
 2. **Discovery** (`corpus/`): discover_csv_types → cluster_columns → split_for_rename → (external LLM rename) → cluster_coherence.
 3. **Taxonomy** (`taxonomy/`): reconcile_taxonomy → rollup_taxonomy → build_alloc (audit: coverage_list).
 4. **Training corpus** (`corpus/`): build_from_entity (reads the capped entity-instances table; run ONCE — its query has no ORDER BY, so a re-run desyncs the shipped units). Earlier-generation corpus: build_review / build_corpus / fetch_type_instances (inputs to train_taxonomy).

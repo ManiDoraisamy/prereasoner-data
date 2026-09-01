@@ -121,10 +121,11 @@ def main():
     aid = {d["name"]: d["dim_id"] for d in alloc["dims"]}; fam_dims = fam_dims_map(alloc)
 
     enc = LiveQwen(dev, lora_r=args.lora_r, warm_lora=os.path.join(R, "qwen_lora"), serving=False)   # UN-FREEZE the LoRA
-    cfg = torch.load(os.path.join(R, "unified_meta.pt"), map_location="cpu", weights_only=False)["cfg"]
+    cfg = torch.load(os.path.join(R, "unified_meta.pt"), map_location="cpu", weights_only=True)["cfg"]
     model = RelBlockModel(in_dim=cfg["in_dim"], H=cfg["H"], layers=cfg["layers"], heads=cfg["heads"],
                           nc=nc, n_edge=cfg["n_edge"]).to(dev)
-    sd = torch.load(os.path.join(R, "unified_model.pt"), map_location="cpu"); msd = model.state_dict()
+    sd = torch.load(os.path.join(R, "unified_model.pt"), map_location="cpu", weights_only=True)
+    msd = model.state_dict()
     model.load_state_dict({k: v for k, v in sd.items() if k in msd and v.shape == msd[k].shape}, strict=False)
 
     tax = [p for p in (pack_csv(t, aid, fam_dims, nc) for t in load(os.path.join(R, "units_train.jsonl"))) if p]

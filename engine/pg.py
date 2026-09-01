@@ -12,6 +12,8 @@ affinities INTEGER/REAL/TEXT are valid Postgres types, so the planner's SQL port
 """
 from __future__ import annotations
 
+import time
+
 import psycopg2
 
 from engine.config import (KB_PG_DB, KB_PG_HOST, KB_PG_PORT, KB_PG_SSLMODE, KB_PG_USER,
@@ -22,6 +24,12 @@ from engine.knowledge_tables import KnowledgeTableQuery
 # SQLite affinities -> WIDER Postgres types: SQLite INTEGER is 64-bit and REAL is 8-byte, but Postgres INTEGER
 # is 32-bit (overflows on large SKUs/IDs) and REAL is 4-byte. Map to BIGINT / double precision to match SQLite.
 _PGTYPE = {"INTEGER": "BIGINT", "REAL": "DOUBLE PRECISION", "TEXT": "TEXT"}
+_CONNECT_ATTEMPTS = 3
+_NON_RETRYABLE_CONNECT_ERRORS = (
+    "password authentication failed",
+    "no pg_hba.conf entry",
+    "does not exist",
+)
 
 # Postgres NUMERIC/DECIMAL (returned by SUM(bigint), AVG, …) -> psycopg2 Decimal, which json.dumps can't
 # serialize -> 500. Cast NUMERIC (OID 1700) to float so aggregate results are JSON-safe (the SQLite path
@@ -42,13 +50,27 @@ psycopg2.extensions.register_type(psycopg2.extensions.new_type((1700,), "NUMERIC
 
 
 def _pg():
-    """Connect to the Postgres world DB (unix socket on Cloud Run, host:port + SSL over TCP)."""
+    """Connect to Postgres, retrying only transient transport failures.
+
+    Authentication and database/role configuration errors fail immediately. The bounded retry is
+    centralized here so request helpers do not each grow a different connection policy.
+    """
     kw = dict(host=KB_PG_HOST, dbname=KB_PG_DB, user=KB_PG_USER,
               password=kb_pg_password(), connect_timeout=30)
     if not KB_PG_HOST.startswith("/"):
         kw["port"] = KB_PG_PORT
         kw["sslmode"] = KB_PG_SSLMODE
-    return psycopg2.connect(**kw)
+    for attempt in range(_CONNECT_ATTEMPTS):
+        try:
+            return psycopg2.connect(**kw)
+        except psycopg2.OperationalError as exc:
+            message = str(exc).lower()
+            if any(marker in message for marker in _NON_RETRYABLE_CONNECT_ERRORS):
+                raise
+            if attempt + 1 == _CONNECT_ATTEMPTS:
+                raise
+            time.sleep(0.25 * (2 ** attempt))
+    raise AssertionError("unreachable")
 
 
 def _load_user_schema(cur, schema, sch, tablemap):

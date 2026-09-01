@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy - PreReasoner</title>
+<meta name="description" content="How PreReasoner processes spreadsheet, account, and conversation data.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#21183d;--muted:#655b7d;--line:#e8e3f1;--brand:#3f1aca;--paper:#fff;--wash:#f7f5fb;--accent:#d65f0c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--wash);color:var(--ink);font:16px/1.65 Inter,system-ui,sans-serif}
+header{background:#fff;border-bottom:1px solid var(--line)}
+.nav{width:min(900px,calc(100% - 40px));height:64px;margin:auto;display:flex;align-items:center;justify-content:space-between}
+.brand{color:var(--ink);font-size:19px;font-weight:600;text-decoration:none}
+.back{color:var(--brand);font-size:14px;font-weight:600;text-decoration:none}
+main{width:min(760px,calc(100% - 40px));margin:0 auto;padding:56px 0 80px}
+h1{font-size:42px;line-height:1.12;margin:0 0 10px;letter-spacing:0}
+.updated{color:var(--muted);font:13px/1.5 "JetBrains Mono",monospace;margin-bottom:42px}
+h2{font-size:21px;line-height:1.3;margin:38px 0 10px;letter-spacing:0}
+p,li{color:var(--muted)}
+ul{padding-left:22px}
+li+li{margin-top:6px}
+a{color:var(--brand)}
+.plain{color:var(--ink);font-weight:500}
+.important{border-left:3px solid var(--accent);padding:2px 0 2px 18px;margin:28px 0}
+footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:var(--muted);font-size:13px}
+@media(max-width:600px){main{padding-top:38px}h1{font-size:34px}.nav{width:calc(100% - 28px)}main{width:calc(100% - 28px)}}
+</style>
+</head>
+<body>
+<header><nav class="nav" aria-label="Primary"><a class="brand" href="/">PreReasoner</a><a class="back" href="/">Back to the app</a></nav></header>
+<main>
+  <h1>Privacy</h1>
+  <div class="updated">Last updated: September 1, 2026</div>
+
+  <p class="plain">PreReasoner analyzes the spreadsheet data and questions you submit so it can
+  compute an answer and show the steps used to reach it. The reference service at
+  <a href="https://chat.prereasoner.com">chat.prereasoner.com</a> is operated by MailRecipe LLC.</p>
+
+  <h2>What we process</h2>
+  <ul>
+    <li>Files and Google Sheets you choose, including table names, columns, and cell values.</li>
+    <li>Your questions, conversation history, generated SQL, results, and reasoning traces.</li>
+    <li>Account and session identifiers supplied through Google and Firebase Authentication.</li>
+    <li>Operational data needed to secure, debug, and operate the service.</li>
+  </ul>
+
+  <h2>How answers are produced</h2>
+  <p>The core engine builds and executes inspectable SQL against your data. It uses a frozen model as
+  an encoder for intent and schema signals; that model does not decode SQL or invent the numerical
+  answer.</p>
+
+  <div class="important"><p><strong>Assistant processing.</strong> The hosted assistant currently
+  uses Anthropic. Assistant requests can include your messages, conversation history, attached
+  table contents, table and column names, generated SQL, limited query results, and trimmed tool
+  output. This processing is used to present results, handle ambiguity, orchestrate tools, and fill
+  reference cells you explicitly request.</p></div>
+
+  <p>Anthropic receives those requests through the service's API account. Its handling is governed
+  by the operator's agreement and is also described in the
+  <a href="https://www.anthropic.com/legal/privacy" rel="noopener">Anthropic Privacy Policy</a> and
+  <a href="https://privacy.claude.com/" rel="noopener">Privacy Center</a>. PreReasoner is working
+  toward operating this assistant layer locally once a local model meets the required quality,
+  latency, security, and cost standards. The calculation and verification path remains
+  deterministic.</p>
+
+  <h2>Service providers</h2>
+  <ul>
+    <li><strong>Google Cloud and Firebase:</strong> hosting, authentication, databases, and reasoning-trace delivery. See
+    <a href="https://firebase.google.com/support/privacy" rel="noopener">Firebase privacy and security</a>.</li>
+    <li><strong>Anthropic:</strong> language processing for the hosted assistant features described above.</li>
+  </ul>
+
+  <h2>Why we process data</h2>
+  <p>We process this data to provide the analysis you request, maintain your account and saved work,
+  secure and debug the service, and meet legal obligations. Depending on the law that applies, the
+  bases are performance of the service contract, legitimate interests in operating and protecting
+  the service, and compliance with legal obligations. We do not treat a protocol field or a popup
+  click as blanket permission for unrelated uses.</p>
+
+  <h2>Sharing and international processing</h2>
+  <p>We do not sell customer spreadsheet data or use it for targeted advertising. We share data with
+  the providers above only to operate the service, and may disclose information when required by law
+  or needed to protect the service and its users. Those providers can process data in the United
+  States and other locations where they operate. We use the applicable contractual safeguards when
+  data-protection law requires them.</p>
+
+  <h2>Storage and retention</h2>
+  <p>Conversation metadata, uploaded and derived tables, and saved workbook state are stored in
+  user-scoped PostgreSQL schemas. Reasoning traces stored in Firebase Realtime Database expire after
+  seven days by default. Operational logs are designed not to contain raw request bodies,
+  credentials, or customer rows.</p>
+
+  <h2>Deletion</h2>
+  <p>Deleting a conversation removes its owned PostgreSQL data and the reasoning traces indexed to
+  that conversation. The delete-all action removes the signed-in user's reasoning-trace subtree.
+  Deleting only the Firebase identity does not currently erase every PostgreSQL or trace record.
+  For complete account-linked deletion, email
+  <a href="mailto:mani.doraisamy@gmail.com">mani.doraisamy@gmail.com</a>.</p>
+
+  <h2>Training and public data</h2>
+  <p>Customer spreadsheet rows are not included in PreReasoner's released training corpora. Public
+  reference facts come from documented sources such as Wikidata and publisher datasets, under their
+  respective terms.</p>
+
+  <h2>Your choices and rights</h2>
+  <p>You can delete conversations in the product and request access, correction, export, restriction,
+  objection, or deletion where applicable by emailing the address below. Do not upload regulated
+  health, payment-card, or similarly sensitive data unless your deployment has a specific agreement
+  and controls for it.</p>
+
+  <h2>Children</h2>
+  <p>The reference service is not directed to children under 18. Contact us if you believe a child
+  has submitted personal data so we can investigate and remove it where appropriate.</p>
+
+  <h2>Contact</h2>
+  <p>MailRecipe LLC<br>340 S Lemon Ave #9974, Walnut, CA 91789, United States<br>
+  Privacy and data-rights requests: <a href="mailto:mani.doraisamy@gmail.com">mani.doraisamy@gmail.com</a>.<br>
+  Security reports: see the <a href="https://github.com/ManiDoraisamy/prereasoner-data/blob/main/SECURITY.md">security policy</a>.</p>
+
+  <footer>We update this page before materially changing processors or data flows. The open-source
+  software's technical privacy contract is published with the source code.</footer>
+</main>
+</body>
+</html>

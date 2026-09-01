@@ -12,6 +12,19 @@ Architecture facts belong in `docs/ARCHITECTURE.md`, durable structural
 decisions belong in `DECISIONS.md`, and measured SQL results belong in
 `spider/results/RESULTS.md`. Do not duplicate those documents here.
 
+## Privacy experience rule
+
+- Do not add processor-consent modals, banners, repeated notices, or model-provider choices to the
+  user workflow. Publish one durable `/privacy` page and link it unobtrusively from user-facing
+  surfaces.
+- Do not add per-request fields described as user consent for ordinary service processing. External
+  processing is controlled by the operator's `EXTERNAL_LLM_ENABLED` deployment switch.
+- Choosing processors, maintaining a lawful basis and contracts, minimizing transferred data, and
+  replacing external models are operator responsibilities. Do not make users manage architecture.
+- Replace external presentation/orchestration with a local model only through the controlled model
+  experiment and promotion rules below. Keep SQL, calculation semantics, and verification
+  deterministic, and make provider migration transparent to users.
+
 ## Non-negotiable outcome
 
 Every production responsibility has exactly one owner, one active

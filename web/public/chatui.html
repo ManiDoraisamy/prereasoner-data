@@ -19,6 +19,8 @@
 .chdr{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid #efeafa}
 .chdr img{height:26px;width:auto;display:block}
 .chdr span{font:600 20px var(--disp);color:var(--card-ink);letter-spacing:-.4px}
+.chdr .privacy{margin-left:auto;color:var(--card-ink-dim);font:12px var(--disp);text-decoration:none}
+.chdr .privacy:hover{color:var(--brand);text-decoration:underline}
 .datachips{padding:11px 20px;border-bottom:1px solid #efeafa;display:flex;gap:8px;flex-wrap:wrap;
   align-items:center;font:12px var(--mono);color:var(--card-ink-dim)}
 .datachips .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;background:#f3effd;
@@ -81,7 +83,7 @@ table.rtab{border-collapse:separate;border-spacing:0;font:13px var(--mono)}
 <body>
 <div class="appwrap">
   <aside class="chatpane">
-    <div class="chdr"><img src="login_logo.svg" alt=""><span>Prereasoner</span></div>
+    <div class="chdr"><img src="login_logo.svg" alt=""><span>Prereasoner</span><a class="privacy" href="/privacy">Privacy</a></div>
     <div class="datachips"><span id="tablechips"></span>
       <label class="addcsv">+ CSV<input id="csvfile" type="file" accept=".csv" hidden></label></div>
     <div class="chatscroll" id="chat"></div>
@@ -245,35 +247,15 @@ function attachReplays(turnEl, traces){
   });
   turnEl.appendChild(wrap);
 }
-// Same notice-and-choice contract as the main workbook (PRIVACY.md): /chat sends the message +
-// tables to Anthropic's Claude API and the server 503s without external_llm_consent:true. Shares
-// the workbook's localStorage key, so a choice made on either page holds on both. This page IS the
-// assistant demo, so an opt-out ('0') simply refuses here; the first turn shows a one-time inline
-// notice instead of any dialog.
-function llmOptedOut(){ try{ return localStorage.getItem("pr_llm_consent") === "0"; }catch(_){ return false; } }
-function llmNoticeOnce(){
-  try{
-    if(localStorage.getItem("pr_llm_consent") !== null) return;
-    localStorage.setItem("pr_llm_consent", "1");
-    addTurn("assistant", "Heads up: this assistant sends your messages and the session tables to Anthropic (Claude). Reload with ?chat=0 for the local-only workbook instead.");
-  }catch(_){}
-}
 async function send(text){
   addTurn("user", text);
   $("send").disabled = true;
-  if(llmOptedOut()){
-    const off = addTurn("assistant", "");
-    off.querySelector(".msg").textContent = "The AI assistant is off (local-only mode). Reload with ?chat=1 to re-enable it.";
-    $("send").disabled = false;
-    return;
-  }
-  llmNoticeOnce();
   const thinking = addTurn("assistant", "…");
   try{
     const r = await fetch("/chat", {
       method: "POST",
       headers: { "content-type": "application/json", "Authorization": "Bearer " + (TOKEN||"") },
-      body: JSON.stringify({ message: text, tables: SESSION_TABLES, history: HISTORY, external_llm_consent: true }),
+      body: JSON.stringify({ message: text, tables: SESSION_TABLES, history: HISTORY }),
     });
     const j = await r.json();
     thinking.querySelector(".msg").textContent = j.reply || j.error || "(no reply)";

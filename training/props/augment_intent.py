@@ -285,7 +285,7 @@ def main():
         qt = qtext(v)
         if qt in probe_texts:                                # never train a probe's exact phrasing
             continue
-        bucket = int(hashlib.sha1(qt.encode()).hexdigest(), 16) % 100
+        bucket = int(hashlib.sha1(qt.encode(), usedforsecurity=False).hexdigest(), 16) % 100
         if bucket < CALIBRATION_PCT:
             if qt not in calibration_seen:
                 calibration_seen.add(qt); calibration.append(v)

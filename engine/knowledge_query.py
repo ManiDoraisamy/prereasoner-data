@@ -132,7 +132,9 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         """(name, columns, values-hash) — the routing cache key: the model types a given (schema, data) ONCE."""
         import hashlib
         return (table["name"], tuple(table["columns"]),
-                hashlib.sha1(repr([tuple(r) for r in table["rows"]]).encode("utf-8", "replace")).hexdigest()[:12])
+                hashlib.sha256(
+                    repr([tuple(r) for r in table["rows"]]).encode("utf-8", "replace")
+                ).hexdigest()[:12])
 
     def begin_typing(self):
         """Open a per-serve capture buffer for the model's typing evidence. Bracket ONE serve; serves are

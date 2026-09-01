@@ -100,7 +100,7 @@ On every operative axis the two are opposites:
 |---|---|---|
 | Dimensions | **unnamed** embedding dims | **named** dims (`city`, `hospital`, `currency`, `intent_agg_sum`, …) |
 | Retrieval | **approximate** cosine / ANN top-k | **exact** SQL equality join on `qid` |
-| Answer | dump text chunks into an LLM that **generates** (can hallucinate) | **deterministic compute** (SUM/JOIN/WHERE), no LLM in the loop |
+| Answer | dump text chunks into an LLM that **generates** (can hallucinate) | **deterministic compute** (SUM/JOIN/WHERE); no language model authors the executed query or numeric result |
 | Failure mode | hallucination | a traceable wrong query |
 
 **The framing that captures the contribution:** *naming the dimensions is what makes precise
@@ -108,7 +108,9 @@ querying possible — RAG can only approximate because its dimensions are unname
 write `WHERE dim_247 = …`). Anchor the dimension and the approximate-retrieve-then-generate
 stack collapses into one exact query. RAG searches; this queries.*
 
-**One honest caveat.** Learned, *soft* steps include **type classification + entity
+**One honest caveat.** The optional hosted language assistant can present results, resolve
+ambiguity, and orchestrate tools, but it does not own the executed query or numeric result.
+Learned, *soft* engine steps include **type classification + entity
 resolution** — which world table a column routes to (via legacy property-family consensus and
 calibrated thresholds) and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
 match first, then a bge-small cosine nearest-neighbour above threshold). Both steps are

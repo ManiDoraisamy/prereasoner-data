@@ -35,6 +35,7 @@ training/schema_org/data/*
 firebase-debug.log
 .claude/
 spider/results/**/*.checkpoint.json
+spider/results/**/*per_example*.json
 
 # Terraform
 infra/**/.terraform/

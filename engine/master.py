@@ -29,7 +29,9 @@ def master_schema(user_id):
     """The per-user master schema name: `m_<32 hex>` (same safe fixed shape as a conversation's `c_<32 hex>`)."""
     if not user_id:
         raise ValueError("verified user id is required")
-    return "m_" + hashlib.md5(str(user_id).encode("utf-8")).hexdigest()
+    return "m_" + hashlib.md5(
+        str(user_id).encode("utf-8"), usedforsecurity=False
+    ).hexdigest()
 
 
 def _identifier(name, label="identifier"):

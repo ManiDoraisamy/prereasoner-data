@@ -1,5 +1,11 @@
 # engine/ — module map and serving contract
 
+> Supplementary maintainer map. The current request and service boundaries are canonical in
+> [../ARCHITECTURE.md](../ARCHITECTURE.md), configuration defaults in
+> [../../.env.example](../../.env.example), and validation commands in
+> [../TESTING.md](../TESTING.md). Update this note when module history changes, but do not use it
+> to override those contracts.
+
 The engine is ONE server, ONE package (`engine/`), run as `python -m engine.server`. It exposes
 `POST /api/reason`, `POST /api/knowledge`, `POST /api/dimension`, `POST /api/converse`, and
 `GET /healthz` (see docs/ARCHITECTURE.md for the full design). This note is the maintainer's map of
@@ -42,7 +48,8 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `master.py` | Per-user reference persistence, validation, and direct/multi-hop request selection through `relations.discover_fks`. |
 
 Tests live in `tests/` (`test_geo.py`, `test_world.py`, `test_nongeo.py`, `test_world_joins.py`,
-`test_route_wired.py`); most need a live seeded Postgres — see `tests/README.md`.
+`test_route_wired.py`); most need a live seeded PostgreSQL database. See
+[../TESTING.md](../TESTING.md).
 
 The engine is a proper package run from the repo root (no `sys.path` hacks).
 
@@ -80,8 +87,8 @@ has none) — the entrypoint gate reports missing weights at startup (see
 
 ## Model-loading format
 
-`encoder_meta.pt` = `{"alloc": dict, "cfg": dict}` (plain pickled dicts, needs
-`weights_only=False`); `encoder.pt` = a bare `state_dict` (172 tensors, `proj.*` +
+`encoder_meta.pt` = `{"alloc": dict, "cfg": dict}` (tensors and primitive containers, loaded with
+`weights_only=True`); `encoder.pt` = a bare `state_dict` (172 tensors, `proj.*` +
 `blocks.*`) loaded into `RelationalModel(**cfg)`. `qwen_lora/` is a standard PEFT
 adapter (`base_model_name_or_path: Qwen/Qwen2.5-0.5B`). The `.pt` files carry no
 class references (only dicts / state_dicts), so they load independent of module

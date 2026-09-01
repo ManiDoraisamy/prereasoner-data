@@ -42,6 +42,7 @@ class Router:
         if self._m is not None:
             return self._m
         import torch
+        from engine.artifact_provenance import validate_weight_bundle
         from engine.encoder import LiveQwen                                # import-light encoder (no training deps)
         from engine.encoder_model import RelationalModel
         from engine.fk_edges import fam_dims_map
@@ -50,11 +51,14 @@ class Router:
             qwen, tok, model = self._shared
             enc = LiveQwen(dev, shared_qwen=qwen, shared_tok=tok)
         else:                                                               # standalone (calibrate/validate/local)
+            validate_weight_bundle(DATA_DIR)
             enc = LiveQwen(dev, warm_lora=str(DATA_DIR / "qwen_lora"), serving=True)
-            cfg = torch.load(DATA_DIR / "encoder_meta.pt", map_location="cpu", weights_only=False)["cfg"]
+            cfg = torch.load(DATA_DIR / "encoder_meta.pt", map_location="cpu", weights_only=True)["cfg"]
             model = RelationalModel(in_dim=cfg["in_dim"], H=cfg["H"], layers=cfg["layers"], heads=cfg["heads"],
                                     nc=cfg["nc"], n_edge=cfg["n_edge"]).to(dev)
-            model.load_state_dict(torch.load(DATA_DIR / "encoder.pt", map_location="cpu"))
+            model.load_state_dict(torch.load(
+                DATA_DIR / "encoder.pt", map_location="cpu", weights_only=True
+            ))
             model.eval()
         self._m = (enc, model, fam_dims_map(json.load(open(DATA_DIR / "alloc.json"))), dev, torch)
         return self._m

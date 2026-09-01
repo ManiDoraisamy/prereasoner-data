@@ -98,7 +98,7 @@ def main():
     import torch
     dev = torch.device(os.environ.get("DEVICE", "cuda" if torch.cuda.is_available() else "cpu"))
     cache_p = OUT / "reanchor_emb_cache.pt"
-    raw = torch.load(cache_p) if cache_p.exists() else {}
+    raw = torch.load(cache_p, map_location="cpu", weights_only=True) if cache_p.exists() else {}
     cache = {t: (v.cpu().numpy().astype(np.float64) if torch.is_tensor(v) else np.asarray(v, dtype=np.float64))
              for t, v in raw.items()}
     uniq = sorted({r["Token"] for r in tr + te})

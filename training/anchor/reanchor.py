@@ -60,10 +60,10 @@ def main():
     fam_dims = fam_dims_map(alloc)
 
     enc = LiveQwen(dev, warm_lora=str(R19 / "qwen_lora"), serving=True)               # FROZEN encoder, unchanged
-    cfg = torch.load(R19 / "encoder_meta.pt", map_location="cpu", weights_only=False)["cfg"]
+    cfg = torch.load(R19 / "encoder_meta.pt", map_location="cpu", weights_only=True)["cfg"]
     model = RelBlockModel(in_dim=cfg["in_dim"], H=cfg["H"], layers=cfg["layers"], heads=cfg["heads"],
                            nc=nc, n_edge=cfg["n_edge"]).to(dev)
-    sd = torch.load(R19 / "encoder.pt", map_location="cpu")
+    sd = torch.load(R19 / "encoder.pt", map_location="cpu", weights_only=True)
     msd = model.state_dict()
     filt = {k: v for k, v in sd.items() if k in msd and v.shape == msd[k].shape}      # body matches; nc=124 readout skipped
     model.load_state_dict(filt, strict=False)
@@ -81,10 +81,10 @@ def main():
     print(f"alloc nc={nc} | tax{len(tax)}+sql{len(sql)}+join{len(join)} | {len(texts)} unique texts | dev={dev}", flush=True)
 
     cache_p = R20 / "reanchor_emb_cache.pt"
-    cache = torch.load(cache_p) if cache_p.exists() else {}
+    cache = torch.load(cache_p, map_location="cpu", weights_only=True) if cache_p.exists() else {}
     r19c = R19 / "reanchor_emb_cache.pt"
     if r19c.exists():
-        rc = torch.load(r19c)
+        rc = torch.load(r19c, map_location="cpu", weights_only=True)
         for t in texts:                                                              # reuse shared sql/join embeddings
             if t not in cache and t in rc:
                 cache[t] = rc[t]

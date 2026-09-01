@@ -5,4 +5,7 @@ mcp==1.29.1
 numpy==1.26.4
 psycopg2-binary>=2.9,<3
 requests>=2.31,<3
+defusedxml>=0.7,<1
+bandit==1.9.4
+pip-audit==2.10.1
 ruff==0.16.3

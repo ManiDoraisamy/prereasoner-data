@@ -1,12 +1,14 @@
 # Developer Getting Started
 
-This guide gets a new contributor from a clone to a verified local change. Read
-[ARCHITECTURE.md](ARCHITECTURE.md) after the first successful request. Contributors working
-on domain semantics or shared reference data must also read
-[KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMENT_ROADMAP.md); it distinguishes implemented
-guardrails, code-approved datasets, deployment enablement, and remaining evaluation work.
-Use [SOURCE_DATA.md](SOURCE_DATA.md) for the exact publisher-owned schema inventory and sync
-commands. Never infer a source from a domain label such as healthcare, tax, or retail.
+This is the canonical setup guide. Start with the public-checkout path, which needs neither downloaded
+weights nor PostgreSQL, and add runtime dependencies only for the component you are changing. The
+[documentation map](README.md) labels current, opt-in, external, and planned behavior.
+
+Read [ARCHITECTURE.md](ARCHITECTURE.md) after the first successful test run. Contributors changing
+shared source data should use [SOURCE_DATA.md](SOURCE_DATA.md) for the exact publisher-owned schema
+inventory and then consult [KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMENT_ROADMAP.md) for
+implemented and planned activation work. Never infer a data owner from a domain label such as
+healthcare, tax, or retail.
 
 ## 1. Choose A Development Level
 
@@ -18,7 +20,7 @@ You do not need the entire production stack for every change.
 | Source parser or synchronizer | `db/sync/requirements.txt`; PostgreSQL only for an actual load |
 | Browser state and static UI | Node 20 and a static/Firebase server |
 | Full engine request | Runtime weights and PostgreSQL |
-| World grounding | Runtime weights, seeded knowledgebase, and network for lazy Wikidata misses |
+| World grounding | Runtime weights and a seeded knowledgebase; some uncached Wikidata entities also need network access |
 | Conversational presentation | Everything above plus `ANTHROPIC_API_KEY` |
 
 Start with hermetic tests. Add infrastructure only when the owner you are changing needs it.
@@ -48,12 +50,12 @@ pip install -r requirements.txt
 Runtime artifacts are deliberately not committed. Fetch the manifest-pinned bundle:
 
 ```powershell
-$env:HF_TOKEN = "<token with access to the configured weight repository>"
 python -m engine.fetch_weights
 ```
 
-The default weight repository is private today. This is the main external artifact that must be published or
-reconfigured before a third party can reproduce the complete application from a public clone.
+The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public and
+requires no account or token. The fetch command pins an immutable repository commit and validates every
+file hash before installation. `HF_TOKEN` is only needed for an explicitly configured private replacement.
 
 ## 3. Run Fast Tests First
 
@@ -77,11 +79,13 @@ These establish the planner, routing, reference-data, frontend-state, and syntax
 
 ## 4. Start PostgreSQL And The Engine
 
-The shortest path is Docker Compose:
+Provision the runtime weights before building the engine image. Then start PostgreSQL, run
+the one-time seed, and start the engine:
 
 ```powershell
-docker compose up --build
+docker compose up -d db
 docker compose --profile seed run --rm seed
+docker compose up --build engine
 ```
 
 The separate conversational orchestrator is not part of the default stack. Set
@@ -131,7 +135,10 @@ Invoke-RestMethod http://localhost:8080/api/reason -Method Post `
   -Headers @{Authorization="Bearer dev"} -ContentType application/json -Body $request
 ```
 
-The response contains the result, rendered SQL, selected route, and inspectable intermediate views.
+Response fields vary by planner path. A successful data query contains a result and inspectable SQL;
+it also carries the conversation id and can include route evidence, typing, intermediate views,
+calculation evidence, provenance, or warnings when those mechanisms participated. Treat absent
+optional evidence as path-specific, not as a different API version.
 
 ## 6. Understand Private References
 

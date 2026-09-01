@@ -45,7 +45,8 @@ def graphs_from_tokens(tokens):
         for i, v in enumerate(vals):
             units.append({"text": v["Token"], "kind": "cell", "role": "value", "col": 0, "row": i,
                           "fired": fired_of(v), "sup": ["struct", "taxonomy"]})
-        graphs.append({"file": f"{src}:{hashlib.sha1(ex.encode('utf-8')).hexdigest()[:12]}", "units": units})  # deterministic across runs
+        digest = hashlib.sha1(ex.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+        graphs.append({"file": f"{src}:{digest}", "units": units})  # stable corpus identity, not a security hash
     return graphs
 
 

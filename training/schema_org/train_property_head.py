@@ -16,12 +16,9 @@ from pathlib import Path
 import random
 
 import numpy as np
-import torch
 
 from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR
-from engine.encoder import LiveQwen
 from engine.schema_decode import ClassDecoder
-from engine.schema_model import NamedPropertyHead
 from engine.artifact_provenance import canonical_json_sha256, semantic_encoder_fingerprint
 from engine.schema_org import load_contract
 from training.schema_org.instances import group_id, read_jsonl
@@ -141,6 +138,7 @@ def _embeddings(instances, *, cache_path: Path, device, batch_size: int,
     known = _cached_embeddings(cache_path, encoder_artifact_sha256)
     missing = [i for i, h in enumerate(hashes) if h not in known]
     if missing:
+        from engine.encoder import LiveQwen
         print(f"encoding {len(missing)} new texts ({len(texts) - len(missing)} cached)", flush=True)
         encoder = LiveQwen(device, warm_lora=str(DATA_DIR / "qwen_lora"), serving=True)
         for start in range(0, len(missing), batch_size):
@@ -165,6 +163,9 @@ def _embeddings(instances, *, cache_path: Path, device, batch_size: int,
 
 
 def main() -> None:
+    import torch
+    from engine.schema_model import NamedPropertyHead
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", default=str(CORPUS_PATH))
     parser.add_argument("--manifest", default=str(MANIFEST_PATH))

@@ -3,17 +3,19 @@
 # torch is the CPU build (the extra index below); serving is CPU-only by default (DEVICE=cpu).
 # spaCy needs the en_core_web_md model — installed here straight from the release wheel.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1
-transformers==4.46.3
-tokenizers>=0.20,<0.21
-safetensors>=0.4,<1
-accelerate>=0.34,<2
-peft>=0.13,<1                   # loads the qwen_lora adapter onto the base Qwen encoder
+torch==2.13.0
+transformers==5.10.4
+tokenizers==0.22.2
+safetensors==0.7.0
+accelerate==1.14.0
+peft==0.19.1                    # loads the qwen_lora adapter onto the base Qwen encoder
 numpy==1.26.4
 psycopg2-binary>=2.9,<3         # live world Postgres (pgvector)
+requests>=2.31,<3               # scheduled source synchronization shipped in the engine image
+defusedxml>=0.7,<1              # bounded parsing for publisher XML snapshots
 firebase-admin>=6.5,<7          # auth token verification + optional RTDB trace streaming
 anthropic>=0.40,<1              # Sonnet conversational fallback for /api/converse (clarify / non-data questions)
 spacy==3.8.13                   # entity-surface candidates for prompt resolution
 click>=8.1,<9                   # spaCy 3.8's package init imports its CLI (spacy.cli), which needs click at runtime
 en_core_web_md @ https://github.com/explosion/spacy-models/releases/download/en_core_web_md-3.8.0/en_core_web_md-3.8.0-py3-none-any.whl
-huggingface_hub>=0.20,<1
+huggingface_hub==1.29.0

@@ -28,4 +28,5 @@ for security reports. You should receive a response within a few days.
   an atomic table replacement. Only FK-connected references enter a request's planner table set.
 - The Firebase web configuration and Google Picker key in `web/public/lib/config.js` are necessarily
   visible to browsers. Restrict those keys to the production HTTP referrers and required Google APIs,
-  apply quotas, and never use them as server credentials or authorization checks.
+  apply quotas, and never use them as server credentials or authorization checks. That one file is
+  the sole Gitleaks path exception for this reason; adding credentials anywhere else must fail the scan.

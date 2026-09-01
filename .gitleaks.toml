@@ -1,0 +1,8 @@
+title = "PreReasoner secret scanning"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Firebase and Picker browser identifiers are public client configuration; server authorization never trusts them."
+paths = ['''^web/public/lib/config\.js$''']

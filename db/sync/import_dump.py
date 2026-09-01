@@ -38,6 +38,7 @@ except ImportError:
     from ._conn import connect                    # imported as a package module
 
 REPO = "philippesaade/wikidata"
+REVISION = "3c43a705de25f60268a1ef343098d3c3464706c7"
 N_CHUNKS = 546
 INIT_SQL = Path(__file__).resolve().parent.parent / "init.sql"
 
@@ -297,7 +298,9 @@ def main():
         try:                                       # whole-file download (1 request) >> streaming
             from huggingface_hub import hf_hub_download   # lazy: only the dump path needs these deps
             import pyarrow.parquet as pq
-            lp = hf_hub_download(REPO, fn, repo_type="dataset", local_dir=chunk_dir)
+            lp = hf_hub_download(
+                REPO, fn, repo_type="dataset", revision=REVISION, local_dir=chunk_dir
+            )
             pf = pq.ParquetFile(lp)
         except Exception as e:
             print(f"[chunk {ci}] download failed: {e}", flush=True)

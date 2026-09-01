@@ -35,8 +35,11 @@ must accept the publisher terms and supply the source artifact or credentials. T
 sync scope, quality limits, and rights-bearing fields are documented in
 [`docs/SOURCE_DATA.md`](docs/SOURCE_DATA.md).
 
-Spider evaluation data is not distributed by this repository. Follow the dataset owner's terms when downloading it
-through the instructions in `docs/SQL_AST.md`.
+Spider 1.0 is distributed by the Yale LILY Lab under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/). This repository retains only
+aggregate evaluation measurements; questions, gold SQL, databases, and per-example outputs are not
+part of the source distribution. Follow the dataset owner's terms and cite the Spider paper when
+downloading it through the instructions in `docs/SQL_AST.md`.
 
 Python packages installed from the requirement files and browser libraries loaded by the frontend retain their
 upstream licenses. Before publishing a model bundle or container image, preserve the notices shipped by those

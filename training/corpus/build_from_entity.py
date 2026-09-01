@@ -201,7 +201,8 @@ def main():
             for i, x in enumerate(v):
                 us.append({"text": x["Token"], "kind": "cell", "role": "value", "col": 0, "row": i,
                            "fired": fired(x), "sup": ["struct", "taxonomy"]})
-            out.append({"file": "%s:%s" % (src, hashlib.sha1(ex.encode("utf-8")).hexdigest()[:12]), "units": us})
+            digest = hashlib.sha1(ex.encode("utf-8"), usedforsecurity=False).hexdigest()[:12]
+            out.append({"file": "%s:%s" % (src, digest), "units": us})
         return out
     for name, toks in (("units_train.jsonl", train), ("units_test.jsonl", test)):
         with open(os.path.join(R20, name), "w", encoding="utf-8") as f:

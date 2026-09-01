@@ -85,10 +85,11 @@ def main():
 
     warm = None if args.no_warm else (R17 / "qwen_lora")
     enc = LiveQwen(dev, lora_r=args.lora_r, warm_lora=warm, serving=False)   # TRAINING: dropout + grad checkpointing on
-    cfg10 = torch.load(R10 / "sql_base_meta.pt", map_location="cpu", weights_only=False)["cfg"]
+    cfg10 = torch.load(R10 / "sql_base_meta.pt", map_location="cpu", weights_only=True)["cfg"]
     model = RelBlockModel(in_dim=enc.hdim, H=cfg10["H"], layers=cfg10["layers"], heads=cfg10["heads"], nc=nc).to(dev)
     if not args.no_warm:                                                     # body is nc-independent (content = -nc: slice)
-        miss, unexp = model.load_state_dict(torch.load(R17 / "unified_model.pt", map_location="cpu"), strict=False)
+        miss, unexp = model.load_state_dict(
+            torch.load(R17 / "unified_model.pt", map_location="cpu", weights_only=True), strict=False)
         print(f"warm-started RelBlock body from unified_model.pt (missing {len(miss)}, unexpected {len(unexp)})", flush=True)
     params = [p for p in enc.parameters() if p.requires_grad] + list(model.parameters())
     opt = torch.optim.AdamW(params, lr=args.lr)

@@ -1,4 +1,10 @@
-# Market-Led Semantic and Knowledge-Enrichment Plan
+# Knowledge Enrichment Status And Roadmap
+
+Document type: **mixed implementation ledger and forward roadmap**. For the current request path use
+[`ARCHITECTURE.md`](ARCHITECTURE.md); for exact synchronized source releases use
+[`SOURCE_DATA.md`](SOURCE_DATA.md). In this document, only items explicitly marked implemented or
+complete describe shipped code. Milestone prose and target schemas remain planned until their named
+gate passes.
 
 Status: **SOURCE MATERIALIZATION COMPLETE FOR NINE SOURCES; GUARDED M0 INTEGRATION IMPLEMENTED.**
 Nine source-owned schemas now hold validated active snapshots: IANA, CLDR, Google

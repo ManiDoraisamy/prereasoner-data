@@ -5,6 +5,6 @@ authors:
   - family-names: "Doraisamy"
     given-names: "Mani"
 license: Apache-2.0
-repository-code: "https://github.com/ManiDoraisamy/prereasoner"
+repository-code: "https://github.com/ManiDoraisamy/prereasoner-data"
 date-released: 2026-07-04
 # When the paper is published, add a preferred-citation block here pointing at it.

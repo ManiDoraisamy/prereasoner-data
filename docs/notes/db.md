@@ -1,5 +1,10 @@
 # db/ — the database contract
 
+> Supplementary implementation notes for the legacy world layout. Use
+> [../../db/README.md](../../db/README.md) for bootstrap and sync commands,
+> [../SOURCE_DATA.md](../SOURCE_DATA.md) for publisher releases, and
+> [../ARCHITECTURE.md](../ARCHITECTURE.md) for the current-versus-target storage boundary.
+
 What the engine expects in Postgres: the extensions, schemas, static tables and
 indexes created by `db/init.sql`, and the objects that the `db/sync/` pipeline
 (bulk) and the engine (lazy, at query time) populate on top of it. This note

@@ -122,20 +122,15 @@ def test_no_entities_returns_empty_without_calling_the_model():
     assert "user" not in cap, "the model was called for an empty entity list"
 
 
-def test_external_llm_requires_deployment_opt_in_and_request_consent():
+def test_external_llm_requires_deployment_authorization():
     import engine.config as cfg
-    from engine.server import _external_llm_allowed
 
     previous = os.environ.get("EXTERNAL_LLM_ENABLED")
     try:
         os.environ.pop("EXTERNAL_LLM_ENABLED", None)
         assert not cfg.external_llm_enabled()
-        assert not _external_llm_allowed({"external_llm_consent": True})
         os.environ["EXTERNAL_LLM_ENABLED"] = "true"
         assert cfg.external_llm_enabled()
-        assert not _external_llm_allowed({})
-        assert not _external_llm_allowed({"external_llm_consent": "true"})
-        assert _external_llm_allowed({"external_llm_consent": True})
     finally:
         if previous is None:
             os.environ.pop("EXTERNAL_LLM_ENABLED", None)
@@ -207,7 +202,7 @@ TESTS = [
     test_fallback_when_model_returns_one_nested_json_blob,
     test_fallback_handles_a_code_fence,
     test_no_entities_returns_empty_without_calling_the_model,
-    test_external_llm_requires_deployment_opt_in_and_request_consent,
+    test_external_llm_requires_deployment_authorization,
     test_trace_deletion_filters_by_conversation_and_supports_delete_all,
 ]
 

@@ -27,7 +27,9 @@ NUMRE = re.compile(r"^[\s$£€]*-?[\d.,]+%?$")
 DATERE = re.compile(r"\b\d{4}[-/]\d{1,2}[-/]\d{1,2}\b|\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b")  # FULL date only (not bare 4-digit)
 PER_TYPE, MIN_SUPPORT = 250, 25
 def short(u): return u.rstrip("/").split("/")[-1]
-def split_of(k): return "test" if int(hashlib.sha1(k.encode()).hexdigest(), 16) % 5 == 0 else "train"
+def split_of(k):
+    digest = hashlib.sha1(k.encode(), usedforsecurity=False).hexdigest()
+    return "test" if int(digest, 16) % 5 == 0 else "train"
 def clean(v):
     v = " ".join(str(v).split()); return v if v and len(v) <= 60 and any(c.isalnum() for c in v) else None
 def struct_of(tok):

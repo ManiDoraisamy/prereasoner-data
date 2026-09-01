@@ -7,11 +7,10 @@
 # /api/knowledge WITHOUT a Firebase ID token (test-only bypass; never set it in production).
 # RTDB_URL is deliberately NOT set: trace streaming no-ops and responses carry full JSON.
 #
-# One-time database seed (~15-45 min, mostly Wikidata Query Service calls) — the engine
-# resolves nothing until knowledgebase."words"/"types" etc. are populated. db/ is excluded from
-# the image by .dockerignore, so the dedicated `seed` service below bind-mounts ./db and
-# reuses the engine image (its Python stack already satisfies db/sync/requirements.txt:
-# psycopg2-binary, numpy, torch, transformers). Run it once after `up`:
+# One-time database seed (~15-45 min, mostly Wikidata Query Service calls) - the engine
+# resolves nothing until knowledgebase."words"/"types" are populated. The dedicated `seed`
+# service bind-mounts ./db so sync caches persist on the host and reuses the engine image
+# (its Python stack satisfies db/sync/requirements.txt). Run it once after `up`:
 #
 #   docker compose --profile seed run --rm seed
 #

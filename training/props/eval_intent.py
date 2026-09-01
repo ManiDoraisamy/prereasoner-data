@@ -24,13 +24,7 @@ handcrafted serving probes). NEVER train on that file.
 from __future__ import annotations
 import argparse, os
 
-import torch
-
 from training.lib.edges import fam_dims_map
-from training.lib.relblock import RelBlockModel
-from training.lib.encoder import LiveQwen
-from training.train.train_multitask import load, fam_report
-from training.train.train_unified import pack, collate_live, evaluate
 
 HERE = os.path.dirname(os.path.abspath(__file__))              # training/props/
 TRAIN_DIR = os.environ.get("PREREASONER_TRAIN_DIR", HERE)
@@ -48,6 +42,8 @@ def pack_eval(graphs, aid, fam_dims, nc, max_units=128):
     probe name) alongside. pack preserves unit order, so raw-graph q indices == packed row indices.
     operand = non-q unit texts + their split words (== serving's column-name/cell exclusion set);
     scoring excludes q rows whose text is an operand, mirroring read_op_model's `cand` filter."""
+    from training.train.train_unified import pack
+
     out = []
     for g in graphs:
         p = pack(g, aid, fam_dims, nc, max_units)
@@ -75,34 +71,37 @@ def read_op_mirror(scores, thresholds=None):
     return op if sc >= thresholds[op] else None
 
 
-@torch.no_grad()
 def intent_score_rows(enc, model, packed, aid, nc, hdim, dev):
     """Collect serving-faithful scores while keeping checkpoint evaluation deterministic."""
-    encoder_training = enc.qwen.training
-    model_training = model.training
-    enc.qwen.eval()
-    model.eval()
-    did = {op: aid[d] for op, d in OPS.items()}
-    rows = []
-    for i in range(0, len(packed), 4):
-        batch = packed[i:i + 4]
-        texts = sorted({t for p in batch for t in p["texts"]})
-        V = enc.encode(texts, grad=False, max_len=48)                  # max_len 48 == serving (engine/tables MAX_LEN)
-        tv = {t: V[j] for j, t in enumerate(texts)}
-        x, E, kp, ct, cm = collate_live(batch, tv, nc, hdim, dev)
-        cp = model(x, E, kp)["content"]
-        for b, p in enumerate(batch):
-            # candidate q rows = those whose text is NOT an operand (serving's cand filter); fall
-            # back to all q rows if every token collides (serving does the same `or list(range)`).
-            cand = [r for r, t in zip(p["qidx"], p["qtext"]) if t not in p["operand"]] or p["qidx"]
-            scores = {}
-            for op, d in did.items():
-                col = cp[b, cand, d]
-                scores[op] = float(col.max()) if col.numel() else 0.0   # empty-cand guard (== serving default 0.0)
-            rows.append((p["expect"], p["probe"], scores))
-    enc.qwen.train(encoder_training)
-    model.train(model_training)
-    return rows
+    import torch
+    from training.train.train_unified import collate_live
+
+    with torch.no_grad():
+        encoder_training = enc.qwen.training
+        model_training = model.training
+        enc.qwen.eval()
+        model.eval()
+        did = {op: aid[d] for op, d in OPS.items()}
+        rows = []
+        for i in range(0, len(packed), 4):
+            batch = packed[i:i + 4]
+            texts = sorted({t for p in batch for t in p["texts"]})
+            V = enc.encode(texts, grad=False, max_len=48)              # max_len 48 == serving (engine/tables MAX_LEN)
+            tv = {t: V[j] for j, t in enumerate(texts)}
+            x, E, kp, ct, cm = collate_live(batch, tv, nc, hdim, dev)
+            cp = model(x, E, kp)["content"]
+            for b, p in enumerate(batch):
+                # candidate q rows = those whose text is NOT an operand (serving's cand filter); fall
+                # back to all q rows if every token collides (serving does the same `or list(range)`).
+                cand = [r for r, t in zip(p["qidx"], p["qtext"]) if t not in p["operand"]] or p["qidx"]
+                scores = {}
+                for op, d in did.items():
+                    col = cp[b, cand, d]
+                    scores[op] = float(col.max()) if col.numel() else 0.0  # empty-cand guard (== serving default)
+                rows.append((p["expect"], p["probe"], scores))
+        enc.qwen.train(encoder_training)
+        model.train(model_training)
+        return rows
 
 
 def thresholds_from_score_rows(rows):
@@ -145,9 +144,12 @@ def calibrate_intent_thresholds(enc, model, packed, aid, nc, hdim, dev):
     )
 
 
-@torch.no_grad()
 def intent_metrics(enc, model, packed, aid, nc, hdim, dev, thresholds=None):
     """Return heldout accuracy, per-class accuracy, named probes, and mean intent AUC."""
+    import torch
+    from training.train.train_multitask import fam_report
+    from training.train.train_unified import evaluate
+
     thresholds = thresholds or LEGACY_THRESHOLDS
     rows = intent_score_rows(enc, model, packed, aid, nc, hdim, dev)
     n = ok = 0
@@ -165,12 +167,15 @@ def intent_metrics(enc, model, packed, aid, nc, hdim, dev, thresholds=None):
     # smooth signal: per-dim AUC over the same graphs (intent family; dims with positives)
     alloc_stub = {"dims": [{"name": k, "family": "intent", "dim_id": v} for k, v in aid.items()
                            if k.startswith("intent")]}
-    means, _ = fam_report(alloc_stub, *evaluate(enc, model, packed, nc, hdim, dev), fams={"intent"})
+    with torch.no_grad():
+        means, _ = fam_report(alloc_stub, *evaluate(enc, model, packed, nc, hdim, dev), fams={"intent"})
     i_auc = means.get("intent")
     return acc, {k: (a / t if t else 0.0, t) for k, (a, t) in per.items()}, probe_rows, (i_auc or 0.0)
 
 
 def load_eval(aid, fam_dims, nc, path=None, max_units=128):
+    from training.train.train_multitask import load
+
     p = path or os.path.join(DATA, "intent_eval.jsonl")
     if not os.path.exists(p):
         return []
@@ -178,6 +183,10 @@ def load_eval(aid, fam_dims, nc, path=None, max_units=128):
 
 
 def main():
+    import torch
+    from training.lib.encoder import LiveQwen
+    from training.lib.relblock import RelBlockModel
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--ckpt", choices=["props", "engine"], default="props",
                     help="props = DATA/encoder_props* + qwen_lora_props; engine = the shipped engine/data model")
@@ -194,14 +203,14 @@ def main():
         lora_p = args.lora or os.path.join(DATA, "qwen_lora_props")
 
     dev = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    meta = torch.load(meta_p, map_location="cpu", weights_only=False)
+    meta = torch.load(meta_p, map_location="cpu", weights_only=True)
     alloc, cfg = meta["alloc"], meta["cfg"]; nc = alloc["n_content"]
     aid = {d["name"]: d["dim_id"] for d in alloc["dims"]}
     fam_dims = fam_dims_map(alloc)
     enc = LiveQwen(dev, warm_lora=lora_p, serving=True)
     m = RelBlockModel(in_dim=cfg["in_dim"], H=cfg["H"], layers=cfg["layers"], heads=cfg["heads"],
                       nc=nc, n_edge=cfg["n_edge"]).to(dev)
-    m.load_state_dict(torch.load(model_p, map_location="cpu")); m.eval()
+    m.load_state_dict(torch.load(model_p, map_location="cpu", weights_only=True)); m.eval()
 
     packed = load_eval(aid, fam_dims, nc, args.eval)
     if not packed:

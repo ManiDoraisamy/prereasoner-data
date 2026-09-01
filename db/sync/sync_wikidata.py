@@ -27,7 +27,7 @@ try:
 except ImportError:
     from .import_dump import connect, upsert, ensure_schema, _CONTINENT  # imported as a package module
 
-UA = "prereasoner-db-sync/1.0 (https://github.com/manidoraisamy/prereasoner; mani.doraisamy@gmail.com)"
+UA = "prereasoner-db-sync/1.0 (https://github.com/ManiDoraisamy/prereasoner-data; mani.doraisamy@gmail.com)"
 ENDPOINT = "https://query.wikidata.org/sparql"
 
 

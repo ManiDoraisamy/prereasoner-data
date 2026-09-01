@@ -6,15 +6,16 @@ Everything the serving engine opens at runtime lives here (override the location
 
 **Provision the weights on a fresh clone:**
 ```
-HF_TOKEN=<read-token> python -m engine.fetch_weights
+python -m engine.fetch_weights
 ```
 This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`,
 `primitives.npz`, and `schema_property_head.pt` into this directory (see
 `engine/fetch_weights.py`). `weights_manifest.json` pins the
 source revision and SHA-256 of every runtime weight; both existing and downloaded bundles
-must validate completely before use. The default source repo is
-**`prereasoner/prereasoner-weights`** (currently **private** — set `HF_TOKEN` to a token with read access;
-override the repo with `PREREASONER_WEIGHTS_REPO`). After retraining, first run
+must validate completely before use. The default source repo is the public
+**[`prereasoner/prereasoner-weights`](https://huggingface.co/prereasoner/prereasoner-weights)**;
+no account or token is required. Override it with `PREREASONER_WEIGHTS_REPO`; set `HF_TOKEN` only when
+the replacement repository requires authentication. After retraining, first run
 `python -m training.props.promote --local-only` and complete local gates. Upload those exact large files,
 then run `python -m training.props.promote --revision <immutable-hf-commit>` and commit the updated
 manifest. A local-only manifest intentionally refuses fresh-clone download. To retrain from scratch, see
@@ -24,7 +25,7 @@ manifest. A local-only manifest intentionally refuses fresh-clone download. To r
 |---|---|---|---|
 | `qwen_lora/` | ~17 MB | LoRA adapter for the Qwen2.5-0.5B unified encoder (the trained metric space). Loaded by `engine.encoder_overlay`, `engine.dimension`, `engine.router`. | no (gitignored) |
 | `encoder.pt` | ~72 MB | State_dict of the trained relational readout (`engine.encoder_model.RelationalModel`). Plain `state_dict` — no pickled classes. | no (gitignored) |
-| `encoder_meta.pt` | 8 KB | `{"alloc": …, "cfg": …}` — the dim allocation (names/families/ids) + the RelationalModel constructor config. Plain dicts pickled by `torch.save`; loaded with `torch.load(..., weights_only=False)`. | no (gitignored, `*.pt`) |
+| `encoder_meta.pt` | 8 KB | `{"alloc": …, "cfg": …}` — the dim allocation (names/families/ids) + the RelationalModel constructor config. Contains tensors and primitive containers only; loaded with `torch.load(..., weights_only=True)`. | no (gitignored, `*.pt`) |
 | `alloc.json` | 10 KB | The dim allocation as JSON (same content as `encoder_meta.pt["alloc"]`), used by `engine.router` which stays torch-free at import. | yes |
 | `anchor_assignment.npz` | 667 KB | Per-dim Youden-J firing thresholds from the anchor head (`dims`, `thr` arrays). Used by `engine.encoder_overlay.load_encoder` and `engine.dimension`. | no (gitignored, `*.npz`) |
 | `dim_thresholds.json` | 2 KB | Threshold OVERRIDES calibrated on the trained model for the /api/dimension readout. | yes |
@@ -43,7 +44,7 @@ Notes:
 - `words.db` (a local SQLite mirror of the world word tables) is referenced by the SQLite fallback path in
   `engine.world_tables` but is NOT shipped — the live serving path executes on Postgres
   (`engine.pg`/`engine.entities`) and never opens it. It did not exist in the source deployment either.
-- Filter/entity DATA (world."words", world/wikipedia tables, public.settlement) lives in Postgres, populated
+- Filter/entity data (`knowledgebase."words"`, Wikidata-backed world tables, and `public.settlement`) lives in PostgreSQL, populated
   by the `db/sync` pipeline — not in this directory.
 - Training corpora, embedding caches and intermediate build artifacts intentionally do not ship (see
   docs/notes/engine.md for the dropped-files list).

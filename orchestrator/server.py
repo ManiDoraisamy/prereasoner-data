@@ -143,9 +143,9 @@ class H(BaseHTTPRequestHandler):
                 sub, uid = None, None
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not config.external_llm_enabled() or req.get("external_llm_consent") is not True:
+            if not config.external_llm_enabled():
                 self._send(503, json.dumps({
-                    "error": "external LLM processing is disabled or this request lacks explicit consent"
+                    "error": "assistant processing is unavailable for this request"
                 })); return
             key = uid or sub or self.client_address[0]
             allowed, retry_after = CHAT_RATE.allow(key)

@@ -69,7 +69,7 @@ def _fingerprint():
                 "assignment.csv", "alloc.json"):
         p = R19 / rel
         parts.append(f"{rel}:{p.stat().st_size if p.exists() else 0}:{int(p.stat().st_mtime) if p.exists() else 0}")
-    return hashlib.sha1("|".join(parts).encode()).hexdigest()[:16]
+    return hashlib.sha1("|".join(parts).encode(), usedforsecurity=False).hexdigest()[:16]
 
 
 def _columns(tokens, colsize=COLSIZE):

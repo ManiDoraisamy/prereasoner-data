@@ -55,12 +55,9 @@ const ORCH = (()=>{ try{
 }catch(_){} return WB.chat!==false; })();
 const CHAT_ENDPOINT = API_BASE + (WB.chatEndpoint || '/chat');
 // ---- external LLM: /chat, /api/converse and /api/master/generate send the user's message AND sheet
-// data to Anthropic's Claude API, and the server refuses them (503) without BOTH the deployment
-// switch (EXTERNAL_LLM_ENABLED) and a per-request external_llm_consent:true — see PRIVACY.md.
-// This deployment discloses that transfer in its published privacy policy rather than in the answer
-// rail, so the client always asserts the per-request flag. The kill switches that remain are the
-// operator's EXTERNAL_LLM_ENABLED (server-side, authoritative) and ?chat=0, which runs the
-// deterministic /api/reason path with no orchestrator.
+// data to Anthropic's Claude API. EXTERNAL_LLM_ENABLED is the authoritative operator switch. The
+// durable disclosure is /privacy; do not add notices to the answer rail. ?chat=0 is a developer
+// routing control that runs the deterministic /api/reason path without the orchestrator.
 let HISTORY=[];                                  // lean cross-turn transcript for the orchestrator [{role,content}]
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
@@ -730,8 +727,7 @@ async function runGenerate(id){
     timer=setTimeout(()=>{ if(!done){ finish(); setGen('Autofill failed — retry',false); saveConvState(); } }, 180000);
     fetch(API_BASE+'/api/master/generate',{method:'POST',                         // (2) warm/fast fallback: the body returns the whole table
       headers:{'content-type':'application/json','Authorization':'Bearer '+tk},
-      body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId,
-        external_llm_consent:true})})
+      body:JSON.stringify({name:sh.name, columns:sh.cols, rows, instruction, jobId})})
       .then(async r=>{ if(!r.ok){ if(!done&&!uid) setGen('Autofill failed — retry',false); return; }
         const j=await r.json(); if(!j||!j.columns||done) return;
         if(!uid){ complete(j); return; }                    // no RTDB at all -> the HTTP body IS the result
@@ -957,8 +953,7 @@ async function conversationalReply(c){
       clarify:c.clarify?{proposed:c.proposed||null,original_sql:c.original_sql||null,bindings:c.bindings||null,
         reason:c.reason||null,unmet:c.unmet||null,calculations:c.calculations||null,
         currency:c.currency||null}:null,
-      error:c.error||null, tables:SHEETS, conversation_id:convId(),
-      external_llm_consent:true};
+      error:c.error||null, tables:SHEETS, conversation_id:convId()};
     if(present){ body.answer=c.answer||((J&&J.result)||null); body.sql=c.sql||((J&&J.sql)||null); }
     const res=await fetch(API_BASE+'/api/converse',{method:'POST',
       headers:{'content-type':'application/json','Authorization':'Bearer '+token},
@@ -1003,8 +998,8 @@ async function startTurn(){
   const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text(); return (r.ok&&t.trim().charAt(0)==='{')?JSON.parse(t):null; }catch(_){ return null; } };
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId, conversation_id:convId(),
-      external_llm_consent:true})}).then(parseBody).catch(()=>null);
+    body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId,
+      conversation_id:convId()})}).then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
   // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.

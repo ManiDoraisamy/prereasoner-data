@@ -31,7 +31,7 @@ class PrimitiveReader:
     returns') is read undiluted on a dense question."""
 
     def __init__(self, encoder=None, head=HEAD):
-        d = np.load(head, allow_pickle=True)
+        d = np.load(head, allow_pickle=False)
         self.W = d["W"].astype(np.float64); self.prims = [str(p) for p in d["prims"]]
         self.thr = (d["thr_tok"] if "thr_tok" in d else d["thr"]).astype(float)
         if encoder is None:

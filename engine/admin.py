@@ -10,7 +10,7 @@ name/email/photo come from Firebase Auth, looked up by the google.com PROVIDER i
 ProviderIdentifier), NOT by uid. Enrichment is best-effort: if auth is unconfigured/unpermitted it degrades to
 showing the sub, and the rest of the dashboard still works.
 
-Auth: gated to an email allowlist (ADMIN_EMAILS, default the owner). NOT the normal user auth — a logged-in
+Auth: gated to an explicit email allowlist (ADMIN_EMAILS; empty by default). NOT the normal user auth - a logged-in
 non-admin gets 403. Every destructive op RE-VALIDATES the schema id shape (c_<32 hex>) before DROP SCHEMA, so
 a bug or crafted id can never drop an arbitrary schema (world/wikipedia/public/chat are never matched).
 """
@@ -24,7 +24,7 @@ _ID_RE = re.compile(r"^c_[0-9a-f]{32}$")           # a conversation id == its da
 
 
 def _admins():
-    raw = os.environ.get("ADMIN_EMAILS", "mani.doraisamy@gmail.com")
+    raw = os.environ.get("ADMIN_EMAILS", "")
     return {e.strip().lower() for e in raw.split(",") if e.strip()}
 
 

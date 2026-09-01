@@ -1,25 +1,25 @@
-# PreReasoner training pipeline — pinned per the original training environment.
+# PreReasoner training pipeline - aligned with the supported serving environment.
 #
-# torch: the pin below installs the CPU wheel (enough for the anchoring / calibration / validation steps and
-# CPU smoke runs). For the GPU training steps (train_unified / train_taxonomy) install the CUDA build instead:
-#   pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu124
-# (training ran on RunPod pods with the runpod/pytorch:2.4.0-py3.11-cuda12.4.1 image; any >=12.x CUDA build works)
+# The pin below installs the CPU wheel, which is enough for anchoring, calibration, validation,
+# and smoke runs. GPU jobs must use the same PyTorch version from the CUDA index matching the
+# runner; record that wheel and CUDA version in the training manifest.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.4.1
+torch==2.13.0
 
 # encoder stack (Qwen2.5-0.5B base + LoRA adapter). The base model downloads from Hugging Face —
 # set HF_TOKEN in the environment (never hardcode it).
-transformers==4.46.3
-tokenizers>=0.20,<0.21
-safetensors>=0.4
-accelerate>=0.34
-peft>=0.13                      # loads / trains the qwen_lora adapter (lib/encoder.LiveQwen)
+transformers==5.10.4
+tokenizers==0.22.2
+safetensors==0.7.0
+accelerate==1.14.0
+peft==0.19.1                    # loads / trains the qwen_lora adapter (lib/encoder.LiveQwen)
+huggingface_hub==1.29.0
 
 # numerics
 numpy==1.26.4
 
 # world DB (Cloud SQL / any Postgres) — corpus building (capped.entity), world provisioning, route grounding
-psycopg2-binary>=2.9
+psycopg2-binary>=2.9,<3
 
 # corpus clustering only (corpus/cluster_columns.py MiniBatchKMeans) — not needed for train/anchor/calibrate
-scikit-learn>=1.4
+scikit-learn>=1.4,<2

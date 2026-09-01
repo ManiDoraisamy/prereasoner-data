@@ -38,9 +38,6 @@ from engine import admin
 from engine.request_limits import JSONBodyError, SlidingWindowLimiter, allowed_origin, read_json_object
 
 
-def _external_llm_allowed(req):
-    return external_llm_enabled() and req.get("external_llm_consent") is True
-
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
 ENRICHMENT = None                  # request-local enrichment; registry activation remains authoritative
@@ -288,9 +285,9 @@ class H(BaseHTTPRequestHandler):
             sub, _uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not _external_llm_allowed(req):
+            if not external_llm_enabled():
                 self._send(503, json.dumps({
-                    "error": "external LLM processing is disabled or this request lacks explicit consent"
+                    "error": "assistant processing is unavailable for this request"
                 })); return
             from engine import converse
             try:
@@ -321,9 +318,9 @@ class H(BaseHTTPRequestHandler):
             sub, uid = _verify_principal(_bearer(self.headers, req))
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
-            if not _external_llm_allowed(req):
+            if not external_llm_enabled():
                 self._send(503, json.dumps({
-                    "error": "external LLM processing is disabled or this request lacks explicit consent"
+                    "error": "assistant processing is unavailable for this request"
                 })); return
             emit = emitter(uid, req.get("jobId"))            # no-op if RTDB/jobId absent; else streams past the 60s proxy
             emit("status", "running")

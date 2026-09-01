@@ -81,10 +81,10 @@ class Router:
             enc = LiveQwen(dev, shared_qwen=qwen, shared_tok=tok)
         else:                                                               # standalone (calibrate/validate/local): load own
             enc = LiveQwen(dev, warm_lora=str(R19 / "qwen_lora"), serving=True)  # eval/dropout-off (deterministic)
-            cfg = torch.load(R19 / "encoder_meta.pt", map_location="cpu", weights_only=False)["cfg"]
+            cfg = torch.load(R19 / "encoder_meta.pt", map_location="cpu", weights_only=True)["cfg"]
             model = RelBlockModel(in_dim=cfg["in_dim"], H=cfg["H"], layers=cfg["layers"], heads=cfg["heads"],
                                    nc=cfg["nc"], n_edge=cfg["n_edge"]).to(dev)
-            model.load_state_dict(torch.load(R19 / "encoder.pt", map_location="cpu"))
+            model.load_state_dict(torch.load(R19 / "encoder.pt", map_location="cpu", weights_only=True))
             model.eval()
         self._m = (enc, model, fam_dims_map(json.load(open(R19 / "alloc.json"))), dev, torch)
         return self._m

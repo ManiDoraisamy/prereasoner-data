@@ -9,6 +9,12 @@ Run these before involving models, PostgreSQL, or network services:
 
 ```powershell
 pip install -r requirements-ci.txt
+python -m pip_audit -r requirements-ci.txt
+python -m pip_audit -r orchestrator/requirements.txt
+python -m pip_audit -r requirements.txt
+python -m pip_audit -r training/requirements.txt
+python -m pip_audit -r db/sync/requirements.txt
+python -m bandit -q -r engine db training orchestrator mcp_server -x tests -lll
 python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
 python -m tests.test_sql_ast
 python -m tests.test_calculations
@@ -20,6 +26,7 @@ python -m tests.test_schema_coverage
 python -m tests.test_enrichment
 python -m tests.test_source_sync
 python -m tests.test_app_migrations
+python -m tests.test_release
 python -m regress.product_templates
 python -m regress.source_activation
 node --check web/public/lib/workbook.js
@@ -78,6 +85,7 @@ The runner executes the canonical suites in this order:
 | `tests.test_enrichment` | M0 profile/role contracts, intent contrastives, value typing, bounded adapters, domain gates, request-local materialization, tuple edges, replay manifests, and serving-shaped benchmarks |
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
 | `tests.test_app_migrations` | Application schema migrations, the world-table maintenance catalog, and least-privilege grants |
+| `tests.test_release` | Public-tree invariants: artifact boundary, secure model pins, privacy route, and canonical owners |
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |

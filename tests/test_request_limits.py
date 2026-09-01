@@ -38,6 +38,41 @@ def test_auth_test_sub_is_ignored_outside_explicit_nonproduction():
             assert config.auth_test_sub() == "local"
 
 
+def test_admin_access_fails_closed_without_an_explicit_allowlist():
+    from engine.admin import _admins
+
+    with patch.dict("os.environ", {}, clear=True):
+        assert _admins() == set()
+    with patch.dict("os.environ", {"ADMIN_EMAILS": "a@example.com, B@example.com"}, clear=True):
+        assert _admins() == {"a@example.com", "b@example.com"}
+
+
+def test_postgres_connect_retries_transport_errors_but_not_authentication():
+    import psycopg2
+    from engine import pg
+
+    connection = object()
+    transient = psycopg2.OperationalError("connection timed out")
+    with patch.object(pg, "kb_pg_password", return_value="secret"), \
+            patch.object(pg.time, "sleep") as sleep, \
+            patch.object(pg.psycopg2, "connect", side_effect=[transient, connection]) as connect:
+        assert pg._pg() is connection
+        assert connect.call_count == 2
+        sleep.assert_called_once_with(0.25)
+
+    denied = psycopg2.OperationalError("password authentication failed for user serving")
+    with patch.object(pg, "kb_pg_password", return_value="wrong"), \
+            patch.object(pg.time, "sleep") as sleep, \
+            patch.object(pg.psycopg2, "connect", side_effect=denied) as connect:
+        try:
+            pg._pg()
+            raise AssertionError
+        except psycopg2.OperationalError:
+            pass
+        assert connect.call_count == 1
+        sleep.assert_not_called()
+
+
 def test_chat_validation_normalizes_and_bounds_inputs():
     out = validate_chat_request({
         "message": "  total amount  ",
@@ -77,6 +112,8 @@ TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
     test_cors_requires_exact_configured_origin,
     test_auth_test_sub_is_ignored_outside_explicit_nonproduction,
+    test_admin_access_fails_closed_without_an_explicit_allowlist,
+    test_postgres_connect_retries_transport_errors_but_not_authentication,
     test_chat_validation_normalizes_and_bounds_inputs,
     test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
 ]

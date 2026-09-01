@@ -13,6 +13,7 @@
 .row{display:flex;gap:10px;margin-top:6px}
 .btn{all:unset;cursor:pointer;background:#fff;color:var(--brand,#5b3df5);font-weight:600;font-size:14px;padding:11px 22px;border-radius:11px;box-shadow:0 6px 18px rgba(20,12,48,.22)}
 .btn.ghost{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.4);box-shadow:none}
+.privacy{color:rgba(255,255,255,.72);font-size:12px;text-decoration:none;margin-top:8px}.privacy:hover{color:#fff;text-decoration:underline}
 </style>
 </head><body>
 <div class=wrap>
@@ -23,6 +24,7 @@
     <button class=btn id=pick>Choose a Google Sheet</button>
     <button class="btn ghost" id=home>Back</button>
   </div>
+  <a class=privacy href="/privacy">Privacy</a>
 </div>
 <script src="lib/shared.js"></script>
 <script>

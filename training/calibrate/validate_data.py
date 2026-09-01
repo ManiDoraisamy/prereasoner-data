@@ -87,7 +87,7 @@ def main():
         errs.append(f"assignment dim columns != alloc ({len(csv_dims)} vs {len(adims)})")
     npzf = OUT / "anchor_assignment.npz"
     if npzf.exists():
-        z = np.load(npzf, allow_pickle=True)
+        z = np.load(npzf, allow_pickle=False)
         npz_dims = [str(d) for d in z["dims"]] if "dims" in z else []
         if npz_dims != adims:
             errs.append(f"anchor_assignment.npz dims != alloc ({len(npz_dims)} vs {len(adims)}) — STALE head, re-anchor")

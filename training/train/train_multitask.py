@@ -134,22 +134,38 @@ def encode(texts, dev, bs=256, max_len=24):
     return out, hdim
 
 
+def _safe_embedding_cache(path):
+    """Read numeric embeddings plus Unicode labels without enabling NumPy pickle loading."""
+    try:
+        with np.load(path, allow_pickle=False) as data:
+            emb = np.asarray(data["emb"], dtype=np.float32)
+            labels = [str(value) for value in data["texts"]]
+    except (KeyError, OSError, ValueError):
+        return None
+    if emb.ndim != 2 or len(labels) != len(emb):
+        return None
+    return labels, emb
+
+
 def get_embeddings(texts, dev, r10, r11, encode_only):
     """Reuse gen10's sql_emb cache for overlapping texts; encode only NEW ones. -> (t2v, hin)."""
     texts = sorted(set(texts))
     cache = r11 / "sql_emb.npz"
     if cache.exists() and not encode_only:
-        d = np.load(cache, allow_pickle=True)
-        if list(d["texts"]) == texts:
+        loaded = _safe_embedding_cache(cache)
+        if loaded and loaded[0] == texts:
+            _, emb = loaded
             print(f"loaded gen11 SQL embedding cache ({len(texts)} texts)", flush=True)
-            return {t: d["emb"][i] for i, t in enumerate(texts)}, int(d["emb"].shape[1])
-        print("gen11 cache stale -> rebuilding", flush=True)
+            return {t: emb[i] for i, t in enumerate(texts)}, int(emb.shape[1])
+        print("gen11 cache stale or unsafe -> rebuilding", flush=True)
     have = {}
     prev = r10 / "sql_emb.npz"
     if prev.exists():
-        d = np.load(prev, allow_pickle=True)
-        have = {t: d["emb"][i] for i, t in enumerate(list(d["texts"]))}
-        print(f"reusing {sum(t in have for t in texts)}/{len(texts)} texts from gen10 cache", flush=True)
+        loaded = _safe_embedding_cache(prev)
+        if loaded:
+            labels, emb = loaded
+            have = {t: emb[i] for i, t in enumerate(labels)}
+            print(f"reusing {sum(t in have for t in texts)}/{len(texts)} texts from gen10 cache", flush=True)
     missing = [t for t in texts if t not in have]
     if missing:
         print(f"encoding {len(missing)} NEW texts on {dev} ...", flush=True)
@@ -158,7 +174,7 @@ def get_embeddings(texts, dev, r10, r11, encode_only):
             have[t] = vecs[i]
     hin = int(next(iter(have.values())).shape[0])
     emb = np.stack([have[t] for t in texts]).astype(np.float32)
-    np.savez(cache, emb=emb, texts=np.array(texts, dtype=object))
+    np.savez(cache, emb=emb, texts=np.asarray(texts, dtype=np.str_))
     print(f"saved gen11 SQL embedding cache ({len(texts)} texts, dim {hin}) -> {cache}", flush=True)
     return {t: emb[i] for i, t in enumerate(texts)}, hin
 
@@ -211,13 +227,15 @@ def main():
     test_csv = [p for p in (pack_csv(t, aid, fam_dims, nc, emb, idx) for t in csv_te) if p]
     test_csv, test_sql = test_csv[:50], test_sql[:120]
 
-    cfg10 = torch.load(args.r10 / "sql_base_meta.pt", map_location="cpu", weights_only=False)["cfg"]
+    cfg10 = torch.load(args.r10 / "sql_base_meta.pt", map_location="cpu", weights_only=True)["cfg"]
     model = RelBlockModel(in_dim=hin, H=cfg10["H"], layers=cfg10["layers"], heads=cfg10["heads"], nc=nc).to(dev)
     if args.resume and (args.out / "multitask_model.pt").exists():
-        model.load_state_dict(torch.load(args.out / "multitask_model.pt", map_location="cpu"))
+        model.load_state_dict(
+            torch.load(args.out / "multitask_model.pt", map_location="cpu", weights_only=True))
         print("resumed from gen11 checkpoint", flush=True)
     else:
-        copied, grown = model.warm_start(torch.load(args.r10 / "sql_base_model.pt", map_location="cpu"))
+        copied, grown = model.warm_start(
+            torch.load(args.r10 / "sql_base_model.pt", map_location="cpu", weights_only=True))
         print(f"warm-start from gen10: copied {copied} tensors, grew {grown} edge-bias", flush=True)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr)
     print(f"CSV {len(pool_csv)}/{len(test_csv)} | SQL {len(pool_sql)}/{len(test_sql)} | "
