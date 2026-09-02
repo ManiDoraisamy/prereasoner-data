@@ -339,7 +339,10 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
 def test_schema_training_selection_never_reads_test_evidence():
     from collections import Counter
 
-    from training.schema_org.signatures import _class_data_ready, _real_selection_sources
+    from training.schema_org.signatures import (
+        _class_data_ready,
+        _real_selection_sources,
+    )
     from training.schema_org.train_property_head import _training_properties
 
     support = {
@@ -370,6 +373,47 @@ def test_schema_training_selection_never_reads_test_evidence():
     assert "does not satisfy untouched heldout gates" in promotion
 
 
+def test_schema_promotion_preserves_the_served_class_surface():
+    from training.schema_org.promote import _servable_class_uris
+
+    current = {"classes": [
+        {"uri": "https://schema.org/Movie", "servable": True},
+        {"uri": "https://schema.org/Place", "servable": False},
+    ]}
+    candidate = {"classes": [
+        {"uri": "https://schema.org/Movie", "servable": False},
+        {"uri": "https://schema.org/Place", "servable": True},
+    ]}
+    removed = _servable_class_uris(current) - _servable_class_uris(candidate)
+    assert removed == {"https://schema.org/Movie"}, (
+        "a candidate may add classes, but removing a currently served class must fail release"
+    )
+
+
+def test_class_signature_selection_drops_recall_harming_dimensions():
+    import numpy as np
+
+    from training.schema_org.train_property_head import _select_class_signature
+
+    signature = [
+        {"property": "a", "weight": 1.0},
+        {"property": "b", "weight": 1.0},
+        {"property": "c", "weight": 1.0},
+    ]
+    profiles = [
+        {"a": 1.0, "b": 1.0, "c": 0.0},
+        {"a": 1.0, "b": 1.0, "c": 0.0},
+        {"a": 1.0, "b": 0.0, "c": 1.0},
+        {"a": 0.0, "b": 0.0, "c": 1.0},
+    ]
+    selected, _threshold, feasible, metrics = _select_class_signature(
+        signature, profiles, np.array([1, 1, 0, 0], dtype=np.int8),
+        {"a": 0.5, "b": 0.5, "c": 0.5},
+    )
+    assert [item["property"] for item in selected] == ["a", "b"]
+    assert feasible and metrics["precision"] == 1.0 and metrics["recall"] == 1.0
+
+
 TESTS = [
     test_public_artifact_boundary,
     test_public_weight_bundle_is_manifested_and_documented,
@@ -387,6 +431,8 @@ TESTS = [
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_schema_training_selection_never_reads_test_evidence,
+    test_schema_promotion_preserves_the_served_class_surface,
+    test_class_signature_selection_drops_recall_harming_dimensions,
 ]
 
 

@@ -13,7 +13,7 @@ _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+#=-]{0,511}$")
 _GROUP_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+=-]{0,255}$")     # the separator itself is forbidden here
 SPLITS = ("train", "validation", "test")
 
-SPLIT_SALT = "schema-org-corpus:v6"     # fresh heldout split after reference-label and support audit
+SPLIT_SALT = "schema-org-corpus:v7"     # fresh heldout split after class-signature objective correction
 DERIVATION_SEP = "#"                    # everything right of the FIRST separator is invisible to the split
 SPLIT_BOUNDARIES = ((80, "train"), (90, "validation"), (100, "test"))
 

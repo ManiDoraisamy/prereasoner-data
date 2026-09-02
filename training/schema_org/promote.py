@@ -52,6 +52,10 @@ def _valid_json_identity(value: dict) -> bool:
     return bool(recorded) and recorded == canonical_json_sha256(payload)
 
 
+def _servable_class_uris(signatures: dict) -> set[str]:
+    return {str(row["uri"]) for row in signatures.get("classes", ()) if row.get("servable")}
+
+
 def _committed_blob_sha256(commit: str, relative: str) -> str | None:
     """Hash one trainer input from the recorded commit without checking it out."""
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", relative) or ".." in relative.split("/"):
@@ -160,6 +164,14 @@ def gate(candidate: Path) -> list[str]:
         problems.append("training manifest and property model identities differ")
     if not sum(1 for row in signatures["classes"] if row.get("servable")):
         problems.append("no class is servable — promoting this would abstain on every table")
+    runtime_signatures_path = RUNTIME_DIR / "schema_class_signatures.json"
+    if runtime_signatures_path.exists():
+        runtime_signatures = json.loads(runtime_signatures_path.read_text(encoding="utf-8"))
+        removed = sorted(_servable_class_uris(runtime_signatures) - _servable_class_uris(signatures))
+        if removed:
+            problems.append(
+                "candidate removes currently servable classes: " + ", ".join(removed)
+            )
     if not meta.get("trained_properties"):
         problems.append("no property dimensions were trained")
     gates = meta.get("calibration_gates") or {}

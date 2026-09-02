@@ -144,6 +144,83 @@ def _metrics(scores: np.ndarray, labels: np.ndarray, threshold: float) -> dict:
             "f1": round(f1, 6)}
 
 
+def _select_class_signature(
+    signature: list[dict], validation_profiles: list[dict[str, float]],
+    validation_truth: np.ndarray, property_thresholds: dict[str, float],
+) -> tuple[list[dict], float, bool, dict]:
+    """Select a compact class signature using validation data only.
+
+    A raw ontology-derived signature is a set of individually useful dimensions, not a promise that every
+    positive table exposes all of them. Adding another legitimate property can therefore reduce the
+    weighted fired fraction of sparse tables. Search every two-property seed, then deterministically add
+    dimensions while recall at the precision floor improves. The complete signature is also reduced, so
+    useful interactions are not limited to pair seeds. Test labels are deliberately absent from this API.
+    """
+    if len(signature) < 2:
+        empty_scores = np.zeros(len(validation_truth))
+        return signature, 1.0, False, _metrics(empty_scores, validation_truth, 1.0)
+
+    ordered = sorted(signature, key=lambda item: item["property"])
+    cache: dict[tuple[int, ...], tuple[float, bool, dict]] = {}
+
+    def evaluate(indices: tuple[int, ...]) -> tuple[float, bool, dict]:
+        if indices not in cache:
+            subset = [ordered[index] for index in indices]
+            scores = np.array([
+                ClassDecoder.score_signature(profile, subset, property_thresholds)
+                for profile in validation_profiles
+            ])
+            threshold, feasible = _precision_threshold(
+                scores, validation_truth, MIN_CLASS_PRECISION, margin=False,
+            )
+            cache[indices] = threshold, feasible, _metrics(scores, validation_truth, threshold)
+        return cache[indices]
+
+    def rank(indices: tuple[int, ...]) -> tuple:
+        threshold, feasible, metrics = evaluate(indices)
+        return (
+            int(feasible), metrics["recall"], metrics["precision"], -len(indices),
+            sum(float(ordered[index]["weight"]) for index in indices),
+            tuple(ordered[index]["property"] for index in indices), -threshold,
+        )
+
+    pairs = [
+        (left, right)
+        for left in range(len(ordered))
+        for right in range(left + 1, len(ordered))
+    ]
+    # Several pair seeds avoid committing the greedy search to one local optimum. Current raw signatures
+    # have at most eleven dimensions, so this is bounded and cheap compared with encoder inference.
+    seeds = sorted(pairs, key=rank, reverse=True)[:8]
+    seeds.append(tuple(range(len(ordered))))
+    finalists = []
+    for seed in seeds:
+        current = seed
+        while True:
+            additions = [
+                tuple(sorted((*current, index)))
+                for index in range(len(ordered)) if index not in current
+            ]
+            improved = max(additions, key=rank) if additions else current
+            if rank(improved) <= rank(current):
+                break
+            current = improved
+        finalists.append(current)
+
+    current = tuple(range(len(ordered)))
+    while len(current) > 2:
+        removals = [tuple(index for index in current if index != removed) for removed in current]
+        improved = max(removals, key=rank)
+        if rank(improved) <= rank(current):
+            break
+        current = improved
+    finalists.append(current)
+
+    chosen = max(set(finalists), key=rank)
+    threshold, feasible, metrics = evaluate(chosen)
+    return [ordered[index] for index in chosen], threshold, feasible, metrics
+
+
 def _error_sources(scores: np.ndarray, labels: np.ndarray, threshold: float,
                    indices: np.ndarray, instances) -> dict:
     """Compact diagnostics; test errors are reported but never used for calibration."""
@@ -388,6 +465,7 @@ def main() -> None:
     by_uri = {row["uri"]: row for row in signatures["classes"]}
     class_metrics = {}
     profiles = [dict(zip(properties, row)) for row in probabilities]
+    validation_profiles = [profiles[int(index)] for index in split_index["validation"]]
     for uri, row in by_uri.items():
         if row["state"] != "data_ready_uncalibrated":
             continue
@@ -404,15 +482,14 @@ def main() -> None:
                 "qualified_property_count": len(row["signature"]),
             }
             continue
-        scores = np.array([ClassDecoder.score_signature(profile, row["signature"], thresholds) for profile in profiles])
         truth = np.array([1 if uri in item.classes else 0 for item in instances], dtype=np.int8)
-        threshold, feasible = _precision_threshold(
-            scores[split_index["validation"]], truth[split_index["validation"]],
-            MIN_CLASS_PRECISION, margin=False,
+        row["signature"], threshold, feasible, validation_metrics = _select_class_signature(
+            row["signature"], validation_profiles, truth[split_index["validation"]], thresholds,
         )
-        validation_metrics = _metrics(
-            scores[split_index["validation"]], truth[split_index["validation"]], threshold
-        )
+        scores = np.array([
+            ClassDecoder.score_signature(profile, row["signature"], thresholds)
+            for profile in profiles
+        ])
         test_scores = scores[split_index["test"]]
         test_truth = truth[split_index["test"]]
         test_metrics = _metrics(test_scores, test_truth, threshold)
