@@ -14,7 +14,7 @@ _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+#=-]{0,511}$")
 _GROUP_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+=-]{0,255}$")     # the separator itself is forbidden here
 SPLITS = ("train", "validation", "test")
 
-SPLIT_SALT = "schema-org-corpus:v2"     # bump ONLY to force an intentional, recorded global re-split
+SPLIT_SALT = "schema-org-corpus:v3"     # v3 follows the first split-isolated release-gate audit
 DERIVATION_SEP = "#"                    # everything right of the FIRST separator is invisible to the split
 SPLIT_BOUNDARIES = ((80, "train"), (90, "validation"), (100, "test"))
 

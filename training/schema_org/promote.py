@@ -173,15 +173,24 @@ def gate(candidate: Path) -> list[str]:
         ):
             problems.append(f"qualified property does not satisfy recorded gates: {uri}")
     class_metrics = meta.get("class_metrics") or {}
+    release_gates = meta.get("release_gates") or {}
     for row in signatures.get("classes", ()):
         if not row.get("servable"):
             continue
         validation = (class_metrics.get(row.get("uri")) or {}).get("validation") or {}
+        test = (class_metrics.get(row.get("uri")) or {}).get("test") or {}
         if (
             validation.get("precision", 0) < gates.get("class_min_precision", 1)
             or validation.get("recall", 0) < gates.get("class_min_recall", 1)
         ):
             problems.append(f"servable class does not satisfy recorded gates: {row.get('uri')}")
+        if (
+            test.get("precision", 0) < release_gates.get("class_test_min_precision", 1)
+            or test.get("recall", 0) < release_gates.get("class_test_min_recall", 1)
+        ):
+            problems.append(
+                f"servable class does not satisfy untouched heldout gates: {row.get('uri')}"
+            )
     return problems
 
 

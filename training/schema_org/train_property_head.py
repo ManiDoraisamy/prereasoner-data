@@ -46,16 +46,18 @@ TRAINER_INPUTS = (
     "training/requirements.txt",
 )
 MIN_PROPERTY_TRAIN = 25
-MIN_PROPERTY_VALIDATION = 5
+MIN_PROPERTY_VALIDATION = 10
 # Held-out floors additionally counted in DISTINCT SPLIT GROUPS. Column instances add instances without
 # adding groups, so an instance-count floor can be satisfied by clones of a single row group — the
 # threshold would then certify statistical support that does not exist. Groups are independent
 # observations; instances are not.
-MIN_PROPERTY_VALIDATION_GROUPS = 5
-MIN_PROPERTY_PRECISION = 0.90
+MIN_PROPERTY_VALIDATION_GROUPS = 10
+MIN_PROPERTY_PRECISION = 0.95
 MIN_PROPERTY_RECALL = 0.60
-MIN_CLASS_PRECISION = 0.90
+MIN_CLASS_PRECISION = 0.97
 MIN_CLASS_RECALL = 0.60
+MIN_CLASS_TEST_PRECISION = 0.90
+MIN_CLASS_TEST_RECALL = 0.60
 
 
 def _training_properties(property_order, property_support, property_groups) -> tuple[str, ...]:
@@ -135,6 +137,25 @@ def _metrics(scores: np.ndarray, labels: np.ndarray, threshold: float) -> dict:
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn,
             "precision": round(precision, 6), "recall": round(recall, 6),
             "f1": round(f1, 6)}
+
+
+def _error_sources(scores: np.ndarray, labels: np.ndarray, threshold: float,
+                   indices: np.ndarray, instances) -> dict:
+    """Compact diagnostics; test errors are reported but never used for calibration."""
+    predicted = scores >= threshold
+    labels = labels.astype(bool)
+    false_positive = Counter()
+    false_negative = Counter()
+    for local_index, corpus_index in enumerate(indices):
+        source = instances[int(corpus_index)].source
+        if predicted[local_index] and not labels[local_index]:
+            false_positive[source] += 1
+        elif labels[local_index] and not predicted[local_index]:
+            false_negative[source] += 1
+    return {
+        "false_positive_sources": dict(sorted(false_positive.items())),
+        "false_negative_sources": dict(sorted(false_negative.items())),
+    }
 
 
 def _text_hash(text: str) -> str:
@@ -386,7 +407,12 @@ def main() -> None:
         validation_metrics = _metrics(
             scores[split_index["validation"]], truth[split_index["validation"]], threshold
         )
-        test_metrics = _metrics(scores[split_index["test"]], truth[split_index["test"]], threshold)
+        test_scores = scores[split_index["test"]]
+        test_truth = truth[split_index["test"]]
+        test_metrics = _metrics(test_scores, test_truth, threshold)
+        test_metrics.update(_error_sources(
+            test_scores, test_truth, threshold, split_index["test"], instances,
+        ))
         servable = (
             feasible
             and validation_metrics["precision"] >= MIN_CLASS_PRECISION
@@ -429,6 +455,10 @@ def main() -> None:
             "property_min_validation_groups": MIN_PROPERTY_VALIDATION_GROUPS,
             "class_min_precision": MIN_CLASS_PRECISION,
             "class_min_recall": MIN_CLASS_RECALL,
+        },
+        "release_gates": {
+            "class_test_min_precision": MIN_CLASS_TEST_PRECISION,
+            "class_test_min_recall": MIN_CLASS_TEST_RECALL,
         },
         "property_metrics": property_metrics,
         "qualified_properties": tuple(uri for uri in properties if uri in qualified_properties),

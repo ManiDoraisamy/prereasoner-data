@@ -344,15 +344,16 @@ def test_schema_training_selection_never_reads_test_evidence():
 
     support = {
         "train": Counter({"p": 25}),
-        "validation": Counter({"p": 5}),
+        "validation": Counter({"p": 10}),
         "test": Counter(),
     }
-    groups = {"p": {"validation": set(range(5)), "test": set()}}
+    groups = {"p": {"validation": set(range(10)), "test": set()}}
     assert _training_properties(("p",), support, groups) == ("p",)
     support["test"]["p"] = 10_000
     groups["p"]["test"] = set(range(10_000))
     assert _training_properties(("p",), support, groups) == ("p",)
-    assert _class_data_ready(25, 5, [1, 2], ["publisher"])
+    assert _class_data_ready(25, 10, [1, 2], ["publisher"])
+    assert not _class_data_ready(25, 9, [1, 2], ["publisher"])
     sources = {"publisher": Counter({"test": 100}), "product_templates": Counter({"train": 100})}
     assert _real_selection_sources(sources) == []
     sources["publisher"]["validation"] = 1
@@ -366,6 +367,7 @@ def test_schema_training_selection_never_reads_test_evidence():
     promotion = _text("training/schema_org/promote.py")
     assert "trainer source does not match its recorded commit" in promotion
     assert "does not identify its immutable runner image" in promotion
+    assert "does not satisfy untouched heldout gates" in promotion
 
 
 TESTS = [

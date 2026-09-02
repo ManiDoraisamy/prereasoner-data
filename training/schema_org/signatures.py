@@ -15,7 +15,7 @@ from training.schema_org.paths import CORPUS_PATH, MANIFEST_PATH, experiment_dir
 
 SIGNATURES_NAME = "schema_class_signatures.json"
 MIN_TRAIN = 25
-MIN_VALIDATION = 5
+MIN_VALIDATION = 10
 MIN_PROPERTY_COUNT = 5
 MIN_PROPERTY_FREQUENCY = 0.10
 MIN_LIFT = 1.25
