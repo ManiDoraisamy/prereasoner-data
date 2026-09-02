@@ -3,13 +3,14 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
-import re
 from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 
 import engine.config  # noqa: F401 - loads the repository .env before engine.pg connects
+from engine.artifact_provenance import canonical_json_sha256, sha256_file
 from engine.pg import _pg
 from engine.schema_org import CONTRACT_PATH, load_contract, schema_uri
 from regress.product_templates import CASES
@@ -29,6 +30,38 @@ from training.schema_org.source_adapters import (
 
 DEFAULT_CORPUS = CORPUS_PATH
 DEFAULT_MANIFEST = MANIFEST_PATH
+
+_GENERATOR_INPUTS = (
+    "training/schema_org/corpus.py",
+    "training/schema_org/instances.py",
+    "training/schema_org/source_adapters.py",
+    "training/schema_org/source_catalog.py",
+    "training/props/bridge_prop.csv",
+    "engine/schema_model.py",
+    "engine/data/schema_org_v30.json",
+    "training/schema_org/fixtures/customers.csv",
+    "training/schema_org/fixtures/orders.csv",
+)
+
+
+def _generator_identity() -> dict:
+    """Fingerprint corpus code/data and bind it to a clean repository commit."""
+    root = Path(__file__).resolve().parents[2]
+    commit = subprocess.check_output(
+        ("git", "-C", str(root), "rev-parse", "HEAD"), text=True,
+    ).strip()
+    dirty = bool(subprocess.check_output(
+        ("git", "-C", str(root), "status", "--porcelain", "--untracked-files=all"),
+        text=True,
+    ).strip())
+    files = {name: sha256_file(root / name) for name in _GENERATOR_INPUTS}
+    return {
+        "entrypoint": "python -m training.schema_org.corpus",
+        "repository_commit": commit,
+        "worktree_clean": not dirty,
+        "input_files": files,
+        "input_files_sha256": canonical_json_sha256(files),
+    }
 
 
 _COLUMN_PROPERTIES = (
@@ -118,10 +151,19 @@ def product_template_instances(contract):
             yield instance
 
 
-_DEMO_HTML = Path("web/public/index.html")
-_DEMO_CONST = re.compile(r"const\s+(CUST|ORD|FX)\s*=\s*'((?:[^'\\]|\\.)*)'")
-_DEMO_NAMES = {"CUST": "customers", "ORD": "orders", "FX": "illustrative fx rates"}
+_DEMO_FIXTURES = (
+    ("CUST", "customers", Path("training/schema_org/fixtures/customers.csv")),
+    ("ORD", "orders", Path("training/schema_org/fixtures/orders.csv")),
+)
 _DEMO_WINDOW = 6
+
+
+def _demo_tables() -> dict[str, tuple[str, str]]:
+    """Load training-owned consumer fixtures; website presentation is not a model-data API."""
+    return {
+        key: (name, path.read_text(encoding="utf-8"))
+        for key, name, path in _DEMO_FIXTURES
+    }
 
 
 def _column_properties(columns, contract) -> tuple[str, ...]:
@@ -140,24 +182,20 @@ def _column_properties(columns, contract) -> tuple[str, ...]:
 
 
 def demo_upload_instances(contract):
-    """The committed home-page demo tables (web/public/index.html — the ONE owner of the sample data) as
+    """Committed consumer-shaped training fixtures as
     CLASS-FREE instances in the EXACT serving text shape (engine.schema_model.summarize_table over
     engine.tables.csv_table). These are the first tables live serving ever sees; without them the corpus has
     no consumer-shaped negatives, so a property like termCode calibrates 'perfect' in-corpus yet fires on
-    short proper names (Ada/Bo/Sam) in the wild. Row WINDOWS (step 1) multiply the real rows into enough
-    instances to reach every split; overlapping windows across splits are deliberate for class-free
-    negatives — they only make calibration MORE conservative on these shapes (positives stay leak-free)."""
+    short proper names (Ada/Bo/Sam) in the wild. Row windows expose several serving-sized views, but every
+    derivative of one fixture shares one split group so overlapping rows never cross a split boundary."""
     from engine.schema_model import summarize_table
     from engine.tables import csv_table
-    html = _DEMO_HTML.read_text(encoding="utf-8")
-    found = {m.group(1): m.group(2) for m in _DEMO_CONST.finditer(html)}
-    if set(found) != set(_DEMO_NAMES):
-        raise ValueError(f"demo constants not found in {_DEMO_HTML}: got {sorted(found)}")
+    found = _demo_tables()
     release = "demo-uploads+sha256:" + hashlib.sha256(
-        "\0".join(found[k] for k in sorted(found)).encode("utf-8")).hexdigest()
+        "\0".join(found[k][1] for k in sorted(found)).encode("utf-8")).hexdigest()
     for key in sorted(found):
-        csv_text = found[key].replace("\\n", "\n").replace("\\'", "'")
-        table = csv_table(csv_text, _DEMO_NAMES[key])
+        name, csv_text = found[key]
+        table = csv_table(csv_text, name)
         rows = table["rows"]
         name_cols = [ci for ci, col in enumerate(table["columns"])
                      if "name" in str(col).casefold() or str(col).casefold() == "customer"]
@@ -197,12 +235,12 @@ def demo_column_instances(contract):
     supply the class-free consumer negatives."""
     from engine.schema_model import summarize_table
     from engine.tables import csv_table
-    html = _DEMO_HTML.read_text(encoding="utf-8")
-    found = {m.group(1): m.group(2) for m in _DEMO_CONST.finditer(html)}
+    found = _demo_tables()
     release = "demo-uploads+sha256:" + hashlib.sha256(
-        "\0".join(found[k] for k in sorted(found)).encode("utf-8")).hexdigest()
+        "\0".join(found[k][1] for k in sorted(found)).encode("utf-8")).hexdigest()
     for key in sorted(found):
-        table = csv_table(found[key].replace("\\n", "\n").replace("\\'", "'"), _DEMO_NAMES[key])
+        name, csv_text = found[key]
+        table = csv_table(csv_text, name)
         for ci, column in enumerate(table["columns"]):
             properties = _column_properties([column], contract)
             if not properties:
@@ -350,6 +388,7 @@ def build(*, corpus_path: str | Path = DEFAULT_CORPUS,
     by_property = Counter(prop for item in instances for prop in item.properties)
     manifest = {
         "schema_version": 1,
+        "generator": _generator_identity(),
         "ontology": {
             "version": contract.version,
             "source_sha256": contract.source_sha256,

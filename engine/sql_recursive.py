@@ -31,6 +31,7 @@ from engine.sql_ast import (
     and_predicates,
     render_query,
 )
+from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import ForeignKey, SchemaGraph
 
@@ -570,7 +571,8 @@ def _ranges_conflict(left: Comparison, right: Comparison) -> bool:
     if not isinstance(left.right, Literal) or not isinstance(right.right, Literal):
         return False
     try:
-        left_value, right_value = float(left.right.value), float(right.right.value)
+        left_value = parse_decimal(left.right.value, enforce_input_bounds=False)
+        right_value = parse_decimal(right.right.value, enforce_input_bounds=False)
     except (TypeError, ValueError):
         return False
     lower = []

@@ -22,6 +22,7 @@ import numpy as np
 
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
+from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 from engine.relations import relate
 
 MAX_ROWS, MAX_LEN = 12, 48
@@ -91,8 +92,8 @@ def wmatch(tok, w):
 
 def _num_str(v):
     try:
-        float(str(v).replace(",", "").lstrip("$").rstrip("%")); return True
-    except ValueError:
+        parse_decimal(v); return True
+    except (TypeError, ValueError):
         return False
 
 
@@ -129,7 +130,8 @@ def _typed(v):
     if v in ("", None) or not isinstance(v, str):
         return v
     try:
-        return int(v) if v.lstrip("-").isdigit() else float(v)
+        numeric = parse_decimal(v)
+        return int(numeric) if numeric == numeric.to_integral_value() and "." not in v and "e" not in v.lower() else numeric
     except ValueError:
         return v
 
@@ -437,7 +439,7 @@ class TableQuery:
         if not ok:
             return candidate, None, "guard: " + why, candidates
         try:
-            cols, rows = self.execute(tablemap, sch, candidate.sql)
+            cols, rows = self.execute(tablemap, sch, candidate.sql, query=candidate.query)
             result = {
                 "columns": cols,
                 "rows": [["" if value is None else value for value in row] for row in rows[:50]],
@@ -457,30 +459,51 @@ class TableQuery:
             return False, "forbidden keyword"
         return True, "ok"
 
-    def execute(self, tablemap, sch, sql):
+    def execute(self, tablemap, sch, sql, query=None):
+        from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
+
         con = sqlite3.connect(":memory:")
+        register_sqlite_decimal(con)
         by_t = {}
         for c in sch:
             by_t.setdefault(c["table"], []).append(c)
         for tname, cols in by_t.items():
-            con.execute(f"CREATE TABLE {qident(tname)} (" + ", ".join(f'{qident(c["name"])} {c["affinity"]}' for c in cols) + ")")
+            declarations = []
+            for column in cols:
+                storage = "TEXT COLLATE decimal" if column["affinity"] == "REAL" else column["affinity"]
+                declarations.append(f'{qident(column["name"])} {storage}')
+            con.execute(f"CREATE TABLE {qident(tname)} (" + ", ".join(declarations) + ")")
 
             def coerce(v, aff):
                 if v is None:
                     return None
                 if aff in ("INTEGER", "REAL"):
-                    try:
-                        return int(float(str(v).replace(",", ""))) if aff == "INTEGER" else float(str(v).replace(",", ""))
-                    except ValueError:
-                        return None
+                    return sqlite_numeric(v, aff)
                 return str(v)
             t = tablemap[tname]
             ins = f"INSERT INTO {qident(tname)} VALUES ({','.join('?' * len(cols))})"
             for r in t["rows"]:
                 rd = dict(zip(t["columns"], r))
                 con.execute(ins, [coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
-        cur = con.execute(sql)
-        return [d[0] for d in cur.description], cur.fetchall()
+        execution_sql = render_query(query, dialect="sqlite_decimal") if query is not None else sql
+        cur = con.execute(execution_sql)
+        rows = cur.fetchall()
+        if query is not None:
+            output = query.left if isinstance(query, SetQuery) else query
+            types = [expression_type(item.expression) for item in output.select]
+            normalized = []
+            for row in rows:
+                values = []
+                for index, value in enumerate(row):
+                    if index < len(types) and types[index] in {SQLType.INTEGER, SQLType.REAL} and isinstance(value, str):
+                        try:
+                            value = wire_decimal(parse_decimal(value, enforce_input_bounds=False))
+                        except ValueError:
+                            pass
+                    values.append(value)
+                normalized.append(tuple(values))
+            rows = normalized
+        return [d[0] for d in cur.description], rows
 
     # ---------- analytics (the /dimension per-cell view) ----------
     def _salient_evo(self, layers, ui):

@@ -26,6 +26,7 @@ from engine.currency_intent import (
     substitute_currency_filter,
     substitute_currency_target,
 )
+from engine.numeric import parse_decimal
 from engine.enrichment.value_types import ISO4217_CODES
 from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Literal, SQLType
 from engine.sql_schema import SchemaGraph
@@ -493,9 +494,13 @@ def _rate_scale(graph: SchemaGraph, column: ColumnRef) -> tuple[float, str] | No
     if words & {"fraction", "decimal"}:
         return 1.0, "fraction"
     schema_column = graph.column_map.get((column.table, column.name))
-    values = [] if schema_column is None else [float(value) for value in schema_column.values
-                                                if isinstance(value, (int, float)) and not isinstance(value, bool)]
-    if values and all(0.0 <= value <= 1.0 for value in values):
+    values = []
+    for value in () if schema_column is None else schema_column.values:
+        try:
+            values.append(parse_decimal(value))
+        except ValueError:
+            continue
+    if values and all(0 <= value <= 1 for value in values):
         return 1.0, "observed_fraction"
     return None
 

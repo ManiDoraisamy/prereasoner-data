@@ -81,7 +81,7 @@ public source and weights in your project, applies a cost-reduced Terraform prof
 minimal Wikidata and ECB data, and removes its temporary bootstrap identity. A billing-enabled project and
 Google authorization are required; the marketing website never receives those credentials.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=main&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.1.0&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
 Read the [deployment contract](deploy/gcp/README.md), including cost, state, browser-client, and
 teardown boundaries, before presenting the button as a public install path.

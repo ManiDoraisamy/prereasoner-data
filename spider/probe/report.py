@@ -111,8 +111,8 @@ def main():
     P(f"  routing: {summ.get('path_histogram')}   correct-by-path: {dict(path_of_correct)}")
     P("")
     P("Four-way decomposition (lenient=correct):")
-    P(f"| difficulty | n | impossible | error | answered-wrong | correct |")
-    P(f"|---|--:|--:|--:|--:|--:|")
+    P("| difficulty | n | impossible | error | answered-wrong | correct |")
+    P("|---|--:|--:|--:|--:|--:|")
     for diff in DIFFS:
         c = four[diff]
         P(f"| {diff} | {c['n']} | {c['impossible']} ({pct(c['impossible'],c['n'])}%) | "

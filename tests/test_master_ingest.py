@@ -9,6 +9,7 @@ Run: python -m tests.test_master_ingest
 from __future__ import annotations
 
 import sys
+from decimal import Decimal
 
 from engine import master
 from engine.relations import discover_fks
@@ -57,12 +58,19 @@ class _patched_store:
         self.store = store
 
     def __enter__(self):
-        self.saved = master.load_master_tables
-        master.load_master_tables = lambda user_id, row_limit: list(self.store.values())
+        self.saved_catalog = master.load_master_catalog
+        self.saved_get = master.get_master
+        master.load_master_catalog = lambda user_id, row_limit: [
+            {**table, "rows": [[row[0]] + [None] * (len(table["columns"]) - 1)
+                               for row in table["rows"][:row_limit]]}
+            for table in self.store.values()
+        ]
+        master.get_master = lambda user_id, name: self.store.get(name)
         return self
 
     def __exit__(self, *args):
-        master.load_master_tables = self.saved
+        master.load_master_catalog = self.saved_catalog
+        master.get_master = self.saved_get
 
 
 def _selected(store=STORE, sources=None, limit=6, row_limit=5000):
@@ -76,7 +84,7 @@ def test_selects_only_the_reference_the_planner_can_join():
     assert [table["name"] for table in result["tables"]] == ["ordered"], result
     reference = result["tables"][0]
     assert reference["columns"] == STORE["ordered"]["columns"]
-    assert reference["rows"][0][-1] == 29.99, reference["rows"][0]
+    assert reference["rows"][0][-1] == Decimal("29.99"), reference["rows"][0]
     fks = discover_fks([ORDERS, CUSTOMERS, reference])
     assert any(edge["from_table"] == "orders" and edge["from_col"] == "ordered"
                and edge["to_table"] == "ordered" and edge["to_col"] == "ordered" for edge in fks), fks
@@ -149,16 +157,16 @@ def test_selects_multi_hop_reference_chains_to_a_fixed_point():
 
 
 def test_store_failure_is_visible_instead_of_silent():
-    saved = master.load_master_tables
+    saved = master.load_master_catalog
     saved_log = master.LOG.exception
     try:
         def _boom(user_id, row_limit):
             raise RuntimeError("store down")
-        master.load_master_tables = _boom
+        master.load_master_catalog = _boom
         master.LOG.exception = lambda *args, **kwargs: None
         result = master.relevant_tables("sub", [ORDERS], 2, 5000)
     finally:
-        master.load_master_tables = saved
+        master.load_master_catalog = saved
         master.LOG.exception = saved_log
     assert result["tables"] == []
     assert result["warnings"] == ["Saved reference data was unavailable; the answer used uploaded tables only."], result
@@ -183,6 +191,8 @@ def test_validation_rejects_unsafe_reference_shapes():
         ("products", ["sku", "SKU"], [["A", "x"]], "column names must be unique"),
         ("products", ["sku", "category"], [["A", "x"], [" a ", "y"]], "duplicate sku key: a"),
         ("products", ["sku", "category"], [[None, "x"]], "row 1 is missing its sku key"),
+        ("products", ["sku"], [["A", "hidden"]],
+         "row 1 has more values than the declared columns"),
         ("x" * 64, ["sku"], [], "table name must be at most 63 UTF-8 bytes"),
     ]
     for name, columns, rows, message in bad:

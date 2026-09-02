@@ -27,7 +27,7 @@ import httpx
 
 from engine import config
 from engine.request_limits import (
-    JSONBodyError, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
+    JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
 from orchestrator.orchestrator import run_chat
 from orchestrator.validation import validate_chat_request
@@ -35,8 +35,7 @@ from orchestrator.validation import validate_chat_request
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
 MAX_BODY = 8 * 1024 * 1024
 CHAT_TIMEOUT_SECONDS = 240
-CHAT_RATE = SlidingWindowLimiter(limit=10, window_seconds=60)
-CHAT_IN_FLIGHT = threading.BoundedSemaphore(8)
+CHAT_GATE = RequestGate(requests=10, window_seconds=60, in_flight=8)
 
 # One asyncio loop in a background thread — the MCP stdio subprocess is spawned on it consistently
 # (avoids per-request loop churn and Windows non-main-thread signal issues).
@@ -121,7 +120,7 @@ class H(BaseHTTPRequestHandler):
     def _chat(self):
         emit = None
         fut = None
-        acquired = False
+        lease = None
         try:
             req = self._read_json()
             if req is None:
@@ -148,14 +147,11 @@ class H(BaseHTTPRequestHandler):
                     "error": "assistant processing is unavailable for this request"
                 })); return
             key = uid or sub or self.client_address[0]
-            allowed, retry_after = CHAT_RATE.allow(key)
-            if not allowed:
-                self._send(429, json.dumps({"error": "chat rate limit exceeded"}), retry_after=retry_after)
+            lease, retry_after, reason = CHAT_GATE.acquire(key)
+            if lease is None:
+                self._send(429, json.dumps({"error": "chat request budget exceeded", "reason": reason}),
+                           retry_after=retry_after)
                 return
-            if not CHAT_IN_FLIGHT.acquire(blocking=False):
-                self._send(429, json.dumps({"error": "chat capacity temporarily exhausted"}), retry_after=5)
-                return
-            acquired = True
             # LIVE TRACE: stream this turn under /runs/{uid}/{turnId} — the SAME verified uid the browser subscribes
             # to (never client-supplied). Each engine call is announced there. Best-effort; a no-op if RTDB is absent.
             if turn_id and uid:
@@ -189,8 +185,8 @@ class H(BaseHTTPRequestHandler):
             print(f"orchestrator chat failed: {type(e).__name__} turn={getattr(self, 'path', '-')}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
         finally:
-            if acquired:
-                CHAT_IN_FLIGHT.release()
+            if lease is not None:
+                lease.release()
 
     # ---------- /api proxy ----------
     def _proxy_api(self, method):

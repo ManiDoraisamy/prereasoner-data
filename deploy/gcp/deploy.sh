@@ -15,6 +15,8 @@ SKIP_BOOTSTRAP=0
 BOOTSTRAP_JOB=""
 BOOTSTRAP_SA=""
 DB_SECRET=""
+SMOKE_JOB=""
+BUILD_CONTEXT=""
 
 usage() {
   cat <<'EOF'
@@ -100,6 +102,30 @@ confirm() {
   [[ "$answer" == "$word" ]] || die "cancelled"
 }
 
+cleanup_bootstrap_identity() {
+  set +e
+  if [[ -n "$BOOTSTRAP_JOB" ]]; then
+    gcloud run jobs delete "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --quiet >/dev/null 2>&1
+  fi
+  if [[ -n "$SMOKE_JOB" ]]; then
+    gcloud run jobs delete "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --quiet >/dev/null 2>&1
+  fi
+  if [[ -n "$BOOTSTRAP_SA" && -n "$DB_SECRET" ]]; then
+    gcloud secrets remove-iam-policy-binding "$DB_SECRET" --project="$PROJECT_ID" \
+      --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/secretmanager.secretAccessor --quiet >/dev/null 2>&1
+    gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/cloudsql.client --condition=None --quiet >/dev/null 2>&1
+    gcloud iam service-accounts delete "$BOOTSTRAP_SA" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
+  fi
+}
+
+cleanup_release() {
+  cleanup_bootstrap_identity
+  case "$BUILD_CONTEXT" in
+    "${TMPDIR:-/tmp}"/prereasoner-build.*) rm -rf -- "$BUILD_CONTEXT" ;;
+  esac
+}
+
 init_state() {
   if ! gcloud storage buckets describe "gs://${STATE_BUCKET}" --project="$PROJECT_ID" >/dev/null 2>&1; then
     gcloud storage buckets create "gs://${STATE_BUCKET}" \
@@ -148,7 +174,14 @@ if ((DESTROY)); then
   exit 0
 fi
 
+[[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]] \
+  || die "deployment requires a clean checkout; commit or remove every local change first"
+
 confirm DEPLOY "PreReasoner will create a ZONAL Cloud SQL instance, Artifact Registry, Cloud Run service, Secret Manager secrets, a Cloud Build, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
+
+# Register cleanup before creating state, build contexts, temporary jobs, or identities.
+# Every failure from this point onward owns its rollback path.
+trap cleanup_release EXIT
 
 init_state
 
@@ -170,6 +203,12 @@ fi
   HF_TOKEN= HF_HUB_DISABLE_IMPLICIT_TOKEN=1 "${venv}/bin/python" -m engine.fetch_weights
 )
 
+BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/prereasoner-build.XXXXXX")"
+(
+  cd "$ROOT"
+  "${venv}/bin/python" deploy/gcp/build_context.py --output "$BUILD_CONTEXT"
+)
+
 build_service_account="$(gcloud builds get-default-service-account \
   --project="$PROJECT_ID" --format='value(serviceAccountEmail)')"
 build_service_account="${build_service_account##*/}"
@@ -181,9 +220,9 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
 
 commit="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine:community-${commit}"
-gcloud builds submit "$ROOT" \
+gcloud builds submit "$BUILD_CONTEXT" \
   --project="$PROJECT_ID" \
-  --config="$ROOT/cloudbuild.yaml" \
+  --config="$BUILD_CONTEXT/cloudbuild.yaml" \
   --timeout=3600s \
   --substitutions="_REGION=${REGION},_REPO=${ARTIFACT_REPO},_TAG=community-${commit}"
 digest="$(gcloud artifacts docker images describe "$image_tag" \
@@ -195,21 +234,6 @@ mapfile -t variables < <(tf_vars "$image" true)
 terraform -chdir="$ROOT/infra" plan -input=false -out="$TF_PLAN" "${variables[@]}"
 terraform -chdir="$ROOT/infra" apply -auto-approve -input=false "$TF_PLAN"
 rm -f "$TF_PLAN"
-
-cleanup_bootstrap_identity() {
-  set +e
-  if [[ -n "$BOOTSTRAP_JOB" ]]; then
-    gcloud run jobs delete "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --quiet >/dev/null 2>&1
-  fi
-  if [[ -n "$BOOTSTRAP_SA" && -n "$DB_SECRET" ]]; then
-    gcloud secrets remove-iam-policy-binding "$DB_SECRET" --project="$PROJECT_ID" \
-      --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/secretmanager.secretAccessor --quiet >/dev/null 2>&1
-    gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
-      --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/cloudsql.client --condition=None --quiet >/dev/null 2>&1
-    gcloud iam service-accounts delete "$BOOTSTRAP_SA" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
-  fi
-}
-trap cleanup_bootstrap_identity EXIT
 
 if ((!SKIP_BOOTSTRAP)); then
   connection="$(terraform -chdir="$ROOT/infra" output -raw sql_connection_name)"
@@ -238,12 +262,32 @@ if ((!SKIP_BOOTSTRAP)); then
     --command=python --args=-m,db.sync.community_bootstrap,--role,"$serving_role" \
     --tasks=1 --max-retries=0 --task-timeout=7200s --cpu=4 --memory=8Gi
   gcloud run jobs execute "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
+
+  runtime_sa="$(terraform -chdir="$ROOT/infra" output -raw runtime_service_account)"
+  [[ "$runtime_sa" == *@*.gserviceaccount.com ]] || die "Terraform did not return the runtime service account"
+  serving_secret="$(terraform -chdir="$ROOT/infra" output -raw serving_db_password_secret)"
+  SMOKE_JOB="${DEPLOYMENT}-release-smoke"
+  gcloud run jobs delete "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --quiet >/dev/null 2>&1 || true
+  gcloud run jobs create "$SMOKE_JOB" \
+    --project="$PROJECT_ID" --region="$REGION" --image="$image" \
+    --service-account="$runtime_sa" \
+    --set-cloudsql-instances="$connection" \
+    --set-env-vars="KB_PG_HOST=/cloudsql/${connection},KB_PG_DB=world,KB_PG_USER=${serving_role}" \
+    --set-secrets="KB_PG_PASSWORD=${serving_secret}:latest" \
+    --command=python --args=-m,engine.release_smoke \
+    --tasks=1 --max-retries=0 --task-timeout=900s --cpu=4 --memory=8Gi
+  gcloud run jobs execute "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
 fi
 
 service_url="$(terraform -chdir="$ROOT/infra" output -raw service_url)"
 printf '\nWaiting for the model-backed service to become ready...\n'
 for _ in {1..60}; do
   if curl --fail --silent --show-error "${service_url}/api/healthz" | grep -q '"ok": true'; then
+    auth_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+      --request POST --header 'Content-Type: application/json' \
+      --data '{"data":"amount\\n1","question":"total amount"}' \
+      "${service_url}/api/reason")"
+    [[ "$auth_status" == "401" ]] || die "reasoning endpoint auth smoke returned HTTP ${auth_status}, expected 401"
     printf '\nPreReasoner Community Edition is ready.\nEngine: %s\nState:  gs://%s/%s\n' \
       "$service_url" "$STATE_BUCKET" "$STATE_PREFIX"
     printf 'The engine API requires a Firebase ID token. Follow web/README.md to attach your own Firebase web client.\n'

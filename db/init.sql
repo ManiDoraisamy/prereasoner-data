@@ -371,3 +371,21 @@ CREATE TABLE IF NOT EXISTS "chat"."user_conversation" (
   PRIMARY KEY (user_id, conversation_id)
 );
 CREATE INDEX IF NOT EXISTS ix_user_conv ON "chat"."user_conversation" (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS "chat"."request_usage" (
+  period text NOT NULL CHECK (period IN ('minute', 'day')),
+  bucket_start timestamptz NOT NULL,
+  subject_key text NOT NULL,
+  operation text NOT NULL,
+  request_count integer NOT NULL CHECK (request_count > 0),
+  PRIMARY KEY (period, bucket_start, subject_key, operation)
+);
+
+CREATE TABLE IF NOT EXISTS "chat"."request_lease" (
+  lease_id text PRIMARY KEY,
+  subject_key text NOT NULL,
+  operation text NOT NULL,
+  expires_at timestamptz NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_request_lease_active
+  ON "chat"."request_lease" (operation, expires_at);

@@ -21,6 +21,7 @@ from engine.config import DATA_DIR
 from engine.currency_intent import (
     currency_rate_binding, is_currency_measure_column, is_currency_source_column,
 )
+from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
     csv_table,
@@ -87,6 +88,18 @@ def load_word_tables():
 
 
 class KnowledgeTableQuery:
+    @staticmethod
+    def _numeric_aggregate(function, operand):
+        rendered = {
+            "SUM": "decimal_sum", "AVG": "decimal_avg",
+            "MIN": "decimal_min", "MAX": "decimal_max",
+        }.get(function.upper(), function.upper())
+        return f"{rendered}( {operand} )"
+
+    @staticmethod
+    def _numeric_multiply(left, right):
+        return f"decimal_mul({left}, {right})"
+
     def __init__(self, deploy_dir=DATA_DIR):
         self.q11 = TableQuery(deploy_dir)         # the anchored readout planner (encoder overlaid by the world layer)
         self.words = load_word_tables()           # metadata only (key/concept/filter_attrs/filter_values/links/parent)
@@ -581,7 +594,8 @@ class KnowledgeTableQuery:
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
             involved = [mtab]
         elif wtarget and agg and agg[0] in ("SUM", "AVG") and wtarget["affinity"] in ("INTEGER", "REAL"):
-            proj = f'{agg[0]}( {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # AVG("city"."population")
+            operand = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
+            proj = self._numeric_aggregate(agg[0], operand)
             pdesc = ("aggregate", f'{agg[0]}({wtarget["table"]}.{wtarget["col"]})', "agg cue + world measure named")
             involved = [mtab]
             selected_measure = (wtarget["table"], wtarget["col"])
@@ -594,8 +608,9 @@ class KnowledgeTableQuery:
             pdesc = ("aggregate", "COUNT(*)", "count cue word")
             involved = [mtab, agg[1]] if (agg[1] and agg[1] != mtab) else [mtab]
         elif agg and world_rate:
-            proj = (f'SUM( {qident(agg[1])}.{qident(agg[2])} * '
-                    f'{qident("exchange_rate")}.{qident(world_rate["rate_col"])} )')
+            measure_sql = f'{qident(agg[1])}.{qident(agg[2])}'
+            rate_sql = f'{qident("exchange_rate")}.{qident(world_rate["rate_col"])}'
+            proj = self._numeric_aggregate("SUM", self._numeric_multiply(measure_sql, rate_sql))
             pdesc = (
                 "aggregate",
                 f'SUM({agg[1]}.{agg[2]} * exchange_rate.{world_rate["rate_col"]})',
@@ -606,8 +621,9 @@ class KnowledgeTableQuery:
             selected_conversion = True
         elif agg and conversion:
             rate_table, rate_col = conversion
-            proj = (f'SUM( {qident(agg[1])}.{qident(agg[2])} * '
-                    f'{qident(rate_table)}.{qident(rate_col)} )')
+            measure_sql = f'{qident(agg[1])}.{qident(agg[2])}'
+            rate_sql = f'{qident(rate_table)}.{qident(rate_col)}'
+            proj = self._numeric_aggregate("SUM", self._numeric_multiply(measure_sql, rate_sql))
             pdesc = (
                 "aggregate",
                 f'SUM({agg[1]}.{agg[2]} * {rate_table}.{rate_col})',
@@ -617,7 +633,8 @@ class KnowledgeTableQuery:
             selected_measure = (agg[1], agg[2])
             selected_conversion = True
         elif agg:
-            proj = f'{agg[0]}( {qident(agg[1])}.{qident(agg[2])} )'
+            operand = f'{qident(agg[1])}.{qident(agg[2])}'
+            proj = self._numeric_aggregate(agg[0], operand)
             pdesc = ("aggregate", f'{agg[0]}({agg[1]}.{agg[2]})', "cue word + is_num feature")
             involved = [mtab, agg[1]] if (agg[1] and agg[1] != mtab) else [mtab]
             selected_measure = (agg[1], agg[2])
@@ -685,7 +702,7 @@ class KnowledgeTableQuery:
                 con = self._connect(tablemap, sch, attach_world=bool(joins) or bool(world_rate))
                 cur = con.execute(sql)
                 cols = [d[0] for d in cur.description]
-                result = {"columns": cols, "rows": [["" if v is None else v for v in r] for r in cur.fetchall()[:50]]}
+                result = {"columns": cols, "rows": wire_rows(cur.fetchall()[:50])}
                 if proj_world_col and result["rows"] and hasattr(self, "_labelize_qids"):
                     self._labelize_qids(result)   # a projected world entity-attr column holds QIDs -> show 'Asia', not 'Q48'
                 if mf:                            # FRESHNESS GUARD — trace the word rows that ACTUALLY contributed
@@ -748,10 +765,14 @@ class KnowledgeTableQuery:
                         # The CALCULATED view: the one non-obvious arithmetic, made a visible
                         # per-row column — each amount beside the exact rate it was multiplied by
                         # and that rate's true publication date, so Result is this column summed.
+                        product_sql = self._numeric_multiply(
+                            f'{fact_q}.{qident(agg[2])}',
+                            f'{er_q}.{qident(world_rate["rate_col"])}',
+                        )
                         calc_sql = (
                             f'SELECT {fact_q}.*, {er_q}.{qident(world_rate["rate_col"])}, '
                             f'{er_q}.{qident("updated_at")} AS rate_published, '
-                            f'({fact_q}.{qident(agg[2])} * {er_q}.{qident(world_rate["rate_col"])}) '
+                            f'{product_sql} '
                             f'AS converted {fw} LIMIT 50'
                         )
                         calc_cur = con.execute(calc_sql)
@@ -873,16 +894,23 @@ class KnowledgeTableQuery:
         """in-memory SQLite with the uploaded sheet(s); ATTACH words.db whenever the SQL joins ANY world table
         (a filter join OR a world-column path — not only when a filter exists)."""
         con = sqlite3.connect(":memory:")
+        register_sqlite_decimal(con)
         by_t = {}
         for c in sch:
             by_t.setdefault(c["table"], []).append(c)
         for tname, cols in by_t.items():
-            con.execute(f"CREATE TABLE {qident(tname)} (" + ", ".join(f'{qident(c["name"])} {c["affinity"]}' for c in cols) + ")")
+            declarations = []
+            for column in cols:
+                storage = "TEXT COLLATE decimal" if column["affinity"] == "REAL" else column["affinity"]
+                declarations.append(f'{qident(column["name"])} {storage}')
+            con.execute(f"CREATE TABLE {qident(tname)} (" + ", ".join(declarations) + ")")
             t = tablemap[tname]
             ins = f"INSERT INTO {qident(tname)} VALUES ({','.join('?' * len(cols))})"
             for r in t["rows"]:
                 rd = dict(zip(t["columns"], r))
-                con.execute(ins, [self._coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
+                con.execute(ins, [sqlite_numeric(rd.get(c["name"]), c["affinity"])
+                                  if c["affinity"] in ("INTEGER", "REAL") else str(rd.get(c["name"]))
+                                  if rd.get(c["name"]) is not None else None for c in cols])
         if attach_world:                          # ATTACH the persistent meaning DB (no per-query bulk insert —
             con.execute("ATTACH DATABASE ? AS words", (str(self.dbpath),))   # joins hit the indexed word tables)
         return con
@@ -900,8 +928,5 @@ class KnowledgeTableQuery:
         if v is None:
             return None
         if aff in ("INTEGER", "REAL"):
-            try:
-                return int(float(str(v).replace(",", ""))) if aff == "INTEGER" else float(str(v).replace(",", ""))
-            except ValueError:
-                return None
+            return coerce_numeric(v, aff)
         return str(v)

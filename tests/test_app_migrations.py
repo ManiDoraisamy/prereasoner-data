@@ -65,10 +65,10 @@ class _Connection:
 
 
 def test_chat_migration_is_admin_run_and_idempotent():
-    assert [migration.version for migration in CHAT_MIGRATIONS] == [1]
+    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2]
     assert CHAT_MIGRATIONS[0].name == "conversation_state"
     connection = _Connection()
-    assert migrate_chat(connection) == (1,)
+    assert migrate_chat(connection) == (1, 2)
     assert migrate_chat(connection) == ()
     assert connection.commits == 2 and connection.rollbacks == 0
     assert any("ALTER TABLE \"chat\".\"conversation\"" in statement
@@ -93,7 +93,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert migrate_knowledgebase(connection) == (1, 2)   # definer functions, then the schedule table
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
-    assert migrate_chat(connection) == (1,)
+    assert migrate_chat(connection) == (1, 2)
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():

@@ -31,17 +31,26 @@ from training.schema_org.signatures import SIGNATURES_NAME
 CACHE_PATH = EMBEDDINGS_PATH
 MIN_PROPERTY_TRAIN = 25
 MIN_PROPERTY_VALIDATION = 5
-MIN_PROPERTY_TEST = 5
 # Held-out floors additionally counted in DISTINCT SPLIT GROUPS. Column instances add instances without
 # adding groups, so an instance-count floor can be satisfied by clones of a single row group — the
 # threshold would then certify statistical support that does not exist. Groups are independent
 # observations; instances are not.
 MIN_PROPERTY_VALIDATION_GROUPS = 5
-MIN_PROPERTY_TEST_GROUPS = 5
 MIN_PROPERTY_PRECISION = 0.90
 MIN_PROPERTY_RECALL = 0.60
 MIN_CLASS_PRECISION = 0.90
 MIN_CLASS_RECALL = 0.60
+
+
+def _training_properties(property_order, property_support, property_groups) -> tuple[str, ...]:
+    """Select dimensions from train/validation only; test remains untouched evidence."""
+    return tuple(
+        uri for uri in property_order
+        if property_support["train"][uri] >= MIN_PROPERTY_TRAIN
+        and property_support["validation"][uri] >= MIN_PROPERTY_VALIDATION
+        and len(property_groups.get(uri, {}).get("validation", ()))
+        >= MIN_PROPERTY_VALIDATION_GROUPS
+    )
 
 
 def _precision_threshold(scores: np.ndarray, labels: np.ndarray,
@@ -202,12 +211,7 @@ def main() -> None:
     def _groups(uri, split):
         return len(property_groups.get(uri, {}).get(split, ()))
 
-    properties = tuple(uri for uri in contract.property_order
-                       if property_support["train"][uri] >= MIN_PROPERTY_TRAIN
-                       and property_support["validation"][uri] >= MIN_PROPERTY_VALIDATION
-                       and property_support["test"][uri] >= MIN_PROPERTY_TEST
-                       and _groups(uri, "validation") >= MIN_PROPERTY_VALIDATION_GROUPS
-                       and _groups(uri, "test") >= MIN_PROPERTY_TEST_GROUPS)
+    properties = _training_properties(contract.property_order, property_support, property_groups)
     if not properties:
         raise ValueError("no Schema.org properties clear the support gates")
     prop_index = {uri: index for index, uri in enumerate(properties)}
@@ -366,7 +370,6 @@ def main() -> None:
             "property_min_precision": MIN_PROPERTY_PRECISION,
             "property_min_recall": MIN_PROPERTY_RECALL,
             "property_min_validation_groups": MIN_PROPERTY_VALIDATION_GROUPS,
-            "property_min_test_groups": MIN_PROPERTY_TEST_GROUPS,
             "class_min_precision": MIN_CLASS_PRECISION,
             "class_min_recall": MIN_CLASS_RECALL,
         },
@@ -380,6 +383,46 @@ def main() -> None:
     meta["artifact_sha256"] = canonical_json_sha256(meta)
     meta_path.write_text(json.dumps(meta, sort_keys=True, ensure_ascii=True,
                                     separators=(",", ":")) + "\n", encoding="utf-8")
+    artifact_paths = {
+        "schema_property_head.pt": model_path,
+        "schema_property_model.json": meta_path,
+        "schema_class_signatures.json": signatures_path,
+    }
+    training_manifest = {
+        "schema_version": 1,
+        "generator": corpus_manifest.get("generator"),
+        "corpus": corpus_manifest["corpus"],
+        "source_manifest": corpus_manifest.get("source_manifest"),
+        "split_policy": corpus_manifest.get("split_policy"),
+        "model": {
+            "base_model": BASE_MODEL_ID,
+            "base_model_revision": BASE_MODEL_REVISION,
+            "encoder_artifact_sha256": encoder_artifact_sha256,
+            "ontology_version": contract.version,
+            "ontology_contract_sha256": contract.contract_sha256,
+        },
+        "training": {
+            "seed": args.seed,
+            "epochs_requested": args.epochs,
+            "epochs_completed": epoch + 1,
+            "batch_size": args.batch_size,
+            "learning_rate": args.lr,
+            "best_validation_bce": best_loss,
+            "selection_data": ("train", "validation"),
+            "evaluation_data": ("test",),
+        },
+        "metrics": {"properties": property_metrics, "classes": class_metrics},
+        "artifacts": {
+            name: hashlib.sha256(path.read_bytes()).hexdigest()
+            for name, path in artifact_paths.items()
+        },
+    }
+    training_manifest["artifact_sha256"] = canonical_json_sha256(training_manifest)
+    (out_dir / "schema_training_manifest.json").write_text(
+        json.dumps(training_manifest, sort_keys=True, ensure_ascii=True,
+                   separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
     passed_properties = len(qualified_properties)
     servable_classes = sum(row["servable"] for row in by_uri.values())
     print(

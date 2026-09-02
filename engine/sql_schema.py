@@ -8,6 +8,7 @@ from numbers import Real
 import re
 from typing import Any, Iterable, Sequence
 
+from engine.numeric import parse_decimal
 from engine.sql_ast import ColumnRef, Join, SQLType
 
 
@@ -340,14 +341,12 @@ def _coerce_value(value: Any, value_type: SQLType) -> Any:
     if value_type.numeric:
         if isinstance(value, bool):
             return None
-        if isinstance(value, Real):
-            numeric = float(value)
-        else:
-            text = str(value).strip()
-            if not _NUMBER_RE.fullmatch(text):
-                return None
-            numeric = float(text.replace(",", ""))
-        if not math.isfinite(numeric):
+        text = str(value).strip()
+        if not isinstance(value, Real) and not _NUMBER_RE.fullmatch(text):
+            return None
+        try:
+            numeric = parse_decimal(value)
+        except ValueError:
             return None
         return int(numeric) if value_type == SQLType.INTEGER else numeric
     if value_type == SQLType.BOOLEAN:

@@ -10,6 +10,8 @@ import json
 import threading
 import time
 from collections import defaultdict, deque
+from dataclasses import dataclass
+from typing import Callable
 
 
 class JSONBodyError(ValueError):
@@ -83,6 +85,41 @@ class SlidingWindowLimiter:
                 return False, retry
             events.append(now)
             return True, 0
+
+
+@dataclass
+class RequestLease:
+    """Idempotent release handle returned by a request gate."""
+
+    release_callback: Callable[[], None]
+    _released: bool = False
+
+    def release(self) -> None:
+        if not self._released:
+            self._released = True
+            self.release_callback()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc):
+        self.release()
+
+
+class RequestGate:
+    """One reusable process-local rate and concurrency boundary."""
+
+    def __init__(self, *, requests: int, window_seconds: float, in_flight: int, max_keys: int = 4096):
+        self.limiter = SlidingWindowLimiter(requests, window_seconds, max_keys=max_keys)
+        self.semaphore = threading.BoundedSemaphore(in_flight)
+
+    def acquire(self, key: str) -> tuple[RequestLease | None, int, str | None]:
+        allowed, retry_after = self.limiter.allow(key)
+        if not allowed:
+            return None, retry_after, "rate"
+        if not self.semaphore.acquire(blocking=False):
+            return None, 1, "concurrency"
+        return RequestLease(self.semaphore.release), 0, None
 
 
 def allowed_origin(origin: str | None, configured: str) -> str | None:

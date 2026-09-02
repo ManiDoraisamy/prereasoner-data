@@ -1,125 +1,211 @@
-"""
-Minimal RunPod REST client (stdlib only) for driving training on a GPU pod. Reads
-RUNPOD_API_KEY / HF_TOKEN from repo-root .env. NEVER prints the key.
+"""Cost-bounded RunPod client for Schema.org training.
 
-CLI:
-  python -m training.tools.runpod_api check                 # auth + existing pods
-  python -m training.tools.runpod_api create                # create GPU pod, poll, print ssh
-  python -m training.tools.runpod_api status <id>           # pod status + ssh endpoint
-  python -m training.tools.runpod_api term <id>             # terminate pod
+The default ``lease`` command owns the complete pod lifecycle and terminates in
+``finally``. A pod can outlive this process only when the operator explicitly
+passes ``--keep``.
 """
 from __future__ import annotations
-import json, sys, time, urllib.request, urllib.error
+
+import argparse
+from datetime import datetime, timedelta, timezone
+import json
+import os
 from pathlib import Path
-ROOT = Path(__file__).resolve().parent.parent.parent
+import shlex
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+
+
+ROOT = Path(__file__).resolve().parents[2]
 REST = "https://rest.runpod.io/v1"
 IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
-GPU_PRIORITY = ["NVIDIA GeForce RTX 4090", "NVIDIA RTX A5000", "NVIDIA L4",
-                "NVIDIA RTX A4000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4500"]
+GPU_PRIORITY = [
+    "NVIDIA GeForce RTX 4090", "NVIDIA RTX A5000", "NVIDIA L4",
+    "NVIDIA RTX A4000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4500",
+]
+STATE = Path(os.environ.get("PREREASONER_RUNPOD_STATE") or
+             Path.home() / ".cache" / "prereasoner" / "runpod_active.json")
 
 
-def env():
-    out = {}
-    p = ROOT / ".env"
-    if p.exists():
-        for line in p.read_text(encoding="utf-8").splitlines():
-            s = line.strip()
-            if s and not s.startswith("#") and "=" in s:
-                k, v = s.split("=", 1)
-                out[k.strip()] = v.strip().strip('"').strip("'")
-    return out
+def credentials() -> tuple[str, str]:
+    values = {}
+    path = ROOT / ".env"
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            value = line.strip()
+            if value and not value.startswith("#") and "=" in value:
+                key, item = value.split("=", 1)
+                values[key.strip()] = item.strip().strip('"').strip("'")
+    return (
+        os.environ.get("RUNPOD_API_KEY") or values.get("RUNPOD_API_KEY", ""),
+        os.environ.get("HF_TOKEN") or values.get("HF_TOKEN", ""),
+    )
 
 
-_ENV = env()
-KEY = _ENV.get("RUNPOD_API_KEY", "")
-HF = _ENV.get("HF_TOKEN", "")
-
-
-def rest(method, path, body=None, timeout=90):
-    req = urllib.request.Request(REST + path, method=method,
-        headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
-        data=json.dumps(body).encode() if body is not None else None)
+def rest(method, path, body=None, timeout=90, *, key=None):
+    key = key or credentials()[0]
+    request = urllib.request.Request(
+        REST + path,
+        method=method,
+        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        data=json.dumps(body).encode() if body is not None else None,
+    )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            raw = r.read().decode()
-            return r.status, (json.loads(raw) if raw else None)
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode()[:1000]
-    except Exception as e:
-        return -1, str(e)
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode()
+            return response.status, json.loads(raw) if raw else None
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode()[:1000]
+    except Exception as exc:  # transport errors are data, so the lifecycle owner can still clean up
+        return -1, str(exc)
 
 
-def pubkey():
+def pubkey() -> str:
     return (Path.home() / ".ssh" / "runpod_prereasoner.pub").read_text(encoding="utf-8").strip()
 
 
 def ssh_endpoint(pod):
-    """-> (ip, port) for the public 22/tcp mapping, else (None, None). Handles BOTH REST shapes:
-    runtime.ports[] (older) and top-level publicIp + portMappings{"22":port} (current — the older
-    parser missed this and reported ssh=pending forever even though the pod was reachable)."""
     pod = pod or {}
-    rt = pod.get("runtime") or {}
-    for p in rt.get("ports") or []:
-        if str(p.get("privatePort")) == "22" and p.get("isIpPublic") and p.get("type") == "tcp":
-            return p.get("ip"), p.get("publicPort")
-    ip, pm = pod.get("publicIp"), pod.get("portMappings") or {}
-    if ip and pm.get("22"):
-        return ip, pm.get("22")
-    return None, None
+    for port in (pod.get("runtime") or {}).get("ports") or []:
+        if str(port.get("privatePort")) == "22" and port.get("isIpPublic") and port.get("type") == "tcp":
+            return port.get("ip"), port.get("publicPort")
+    ip, mappings = pod.get("publicIp"), pod.get("portMappings") or {}
+    return (ip, mappings.get("22")) if ip and mappings.get("22") else (None, None)
 
 
-def create():
-    body = {"name": "prereasoner-train", "imageName": IMAGE, "cloudType": "SECURE",
-            "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1,
-            "containerDiskInGb": 25, "volumeInGb": 0, "ports": ["22/tcp"],
-            "env": {"PUBLIC_KEY": pubkey(), "HF_TOKEN": HF}}
-    st, resp = rest("POST", "/pods", body)
-    print(f"POST /v1/pods -> HTTP {st}")
-    if st not in (200, 201):
-        print("  body:", resp); return None
-    pid = resp.get("id") if isinstance(resp, dict) else None
-    print(f"  created pod {pid}")
-    (ROOT / "training/data").mkdir(parents=True, exist_ok=True)
-    (ROOT / "training/data/pod_id.txt").write_text(pid or "")
+def _record(pid: str, max_minutes: int) -> None:
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps({
+        "pod_id": pid, "created_at": int(time.time()), "max_minutes": max_minutes,
+    }, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _clear(pid: str) -> None:
+    if not STATE.is_file():
+        return
+    try:
+        active = json.loads(STATE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        active = {}
+    if active.get("pod_id") == pid:
+        STATE.unlink(missing_ok=True)
+
+
+def create(max_minutes: int) -> str:
+    _, hf_token = credentials()
+    body = {
+        "name": "prereasoner-train", "imageName": IMAGE, "cloudType": "SECURE",
+        "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1, "containerDiskInGb": 25,
+        "volumeInGb": 0, "ports": ["22/tcp"],
+        # This provider-side deadline still fires if the caller disappears.
+        "terminateAfter": (
+            datetime.now(timezone.utc) + timedelta(minutes=max_minutes)
+        ).isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "env": {"PUBLIC_KEY": pubkey(), "HF_TOKEN": hf_token},
+    }
+    status, response = rest("POST", "/pods", body)
+    if status not in (200, 201) or not isinstance(response, dict) or not response.get("id"):
+        raise RuntimeError(f"RunPod create failed: HTTP {status} {response}")
+    pid = response["id"]
+    _record(pid, max_minutes)
+    print(f"created pod {pid}; lease limit {max_minutes} minutes", flush=True)
     return pid
 
 
-def poll(pid, mins=8):
-    deadline = mins * 60
-    waited = 0
-    while waited < deadline:
-        st, pod = rest("GET", f"/pods/{pid}")
-        if st == 200 and isinstance(pod, dict):
-            status = pod.get("desiredStatus")
+def terminate(pid: str, attempts: int = 3) -> None:
+    """Terminate a pod with bounded retries; clear local state only on success."""
+    last = None
+    for attempt in range(attempts):
+        status, response = rest("DELETE", f"/pods/{pid}")
+        if status in (200, 202, 204, 404):
+            _clear(pid)
+            print(f"terminated pod {pid}", flush=True)
+            return
+        last = (status, response)
+        if attempt + 1 < attempts:
+            time.sleep(2 ** attempt)
+    status, response = last or (-1, "no termination attempt")
+    raise RuntimeError(f"RunPod termination failed for {pid}: HTTP {status} {response}")
+
+
+def poll(pid: str, timeout_minutes=8):
+    deadline = time.monotonic() + timeout_minutes * 60
+    while time.monotonic() < deadline:
+        status, pod = rest("GET", f"/pods/{pid}")
+        if status == 200 and isinstance(pod, dict):
             ip, port = ssh_endpoint(pod)
-            print(f"  [{waited:3d}s] status={status} ssh={'%s:%s' % (ip, port) if ip else 'pending'}")
-            if status == "RUNNING" and ip:
+            print(f"status={pod.get('desiredStatus')} ssh={f'{ip}:{port}' if ip else 'pending'}", flush=True)
+            if pod.get("desiredStatus") == "RUNNING" and ip:
                 return ip, port
         else:
-            print(f"  [{waited:3d}s] GET -> {st} {pod if st!=200 else ''}")
-        time.sleep(15); waited += 15
-    return None, None
+            print(f"pod status failed: HTTP {status} {pod}", flush=True)
+        time.sleep(15)
+    raise TimeoutError(f"pod {pid} did not expose SSH within {timeout_minutes} minutes")
+
+
+def run_lease(max_minutes: int, command: list[str], keep: bool = False) -> str:
+    if not 1 <= max_minutes <= 360:
+        raise ValueError("--max-minutes must be between 1 and 360")
+    pid = create(max_minutes)
+    try:
+        ip, port = poll(pid)
+        ssh = [
+            "ssh", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
+            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", f"root@{ip}",
+        ]
+        if command:
+            ssh.append(shlex.join(command))
+        subprocess.run(ssh, check=True, timeout=max_minutes * 60)
+        return pid
+    finally:
+        if keep:
+            print(
+                f"WARNING: --keep left billable pod {pid} running until its provider deadline; "
+                "terminate it sooner when work completes",
+                file=sys.stderr,
+            )
+        else:
+            had_error = sys.exc_info()[0] is not None
+            try:
+                terminate(pid)
+            except Exception as cleanup_error:
+                # Preserve the training failure that triggered cleanup. The provider-side
+                # terminateAfter deadline remains the final cost bound if all deletes fail.
+                print(f"CRITICAL: pod {pid} cleanup failed: {cleanup_error}", file=sys.stderr)
+                if not had_error:
+                    raise
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="RunPod training with an owned, time-bounded lease")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("check")
+    status = commands.add_parser("status"); status.add_argument("pod_id")
+    term = commands.add_parser("term"); term.add_argument("pod_id")
+    lease = commands.add_parser("lease")
+    lease.add_argument("--max-minutes", type=int, default=120)
+    lease.add_argument("--keep", action="store_true")
+    lease.add_argument("remote_command", nargs=argparse.REMAINDER)
+    args = parser.parse_args(argv)
+
+    if not credentials()[0]:
+        parser.error("RUNPOD_API_KEY must be set in the environment or repo-root .env")
+    if args.command == "check":
+        status_code, pods = rest("GET", "/pods")
+        print(f"HTTP {status_code}; pods={len(pods) if isinstance(pods, list) else pods}")
+    elif args.command == "status":
+        status_code, pod = rest("GET", f"/pods/{args.pod_id}")
+        ip, port = ssh_endpoint(pod) if isinstance(pod, dict) else (None, None)
+        print(f"HTTP {status_code} status={pod.get('desiredStatus') if isinstance(pod, dict) else pod} ssh={ip}:{port}")
+    elif args.command == "term":
+        terminate(args.pod_id)
+    else:
+        run_lease(args.max_minutes, args.remote_command, args.keep)
+    return 0
 
 
 if __name__ == "__main__":
-    if not KEY:
-        print("ERROR: RUNPOD_API_KEY not in .env"); sys.exit(2)
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "check"
-    if cmd == "check":
-        st, pods = rest("GET", "/pods")
-        print(f"GET /v1/pods -> {st}; pods={len(pods) if isinstance(pods,list) else pods}")
-    elif cmd == "create":
-        pid = create()
-        if pid:
-            ip, port = poll(pid)
-            if ip:
-                print(f"\nSSH READY: ssh -i ~/.ssh/runpod_prereasoner -p {port} root@{ip}")
-            else:
-                print("\npod did not reach RUNNING+public-ip in time; check status")
-    elif cmd == "status":
-        st, pod = rest("GET", f"/pods/{sys.argv[2]}")
-        ip, port = ssh_endpoint(pod) if isinstance(pod, dict) else (None, None)
-        print(f"HTTP {st} status={pod.get('desiredStatus') if isinstance(pod,dict) else pod} ssh={ip}:{port}")
-    elif cmd == "term":
-        st, r = rest("DELETE", f"/pods/{sys.argv[2]}")
-        print(f"DELETE -> {st} {r}")
+    raise SystemExit(main())

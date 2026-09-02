@@ -180,6 +180,10 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "Temporary PreReasoner database bootstrap",
         "cleanup_bootstrap_identity",
         'build_service_account="${build_service_account##*/}"',
+        "deploy/gcp/build_context.py --output",
+        'status --porcelain --untracked-files=all',
+        "engine.release_smoke",
+        'expected 401',
     ):
         assert required in deploy
     assert "Type %s to continue" in deploy
@@ -223,7 +227,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["main"]
+    assert query["cloudshell_git_branch"] == ["v0.1.0"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")

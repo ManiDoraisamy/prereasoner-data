@@ -36,6 +36,32 @@ CHAT_MIGRATIONS = (
             'ADD COLUMN IF NOT EXISTS state jsonb',
         ),
     ),
+    ApplicationMigration(
+        2,
+        "distributed_request_budgets",
+        (
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."request_usage" (
+              period text NOT NULL CHECK (period IN ('minute', 'day')),
+              bucket_start timestamptz NOT NULL,
+              subject_key text NOT NULL,
+              operation text NOT NULL,
+              request_count integer NOT NULL CHECK (request_count > 0),
+              PRIMARY KEY (period, bucket_start, subject_key, operation)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."request_lease" (
+              lease_id text PRIMARY KEY,
+              subject_key text NOT NULL,
+              operation text NOT NULL,
+              expires_at timestamptz NOT NULL
+            )
+            """,
+            'CREATE INDEX IF NOT EXISTS "ix_request_lease_active" '
+            'ON "chat"."request_lease" (operation, expires_at)',
+        ),
+    ),
 )
 
 # The ONLY knowledgebase write path the serving role gets (engine/knowledge_sync.py).

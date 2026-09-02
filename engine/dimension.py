@@ -1,9 +1,8 @@
-"""DimensionModel — the /api/dimension analyze model on the TRAINED taxonomy encoder (qwen_lora +
-RelationalModel), reading the TAXONOMY named dims: the per-column/per-cell readout fires the Wikidata
-taxonomy nodes (geographical_feature -> ... -> urban_settlement -> city). Per-dim thresholds come from the
-anchor head (anchor_assignment.npz, Youden-J calibrated ~0.05 where the taxonomy dims fire — a 0.5 cut would
-show nothing), OVERRIDDEN by thresholds calibrated on the trained model (dim_thresholds.json) where present.
-Inherits analyze() from the shared readout; only the loader + _salient_evo differ.
+"""Compatibility analytics plus the active generalized Schema.org interpretation.
+
+The old relational readout remains available for the per-cell evolution UI. It is not
+the production ontology router. ``schema_org`` is produced by the same URI-indexed,
+calibrated property head used by :mod:`engine.router`.
 """
 from __future__ import annotations
 import json
@@ -61,3 +60,21 @@ class DimensionModel(EncoderQuery):
         salient = sorted(set(fired) | {amax})
         return [{nm: round(float(min(1.0, max(0.0, layers[L][ui][self.sid[nm]]))), 3) for nm in salient}
                 for L in range(self.nL)]
+
+    def _schema_interpreter(self):
+        interpreter = self.__dict__.get("_schema_interp")
+        if interpreter is None:
+            from engine.schema_model import SchemaInterpreter
+            interpreter = SchemaInterpreter(shared=(self.qwen, self.tok))
+            self._schema_interp = interpreter
+        return interpreter
+
+    def analyze(self, table, max_rows=24, table_unit=False):
+        """Return compatibility evolution and the active Schema.org class decode."""
+        result = super().analyze(table, max_rows=max_rows, table_unit=table_unit)
+        bounded = {**table, "rows": list(table.get("rows") or ())[:max_rows]}
+        result["schema_org"] = self._schema_interpreter().interpret_table(bounded)
+        result["model"] = (
+            "generalized Schema.org v30 named-property head; legacy per-cell evolution retained for compatibility"
+        )
+        return result

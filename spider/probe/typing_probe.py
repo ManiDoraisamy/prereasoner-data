@@ -68,7 +68,7 @@ def main():
     dbids = sorted({e["db_id"] for e in dev})
     cols = sample_columns(args.dbs, dbids, per_db=args.per_db)
 
-    print(f"loading Router (Qwen LoRA + relational readout, CPU)...", flush=True)
+    print("loading Router (Qwen LoRA + relational readout, CPU)...", flush=True)
     from engine.router import Router
     r = Router()
     print(f"world_leaves={r.world_leaves}. probing {len(cols)} columns\n", flush=True)

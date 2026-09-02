@@ -16,10 +16,28 @@ from training.schema_org.paths import CORPUS_PATH, MANIFEST_PATH, experiment_dir
 SIGNATURES_NAME = "schema_class_signatures.json"
 MIN_TRAIN = 25
 MIN_VALIDATION = 5
-MIN_TEST = 5
 MIN_PROPERTY_COUNT = 5
 MIN_PROPERTY_FREQUENCY = 0.10
 MIN_LIFT = 1.25
+
+
+def _class_data_ready(n_train: int, n_validation: int, candidates, real_sources) -> bool:
+    """Determine calibration eligibility without observing the test split."""
+    return (
+        n_train >= MIN_TRAIN
+        and n_validation >= MIN_VALIDATION
+        and len(candidates) >= 2
+        and bool(real_sources)
+    )
+
+
+def _real_selection_sources(source_counts) -> list[str]:
+    """Return non-template sources observed before the untouched test split."""
+    return sorted(
+        source for source, splits in source_counts.items()
+        if source != "product_templates"
+        and (splits.get("train", 0) or splits.get("validation", 0))
+    )
 
 
 def build(*, corpus_path: str | Path = CORPUS_PATH,
@@ -29,6 +47,7 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
     instances = list(read_jsonl(corpus_path))
     split_counts = defaultdict(Counter)
     source_counts = defaultdict(Counter)
+    source_split_counts = defaultdict(lambda: defaultdict(Counter))
     class_property = defaultdict(Counter)
     global_property = Counter()
     train_instances = 0
@@ -36,6 +55,7 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
         for class_uri in item.classes:
             split_counts[class_uri][item.split] += 1
             source_counts[class_uri][item.source] += 1
+            source_split_counts[class_uri][item.source][item.split] += 1
             if item.split == "train":
                 class_property[class_uri].update(item.properties)
         if item.split == "train":
@@ -63,11 +83,10 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
                     "count": count,
                 })
         candidates.sort(key=lambda row: (-row["weight"], row["property"]))
-        real_sources = sorted(source for source in source_counts[uri]
-                              if source != "product_templates")
-        data_ready = (
-            n_train >= MIN_TRAIN and support["validation"] >= MIN_VALIDATION
-            and support["test"] >= MIN_TEST and len(candidates) >= 2 and bool(real_sources)
+        real_sources = _real_selection_sources(source_split_counts[uri])
+        # Test is report-only. It must not decide which classes reach calibration.
+        data_ready = _class_data_ready(
+            n_train, support["validation"], candidates, real_sources,
         )
         classes.append({
             "uri": uri, "name": schema_class.name,
@@ -97,7 +116,7 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
         "corpus_sha256": corpus_manifest["corpus"]["sha256"],
         "gates": {
             "min_train": MIN_TRAIN, "min_validation": MIN_VALIDATION,
-            "min_test": MIN_TEST, "min_property_count": MIN_PROPERTY_COUNT,
+            "min_property_count": MIN_PROPERTY_COUNT,
             "min_property_frequency": MIN_PROPERTY_FREQUENCY, "min_lift": MIN_LIFT,
         },
         "classes": classes,

@@ -11,7 +11,12 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from engine.sql_profile import SCHEMA_ROLES, SQLProfile, canonical_name, profile_query
+from engine.sql_profile import (  # noqa: F401 - compatibility exports used by tests and callers
+    SCHEMA_ROLES,
+    SQLProfile,
+    canonical_name,
+    profile_query,
+)
 
 try:
     from .hardness import AGG_OPS, UNIT_OPS, WHERE_OPS

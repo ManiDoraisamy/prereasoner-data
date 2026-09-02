@@ -346,7 +346,9 @@ class ComposedKnowledgeQuery:
             return False
         va, vb = a["rows"][0][0], b["rows"][0][0]
         try:
-            return abs(float(va) - float(vb)) < 1e-6
+            return parse_decimal(va, enforce_input_bounds=False) == parse_decimal(
+                vb, enforce_input_bounds=False,
+            )
         except (TypeError, ValueError):
             return str(va) == str(vb)
 
@@ -440,3 +442,4 @@ class ComposedKnowledgeQuery:
                 print("view re-expression failed, keeping delegate:", e, flush=True)
                 traceback.print_exc()
         return deleg
+from engine.numeric import parse_decimal

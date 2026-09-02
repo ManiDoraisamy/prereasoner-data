@@ -37,6 +37,7 @@ from engine.sql_expansion import (
     unique_predicates as _unique_predicates,
 )
 from engine.sql_candidate import ScoredQuery
+from engine.numeric import parse_decimal
 
 
 _MAX_CUES = frozenset({
@@ -750,7 +751,7 @@ def _observed_numeric(values: Sequence[object]) -> bool:
     numeric = 0
     for value in observed:
         try:
-            float(str(value).replace(",", ""))
+            parse_decimal(value)
             numeric += 1
         except ValueError:
             pass

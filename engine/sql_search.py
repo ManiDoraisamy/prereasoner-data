@@ -29,6 +29,7 @@ from engine.sql_ast import (
     render_query,
     validate_query,
 )
+from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph
@@ -951,9 +952,9 @@ def _column_link_positions(
     return qualified
 
 
-def _number(value: str) -> int | float:
+def _number(value: str):
     cleaned = value.replace(",", "")
-    return float(cleaned) if "." in cleaned else int(cleaned)
+    return parse_decimal(cleaned, enforce_input_bounds=False) if "." in cleaned else int(cleaned)
 
 
 def _date_year_boundary(cue: str, year: int) -> tuple[str, str]:

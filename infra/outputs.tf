@@ -3,6 +3,11 @@ output "service_url" {
   value       = google_cloud_run_v2_service.api.uri
 }
 
+output "runtime_service_account" {
+  description = "Service account used by the engine and release-smoke Cloud Run jobs."
+  value       = google_service_account.run.email
+}
+
 output "sql_connection_name" {
   description = "Cloud SQL connection name — use with cloud-sql-proxy for seeding, and as the /cloudsql/<...> unix-socket path."
   value       = google_sql_database_instance.world.connection_name

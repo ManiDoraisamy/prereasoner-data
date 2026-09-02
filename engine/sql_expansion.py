@@ -26,6 +26,7 @@ from engine.sql_ast import (
     and_predicates,
     render_query,
 )
+from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph
 
@@ -476,11 +477,11 @@ def explicit_order(question_tokens: tuple[str, ...]) -> bool:
     return bool(set(question_tokens) & {"order", "ordered", "sort", "sorted", "top", "bottom"})
 
 
-def parse_number(token: str) -> int | float | None:
+def parse_number(token: str):
     if token in WORD_NUMBERS:
         return WORD_NUMBERS[token]
     if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
-        return float(token) if "." in token else int(token)
+        return parse_decimal(token) if "." in token else int(token)
     return None
 
 

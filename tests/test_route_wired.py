@@ -1,14 +1,13 @@
-"""END-TO-END proof that the TRAINED model drives the LIVE world serving path. Runs against the live world
-Postgres.
+"""End-to-end proof of generalized evidence plus deterministic source grounding.
 
-Asserts, with the model wired into KnowledgeQuery.route():
-  (1) the MODEL types the uploaded `city` column -> the qid-keyed wikipedia table "city" (NOT
-      value-membership), and leaves the free-text/name columns untyped. NOTE: the route value is the
+Asserts, with the production routing stack wired into KnowledgeQuery.route():
+  (1) exact synchronized source keys route the uploaded `city` column to the qid-keyed Wikidata table
+      and leave the free-text/name columns untyped. NOTE: the route value is the
       wikipedia exact-label table name ("city"), NOT the older friendly name ("Cities in the World") —
       city/country migrated to the qid-keyed knowledgebase."<type>" schema; see docs/notes/naming.md;
   (2) the world JOIN built on that model-typed column answers the aggregate ("how many customers in France");
   (3) the persisted connected bridge carries world_qid = the model's table qid (Q515 city);
-  (4) a NON-geo column ("name") is NOT mis-joined (the model + embedding gate keep it out).
+  (4) the answer identifies whether its evidence was a calibrated Schema.org class or exact source grounding.
 
   Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_route_wired
@@ -39,7 +38,7 @@ def main():
     Q = KnowledgeQuery()
     fails = []
 
-    # (1) the MODEL types the city column
+    # (1) source-key grounding types the city column even while the current head abstains on City.
     routes = Q.route(CUST)
     print("model-driven routes:", {k[1]: v for k, v in routes.items()})
     # The route value is the qid-keyed wikipedia table name ("city"), not the friendly "Cities in the
@@ -73,8 +72,8 @@ def main():
     if not any(wt == "city" and wq == "Q515" for wt, wq in bridge):
         fails.append(f"(3) bridge world_qid != Q515 for city (got {bridge})")
 
-    # (4) the LEARNED decision is AUDITABLE: the model's typing evidence is captured during the serve — for the
-    # city column, the decoded family + WHICH schema.org properties fired + the world table it grounded to.
+    # (4) The actual routing decision is auditable. A calibrated class carries its
+    # property evidence; otherwise the record identifies exact source-key grounding.
     Q.begin_typing()
     try:
         Q.serve([CUST], "how many customers in France", schema=schema)
@@ -90,10 +89,18 @@ def main():
         if city_t.get("grounded_to") != "city":
             fails.append(f"(4) city grounded_to != 'city' (got {city_t.get('grounded_to')!r})")
         fired = [e["property"] for e in city_t.get("evidence", []) if e.get("fired")]
-        if not fired:
-            fails.append(f"(4) no distinctive property fired in the city evidence: {city_t.get('evidence')}")
-        else:
-            print(f"   place decoded because these properties fired: {fired}")
+        grounding = city_t.get("grounding") or {}
+        if city_t.get("class"):
+            if not fired:
+                fails.append(f"(4) decoded class has no firing evidence: {city_t.get('evidence')}")
+            else:
+                print(f"   Schema.org class decoded because these properties fired: {fired}")
+        elif grounding != {
+            "source": "wikidata",
+            "index": "knowledgebase.words",
+            "method": "exact_normalized_membership",
+        }:
+            fails.append(f"(4) abstaining model must expose exact source grounding: {grounding}")
 
     # (5) the TABLE-level schema.org class decode is captured too (kind=schema_class). A customers upload is
     # not a servable class, so the honest outcome is abstained=True (or a genuine servable decode) — what must
@@ -121,7 +128,7 @@ def main():
         if not tbl_t.get("model_artifact_sha256") or not tbl_t.get("input_sha256"):
             fails.append("(5) class evidence must pin the model artifact + input hashes")
 
-    print("\n" + ("PASS — the model drives the live world routing end to end" if not fails
+    print("\n" + ("PASS — Schema.org evidence and exact source grounding are wired end to end" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0
 

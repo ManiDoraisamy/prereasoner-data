@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,7 +117,9 @@ def test_privacy_is_a_published_route_not_a_request_dialog():
     assert "Anthropic" in privacy and "Google Cloud" in privacy
     for page in ("index.html", "reason.html", "knowledge.html", "picker.html", "chatui.html"):
         assert 'href="/privacy"' in _text(f"web/public/{page}")
-    client = _text("web/public/lib/workbook.js") + _text("web/public/chatui.html")
+    client = (_text("web/public/lib/workbook-reference.js")
+              + _text("web/public/lib/workbook-conversations.js")
+              + _text("web/public/lib/workbook.js") + _text("web/public/chatui.html"))
     assert "external_llm_consent" not in client
     assert not re.search(
         r"confirm\([^)]*(Anthropic|Claude|consent|local-only)", client, re.IGNORECASE
@@ -195,6 +198,104 @@ def test_documentation_has_one_status_entrypoint():
     assert "read-only" in marketing and "does not authorize changes" in marketing
 
 
+def test_runpod_training_is_an_owned_bounded_lease():
+    from training.tools import runpod_api
+
+    events = []
+
+    def fake_rest(method, path, body=None, timeout=90, key=None):
+        events.append((method, path))
+        if method == "POST":
+            return 201, {"id": "pod-1"}
+        if method == "GET":
+            return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1", "portMappings": {"22": 22}}
+        return 204, None
+
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.object(runpod_api, "STATE", Path(directory) / "active.json"), \
+            patch.object(runpod_api, "rest", side_effect=fake_rest), \
+            patch.object(runpod_api, "pubkey", return_value="ssh-ed25519 test"), \
+            patch.object(runpod_api.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 60)):
+        try:
+            runpod_api.run_lease(1, ["python", "train.py"])
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            raise AssertionError("training timeout was swallowed")
+        assert events[-1] == ("DELETE", "/pods/pod-1")
+        assert not runpod_api.STATE.exists()
+
+    assert not (ROOT / "training/data/pod_id.txt").exists()
+    source = _text("training/tools/runpod_api.py")
+    assert "finally:" in source and "--keep" in source and "max_minutes * 60" in source
+    assert '"terminateAfter"' in source
+
+
+def test_runpod_cleanup_failure_does_not_hide_training_failure():
+    from training.tools import runpod_api
+
+    def fake_rest(method, path, body=None, timeout=90, key=None):
+        if method == "POST":
+            return 201, {"id": "pod-2"}
+        if method == "GET":
+            return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1",
+                         "portMappings": {"22": 22}}
+        return 503, "provider unavailable"
+
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.object(runpod_api, "STATE", Path(directory) / "active.json"), \
+            patch.object(runpod_api, "rest", side_effect=fake_rest), \
+            patch.object(runpod_api, "pubkey", return_value="ssh-ed25519 test"), \
+            patch.object(runpod_api.time, "sleep"), \
+            patch.object(runpod_api.subprocess, "run", side_effect=subprocess.TimeoutExpired("ssh", 60)):
+        try:
+            runpod_api.run_lease(1, ["python", "train.py"])
+        except subprocess.TimeoutExpired:
+            pass
+        else:
+            raise AssertionError("cleanup failure masked or swallowed the training timeout")
+        assert runpod_api.STATE.exists(), "unconfirmed termination must retain recovery state"
+
+
+def test_cloud_build_context_is_git_archive_plus_manifested_weights():
+    from deploy.gcp.build_context import SOURCE_ALLOWLIST
+
+    source = _text("deploy/gcp/build_context.py")
+    assert '"archive", "--format=tar"' in source
+    assert "validate_weight_bundle" in source
+    assert 'for relative in manifest["files"]' in source
+    assert {"engine", "db", "regress", "mcp_server", "orchestrator"} <= set(SOURCE_ALLOWLIST)
+    assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
+    for ignore in (".venv/", "service-account*.json", "*.tfstate"):
+        assert ignore in _text(".gcloudignore")
+
+
+def test_schema_training_selection_never_reads_test_evidence():
+    from collections import Counter
+
+    from training.schema_org.signatures import _class_data_ready, _real_selection_sources
+    from training.schema_org.train_property_head import _training_properties
+
+    support = {
+        "train": Counter({"p": 25}),
+        "validation": Counter({"p": 5}),
+        "test": Counter(),
+    }
+    groups = {"p": {"validation": set(range(5)), "test": set()}}
+    assert _training_properties(("p",), support, groups) == ("p",)
+    support["test"]["p"] = 10_000
+    groups["p"]["test"] = set(range(10_000))
+    assert _training_properties(("p",), support, groups) == ("p",)
+    assert _class_data_ready(25, 5, [1, 2], ["publisher"])
+    sources = {"publisher": Counter({"test": 100}), "product_templates": Counter({"train": 100})}
+    assert _real_selection_sources(sources) == []
+    sources["publisher"]["validation"] = 1
+    assert _real_selection_sources(sources) == ["publisher"]
+    source = _text("training/schema_org/train_property_head.py")
+    assert '"selection_data": ("train", "validation")' in source
+    assert '"evaluation_data": ("test",)' in source
+
+
 TESTS = [
     test_public_artifact_boundary,
     test_public_weight_bundle_is_manifested_and_documented,
@@ -206,6 +307,10 @@ TESTS = [
     test_local_documentation_links_resolve,
     test_public_test_imports_do_not_require_model_stack,
     test_documentation_has_one_status_entrypoint,
+    test_runpod_training_is_an_owned_bounded_lease,
+    test_runpod_cleanup_failure_does_not_hide_training_failure,
+    test_cloud_build_context_is_git_archive_plus_manifested_weights,
+    test_schema_training_selection_never_reads_test_evidence,
 ]
 
 

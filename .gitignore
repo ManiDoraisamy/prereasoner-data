@@ -27,6 +27,7 @@ training/props/data/*
 # identity/provenance record the model meta and class signatures hash-reference.
 training/schema_org/data/*
 !training/schema_org/data/.gitkeep
+training/data/pod_id.txt
 !training/schema_org/data/semantic_manifest.json
 
 # Logs & local state

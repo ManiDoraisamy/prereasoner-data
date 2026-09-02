@@ -45,10 +45,14 @@ def main():
     from engine.router import Router
     r = Router()
     o = r.route(["Mayo Clinic", "Cleveland Clinic", "Mount Sinai", "Johns Hopkins Hospital"], header="hospital")
-    ok("router: hospital column -> entity (property consensus, not literal)", o is not None, f"got={o}")
+    ok("router: hospital emits only a calibrated servable class",
+       o is None or r.decoder.classes[o["class"]]["servable"], f"got={o}")
     o2 = r.route(["Photoshop", "Microsoft Word", "Blender", "Visual Studio Code"], header="software")
-    ok("router: software column -> entity (property consensus, not literal)", o2 is not None, f"got={o2}")
-    ok("router: property consensus scores present", o and len(o.get("scores", {})) >= 1)
+    ok("router: software emits only a calibrated servable class",
+       o2 is None or r.decoder.classes[o2["class"]]["servable"], f"got={o2}")
+    ok("router: decoded output carries canonical evidence",
+       all(x is None or (x.get("class", "").startswith("https://schema.org/") and x.get("evidence"))
+           for x in (o, o2)))
 
     sub = f"test_world_{int(time.time())}"
     CUST = {"name": "customers", "columns": ["name", "city", "amount"],

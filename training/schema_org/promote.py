@@ -19,6 +19,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import sys
 import tempfile
 
@@ -30,7 +31,8 @@ from engine.schema_org import load_contract
 from training.schema_org.paths import EXPERIMENTS_DIR, MANIFEST_PATH
 
 ARTIFACTS = ("schema_property_head.pt", "schema_property_model.json",
-             "schema_class_signatures.json")
+             "schema_class_signatures.json", "schema_training_manifest.json")
+_IMMUTABLE_REVISION = re.compile(r"[0-9a-f]{40,64}")
 
 
 def _sha256(path: Path) -> str:
@@ -54,6 +56,9 @@ def gate(candidate: Path) -> list[str]:
         return problems
     meta = json.loads((candidate / "schema_property_model.json").read_text(encoding="utf-8"))
     signatures = json.loads((candidate / "schema_class_signatures.json").read_text(encoding="utf-8"))
+    training_manifest = json.loads(
+        (candidate / "schema_training_manifest.json").read_text(encoding="utf-8")
+    )
     contract = load_contract()
     corpus_manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
@@ -85,6 +90,34 @@ def gate(candidate: Path) -> list[str]:
         problems.append("property model metadata artifact hash is invalid")
     if not _valid_json_identity(signatures):
         problems.append("class signature artifact hash is invalid")
+    if not _valid_json_identity(training_manifest):
+        problems.append("training artifact manifest hash is invalid")
+    generator = training_manifest.get("generator") or {}
+    if not generator.get("worktree_clean"):
+        problems.append("training corpus was generated from a dirty worktree")
+    if not _IMMUTABLE_REVISION.fullmatch(str(generator.get("repository_commit", ""))):
+        problems.append("training manifest lacks an immutable generator commit")
+    if generator != (corpus_manifest.get("generator") or {}):
+        problems.append("training manifest does not preserve the committed generator identity")
+    if training_manifest.get("source_manifest") != corpus_manifest.get("source_manifest"):
+        problems.append("training manifest does not preserve source-release identities")
+    if training_manifest.get("split_policy") != corpus_manifest.get("split_policy"):
+        problems.append("training manifest does not preserve the corpus split policy")
+    if (training_manifest.get("training") or {}).get("selection_data") != ["train", "validation"]:
+        problems.append("training selection was not isolated from test data")
+    expected_artifacts = training_manifest.get("artifacts") or {}
+    for name in ARTIFACTS[:-1]:
+        if expected_artifacts.get(name) != _sha256(candidate / name):
+            problems.append(f"training manifest does not pin {name}")
+    if (training_manifest.get("corpus") or {}).get("sha256") != meta.get("corpus_sha256"):
+        problems.append("training manifest and property model describe different corpora")
+    model_identity = training_manifest.get("model") or {}
+    if (
+        model_identity.get("base_model") != meta.get("base_model")
+        or model_identity.get("base_model_revision") != meta.get("base_model_revision")
+        or model_identity.get("encoder_artifact_sha256") != meta.get("encoder_artifact_sha256")
+    ):
+        problems.append("training manifest and property model identities differ")
     if not sum(1 for row in signatures["classes"] if row.get("servable")):
         problems.append("no class is servable — promoting this would abstain on every table")
     if not meta.get("trained_properties"):
@@ -139,6 +172,21 @@ def _atomic_json(path: Path, value: dict) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _verify_published_head(repository: str, revision: str, expected_sha256: str) -> None:
+    """Prove the exact candidate is downloadable before publishing its runtime manifest."""
+    if not _IMMUTABLE_REVISION.fullmatch(revision):
+        raise ValueError("published revision must be an immutable 40-64 character commit hash")
+    from huggingface_hub import hf_hub_download
+
+    downloaded = Path(hf_hub_download(
+        repo_id=repository,
+        filename="schema_property_head.pt",
+        revision=revision,
+    ))
+    if sha256_file(downloaded) != expected_sha256:
+        raise ValueError("published Schema.org head does not match the promoted candidate")
+
+
 def promote(candidate: Path, *, revision: str | None, local_only: bool) -> None:
     if bool(revision) == local_only:
         raise ValueError("provide exactly one immutable revision or local_only=True")
@@ -153,9 +201,18 @@ def promote(candidate: Path, *, revision: str | None, local_only: bool) -> None:
     manifest["files"]["schema_property_head.pt"] = sha256_file(
         candidate / "schema_property_head.pt"
     )
-    for name in ("schema_property_model.json", "schema_class_signatures.json"):
-        if name not in manifest.get("committed_artifacts", {}):
+    if revision:
+        _verify_published_head(
+            manifest.get("repository", ""), revision,
+            manifest["files"]["schema_property_head.pt"],
+        )
+    for name in ("schema_property_model.json", "schema_class_signatures.json",
+                 "schema_training_manifest.json"):
+        if name not in manifest.get("committed_artifacts", {}) and name != "schema_training_manifest.json":
             raise ValueError(f"manifest does not own committed artifact {name}")
+        manifest.setdefault("committed_artifacts", {}).setdefault(name, {
+            "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
+        })
         manifest["committed_artifacts"][name]["sha256"] = sha256_file(candidate / name)
     manifest["revision"] = revision
     if local_only:

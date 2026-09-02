@@ -13,7 +13,9 @@ from engine.enrichment.registry import Activation, PostgresStorage, REGISTRY
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 _WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
-_CHAT_TABLES = ("user_profile", "conversation", "user_conversation")
+_CHAT_TABLES = (
+    "user_profile", "conversation", "user_conversation", "request_usage", "request_lease",
+)
 
 # The ONLY knowledgebase write path serving gets: the admin-owned SECURITY DEFINER
 # lazy-fill functions installed by db.sync.app_migrations (engine/knowledge_sync.py

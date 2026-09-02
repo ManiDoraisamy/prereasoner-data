@@ -5,7 +5,13 @@ const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+const referenceSource = fs.readFileSync(
+  path.join(__dirname, '..', 'public', 'lib', 'workbook-reference.js'), 'utf8');
+const conversationSource = fs.readFileSync(
+  path.join(__dirname, '..', 'public', 'lib', 'workbook-conversations.js'), 'utf8');
+const workbookSource = fs.readFileSync(
+  path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+const source = referenceSource + '\n' + conversationSource + '\n' + workbookSource;
 assert(!source.includes("world_join:'wikipedia lookup'"),
   'shared-data joins must not label non-Wikidata sources such as ECB as Wikipedia');
 assert(source.includes("world_join:'reference lookup'"),
@@ -114,7 +120,10 @@ const checks = `
   } catch (error) { __finish(error); }
 }());`;
 
-vm.runInContext(source + checks, context, {filename: 'workbook.js'});
+// Execute as three distinct classic scripts, matching the browser's real loading model.
+vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});
+vm.runInContext(conversationSource, context, {filename: 'workbook-conversations.js'});
+vm.runInContext(workbookSource + checks, context, {filename: 'workbook.js'});
 
 done.then(() => console.log('workbook reference state: 11 passed, 0 failed'))
   .catch(error => { console.error(error.stack || error); process.exitCode = 1; });

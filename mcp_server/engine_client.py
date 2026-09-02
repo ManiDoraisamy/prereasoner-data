@@ -154,5 +154,17 @@ def call_describe(tables: list[dict], *, base_url: str | None = None,
                         top = max(last.items(), key=lambda kv: kv[1] if isinstance(kv[1], (int, float)) else -1)
                         top = {"dim": top[0], "score": top[1]}
                 cols.append({"name": c.get("name"), "reads_as": top})
-            out.append({"table": name, "columns": cols, "model": j.get("model")})
+            schema = j.get("schema_org") or {}
+            out.append({
+                "table": name,
+                "columns": cols,
+                "schema_org": {
+                    "classes": schema.get("classes") or [],
+                    "properties": [p for p in (schema.get("properties") or []) if p.get("fired")],
+                    "abstained": bool(schema.get("abstained", True)),
+                    "ontology_version": schema.get("ontology_version"),
+                    "model_artifact_sha256": schema.get("model_artifact_sha256"),
+                },
+                "model": j.get("model"),
+            })
     return {"tables": out}

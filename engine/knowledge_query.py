@@ -14,8 +14,9 @@ This realizes the unified-encoder objective in production (not just /api/dimensi
     The predicate vector and the stored column vectors come from the SAME unified encoder (EncoderQuery._encode),
     so `<=>` is a valid same-space cosine — the reason the encoder had to be unified first.
 
-Class graph:  KnowledgeQuery(EncoderQuery, EntityQuery)
-  MRO = [KnowledgeQuery, EncoderQuery, EntityQuery, RoutedQuery, PgQuery, KnowledgeTableQuery, TableQuery, …] so:
+Class graph:  KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery)
+  The bridge mixin owns persistence and hybrid pgvector execution; this module owns routing, planning,
+  clarification, and request orchestration.
     - read_op_all / read_op_model / _is_id  resolve to EncoderQuery (the metric-space operator), NOT keywords.
     - serve / meaning_filter / _world_joins / route / _resolve  resolve to EntityQuery (the world machinery + bge).
     - schema / _encode / _layers  resolve to TableQuery, but run on the UNIFIED qwen (overlaid in __init__).
@@ -26,23 +27,17 @@ import os
 import numpy as np
 
 from engine.config import DATA_DIR, kb_model_route_enabled
-from engine.tables import qident, qlit
-from engine.knowledge_tables import KnowledgeTableQuery
-from engine.pg import _pg, _PGTYPE
+from engine.tables import qlit
 from engine.entities import EntityQuery, WORLD_TABLE_TYPE, TYPE_TO_FRIENDLY
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 from engine.encoder_overlay import EncoderQuery, load_encoder
+from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.bridge import STOP
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
 )
 from engine.calculations import calculation_clarify
-
-
-def _norm_vec(v):
-    v = np.asarray(v, np.float32)
-    n = np.linalg.norm(v)
-    return v / n if n > 1e-9 else v
+from engine.numeric import parse_decimal, wire_decimal
 
 
 def _cos(a, b):
@@ -52,12 +47,12 @@ def _cos(a, b):
 
 def _is_num(v):
     try:
-        float(str(v).replace(",", "").lstrip("$").rstrip("%")); return True
+        parse_decimal(v); return True
     except (ValueError, TypeError):
         return False
 
 
-class KnowledgeQuery(EncoderQuery, EntityQuery):
+class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery):
     """Live /api/knowledge served by the unified encoder: bge for connected entity resolution, the unified encoder
     for the anchored readout + operator + the unconnected free-text bridge. Persists the two bridge tables per
     user and answers the hybrid structured+semantic query; delegates aggregates / plain world joins to
@@ -77,32 +72,22 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
             for a in self._SHARE:
                 setattr(self.q11, a, getattr(self, a))
 
-    # ---------------- MODEL-DRIVEN world-table routing ----------------
-    # router leaf -> the world `type` (and thence friendly table + TYPE_QID). The TRAINED model types the
-    # column; value-membership routing is kept only as a coverage fallback for columns the model leaves untyped.
-    _LEAF_WTYPE = {"city": "city", "country": "country", "u_s_state": "state"}
-
-    GROUND_FRAC = 0.8            # a model-typed column joins only if >=80% of cells GROUND. The trained model
-                                 # proposes the TYPE but CANNOT reliably separate a city column from a NAME column
-                                 # (it fires the city dim even HIGHER for short first-names — Ada/Bo/Sam are real cities),
-                                 # so grounding is the decisive gate here: a real city column grounds ~100%, a name
-                                 # column grounds ~50-75%. 0.8 (the value-membership bar) cleanly separates them. The
-                                 # model still genuinely drives country/u_s_state typing (clean model separation).
+    # ---------------- Schema.org evidence + deterministic source grounding ----------------
+    GROUND_FRAC = 0.8
 
     def _router(self):
-        """The typing router REUSES the already-loaded encoder+readout (self.qwen/tok/model) — NOT a second
-        model. So 'everything goes through the one model' literally: one Qwen, used for operator, bridge, AND typing."""
+        """Return the generalized Schema.org router, reusing the serving encoder."""
         r = getattr(self, "_column_router", None)
         if r is None:
             from engine.router import Router
-            r = self._column_router = Router(shared=(self.qwen, self.tok, self.model))
+            r = self._column_router = Router(
+                shared=(self.qwen, self.tok, self.model),
+                interpreter=self._schema_interpreter(),
+            )
         return r
 
     def _schema_interpreter(self):
-        """The Schema.org class interpreter (engine.schema_model) also REUSES the one loaded Qwen. It decodes a
-        TABLE to its servable schema.org classes through named property firing — pure evidence for the answer's
-        typing record, never a serving dependency. A load failure (missing/mismatched artifacts) latches to
-        disabled LOUDLY so serving continues without class evidence rather than hard-failing."""
+        """Load the Schema.org interpreter once; source-grounded routing survives a load failure."""
         si = self.__dict__.get("_schema_interp", None)
         if si is None:
             try:
@@ -115,10 +100,7 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         return si or None
 
     def _grounds(self, cells, wtype):
-        """does the column GROUND? i.e. do enough of its cells resolve to real `wtype` entities? Cheap exact-
-        normalized membership over knowledgebase."words" (the bridge does the fuzzy remainder later). The MODEL decides
-        the TYPE; this only confirms the cells belong to the world — so a loose city false-positive on a name
-        column (cells don't ground) is dropped (null), not joined. Returns True iff grounded."""
+        """Return whether enough distinct cells have exact keys for ``wtype``."""
         norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
         if len(norms) < 2:
             return False
@@ -157,16 +139,12 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
                 buf.append(rec)
 
     def route(self, table):
-        """MODEL-DRIVEN routing — the TRAINED model types each string column to its world table, and THAT drives
-        the world join + the world_qid FK (NOT value-membership). The model decides the TYPE; a typed column
-        only JOINS if its cells GROUND to that type (_grounds) — so a loose false-positive (name->city) is
-        dropped because the names don't resolve, never a wrong answer. super()'s value-membership routing fills
-        ONLY columns the model leaves untyped (coverage). Any model failure (or KB_MODEL_ROUTE=0) falls back
-        to pure value-membership so the live demo can never hard-break.
+        """Route columns with calibrated Schema.org evidence plus exact source keys.
 
-        As a SIDE-EFFECT (never affecting the routes it returns) it records the model's per-property TYPING
-        EVIDENCE — which schema.org properties fired to decode each column's family, and whether that family
-        grounded to a world table — so the LEARNED world-grounding decision is auditable (take_typing)."""
+        The model may propose a servable class, but a world join is authorized only by
+        source-key grounding. The inherited exact membership route supplies coverage
+        when the model abstains. Captured evidence is the computation actually used.
+        """
         sig = self._table_sig(table)
         # ONE cache holding (routes, typing) together. Two dicts keyed by the same signature had to be
         # written, read and purged in lockstep at three sites by discipline alone; any future writer that
@@ -191,15 +169,19 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
                     if not o:
                         continue
                     grounded = None
-                    for wtype in ("city", "country", "state"):             # GEO: an entity column that GROUNDS to a geo type
-                        friendly = TYPE_TO_FRIENDLY.get(wtype)             # (the family primed entity-vs-literal; grounding is decisive)
-                        if friendly in self.words and self._grounds(cells, wtype):
-                            routes[(table["name"], col)] = friendly
-                            grounded = friendly
-                            break
+                    if o["geo"]:
+                        for wtype in ("city", "country", "state"):
+                            friendly = TYPE_TO_FRIENDLY.get(wtype)
+                            if friendly in self.words and self._grounds(cells, wtype):
+                                routes[(table["name"], col)] = friendly
+                                grounded = friendly
+                                break
                     typing.append({"table": table["name"], "column": col, "family": o["family"],
                                    "frac": o["frac"], "geo": o["geo"], "grounded_to": grounded,
-                                   "evidence": o.get("evidence", [])})     # the model's auditable per-property 'why'
+                                   "class": o.get("class"), "class_name": o.get("class_name"),
+                                   "ontology_version": o.get("ontology_version"),
+                                   "model_artifact_sha256": o.get("model_artifact_sha256"),
+                                   "evidence": o.get("evidence", [])})
             except Exception as e:                                         # NEVER silent: log loudly so a degradation
                 import traceback                                           # to value-membership is visible in the logs
                 print(f"[knowledge_query] !! MODEL ROUTING FAILED -> value-membership fallback: {e!r}", flush=True)
@@ -218,8 +200,31 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
                                    "input_sha256": rep["input_sha256"]})
                 except Exception as e:                                     # noqa: BLE001 — evidence-only, never fatal
                     print(f"[knowledge_query] schema class evidence failed (skipped): {e!r}", flush=True)
-        for k, v in super().route(table).items():
-            routes.setdefault(k, v)                                        # coverage fallback (never override the model)
+        # This is deliberately the exact source-key helper, not ``super().route``:
+        # the latter also invokes the superseded 71-coordinate router. Production
+        # fallback is source evidence only; unsupported Schema.org classes abstain.
+        source_routes = self._value_membership_routes(table)
+        for key, world_table in source_routes.items():
+            routes.setdefault(key, world_table)
+            record = next((item for item in typing
+                           if (item["table"], item["column"]) == key), None)
+            grounding = {
+                "source": "wikidata",
+                "index": "knowledgebase.words",
+                "method": "exact_normalized_membership",
+            }
+            if record is not None:
+                record["grounded_to"] = world_table
+                record["grounding"] = grounding
+            else:
+                typing.append({
+                    "table": key[0], "column": key[1], "kind": "source_grounding",
+                    "family": "place", "frac": None, "geo": True,
+                    "grounded_to": world_table, "grounding": grounding,
+                    "class": None, "class_name": None,
+                    "ontology_version": None, "model_artifact_sha256": None,
+                    "evidence": [],
+                })
         if len(cache) > 100:
             cache.clear()
         cache[sig] = (dict(routes), typing)
@@ -275,31 +280,47 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         return m
 
     def _nongeo_plan(self, norm, question):
-        """If a string column types (THROUGH the trained model) to a non-geo leaf that HAS a faithful world table
-        + a country filter the question names + the question naming that type, return the plan. The MODEL drives
-        it: Router.route non-geo leaves by their DIRECT leaf-dim firing (the path-decay router mis-picks because
-        broad ancestors like 'organization' are shared — a hospital column fires the hospital dim 0.197 >
-        street/sports_team); Wikidata selects by the DIRECT leaf dim. No column-header heuristic."""
-        if not kb_model_route_enabled():
-            return None
+        """Plan a non-geo world join from calibrated evidence and exact source keys.
+
+        Schema.org evidence is captured when available. The actual fine type is
+        established independently by a majority of exact ``knowledgebase.words``
+        matches and an explicit type mention in the question. Thus model abstention
+        cannot remove deterministic coverage, and model output cannot invent a join.
+        """
         import re as _re
         cr = self._resolve(question, "country")
         if not cr:                                                        # only the country-filtered non-geo agg for now
             return None
         ql = question.lower()
-        try:
-            r = self._router()
-        except Exception:                                                # noqa: BLE001
-            return None
+        r = None
+        if kb_model_route_enabled():
+            try:
+                r = self._router()
+            except Exception as exc:                                     # noqa: BLE001
+                print(f"[knowledge_query] schema router unavailable -> source grounding only: {exc!r}", flush=True)
         cur = self._rconn().cursor()
         for t in norm:
             for ci, col in enumerate(t["columns"]):
                 cells = [str(rw[ci]) for rw in t["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
                 if len(cells) < 3:                                        # entity names are long but model+grounding gate
                     continue
-                o = r.route(cells, header=col)                            # property consensus (family) — None=abstain
-                if not o:                                                 # any ENTITY column; _dominant_nongeo_type excludes
-                    continue                                              # the geo types, so a city column finds nothing here
+                if r is not None:
+                    try:
+                        evidence = r.route(cells, header=col)
+                    except Exception as exc:                              # noqa: BLE001
+                        print(f"[knowledge_query] column evidence unavailable for {col!r}: {exc!r}", flush=True)
+                        evidence = None
+                    if evidence:
+                        self._emit_typing([{
+                            "table": t["name"], "column": col,
+                            "family": evidence["family"], "frac": evidence["frac"],
+                            "geo": evidence["geo"], "grounded_to": None,
+                            "class": evidence.get("class"),
+                            "class_name": evidence.get("class_name"),
+                            "ontology_version": evidence.get("ontology_version"),
+                            "model_artifact_sha256": evidence.get("model_artifact_sha256"),
+                            "evidence": evidence.get("evidence", []),
+                        }])
                 wl, tqid = self._dominant_nongeo_type(cells)             # FINE type = dominant knowledgebase.words type the cells resolve to
                 if not (wl and tqid):
                     continue
@@ -316,9 +337,10 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
 
     def _dominant_nongeo_type(self, cells):
         """FINE type of a non-geo entity column = the dominant knowledgebase.words `type` its cells resolve to (exact
-        norm; excludes the geo types). The model gives the coarse FAMILY; the fine type + its qid come from RESOLUTION
-        (the two-tier design). Returns (exact-Wikidata-label, type-qid) or (None, None). Requires >=GROUND_FRAC of the
-        cells to resolve to ONE non-geo type in words."""
+        norm; excludes the geo types). The fine type and QID come from source resolution, independently of the
+        learned class evidence. Returns (exact-Wikidata-label, type-qid) or (None, None). This source-grounded
+        fallback is permitted even when the
+        Schema.org model abstains; it cannot invent a type because every accepted cell matches a stored source key."""
         norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
         if len(norms) < 2:
             return None, None
@@ -326,9 +348,8 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         cur.execute("SELECT type, COUNT(DISTINCT norm) FROM knowledgebase.\"words\" WHERE norm = ANY(%s) "
                     "AND type NOT IN ('city','country','state','type') GROUP BY type ORDER BY 2 DESC LIMIT 1", (norms,))
         row = cur.fetchone()
-        # >=50% of the DISTINCT cells resolve to ONE non-geo type. The property router already gated entity-vs-literal
-        # (a literal column abstains upstream), so a plain majority is the right bar here — a hospital column with a
-        # few unresolvable/foreign entries (a German hospital absent from words) still types as `hospital`.
+        # >=50% of the DISTINCT cells must resolve to ONE non-geo type. The question must separately name that type,
+        # so this deterministic fallback remains fail-closed when Schema.org classification abstains.
         if not row or row[1] < max(2, 0.5 * len(norms)):
             return None, None
         wl = row[0]
@@ -362,7 +383,7 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
             mv = None
             if mi is not None and mi < len(rw):
                 try:
-                    mv = float(str(rw[mi]).replace(",", "").lstrip("$").rstrip("%"))
+                    mv = parse_decimal(rw[mi])
                 except (ValueError, TypeError):
                     mv = None
             pairs.append((wq, mv))
@@ -384,11 +405,12 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
         if op == "COUNT":
             val = len(hit)
         elif op == "SUM":
-            val = sum(mv for _wq, mv in hit if mv is not None)
+            val = sum((mv for _wq, mv in hit if mv is not None), start=parse_decimal(0))
         else:                                                             # AVG
             mvs = [mv for _wq, mv in hit if mv is not None]
-            val = round(sum(mvs) / len(mvs), 2) if mvs else 0
-        val = int(val) if isinstance(val, float) and val == int(val) else val
+            val = sum(mvs, start=parse_decimal(0)) / len(mvs) if mvs else parse_decimal(0)
+        if not isinstance(val, int):
+            val = wire_decimal(val)
         disp = f'{op}({measure})' if measure else 'COUNT(*)'
         sql = (f'SELECT {disp} FROM "{t["name"]}" u JOIN knowledgebase."{wl}" w ON w.qid = resolve(u."{plan["col"]}") '
                f'WHERE w."country" = {qlit(country)}')
@@ -437,172 +459,6 @@ class KnowledgeQuery(EncoderQuery, EntityQuery):
             drop |= set(str(s).lower().split())
         words = "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in question).split()
         return " ".join(w for w in words if w not in STOP and w not in drop).strip()
-
-    # ---------------- the PERSISTED connected bridge ("<t> connected to wikipedia") ----------------
-    # Value-keyed (one row per resolved column value). BOTH the aggregate world join (via the _city/_cell bridge
-    # overrides below, which feed the inherited _world_joins) and the hybrid country filter read THIS table.
-    # So there is NO inline-VALUES bridge anywhere — every world query joins a real, inspectable bridge table.
-    CONN_DDL = ('("column" TEXT, "value" TEXT, "world_type" TEXT, "world_key" TEXT, "country" TEXT, "world_qid" TEXT)')
-    # the FK to the qid of the WIKIDATA TABLE/type this column belongs to (world_qid); world_key stays the resolved
-    # INSTANCE key (qid for city, canonical otherwise) that the join uses. The expanded world.types is keyed
-    # by these same qids (Q515 city -> Cities, Q6256 country -> Countries, ...).
-    TYPE_QID = {"city": "Q515", "country": "Q6256", "state": "Q35657", "continent": "Q5107", "element": "Q11344"}
-
-    def _conn_bridge_name(self, mtab):
-        return f"{mtab} connected to wikipedia"
-
-    def _materialize(self, inner_sql):
-        """Run the resolution subquery ONCE to get the resolved (cell -> world key) pairs, so we can persist
-        them as a table instead of inlining them as VALUES. inner_sql already has its literals inlined (no params)."""
-        cur = self._rconn().cursor()
-        cur.execute(f"SELECT b.cell, b.wk FROM ({inner_sql}) AS b(cell, wk)")
-        return cur.fetchall()
-
-    def _persist_connected(self, mtab, route_col, wtype, pairs):
-        """Persist resolved FKs into "<schema>"."<mtab> connected to wikipedia" (refresh this column) and return the
-        SELECT the world join reads — so the inherited _world_joins references the PERSISTED table, not inline VALUES.
-        `pairs`: [(cell_value, world_key)]; country is looked up from world.words by key (qid for city, canonical
-        otherwise) for the hybrid country filter + interpretability."""
-        schema = self._pg_schema
-        bn = self._conn_bridge_name(mtab)
-        cur = self._rconn().cursor()
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS {qident(schema)}')
-        cur.execute(f'CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(bn)} {self.CONN_DDL}')
-        # migrate old 5-col bridges -> 6 cols. ADD COLUMN takes an ACCESS EXCLUSIVE lock EVERY call even when the
-        # column already exists (IF NOT EXISTS still grabs the lock to check), so guard it behind a cheap catalog
-        # read: only run the migration when world_qid is genuinely absent. Steady state (column present, which the
-        # CONN_DDL above already creates for fresh tables) takes NO exclusive lock -> no relation-lock contention
-        # between concurrent same-sub instances.
-        cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema=%s AND table_name=%s "
-                    "AND column_name='world_qid'", (schema, bn))
-        if not cur.fetchone():
-            cur.execute(f'ALTER TABLE {qident(schema)}.{qident(bn)} ADD COLUMN IF NOT EXISTS "world_qid" TEXT')
-        cur.execute(f'DELETE FROM {qident(schema)}.{qident(bn)} WHERE "column" = %s', (route_col,))
-        keys = sorted({k for _, k in pairs if k})
-        country = {}
-        if keys and wtype == "city":
-            cur.execute('SELECT qid, canon_country FROM knowledgebase."words" WHERE type=\'city\' AND qid = ANY(%s)', (keys,))
-            for q, cc in cur.fetchall():                      # words has DUPLICATE rows per qid, some with a NULL
-                if cc and not country.get(q):                 # canon_country; keep the first NON-NULL so a real
-                    country[q] = cc                           # country isn't clobbered by a later NULL row (last-wins)
-        elif keys:
-            cur.execute('SELECT canonical, canon_country FROM knowledgebase."words" WHERE type=%s AND canonical = ANY(%s)',
-                        (wtype, keys))
-            country = {c: (cc or c) for c, cc in cur.fetchall()}
-            if wtype == "country":
-                for k in keys:
-                    country.setdefault(k, k)
-        tqid = self.TYPE_QID.get(wtype)                                   # qid of the wikidata TABLE this column belongs to
-        seen, rows = set(), []
-        for cell, key in pairs:
-            if key and (cell, key) not in seen:
-                seen.add((cell, key)); rows.append((route_col, cell, wtype, key, country.get(key), tqid))
-        if rows:
-            cur.executemany(f'INSERT INTO {qident(schema)}.{qident(bn)} VALUES (%s,%s,%s,%s,%s,%s)', rows)
-        self._rconn().commit()
-        # Stream the cell→world lookup LIVE so the user watches "Paris → Q90 · France" resolve BEFORE the view stack
-        # renders — this runs INSIDE the delegate (ahead of the engine's views). Best-effort + capped (a big upload
-        # can't spam RTDB); the RTDB key can't hold . $ # [ ] / so the cell is sanitized for the key only.
-        try:
-            from engine.trace import ctx_emit
-            _bad = str.maketrans({".": "_", "$": "_", "#": "_", "[": "_", "]": "_", "/": "_"})
-            rmap, seen2 = {}, set()
-            for _rc, _cell, _wt, _key, _cc, _tq in rows:
-                c = str(_cell)
-                if c in seen2:
-                    continue
-                seen2.add(c)
-                rmap[c.translate(_bad)[:120] or "_"] = (f"{_key} · {_cc}" if _cc and _cc != _key else str(_key))
-                if len(rmap) >= 24:
-                    break
-            if rmap:
-                ctx_emit("resolve", rmap, merge=True)
-        except Exception:                                    # noqa: BLE001 — streaming must never break the answer
-            pass
-        return f'SELECT "value", "world_key" FROM {qident(schema)}.{qident(bn)} WHERE "column" = {qlit(route_col)}'
-
-    # Override the INLINE-VALUES bridges: resolve via super (same logic), persist, then point the join at
-    # the persisted table. _world_joins wraps the returned SELECT as __bridge0 — now backed by a real table.
-    def _city_bridge_sql(self, norm, mtab, route_col, ctx_country):
-        inner = super()._city_bridge_sql(norm, mtab, route_col, ctx_country)
-        return self._persist_connected(mtab, route_col, "city", self._materialize(inner)) if inner else None
-
-    def _cell_bridge_sql(self, norm, mtab, route_col, wtype, ctx_country=None):
-        inner = super()._cell_bridge_sql(norm, mtab, route_col, wtype, ctx_country)
-        return self._persist_connected(mtab, route_col, wtype, self._materialize(inner)) if inner else None
-
-    # ---------------- the unconnected bridge (free-text vectors) + main table, for the hybrid path ----------------
-    def _persist_main_unconn(self, cur, schema, t, sch, plan):
-        """Persist the uploaded table (with a __pk) + "<t> unconnected to wikipedia" (a unified-encoder vector per
-        free-text cell, keyed by __pk). The connected bridge is persisted separately (shared with the agg path)."""
-        tn = t["name"]; cols = t["columns"]; rows = t["rows"]
-        affof = {c["name"]: c["affinity"] for c in sch if c["table"] == tn}
-        cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(tn)} CASCADE')
-        coldefs = ['"__pk" BIGINT'] + [f'{qident(c)} {_PGTYPE.get(affof.get(c, "TEXT"), "TEXT")}' for c in cols]
-        cur.execute(f'CREATE TABLE {qident(schema)}.{qident(tn)} ({", ".join(coldefs)})')
-        ins = f'INSERT INTO {qident(schema)}.{qident(tn)} VALUES (' + ",".join(["%s"] * (len(cols) + 1)) + ')'
-        for pk, r in enumerate(rows):
-            cur.execute(ins, [pk] + [KnowledgeTableQuery._coerce(r[ci], affof.get(cols[ci], "TEXT")) for ci in range(len(cols))])
-        un = f"{tn} unconnected to wikipedia"
-        cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(un)}')
-        cur.execute(f'CREATE TABLE {qident(schema)}.{qident(un)} '
-                    f'("__pk" BIGINT, "column" TEXT, "value" TEXT, "embedding" vector({self.hdim}))')
-        uins = f'INSERT INTO {qident(schema)}.{qident(un)} VALUES (%s,%s,%s,%s::vector)'
-        for col in plan["unconn"]:
-            ci = cols.index(col)
-            texts = [("" if r[ci] is None else str(r[ci])) for r in rows]
-            vecs = self._encode(texts)                                # UNIFIED encoder (same space as the predicate)
-            for pk, (txt, vec) in enumerate(zip(texts, vecs)):
-                if txt.strip():
-                    cur.execute(uins, [pk, col, txt, pgvector_literal(_norm_vec(vec))])
-
-    # ---------------- the hybrid serve ----------------
-    def _serve_hybrid(self, norm, fks, sch, question, pred, plan, country, as_of, schema):
-        t = plan["table"]; tn = t["name"]
-        self._pg_schema = schema                          # so the connected-bridge overrides persist to this schema
-        pv = pgvector_literal(_norm_vec(self._encode([pred])[0]))     # predicate in the unified space
-        cn = self._conn_bridge_name(tn); un = f"{tn} unconnected to wikipedia"
-        rc = plan["conn"][0][0] if plan["conn"] else None            # the routed connected column (e.g. city)
-        conn = _pg()
-        try:
-            cur = conn.cursor()
-            cur.execute(f'CREATE SCHEMA IF NOT EXISTS {qident(schema)}')
-            cur.execute(f'SET search_path TO {qident(schema)}, knowledgebase, public')
-            self._persist_main_unconn(cur, schema, t, sch, plan)
-            conn.commit()
-            # connected bridge = the SAME persisted table the aggregate path builds (value-keyed), via the overrides
-            for col, wtype in plan["conn"]:
-                if wtype == "city":
-                    self._city_bridge_sql(norm, tn, col, country)
-                elif wtype:
-                    self._cell_bridge_sql(norm, tn, col, wtype, country)
-            disp = ", ".join(f'm.{qident(c)}' for c in t["columns"])
-            sql = (f'SELECT {disp} FROM {qident(schema)}.{qident(tn)} m '
-                   f'JOIN {qident(schema)}.{qident(un)} u ON u."__pk" = m."__pk" AND u."column" = {qlit(plan["freetext"])} ')
-            if country and rc:                              # world filter via the PERSISTED connected bridge (by value)
-                sql += (f'WHERE EXISTS (SELECT 1 FROM {qident(schema)}.{qident(cn)} c '
-                        f'WHERE c."column" = {qlit(rc)} AND lower(c."value") = lower(m.{qident(rc)}) '
-                        f'AND c."country" = {qlit(country)}) ')
-            sql += f'ORDER BY u."embedding" <=> %s::vector LIMIT {self.HYBRID_LIMIT}'
-            cur.execute(sql, [pv])
-            outcols = [d[0] for d in cur.description]
-            outrows = [["" if v is None else v for v in row] for row in cur.fetchall()]
-            conn.commit()
-        finally:
-            conn.close()
-        return {"question": question, "as_of": as_of,
-                "sql": (f'SELECT {disp} FROM {qident(tn)} m '
-                        f'JOIN {qident(un)} u ON u."__pk"=m."__pk" AND u."column"={qlit(plan["freetext"])} '
-                        + (f'WHERE EXISTS (SELECT 1 FROM {qident(cn)} c WHERE lower(c."value")=lower(m.{qident(rc)}) '
-                           f'AND c."country"={qlit(country)}) ' if (country and rc) else "")
-                        + f'ORDER BY u."embedding" <=> embed({pred!r}) LIMIT {self.HYBRID_LIMIT}'),
-                "result": {"columns": outcols, "rows": outrows}, "error": None,
-                "routed": {"table": tn, "freetext_col": plan["freetext"],
-                           "connected": [c for c, _ in plan["conn"]]},
-                "meaning_join": {"country": country, "predicate": pred,
-                                 "connected_bridge": cn, "unconnected_bridge": un},
-                "provenance": None, "warnings": [], "dims": None,
-                "model": "engine - unified encoder: PERSISTED connected bridge world join + unconnected semantic rank (pgvector <=>)"}
 
     # ---------------- clarify: detect a query that dropped part of the question + propose a rephrasing ----------------
     def _word_qid(self, w):

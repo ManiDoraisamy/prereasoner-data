@@ -1,14 +1,10 @@
-"""LIVE multi-tenant Postgres serving.
+"""Live multi-tenant PostgreSQL execution.
 
-Reuses the KnowledgeTableQuery PLANNER **unchanged** (route/meaning-graph/SQL assembly) and only swaps EXECUTION:
-the generated SQL runs against live Postgres in `search_path = "<schema>", knowledgebase, public` instead
-of in-memory SQLite + ATTACH words.db. `<schema>` = the caller's VERIFIED Google sub (per-user, set by the
-server from a verified Firebase token — never client-supplied). Uploaded CSVs are loaded into that schema as
-real tables (persisted). The shared world/wikipedia schemas are built by the db/sync pipeline.
-
-qident -> "double quotes" and qlit -> 'single quotes' are already Postgres-compatible, and the upload
-affinities INTEGER/REAL/TEXT are valid Postgres types, so the planner's SQL ports verbatim; only the executor
-(SQLite ":memory:" + "?" placeholders + ATTACH) changes here.
+The typed planner is shared with SQLite, but each executor renders its own numeric
+dialect. Uploaded fractional values use bounded PostgreSQL ``NUMERIC`` columns and
+typed division is rendered with ``NUMERIC`` casts; SQLite uses the exact-decimal
+functions from :mod:`engine.numeric`. The per-user schema always comes from the
+verified identity, never from request data.
 """
 from __future__ import annotations
 
@@ -18,12 +14,14 @@ import psycopg2
 
 from engine.config import (KB_PG_DB, KB_PG_HOST, KB_PG_PORT, KB_PG_SSLMODE, KB_PG_USER,
                            kb_pg_password)
+from engine.numeric import parse_decimal, wire_decimal
+from engine.sql_ast import render_query
 from engine.tables import TableQuery, qident
 from engine.knowledge_tables import KnowledgeTableQuery
 
-# SQLite affinities -> WIDER Postgres types: SQLite INTEGER is 64-bit and REAL is 8-byte, but Postgres INTEGER
-# is 32-bit (overflows on large SKUs/IDs) and REAL is 4-byte. Map to BIGINT / double precision to match SQLite.
-_PGTYPE = {"INTEGER": "BIGINT", "REAL": "DOUBLE PRECISION", "TEXT": "TEXT"}
+# Uploaded fractional values are financial/reference data surprisingly often. PostgreSQL NUMERIC preserves
+# their decimal representation and arithmetic exactly; binary DOUBLE PRECISION does not.
+_PGTYPE = {"INTEGER": "BIGINT", "REAL": "NUMERIC(58,20)", "TEXT": "TEXT"}
 _CONNECT_ATTEMPTS = 3
 _NON_RETRYABLE_CONNECT_ERRORS = (
     "password authentication failed",
@@ -31,19 +29,15 @@ _NON_RETRYABLE_CONNECT_ERRORS = (
     "does not exist",
 )
 
-# Postgres NUMERIC/DECIMAL (returned by SUM(bigint), AVG, …) -> psycopg2 Decimal, which json.dumps can't
-# serialize -> 500. Cast NUMERIC (OID 1700) to float so aggregate results are JSON-safe (the SQLite path
-# returned int/float too). Registered process-wide.
+# Keep NUMERIC exact. JSON-safe integral values remain integers; a fractional decimal crosses the wire as a
+# canonical string only when no binary float can represent it exactly.
 import psycopg2.extensions  # noqa: E402
 
 
 def _numeric_to_py(v, cur):
     if v is None:
         return None
-    if "." not in v and "e" not in v and "E" not in v:   # whole NUMERIC (e.g. SUM(bigint)) -> exact int "300" (not 300.0)
-        return int(v)
-    f = float(v)
-    return int(f) if f.is_integer() else f               # AVG/fractional -> float
+    return wire_decimal(parse_decimal(v, enforce_input_bounds=False))
 
 
 psycopg2.extensions.register_type(psycopg2.extensions.new_type((1700,), "NUMERIC2PY", _numeric_to_py))
@@ -117,11 +111,12 @@ class _TableQueryPg(TableQuery):
     """Own-data path executor → Postgres (so uploads persist in the user schema and answers are consistent)."""
     _pg_schema = None
 
-    def execute(self, tablemap, sch, sql):
+    def execute(self, tablemap, sch, sql, query=None):
         conn = _pg(); cur = conn.cursor()
         try:
             _load_user_schema(cur, self._pg_schema, sch, tablemap); conn.commit()
-            cur.execute(sql)
+            execution_sql = render_query(query, dialect="postgres_numeric") if query is not None else sql
+            cur.execute(execution_sql)
             return [d[0] for d in cur.description], cur.fetchall()
         finally:
             conn.close()
@@ -129,6 +124,14 @@ class _TableQueryPg(TableQuery):
 
 class PgQuery(KnowledgeTableQuery):
     """KnowledgeTableQuery planner + Postgres execution, scoped to a per-request verified schema."""
+
+    @staticmethod
+    def _numeric_aggregate(function, operand):
+        return f"{function.upper()}( {operand} )"
+
+    @staticmethod
+    def _numeric_multiply(left, right):
+        return f"({left} * {right})"
 
     def __init__(self, deploy_dir):
         super().__init__(deploy_dir)

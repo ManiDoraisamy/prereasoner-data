@@ -22,6 +22,7 @@ predicate stopword list) from here.
 """
 from __future__ import annotations
 import numpy as np
+from engine.numeric import parse_decimal
 
 STOP = {"who", "what", "which", "show", "list", "find", "get", "the", "a", "an", "in", "of", "for", "with",
         "about", "did", "do", "we", "is", "are", "to", "complained", "complain", "had", "have", "that", "and",
@@ -117,6 +118,6 @@ class Bridge:
 
 def _is_num(v):
     try:
-        float(str(v).replace(",", "").lstrip("$").rstrip("%")); return True
+        parse_decimal(v); return True
     except ValueError:
         return False

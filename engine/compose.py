@@ -25,6 +25,7 @@ import numpy as np
 from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_view, share_view,
                                divide_view, running_view, join_view, world_join_view)
 from engine.joins import discover_fks, join_plan
+from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 
 MEASURE_WORDS = {"amount", "revenue", "sales", "spend", "cost", "price", "value", "quantity", "qty", "margin",
                  "profit", "income", "turnover"}   # encoder-FREE FALLBACK ONLY — with an encoder the measure is cosine
@@ -48,7 +49,7 @@ class ComposeEngine:
     @staticmethod
     def _isnum(v):
         try:
-            float(str(v).replace(",", "").lstrip("$").rstrip("%")); return True
+            parse_decimal(v); return True
         except (ValueError, TypeError):
             return False
 
@@ -214,10 +215,10 @@ class ComposeEngine:
         'under/less than 100' -> ('<',100), 'at most 3' -> ('<=',3). Returns (op, value) or None."""
         m = re.search(r'(?:over|above|more than|greater than|exceed(?:s|ing)?|at least)\s*\$?([\d,]+(?:\.\d+)?)', low)
         if m:
-            return (">=" if "at least" in low else ">", float(m.group(1).replace(",", "")))
+            return (">=" if "at least" in low else ">", parse_decimal(m.group(1)))
         m = re.search(r'(?:under|below|less than|fewer than|at most)\s*\$?([\d,]+(?:\.\d+)?)', low)
         if m:
-            return ("<=" if "at most" in low else "<", float(m.group(1).replace(",", "")))
+            return ("<=" if "at most" in low else "<", parse_decimal(m.group(1)))
         return None
 
     def _divide(self, low, numeric):
@@ -352,20 +353,15 @@ class ComposeEngine:
         if v is None or str(v).strip() == "":
             return None
         if t == "num":
-            try:
-                return float(str(v).replace(",", "").lstrip("$").rstrip("%"))
-            except ValueError:
-                return None
+            return sqlite_numeric(v, "REAL")
         if t == "time":
-            try:
-                return int(float(str(v)))
-            except ValueError:
-                return None
+            return sqlite_numeric(v, "INTEGER")
         return str(v)
 
     def _load(self, con, table):
         cols = table["columns"]; rows = table["rows"]; typ = self._types(cols, rows)
-        aff = {c: ("REAL" if typ[c] == "num" else "INTEGER" if typ[c] == "time" else "TEXT") for c in cols}
+        aff = {c: ("TEXT COLLATE decimal" if typ[c] == "num" else "INTEGER" if typ[c] == "time" else "TEXT")
+               for c in cols}
         con.execute(f'CREATE TABLE {q(table["name"])} (' + ", ".join(f'{q(c)} {aff[c]}' for c in cols) + ')')
         ins = f'INSERT INTO {q(table["name"])} VALUES (' + ", ".join("?" * len(cols)) + ')'
         for r in rows:
@@ -390,6 +386,11 @@ class ComposeEngine:
         con.execute(f'CREATE VIEW {q(name)} AS {sql}')
         cur = con.execute(f'SELECT * FROM {q(name)}')
         cols = [d[0] for d in cur.description]; rows = [list(r) for r in cur.fetchall()]
+        types = self._types(cols, rows)
+        for row in rows:
+            for index, column in enumerate(cols):
+                if types[column] == "num" and isinstance(row[index], str):
+                    row[index] = wire_decimal(parse_decimal(row[index], enforce_input_bounds=False))
         return {"name": name, "op": op, "label": label, "sql": sql, "columns": cols, "rows": rows}
 
     def _world_link(self, low, table, world):
@@ -444,6 +445,7 @@ class ComposeEngine:
         flattened base. Returns the final answer + the full trace (every view: name, op, SQL, rows)."""
         low = " " + question.lower() + " "
         con = sqlite3.connect(":memory:")
+        register_sqlite_decimal(con)
         try:
             for t in tables:
                 self._load(con, t)

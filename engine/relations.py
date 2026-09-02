@@ -12,11 +12,12 @@ Table form: {"name": str, "columns": [str], "rows": [[val, ...], ...]} (rows ali
 from __future__ import annotations
 
 from math import isfinite
+from engine.numeric import parse_decimal
 
 
 def _num(v):
     try:
-        float(str(v).strip().replace(",", "").lstrip("$").rstrip("%")); return True
+        parse_decimal(v); return True
     except (ValueError, AttributeError):
         return False
 

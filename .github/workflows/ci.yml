@@ -21,9 +21,9 @@ jobs:
       - name: Install lightweight test dependencies
         run: python -m pip install -r requirements-ci.txt
       - name: Ruff fatal checks
-        run: python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
+        run: python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
       - name: High-severity Python security checks
-        run: python -m bandit -q -r engine db training orchestrator mcp_server -x tests -lll
+        run: python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll
       - name: Audit Python dependency sets
         run: |
           python -m pip_audit -r requirements-ci.txt
@@ -32,12 +32,38 @@ jobs:
           python -m pip_audit -r training/requirements.txt
           python -m pip_audit -r db/sync/requirements.txt
       - name: py_compile all python sources
-        run: python -m compileall -q engine db training tests orchestrator mcp_server regress
+        run: python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
       - name: Run hermetic Python suites
         env:
           RUN_ENGINE_TESTS: "0"
           RUN_ORCHESTRATOR_TESTS: "0"
         run: python -m tests.run_all
+
+  postgres-numeric:
+    name: PostgreSQL exact-numeric parity
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16.10@sha256:21f6013073bc6b92830a2129570e2f5ec42a6c734b5a985a41e83aa58f54c3c1
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -r requirements-ci.txt
+      - name: Execute the same decimal through real PostgreSQL
+        env:
+          PGPASSWORD: postgres
+        run: python -m tests.postgres_numeric_parity
 
   web-static:
     name: Web JS parse + Firebase config JSON
@@ -117,3 +143,53 @@ jobs:
           terraform -chdir="$PLAN_ROOT" show -json /tmp/chat.tfplan > /tmp/chat.json
           jq -e '[.resource_changes[] | select(.address | test("chat|anthropic"))] | length > 0' \
             /tmp/chat.json
+
+  containers:
+    name: Build, SBOM, and critical-vulnerability scan
+    runs-on: ubuntu-latest
+    needs: [python-hermetic, web-static, terraform, postgres-numeric]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+      - name: Provision and verify public weights
+        run: |
+          python -m pip install huggingface_hub==1.29.0
+          python -m engine.fetch_weights
+          python deploy/gcp/build_context.py --output /tmp/prereasoner-build
+      - name: Build release containers
+        run: |
+          docker build -t prereasoner-engine:ci /tmp/prereasoner-build
+          docker build -f /tmp/prereasoner-build/Dockerfile.orchestrator -t prereasoner-chat:ci /tmp/prereasoner-build
+          docker run --rm --entrypoint python prereasoner-chat:ci -m mcp_server.healthcheck
+      - name: Generate engine SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: prereasoner-engine:ci
+          artifact-name: prereasoner-engine.spdx.json
+          output-file: /tmp/prereasoner-engine.spdx.json
+      - name: Generate chat SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: prereasoner-chat:ci
+          artifact-name: prereasoner-chat.spdx.json
+          output-file: /tmp/prereasoner-chat.spdx.json
+      - name: Scan engine for critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: prereasoner-engine:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+      - name: Scan chat for critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: prereasoner-chat:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL

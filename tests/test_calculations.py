@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+from decimal import Decimal
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -11,6 +12,8 @@ from engine.currency_intent import (
 )
 from engine.knowledge import KnowledgeReasoner
 from engine.knowledge_tables import KnowledgeTableQuery
+from engine.numeric import coerce_numeric, parse_decimal, wire_decimal
+from engine.pg import _PGTYPE, _numeric_to_py
 from engine.calculations import (
     ComputationEvidence,
     assess_calculations,
@@ -21,11 +24,12 @@ from engine.calculations import (
 )
 from engine.sql_ast import (
     Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, Join, Literal, SQLType,
-    SelectItem, SelectQuery, SetQuery,
+    SelectItem, SelectQuery, SetQuery, render_query,
 )
 from engine.sql_schema import SchemaGraph
 from engine.sql_rank import SemanticSignals
 from engine.sql_search import SQLSearcher
+from engine.tables import TableQuery, table_from_rows
 from engine.trace import stream_final
 from engine.artifact_provenance import canonical_json_sha256, sha256_file, sha256_tree
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
@@ -796,6 +800,58 @@ def test_model_promotion_is_atomic_and_marks_unpublished_candidates():
            "promotion binds trainer-generated provenance into the runtime manifest")
 
 
+def test_decimal_execution_is_exact_and_backend_compatible():
+    table = table_from_rows(
+        "ledger", ["amount", "rate"],
+        [["9007199254740993.1", "0.1"], ["0.1", "0.2"]],
+    )
+    schema = [
+        {"table": "ledger", "name": "amount", "affinity": "REAL"},
+        {"table": "ledger", "name": "rate", "affinity": "REAL"},
+    ]
+    amount = ColumnRef("ledger", "amount", SQLType.REAL)
+    rate = ColumnRef("ledger", "rate", SQLType.REAL)
+    query = SelectQuery((
+        SelectItem(Aggregate("SUM", amount), alias="amount_total"),
+        SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", rate)), alias="converted_total"),
+    ), "ledger")
+    columns, rows = TableQuery().execute(
+        {"ledger": table}, schema, render_query(query), query=query,
+    )
+    ok(columns == ["amount_total", "converted_total"], "decimal execution preserves aliases")
+    ok(rows == [("9007199254740993.2", "900719925474099.33")],
+       "SQLite decimal dialect preserves sums and row-level multiplication exactly")
+    ok(_PGTYPE["REAL"].startswith("NUMERIC("),
+       "PostgreSQL fractional uploads use bounded exact NUMERIC storage")
+    ok(_numeric_to_py("9007199254740993.2", None) == rows[0][0],
+       "PostgreSQL and SQLite normalize an inexact-for-float decimal identically")
+    ok(_numeric_to_py("2.5", None) == 2.5 and _numeric_to_py("300.000", None) == 300,
+       "exactly representable fractions and integral decimals retain ergonomic JSON number types")
+    ok(parse_decimal("9007199254740993.1") == Decimal("9007199254740993.1")
+       and wire_decimal(Decimal("0.1")) == "0.1",
+       "parsing and wire normalization never round through float")
+    divided = SelectQuery((SelectItem(BinaryExpr(
+        Literal(1, SQLType.INTEGER), "/", Literal(3, SQLType.INTEGER),
+    ), alias="third"),), "ledger", limit=1)
+    _columns, divided_rows = TableQuery().execute(
+        {"ledger": table}, schema, render_query(divided), query=divided,
+    )
+    ok(divided_rows == [("0.33333333333333333333",)],
+       "SQLite division uses PostgreSQL NUMERIC's 20-place fractional contract")
+    ok("CAST(1 AS NUMERIC)" in render_query(divided, dialect="postgres_numeric"),
+       "PostgreSQL rendering never casts exact division operands to binary REAL")
+    ok(coerce_numeric("2024.5", "INTEGER") is None,
+       "integer ingestion rejects fractional values instead of silently truncating them")
+    ok(wire_decimal(parse_decimal("1e100", enforce_input_bounds=False)) == 10 ** 100,
+       "exact calculation results may exceed the bounded uploaded-operand width")
+    try:
+        parse_decimal("1e1001")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("unbounded decimal exponent was accepted")
+
+
 TESTS = [
     test_intent_is_not_a_bare_currency_phrase,
     test_filter_conversion_and_annotation_matrix,
@@ -819,6 +875,7 @@ TESTS = [
     test_calculation_training_corpus_is_split_safe_and_rebuildable,
     test_intent_thresholds_are_checkpoint_calibrated,
     test_model_promotion_is_atomic_and_marks_unpublished_candidates,
+    test_decimal_execution_is_exact_and_backend_compatible,
 ]
 
 

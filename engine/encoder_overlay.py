@@ -217,7 +217,9 @@ class EncoderQuery(TableQuery):
 
         def _isnum(v):
             try:
-                float(str(v).replace(",", "").lstrip("$").rstrip("%")); return True
+                from engine.numeric import parse_decimal
+                parse_decimal(v)
+                return True
             except (ValueError, TypeError):
                 return False
 

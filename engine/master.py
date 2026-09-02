@@ -22,6 +22,10 @@ from engine.tables import table_from_rows, table_name
 
 MAX_COLS = 64
 MAX_ROWS = 50000
+MAX_TABLES = 32
+MAX_TOTAL_ROWS = 200000
+MAX_TABLE_BYTES = 8 * 1024 * 1024
+MAX_TOTAL_BYTES = 64 * 1024 * 1024
 LOG = logging.getLogger(__name__)
 
 
@@ -69,7 +73,9 @@ def _validated_table(name, columns, rows):
     for index, row in enumerate(rows):
         if not isinstance(row, (list, tuple)):
             raise ValueError(f"row {index + 1} must be an array")
-        values = list(row)[:len(columns)] + [None] * max(0, len(columns) - len(row))
+        if len(row) > len(columns):
+            raise ValueError(f"row {index + 1} has more values than the declared columns")
+        values = list(row) + [None] * (len(columns) - len(row))
         values = [None if value is None or str(value).strip() == "" else str(value).strip() for value in values]
         if not any(value is not None for value in values):
             continue
@@ -93,6 +99,31 @@ def _cols(cur, schema, table):
     return [r[0] for r in cur.fetchall()]
 
 
+def _names(cur, schema):
+    cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema=%s "
+                "ORDER BY table_name LIMIT %s", (schema, MAX_TABLES + 1))
+    names = [row[0] for row in cur.fetchall()]
+    if len(names) > MAX_TABLES:
+        raise ValueError(f"reference storage exceeds the {MAX_TABLES}-table limit")
+    return names
+
+
+def _table_bytes(name, columns, rows):
+    values = [name, *columns]
+    values.extend(value for row in rows for value in row if value is not None)
+    return sum(len(str(value).encode("utf-8")) for value in values)
+
+
+def _load_table(cur, schema, name, row_limit):
+    columns = _cols(cur, schema, name)
+    if not columns:
+        return None
+    cur.execute('SELECT * FROM "%s".%s ORDER BY %s LIMIT %%s' %
+                (schema, _qi(name), _qi(columns[0])), (row_limit,))
+    rows = [["" if value is None else str(value) for value in row] for row in cur.fetchall()]
+    return {"name": name, "columns": columns, "rows": rows}
+
+
 def list_master(user_id):
     """Every master table this user has, with its columns + row count — for the overview / cross-conversation load."""
     sch = master_schema(user_id)
@@ -100,8 +131,7 @@ def list_master(user_id):
     try:
         cur = conn.cursor()
         _ensure_schema(cur, sch)
-        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema=%s ORDER BY table_name", (sch,))
-        names = [r[0] for r in cur.fetchall()]
+        names = _names(cur, sch)
         out = []
         for n in names:
             cols = _cols(cur, sch, n)
@@ -120,37 +150,52 @@ def get_master(user_id, name):
     try:
         cur = conn.cursor()
         _ensure_schema(cur, sch)
-        cols = _cols(cur, sch, str(name or ""))
-        if not cols:
+        table = _load_table(cur, sch, str(name or ""), MAX_ROWS)
+        if table is None:
             return None
-        cur.execute('SELECT * FROM "%s".%s ORDER BY %s LIMIT %s' % (sch, _qi(name), _qi(cols[0]), MAX_ROWS))
-        rows = [["" if v is None else str(v) for v in r] for r in cur.fetchall()]
         conn.commit()
-        return {"name": name, "columns": cols, "rows": rows}
+        return table
     finally:
         conn.close()
 
 
 def load_master_tables(user_id, row_limit=MAX_ROWS):
-    """Load all reference tables through one connection for request-time selection."""
+    """Load all references for explicit exports; request-time selection uses the key-only catalog below."""
     sch = master_schema(user_id)
     limit = max(0, min(int(row_limit), MAX_ROWS))
     conn = _pg()
     try:
         cur = conn.cursor()
         _ensure_schema(cur, sch)
-        cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema=%s ORDER BY table_name", (sch,))
-        out = []
-        for (name,) in cur.fetchall():
-            columns = _cols(cur, sch, name)
-            cur.execute('SELECT * FROM "%s".%s ORDER BY %s LIMIT %%s' %
-                        (sch, _qi(name), _qi(columns[0])), (limit,))
-            rows = [["" if value is None else str(value) for value in row] for row in cur.fetchall()]
-            out.append({"name": name, "columns": columns, "rows": rows})
+        out = [_load_table(cur, sch, name, limit) for name in _names(cur, sch)]
         conn.commit()
-        return out
+        return [table for table in out if table is not None]
     finally:
         conn.close()
+
+
+def load_master_catalog(user_id, row_limit=MAX_ROWS):
+    """Load table shape plus join-key values, never every cell, for request-time selection."""
+    sch = master_schema(user_id)
+    limit = max(0, min(int(row_limit), MAX_ROWS))
+    connection = _pg()
+    try:
+        cursor = connection.cursor()
+        _ensure_schema(cursor, sch)
+        stored = []
+        for name in _names(cursor, sch):
+            columns = _cols(cursor, sch, name)
+            if not columns:
+                continue
+            cursor.execute('SELECT %s FROM "%s".%s ORDER BY %s LIMIT %%s' %
+                           (_qi(columns[0]), sch, _qi(name), _qi(columns[0])), (limit,))
+            keys = [["" if row[0] is None else str(row[0])] + [None] * (len(columns) - 1)
+                    for row in cursor.fetchall()]
+            stored.append({"name": name, "columns": columns, "rows": keys})
+        connection.commit()
+        return stored
+    finally:
+        connection.close()
 
 
 def _execution_values(table, column):
@@ -168,7 +213,7 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
     if limit <= 0:
         return {"tables": [], "warnings": ["Saved references were not used because the request reached the table limit."]}
     try:
-        stored = load_master_tables(user_id, row_limit)
+        stored = load_master_catalog(user_id, row_limit)
     except Exception:                                        # noqa: BLE001 - degrade to uploaded data, but disclose it
         LOG.exception("saved reference data could not be loaded")
         return {"tables": [], "warnings": ["Saved reference data was unavailable; the answer used uploaded tables only."]}
@@ -206,7 +251,17 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
                     exact = True
                     break
             if exact:
-                selected.append(candidate)
+                try:
+                    full = get_master(user_id, stored_name)
+                except Exception:  # noqa: BLE001 - preserve own-data answer and disclose omission
+                    LOG.exception("selected reference table %s could not be loaded", stored_name)
+                    warnings.append(
+                        f'Saved reference "{stored_name}" was selected but could not be loaded.'
+                    )
+                    continue
+                if full is None:
+                    continue
+                selected.append(table_from_rows(candidate["name"], full["columns"], full["rows"][:row_limit]))
                 added.append(candidate["name"])
                 normalized_only.discard(stored_name)
                 if len(selected) >= limit:
@@ -228,12 +283,28 @@ def save_master(user_id, name, columns, rows):
     All columns are stored as text; the FIRST column is the key that links to the user's data (the join key
     ``relevant_tables`` matches against uploaded columns)."""
     name, columns, rows = _validated_table(name, columns, rows)
+    incoming_bytes = _table_bytes(name, columns, rows)
+    if incoming_bytes > MAX_TABLE_BYTES:
+        raise ValueError(f"one reference table may contain at most {MAX_TABLE_BYTES} UTF-8 bytes")
     sch = master_schema(user_id)
     conn = _pg()
     try:
         try:
             cur = conn.cursor()
             _ensure_schema(cur, sch)
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"master-quota:{sch}",))
+            names = _names(cur, sch)
+            replacing = name in names
+            if not replacing and len(names) >= MAX_TABLES:
+                raise ValueError(f"reference storage supports at most {MAX_TABLES} tables")
+            existing_rows = 0
+            for existing in names:
+                if existing == name:
+                    continue
+                cur.execute('SELECT count(*) FROM "%s".%s' % (sch, _qi(existing)))
+                existing_rows += int(cur.fetchone()[0])
+            if existing_rows + len(rows) > MAX_TOTAL_ROWS:
+                raise ValueError(f"reference storage supports at most {MAX_TOTAL_ROWS} rows in total")
             tq = _qi(name)
             cur.execute('DROP TABLE IF EXISTS "%s".%s' % (sch, tq))
             definitions = [_qi(column) + " text" + (" PRIMARY KEY" if index == 0 else "")
@@ -242,6 +313,13 @@ def save_master(user_id, name, columns, rows):
             if rows:
                 ph = "(" + ",".join(["%s"] * len(columns)) + ")"
                 cur.executemany('INSERT INTO "%s".%s VALUES %s' % (sch, tq, ph), rows)
+            cur.execute(
+                "SELECT coalesce(sum(pg_total_relation_size((quote_ident(table_schema)||'.'||quote_ident(table_name))::regclass)),0) "
+                "FROM information_schema.tables WHERE table_schema=%s",
+                (sch,),
+            )
+            if int(cur.fetchone()[0]) > MAX_TOTAL_BYTES:
+                raise ValueError(f"reference storage supports at most {MAX_TOTAL_BYTES} physical bytes")
             conn.commit()
             return {"name": name, "columns": columns, "rows": len(rows)}
         except Exception:

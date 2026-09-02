@@ -6,8 +6,9 @@ from unittest.mock import patch
 
 from engine import config
 from engine.request_limits import (
-    JSONBodyError, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
+    JSONBodyError, RequestGate, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
 )
+from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from orchestrator.validation import validate_chat_request
 
 
@@ -108,6 +109,53 @@ def test_json_body_guard_rejects_bad_lengths_payloads_and_shapes():
             assert exc.status_code == 400
 
 
+def test_shared_request_gate_releases_capacity_and_limits_rate():
+    gate = RequestGate(requests=2, window_seconds=60, in_flight=1)
+    lease, _, reason = gate.acquire("user")
+    assert lease is not None and reason is None
+    blocked, retry, reason = gate.acquire("other")
+    assert blocked is None and retry == 1 and reason == "concurrency"
+    lease.release(); lease.release()
+    second, _, _ = gate.acquire("user")
+    assert second is not None
+    second.release()
+    denied, retry, reason = gate.acquire("user")
+    assert denied is None and retry > 0 and reason == "rate"
+
+
+def test_distributed_paid_budget_is_atomic_and_releases_lease():
+    class Connection:
+        def __init__(self, usage=(), active=(0, 0)):
+            self.usage, self.active = usage, active
+            self.statements, self.commits, self.rollbacks, self.closed = [], 0, 0, False
+            self.last = ""
+
+        def cursor(self): return self
+        def execute(self, statement, params=None):
+            self.last = str(statement); self.statements.append((self.last, params))
+        def fetchall(self): return list(self.usage)
+        def fetchone(self): return self.active
+        def commit(self): self.commits += 1
+        def rollback(self): self.rollbacks += 1
+        def close(self): self.closed = True
+
+    acquired, released = Connection(), Connection()
+    connections = iter((acquired, released))
+    budget = PostgresRequestBudget(
+        lambda: next(connections),
+        {"generate": BudgetPolicy(2, 10, 1, 3)},
+    )
+    lease, retry, reason = budget.acquire("private-user-id", "generate")
+    assert lease is not None and retry == 0 and reason is None and acquired.commits == 1
+    parameters = repr([params for _, params in acquired.statements])
+    assert "private-user-id" not in parameters and "__global__" in parameters
+    assert any("period,bucket_start" in statement for statement, _ in acquired.statements)
+    assert any(params and params[0] == "day" for _, params in acquired.statements)
+    lease.release(); lease.release()
+    assert released.commits == 1
+    assert any("DELETE FROM chat.request_lease" in statement for statement, _ in released.statements)
+
+
 TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
     test_cors_requires_exact_configured_origin,
@@ -116,6 +164,8 @@ TESTS = [
     test_postgres_connect_retries_transport_errors_but_not_authentication,
     test_chat_validation_normalizes_and_bounds_inputs,
     test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
+    test_shared_request_gate_releases_capacity_and_limits_rate,
+    test_distributed_paid_budget_is_atomic_and_releases_lease,
 ]
 
 

@@ -175,7 +175,7 @@ def main():
     P("=" * 78); P("PROBE B — TAXONOMY / WORLD-KNOWLEDGE COVERAGE (static)"); P("=" * 78)
     P("world-knowledge required by ANY gold query: 0  (Spider DBs are self-contained —")
     P("  every gold query references only its own DB; the engine's world-join adds nothing here)")
-    P(f"world-table leaves available: city, country")
+    P("world-table leaves available: city, country")
     P(f"dev DBs: {len(dbs)}  |  DBs with a header that could type to city/country/state: "
       f"{len(dbs_with_world_col)}")
     P(f"header hits: {dict(world_col_hits)}")

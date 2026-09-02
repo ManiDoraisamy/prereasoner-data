@@ -35,7 +35,11 @@ from engine.conversations import (resolve_conversation, list_conversations, get_
                                    QuotaExceeded)
 from engine import master
 from engine import admin
-from engine.request_limits import JSONBodyError, SlidingWindowLimiter, allowed_origin, read_json_object
+from engine.pg import _pg
+from engine.request_budget import BudgetPolicy, PostgresRequestBudget
+from engine.request_limits import (
+    JSONBodyError, RequestGate, RequestLease, SlidingWindowLimiter, allowed_origin, read_json_object,
+)
 
 
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
@@ -48,8 +52,22 @@ MAX_SHEETS = 8
 MAX_ROWS = 5000
 MAX_TABLE_CHARS = 2 * 1024 * 1024
 MAX_TABLE_TOTAL_CHARS = 6 * 1024 * 1024
+MAX_CONVERSE_CHARS = 256 * 1024
+MAX_GENERATE_ROWS = 250
+MAX_GENERATE_COLS = 32
+MAX_GENERATE_CHARS = 256 * 1024
 WORLD_RATE = SlidingWindowLimiter(limit=30, window_seconds=60)
 DIM_RATE = SlidingWindowLimiter(limit=60, window_seconds=60)
+PAID_LOCAL_GATES = {
+    "converse": RequestGate(requests=6, window_seconds=60, in_flight=4),
+    "master_generate": RequestGate(requests=3, window_seconds=60, in_flight=2),
+}
+PAID_BUDGET = PostgresRequestBudget(_pg, {
+    "converse": BudgetPolicy(6, 120, 2, 16, user_requests_per_day=100,
+                              global_requests_per_day=2_000),
+    "master_generate": BudgetPolicy(3, 30, 1, 6, user_requests_per_day=30,
+                                     global_requests_per_day=300),
+})
 
 WORLD_ROUTES = ("/api/reason", "/api/knowledge")
 DIM_ROUTE = "/api/dimension"
@@ -76,13 +94,38 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(b))); self.end_headers()
         self.wfile.write(b)
 
-    def _read_json(self):
+    def _read_json(self, max_bytes=MAX_BODY):
         """Read the shared bounded request shape and send client errors consistently."""
         try:
-            return read_json_object(self.rfile, self.headers.get("Content-Length"), MAX_BODY)
+            return read_json_object(self.rfile, self.headers.get("Content-Length"), max_bytes)
         except JSONBodyError as exc:
             self._send(exc.status_code, json.dumps({"error": str(exc)}))
             return None
+
+    def _acquire_paid_budget(self, subject, operation):
+        local, retry_after, reason = PAID_LOCAL_GATES[operation].acquire(subject)
+        if local is None:
+            self._send(429, json.dumps({"error": "request budget exceeded", "reason": reason}),
+                       retry_after=retry_after)
+            return None
+        try:
+            distributed, retry_after, reason = PAID_BUDGET.acquire(subject, operation)
+        except Exception as exc:                              # accounting must fail closed before paid work
+            local.release()
+            print(f"paid request budget unavailable: {type(exc).__name__}", flush=True)
+            self._send(503, json.dumps({"error": "request budget unavailable"}))
+            return None
+        if distributed is None:
+            local.release()
+            self._send(429, json.dumps({"error": "request budget exceeded", "reason": reason}),
+                       retry_after=retry_after)
+            return None
+
+        def release():
+            distributed.release()
+            local.release()
+
+        return RequestLease(release)
 
     def do_OPTIONS(self):
         self.send_response(204); self._cors(); self.send_header("Content-Length", "0"); self.end_headers()
@@ -276,10 +319,11 @@ class H(BaseHTTPRequestHandler):
     # ---------------- /api/converse (Sonnet conversational fallback for the /reason rail) ----------------
     def _post_converse(self):
         """Answer a clarify / non-data question conversationally (Sonnet), so the rail replies in-chat
-        instead of redirecting. No model/Postgres — a single Anthropic call; the deterministic path is
-        unchanged. Firebase-auth'd like the reasoning routes; a missing key degrades to a clear 503."""
+        instead of redirecting. One Anthropic call is protected by local concurrency and PostgreSQL-backed
+        cross-instance quotas; the deterministic path is unchanged. Firebase-auth'd like the reasoning routes;
+        a missing key degrades to a clear 503."""
         try:
-            req = self._read_json()
+            req = self._read_json(MAX_CONVERSE_CHARS)
             if req is None:
                 return
             sub, _uid = _verify_principal(_bearer(self.headers, req))
@@ -289,11 +333,17 @@ class H(BaseHTTPRequestHandler):
                 self._send(503, json.dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
+            if len(json.dumps(req, ensure_ascii=False)) > MAX_CONVERSE_CHARS:
+                self._send(413, json.dumps({"error": "conversation context is too large"})); return
+            lease = self._acquire_paid_budget(sub, "converse")
+            if lease is None:
+                return
             from engine import converse
             try:
-                text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
-                                      error=req.get("error"), tables=req.get("tables"),
-                                      answer=req.get("answer"), sql=req.get("sql"))
+                with lease:
+                    text = converse.reply(req.get("question", ""), clarify=req.get("clarify"),
+                                          error=req.get("error"), tables=req.get("tables"),
+                                          answer=req.get("answer"), sql=req.get("sql"))
             except Exception as e:                           # noqa: BLE001 — no key / SDK / upstream: let the client fall back
                 print(f"/api/converse degraded (503): {type(e).__name__}", flush=True)
                 self._send(503, json.dumps({"error": "converse unavailable"})); return
@@ -312,7 +362,7 @@ class H(BaseHTTPRequestHandler):
         key degrades to a clear 503 (+ an RTDB error) so the popup re-enables."""
         emit = None
         try:
-            req = self._read_json()
+            req = self._read_json(MAX_GENERATE_CHARS)
             if req is None:
                 return
             sub, uid = _verify_principal(_bearer(self.headers, req))
@@ -322,12 +372,33 @@ class H(BaseHTTPRequestHandler):
                 self._send(503, json.dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
+            columns, rows = req.get("columns") or [], req.get("rows") or []
+            if not isinstance(columns, list) or not isinstance(rows, list):
+                self._send(400, json.dumps({"error": "columns and rows must be arrays"})); return
+            if (
+                not columns
+                or any(not isinstance(column, str) or not column.strip() for column in columns)
+                or any(not isinstance(row, list) or len(row) > len(columns) for row in rows)
+            ):
+                self._send(400, json.dumps({"error": "generation table shape is invalid"})); return
+            if len(columns) > MAX_GENERATE_COLS or len(rows) > MAX_GENERATE_ROWS:
+                self._send(413, json.dumps({"error": "generation table is too large"})); return
+            generation_chars = len(json.dumps({
+                "name": req.get("name"), "columns": columns, "rows": rows,
+                "instruction": req.get("instruction"),
+            }, ensure_ascii=False))
+            if generation_chars > MAX_GENERATE_CHARS:
+                self._send(413, json.dumps({"error": "generation context is too large"})); return
+            lease = self._acquire_paid_budget(sub, "master_generate")
+            if lease is None:
+                return
             emit = emitter(uid, req.get("jobId"))            # no-op if RTDB/jobId absent; else streams past the 60s proxy
             emit("status", "running")
             from engine import converse
             try:
-                out = converse.generate_master(req.get("name", "reference"), req.get("columns") or [],
-                                               req.get("rows") or [], instruction=req.get("instruction"), emit=emit)
+                with lease:
+                    out = converse.generate_master(req.get("name", "reference"), columns, rows,
+                                                   instruction=req.get("instruction"), emit=emit)
             except Exception as e:                           # noqa: BLE001 — no key / SDK / bad JSON: let the client re-enable
                 print(f"/api/master/generate degraded (503): {type(e).__name__}", flush=True)
                 emit("error", "generate unavailable"); emit("status", "error")

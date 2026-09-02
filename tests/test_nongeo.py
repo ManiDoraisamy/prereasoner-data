@@ -8,6 +8,7 @@ lazy-filled from Wikidata first. Live world Postgres.
 from __future__ import annotations
 import os
 import sys
+from decimal import Decimal
 
 HOSP = {"name": "hospitals", "columns": ["hospital", "beds"], "rows": [
     ["Massachusetts General Hospital", 100], ["Cleveland Clinic", 80],
@@ -45,6 +46,23 @@ def main():
     print(f"count US hospitals       -> {got2} (exp 3)")
     if got2 != 3:
         fails.append(f"COUNT US hospitals != 3 (got {got2})")
+    exact_table = {"name": "hospital_fees", "columns": ["hospital", "commission"], "rows": [
+        ["Massachusetts General Hospital", "9007199254740993.1"],
+        ["Cleveland Clinic", "0.1"], ["Johns Hopkins Hospital", "0.1"],
+        ["Charite", "9999999999999999.9"],
+    ]}
+    exact_result = Q.serve(
+        [exact_table], "total commission for hospitals in United States", schema=schema,
+    )
+    exact_rows = (exact_result or {}).get("result", {}).get("rows") or []
+    exact_value = exact_rows[0][0] if exact_rows and exact_rows[0] else None
+    print(f"exact commission, US     -> {exact_value} (exp 9007199254740993.3)")
+    try:
+        exact_ok = Decimal(str(exact_value)) == Decimal("9007199254740993.3")
+    except Exception:  # noqa: BLE001
+        exact_ok = False
+    if not exact_ok or not isinstance(exact_value, str):
+        fails.append(f"exact non-geo SUM rounded or used unsafe wire type (got {exact_value!r})")
     print("\n" + ("PASS — non-geo world join + lazy Wikidata fill works" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0

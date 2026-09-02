@@ -1,89 +1,77 @@
-"""Hermetic proof that the LEARNED typing decision is AUDITABLE — engine.router.Router surfaces the
-per-property evidence it uses to decode the family, so "typed X as Place" is inspectable, not a black box.
+"""Hermetic audit tests for generalized Schema.org named-property routing.
 
-The Router reads schema.org PROPERTY dims per column and DECODES the family by consensus over which of a
-family's DISTINCTIVE properties fire above their calibrated Youden-J thresholds (engine/data/props_thr.json).
-route() now returns that firing as `evidence`. These tests drive the REAL production _evidence()/route() with
-a SYNTHETIC property profile — no torch, no Postgres — so the interpretability contract is checked
-deterministically: the reported evidence must exactly reconstruct the decode (which props fired, vs which
-thresholds), and must stay consistent with the family fraction the router acts on.
+The tests inject URI-indexed property profiles, avoiding Torch and PostgreSQL,
+then prove that the surfaced class, score, threshold, and property evidence are
+the same weighted superposition used by the production decoder.
 
 python -m tests.test_router_evidence
 """
 from __future__ import annotations
 import sys
 
-import numpy as np
-
-from engine.router import Router, ABSTAIN
+from engine.router import Router
 
 
-def _profile_with(di, n, firings):
-    """A synthetic column property profile: a zero readout with the named dims set to given strengths."""
-    s = np.zeros(n, dtype=np.float32)
-    for name, val in firings.items():
-        s[di[name]] = val
-    return s
+def _class_row(router, name):
+    return next(row for row in router.decoder.classes.values() if row["name"] == name)
 
 
-# A profile that reads like a CITY column: 3 of Place's 4 distinctive props fire (addressCountry, GeoCoordinates,
-# postalCode) and one does NOT (image below its 0.403 threshold). Place consensus = 3/4 = 0.75.
-_PLACE_FIRINGS = {"addressCountry": 0.80, "GeoCoordinates": 0.75, "postalCode": 0.30, "image": 0.20}
+def _full_profile(router, name):
+    return {item["property"]: 1.0 for item in _class_row(router, name)["signature"]}
 
 
 def test_evidence_reconstructs_the_decode():
-    # The evidence for the decoded family must list EVERY distinctive property with its read strength, its
-    # calibrated threshold, and whether it fired — and fired>=threshold must be internally consistent.
     r = Router()
-    s = _profile_with(r.di, r.nc, _PLACE_FIRINGS)
-    ev = r._evidence(s, "place")
-    props = {e["property"] for e in ev}
-    assert props == set(r.fams["place"]["distinctive"]), f"evidence must cover all distinctive props: {props}"
-    for e in ev:
-        assert e["fired"] == (e["score"] >= e["threshold"]), f"fired inconsistent with score/threshold: {e}"
-        assert abs(e["threshold"] - round(float(r.thr.get(e["property"], 0.5)), 3)) < 1e-6, \
-            f"surfaced threshold must be the calibrated Youden-J value (rounded): {e}"
-    fired = {e["property"] for e in ev if e["fired"]}
-    assert fired == {"addressCountry", "GeoCoordinates", "postalCode"}, f"wrong props fired: {fired}"
-    assert not any(e["fired"] for e in ev if e["property"] == "image"), "image is below threshold -> must NOT fire"
-    print(f"  PASS  evidence reconstructs the decode: fired {sorted(fired)} of place's distinctive props")
+    row = _class_row(r, "Movie")
+    profile = _full_profile(r, "Movie")
+    ev = r._class_evidence(profile, row["uri"])
+    assert ev.servable and ev.class_name == "Movie"
+    assert ev.score == 1.0
+    assert {item["property"] for item in ev.fired} == {
+        item["property"] for item in row["signature"]
+    }
+    assert not ev.missing
+    for item in ev.fired:
+        assert item["fired"] == (item["score"] >= item["threshold"])
+        assert item["threshold"] == round(r.thresholds[item["property"]], 6)
+    print("  PASS  evidence exactly reconstructs Movie's weighted property signature")
 
 
 def test_evidence_is_ordered_fired_first():
-    # Auditability: the properties that DROVE the decode come first (then by strength), so the top of the list is
-    # the reason. The non-firing property must sort last.
     r = Router()
-    ev = r._evidence(_profile_with(r.di, r.nc, _PLACE_FIRINGS), "place")
-    assert [e["property"] for e in ev] == ["addressCountry", "GeoCoordinates", "postalCode", "image"], ev
-    assert ev[0]["fired"] and not ev[-1]["fired"], "fired must sort before not-fired"
-    print("  PASS  evidence ordered fired-first, strongest-first")
+    row = _class_row(r, "Movie")
+    profile = _full_profile(r, "Movie")
+    missing_property = row["signature"][-1]["property"]
+    profile[missing_property] = 0.0
+    ev = r._class_evidence(profile, row["uri"])
+    combined = [*ev.fired, *ev.missing]
+    assert combined and combined[0]["fired"] and not combined[-1]["fired"]
+    assert ev.missing[-1]["property"] == missing_property
+    expected = r.decoder.score_signature(profile, row["signature"], r.thresholds)
+    assert abs(ev.score - expected) < 1e-12
+    print("  PASS  fired and missing evidence reproduces the weighted class score")
 
 
 def test_route_surfaces_evidence_matching_the_family():
-    # End-to-end through the REAL route(): a Place-like profile decodes to 'place' AND carries the evidence for
-    # that family. The evidence's fired-fraction must equal the frac the router acted on (evidence == mechanism).
     r = Router()
-    s = _profile_with(r.di, r.nc, _PLACE_FIRINGS)
-    r._profile = lambda values, header=None: s                      # inject the synthetic readout (skip the model)
-    out = r.route(["Paris", "Tokyo", "Berlin"], header="city")
-    assert out is not None and out["family"] == "place", f"expected place decode, got {out}"
-    assert "evidence" in out, "route() must surface the per-property evidence (the learned 'why')"
-    dp = r.fams["place"]["distinctive"]
-    fired_frac = sum(1 for e in out["evidence"] if e["fired"]) / len(dp)
-    assert abs(fired_frac - out["frac"]) < 1e-6, f"evidence fired-fraction {fired_frac} must equal frac {out['frac']}"
-    assert out["frac"] == 0.75, f"3 of 4 place props fired -> frac 0.75, got {out['frac']}"
-    print(f"  PASS  route() surfaces evidence; frac {out['frac']} == evidence fired-fraction (faithful)")
+    profile = _full_profile(r, "Movie")
+    r._profile = lambda values, header=None: profile
+    out = r.route(["Arrival", "Moonlight", "Parasite"], header="movie")
+    assert out is not None and out["class"] == "https://schema.org/Movie", out
+    assert out["family"] == "film" and out["frac"] == 1.0
+    assert out["ontology_version"] == "30.0"
+    assert out["model_artifact_sha256"] == r.model_artifact_sha256
+    assert all(item["fired"] for item in out["evidence"])
+    print("  PASS  route surfaces the canonical class, family, artifact, and actual evidence")
 
 
 def test_abstain_still_returns_none():
-    # A literal column (no family's distinctive props fire) still ABSTAINS — surfacing evidence must not change the
-    # decision boundary. Only one weak sub-threshold place prop -> below ABSTAIN -> None (no evidence to surface).
     r = Router()
-    s = _profile_with(r.di, r.nc, {"image": 0.20})                  # nothing fires -> every family < ABSTAIN
-    r._profile = lambda values, header=None: s
+    r._profile = lambda values, header=None: {}
     assert r.route(["120", "80", "45"], header="amount") is None, "a literal must still abstain (decision unchanged)"
-    assert ABSTAIN == 0.40, "abstain gate constant unchanged"
-    print("  PASS  literal still abstains — evidence is additive, decision boundary unchanged")
+    unsupported = r.decoder.classes["https://schema.org/Thing"]
+    assert not unsupported["servable"] and unsupported["threshold"] is None
+    print("  PASS  unsupported classes remain representable and explicitly abstain")
 
 
 # ---- the SERVING capture: the model's typing evidence is collected during a serve and attached to the answer,
@@ -137,6 +125,35 @@ def test_table_sig_is_value_sensitive():
     print("  PASS  table signature is value-sensitive (no stale typing across data)")
 
 
+def test_source_grounding_is_the_only_model_abstention_fallback():
+    import inspect
+    import engine.knowledge_query as knowledge_query
+
+    qw = _bare_qw()
+    qw._value_membership_routes = lambda _table: {("customers", "city"): "city"}
+    original = knowledge_query.kb_model_route_enabled
+    knowledge_query.kb_model_route_enabled = lambda: False
+    try:
+        qw.begin_typing()
+        routes = qw.route({"name": "customers", "columns": ["city"], "rows": [["Paris"]]})
+        typing = qw.take_typing()
+    finally:
+        knowledge_query.kb_model_route_enabled = original
+    assert routes == {("customers", "city"): "city"}
+    assert typing == [{
+        "table": "customers", "column": "city", "kind": "source_grounding",
+        "family": "place", "frac": None, "geo": True, "grounded_to": "city",
+        "grounding": {
+            "source": "wikidata", "index": "knowledgebase.words",
+            "method": "exact_normalized_membership",
+        },
+        "class": None, "class_name": None, "ontology_version": None,
+        "model_artifact_sha256": None, "evidence": [],
+    }]
+    assert "super().route(table)" not in inspect.getsource(KnowledgeQuery.route)
+    print("  PASS  generalized abstention falls back only to explicit synchronized source keys")
+
+
 def test_attach_typing_is_additive_and_safe():
     # the answer carries `typing` only when the model typed something; an own-data answer (no typing) is untouched;
     # a non-dict result never raises.
@@ -157,6 +174,7 @@ TESTS = [
     test_capture_buffer_brackets_a_serve,
     test_emit_is_noop_without_a_buffer_and_dedups,
     test_table_sig_is_value_sensitive,
+    test_source_grounding_is_the_only_model_abstention_fallback,
     test_attach_typing_is_additive_and_safe,
 ]
 

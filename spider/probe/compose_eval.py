@@ -23,12 +23,11 @@ import collections
 import json
 import os
 import sqlite3
-import traceback
 import warnings
 
 warnings.filterwarnings("ignore")
 
-from hardness import eval_hardness, shape
+from hardness import eval_hardness
 from spider_eval import compare, record_integrated_result, recursive_gold_table_names
 
 DIFFS = ["easy", "medium", "hard", "extra"]
@@ -108,7 +107,7 @@ def main():
     if args.limit:
         picked = picked[:args.limit]
 
-    print(f"loading encoder (Qwen LoRA + relational readout, CPU)...", flush=True)
+    print("loading encoder (Qwen LoRA + relational readout, CPU)...", flush=True)
     from engine.encoder_overlay import EncoderQuery
     from engine.primitive_head import PrimitiveReader
     from engine.compose import ComposeEngine
@@ -194,7 +193,7 @@ def main():
         P(f"  CORRECT (strict row-set equality, harsh LB): {t.get('correct_strict',0):4d}  ({s['correct_strict_pct']}%)")
         P(f"  SCALAR-gold accuracy (clean, unambiguous subset): "
           f"{t.get('scalar_correct',0)}/{s['scalar_gold_n']}  ({s['scalar_gold_accuracy_pct']}%)")
-        P(f"  by difficulty (lenient / n):")
+        P("  by difficulty (lenient / n):")
         for d in DIFFS:
             dd = stat[c][d]
             P(f"     {d:8s} n={dd.get('n',0):3d}  answered={dd.get('answered',0):3d}  "

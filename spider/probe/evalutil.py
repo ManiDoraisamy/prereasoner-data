@@ -5,7 +5,6 @@ rows), so a row cap keeps the comparison valid while bounding cost — essential
 has ~510k rows. Only large DBs (wta_1) are actually capped; the 19 others fit under the cap exactly.
 """
 from __future__ import annotations
-import re
 import sqlite3
 import threading
 import time

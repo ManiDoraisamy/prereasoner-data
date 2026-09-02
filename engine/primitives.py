@@ -34,9 +34,14 @@ def group_agg_view(src, by, aggs):
     """grouped aggregate. by: [col]; aggs: [(fn, col, out)] -> SELECT by, fn(col) AS out ... GROUP BY by.
     A COUNT agg with col None/'*' emits COUNT(*) (a ROW count — not COUNT(<col>), which skips NULLs)."""
     def one(fn, col, out):
-        if fn.upper() == "COUNT" and (col is None or col == "*"):
+        function = fn.upper()
+        if function == "COUNT" and (col is None or col == "*"):
             return f'COUNT(*) AS {q(out)}'
-        return f'{fn}({q(col)}) AS {q(out)}'
+        function = {
+            "SUM": "decimal_sum", "AVG": "decimal_avg",
+            "MIN": "decimal_min", "MAX": "decimal_max",
+        }.get(function, function)
+        return f'{function}({q(col)}) AS {q(out)}'
     parts = [q(c) for c in by] + [one(fn, col, out) for fn, col, out in aggs]
     sql = f'SELECT {", ".join(parts)} FROM {q(src)}'
     if by:
@@ -50,21 +55,21 @@ def yoy_view(src, key, time, measure, out):
     ksel = f't.{q(key)} AS {q(key)}, ' if key else ''
     kjoin = f't.{q(key)} = p.{q(key)} AND ' if key else ''
     return (f'SELECT {ksel}t.{q(time)} AS {q(time)}, t.{q(measure)} AS {q(measure)}, '
-            f'(t.{q(measure)} - p.{q(measure)}) * 1.0 / NULLIF(p.{q(measure)}, 0) AS {q(out)} '
+            f'decimal_div(decimal_sub(t.{q(measure)}, p.{q(measure)}), p.{q(measure)}) AS {q(out)} '
             f'FROM {q(src)} t JOIN {q(src)} p ON {kjoin}t.{q(time)} = p.{q(time)} + 1')
 
 
 def topn_view(src, order, desc, n, select=None):
     """rank / top-N: ORDER BY order [DESC], projecting `select` (or *). n=None -> SORT only (no LIMIT); n=int -> top-N."""
     sel = ", ".join(q(c) for c in select) if select else "*"
-    sql = f'SELECT {sel} FROM {q(src)} ORDER BY {q(order)} {"DESC" if desc else "ASC"}'
+    sql = f'SELECT {sel} FROM {q(src)} ORDER BY {q(order)} COLLATE decimal {"DESC" if desc else "ASC"}'
     return sql + (f' LIMIT {int(n)}' if n is not None else '')
 
 
 def share_view(src, dim, measure, out):
     """share-of-total: each row's `measure` divided by the grand total."""
     return (f'SELECT {q(dim)} AS {q(dim)}, {q(measure)} AS {q(measure)}, '
-            f'{q(measure)} * 1.0 / NULLIF((SELECT SUM({q(measure)}) FROM {q(src)}), 0) AS {q(out)} '
+            f'decimal_div({q(measure)}, (SELECT decimal_sum({q(measure)}) FROM {q(src)})) AS {q(out)} '
             f'FROM {q(src)}')
 
 
@@ -73,7 +78,7 @@ def divide_view(src, num, den, out, keep=None):
     pass-through columns (the group keys). Both measures are assumed already aggregated to one row per key."""
     cols = [f'{q(c)} AS {q(c)}' for c in (keep or [])]
     cols += [f'{q(num)} AS {q(num)}', f'{q(den)} AS {q(den)}',
-             f'{q(num)} * 1.0 / NULLIF({q(den)}, 0) AS {q(out)}']
+             f'decimal_div({q(num)}, {q(den)}) AS {q(out)}']
     return f'SELECT {", ".join(cols)} FROM {q(src)}'
 
 
@@ -83,7 +88,7 @@ def running_view(src, key, time, measure, out):
     ksel = f't.{q(key)} AS {q(key)}, ' if key else ''
     kjoin = f'p.{q(key)} = t.{q(key)} AND ' if key else ''
     return (f'SELECT {ksel}t.{q(time)} AS {q(time)}, t.{q(measure)} AS {q(measure)}, '
-            f'(SELECT SUM(p.{q(measure)}) FROM {q(src)} p WHERE {kjoin}p.{q(time)} <= t.{q(time)}) AS {q(out)} '
+            f'(SELECT decimal_sum(p.{q(measure)}) FROM {q(src)} p WHERE {kjoin}p.{q(time)} <= t.{q(time)}) AS {q(out)} '
             f'FROM {q(src)} t')
 
 

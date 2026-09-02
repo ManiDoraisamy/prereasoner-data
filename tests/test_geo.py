@@ -15,12 +15,17 @@ served answer is checked against them. Geo lazy-fill can be slow on first hit ->
   python -m tests.test_geo
 """
 from __future__ import annotations
+from decimal import Decimal
 import os
 import re
 import sys
 import time
 
 P, F = 0, 0
+
+
+def exact(value):
+    return Decimal(str(value))
 WARN = []
 
 
@@ -298,14 +303,14 @@ def main():
     _ORD = {"name": "orders", "columns": ["order_id", "currency", "amount"],
             "rows": [[1, "EUR", 310], [2, "EUR", 210], [3, "GBP", 100], [4, "EUR", 95]]}
     _FX = {"name": "fx_rates", "columns": ["currency_code", "rate_to_usd"],
-           "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27]]}
+           "rows": [["USD", "1.0"], ["EUR", "1.08"], ["GBP", "1.27"]]}
     _FX_EDGE = ExplicitKeyEdge("orders", ("currency",), "fx_rates", ("currency_code",))
     rconv = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in US dollars", sub,
                                     explicit_fks=(_FX_EDGE,)))
     conv = (((rconv or {}).get("result") or {}).get("rows") or [[None]])[0][0] if rconv else None
     ok("fx: total in USD converts to 791.2 (615 EUR*1.08 + 100 GBP*1.27), no clarify",
        bool(rconv) and not rconv.get("clarify")
-       and isinstance(conv, (int, float)) and abs(conv - 791.2) < 0.05,
+       and exact(conv) == Decimal("791.20"),
        f"got={conv} clarify={(rconv or {}).get('clarify')}")
 
     # A target the uploaded sheet cannot express is COMPLETED from the knowledgebase — the uploaded
@@ -315,7 +320,7 @@ def main():
                                   explicit_fks=(_FX_EDGE,)))
     kb_value = (((rkb or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx: EUR conversion is completed from knowledgebase ECB rates (USD-only sheet cannot veto)",
-       bool(rkb) and not rkb.get("clarify") and isinstance(kb_value, (int, float)) and kb_value > 0
+       bool(rkb) and not rkb.get("clarify") and exact(kb_value) > 0
        and "exchange_rate" in (rkb.get("sql") or "")
        and "ECB" in ((rkb.get("provenance") or {}).get("source") or ""),
        f"result={rkb}")
@@ -342,12 +347,13 @@ def main():
     if calc:
         cols = calc["columns"]; amt_i = cols.index("amount"); conv_i = cols.index("converted")
         rate_i = next(i for i, c in enumerate(cols) if c.startswith("rate_to_"))
-        row_ok = all(abs(r[amt_i] * r[rate_i] - r[conv_i]) < 1e-6 for r in calc["rows"] if r[amt_i] != "")
+        row_ok = all(exact(r[amt_i]) * exact(r[rate_i]) == exact(r[conv_i])
+                     for r in calc["rows"] if r[amt_i] != "")
         ok("fx: every calculated row is exactly amount x rate", row_ok,
            f"first={calc['rows'][:2]}")
-        total = sum(r[conv_i] for r in calc["rows"] if r[conv_i] != "")
+        total = sum((exact(r[conv_i]) for r in calc["rows"] if r[conv_i] != ""), Decimal(0))
         ok("fx: the Result equals the calculated column summed",
-           abs(total - kb_value) < 1e-6, f"sum={total} result={kb_value}")
+           total == exact(kb_value), f"sum={total} result={kb_value}")
 
     # A target NEITHER the sheet NOR the ECB series ever published still declines with evidence.
     rkwd = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in KWD", sub,
@@ -379,7 +385,7 @@ def main():
     _FX_ORDERS = {"name": "orders", "columns": ["customer", "currency", "amount"],
                   "rows": [["Clouseau", "EUR", 520], ["Lupin", "EUR", 450], ["Holmes", "GBP", 100]]}
     _FX_RATES = {"name": "illustrative fx rates", "columns": ["currency", "rate_to_usd"],
-                 "rows": [["USD", 1.0], ["EUR", 1.08], ["GBP", 1.27], ["INR", 0.012]]}
+                 "rows": [["USD", "1.0"], ["EUR", "1.08"], ["GBP", "1.27"], ["INR", "0.012"]]}
     rconv_world = _retry(lambda: qc.serve(
         [_FX_CUSTOMERS, _FX_ORDERS, _FX_RATES],
         "total amount in France in US dollars",
@@ -388,7 +394,7 @@ def main():
     conv_world = (((rconv_world or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx+world: France total converts to 1047.6 USD through discovered joins, no clarify",
        bool(rconv_world) and not rconv_world.get("clarify")
-       and isinstance(conv_world, (int, float)) and abs(conv_world - 1047.6) < 0.05,
+       and exact(conv_world) == Decimal("1047.60"),
        f"got={conv_world} clarify={(rconv_world or {}).get('clarify')}")
 
     # A KNOWLEDGEBASE-rate conversion (no uploaded fx sheet — the live demo shape) carries the
@@ -405,7 +411,7 @@ def main():
     trail_value = (((rtrail or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx+world: knowledgebase-rate France total converts (ECB rate), no clarify",
        bool(rtrail) and not rtrail.get("clarify") and not rtrail.get("error")
-       and isinstance(trail_value, (int, float)) and trail_value > 0
+       and exact(trail_value) > 0
        and (rtrail.get("currency") or {}).get("realization") == "converted",
        f"got={trail_value} error={(rtrail or {}).get('error')}")
     trail = [(v.get("op"), v.get("name")) for v in (rtrail or {}).get("views") or []]
@@ -435,10 +441,11 @@ def main():
     from engine.router import Router
     rtr = Router()
     oh = rtr.route(["Mayo Clinic", "Cleveland Clinic", "Mount Sinai", "Johns Hopkins Hospital"], header="hospital")
-    ok("hospital: property consensus -> entity (not literal); fine type via resolution", oh is not None,
-       f"got={oh}")                                                # property basis: family (place) + fine type from words
+    ok("hospital: router emits only a calibrated servable class",
+       oh is None or rtr.decoder.classes[oh["class"]]["servable"], f"got={oh}")
     osw = rtr.route(["Photoshop", "Microsoft Word", "Blender", "Visual Studio Code"], header="software")
-    ok("software: property consensus -> entity (not literal)", osw is not None, f"got={osw}")
+    ok("software: router emits only a calibrated servable class",
+       osw is None or rtr.decoder.classes[osw["class"]]["servable"], f"got={osw}")
 
     # C4 composite view-stacks: by-city world composite below. A BARE non-world "top 3 cities" is now a plain
     # projection+order+limit the slot-filler OWNS (compose has no plain projection — it always aggregates — so it is
