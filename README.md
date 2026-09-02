@@ -1,18 +1,23 @@
 # PreReasoner
 
-PreReasoner is an interpretable AI model for spreadsheets. Every answer is derived from your data as
-an inspectable query.
+PreReasoner is an interpretable AI model that shows its reasoning through named dimensions. Every
+answer is derived from your data as an inspectable query.
 
-[prereasoner.com](https://prereasoner.com/) | [Try it free](https://chat.prereasoner.com/)
+[Website](https://prereasoner.com/) | [Try it free](https://chat.prereasoner.com/)
 
-You ask a question about your sheet. PreReasoner types the question and your columns against named
-dimensions, builds the SQL those dimensions imply, and runs it. The query is the explanation. You can
-read it, rerun it and check every row it touched.
+It doesn't explain a black box. It replaces it. A generative model samples its answer, so the same
+question can return a different result each time and there is no way to rerun a past decision and
+check it. PreReasoner types your inputs against named dimensions and assembles the exact query that
+computes the result. The derivation is the explanation, with the query, the dimensions and the source
+rows.
+
+Every result traces to named factors instead of an opaque score. The same input always produces the
+same factors, the same query and the same result, so an auditor can rerun any past decision and get
+the identical trace. When the data does not support an answer, PreReasoner says so and escalates for
+human review. No silent guess enters the record.
 
 Nothing in the number path is generated. There is no decoder writing values, so there is nothing to
-fabricate. The same question on the same data returns the same dimensions, the same query and the
-same number every time. When the data cannot support an answer, PreReasoner says so instead of
-returning a plausible number.
+fabricate. You run it where the data already is: Google Sheets, Excel, CSV or the API.
 
 ## Structured Retrieval Instead Of Embeddings
 
