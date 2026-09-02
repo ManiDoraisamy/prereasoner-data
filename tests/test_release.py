@@ -202,10 +202,12 @@ def test_runpod_training_is_an_owned_bounded_lease():
     from training.tools import runpod_api
 
     events = []
+    create_bodies = []
 
     def fake_rest(method, path, body=None, timeout=90, key=None):
         events.append((method, path))
         if method == "POST":
+            create_bodies.append(body)
             return 201, {"id": "pod-1"}
         if method == "GET":
             return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1", "portMappings": {"22": 22}}
@@ -224,11 +226,18 @@ def test_runpod_training_is_an_owned_bounded_lease():
             raise AssertionError("training timeout was swallowed")
         assert events[-1] == ("DELETE", "/pods/pod-1")
         assert not runpod_api.STATE.exists()
+        body = create_bodies[0]
+        assert "terminateAfter" not in body
+        assert body["imageName"] == runpod_api.IMAGE and "@sha256:" in body["imageName"]
+        assert "runpodctl remove pod" in body["dockerStartCmd"][-1]
+        assert "HF_TOKEN" not in body["env"]
 
     assert not (ROOT / "training/data/pod_id.txt").exists()
     source = _text("training/tools/runpod_api.py")
     assert "finally:" in source and "--keep" in source and "max_minutes * 60" in source
-    assert '"terminateAfter"' in source
+    assert '"dockerStartCmd"' in source and "runpodctl remove pod" in source
+    assert '"terminateAfter"' not in source
+    assert "@sha256:" in source
 
 
 def test_runpod_cleanup_failure_does_not_hide_training_failure():

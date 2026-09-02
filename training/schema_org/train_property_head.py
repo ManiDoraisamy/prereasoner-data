@@ -12,6 +12,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import random
@@ -172,6 +173,7 @@ def _runtime_identity(torch, device) -> dict:
         "cudnn": torch.backends.cudnn.version() if cuda else None,
         "device": str(device),
         "device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else "cpu",
+        "runner_image": os.environ.get("PREREASONER_TRAINING_IMAGE", "local"),
     }
 
 

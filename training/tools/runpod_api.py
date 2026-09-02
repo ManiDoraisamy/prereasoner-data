@@ -7,7 +7,6 @@ passes ``--keep``.
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -22,7 +21,10 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 REST = "https://rest.runpod.io/v1"
-IMAGE = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
+IMAGE = (
+    "runpod/pytorch:1.2.0-rc.162-cu1300-torch2130-ubuntu2404"
+    "@sha256:e3cab401fc7e525f383b38ee2adac8e6e26545605b38d3971f8565e5a5ffd42d"
+)
 GPU_PRIORITY = [
     "NVIDIA GeForce RTX 4090", "NVIDIA RTX A5000", "NVIDIA L4",
     "NVIDIA RTX A4000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4500",
@@ -96,16 +98,29 @@ def _clear(pid: str) -> None:
 
 
 def create(max_minutes: int) -> str:
-    _, hf_token = credentials()
+    # RunPod REST does not accept the CLI-documented `terminateAfter` field. Arm the
+    # provider-supplied, pod-scoped CLI before /start.sh instead. The caller's finally
+    # block remains a second, independent deletion path.
+    guard_seconds = max_minutes * 60
+    delete_self = (
+        f"sleep {guard_seconds}; "
+        'runpodctl remove pod "$RUNPOD_POD_ID" || '
+        'curl -fsS -X DELETE "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID" '
+        '-H "Authorization: Bearer $RUNPOD_API_KEY"'
+    )
     body = {
         "name": "prereasoner-train", "imageName": IMAGE, "cloudType": "SECURE",
         "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1, "containerDiskInGb": 25,
         "volumeInGb": 0, "ports": ["22/tcp"],
-        # This provider-side deadline still fires if the caller disappears.
-        "terminateAfter": (
-            datetime.now(timezone.utc) + timedelta(minutes=max_minutes)
-        ).isoformat(timespec="seconds").replace("+00:00", "Z"),
-        "env": {"PUBLIC_KEY": pubkey(), "HF_TOKEN": hf_token},
+        "allowedCudaVersions": ["13.0"],
+        "dockerStartCmd": [
+            "bash", "-lc",
+            f"({delete_self}) >/tmp/prereasoner-lease-guard.log 2>&1 & exec /start.sh",
+        ],
+        "env": {
+            "PUBLIC_KEY": pubkey(),
+            "PREREASONER_TRAINING_IMAGE": IMAGE,
+        },
     }
     status, response = rest("POST", "/pods", body)
     if status not in (200, 201) or not isinstance(response, dict) or not response.get("id"):
@@ -208,7 +223,7 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 terminate(pid)
             except Exception as cleanup_error:
                 # Preserve the training failure that triggered cleanup. The provider-side
-                # terminateAfter deadline remains the final cost bound if all deletes fail.
+                # pod-local deletion watchdog remains the final cost bound if all deletes fail.
                 print(f"CRITICAL: pod {pid} cleanup failed: {cleanup_error}", file=sys.stderr)
                 if not had_error:
                     raise

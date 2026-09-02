@@ -128,7 +128,9 @@ def gate(candidate: Path) -> list[str]:
             if _committed_blob_sha256(trainer_commit, relative) != expected:
                 problems.append(f"trainer source does not match its recorded commit: {relative}")
     runtime = training_manifest.get("runtime") or {}
-    for field in ("python", "platform", "numpy", "torch", "device", "device_name"):
+    for field in (
+        "python", "platform", "numpy", "torch", "device", "device_name", "runner_image",
+    ):
         if not runtime.get(field):
             problems.append(f"training manifest lacks runtime identity: {field}")
     if training_manifest.get("source_manifest") != corpus_manifest.get("source_manifest"):
