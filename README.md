@@ -3,6 +3,8 @@
 PreReasoner is an interpretable AI model for spreadsheets. Every answer is derived from your data as
 an inspectable query.
 
+[prereasoner.com](https://prereasoner.com/) | [Try it free](https://chat.prereasoner.com/)
+
 You ask a question about your sheet. PreReasoner types the question and your columns against named
 dimensions, builds the SQL those dimensions imply, and runs it. The query is the explanation. You can
 read it, rerun it and check every row it touched.
