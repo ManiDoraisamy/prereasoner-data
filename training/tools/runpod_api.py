@@ -22,8 +22,8 @@ import urllib.request
 ROOT = Path(__file__).resolve().parents[2]
 REST = "https://rest.runpod.io/v1"
 IMAGE = (
-    "runpod/pytorch:1.2.0-rc.162-cu1300-torch2130-ubuntu2404"
-    "@sha256:e3cab401fc7e525f383b38ee2adac8e6e26545605b38d3971f8565e5a5ffd42d"
+    "runpod/pytorch:1.2.0-rc.162-cu1281-torch2130-ubuntu2204"
+    "@sha256:ed683f5f23a4b50f2738cddaccea02254bf8303dcbcc33485c95a31b76555422"
 )
 GPU_PRIORITY = [
     "NVIDIA GeForce RTX 4090", "NVIDIA RTX A5000", "NVIDIA L4",
@@ -112,7 +112,7 @@ def create(max_minutes: int) -> str:
         "name": "prereasoner-train", "imageName": IMAGE, "cloudType": "SECURE",
         "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1, "containerDiskInGb": 25,
         "volumeInGb": 0, "ports": ["22/tcp"],
-        "allowedCudaVersions": ["13.0"],
+        "allowedCudaVersions": ["12.8"],
         "dockerStartCmd": [
             "bash", "-lc",
             f"({delete_self}) >/tmp/prereasoner-lease-guard.log 2>&1 & exec /start.sh",
