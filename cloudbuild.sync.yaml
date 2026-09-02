@@ -1,0 +1,36 @@
+# Build the small, reusable source-sync image. Run publisher jobs by overriding the
+# Cloud Run job command; no serving model or model weights are included.
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        export DOCKER_BUILDKIT=1
+        docker build -f Dockerfile.sync \
+          -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/source-sync:${_TAG} .
+  - id: import-check
+    name: gcr.io/cloud-builders/docker
+    waitFor: ['build']
+    args:
+      - run
+      - --rm
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/source-sync:${_TAG}
+      - python
+      - -c
+      - from db.sync.sources.wikidata.sync import parse_snapshot; print('source sync imports')
+
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/source-sync:${_TAG}
+
+substitutions:
+  _REGION: us-central1
+  _REPO: prereasoner
+  _TAG: latest
+
+options:
+  machineType: E2_HIGHCPU_8
+
+timeout: 900s

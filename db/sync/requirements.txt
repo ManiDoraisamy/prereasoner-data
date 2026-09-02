@@ -1,7 +1,5 @@
 # db/sync — standalone world-database bootstrap/sync scripts.
-psycopg2-binary>=2.9,<3
-requests>=2.31,<3
-defusedxml>=0.7,<1
+-r requirements-core.txt
 numpy>=1.24,<2
 
 # build_words.py / sync_types.py / sync_entity.py embed labels with bge-small-en-v1.5 (CPU is fine):

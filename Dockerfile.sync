@@ -1,0 +1,16 @@
+# syntax=docker/dockerfile:1
+# Minimal runtime for publisher-owned reference-data synchronization jobs.
+FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+COPY db/sync/requirements-core.txt /tmp/requirements-core.txt
+RUN pip install -r /tmp/requirements-core.txt
+COPY db/ /app/db/
+COPY LICENSE THIRD_PARTY.md /licenses/
+
+CMD ["python", "-m", "db.sync.sources.wikidata.sync"]
