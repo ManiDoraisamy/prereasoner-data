@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import re
 import shlex
 import subprocess
@@ -17,7 +16,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 REST = "https://rest.runpod.io/v1"
@@ -62,7 +61,8 @@ def rest(method, path, body=None, timeout=90, *, key=None):
             return response.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read().decode()[:1000]
-    except Exception as exc:  # transport errors are data, so the lifecycle owner can still clean up
+    except (OSError, TimeoutError, urllib.error.URLError) as exc:
+        # Transport errors are data, so the lifecycle owner can still clean up the pod.
         return -1, str(exc)
 
 

@@ -19,6 +19,11 @@ python -m tests.test_schema_coverage
 python -m tests.test_schema_decode
 ```
 
+GPU runs use `training/tools/run_schema_training.sh` inside a clean checkout. It verifies the expected
+commit before staging ignored corpus, embedding-cache, and LoRA inputs, then exports the four artifacts
+that `promote.py` gates. Invoke it through `python -m training.tools.runpod_api lease`; the lease terminates
+the pod on success, failure, timeout, and interruption unless an operator explicitly passes `--keep`.
+
 Corpus and candidate files are generated under `training/schema_org/data/` and are gitignored.
 `data/semantic_manifest.json` is committed because it records the corpus identity, source releases,
 mappings, split counts, and drop statistics.

@@ -54,7 +54,9 @@ def main():
                 print(f"\n=== SKIP {mod} (no KB_PG_PASSWORD) ===", flush=True)
                 continue
             print(f"\n=== {mod} {' '.join(args)} ===", flush=True)
-            if subprocess.run([sys.executable, "-m", mod, *args], env=env, cwd=str(ROOT)).returncode != 0:
+            if subprocess.run(
+                [sys.executable, "-m", mod, *args], env=env, cwd=str(ROOT), check=False,
+            ).returncode != 0:
                 raise SystemExit(f"step FAILED: {mod}")
         print("\npipeline: release pipeline GREEN — gates passed; artifacts consistent. "
               "Copy the training/data artifacts into engine/data to ship (see training/README.md).")

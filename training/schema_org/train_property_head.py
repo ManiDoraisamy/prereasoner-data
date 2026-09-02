@@ -43,6 +43,7 @@ TRAINER_INPUTS = (
     "training/schema_org/instances.py",
     "training/schema_org/signatures.py",
     "training/schema_org/paths.py",
+    "training/tools/run_schema_training.sh",
     "engine/schema_model.py",
     "engine/schema_decode.py",
     "engine/encoder.py",
