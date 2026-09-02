@@ -61,18 +61,14 @@ UNREACHABLE_DIMS = {
     # them is how four dims (hasOccupation, nationality, affiliation, birthPlace) were briefly excluded
     # while the model was still learning them — an exclusion that protects a learnable dim is a dodge.
     #
-    # The block below shares ONE measured mechanism: each property's values in the capped snapshot are QID
-    # references to entities the snapshot does not contain, so `_render_values` drops them and the property
-    # is never labeled. Sampled resolution rates: director (P57) 0/421, actor (P161) 3/5343, lyricist
-    # (P676) 4/486, operatingSystem (P306) 0/690 — and 1,055,959 unresolvable QID values were dropped
-    # corpus-wide (semantic_manifest.json:dropped.value_unresolvable_qid). This is the same limitation as
-    # `gender`: the snapshot has no Person entities, so person-valued properties cannot be rendered.
-    # THE REMEDY IS DATA, NOT CODE — ingesting the referenced entities (or a Person source) makes these
-    # reachable, at which point test_excluded_dims_stay_excluded FAILS these entries as stale.
-    **{name: "values are QID references to entities absent from the capped snapshot (0-1% resolve)"
-       for name in ("actor", "director", "productionCompany", "character", "award", "editor", "lyricist",
+    # The active bounded `wikidata.entity_label` release made actor, director, productionCompany,
+    # operatingSystem and brand learnable. The remaining block still has too few independent labeled
+    # groups in at least one split. THE REMEDY IS DATA, NOT A LOWER GATE: broadening the reviewed label
+    # snapshot makes an entry reachable, at which point test_excluded_dims_stay_excluded fails it as stale.
+    **{name: "values remain QID references with insufficient independent labeled groups in this snapshot"
+       for name in ("character", "award", "editor", "lyricist",
                     "founder", "affiliation", "hasOccupation", "nationality", "locationCreated",
-                    "operatingSystem", "programmingLanguage", "servesCuisine", "brand", "connectedTo",
+                    "programmingLanguage", "servesCuisine", "connectedTo",
                     "distance", "previousItem", "partOfSeries", "asin", "color", "license", "startTime",
                     "uploadDate")},
 }
@@ -164,7 +160,7 @@ def test_entity_properties_clear_the_support_floor():
 def test_targeted_wikidata_dimensions_clear_calibration_floor():
     """The bounded Wikidata sampler must retain legacy dimensions under a fresh split."""
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    targets = {"author", "isBasedOn", "owns", "producer"}
+    targets = {"author", "isBasedOn", "owns", "parentTaxon", "producer"}
     overrides = manifest["caps"].get("per_property_entity_overrides", {})
     missing_policy = sorted(name for name in targets if overrides.get(name, 0) < 250)
     assert not missing_policy, f"targeted Wikidata sampling policy missing or too small: {missing_policy}"

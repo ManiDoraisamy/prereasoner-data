@@ -230,6 +230,7 @@ WIKIDATA_PROPERTY_ENTITY_OVERRIDES = {
     schema_uri("author"): 250,
     schema_uri("isBasedOn"): 250,
     schema_uri("owns"): 250,
+    schema_uri("parentTaxon"): 250,
     schema_uri("producer"): 250,
 }
 BASELINE_ENTITIES = 100         # per pool, qid-ordered: guarantees class-shape coverage independent of props
