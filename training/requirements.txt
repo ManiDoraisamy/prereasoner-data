@@ -4,7 +4,7 @@
 # and smoke runs. GPU jobs must use the same PyTorch version from the CUDA index matching the
 # runner; record that wheel and CUDA version in the training manifest.
 --extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.13.0
+torch==2.14.0+cpu
 
 # encoder stack (Qwen2.5-0.5B base + LoRA adapter). The base model downloads from Hugging Face —
 # set HF_TOKEN in the environment (never hardcode it).
