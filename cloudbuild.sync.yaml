@@ -2,7 +2,7 @@
 # Cloud Run job command; no serving model or model weights are included.
 steps:
   - id: build
-    name: gcr.io/cloud-builders/docker
+    name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
     entrypoint: bash
     args:
       - -c
@@ -12,7 +12,7 @@ steps:
         docker build -f Dockerfile.sync \
           -t ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/source-sync:${_TAG} .
   - id: import-check
-    name: gcr.io/cloud-builders/docker
+    name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
     waitFor: ['build']
     args:
       - run
