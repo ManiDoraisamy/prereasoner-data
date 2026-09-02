@@ -47,6 +47,15 @@ class WikidataLabels:
         return {"entity_label": len(self.rows)}
 
 
+def _entity_records(payload: dict) -> list[dict]:
+    entities = payload.get("entities")
+    if isinstance(entities, dict):
+        return list(entities.values())
+    if isinstance(entities, list):
+        return entities
+    raise TypeError("Wikidata response has no entities collection")
+
+
 def collect_reference_qids(cur, property_ids=DEFAULT_PROPERTY_IDS,
                            *, limit: int = MAX_REQUEST_QIDS) -> tuple[str, ...]:
     """Collect the bounded QID universe used by the audited Schema.org mappings."""
@@ -75,7 +84,7 @@ def _request_batch(session: requests.Session, qids: tuple[str, ...], *, retries:
     params = {
         "action": "wbgetentities",
         "ids": "|".join(qids),
-        "props": "labels",
+        "props": "info|labels",
         "languages": "en",
         "format": "json",
         "formatversion": "2",
@@ -88,9 +97,7 @@ def _request_batch(session: requests.Session, qids: tuple[str, ...], *, retries:
                 raise requests.HTTPError(f"Wikidata API returned {response.status_code}", response=response)
             response.raise_for_status()
             payload = response.json()
-            entities = payload.get("entities")
-            if not isinstance(entities, list):
-                raise TypeError("Wikidata response has no entities list")
+            entities = _entity_records(payload)
             returned = {str(entity.get("id")) for entity in entities}
             if returned != set(qids):
                 raise ValueError("Wikidata response QIDs do not match the requested batch")
@@ -147,13 +154,13 @@ def parse_snapshot(snapshot: bytes, *, minimum_resolution: float = 0.95) -> Wiki
     rows = []
     missing = []
     seen = set()
-    for entity in payload.get("entities") or ():
+    for entity in _entity_records(payload):
         qid = str(entity.get("id", ""))
         if qid not in requested or qid in seen:
             raise ValueError(f"Wikidata snapshot has foreign or duplicate entity {qid!r}")
         seen.add(qid)
         label = ((entity.get("labels") or {}).get("en") or {}).get("value")
-        if entity.get("missing") or not isinstance(label, str) or not label.strip():
+        if "missing" in entity or not isinstance(label, str) or not label.strip():
             missing.append(qid)
             continue
         revision = entity.get("lastrevid")

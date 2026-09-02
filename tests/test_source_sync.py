@@ -527,10 +527,11 @@ def test_wikidata_label_snapshot_is_bounded_complete_and_revisioned():
         "schema_version": 1,
         "property_ids": ["P50", "P162"],
         "requested_qids": ["Q42", "Q999"],
-        "entities": [
-            {"id": "Q42", "lastrevid": 123, "labels": {"en": {"value": "Douglas Adams"}}},
-            {"id": "Q999", "missing": True},
-        ],
+        "entities": {
+            "Q42": {"id": "Q42", "lastrevid": 123,
+                    "labels": {"en": {"value": "Douglas Adams"}}},
+            "Q999": {"id": "Q999", "missing": ""},
+        },
     }
     data = parse_wikidata_labels(
         json.dumps(payload, sort_keys=True).encode(), minimum_resolution=0.5,
@@ -539,7 +540,7 @@ def test_wikidata_label_snapshot_is_bounded_complete_and_revisioned():
     assert data.missing_qids == ("Q999",)
     assert data.counts() == {"entity_label": 1}
 
-    payload["entities"][0]["id"] = "Q1000"
+    payload["entities"]["Q42"]["id"] = "Q1000"
     try:
         parse_wikidata_labels(json.dumps(payload).encode(), minimum_resolution=0.5)
         raise AssertionError
