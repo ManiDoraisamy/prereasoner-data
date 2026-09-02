@@ -8,7 +8,7 @@ numpy>=1.24,<2
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.13.0
 transformers==5.10.4
-tokenizers==0.22.2
+tokenizers==0.23.1
 
 # import_dump.py ONLY (the legacy HF parquet dump path; not needed for the WDQS sync):
 # huggingface_hub>=0.23
