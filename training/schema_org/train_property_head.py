@@ -162,7 +162,7 @@ def _trainer_identity() -> dict:
     }
 
 
-def _runtime_identity(torch, device) -> dict:
+def _runtime_identity(torch, device, runner_image: str) -> dict:
     cuda = torch.version.cuda
     return {
         "python": platform.python_version(),
@@ -173,7 +173,7 @@ def _runtime_identity(torch, device) -> dict:
         "cudnn": torch.backends.cudnn.version() if cuda else None,
         "device": str(device),
         "device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else "cpu",
-        "runner_image": os.environ.get("PREREASONER_TRAINING_IMAGE", "local"),
+        "runner_image": runner_image,
     }
 
 
@@ -236,6 +236,11 @@ def main() -> None:
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--lr", type=float, default=2e-3)
     parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument(
+        "--runner-image",
+        default=os.environ.get("PREREASONER_TRAINING_IMAGE", "local"),
+        help="immutable container image digest, or 'local' for a non-container run",
+    )
     args = parser.parse_args()
 
     random.seed(args.seed); np.random.seed(args.seed); torch.manual_seed(args.seed)
@@ -444,7 +449,7 @@ def main() -> None:
         "schema_version": 1,
         "generator": corpus_manifest.get("generator"),
         "trainer": _trainer_identity(),
-        "runtime": _runtime_identity(torch, device),
+        "runtime": _runtime_identity(torch, device, args.runner_image),
         "corpus": corpus_manifest["corpus"],
         "source_manifest": corpus_manifest.get("source_manifest"),
         "split_policy": corpus_manifest.get("split_policy"),

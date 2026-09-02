@@ -133,6 +133,8 @@ def gate(candidate: Path) -> list[str]:
     ):
         if not runtime.get(field):
             problems.append(f"training manifest lacks runtime identity: {field}")
+    if runtime.get("device") == "cuda" and runtime.get("runner_image") == "local":
+        problems.append("GPU training manifest does not identify its immutable runner image")
     if training_manifest.get("source_manifest") != corpus_manifest.get("source_manifest"):
         problems.append("training manifest does not preserve source-release identities")
     if training_manifest.get("split_policy") != corpus_manifest.get("split_policy"):

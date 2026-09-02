@@ -345,9 +345,11 @@ def test_schema_training_selection_never_reads_test_evidence():
     assert '"selection_data": ("train", "validation")' in source
     assert '"evaluation_data": ("test",)' in source
     assert '"trainer": _trainer_identity()' in source
-    assert '"runtime": _runtime_identity(torch, device)' in source
+    assert '"runtime": _runtime_identity(torch, device, args.runner_image)' in source
+    assert '"--runner-image"' in source
     promotion = _text("training/schema_org/promote.py")
     assert "trainer source does not match its recorded commit" in promotion
+    assert "does not identify its immutable runner image" in promotion
 
 
 TESTS = [
