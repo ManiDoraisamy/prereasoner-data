@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import sys
@@ -146,19 +147,53 @@ def poll(pid: str, timeout_minutes=8):
     raise TimeoutError(f"pod {pid} did not expose SSH within {timeout_minutes} minutes")
 
 
-def run_lease(max_minutes: int, command: list[str], keep: bool = False) -> str:
+def _remote_path(value: str) -> str:
+    if not re.fullmatch(r"/[A-Za-z0-9._/-]+", value) or ".." in value.split("/"):
+        raise ValueError(f"unsafe remote path: {value!r}")
+    return value
+
+
+def run_lease(max_minutes: int, command: list[str], keep: bool = False,
+              uploads: tuple[tuple[str, str], ...] = (),
+              downloads: tuple[tuple[str, str], ...] = ()) -> str:
     if not 1 <= max_minutes <= 360:
         raise ValueError("--max-minutes must be between 1 and 360")
     pid = create(max_minutes)
     try:
         ip, port = poll(pid)
+        deadline = time.monotonic() + max_minutes * 60
+
+        def remaining() -> float:
+            seconds = deadline - time.monotonic()
+            if seconds <= 0:
+                raise TimeoutError(f"pod {pid} lease expired")
+            return seconds
+
         ssh = [
             "ssh", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
             "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", f"root@{ip}",
         ]
+        scp = [
+            "scp", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
+            "-P", str(port), "-o", "StrictHostKeyChecking=accept-new", "-r",
+        ]
+        for local, remote in uploads:
+            source = Path(local).resolve()
+            if not source.exists():
+                raise FileNotFoundError(f"upload source does not exist: {source}")
+            subprocess.run(
+                [*scp, str(source), f"root@{ip}:{_remote_path(remote)}"],
+                check=True, timeout=remaining(),
+            )
         if command:
-            ssh.append(shlex.join(command))
-        subprocess.run(ssh, check=True, timeout=max_minutes * 60)
+            subprocess.run([*ssh, shlex.join(command)], check=True, timeout=remaining())
+        for remote, local in downloads:
+            destination = Path(local).resolve()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            subprocess.run(
+                [*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
+                check=True, timeout=remaining(),
+            )
         return pid
     finally:
         if keep:
@@ -188,6 +223,10 @@ def main(argv=None) -> int:
     lease = commands.add_parser("lease")
     lease.add_argument("--max-minutes", type=int, default=120)
     lease.add_argument("--keep", action="store_true")
+    lease.add_argument("--upload", action="append", nargs=2, default=[],
+                       metavar=("LOCAL", "REMOTE"))
+    lease.add_argument("--download", action="append", nargs=2, default=[],
+                       metavar=("REMOTE", "LOCAL"))
     lease.add_argument("remote_command", nargs=argparse.REMAINDER)
     args = parser.parse_args(argv)
 
@@ -203,7 +242,10 @@ def main(argv=None) -> int:
     elif args.command == "term":
         terminate(args.pod_id)
     else:
-        run_lease(args.max_minutes, args.remote_command, args.keep)
+        run_lease(
+            args.max_minutes, args.remote_command, args.keep,
+            tuple(map(tuple, args.upload)), tuple(map(tuple, args.download)),
+        )
     return 0
 
 

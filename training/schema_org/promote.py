@@ -20,6 +20,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -33,6 +34,7 @@ from training.schema_org.paths import EXPERIMENTS_DIR, MANIFEST_PATH
 ARTIFACTS = ("schema_property_head.pt", "schema_property_model.json",
              "schema_class_signatures.json", "schema_training_manifest.json")
 _IMMUTABLE_REVISION = re.compile(r"[0-9a-f]{40,64}")
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def _sha256(path: Path) -> str:
@@ -44,6 +46,19 @@ def _valid_json_identity(value: dict) -> bool:
     payload = dict(value)
     payload.pop("artifact_sha256", None)
     return bool(recorded) and recorded == canonical_json_sha256(payload)
+
+
+def _committed_blob_sha256(commit: str, relative: str) -> str | None:
+    """Hash one trainer input from the recorded commit without checking it out."""
+    if not re.fullmatch(r"[A-Za-z0-9._/-]+", relative) or ".." in relative.split("/"):
+        return None
+    try:
+        payload = subprocess.check_output(
+            ["git", "show", f"{commit}:{relative}"], cwd=ROOT, stderr=subprocess.DEVNULL,
+        )
+    except subprocess.CalledProcessError:
+        return None
+    return hashlib.sha256(payload).hexdigest()
 
 
 def gate(candidate: Path) -> list[str]:
@@ -99,6 +114,23 @@ def gate(candidate: Path) -> list[str]:
         problems.append("training manifest lacks an immutable generator commit")
     if generator != (corpus_manifest.get("generator") or {}):
         problems.append("training manifest does not preserve the committed generator identity")
+    trainer = training_manifest.get("trainer") or {}
+    trainer_commit = str(trainer.get("repository_commit", ""))
+    trainer_files = trainer.get("source_files") or {}
+    if not trainer.get("worktree_clean"):
+        problems.append("candidate was trained from a dirty worktree")
+    if not _IMMUTABLE_REVISION.fullmatch(trainer_commit):
+        problems.append("training manifest lacks an immutable trainer commit")
+    if not trainer_files or trainer.get("source_files_sha256") != canonical_json_sha256(trainer_files):
+        problems.append("training manifest has an invalid trainer source digest")
+    else:
+        for relative, expected in trainer_files.items():
+            if _committed_blob_sha256(trainer_commit, relative) != expected:
+                problems.append(f"trainer source does not match its recorded commit: {relative}")
+    runtime = training_manifest.get("runtime") or {}
+    for field in ("python", "platform", "numpy", "torch", "device", "device_name"):
+        if not runtime.get(field):
+            problems.append(f"training manifest lacks runtime identity: {field}")
     if training_manifest.get("source_manifest") != corpus_manifest.get("source_manifest"):
         problems.append("training manifest does not preserve source-release identities")
     if training_manifest.get("split_policy") != corpus_manifest.get("split_policy"):

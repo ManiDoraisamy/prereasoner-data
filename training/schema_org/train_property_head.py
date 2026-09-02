@@ -13,7 +13,9 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import platform
 import random
+import subprocess
 
 import numpy as np
 
@@ -29,6 +31,19 @@ from training.schema_org.signatures import SIGNATURES_NAME
 
 
 CACHE_PATH = EMBEDDINGS_PATH
+ROOT = Path(__file__).resolve().parents[2]
+TRAINER_INPUTS = (
+    "training/schema_org/train_property_head.py",
+    "training/schema_org/instances.py",
+    "training/schema_org/signatures.py",
+    "training/schema_org/paths.py",
+    "engine/schema_model.py",
+    "engine/schema_decode.py",
+    "engine/encoder.py",
+    "engine/schema_org.py",
+    "engine/artifact_provenance.py",
+    "training/requirements.txt",
+)
 MIN_PROPERTY_TRAIN = 25
 MIN_PROPERTY_VALIDATION = 5
 # Held-out floors additionally counted in DISTINCT SPLIT GROUPS. Column instances add instances without
@@ -123,6 +138,41 @@ def _metrics(scores: np.ndarray, labels: np.ndarray, threshold: float) -> dict:
 
 def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _trainer_identity() -> dict:
+    """Bind a candidate to immutable trainer source, not merely a corpus commit."""
+    commit = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8",
+    ).strip()
+    status = subprocess.check_output(
+        ["git", "status", "--porcelain"], cwd=ROOT, text=True, encoding="utf-8",
+    ).strip()
+    files = {
+        relative: hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
+        for relative in TRAINER_INPUTS
+    }
+    return {
+        "entrypoint": "training.schema_org.train_property_head",
+        "repository_commit": commit,
+        "worktree_clean": not status,
+        "source_files": files,
+        "source_files_sha256": canonical_json_sha256(files),
+    }
+
+
+def _runtime_identity(torch, device) -> dict:
+    cuda = torch.version.cuda
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "numpy": np.__version__,
+        "torch": str(torch.__version__),
+        "cuda_runtime": str(cuda) if cuda else None,
+        "cudnn": torch.backends.cudnn.version() if cuda else None,
+        "device": str(device),
+        "device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else "cpu",
+    }
 
 
 def _cached_embeddings(cache_path: Path, encoder_artifact_sha256: str) -> dict[str, np.ndarray]:
@@ -391,6 +441,8 @@ def main() -> None:
     training_manifest = {
         "schema_version": 1,
         "generator": corpus_manifest.get("generator"),
+        "trainer": _trainer_identity(),
+        "runtime": _runtime_identity(torch, device),
         "corpus": corpus_manifest["corpus"],
         "source_manifest": corpus_manifest.get("source_manifest"),
         "split_policy": corpus_manifest.get("split_policy"),

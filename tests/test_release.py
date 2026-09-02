@@ -257,6 +257,47 @@ def test_runpod_cleanup_failure_does_not_hide_training_failure():
         assert runpod_api.STATE.exists(), "unconfirmed termination must retain recovery state"
 
 
+def test_runpod_transfers_are_inside_the_owned_lease():
+    from training.tools import runpod_api
+
+    events = []
+
+    def fake_rest(method, path, body=None, timeout=90, key=None):
+        if method == "POST":
+            return 201, {"id": "pod-3"}
+        if method == "GET":
+            return 200, {"desiredStatus": "RUNNING", "publicIp": "127.0.0.1",
+                         "portMappings": {"22": 22}}
+        events.append((method, path))
+        return 204, None
+
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.object(runpod_api, "STATE", Path(directory) / "active.json"), \
+            patch.object(runpod_api, "rest", side_effect=fake_rest), \
+            patch.object(runpod_api, "pubkey", return_value="ssh-ed25519 test"), \
+            patch.object(runpod_api.subprocess, "run") as run:
+        source = Path(directory) / "input.jsonl"
+        source.write_text("{}\n", encoding="utf-8")
+        runpod_api.run_lease(
+            1,
+            ["python", "-m", "training.schema_org.train_property_head"],
+            uploads=((str(source), "/workspace/input.jsonl"),),
+            downloads=(("/workspace/output", str(Path(directory) / "output")),),
+        )
+        assert run.call_count == 3
+        assert "input.jsonl" in run.call_args_list[0].args[0][-2]
+        assert "train_property_head" in run.call_args_list[1].args[0][-1]
+        assert "/workspace/output" in run.call_args_list[2].args[0][-2]
+        assert events[-1] == ("DELETE", "/pods/pod-3")
+        assert not runpod_api.STATE.exists()
+        try:
+            runpod_api._remote_path("/workspace/../root/.ssh")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unsafe remote transfer path was accepted")
+
+
 def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     from deploy.gcp.build_context import SOURCE_ALLOWLIST
 
@@ -294,6 +335,10 @@ def test_schema_training_selection_never_reads_test_evidence():
     source = _text("training/schema_org/train_property_head.py")
     assert '"selection_data": ("train", "validation")' in source
     assert '"evaluation_data": ("test",)' in source
+    assert '"trainer": _trainer_identity()' in source
+    assert '"runtime": _runtime_identity(torch, device)' in source
+    promotion = _text("training/schema_org/promote.py")
+    assert "trainer source does not match its recorded commit" in promotion
 
 
 TESTS = [
@@ -309,6 +354,7 @@ TESTS = [
     test_documentation_has_one_status_entrypoint,
     test_runpod_training_is_an_owned_bounded_lease,
     test_runpod_cleanup_failure_does_not_hide_training_failure,
+    test_runpod_transfers_are_inside_the_owned_lease,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_schema_training_selection_never_reads_test_evidence,
 ]
