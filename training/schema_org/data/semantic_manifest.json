@@ -10,9 +10,9 @@
     "wikidata_columns_per_property": 6
   },
   "corpus": {
-    "instances": 45663,
+    "instances": 45654,
     "path": "training/schema_org/data/semantic_instances.jsonl",
-    "sha256": "a661d4840eb08d0830e984dce375d45e1a134241564b8e273194af89d752600e"
+    "sha256": "a69bcbf5d6213e52811b669c58452f49edd4d2f27056ae5102497851d2626de9"
   },
   "counts": {
     "class": {
@@ -55,98 +55,98 @@
       "https://schema.org/UnitPriceSpecification": 1105,
       "https://schema.org/WebSite": 1745
     },
-    "group": 31293,
+    "group": 31294,
     "property": {
-      "https://schema.org/about": 880,
-      "https://schema.org/actor": 35,
-      "https://schema.org/address": 2863,
-      "https://schema.org/addressCountry": 2781,
+      "https://schema.org/about": 879,
+      "https://schema.org/actor": 33,
+      "https://schema.org/address": 2864,
+      "https://schema.org/addressCountry": 2777,
       "https://schema.org/addressLocality": 1359,
       "https://schema.org/addressRegion": 2,
       "https://schema.org/affiliation": 1,
-      "https://schema.org/aggregateRating": 695,
-      "https://schema.org/alternateName": 932,
+      "https://schema.org/aggregateRating": 693,
+      "https://schema.org/alternateName": 931,
       "https://schema.org/archivedAt": 26,
       "https://schema.org/audience": 9,
-      "https://schema.org/audio": 45,
-      "https://schema.org/author": 136,
+      "https://schema.org/audio": 44,
+      "https://schema.org/author": 134,
       "https://schema.org/award": 6,
-      "https://schema.org/birthDate": 580,
-      "https://schema.org/birthPlace": 111,
+      "https://schema.org/birthDate": 579,
+      "https://schema.org/birthPlace": 109,
       "https://schema.org/brand": 9,
-      "https://schema.org/byArtist": 227,
+      "https://schema.org/byArtist": 226,
       "https://schema.org/character": 2,
-      "https://schema.org/children": 225,
+      "https://schema.org/children": 228,
       "https://schema.org/citation": 4,
       "https://schema.org/codeValue": 1079,
       "https://schema.org/codingSystem": 791,
       "https://schema.org/commentCount": 1,
       "https://schema.org/competitor": 1,
       "https://schema.org/connectedTo": 4,
-      "https://schema.org/contentLocation": 282,
+      "https://schema.org/contentLocation": 281,
       "https://schema.org/contributor": 2,
       "https://schema.org/copyrightHolder": 6,
-      "https://schema.org/countryOfOrigin": 3355,
+      "https://schema.org/countryOfOrigin": 3356,
       "https://schema.org/creator": 8,
       "https://schema.org/currency": 822,
       "https://schema.org/currentExchangeRate": 1174,
-      "https://schema.org/dateCreated": 2522,
+      "https://schema.org/dateCreated": 2521,
       "https://schema.org/dateModified": 107,
-      "https://schema.org/datePublished": 2600,
-      "https://schema.org/deathDate": 153,
+      "https://schema.org/datePublished": 2602,
+      "https://schema.org/deathDate": 154,
       "https://schema.org/deathPlace": 21,
       "https://schema.org/depth": 18,
       "https://schema.org/description": 25189,
-      "https://schema.org/dissolutionDate": 1106,
+      "https://schema.org/dissolutionDate": 1116,
       "https://schema.org/distance": 7,
-      "https://schema.org/downloadUrl": 36,
+      "https://schema.org/downloadUrl": 37,
       "https://schema.org/duns": 8,
-      "https://schema.org/duration": 1162,
+      "https://schema.org/duration": 1160,
       "https://schema.org/editor": 4,
-      "https://schema.org/email": 965,
+      "https://schema.org/email": 964,
       "https://schema.org/encodingFormat": 14,
-      "https://schema.org/endDate": 924,
-      "https://schema.org/faxNumber": 289,
+      "https://schema.org/endDate": 921,
+      "https://schema.org/faxNumber": 287,
       "https://schema.org/founder": 33,
-      "https://schema.org/foundingLocation": 463,
-      "https://schema.org/genre": 156,
-      "https://schema.org/geo": 8052,
+      "https://schema.org/foundingLocation": 466,
+      "https://schema.org/genre": 157,
+      "https://schema.org/geo": 8046,
       "https://schema.org/hasOccupation": 5,
       "https://schema.org/hasPart": 269,
-      "https://schema.org/height": 598,
+      "https://schema.org/height": 599,
       "https://schema.org/homeLocation": 3,
       "https://schema.org/identifier": 3717,
-      "https://schema.org/image": 8704,
+      "https://schema.org/image": 8706,
       "https://schema.org/inCodeSet": 791,
-      "https://schema.org/inLanguage": 2941,
-      "https://schema.org/isBasedOn": 120,
-      "https://schema.org/isPartOf": 482,
-      "https://schema.org/isicV4": 34,
-      "https://schema.org/isrcCode": 137,
-      "https://schema.org/issn": 1111,
-      "https://schema.org/itemLocation": 32,
+      "https://schema.org/inLanguage": 2942,
+      "https://schema.org/isBasedOn": 119,
+      "https://schema.org/isPartOf": 483,
+      "https://schema.org/isicV4": 35,
+      "https://schema.org/isrcCode": 138,
+      "https://schema.org/issn": 1113,
+      "https://schema.org/itemLocation": 30,
       "https://schema.org/knowsLanguage": 315,
       "https://schema.org/latitude": 2217,
       "https://schema.org/layoutImage": 1,
       "https://schema.org/leiCode": 540,
-      "https://schema.org/location": 1433,
+      "https://schema.org/location": 1435,
       "https://schema.org/locationCreated": 6,
-      "https://schema.org/logo": 2174,
+      "https://schema.org/logo": 2179,
       "https://schema.org/longitude": 2197,
-      "https://schema.org/mainEntityOfPage": 2457,
+      "https://schema.org/mainEntityOfPage": 2439,
       "https://schema.org/material": 2,
-      "https://schema.org/memberOf": 248,
-      "https://schema.org/name": 34133,
+      "https://schema.org/memberOf": 246,
+      "https://schema.org/name": 34136,
       "https://schema.org/nationality": 3,
-      "https://schema.org/numberOfEmployees": 856,
+      "https://schema.org/numberOfEmployees": 854,
       "https://schema.org/operatingSystem": 4,
-      "https://schema.org/owns": 48,
+      "https://schema.org/owns": 47,
       "https://schema.org/pagination": 3,
       "https://schema.org/parentOrganization": 455,
       "https://schema.org/parentTaxon": 136,
       "https://schema.org/participant": 1,
       "https://schema.org/position": 2,
-      "https://schema.org/postalCode": 1419,
+      "https://schema.org/postalCode": 1420,
       "https://schema.org/previousItem": 2,
       "https://schema.org/price": 1174,
       "https://schema.org/priceCurrency": 1130,
@@ -158,22 +158,22 @@
       "https://schema.org/recordingOf": 4,
       "https://schema.org/relevantSpecialty": 6,
       "https://schema.org/review": 1,
-      "https://schema.org/runtimePlatform": 21,
-      "https://schema.org/sameAs": 847,
+      "https://schema.org/runtimePlatform": 22,
+      "https://schema.org/sameAs": 845,
       "https://schema.org/servesCuisine": 3,
-      "https://schema.org/sibling": 15,
+      "https://schema.org/sibling": 14,
       "https://schema.org/slogan": 4,
-      "https://schema.org/softwareVersion": 339,
+      "https://schema.org/softwareVersion": 338,
       "https://schema.org/sponsor": 19,
       "https://schema.org/sport": 7,
-      "https://schema.org/startDate": 1772,
+      "https://schema.org/startDate": 1775,
       "https://schema.org/startTime": 19,
       "https://schema.org/subOrganization": 278,
-      "https://schema.org/taxonRank": 534,
-      "https://schema.org/telephone": 1238,
+      "https://schema.org/taxonRank": 535,
+      "https://schema.org/telephone": 1239,
       "https://schema.org/termCode": 1801,
       "https://schema.org/termsOfService": 1,
-      "https://schema.org/timeRequired": 1167,
+      "https://schema.org/timeRequired": 1165,
       "https://schema.org/translator": 1,
       "https://schema.org/unitText": 141,
       "https://schema.org/uploadDate": 4,
@@ -181,10 +181,10 @@
       "https://schema.org/value": 226,
       "https://schema.org/valueRequired": 1320,
       "https://schema.org/version": 280,
-      "https://schema.org/video": 193,
+      "https://schema.org/video": 196,
       "https://schema.org/volumeNumber": 1,
       "https://schema.org/weight": 266,
-      "https://schema.org/width": 550,
+      "https://schema.org/width": 552,
       "https://schema.org/workExample": 15,
       "https://schema.org/worksFor": 1,
       "https://schema.org/yearlyRevenue": 1
@@ -212,12 +212,12 @@
       "nlm_cde_columns": 301,
       "product_templates": 24,
       "wikidata": 26248,
-      "wikidata_columns": 1873
+      "wikidata_columns": 1864
     },
     "split": {
-      "test": 4504,
-      "train": 36524,
-      "validation": 4635
+      "test": 4262,
+      "train": 36890,
+      "validation": 4502
     }
   },
   "dropped": {
@@ -226,9 +226,9 @@
     "duplicate_text": 5441,
     "instance_no_mapped_property": 1431,
     "instance_unevidenced": 18,
-    "label_domain_inadmissible": 54108,
+    "label_domain_inadmissible": 54110,
     "value_out_of_range_date": 300,
-    "value_unresolvable_qid": 1058400
+    "value_unresolvable_qid": 1060511
   },
   "evidence_gate": "token-accurate at emission (Qwen/Qwen2.5-0.5B, 112-token budget)",
   "generator": {
@@ -240,12 +240,12 @@
       "training/schema_org/corpus.py": "efe91a48885510a62db4587f82bb69e7b5f50facda991fc1f6cb1c6779209f7d",
       "training/schema_org/fixtures/customers.csv": "6083727a2e0ee35916c84377f70984862f66d0a5b92aa3592113d9eac09cfaf6",
       "training/schema_org/fixtures/orders.csv": "70872346e9eb48b62f3caf9b063c2179be68a64955163cc034b918191cbc909b",
-      "training/schema_org/instances.py": "f23334eb9e108b24bc27d2db7a17aa39b39223e199bcab49475967d9e227a505",
+      "training/schema_org/instances.py": "1db31af6919068165ac2cc06e829f87be91cfea98207576eb5e231ae0132e8c4",
       "training/schema_org/source_adapters.py": "fd117a5da3ed85d12cfb9f8c53280e818060e7f17089ed5dd2405b07aacfd9c5",
       "training/schema_org/source_catalog.py": "b8d33555f70ca548ae71808ed804d6accce2c1a20a6f100b1f9b03c1b2d6011b"
     },
-    "input_files_sha256": "98b1e223844bb40037c4ea48869c7f643d807a4434b3e146c27eb1144f42c624",
-    "repository_commit": "ce64c006b75784df3825be11b9c121026f388a10",
+    "input_files_sha256": "f992fe0c4dd29ac3e011e0f1e7907cfac1aac3ae8eff4f86154cc66e3c45f2e2",
+    "repository_commit": "9c6ed0675f9c5456e9ddb87647414c0df45312f0",
     "worktree_clean": true
   },
   "ontology": {
@@ -257,108 +257,109 @@
   },
   "property_group_support": {
     "https://schema.org/about": {
-      "test": 83,
-      "train": 660,
-      "validation": 105
+      "test": 81,
+      "train": 672,
+      "validation": 95
     },
     "https://schema.org/actor": {
-      "test": 1,
-      "train": 26,
-      "validation": 3
+      "test": 3,
+      "train": 23,
+      "validation": 4
     },
     "https://schema.org/address": {
-      "test": 299,
-      "train": 2195,
-      "validation": 292
+      "test": 283,
+      "train": 2250,
+      "validation": 257
     },
     "https://schema.org/addressCountry": {
-      "test": 242,
-      "train": 1856,
-      "validation": 236
+      "test": 231,
+      "train": 1859,
+      "validation": 239
     },
     "https://schema.org/addressLocality": {
-      "test": 103,
-      "train": 789,
-      "validation": 111
+      "test": 100,
+      "train": 794,
+      "validation": 109
     },
     "https://schema.org/addressRegion": {
       "train": 2
     },
     "https://schema.org/affiliation": {
-      "validation": 1
+      "test": 1
     },
     "https://schema.org/aggregateRating": {
-      "test": 53,
-      "train": 548,
-      "validation": 60
+      "test": 58,
+      "train": 531,
+      "validation": 71
     },
     "https://schema.org/alternateName": {
-      "test": 69,
-      "train": 546,
-      "validation": 72
+      "test": 67,
+      "train": 556,
+      "validation": 63
     },
     "https://schema.org/archivedAt": {
-      "test": 3,
-      "train": 17,
+      "test": 1,
+      "train": 20,
       "validation": 3
     },
     "https://schema.org/audience": {
-      "train": 8,
+      "test": 1,
+      "train": 7,
       "validation": 1
     },
     "https://schema.org/audio": {
-      "test": 5,
-      "train": 33,
-      "validation": 3
+      "test": 3,
+      "train": 34,
+      "validation": 4
     },
     "https://schema.org/author": {
-      "test": 12,
-      "train": 108,
-      "validation": 6
-    },
-    "https://schema.org/award": {
-      "train": 6
-    },
-    "https://schema.org/birthDate": {
-      "test": 49,
-      "train": 470,
-      "validation": 55
-    },
-    "https://schema.org/birthPlace": {
-      "test": 5,
-      "train": 90,
+      "test": 24,
+      "train": 91,
       "validation": 9
     },
+    "https://schema.org/award": {
+      "train": 4,
+      "validation": 2
+    },
+    "https://schema.org/birthDate": {
+      "test": 63,
+      "train": 441,
+      "validation": 70
+    },
+    "https://schema.org/birthPlace": {
+      "test": 9,
+      "train": 83,
+      "validation": 11
+    },
     "https://schema.org/brand": {
-      "test": 2,
-      "train": 6,
+      "train": 8,
       "validation": 1
     },
     "https://schema.org/byArtist": {
-      "test": 32,
-      "train": 164,
-      "validation": 23
+      "test": 12,
+      "train": 180,
+      "validation": 26
     },
     "https://schema.org/character": {
       "train": 2
     },
     "https://schema.org/children": {
-      "test": 23,
-      "train": 179,
-      "validation": 17
+      "test": 25,
+      "train": 170,
+      "validation": 24
     },
     "https://schema.org/citation": {
       "train": 4
     },
     "https://schema.org/codeValue": {
-      "test": 64,
-      "train": 502,
-      "validation": 59
+      "test": 68,
+      "train": 507,
+      "validation": 50
     },
     "https://schema.org/codingSystem": {
-      "test": 64,
-      "train": 502,
-      "validation": 59
+      "test": 68,
+      "train": 507,
+      "validation": 50
     },
     "https://schema.org/commentCount": {
       "train": 1
@@ -367,298 +368,291 @@
       "train": 1
     },
     "https://schema.org/connectedTo": {
-      "test": 1,
-      "train": 3
+      "train": 4
     },
     "https://schema.org/contentLocation": {
-      "test": 32,
-      "train": 213,
-      "validation": 29
+      "test": 22,
+      "train": 220,
+      "validation": 32
     },
     "https://schema.org/contributor": {
-      "train": 1,
-      "validation": 1
+      "train": 2
     },
     "https://schema.org/copyrightHolder": {
-      "test": 1,
-      "train": 4,
+      "train": 5,
       "validation": 1
     },
     "https://schema.org/countryOfOrigin": {
-      "test": 310,
-      "train": 2629,
-      "validation": 373
+      "test": 335,
+      "train": 2626,
+      "validation": 354
     },
     "https://schema.org/creator": {
-      "test": 1,
-      "train": 6,
-      "validation": 1
+      "test": 3,
+      "train": 3,
+      "validation": 2
     },
     "https://schema.org/currency": {
-      "test": 61,
-      "train": 503,
-      "validation": 62
+      "test": 58,
+      "train": 501,
+      "validation": 67
     },
     "https://schema.org/currentExchangeRate": {
-      "test": 61,
-      "train": 502,
-      "validation": 62
+      "test": 58,
+      "train": 500,
+      "validation": 67
     },
     "https://schema.org/dateCreated": {
-      "test": 249,
-      "train": 1952,
-      "validation": 265
+      "test": 238,
+      "train": 1980,
+      "validation": 252
     },
     "https://schema.org/dateModified": {
-      "test": 8,
-      "train": 82,
+      "test": 10,
+      "train": 80,
       "validation": 8
     },
     "https://schema.org/datePublished": {
-      "test": 259,
-      "train": 2032,
-      "validation": 278
+      "test": 248,
+      "train": 2048,
+      "validation": 274
     },
     "https://schema.org/deathDate": {
       "test": 14,
-      "train": 122,
-      "validation": 13
+      "train": 111,
+      "validation": 22
     },
     "https://schema.org/deathPlace": {
-      "test": 2,
-      "train": 13,
+      "test": 1,
+      "train": 15,
       "validation": 3
     },
     "https://schema.org/depth": {
-      "test": 2,
-      "train": 14,
-      "validation": 1
+      "test": 5,
+      "train": 12
     },
     "https://schema.org/description": {
-      "test": 2393,
-      "train": 18653,
-      "validation": 2451
+      "test": 2302,
+      "train": 18866,
+      "validation": 2329
     },
     "https://schema.org/dissolutionDate": {
-      "test": 113,
-      "train": 839,
-      "validation": 107
+      "test": 108,
+      "train": 847,
+      "validation": 106
     },
     "https://schema.org/distance": {
-      "test": 1,
-      "train": 4,
-      "validation": 2
+      "test": 2,
+      "train": 5
     },
     "https://schema.org/downloadUrl": {
-      "test": 3,
-      "train": 27,
-      "validation": 1
+      "train": 28,
+      "validation": 3
     },
     "https://schema.org/duns": {
-      "train": 7,
-      "validation": 1
+      "test": 1,
+      "train": 7
     },
     "https://schema.org/duration": {
-      "test": 106,
-      "train": 924,
-      "validation": 117
+      "test": 123,
+      "train": 887,
+      "validation": 136
     },
     "https://schema.org/editor": {
       "train": 4
     },
     "https://schema.org/email": {
-      "test": 89,
-      "train": 704,
-      "validation": 113
+      "test": 84,
+      "train": 732,
+      "validation": 93
     },
     "https://schema.org/encodingFormat": {
-      "test": 1,
-      "train": 8,
-      "validation": 4
+      "test": 2,
+      "train": 10,
+      "validation": 1
     },
     "https://schema.org/endDate": {
-      "test": 63,
-      "train": 556,
-      "validation": 57
+      "test": 74,
+      "train": 535,
+      "validation": 68
     },
     "https://schema.org/faxNumber": {
-      "test": 28,
-      "train": 204,
-      "validation": 32
+      "test": 17,
+      "train": 217,
+      "validation": 28
     },
     "https://schema.org/founder": {
-      "test": 1,
-      "train": 23,
-      "validation": 7
+      "test": 5,
+      "train": 22,
+      "validation": 4
     },
     "https://schema.org/foundingLocation": {
-      "test": 49,
+      "test": 48,
       "train": 345,
-      "validation": 48
+      "validation": 47
     },
     "https://schema.org/genre": {
-      "test": 22,
-      "train": 108,
-      "validation": 17
+      "test": 8,
+      "train": 116,
+      "validation": 24
     },
     "https://schema.org/geo": {
-      "test": 815,
-      "train": 6333,
-      "validation": 813
+      "test": 767,
+      "train": 6443,
+      "validation": 750
     },
     "https://schema.org/hasOccupation": {
-      "train": 5
+      "test": 1,
+      "train": 4
     },
     "https://schema.org/hasPart": {
-      "test": 20,
-      "train": 199,
+      "test": 26,
+      "train": 191,
       "validation": 27
     },
     "https://schema.org/height": {
-      "test": 60,
-      "train": 467,
-      "validation": 59
+      "test": 67,
+      "train": 461,
+      "validation": 58
     },
     "https://schema.org/homeLocation": {
-      "train": 2,
-      "validation": 1
+      "test": 1,
+      "train": 2
     },
     "https://schema.org/identifier": {
-      "test": 266,
-      "train": 2068,
-      "validation": 274
+      "test": 240,
+      "train": 2095,
+      "validation": 273
     },
     "https://schema.org/image": {
-      "test": 854,
-      "train": 6792,
-      "validation": 880
+      "test": 826,
+      "train": 6915,
+      "validation": 785
     },
     "https://schema.org/inCodeSet": {
-      "test": 64,
-      "train": 502,
-      "validation": 59
+      "test": 68,
+      "train": 507,
+      "validation": 50
     },
     "https://schema.org/inLanguage": {
-      "test": 288,
-      "train": 2148,
-      "validation": 298
+      "test": 271,
+      "train": 2172,
+      "validation": 295
     },
     "https://schema.org/isBasedOn": {
-      "test": 13,
-      "train": 81,
-      "validation": 12
+      "test": 12,
+      "train": 83,
+      "validation": 8
     },
     "https://schema.org/isPartOf": {
-      "test": 47,
-      "train": 358,
-      "validation": 35
+      "test": 33,
+      "train": 363,
+      "validation": 46
     },
     "https://schema.org/isicV4": {
-      "test": 3,
-      "train": 26,
-      "validation": 2
+      "test": 7,
+      "train": 21,
+      "validation": 3
     },
     "https://schema.org/isrcCode": {
-      "test": 16,
-      "train": 99,
-      "validation": 15
+      "test": 8,
+      "train": 110,
+      "validation": 13
     },
     "https://schema.org/issn": {
-      "test": 109,
-      "train": 856,
-      "validation": 136
+      "test": 105,
+      "train": 874,
+      "validation": 120
     },
     "https://schema.org/itemLocation": {
-      "test": 5,
-      "train": 19,
+      "test": 4,
+      "train": 21,
       "validation": 4
     },
     "https://schema.org/knowsLanguage": {
-      "test": 27,
-      "train": 246,
-      "validation": 37
+      "test": 29,
+      "train": 236,
+      "validation": 43
     },
     "https://schema.org/latitude": {
-      "test": 169,
-      "train": 1279,
-      "validation": 176
+      "test": 160,
+      "train": 1296,
+      "validation": 168
     },
     "https://schema.org/layoutImage": {
       "train": 1
     },
     "https://schema.org/leiCode": {
-      "test": 57,
-      "train": 398,
-      "validation": 55
+      "test": 55,
+      "train": 402,
+      "validation": 52
     },
     "https://schema.org/location": {
-      "test": 121,
-      "train": 988,
-      "validation": 123
+      "test": 136,
+      "train": 967,
+      "validation": 129
     },
     "https://schema.org/locationCreated": {
-      "test": 1,
-      "train": 5
+      "train": 6
     },
     "https://schema.org/logo": {
-      "test": 211,
-      "train": 1663,
-      "validation": 212
+      "test": 220,
+      "train": 1650,
+      "validation": 219
     },
     "https://schema.org/longitude": {
-      "test": 168,
-      "train": 1275,
-      "validation": 175
+      "test": 159,
+      "train": 1292,
+      "validation": 167
     },
     "https://schema.org/mainEntityOfPage": {
-      "test": 210,
-      "train": 1841,
-      "validation": 250
+      "test": 222,
+      "train": 1852,
+      "validation": 224
     },
     "https://schema.org/material": {
-      "train": 1,
-      "validation": 1
+      "train": 2
     },
     "https://schema.org/memberOf": {
-      "test": 27,
-      "train": 187,
-      "validation": 16
+      "test": 20,
+      "train": 184,
+      "validation": 26
     },
     "https://schema.org/name": {
-      "test": 3080,
-      "train": 24177,
-      "validation": 3150
+      "test": 2968,
+      "train": 24412,
+      "validation": 3029
     },
     "https://schema.org/nationality": {
       "test": 1,
       "train": 2
     },
     "https://schema.org/numberOfEmployees": {
-      "test": 86,
-      "train": 661,
-      "validation": 82
+      "test": 66,
+      "train": 682,
+      "validation": 80
     },
     "https://schema.org/operatingSystem": {
-      "test": 1,
-      "train": 3
+      "train": 4
     },
     "https://schema.org/owns": {
-      "test": 4,
-      "train": 37,
-      "validation": 3
+      "test": 3,
+      "train": 36,
+      "validation": 5
     },
     "https://schema.org/pagination": {
-      "train": 3
+      "test": 1,
+      "train": 2
     },
     "https://schema.org/parentOrganization": {
-      "test": 32,
-      "train": 343,
-      "validation": 55
+      "test": 43,
+      "train": 360,
+      "validation": 30
     },
     "https://schema.org/parentTaxon": {
-      "test": 17,
-      "train": 94,
-      "validation": 18
+      "test": 9,
+      "train": 109,
+      "validation": 11
     },
     "https://schema.org/participant": {
       "train": 1
@@ -667,49 +661,49 @@
       "train": 2
     },
     "https://schema.org/postalCode": {
-      "test": 104,
-      "train": 809,
-      "validation": 115
+      "test": 103,
+      "train": 813,
+      "validation": 112
     },
     "https://schema.org/previousItem": {
       "train": 2
     },
     "https://schema.org/price": {
-      "test": 61,
-      "train": 502,
-      "validation": 62
+      "test": 58,
+      "train": 500,
+      "validation": 67
     },
     "https://schema.org/priceCurrency": {
-      "test": 61,
-      "train": 502,
-      "validation": 62
+      "test": 58,
+      "train": 500,
+      "validation": 67
     },
     "https://schema.org/producer": {
-      "test": 6,
-      "train": 42,
-      "validation": 7
+      "test": 4,
+      "train": 45,
+      "validation": 6
     },
     "https://schema.org/productionCompany": {
-      "test": 2,
-      "train": 42,
-      "validation": 4
+      "test": 3,
+      "train": 41,
+      "validation": 3
     },
     "https://schema.org/provider": {
-      "test": 23,
-      "train": 150,
-      "validation": 19
+      "test": 16,
+      "train": 161,
+      "validation": 15
     },
     "https://schema.org/publisher": {
       "test": 20,
-      "train": 142,
-      "validation": 25
+      "train": 146,
+      "validation": 19
     },
     "https://schema.org/recordedAt": {
-      "test": 1,
-      "train": 2
+      "train": 3
     },
     "https://schema.org/recordingOf": {
-      "train": 4
+      "train": 3,
+      "validation": 1
     },
     "https://schema.org/relevantSpecialty": {
       "train": 6
@@ -719,138 +713,136 @@
     },
     "https://schema.org/runtimePlatform": {
       "test": 1,
-      "train": 16,
-      "validation": 3
+      "train": 19
     },
     "https://schema.org/sameAs": {
-      "test": 81,
-      "train": 660,
-      "validation": 63
+      "test": 85,
+      "train": 629,
+      "validation": 89
     },
     "https://schema.org/servesCuisine": {
-      "test": 1,
-      "train": 2
+      "train": 3
     },
     "https://schema.org/sibling": {
-      "test": 1,
-      "train": 8,
-      "validation": 4
+      "test": 3,
+      "train": 9,
+      "validation": 1
     },
     "https://schema.org/slogan": {
-      "train": 4
+      "train": 3,
+      "validation": 1
     },
     "https://schema.org/softwareVersion": {
-      "test": 43,
-      "train": 254,
-      "validation": 34
+      "test": 26,
+      "train": 273,
+      "validation": 32
     },
     "https://schema.org/sponsor": {
       "test": 1,
-      "train": 12,
-      "validation": 4
+      "train": 15,
+      "validation": 1
     },
     "https://schema.org/sport": {
-      "test": 1,
-      "train": 5,
+      "train": 6,
       "validation": 1
     },
     "https://schema.org/startDate": {
-      "test": 141,
-      "train": 1203,
-      "validation": 153
+      "test": 149,
+      "train": 1192,
+      "validation": 160
     },
     "https://schema.org/startTime": {
-      "test": 1,
-      "train": 16,
-      "validation": 1
+      "train": 15,
+      "validation": 3
     },
     "https://schema.org/subOrganization": {
       "test": 23,
-      "train": 206,
+      "train": 205,
       "validation": 23
     },
     "https://schema.org/taxonRank": {
-      "test": 57,
-      "train": 411,
-      "validation": 63
+      "test": 54,
+      "train": 418,
+      "validation": 58
     },
     "https://schema.org/telephone": {
-      "test": 123,
-      "train": 920,
-      "validation": 131
+      "test": 102,
+      "train": 960,
+      "validation": 112
     },
     "https://schema.org/termCode": {
-      "test": 138,
-      "train": 1076,
-      "validation": 154
+      "test": 137,
+      "train": 1082,
+      "validation": 149
     },
     "https://schema.org/termsOfService": {
-      "validation": 1
+      "test": 1
     },
     "https://schema.org/timeRequired": {
-      "test": 107,
-      "train": 927,
-      "validation": 118
+      "test": 125,
+      "train": 889,
+      "validation": 137
     },
     "https://schema.org/translator": {
       "train": 1
     },
     "https://schema.org/unitText": {
-      "test": 14,
-      "train": 87,
+      "test": 12,
+      "train": 89,
       "validation": 13
     },
     "https://schema.org/uploadDate": {
-      "train": 4
+      "test": 1,
+      "train": 3
     },
     "https://schema.org/url": {
-      "test": 27,
-      "train": 177,
-      "validation": 20
+      "test": 24,
+      "train": 181,
+      "validation": 19
     },
     "https://schema.org/value": {
-      "test": 14,
-      "train": 92,
+      "test": 12,
+      "train": 94,
       "validation": 13
     },
     "https://schema.org/valueRequired": {
-      "test": 107,
-      "train": 785,
-      "validation": 107
+      "test": 82,
+      "train": 809,
+      "validation": 108
     },
     "https://schema.org/version": {
-      "test": 17,
-      "train": 160,
-      "validation": 18
+      "test": 18,
+      "train": 157,
+      "validation": 20
     },
     "https://schema.org/video": {
-      "test": 19,
-      "train": 135,
-      "validation": 22
+      "test": 13,
+      "train": 136,
+      "validation": 27
     },
     "https://schema.org/volumeNumber": {
-      "train": 1
+      "test": 1
     },
     "https://schema.org/weight": {
-      "test": 27,
-      "train": 205,
-      "validation": 25
+      "test": 35,
+      "train": 196,
+      "validation": 26
     },
     "https://schema.org/width": {
-      "test": 54,
-      "train": 434,
-      "validation": 56
+      "test": 60,
+      "train": 436,
+      "validation": 48
     },
     "https://schema.org/workExample": {
-      "test": 1,
-      "train": 11,
+      "test": 2,
+      "train": 10,
       "validation": 3
     },
     "https://schema.org/worksFor": {
-      "train": 1
+      "test": 1
     },
     "https://schema.org/yearlyRevenue": {
-      "validation": 1
+      "train": 1
     }
   },
   "schema_version": 1,
@@ -1551,7 +1543,7 @@
   },
   "split_policy": {
     "key": "group_id(instance_id) = text left of the first '#'",
-    "salt": "schema-org-corpus:v3",
+    "salt": "schema-org-corpus:v4",
     "text_collision_examples": [
       "cdc.icd10cm_code:A18.52..A18.81#v3 == cdc.icd10cm_code:A18.52..A18.81#v1",
       "cdc.icd10cm_code:A31.2..A32.12#v3 == cdc.icd10cm_code:A31.2..A32.12#v1",
@@ -1568,7 +1560,7 @@
     "who": "credentials-required"
   },
   "wikidata": {
-    "instances": 28122,
+    "instances": 28113,
     "release_id": "capped-sample+sha256:5784e70d26cecd1cff750609a74a14693248eab7c297547c59a98c84a76452cf",
     "status": "sample-pinned-from-legacy-capped-snapshot"
   }
