@@ -2,16 +2,15 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter, defaultdict
 import json
 import math
+from collections import Counter, defaultdict
 from pathlib import Path
 
 from engine.artifact_provenance import canonical_json_sha256
 from engine.schema_org import load_contract
 from training.schema_org.instances import read_jsonl
 from training.schema_org.paths import CORPUS_PATH, MANIFEST_PATH, experiment_dir
-
 
 SIGNATURES_NAME = "schema_class_signatures.json"
 MIN_TRAIN = 25

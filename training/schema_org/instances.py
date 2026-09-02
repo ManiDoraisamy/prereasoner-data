@@ -1,20 +1,19 @@
 """Canonical, provenance-complete semantic examples shared by every source adapter."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 
 from engine.schema_org import SchemaContract, schema_uri
-
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+#=-]{0,511}$")
 _GROUP_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+=-]{0,255}$")     # the separator itself is forbidden here
 SPLITS = ("train", "validation", "test")
 
-SPLIT_SALT = "schema-org-corpus:v4"     # v4 follows the v3 validation-recall margin audit
+SPLIT_SALT = "schema-org-corpus:v5"     # fresh heldout split after targeted Wikidata support expansion
 DERIVATION_SEP = "#"                    # everything right of the FIRST separator is invisible to the split
 SPLIT_BOUNDARIES = ((80, "train"), (90, "validation"), (100, "test"))
 
@@ -40,7 +39,7 @@ def deterministic_split(instance_id: str) -> str:
     group = group_id(instance_id)
     if not _GROUP_ID.fullmatch(group):
         raise ValueError(f"invalid split group id: {group!r}")
-    bucket = int(hashlib.sha256(f"{SPLIT_SALT}\0{group}".encode("utf-8")).hexdigest()[:8], 16) % 100
+    bucket = int(hashlib.sha256(f"{SPLIT_SALT}\0{group}".encode()).hexdigest()[:8], 16) % 100
     for upper, name in SPLIT_BOUNDARIES:
         if bucket < upper:
             return name
@@ -63,7 +62,7 @@ class SemanticInstance:
     @classmethod
     def create(cls, *, source: str, release_id: str, relation: str, instance_id: str,
                text: str, classes, properties, mapping_version: str,
-               provenance_ids=()) -> "SemanticInstance":
+               provenance_ids=()) -> SemanticInstance:
         return cls(
             source.strip(), release_id.strip(), relation.strip(), instance_id.strip(), text.strip(),
             tuple(sorted({schema_uri(value) for value in classes})),
@@ -117,7 +116,7 @@ class SemanticInstance:
         }
 
     @classmethod
-    def from_record(cls, record: dict) -> "SemanticInstance":
+    def from_record(cls, record: dict) -> SemanticInstance:
         return cls(
             record["source"], record["release_id"], record["relation"], record["instance_id"],
             record["text"], tuple(record["classes"]), tuple(record["properties"]),

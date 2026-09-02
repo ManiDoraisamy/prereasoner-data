@@ -18,16 +18,20 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 
 from engine.artifact_provenance import (
-    canonical_json_sha256, semantic_encoder_fingerprint, sha256_file, validate_weight_bundle,
+    canonical_json_sha256,
+    semantic_encoder_fingerprint,
+    sha256_file,
+    validate_weight_bundle,
 )
-from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR as RUNTIME_DIR
+from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION
+from engine.config import DATA_DIR as RUNTIME_DIR
 from engine.schema_org import load_contract
 from training.schema_org.paths import EXPERIMENTS_DIR, MANIFEST_PATH
 

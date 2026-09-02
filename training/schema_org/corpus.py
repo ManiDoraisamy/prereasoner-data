@@ -2,31 +2,47 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
-from dataclasses import replace
 import hashlib
 import json
-from pathlib import Path
 import subprocess
+from collections import Counter
+from dataclasses import replace
+from pathlib import Path
 
 import engine.config  # noqa: F401 - loads the repository .env before engine.pg connects
 from engine.artifact_provenance import canonical_json_sha256, sha256_file
+from engine.domain_profiles import PROFILES
 from engine.pg import _pg
+from engine.schema_model import sample_values
 from engine.schema_org import CONTRACT_PATH, load_contract, schema_uri
 from regress.product_templates import CASES
-from engine.domain_profiles import PROFILES
-from engine.schema_model import sample_values
 from training.schema_org.instances import (
-    SPLIT_SALT, SemanticInstance, group_id, write_jsonl,
+    SPLIT_SALT,
+    SemanticInstance,
+    group_id,
+    write_jsonl,
 )
 from training.schema_org.paths import CORPUS_PATH, MANIFEST_PATH
 from training.schema_org.source_adapters import (
+    ANON_EVERY,
+    BASELINE_ENTITIES,
+    COLUMN_EVERY,
+    MAX_FACETS,
+    MAX_VALUES_PER_PROPERTY,
+    PER_PROPERTY_ENTITIES,
+    VARIANT_EVERY,
+    WIKIDATA_COLUMNS_PER_PROPERTY,
+    WIKIDATA_PROPERTY_ENTITY_OVERRIDES,
+    active_source_manifest,
+    drop_counts,
     emit_instance,
-    active_source_manifest, drop_counts, reset_drop_counts,
-    source_column_instances, source_instances,
-    wikidata_column_instances, wikidata_instances, wikidata_lookups,
+    reset_drop_counts,
+    source_column_instances,
+    source_instances,
+    wikidata_column_instances,
+    wikidata_instances,
+    wikidata_lookups,
 )
-
 
 DEFAULT_CORPUS = CORPUS_PATH
 DEFAULT_MANIFEST = MANIFEST_PATH
@@ -199,7 +215,7 @@ def demo_upload_instances(contract):
         rows = table["rows"]
         name_cols = [ci for ci, col in enumerate(table["columns"])
                      if "name" in str(col).casefold() or str(col).casefold() == "customer"]
-        starts = range(0, max(1, len(rows) - _DEMO_WINDOW + 1))
+        starts = range(max(1, len(rows) - _DEMO_WINDOW + 1))
         for start in starts:
             window_rows = rows[start:start + _DEMO_WINDOW]
             variants = [("", window_rows)]
@@ -428,9 +444,20 @@ def build(*, corpus_path: str | Path = DEFAULT_CORPUS,
         "evidence_gate": "token-accurate at emission (Qwen/Qwen2.5-0.5B, 112-token budget)",
         # What the bounded sweeps discarded. A cap without a denominator reads as full coverage.
         "dropped": {**drop_counts(), "duplicate_text": len(collisions)},
-        "caps": {"max_facets": 3, "per_property_entities": 100, "baseline_entities": 100,
-                 "column_every": 8, "wikidata_columns_per_property": 6,
-                 "max_values_per_property": 3, "variant_every": 4, "anon_every": 4},
+        "caps": {
+            "max_facets": MAX_FACETS,
+            "per_property_entities": PER_PROPERTY_ENTITIES,
+            "per_property_entity_overrides": {
+                uri.rsplit("/", 1)[-1]: cap
+                for uri, cap in sorted(WIKIDATA_PROPERTY_ENTITY_OVERRIDES.items())
+            },
+            "baseline_entities": BASELINE_ENTITIES,
+            "column_every": COLUMN_EVERY,
+            "wikidata_columns_per_property": WIKIDATA_COLUMNS_PER_PROPERTY,
+            "max_values_per_property": MAX_VALUES_PER_PROPERTY,
+            "variant_every": VARIANT_EVERY,
+            "anon_every": ANON_EVERY,
+        },
         # Per-property DISTINCT-GROUP support per split, beside the instance counts the trainer's floors
         # use. Column instances add instances without adding groups, so a property can clear an
         # instance-count floor on clones of one group; this makes that inflation auditable.

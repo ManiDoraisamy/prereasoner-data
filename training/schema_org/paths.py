@@ -1,7 +1,6 @@
 """Canonical artifact paths shared without importing database or training stages."""
 from pathlib import Path
 
-
 PACKAGE_DIR = Path(__file__).resolve().parent
 DATA_DIR = PACKAGE_DIR / "data"
 CORPUS_PATH = DATA_DIR / "semantic_instances.jsonl"

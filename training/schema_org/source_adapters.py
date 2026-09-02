@@ -6,11 +6,11 @@ facts into serving artifacts.
 """
 from __future__ import annotations
 
-from collections import Counter
-import re
 import hashlib
+import re
+from collections import Counter
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 from engine.schema_model import MAX_SAMPLE_VALUES, sample_values
@@ -22,7 +22,6 @@ from training.schema_org.source_catalog import (
     SourceMapping,
     mapping_version,
 )
-
 
 GROUP_SIZE = 8
 VARIANT_EVERY = 4                   # 1 in N groups ALSO emits a presentation variant (canonical rows unchanged)
@@ -222,7 +221,17 @@ def generic_evidence(contract: SchemaContract) -> frozenset[str]:
         )
     return cached
 
-PER_PROPERTY_ENTITIES = 100     # per (pool, P-id): 10% validation share x 100 = ~10 = 2x the floor of 5
+PER_PROPERTY_ENTITIES = 100     # per (pool, P-id); the deterministic split can put fewer than 10 in validation
+# Preserve the established named-property basis with measured source support. These are semantic targets,
+# not P-ids, so a reviewed bridge update cannot accidentally remove the extra sampling budget. At 250
+# source entities the expected validation support is 25 groups, leaving useful margin above the 10-group
+# calibration floor without widening every Wikidata scan.
+WIKIDATA_PROPERTY_ENTITY_OVERRIDES = {
+    schema_uri("author"): 250,
+    schema_uri("isBasedOn"): 250,
+    schema_uri("owns"): 250,
+    schema_uri("producer"): 250,
+}
 BASELINE_ENTITIES = 100         # per pool, qid-ordered: guarantees class-shape coverage independent of props
 MAX_VALUES_PER_PROPERTY = 3
 MAX_FACETS = 3
@@ -231,6 +240,15 @@ ENCODER_BUDGET_TOKENS = 112     # headroom under the encoder's max_len=128 (trai
 _QID = re.compile(r"^Q\d+$")
 _WD_TIME = re.compile(r"^([+-])(\d{4,})-(\d\d)-(\d\d)T")
 _WD_QUANTITY = re.compile(r"^[+-]\d+(\.\d+)?$")
+
+
+def wikidata_property_entity_limit(pid: str, bridge: dict[str, frozenset[str]]) -> int:
+    """Return the audited entity cap for one Wikidata property mapping."""
+    return max(
+        (WIKIDATA_PROPERTY_ENTITY_OVERRIDES.get(uri, PER_PROPERTY_ENTITIES)
+         for uri in bridge.get(pid, ())),
+        default=PER_PROPERTY_ENTITIES,
+    )
 
 
 def _domain_ok(targets, classes, contract: SchemaContract) -> tuple[str, ...]:
@@ -455,7 +473,9 @@ def _segment_cost(header: str, columns) -> int:
 
 
 def _facet_text(header: str, columns) -> str:
-    from engine.schema_model import summarize_table                  # the SERVING renderer; never re-render
+    from engine.schema_model import (
+        summarize_table,  # the SERVING renderer; never re-render
+    )
     names = [name for name, _values, _props in columns]
     depth = max((len(values) for _n, values, _p in columns), default=0)
     rows = [[(values[i] if i < len(values) else None) for _n, values, _p in columns] for i in range(depth)]
@@ -494,10 +514,11 @@ def wikidata_instances(cur, contract: SchemaContract, *, bridge_path: str | Path
                 baseline += 1
                 keep = True
             for pid in sorted(properties or {}):
-                if pid in bridge and per_property[pid] < PER_PROPERTY_ENTITIES:
-                    if _render_values((properties or {}).get(pid), labels):
-                        per_property[pid] += 1
-                        keep = True
+                if (pid in bridge
+                        and per_property[pid] < wikidata_property_entity_limit(pid, bridge)
+                        and _render_values((properties or {}).get(pid), labels)):
+                    per_property[pid] += 1
+                    keep = True
             if not keep:
                 continue
             entry = selected.get(qid)
@@ -552,7 +573,7 @@ ANON_EVERY = 4                      # 1 in N wikidata column instances also gets
 
 
 def _column_text(table_name: str, header: str, values) -> str:
-    from engine.schema_model import summarize_table                  # SERVING renderer; identical text
+    from engine.schema_model import summarize_table  # SERVING renderer; identical text
     return summarize_table({"name": table_name, "columns": [header], "rows": [[v] for v in values]})
 
 

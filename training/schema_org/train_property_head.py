@@ -7,29 +7,34 @@ the head itself is small and deterministic.
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import copy
 import hashlib
 import json
 import math
 import os
-from pathlib import Path
 import platform
 import random
 import subprocess
+from collections import Counter
+from pathlib import Path
 
 import numpy as np
 
+from engine.artifact_provenance import (
+    canonical_json_sha256,
+    semantic_encoder_fingerprint,
+)
 from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR
 from engine.schema_decode import ClassDecoder
-from engine.artifact_provenance import canonical_json_sha256, semantic_encoder_fingerprint
 from engine.schema_org import load_contract
 from training.schema_org.instances import group_id, read_jsonl
 from training.schema_org.paths import (
-    CORPUS_PATH, EMBEDDINGS_PATH, MANIFEST_PATH, experiment_dir,
+    CORPUS_PATH,
+    EMBEDDINGS_PATH,
+    MANIFEST_PATH,
+    experiment_dir,
 )
 from training.schema_org.signatures import SIGNATURES_NAME
-
 
 CACHE_PATH = EMBEDDINGS_PATH
 ROOT = Path(__file__).resolve().parents[2]
@@ -246,6 +251,7 @@ def _embeddings(instances, *, cache_path: Path, device, batch_size: int,
 
 def main() -> None:
     import torch
+
     from engine.schema_model import NamedPropertyHead
 
     parser = argparse.ArgumentParser(description=__doc__)

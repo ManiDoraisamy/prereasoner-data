@@ -14,10 +14,11 @@ Postgres.
 python -m tests.test_schema_coverage
 """
 from __future__ import annotations
+
 import json
-from pathlib import Path
 import sys
 import tempfile
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -79,8 +80,8 @@ UNREACHABLE_DIMS = {
 # Support floors the trainer enforces (training/schema_org/train_property_head.py). Held-out floors are
 # additionally counted in DISTINCT GROUPS, because column instances add instances without adding
 # independent observations.
-MIN_TRAIN, MIN_VALIDATION, MIN_TEST = 25, 5, 5
-MIN_VALIDATION_GROUPS, MIN_TEST_GROUPS = 5, 5
+MIN_TRAIN, MIN_VALIDATION, MIN_TEST = 25, 10, 5
+MIN_VALIDATION_GROUPS, MIN_TEST_GROUPS = 10, 5
 
 
 def _uri(name):
@@ -158,6 +159,24 @@ def test_entity_properties_clear_the_support_floor():
     assert not thin, f"entity properties below the support floor {(MIN_TRAIN, MIN_VALIDATION, MIN_TEST)}: {thin}"
     print(f"  PASS  entity properties clear the ({MIN_TRAIN}/{MIN_VALIDATION}/{MIN_TEST}) floor in both "
           f"instances and independent groups")
+
+
+def test_targeted_wikidata_dimensions_clear_calibration_floor():
+    """The bounded Wikidata sampler must retain legacy dimensions under a fresh split."""
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    targets = {"author", "isBasedOn", "owns", "producer"}
+    overrides = manifest["caps"].get("per_property_entity_overrides", {})
+    missing_policy = sorted(name for name in targets if overrides.get(name, 0) < 250)
+    assert not missing_policy, f"targeted Wikidata sampling policy missing or too small: {missing_policy}"
+
+    group_support = manifest["property_group_support"]
+    thin = {
+        name: group_support.get(_uri(name), {})
+        for name in sorted(targets)
+        if group_support.get(_uri(name), {}).get("validation", 0) < MIN_VALIDATION_GROUPS
+    }
+    assert not thin, f"targeted Wikidata dimensions still below the validation-group floor: {thin}"
+    print(f"  PASS  targeted Wikidata dimensions clear the {MIN_VALIDATION_GROUPS}-group calibration floor")
 
 
 def test_class_evidence_excludes_every_universal_property():
@@ -239,7 +258,10 @@ def test_split_is_drawn_per_derivation_group():
     `group_id`; nothing else in the suite could either. These assertions fail if the grouping is removed.
     """
     from training.schema_org.instances import (
-        DERIVATION_SEP, SPLIT_SALT, deterministic_split, group_id,
+        DERIVATION_SEP,
+        SPLIT_SALT,
+        deterministic_split,
+        group_id,
     )
     parent = "geonames.place:100399..101322"
     derived = [f"{parent}#col=latitude", f"{parent}#facet=1", f"{parent}#v1", f"{parent}#v2+facet=2"]
@@ -344,6 +366,7 @@ TESTS = [
     test_trained_basis_covers_the_legacy_one,
     test_entity_properties_are_trained_not_starved,
     test_entity_properties_clear_the_support_floor,
+    test_targeted_wikidata_dimensions_clear_calibration_floor,
     test_class_evidence_excludes_every_universal_property,
     test_excluded_dims_stay_excluded,
     test_corpus_carries_column_level_instances,

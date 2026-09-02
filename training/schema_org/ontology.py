@@ -4,11 +4,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from pathlib import Path
 import urllib.request
+from pathlib import Path
 
-from engine.schema_org import CONTRACT_PATH, SCHEMA_ORG_SOURCE, SCHEMA_ORG_VERSION, schema_uri
-
+from engine.schema_org import (
+    CONTRACT_PATH,
+    SCHEMA_ORG_SOURCE,
+    SCHEMA_ORG_VERSION,
+    schema_uri,
+)
 
 USER_AGENT = "prereasoner-schema-compiler/1.0"
 
@@ -42,7 +46,7 @@ def compile_payload(raw: bytes, *, source_url: str = SCHEMA_ORG_SOURCE) -> dict:
     document = json.loads(raw)
     graph = document.get("@graph")
     if not isinstance(graph, list):
-        raise ValueError("Schema.org JSON-LD must contain an @graph list")
+        raise TypeError("Schema.org JSON-LD must contain an @graph list")
 
     class_nodes = {
         schema_uri(node["@id"]): node for node in graph
@@ -151,4 +155,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

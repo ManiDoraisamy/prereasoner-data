@@ -1,10 +1,9 @@
 """Declarative publisher and Wikidata mappings for the Schema.org corpus."""
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
-
+from dataclasses import dataclass
 
 MAPPING_SCHEMA_VERSION = 2
 DEFAULT_ROWS_PER_MAPPING = 5_000
