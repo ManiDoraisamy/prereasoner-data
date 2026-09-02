@@ -307,6 +307,22 @@ def test_runpod_transfers_are_inside_the_owned_lease():
             raise AssertionError("unsafe remote transfer path was accepted")
 
 
+def test_runpod_retries_only_idempotent_transfers():
+    from training.tools import runpod_api
+
+    transient = subprocess.CalledProcessError(255, ["scp"])
+    with patch.object(
+        runpod_api.subprocess, "run",
+        side_effect=[transient, subprocess.CompletedProcess(["scp"], 0)],
+    ) as run, patch.object(runpod_api.time, "sleep"):
+        runpod_api._run_transfer(["scp", "source", "target"], lambda: 60)
+        assert run.call_count == 2
+
+    source = _text("training/tools/runpod_api.py")
+    assert source.count("_run_transfer(") >= 3
+    assert "subprocess.run([*ssh" in source
+
+
 def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     from deploy.gcp.build_context import SOURCE_ALLOWLIST
 
@@ -366,6 +382,7 @@ TESTS = [
     test_runpod_training_is_an_owned_bounded_lease,
     test_runpod_cleanup_failure_does_not_hide_training_failure,
     test_runpod_transfers_are_inside_the_owned_lease,
+    test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_schema_training_selection_never_reads_test_evidence,
 ]

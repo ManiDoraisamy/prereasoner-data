@@ -168,6 +168,20 @@ def _remote_path(value: str) -> str:
     return value
 
 
+def _run_transfer(command: list[str], remaining, attempts: int = 3) -> None:
+    """Retry idempotent SCP uploads/downloads without ever retrying training."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            subprocess.run(command, check=True, timeout=min(remaining(), 15 * 60))
+            return
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(2 ** attempt)
+    raise last_error or RuntimeError("transfer failed without an error")
+
+
 def run_lease(max_minutes: int, command: list[str], keep: bool = False,
               uploads: tuple[tuple[str, str], ...] = (),
               downloads: tuple[tuple[str, str], ...] = ()) -> str:
@@ -196,18 +210,18 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
             source = Path(local).resolve()
             if not source.exists():
                 raise FileNotFoundError(f"upload source does not exist: {source}")
-            subprocess.run(
+            _run_transfer(
                 [*scp, str(source), f"root@{ip}:{_remote_path(remote)}"],
-                check=True, timeout=remaining(),
+                remaining,
             )
         if command:
             subprocess.run([*ssh, shlex.join(command)], check=True, timeout=remaining())
         for remote, local in downloads:
             destination = Path(local).resolve()
             destination.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run(
+            _run_transfer(
                 [*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
-                check=True, timeout=remaining(),
+                remaining,
             )
         return pid
     finally:
