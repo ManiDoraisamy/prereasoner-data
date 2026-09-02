@@ -6,39 +6,44 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
+import os
 import re
 import sys
 import tarfile
 import zipfile
-import json
-import os
 from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from unittest.mock import patch
 
+from db.reference_grants import approved_reference_targets
+from db.sync import build_wikipedia
+from db.sync._conn import _connection_kwargs
+from db.sync.build_exchange_rate import (
+    CARRY_FORWARD_DAYS,
+    build_rows,
+    ensure_rate_columns,
+    load_active_history,
+    rate_column_name,
+)
+from db.sync.migrations import MIGRATIONS, latest_schema_version
+from db.sync.releases import activate_validated_release
 from db.sync.sources.cdc.sync import parse_archive as parse_cdc
 from db.sync.sources.cldr.sync import parse_archive as parse_cldr
 from db.sync.sources.cldr.sync import validate as validate_cldr
+from db.sync.sources.common import _require_https
 from db.sync.sources.ec_tedb.sync import parse_snapshot as parse_tedb
 from db.sync.sources.ecb.sync import parse_archive as parse_ecb
-from db.sync.sources.google_libphonenumber.sync import parse_archive as parse_libphone
 from db.sync.sources.geonames.sync import parse_archives as parse_geonames
+from db.sync.sources.google_libphonenumber.sync import parse_archive as parse_libphone
 from db.sync.sources.iana.sync import ZONE_SOURCE_FILES
 from db.sync.sources.iana.sync import parse_archive as parse_iana
+from db.sync.sources.loinc.sync import parse_archive as parse_loinc
 from db.sync.sources.nager_date.sync import parse_snapshot as parse_nager
 from db.sync.sources.nlm_cde.sync import parse_snapshot as parse_nlm
-from db.sync.sources.loinc.sync import parse_archive as parse_loinc
 from db.sync.sources.who.sync import parse_snapshot as parse_who
-from db.sync.sources.common import _require_https
-from db.sync import build_wikipedia
-from db.sync.build_exchange_rate import (
-    CARRY_FORWARD_DAYS, build_rows, ensure_rate_columns, load_active_history, rate_column_name,
-)
-from db.sync.migrations import MIGRATIONS, latest_schema_version
-from db.sync._conn import _connection_kwargs
-from db.sync.releases import activate_validated_release
-from db.reference_grants import approved_reference_targets
+from db.sync.sources.wikidata.sync import parse_snapshot as parse_wikidata_labels
 from engine.enrichment.registry import REGISTRY, PostgresStorage, QualifiedRelation
 
 
@@ -167,8 +172,8 @@ def test_ecb_parser_expands_non_missing_rates_only():
     data = parse_ecb(archive, enforce_minimums=False)
     assert data.rates == (
         ("2026-01-02", "USD", Decimal("1.2")),
-        ("2026-01-02", "JPY", Decimal("180")),
-        ("2026-01-01", "JPY", Decimal("179")),
+        ("2026-01-02", "JPY", Decimal(180)),
+        ("2026-01-01", "JPY", Decimal(179)),
     )
 
 
@@ -187,7 +192,7 @@ class _RecordingCursor:
 def test_exchange_rate_builder_uses_the_active_release_ledger():
     cursor = _RecordingCursor([
         ("sha256:z-old", date(2026, 1, 1), "USD", Decimal("1.2")),
-        ("sha256:z-old", date(2026, 1, 1), "JPY", Decimal("180")),
+        ("sha256:z-old", date(2026, 1, 1), "JPY", Decimal(180)),
     ])
     release_id, history = load_active_history(cursor)
     assert release_id == "sha256:z-old"
@@ -255,7 +260,7 @@ class _CatalogCursor:
         sql = " ".join(str(statement).split())
         self.statements.append(sql)
         names = [value.replace('""', '"') for value in re.findall(r'"((?:""|[^"])*)"', sql)]
-        if sql.startswith("CREATE SCHEMA") or sql.startswith("ALTER TABLE"):
+        if sql.startswith(("CREATE SCHEMA", "ALTER TABLE")):
             self._rows = []
         elif sql.startswith("SELECT qid, label FROM"):
             self._rows = list(self.labels.items())
@@ -517,6 +522,31 @@ def test_who_parser_preserves_icd11_hierarchy_and_source_documents():
     assert by_code["1A00"][6:8] == (1, True)
 
 
+def test_wikidata_label_snapshot_is_bounded_complete_and_revisioned():
+    payload = {
+        "schema_version": 1,
+        "property_ids": ["P50", "P162"],
+        "requested_qids": ["Q42", "Q999"],
+        "entities": [
+            {"id": "Q42", "lastrevid": 123, "labels": {"en": {"value": "Douglas Adams"}}},
+            {"id": "Q999", "missing": True},
+        ],
+    }
+    data = parse_wikidata_labels(
+        json.dumps(payload, sort_keys=True).encode(), minimum_resolution=0.5,
+    )
+    assert data.rows == (("Q42", "Douglas Adams", "en", 123),)
+    assert data.missing_qids == ("Q999",)
+    assert data.counts() == {"entity_label": 1}
+
+    payload["entities"][0]["id"] = "Q1000"
+    try:
+        parse_wikidata_labels(json.dumps(payload).encode(), minimum_resolution=0.5)
+        raise AssertionError
+    except ValueError as exc:
+        assert "foreign or duplicate" in str(exc)
+
+
 class _ReleaseCursor:
     def __init__(self, rows):
         self.rows = list(rows)
@@ -614,6 +644,7 @@ TESTS = [
     test_nlm_parser_keeps_rights_raw_documents_and_form_structure,
     test_loinc_parser_keeps_terms_assessment_content_and_parts,
     test_who_parser_preserves_icd11_hierarchy_and_source_documents,
+    test_wikidata_label_snapshot_is_bounded_complete_and_revisioned,
     test_release_rollback_accepts_only_validated_retired_snapshots,
     test_reference_grant_plan_is_registry_derived_and_least_scope,
     test_reference_grant_plan_includes_registered_related_relations,

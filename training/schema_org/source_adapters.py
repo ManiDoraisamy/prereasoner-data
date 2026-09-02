@@ -289,7 +289,38 @@ def _label_map(cur) -> dict[str, str]:
         "SELECT qid,label FROM capped.entity WHERE label IS NOT NULL "
         "UNION SELECT qid,label FROM capped.type WHERE label IS NOT NULL"
     )
-    return {qid: label for qid, label in cur.fetchall()}
+    labels = {qid: label for qid, label in cur.fetchall()}
+    cur.execute("SELECT to_regclass('wikidata.entity_label')")
+    if cur.fetchone()[0] is None:
+        return labels
+    cur.execute(
+        "SELECT l.qid,l.label FROM wikidata.entity_label l "
+        "JOIN wikidata.release r ON r.release_id=l.release_id "
+        "WHERE r.status='active' AND l.language='en' ORDER BY l.qid"
+    )
+    for qid, label in cur.fetchall():
+        labels.setdefault(qid, label)
+    return labels
+
+
+def active_wikidata_label_release(cur) -> dict | None:
+    """Return the immutable active label release used to render QID-valued evidence."""
+    cur.execute("SELECT to_regclass('wikidata.release')")
+    if cur.fetchone()[0] is None:
+        return None
+    cur.execute(
+        "SELECT release_id,source_version,source_url,content_sha256,completeness,"
+        "import_scope,license_name,license_url,table_counts "
+        "FROM wikidata.release WHERE status='active'"
+    )
+    row = cur.fetchone()
+    if row is None:
+        return None
+    keys = (
+        "release_id", "source_version", "source_url", "content_sha256", "completeness",
+        "import_scope", "license_name", "license_url", "table_counts",
+    )
+    return dict(zip(keys, row, strict=True))
 
 
 def _property_headers(cur) -> dict[str, str]:

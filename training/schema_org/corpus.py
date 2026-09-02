@@ -34,6 +34,7 @@ from training.schema_org.source_adapters import (
     WIKIDATA_COLUMNS_PER_PROPERTY,
     WIKIDATA_PROPERTY_ENTITY_OVERRIDES,
     active_source_manifest,
+    active_wikidata_label_release,
     drop_counts,
     emit_instance,
     reset_drop_counts,
@@ -383,6 +384,7 @@ def build(*, corpus_path: str | Path = DEFAULT_CORPUS,
         wikidata += list(wikidata_column_instances(cur, contract, bridge_path=bridge_path,
                                                    lookups=lookups))
         source_manifest = active_source_manifest(cur)
+        wikidata_label_release = active_wikidata_label_release(cur)
     finally:
         cur.close()
         conn.close()
@@ -419,6 +421,7 @@ def build(*, corpus_path: str | Path = DEFAULT_CORPUS,
             "status": "sample-pinned-from-legacy-capped-snapshot",
             "release_id": wikidata[0].release_id if wikidata else "",
             "instances": len(wikidata),
+            "reference_label_release": wikidata_label_release,
         },
         "unavailable_sources": {
             "who": "credentials-required", "loinc": "licensed-archive-required",
