@@ -40,7 +40,7 @@ _PID = re.compile(r"^P[1-9][0-9]*$")
 class WikidataLabels:
     property_ids: tuple[str, ...]
     requested_qids: tuple[str, ...]
-    rows: tuple[tuple[str, str, str, int], ...]
+    rows: tuple[tuple[str, str, str, str, int], ...]
     missing_qids: tuple[str, ...]
 
     def counts(self) -> dict[str, int]:
@@ -54,6 +54,18 @@ def _entity_records(payload: dict) -> list[dict]:
     if isinstance(entities, list):
         return entities
     raise TypeError("Wikidata response has no entities collection")
+
+
+def _requested_qid(entity: dict) -> str:
+    canonical = str(entity.get("id", ""))
+    redirect = entity.get("redirects")
+    if not isinstance(redirect, dict):
+        return canonical
+    source = str(redirect.get("from", ""))
+    target = str(redirect.get("to", ""))
+    if not _QID.fullmatch(source) or target != canonical:
+        raise ValueError(f"invalid Wikidata redirect {redirect!r} for {canonical!r}")
+    return source
 
 
 def collect_reference_qids(cur, property_ids=DEFAULT_PROPERTY_IDS,
@@ -98,11 +110,16 @@ def _request_batch(session: requests.Session, qids: tuple[str, ...], *, retries:
             response.raise_for_status()
             payload = response.json()
             entities = _entity_records(payload)
-            returned = {str(entity.get("id")) for entity in entities}
+            returned = {_requested_qid(entity) for entity in entities}
             if returned != set(qids):
-                raise ValueError("Wikidata response QIDs do not match the requested batch")
+                missing = sorted(set(qids) - returned)
+                extra = sorted(returned - set(qids))
+                raise ValueError(
+                    f"Wikidata response QIDs do not match the requested batch; "
+                    f"missing={missing[:5]} extra={extra[:5]}"
+                )
             return entities
-        except (requests.RequestException, ValueError) as exc:
+        except requests.RequestException as exc:
             last_error = exc
             if attempt + 1 == retries:
                 break
@@ -134,7 +151,7 @@ def fetch_snapshot(qids: tuple[str, ...], *, property_ids=DEFAULT_PROPERTY_IDS,
         "schema_version": 1,
         "property_ids": sorted(set(property_ids)),
         "requested_qids": list(qids),
-        "entities": sorted(entities, key=lambda entity: int(str(entity["id"])[1:])),
+        "entities": sorted(entities, key=lambda entity: int(_requested_qid(entity)[1:])),
     }
     return json.dumps(payload, sort_keys=True, ensure_ascii=True, separators=(",", ":")).encode()
 
@@ -155,7 +172,8 @@ def parse_snapshot(snapshot: bytes, *, minimum_resolution: float = 0.95) -> Wiki
     missing = []
     seen = set()
     for entity in _entity_records(payload):
-        qid = str(entity.get("id", ""))
+        qid = _requested_qid(entity)
+        canonical_qid = str(entity.get("id", ""))
         if qid not in requested or qid in seen:
             raise ValueError(f"Wikidata snapshot has foreign or duplicate entity {qid!r}")
         seen.add(qid)
@@ -166,7 +184,7 @@ def parse_snapshot(snapshot: bytes, *, minimum_resolution: float = 0.95) -> Wiki
         revision = entity.get("lastrevid")
         if not isinstance(revision, int) or revision <= 0:
             raise ValueError(f"Wikidata entity {qid} has no positive last revision")
-        rows.append((qid, label.strip(), "en", revision))
+        rows.append((qid, canonical_qid, label.strip(), "en", revision))
     if seen != set(requested):
         raise ValueError("Wikidata snapshot does not account for every requested QID")
     resolution = len(rows) / len(requested)
@@ -183,6 +201,7 @@ DDL = """
 CREATE TABLE IF NOT EXISTS wikidata.entity_label (
   release_id text NOT NULL REFERENCES wikidata.release(release_id),
   qid text NOT NULL CHECK (qid ~ '^Q[1-9][0-9]*$'),
+  canonical_qid text NOT NULL CHECK (canonical_qid ~ '^Q[1-9][0-9]*$'),
   label text NOT NULL,
   language text NOT NULL CHECK (language = 'en'),
   source_revision bigint NOT NULL CHECK (source_revision > 0),
@@ -220,7 +239,7 @@ def synchronize(conn, snapshot: bytes, data: WikidataLabels) -> str:
         insert_rows(
             cur,
             "wikidata.entity_label",
-            ("release_id", "qid", "label", "language", "source_revision"),
+            ("release_id", "qid", "canonical_qid", "label", "language", "source_revision"),
             ((release.release_id, *row) for row in data.rows),
         )
         verify_and_activate(cur, release, counts)

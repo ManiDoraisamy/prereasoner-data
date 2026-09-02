@@ -526,19 +526,27 @@ def test_wikidata_label_snapshot_is_bounded_complete_and_revisioned():
     payload = {
         "schema_version": 1,
         "property_ids": ["P50", "P162"],
-        "requested_qids": ["Q42", "Q999"],
+        "requested_qids": ["Q42", "Q999", "Q111982801"],
         "entities": {
             "Q42": {"id": "Q42", "lastrevid": 123,
                     "labels": {"en": {"value": "Douglas Adams"}}},
             "Q999": {"id": "Q999", "missing": ""},
+            "Q97251170": {
+                "id": "Q97251170", "lastrevid": 456,
+                "redirects": {"from": "Q111982801", "to": "Q97251170"},
+                "labels": {"en": {"value": "Rajmohan's Wife"}},
+            },
         },
     }
     data = parse_wikidata_labels(
-        json.dumps(payload, sort_keys=True).encode(), minimum_resolution=0.5,
+        json.dumps(payload, sort_keys=True).encode(), minimum_resolution=0.6,
     )
-    assert data.rows == (("Q42", "Douglas Adams", "en", 123),)
+    assert data.rows == (
+        ("Q111982801", "Q97251170", "Rajmohan's Wife", "en", 456),
+        ("Q42", "Q42", "Douglas Adams", "en", 123),
+    )
     assert data.missing_qids == ("Q999",)
-    assert data.counts() == {"entity_label": 1}
+    assert data.counts() == {"entity_label": 2}
 
     payload["entities"]["Q42"]["id"] = "Q1000"
     try:
