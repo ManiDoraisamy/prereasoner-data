@@ -9,6 +9,12 @@ from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SQLType, SelectItem
 from engine.tables import table_from_rows
 
 
+def _assert_reasoning_result(result: dict) -> None:
+    rows = (result.get("result") or {}).get("rows")
+    if result.get("error") or result.get("clarify") or rows != [["3.3"]]:
+        raise RuntimeError(f"model-backed reasoning smoke mismatch: {result!r}")
+
+
 def run() -> dict:
     connection = _pg()
     try:
@@ -44,12 +50,28 @@ def run() -> dict:
     query = SelectQuery((SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", rate)), "total"),), "ledger")
     executor = _TableQueryPg()
     executor._pg_schema = schema
+    reasoning = None
     try:
         columns, rows = executor.execute(
             {"ledger": table}, planner_schema, render_query(query), query=query,
         )
         if columns != ["total"] or rows != [("900719925474099.33",)]:
             raise RuntimeError(f"exact calculation smoke mismatch: {columns!r} {rows!r}")
+
+        # A health endpoint proves only that weights loaded. This request exercises
+        # the active ranker, typed AST planner, upload path, PostgreSQL execution,
+        # and result contract using the exact image being promoted.
+        from engine.knowledge import KnowledgeReasoner
+
+        reasoning = KnowledgeReasoner().serve(
+            [table_from_rows(
+                "orders", ["order_id", "amount"],
+                [["1", "1.10"], ["2", "2.20"]],
+            )],
+            "what is the total amount",
+            schema,
+        )
+        _assert_reasoning_result(reasoning)
     finally:
         connection = _pg()
         try:
@@ -58,7 +80,13 @@ def run() -> dict:
             connection.commit()
         finally:
             connection.close()
-    return {"ok": True, "request_budgets": True, "exact_total": rows[0][0]}
+    return {
+        "ok": True,
+        "request_budgets": True,
+        "exact_total": rows[0][0],
+        "reasoning_sql": reasoning["sql"],
+        "reasoning_total": reasoning["result"]["rows"][0][0],
+    }
 
 
 def main() -> int:

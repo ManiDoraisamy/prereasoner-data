@@ -1,4 +1,4 @@
-"""Create an immutable Cloud Build context from HEAD plus manifested weights."""
+"""Create an immutable, allowlisted Cloud Build context from a clean Git HEAD."""
 from __future__ import annotations
 
 import argparse
@@ -27,6 +27,14 @@ SOURCE_ALLOWLIST = (
     "mcp_server",
     "orchestrator",
 )
+SOURCE_SYNC_ALLOWLIST = (
+    ".dockerignore",
+    "Dockerfile.sync",
+    "LICENSE",
+    "THIRD_PARTY.md",
+    "cloudbuild.sync.yaml",
+    "db",
+)
 
 from engine.artifact_provenance import load_weights_manifest, validate_weight_bundle  # noqa: E402
 
@@ -43,14 +51,17 @@ def require_clean_head() -> str:
     return _git("rev-parse", "HEAD")
 
 
-def create_context(output: Path) -> tuple[str, str]:
+def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
+    if target not in {"engine", "sync"}:
+        raise ValueError(f"unknown build target: {target}")
     if output.exists() and any(output.iterdir()):
         raise RuntimeError(f"build context must be empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
+    allowlist = SOURCE_ALLOWLIST if target == "engine" else SOURCE_SYNC_ALLOWLIST
     archive = subprocess.check_output((
         "git", "-C", str(ROOT), "archive", "--format=tar", commit,
-        "--", *SOURCE_ALLOWLIST,
+        "--", *allowlist,
     ))
     with tarfile.open(fileobj=BytesIO(archive), mode="r:") as bundle:
         for member in bundle.getmembers():
@@ -70,18 +81,24 @@ def create_context(output: Path) -> tuple[str, str]:
                 shutil.copyfileobj(source, handle)
             destination.chmod(member.mode & 0o777)
 
-    data = ROOT / "engine" / "data"
-    manifest = load_weights_manifest(data)
-    if manifest is None:
-        raise RuntimeError("engine/data/weights_manifest.json is required")
-    fingerprint = validate_weight_bundle(data, manifest)
-    for relative in manifest["files"]:
-        source = data / relative
-        destination = output / "engine" / "data" / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, destination)
-    validate_weight_bundle(output / "engine" / "data", manifest)
-    (output / "engine" / "data" / "build_provenance.json").write_text(json.dumps({
+    if target == "engine":
+        data = ROOT / "engine" / "data"
+        manifest = load_weights_manifest(data)
+        if manifest is None:
+            raise RuntimeError("engine/data/weights_manifest.json is required")
+        fingerprint = validate_weight_bundle(data, manifest)
+        for relative in manifest["files"]:
+            source = data / relative
+            destination = output / "engine" / "data" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, destination)
+        validate_weight_bundle(output / "engine" / "data", manifest)
+        provenance = output / "engine" / "data" / "build_provenance.json"
+    else:
+        fingerprint = "source-only"
+        provenance = output / "db" / "sync" / "build_provenance.json"
+    provenance.write_text(json.dumps({
+        "build_target": target,
         "source_commit": commit,
         "weights_manifest_sha256": fingerprint,
     }, sort_keys=True, indent=2) + "\n", encoding="ascii")
@@ -91,9 +108,10 @@ def create_context(output: Path) -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--target", choices=("engine", "sync"), default="engine")
     args = parser.parse_args()
-    commit, fingerprint = create_context(args.output)
-    print(f"build context ready: commit={commit} weights={fingerprint}")
+    commit, fingerprint = create_context(args.output, args.target)
+    print(f"build context ready: target={args.target} commit={commit} weights={fingerprint}")
     return 0
 
 

@@ -195,6 +195,23 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     assert 'zz_ci_override.tf' not in ci
 
 
+def test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer():
+    from engine.release_smoke import _assert_reasoning_result
+
+    _assert_reasoning_result({"result": {"rows": [["3.3"]]}})
+    for result in (
+        {"error": "planner failed", "result": {"rows": [["3.3"]]}},
+        {"clarify": "which amount?", "result": {"rows": [["3.3"]]}},
+        {"result": {"rows": [["3.3000000000000003"]]}},
+    ):
+        try:
+            _assert_reasoning_result(result)
+        except RuntimeError:
+            pass
+        else:
+            raise AssertionError("invalid release-smoke answer was accepted")
+
+
 def test_serving_identity_cannot_read_the_admin_database_secret():
     terraform = _text("infra/main.tf")
     assert 'resource "google_secret_manager_secret_iam_member" "run_db_password"' not in terraform
@@ -239,6 +256,7 @@ TESTS = [
     test_bootstrap_replays_and_abstains_after_ready_version,
     test_bootstrap_records_failure_and_rejects_privileged_serving_role,
     test_public_deployer_has_isolated_state_and_cost_safe_defaults,
+    test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer,
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
     test_marketing_button_opens_the_pinned_public_walkthrough,

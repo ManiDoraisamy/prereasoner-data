@@ -324,7 +324,7 @@ def test_runpod_retries_only_idempotent_transfers():
 
 
 def test_cloud_build_context_is_git_archive_plus_manifested_weights():
-    from deploy.gcp.build_context import SOURCE_ALLOWLIST
+    from deploy.gcp.build_context import SOURCE_ALLOWLIST, SOURCE_SYNC_ALLOWLIST
 
     source = _text("deploy/gcp/build_context.py")
     assert '"archive", "--format=tar"' in source
@@ -332,6 +332,12 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert 'for relative in manifest["files"]' in source
     assert {"engine", "db", "regress", "mcp_server", "orchestrator"} <= set(SOURCE_ALLOWLIST)
     assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
+    assert {"Dockerfile.sync", "cloudbuild.sync.yaml", "db"} <= set(SOURCE_SYNC_ALLOWLIST)
+    assert not {"engine", "training", "tests", "spider", "world_eval"} & set(
+        SOURCE_SYNC_ALLOWLIST
+    )
+    assert 'choices=("engine", "sync")' in source
+    assert '"build_target": target' in source
     for ignore in (".venv/", "service-account*.json", "*.tfstate"):
         assert ignore in _text(".gcloudignore")
 

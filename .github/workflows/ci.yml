@@ -158,10 +158,12 @@ jobs:
           python -m pip install huggingface_hub==1.29.0
           python -m engine.fetch_weights
           python deploy/gcp/build_context.py --output /tmp/prereasoner-build
+          python deploy/gcp/build_context.py --target sync --output /tmp/prereasoner-sync-build
       - name: Build release containers
         run: |
           docker build -t prereasoner-engine:ci /tmp/prereasoner-build
           docker build -f /tmp/prereasoner-build/Dockerfile.orchestrator -t prereasoner-chat:ci /tmp/prereasoner-build
+          docker build -f /tmp/prereasoner-sync-build/Dockerfile.sync -t prereasoner-sync:ci /tmp/prereasoner-sync-build
           docker run --rm --entrypoint python prereasoner-chat:ci -m mcp_server.healthcheck
       - name: Generate engine SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
@@ -175,6 +177,12 @@ jobs:
           image: prereasoner-chat:ci
           artifact-name: prereasoner-chat.spdx.json
           output-file: /tmp/prereasoner-chat.spdx.json
+      - name: Generate source-sync SBOM
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+        with:
+          image: prereasoner-sync:ci
+          artifact-name: prereasoner-sync.spdx.json
+          output-file: /tmp/prereasoner-sync.spdx.json
       - name: Scan engine for critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -188,6 +196,15 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: prereasoner-chat:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: os,library
+          severity: CRITICAL
+      - name: Scan source-sync for critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: prereasoner-sync:ci
           format: table
           exit-code: "1"
           ignore-unfixed: true
