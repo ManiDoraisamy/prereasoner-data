@@ -338,6 +338,9 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     )
     assert 'choices=("engine", "sync")' in source
     assert '"build_target": target' in source
+    workflow = _text(".github/workflows/ci.yml")
+    assert "prereasoner-engine:ci -c \"import engine.server" in workflow
+    assert "prereasoner-sync:ci -c \"from db.sync.community_bootstrap" in workflow
     for ignore in (".venv*/", "service-account*.json", "*.tfstate"):
         assert ignore in _text(".gcloudignore")
 

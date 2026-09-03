@@ -164,7 +164,9 @@ jobs:
           docker build -t prereasoner-engine:ci /tmp/prereasoner-build
           docker build -f /tmp/prereasoner-build/Dockerfile.orchestrator -t prereasoner-chat:ci /tmp/prereasoner-build
           docker build -f /tmp/prereasoner-sync-build/Dockerfile.sync -t prereasoner-sync:ci /tmp/prereasoner-sync-build
+          docker run --rm --entrypoint python prereasoner-engine:ci -c "import engine.server; print('engine import OK')"
           docker run --rm --entrypoint python prereasoner-chat:ci -m mcp_server.healthcheck
+          docker run --rm --entrypoint python prereasoner-sync:ci -c "from db.sync.community_bootstrap import DEFAULT_DATASETS; assert DEFAULT_DATASETS == {'iana_country'}; print('source sync import OK')"
       - name: Generate engine SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
