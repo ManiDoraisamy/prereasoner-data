@@ -5,11 +5,8 @@ answer is derived from your data as an inspectable query.
 
 [Website](https://prereasoner.com/) | [Try it free](https://chat.prereasoner.com/)
 
-It doesn't explain a black box. It replaces it. A generative model samples its answer, so the same
-question can return a different result each time and there is no way to rerun a past decision and
-check it. PreReasoner types your inputs against named dimensions and assembles the exact query that
-computes the result. The derivation is the explanation, with the query, the dimensions and the source
-rows.
+A generative model samples its answer, so the same question can return a different result each time and there is no way to rerun a past decision and check it. 
+PreReasoner types your inputs against named dimensions and assembles a SQL query that computes the result. So, the assembly and the derivation is the explanation instead of chain of thought explanation in generative models.
 
 Every result traces to named factors instead of an opaque score. The same input always produces the
 same factors, the same query and the same result, so an auditor can rerun any past decision and get
