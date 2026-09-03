@@ -11,8 +11,9 @@
 > --max-candidates 25`, byte-for-byte `engine/tables.py:_serve_ast`) scores, over all 1,034 Spider dev
 > examples with denotation evaluation, **34.7% strict / 43.8% lenient / 54.9% scalar-gold**
 > (359/1,034, 453/1,034, 224/408). This is the current gold-blind comparison number. The oracle
-> `gold_tables` ablation must be rerun whenever the planner changes; its previous 41.0% strict result
-> is historical, not a current release claim.
+> `gold_tables` ablation on the same planner scores **42.0% strict / 53.3% lenient / 60.5% scalar-gold**
+> (434/1,034, 551/1,034, 247/408). The exact evidence commits and table-selection delta are in
+> [`results/RESULTS.md`](results/RESULTS.md).
 >
 > The accuracy is entirely the deterministic planner's. Earlier profile-expansion / trained-proposer
 > "pool recall" experiments have been removed from the tree and are not reproducible from HEAD; see the
@@ -62,6 +63,9 @@ earlier template/slot-filler delegate with **no nested-subquery, set-operation
 That delegate has since been **replaced by the deterministic typed-AST planner**, which does cover
 subqueries, set operations, and self-joins; the ceilings below are the earlier route's, not the current
 planner's.
+
+The generalized Schema.org class head is used by the world-enrichment path for named property evidence. It
+does not change Spider routing: Spider databases are self-contained, so every example uses the AST planner.
 
 ---
 

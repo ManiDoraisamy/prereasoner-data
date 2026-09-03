@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import datetime
 import re
+from decimal import Decimal
 
 from psycopg2.extras import execute_values
 
@@ -49,7 +50,7 @@ ORDER BY x.effective_date, x.quote_currency
 """
 
 
-def cross_rates(units_by_code: dict[str, float], codes: list[str]) -> dict[str, float | None]:
+def cross_rates(units_by_code: dict[str, Decimal], codes: list[str]) -> dict[str, Decimal | None]:
     """rate_to_<T> for one (source code, day): units(T)/units(source); None when T has no series."""
     source_units = units_by_code["__self__"]
     return {
@@ -66,17 +67,21 @@ def cross_rates(units_by_code: dict[str, float], codes: list[str]) -> dict[str, 
 CARRY_FORWARD_DAYS = 7
 
 
-def build_rows(history, today=None, carry_forward_days=CARRY_FORWARD_DAYS):
-    """(code, date, {target: rate}) rows from raw (effective_date, quote_currency, units_per_eur).
+def _row_stream(history, today=None, carry_forward_days=CARRY_FORWARD_DAYS):
+    """Return a bounded row iterator and its sorted currency codes.
 
-    Pure so the hermetic test can drive it with a fixture. `history` is an iterable of
-    (date, code, units) business-day observations; EUR is synthesized as the base.
+    The iterator keeps only the current carried-forward day in memory.  This is
+    important for the full ECB history: materializing both all calendar rows and
+    the bulk-insert argument list can consume gigabytes before the transaction
+    gets a chance to commit.
     """
-    by_day: dict[datetime.date, dict[str, float]] = {}
+    by_day: dict[datetime.date, dict[str, Decimal]] = {}
     for day, code, units in history:
-        by_day.setdefault(day, {})[code] = float(units)
+        # ECB parsing already returns Decimal.  Decimal(str(...)) also keeps this
+        # pure helper exact when a caller supplies a numeric fixture.
+        by_day.setdefault(day, {})[code] = units if isinstance(units, Decimal) else Decimal(str(units))
     if not by_day:
-        return [], []
+        return iter(()), []
     days = sorted(by_day)
     first, last = days[0], days[-1]
     today = today or datetime.date.today()
@@ -93,26 +98,32 @@ def build_rows(history, today=None, carry_forward_days=CARRY_FORWARD_DAYS):
         if code == "EUR" or last_seen.get(code) == last:
             last_seen[code] = horizon                       # active series carry forward
 
-    rows = []
-    carried: dict[str, float] = {}
-    carried_from: dict[str, datetime.date] = {}
-    day = first
-    while day <= horizon:
-        observed = by_day.get(day, {})
-        for code, units in observed.items():
-            carried[code] = units
-            carried_from[code] = day
-        for code in codes:
-            if code != "EUR" and (code not in carried or day > last_seen[code]):
-                continue                                    # before first print, or a retired series
-            units_by_code = {t: u for t, u in carried.items() if day <= last_seen[t]}
-            units_by_code["EUR"] = 1.0
-            units_by_code["__self__"] = 1.0 if code == "EUR" else carried[code]
-            rows.append((code, day, cross_rates(units_by_code, codes),
-                         carried_from.get(code, day) if code != "EUR" else max(
-                             carried_from.values(), default=day)))
-        day += datetime.timedelta(days=1)
-    return rows, codes
+    def generate():
+        carried: dict[str, Decimal] = {}
+        carried_from: dict[str, datetime.date] = {}
+        day = first
+        while day <= horizon:
+            observed = by_day.get(day, {})
+            for code, units in observed.items():
+                carried[code] = units
+                carried_from[code] = day
+            for code in codes:
+                if code != "EUR" and (code not in carried or day > last_seen[code]):
+                    continue                                    # before first print, or a retired series
+                units_by_code = {t: u for t, u in carried.items() if day <= last_seen[t]}
+                units_by_code["EUR"] = Decimal("1")
+                units_by_code["__self__"] = Decimal("1") if code == "EUR" else carried[code]
+                yield (code, day, cross_rates(units_by_code, codes),
+                       carried_from.get(code, day) if code != "EUR" else max(
+                           carried_from.values(), default=day))
+            day += datetime.timedelta(days=1)
+    return generate(), codes
+
+
+def build_rows(history, today=None, carry_forward_days=CARRY_FORWARD_DAYS):
+    """Materialize ``_row_stream`` for small deterministic fixtures and callers that need a list."""
+    stream, codes = _row_stream(history, today=today, carry_forward_days=carry_forward_days)
+    return list(stream), codes
 
 
 def load_active_history(cur):
@@ -164,7 +175,15 @@ def ensure_rate_columns(cur, codes: list[str]) -> list[str]:
     cur.execute(DDL.format(table=TABLE))
     cur.execute(f'ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS source_release_id text')
     for column in columns:
-        cur.execute(f'ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS "{column}" double precision')
+        cur.execute(f'ALTER TABLE {TABLE} ADD COLUMN IF NOT EXISTS "{column}" numeric(58,20)')
+    # Existing installations were created by the old double-precision builder.
+    # Convert every projection in one ALTER so PostgreSQL rewrites the large
+    # table at most once, rather than once per currency column.
+    conversions = ", ".join(
+        f'ALTER COLUMN "{column}" TYPE numeric(58,20) USING "{column}"::numeric'
+        for column in columns
+    )
+    cur.execute(f'ALTER TABLE {TABLE} {conversions}')
     return columns
 
 
@@ -173,18 +192,20 @@ def main() -> int:
     try:
         cur = connection.cursor()
         release_id, history = load_active_history(cur)
-        rows, codes = build_rows(history)
+        rows, codes = _row_stream(history)
         rate_columns = ensure_rate_columns(cur, codes)
         cur.execute(f"TRUNCATE {TABLE}")
         column_list = (["currency_code", '"date"'] + [f'"{column}"' for column in rate_columns]
                        + ["updated_at", "source", "source_release_id"])
-        execute_values(
-            cur,
-            f'INSERT INTO {TABLE} ({", ".join(column_list)}) VALUES %s',
-            [(code, day, *[rates.get(target) for target in codes], source_day, SOURCE, release_id)
-             for code, day, rates, source_day in rows],
-            page_size=2000,
-        )
+        insert_sql = f'INSERT INTO {TABLE} ({", ".join(column_list)}) VALUES %s'
+        batch = []
+        for code, day, rates, source_day in rows:
+            batch.append((code, day, *[rates.get(target) for target in codes], source_day, SOURCE, release_id))
+            if len(batch) >= 2000:
+                execute_values(cur, insert_sql, batch, page_size=2000)
+                batch.clear()
+        if batch:
+            execute_values(cur, insert_sql, batch, page_size=2000)
         cur.execute(f'ALTER TABLE {TABLE} ALTER COLUMN source_release_id SET NOT NULL')
         # Record the refresh AFTER the rows are in but BEFORE the commit, so the clock and the data
         # advance atomically: a rolled-back build must never leave the catalog claiming a refresh

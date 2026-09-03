@@ -57,7 +57,7 @@ GENERIC_CITY = {"location", "place", "region", "district", "geographical_area", 
 # question can ask for them ("atomic number of …", "the symbol of …"). WORLD_COL_SYN is a process-global the
 # planner reads; extending it here only affects the world service.
 _wt.WORLD_COL_SYN.update({
-    "atomic": "atomic_number", "atomic_number": "atomic_number",
+    "atomic_number": "atomic_number",
     "mass": "mass", "weight": "mass", "symbol": "symbol",
 })
 

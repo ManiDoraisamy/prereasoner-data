@@ -1,7 +1,7 @@
 {
   "n": 8,
-  "exact": 6,
-  "lenient": 6,
+  "exact": 8,
+  "lenient": 8,
   "cases": [
     {
       "label": "sales_by_continent",
@@ -28,25 +28,25 @@
       "pred": [
         [
           "Asia",
-          "310.0"
+          "310"
         ],
         [
           "Europe",
-          "200.0"
+          "200"
         ],
         [
           "North America",
-          "300.0"
+          "300"
         ],
         [
           "South America",
-          "90.0"
+          "90"
         ]
       ],
       "verdict": "PASS",
       "passed": true,
       "lenient": true,
-      "pred_sql": "SELECT \"continent\", SUM(\"amount\") AS \"amount\" FROM \"b1\" GROUP BY \"continent\"",
+      "pred_sql": "SELECT \"continent\", decimal_sum(\"amount\") AS \"amount\" FROM \"wikipedia_lookup\" GROUP BY \"continent\"",
       "error": null
     },
     {
@@ -60,22 +60,13 @@
       ],
       "pred": [
         [
-          "Asia",
-          "310.0"
-        ],
-        [
-          "North America",
-          "300.0"
-        ],
-        [
-          "Europe",
-          "200.0"
+          "Asia"
         ]
       ],
       "verdict": "PASS",
       "passed": true,
-      "lenient": false,
-      "pred_sql": "SELECT \"continent\", \"amount\" FROM \"v1\" ORDER BY \"amount\" DESC LIMIT 3",
+      "lenient": true,
+      "pred_sql": "SELECT \"country\".\"continent\" FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"sales connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"sales\".\"country\" JOIN (SELECT DISTINCT ON (lower(\"canonical\")) lower(\"canonical\") AS cn, \"qid\" FROM knowledgebase.\"words\" WHERE \"type\"='country' AND \"qid\" IS NOT NULL ORDER BY lower(\"canonical\"), \"qid\") __bridge0_w ON __bridge0_w.cn = lower(__bridge0.canon) JOIN \"country\" ON \"country\".\"qid\" = __bridge0_w.\"qid\" GROUP BY \"country\".\"continent\" ORDER BY SUM( \"sales\".\"amount\" ) DESC LIMIT 1",
       "error": null
     },
     {
@@ -95,7 +86,7 @@
       "verdict": "PASS",
       "passed": true,
       "lenient": true,
-      "pred_sql": "SELECT SUM( \"sales\".\"amount\" ) FROM \"sales\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"sales connected to wikipedia\" WHERE \"column\" = 'country') AS __bridge0(cell, canon) ON __bridge0.cell = \"sales\".\"country\" JOIN (SELECT DISTINCT ON (lower(\"canonical\")) lower(\"canonical\") AS cn, \"qid\" FROM knowledgebase.\"words\" WHERE \"type\"='country' AND \"qid\" IS NOT NULL ORDER BY lower(\"canonical\"), \"qid\") __bridge0_w ON __bridge0_w.cn = lower(__bridge0.canon) JOIN \"country\" ON \"country\".\"qid\" = __bridge0_w.\"qid\" WHERE \"country\".\"continent\" = 'Q48'",
+      "pred_sql": "SELECT decimal_sum(\"amount\") AS \"amount\" FROM \"filtered\"",
       "error": null
     },
     {
@@ -115,7 +106,7 @@
       "verdict": "PASS",
       "passed": true,
       "lenient": true,
-      "pred_sql": "SELECT COUNT(*) AS \"count\" FROM \"b2\"",
+      "pred_sql": "SELECT COUNT(*) AS \"count\" FROM \"filtered\"",
       "error": null
     },
     {
@@ -150,34 +141,34 @@
       ],
       "pred": [
         [
-          "brazilian real",
-          "90.0"
+          "BRL",
+          "90"
         ],
         [
-          "euro",
-          "200.0"
+          "CNY",
+          "200"
         ],
         [
-          "indian rupee",
-          "50.0"
+          "EUR",
+          "200"
         ],
         [
-          "renminbi",
-          "200.0"
+          "INR",
+          "50"
         ],
         [
-          "united states dollar",
-          "300.0"
+          "JPY",
+          "60"
         ],
         [
-          "yen",
-          "60.0"
+          "USD",
+          "300"
         ]
       ],
-      "verdict": "FAIL",
-      "passed": false,
-      "lenient": false,
-      "pred_sql": "SELECT \"currency\", SUM(\"amount\") AS \"amount\" FROM \"b1\" GROUP BY \"currency\"",
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT \"currency\", decimal_sum(\"amount\") AS \"amount\" FROM \"wikipedia_lookup\" GROUP BY \"currency\"",
       "error": null
     },
     {
@@ -191,13 +182,13 @@
       ],
       "pred": [
         [
-          "2.0"
+          "9.672666666666666"
         ]
       ],
-      "verdict": "FAIL",
-      "passed": false,
-      "lenient": false,
-      "pred_sql": "SELECT AVG(\"qty\") AS \"qty\" FROM \"samples\"",
+      "verdict": "PASS",
+      "passed": true,
+      "lenient": true,
+      "pred_sql": "SELECT AVG( \"Elements in the World\".\"mass\" ) FROM \"samples\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"samples connected to wikipedia\" WHERE \"column\" = 'element') AS __bridge0(cell, canon) ON __bridge0.cell = \"samples\".\"element\" JOIN \"Elements in the World\" ON lower(\"Elements in the World\".\"name\") = lower(__bridge0.canon)",
       "error": null
     },
     {
@@ -217,7 +208,7 @@
       "verdict": "PASS",
       "passed": true,
       "lenient": true,
-      "pred_sql": "SELECT SUM( \"orders\".\"amount\" ) FROM \"customers\" JOIN \"orders\" ON \"orders\".\"customer\" = \"customers\".\"name\" JOIN (SELECT \"value\", \"world_key\" FROM \"world_eval\".\"customers connected to wikipedia\" WHERE \"column\" = 'city') AS __bridge0(cell, qid) ON __bridge0.cell = \"customers\".\"city\" JOIN \"city\" ON \"city\".\"qid\" = __bridge0.qid WHERE \"city\".\"country\" = 'Q142'",
+      "pred_sql": "SELECT decimal_sum(\"amount\") AS \"amount\" FROM \"filtered\"",
       "error": null
     },
     {
@@ -237,7 +228,7 @@
       "verdict": "PASS",
       "passed": true,
       "lenient": true,
-      "pred_sql": "SELECT COUNT(*) AS \"count\" FROM \"b2\"",
+      "pred_sql": "SELECT COUNT(*) AS \"count\" FROM \"filtered\"",
       "error": null
     }
   ]

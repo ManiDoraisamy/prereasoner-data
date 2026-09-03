@@ -158,7 +158,10 @@ class ComposedKnowledgeQuery:
     ENTITY_ATTRS = {
         "city":    ("Cities",    "qid",  [("country", "country"), ("population", "population")]),
         "state":   ("States",    "name", [("country", "country"), ("population", "population"), ("level", "level")]),
-        "country": ("Countries", "name", [("continent", "continent"), ("currency_name", "currency")]),
+        # ``currency`` is the ISO-4217 code.  ``Countries`` also stores a display
+        # name, but grouping and Schema.org priceCurrency semantics need the stable
+        # code; callers can join the CLDR currency dimension for localization.
+        "country": ("Countries", "name", [("continent", "continent"), ("currency", "currency")]),
         "element": ("Elements",  "name", [("symbol", "symbol"), ("atomic_number", "atomic_number"), ("mass", "mass")]),
         "place":   ("Places",    "name", [("kind", "kind"), ("hemisphere", "hemisphere"), ("population", "population")]),
     }
@@ -221,17 +224,18 @@ class ComposedKnowledgeQuery:
         try:
             from engine.trace import ctx_emit
             wt = next((r[1] for r in col_rows if r[1]), None)               # the world_type (e.g. 'city')
-            qids = sorted({r[2] for r in col_rows if r[2]})                 # the resolved world keys (qids)
-            if not wt or not qids:
+            world_keys = sorted({r[2] for r in col_rows if r[2]})
+            if not wt or not world_keys:
                 return
-            wtable = wt                                                     # wikipedia table = the EXACT Wikidata label
-            tq = getattr(self.qw, "TYPE_QID", {}).get(wt)
-            if tq:
-                cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (tq,))
-                _r = cur.fetchone()
-                if _r and _r[0]:
-                    wtable = str(_r[0])[:63]
-            cur.execute(f'SELECT * FROM knowledgebase.{qident(wtable)} WHERE qid = ANY(%s) ORDER BY qid LIMIT 30', (qids,))
+            # Bridge world_type values are logical source types.  The physical
+            # table and key depend on the source family: geo bridges carry QIDs,
+            # while the friendly element view carries canonical names.
+            table_by_type = {"city": ("city", "qid"), "country": ("country", "qid"),
+                             "state": ("u_s_state", "qid"), "element": ("Elements", "name"),
+                             "continent": ("Continents", "name")}
+            wtable, keycol = table_by_type.get(wt, (wt, "qid"))
+            cur.execute(f'SELECT * FROM knowledgebase.{qident(wtable)} WHERE {qident(keycol)} = ANY(%s) '
+                        f'ORDER BY {qident(keycol)} LIMIT 30', (world_keys,))
             allcols = [d[0] for d in cur.description]
             allrows = [list(r) for r in cur.fetchall()]
             if not allrows:                                                # nothing synced yet -> skip the (empty) slide
@@ -295,7 +299,7 @@ class ComposedKnowledgeQuery:
         countries = sorted({d["country"] for d in ent.values() if d.get("country")})
         if countries:
             try:
-                cur.execute('SELECT name, continent, currency_name FROM knowledgebase."Countries" WHERE name = ANY(%s)',
+                cur.execute('SELECT name, continent, currency FROM knowledgebase."Countries" WHERE name = ANY(%s)',
                             (countries,))
                 cc = {n: (co, cu) for n, co, cu in cur.fetchall()}
             except Exception as e:                        # noqa: BLE001

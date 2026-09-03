@@ -1625,6 +1625,37 @@ def test_world_own_data_route_preserves_ast_observability():
     assert response["calculations"] == [{"specification": "ratio", "status": "satisfied"}]
 
 
+def test_world_target_uses_the_synced_iso_currency_column():
+    from engine.knowledge_tables import KnowledgeTableQuery
+
+    query = KnowledgeTableQuery.__new__(KnowledgeTableQuery)
+    query.words = {
+        "country": {
+            "key": "qid",
+            "columns": ["qid", "name", "continent", "currency"],
+            "links": [],
+        },
+    }
+
+    target = query.world_target(
+        "total amount by currency",
+        {("sales", "country"): "country"},
+    )
+
+    assert target == {
+        "table": "country",
+        "col": "currency",
+        "affinity": "TEXT",
+        "path": [{
+            "left_table": "sales",
+            "left_col": "country",
+            "right_table": "country",
+            "right_col": "qid",
+        }],
+        "word": "currency",
+    }
+
+
 def test_schema_graph_resolves_normalized_foreign_key_names():
     graph = SchemaGraph.from_planner(
         [
@@ -1852,6 +1883,7 @@ TESTS = [
     test_live_table_query_ast_mode_executes_typed_candidate,
     test_weight_manifest_detects_tampered_bundle,
     test_world_own_data_route_preserves_ast_observability,
+    test_world_target_uses_the_synced_iso_currency_column,
     test_schema_graph_resolves_normalized_foreign_key_names,
     test_spider_evaluator_does_not_count_all_errors_as_answered,
     test_ast_failure_profiles_share_structural_and_schema_vocabulary,

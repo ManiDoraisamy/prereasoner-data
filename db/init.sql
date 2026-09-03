@@ -257,7 +257,7 @@ CREATE TABLE IF NOT EXISTS knowledgebase."Country Aliases" (
 
 -- Daily cross-rate world table (joined like city/country: conversation + tenant + knowledgebase).
 -- Populated by db/sync/build_exchange_rate.py from the ECB history (db/sync/sources/ecb); the
--- builder adds one rate_to_<code> double precision column per ECB series + EUR at build time,
+-- builder adds one exact numeric rate_to_<code> column per ECB series + EUR at build time,
 -- so this seed declares only the invariant spine. One row per (ISO code, CALENDAR day);
 -- updated_at keeps the true source business date for the freshness machinery.
 CREATE TABLE IF NOT EXISTS knowledgebase."exchange_rate" (

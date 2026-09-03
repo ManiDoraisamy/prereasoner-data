@@ -107,7 +107,7 @@ by name).
 | `knowledgebase."<exact Wikidata label>"` | e.g. `knowledgebase."city"`, `knowledgebase."hospital"`, `knowledgebase."academic journal"` — label from `knowledgebase."types".label`, truncated to 63 chars; shared labels suffixed `" (Qxxx)"` by `build_wikipedia.py` | `engine/knowledge_sync.ensure_table` (via `ensure_entity`/`lazy_resolve`, called from `entities` cell bridges + `knowledge_query._resolve_world_qid`/`_serve_world_type`); pre-creatable up front by `db/sync/build_wikipedia.py` (qid-PK copies) or `mirror_schema.py` |
 | rows in the qid-keyed tables | one row per entity, qid PK, all-TEXT property columns, item-valued props store the related entity's **qid** (FK) | `ensure_entity` → `fetch_one` (WDQS), `ON CONFLICT (qid) DO NOTHING`; each also INSERTs a `knowledgebase."words"` row |
 | `c_<32hex>` schema | authorized conversation id | `engine.conversations.resolve_conversation` + `engine.pg._load_user_schema` |
-| `c_<32hex>."<upload-or-selected-reference>"` | typed request table | `engine.pg._load_user_schema` (DROP + CREATE on each serve; INTEGER→BIGINT, REAL→double precision) |
+| `c_<32hex>."<upload-or-selected-reference>"` | typed request table | `engine.pg._load_user_schema` (DROP + CREATE on each serve; INTEGER→BIGINT, REAL→exact NUMERIC(58,20)) |
 | `c_<32hex>."<t> connected to wikipedia"` | `('column' text, value text, world_type text, world_key text, country text, world_qid text)` | `engine.knowledge_query._persist_connected` |
 | `c_<32hex>."<t> unconnected to wikipedia"` | `(__pk bigint, 'column' text, value text, embedding vector(896))` | `engine.knowledge_query._persist_main_unconn` |
 | `m_<md5(sub)>."<reference>"` | all-text dimension; first column is a primary/unique key | `engine.master.save_master` |

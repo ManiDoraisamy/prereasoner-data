@@ -1,122 +1,78 @@
-# Spider Results — canonical current report
+# Spider Results
 
-The current `whole_db` row was measured from source commit `2360e26` with a clean worktree. The exact planner,
-evaluator, dataset, and encoder hashes are recorded in the result JSON at
-`spider/results/deployment_hardening_20260818/whole_db/full_eval_whole_db/`. Numbers below are the serving-faithful
-measurement: `spider/probe/full_eval.py` running the exact production selector on **Spider
-dev (1034 examples, 20 DBs)**, real trained encoder (Qwen2.5-0.5B + LoRA + relational readout, `engine/data/`)
-on **CPU**, denotation compared against the real gold rows. Difficulty labels are the official `eval_hardness`
-(vendored verbatim).
+This is the current, reproducible measurement for the deterministic typed-AST planner. Both summary
+artifacts were generated with the serving-faithful selector (`serving_top1`, max 25 candidates) over the
+Spider dev set: 1,034 examples and 20 databases. Each JSON records its exact source commit, code hashes,
+model hashes, settings, and `worktree_dirty=false`.
 
-The own-data path is now a **single deterministic typed-AST planner** (`engine/tables.py:search_ast` →
-`engine/sql_search.py`); there is no slot-filler, no trained proposer, and no learned ranker. The
-`ComposeEngine` is a world-enrichment component that the shared router (`engine/routing.py:route`) invokes
-ONLY on a *necessary* world dependency — and Spider is world-less, so **every Spider question routes to the
-typed-AST planner** (`routed = {ast: 1034}`; zero compose). Accuracy here is entirely the planner's.
+| Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
+|---|---|---:|---:|---:|
+| `whole_db` — all tables, gold-blind (standard Spider comparison) | `cf82141` | **359/1,034 (34.7%)** | **453/1,034 (43.8%)** | **224/408 (54.9%)** |
+| `gold_tables` — oracle table set (planner upper bound) | `fb4aa80` | **434/1,034 (42.0%)** | **551/1,034 (53.3%)** | **247/408 (60.5%)** |
 
-## Headline
+The whole-db row is the standard comparison number: it includes table-set selection. The oracle row feeds
+only tables referenced by the gold query and isolates AST reasoning and ranking. Relative to whole-db, the
+oracle removes **75 strict misses (7.3 percentage points)**, **98 lenient misses (9.5 points)**, and **23
+scalar misses (5.6 points)**. This is the measured table-selection opportunity, not a claim that oracle
+tables are available in production.
 
-| Configuration | strict | lenient | scalar-gold |
-|---|---:|---:|---:|
-| **whole_db** — gold-blind, all DB tables fed (**standard Spider**) | **359/1034 (34.7%)** | 453/1034 (43.8%) | 224/408 (54.9%) |
-| **gold_tables** — oracle table selection, last verified before this planner change | **424/1034 (41.0%)** | 544/1034 (52.6%) | 240/408 (58.8%) |
+## Difficulty
 
-`whole_db` is the number to compare against other Spider systems (gold-blind; it also pays the cost of table
-selection). `gold_tables` feeds only the tables the gold SQL references — the closer analogue to the product,
-where a user uploads exactly the relevant sheets — and is an upper bound relative to standard Spider, not a
-standard-Spider result. **strict** = exact row-set equality (harsh LB); **lenient** = containment (generous
-UB); **scalar-gold** = the clean unambiguous single-value subset (n=408).
+### `whole_db`
 
-## By difficulty
-
-**whole_db** (standard Spider):
-
-| difficulty | n | answered | strict | lenient | scalar |
-|---|--:|--:|--:|--:|--:|
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
 | easy | 248 | 243 | 121 | 138 | 107/173 |
 | medium | 446 | 432 | 128 | 179 | 54/101 |
 | hard | 174 | 163 | 63 | 88 | 46/77 |
 | extra | 166 | 162 | 47 | 48 | 17/57 |
-| **all** | **1034** | **1000** | **359** | **453** | **224/408** |
+| **all** | **1,034** | **1,000** | **359** | **453** | **224/408** |
 
-**gold_tables** (oracle tables):
+### `gold_tables`
 
-This row is the last verified oracle ablation from commit `37570f8`; it was not rerun for the current planner
-change and must not be used to calculate a current table-selection gap.
-
-| difficulty | n | answered | strict | lenient | scalar |
-|---|--:|--:|--:|--:|--:|
-| easy | 248 | 238 | 126 | 150 | 106/173 |
-| medium | 446 | 430 | 161 | 240 | 60/101 |
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 238 | 133 | 157 | 113/173 |
+| medium | 446 | 430 | 164 | 239 | 60/101 |
 | hard | 174 | 159 | 85 | 97 | 54/77 |
-| extra | 166 | 159 | 52 | 57 | 20/57 |
-| **all** | **1034** | **986** | **424** | **544** | **240/408** |
+| extra | 166 | 159 | 52 | 58 | 20/57 |
+| **all** | **1,034** | **986** | **434** | **551** | **247/408** |
 
-## Reproduction
+`strict` is exact row-set equality and is a harsh lower bound. `lenient` is value containment and is a
+generous upper bound. `scalar-gold` is the clean single-value subset, where denotation comparison is least
+ambiguous. The evaluator reports all three because projection and row-shape differences can make one metric
+misleading by itself.
+
+Both configurations route all 1,034 examples to `ast`; Spider is self-contained and does not exercise the
+world-enrichment path. The whole-db run had 34 AST-search errors; the oracle run had 48. These are
+execution/search failures, not refusals.
+
+## Reproduce
 
 ```bash
-python spider/probe/fetch_data.py --include-train        # one-time: Spider dev + tables + sqlite DBs
-cd spider/probe
-python full_eval.py --dbs ../data/dbs --config whole_db    --selection serving_top1 --max-candidates 25
-python full_eval.py --dbs ../data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
+python -m spider.probe.fetch_data
+python -m spider.probe.full_eval \
+  --dbs spider/data/dbs --config whole_db \
+  --selection serving_top1 --max-candidates 25 \
+  --tag current_release_clean
+python -m spider.probe.full_eval \
+  --dbs spider/data/dbs --config gold_tables \
+  --selection serving_top1 --max-candidates 25 \
+  --tag current_release_gold_clean
 ```
 
-`--selection serving_top1` reproduces the live top-1 selector byte-for-byte (`engine/tables.py:_serve_ast`).
-There is no `--planner`, `--proposer-model`, `--ranker-model`, or `--profile-expansion` — the planner is
-unconditional. The summary JSON records the code fingerprint, the encoder-adapter hash, and (as of this
-report) the source commit + dirty-worktree flag, so a run is traceable to an exact tree.
+Run from a clean commit for release evidence. The evaluator intentionally records a dirty-worktree flag
+and invalidates mismatched checkpoints so predictions cannot silently be mixed across code or model trees.
+Use [`../README.md`](../README.md) for the probe methodology and [`../../docs/SQL_AST.md`](../../docs/SQL_AST.md)
+for the planner contract.
 
-## Known limitations
+## Interpretation
 
-- **Structural floor.** Spider's hard/extra tiers are ~50% nested subqueries + set operations; the typed-AST
-  planner covers many via `sql_recursive`/`sql_constraints`, but deep multi-step nesting remains the dominant
-  miss on those tiers (see the difficulty tables — extra tops out ~28%).
-- **Table selection remains a major whole-db lever.** The previous oracle ablation was 424 versus 340 on an older
-  tree, with many gold-blind misses caused by unnecessary tables and joins. The oracle row has not yet been rerun on
-  the current planner, so its current gap is deliberately not claimed here.
-- **Language-to-role binding remains the main easy/medium failure source.** The current gain came from count
-  scope, identity, and source/destination role fixes; projection identity and relationship direction still account
-  for many candidate-ranking misses outside those families.
+The 7.3-point strict gap shows that table-set retrieval is a major next lever, but the 42.0% oracle strict
+score also shows that retrieval is not the whole problem. Remaining losses are concentrated in projection
+identity, relationship direction, operator choice, multi-step nesting, and deterministic candidate ranking.
+The next accuracy work should measure those error classes from the per-example traces before changing the
+model or adding another competing planner.
 
-## Current transition
-
-Against the previous accepted `release_review_final5_20260802` row (358 strict / 451 lenient / 224 scalar), the
-current run has one strict gain, two lenient gains, no scalar change, and **zero losses**. Three selected SQL strings
-changed. The gains remove spurious related-table projections and joins for document-template and contestant-name
-questions. The accepted artifact is `deployment_hardening_20260818`; earlier evaluation directories are retained in
-Git history rather than duplicated in a public checkout.
-
-### Schema.org named-dimension evidence — non-regression re-measurement
-
-`schema_evidence_20260819` re-measured `whole_db` after the Schema.org named-property head, class decoder, and
-typing-evidence capture were added (`engine/schema_*.py`, `training/schema_org/`, evidence surfaced through
-`engine/knowledge_query.py` and `engine/knowledge.py`). The result is **identical on every reported figure**:
-
-| Run | strict | lenient | scalar-gold | routed | answered |
-|---|---:|---:|---:|---|---:|
-| `deployment_hardening_20260818` (accepted) | 359 | 453 | 224/408 | `{ast: 1034}` | 1000 |
-| `schema_evidence_20260819` | 359 | 453 | 224/408 | `{ast: 1034}` | 1000 |
-
-Every difficulty tier matches exactly (easy 121/138, medium 128/179, hard 63/88, extra 47/48 strict/lenient), as
-do the error count (34, all `ast_search`) and over-budget count (3). The recorded `encoder`/`encoder_meta` hashes
-equal the promoted `weights_manifest.json` entries, confirming the measurement ran against the promoted runtime
-bundle. This is the expected outcome rather than a lucky one: the additions are evidence-only — Spider imports
-none of the new modules, and the changed engine files delete no decision logic (the family-consensus, abstain,
-and grounding boundaries are untouched). The new head is **not** part of the promoted bundle.
-
-## calc_20260824 — typed-calculation registry lands, planner unchanged
-
-`whole_db`, 1034 dev examples, serving_top1, max-candidates 25, commit `c9d96ce` era
-(calculations registry + grain verification + consent UI in tree): **strict 359 (34.7%),
-lenient 453 (43.8%), scalar 224/408 (54.9%)** — bit-identical to the deployment-hardening
-baseline on every tier, routed `{'ast': 1034}` unchanged. The calculation admissibility layer
-is provably inert on Spider: 0/1034 dev questions parse a directional currency target, so
-`requirements_for`/`assess_calculations` never fire. Raw: `calc_20260824/whole_db/`.
-
-## Historical
-
-Earlier diagnostics for the **retired** slot-filler + compose-routing era (the "13.5% strict", the tier-1/
-`gate` routing experiments, the 59%-to-compose mis-routing analysis, and the proposer/ranker pool studies) are
-**superseded** by the single-planner architecture and the world-grounded routing boundary above. They are
-preserved in git history (see commits through `d14ee80`) and are intentionally not carried here — this file is
-the current report, not a changelog.
+Older benchmark rows remain available in git history. They are not repeated here because they used retired
+planner or routing implementations and are not comparable to this report.

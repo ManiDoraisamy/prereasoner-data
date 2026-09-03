@@ -102,7 +102,8 @@ Verified end-to-end against the live DB: a state column routes to `u_s_state` an
 → **130** (Lombardy + Sicily), with city/country routing unchanged.
 
 **Still on the friendly name-keyed family:** `element`/`continent` (low demand; same migration recipe
-applies if needed). The non-`u_s_state` friendly tables also still carry `country` as a name, so a country
+applies if needed). Elements are now source-grounded by the value-membership fallback and use the
+`Elements in the World` view. The non-`u_s_state` friendly tables also still carry `country` as a name, so a country
 **filter** on those is a known gap — migrate them the same way (qid FK table) when needed.
 
 ## Separate issue: value undercounts are WDQS lazy-fill, not naming

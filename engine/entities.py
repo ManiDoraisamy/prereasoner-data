@@ -37,8 +37,12 @@ STOP = {"in", "the", "of", "a", "an", "for", "to", "by", "on", "at", "with", "an
 # city/country use the qid-keyed knowledgebase."<type>" tables; u_s_state uses the aggregate qid-keyed
 # knowledgebase."u_s_state" (its cells resolve as type='state'; see db/sync/build_u_s_state.py). element/etc. remain
 # on the friendly name-keyed family (routed by the value-membership fallback). See docs/notes/naming.md.
-WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state"}
-TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # 'state' -> 'u_s_state' (the qid-keyed table)
+# Route values are the logical world-table names emitted by ``resolve_base``.  Keep
+# the element mapping here as well as the geo mappings because the value-membership
+# fallback is the source-grounded path used when the classifier abstains.
+WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state",
+                    "Elements in the World": "element"}
+TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # state -> u_s_state; element -> friendly view
 VALUE_ROUTE_MIN = 0.80   # a column routes to a world table when >= this fraction of its cells resolve to that type
 
 

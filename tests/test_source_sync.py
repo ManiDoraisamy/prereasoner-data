@@ -208,9 +208,10 @@ def test_exchange_rate_builder_upgrades_bootstrap_spine_before_insert():
     assert "CREATE TABLE IF NOT EXISTS knowledgebase.\"exchange_rate\"" in cursor.statements[0]
     assert cursor.statements[1:] == [
         'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS source_release_id text',
-        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_eur" double precision',
-        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_usd" double precision',
-        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_jpy" double precision',
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_eur" numeric(58,20)',
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_usd" numeric(58,20)',
+        'ALTER TABLE knowledgebase."exchange_rate" ADD COLUMN IF NOT EXISTS "rate_to_jpy" numeric(58,20)',
+        'ALTER TABLE knowledgebase."exchange_rate" ALTER COLUMN "rate_to_eur" TYPE numeric(58,20) USING "rate_to_eur"::numeric, ALTER COLUMN "rate_to_usd" TYPE numeric(58,20) USING "rate_to_usd"::numeric, ALTER COLUMN "rate_to_jpy" TYPE numeric(58,20) USING "rate_to_jpy"::numeric',
     ]
     try:
         rate_column_name("USD; DROP TABLE"); raise AssertionError
@@ -238,7 +239,7 @@ def test_exchange_rate_builder_carries_active_series_past_build_day():
     assert ("GBP", date(2026, 8, 18 + CARRY_FORWARD_DAYS)) in by, "the whole window is covered"
     assert ("GBP", date(2026, 8, 19 + CARRY_FORWARD_DAYS)) not in by,         "past the window it declines, never converts at an arbitrarily old rate"
     carried, source_day = by[("GBP", date(2026, 8, 19))]
-    assert abs(carried["USD"] - 1.20 / 0.87) < 1e-9, "carried rate is the true last print"
+    assert carried["USD"] == Decimal("1.20") / Decimal("0.87"), "carried rate is the true last print"
     assert source_day == date(2026, 8, 17), "updated_at keeps the TRUE publication date"
     assert ("CYP", date(2026, 8, 19)) not in by, "retired series never fabricate past their last print"
 

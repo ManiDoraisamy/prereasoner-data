@@ -65,6 +65,24 @@ def main():
     av = (((ra.get("answer") or ra.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
     ok("aggregate: total amount in France = 180", av == 180, f"got={av}")
 
+    SALES = {"name": "sales", "columns": ["country", "amount"],
+             "rows": [["France", 120], ["Germany", 80], ["China", 200], ["India", 50],
+                      ["United States", 300], ["Brazil", 90], ["Japan", 60]]}
+    rt = wr.serve([SALES], "which continent has the highest total amount", sub)
+    tv = (rt.get("result") or {}).get("rows") or []
+    ok("ranking: highest grouped total returns Asia", tv == [["Asia"]], f"got={tv}")
+    rc = wr.serve([SALES], "total amount by currency", sub)
+    cv = (rc.get("result") or {}).get("rows") or []
+    ok("currency: grouped totals use ISO codes", {tuple(row) for row in cv} == {
+        ("BRL", 90), ("CNY", 200), ("EUR", 200), ("INR", 50), ("JPY", 60), ("USD", 300)},
+       f"got={cv}")
+    SAMPLES = {"name": "samples", "columns": ["element", "qty"],
+               "rows": [["Hydrogen", 2], ["Oxygen", 1], ["Carbon", 3]]}
+    rm = wr.serve([SAMPLES], "average atomic mass", sub)
+    mv = (rm.get("result") or {}).get("rows") or []
+    ok("elements: average atomic mass uses world mass", bool(mv) and abs(float(mv[0][0]) - 9.6726666667) < 1e-8,
+       f"got={mv}")
+
     # --- (D) population ranking (existing world measure) ---
     rp = qc.serve([CUST], "top 3 cities by population", sub)
     pr = (rp.get("answer") or rp.get("result") or {}).get("rows") or []

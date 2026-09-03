@@ -41,12 +41,14 @@ MEASURE_NOUNS = {"sales", "revenue", "revenues", "turnover", "spend", "spending"
                  "cost", "costs", "price", "prices", "value"}
 # a question may ask to SELECT/AGGREGATE a column of the world DB itself (not the upload): map the word -> the world
 # column. The planner enumerates the reachable world-table columns and matches by name/synonym (so it KNOWS them, not guesses).
-WORLD_COL_SYN = {"currency": "currency_name", "currencies": "currency_name", "population": "population",
+WORLD_COL_SYN = {"currency": "currency", "currencies": "currency", "population": "population",
                  "populations": "population", "inhabitants": "population", "continent": "continent",
                  "continents": "continent", "hemisphere": "hemisphere", "country": "country",
                  "countries": "country", "latitude": "lat", "longitude": "lng"}
 WORLD_SKIP_COLS = {"name", "is_primary", "updated_at", "source", "source_release_id",
                    "valid_from", "valid_to"}
+ARGMAX_CUES = frozenset({"highest", "largest", "most", "maximum", "max", "top"})
+ARGMIN_CUES = frozenset({"lowest", "smallest", "least", "minimum", "min", "bottom"})
 AGG_CUES = {"COUNT": {"count", "counts", "number", "many"}, "SUM": {"sum", "total", "totals"} | MEASURE_NOUNS,
             "AVG": {"avg", "average", "mean", "averages"}}
 STALE_DAYS = 730                                          # a fact last verified > ~2y before the decision = stale
@@ -159,7 +161,7 @@ class KnowledgeTableQuery:
         """resolve a filter value ABSENT from the upload by walking the meaning graph (BFS, shortest path first):
         csv.col -> city -> (city.country) -> country -> ... . Returns the JOIN CHAIN + the (table, attr, value)
         that matched. 'France' resolves in 1 hop (city.country); 'euros' / 'Europe' in 2 hops
-        (city -> country.currency_name / .continent)."""
+        (city -> country.currency / .continent)."""
         low_q = " " + question.lower() + " "
         for (t, col), wt0 in routes.items():
             start = {"left_table": t, "left_col": col, "right_table": wt0, "right_col": self.words[wt0]["key"]}
@@ -370,7 +372,15 @@ class KnowledgeTableQuery:
         the upload? BFS the reachable word-table graph from each routed city column, matching question words to column
         names (+ a small synonym map). Returns {table, col, affinity, path} so serve can join that table in and select it."""
         low = question.lower().replace("?", "").split()
-        want = {WORLD_COL_SYN[w] for w in low if w in WORLD_COL_SYN}
+        requested = [(WORLD_COL_SYN[w], w) for w in low if w in WORLD_COL_SYN]
+        # Some dimensions have meaningful compound names. Treat the phrase as a
+        # unit so "atomic mass" cannot be captured by the prefix "atomic" as
+        # atomic_number, and keep the surface word for the response metadata.
+        compact = " ".join(low)
+        for phrase, column in (("atomic number", "atomic_number"), ("atomic mass", "mass")):
+            if re.search(r"(?<![a-z])" + re.escape(phrase) + r"(?![a-z])", compact):
+                requested.append((column, phrase.split()[-1]))
+        want = {column for column, _word in requested}
         if not want:
             return None
         for (t, col0), wt0 in routes.items():
@@ -380,7 +390,7 @@ class KnowledgeTableQuery:
                 wt, path = frontier.pop(0)
                 for c in self.words[wt].get("columns", []):
                     if c not in WORLD_SKIP_COLS and c in want:
-                        word = next(w for w in low if WORLD_COL_SYN.get(w) == c)
+                        word = next(word for column, word in requested if column == c)
                         return {"table": wt, "col": c, "affinity": self._world_aff(c), "path": path, "word": word}
                 for link in self.words[wt].get("links", []):
                     tt = link["to_table"]
@@ -589,15 +599,32 @@ class KnowledgeTableQuery:
         conversion = self._currency_conversion_binding(question, agg, sch, fks)
         selected_measure = None
         selected_conversion = False
+        query_tail = ""
         if wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
             involved = [mtab]
+        elif (wtarget and agg and agg[0] in ("SUM", "AVG")
+              and (set(question.lower().split()) & (ARGMAX_CUES | ARGMIN_CUES))):
+            # An ordinal request over a text dimension is a grouped aggregate, not a
+            # DISTINCT projection.  Keep the aggregate in ORDER BY while returning
+            # only the requested dimension, matching the natural answer shape for
+            # "which continent has the highest total amount".
+            measure = f'{qident(agg[1])}.{qident(agg[2])}'
+            aggregate = self._numeric_aggregate(agg[0], measure)
+            dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
+            direction = "ASC" if set(question.lower().split()) & ARGMIN_CUES else "DESC"
+            proj = dimension
+            query_tail = f' GROUP BY {dimension} ORDER BY {aggregate} {direction} LIMIT 1'
+            pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} ({agg[0]} by dimension)',
+                     f'ordered {direction.lower()} aggregate')
+            involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
+            selected_measure = (agg[1], agg[2])
         elif wtarget and agg and agg[0] in ("SUM", "AVG") and wtarget["affinity"] in ("INTEGER", "REAL"):
             operand = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
             proj = self._numeric_aggregate(agg[0], operand)
             pdesc = ("aggregate", f'{agg[0]}({wtarget["table"]}.{wtarget["col"]})', "agg cue + world measure named")
-            involved = [mtab]
+            involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
             selected_measure = (wtarget["table"], wtarget["col"])
         elif wtarget:
             proj = f'DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])}'      # SELECT DISTINCT the world attribute
@@ -691,7 +718,7 @@ class KnowledgeTableQuery:
                 "value": (mf["value"] if mf else None), "hops": len(joins),
                 "disambiguated_by": (f'{mtab}.{disamb[0]}' if disamb else None),
                 "source": self.words[ft].get("source"), "as_of": as_of}
-        sql = f'SELECT {proj} {fw}'
+        sql = f'SELECT {proj} {fw}{query_tail}'
 
         ok, why = self.q11.guard(sql)
         result, err = None, None

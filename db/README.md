@@ -196,8 +196,9 @@ annotations, or numbering data.
 
 The ECB synchronizer owns the immutable source history in `ecb.exchange_rate`; the projection
 builder is a separate idempotent step because `knowledgebase."exchange_rate"` is also created
-by `db/init.sql`. It adds missing `rate_to_<currency>` columns before each rebuild, so a fresh
-bootstrap and a rerun use the same migration-safe path.
+by `db/init.sql`. It adds or upgrades `rate_to_<currency>` columns to exact `NUMERIC(58,20)`
+before each rebuild, so a fresh bootstrap and a rerun use the same migration-safe path without
+introducing binary-float error into currency calculations.
 
 Source schema migrations are checksummed in each source's `schema_migration` table and run
 independently of source downloads. The runner skips absent source schemas, takes a
