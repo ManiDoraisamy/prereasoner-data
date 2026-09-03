@@ -11,7 +11,7 @@ accelerate==1.14.0
 peft==0.19.1                    # loads the qwen_lora adapter onto the base Qwen encoder
 numpy==1.26.4
 psycopg2-binary>=2.9,<3         # live world Postgres (pgvector)
-requests>=2.31,<3               # scheduled source synchronization shipped in the engine image
+requests>=2.34.2,<3               # scheduled source synchronization shipped in the engine image
 defusedxml>=0.7,<1              # bounded parsing for publisher XML snapshots
 firebase-admin>=6.5,<7          # auth token verification + optional RTDB trace streaming
 anthropic>=0.40,<1              # Sonnet conversational fallback for /api/converse (clarify / non-data questions)
