@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -304,6 +305,7 @@ def _runtime_identity(torch, device, runner_image: str) -> dict:
         "python": platform.python_version(),
         "platform": platform.platform(),
         "numpy": np.__version__,
+        "scikit_learn": importlib.metadata.version("scikit-learn"),
         "torch": str(torch.__version__),
         "cuda_runtime": str(cuda) if cuda else None,
         "cudnn": torch.backends.cudnn.version() if cuda else None,

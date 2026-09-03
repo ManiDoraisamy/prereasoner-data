@@ -21,5 +21,5 @@ numpy==1.26.4
 # world DB (Cloud SQL / any Postgres) — corpus building (capped.entity), world provisioning, route grounding
 psycopg2-binary>=2.9,<3
 
-# corpus clustering only (corpus/cluster_columns.py MiniBatchKMeans) — not needed for train/anchor/calibrate
+# corpus clustering and deterministic Schema.org class calibration
 scikit-learn==1.9.0

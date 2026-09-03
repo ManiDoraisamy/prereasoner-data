@@ -373,6 +373,7 @@ def test_schema_training_selection_never_reads_test_evidence():
     assert '"evaluation_data": ("test",)' in source
     assert '"trainer": _trainer_identity()' in source
     assert '"runtime": _runtime_identity(torch, device, args.runner_image)' in source
+    assert '"scikit_learn": importlib.metadata.version("scikit-learn")' in source
     assert '"--runner-image"' in source
     assert "schema_embeddings.npz" in _text("training/tools/run_schema_training.sh")
     trainer = _trainer_identity()

@@ -142,7 +142,8 @@ def gate(candidate: Path) -> list[str]:
                 problems.append(f"trainer source does not match its recorded commit: {relative}")
     runtime = training_manifest.get("runtime") or {}
     for field in (
-        "python", "platform", "numpy", "torch", "device", "device_name", "runner_image",
+        "python", "platform", "numpy", "scikit_learn", "torch", "device", "device_name",
+        "runner_image",
     ):
         if not runtime.get(field):
             problems.append(f"training manifest lacks runtime identity: {field}")
