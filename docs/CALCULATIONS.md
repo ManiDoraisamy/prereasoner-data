@@ -1,23 +1,24 @@
 # Deterministic calculations
 
-Prereasoner represents arithmetic as typed SQL AST nodes. The shared encoder helps recognize and
-order operands; it never generates SQL or decides whether a result is correct. A result is released
-only when a registered specification proves that the selected AST realizes the request.
+PreReasoner treats arithmetic as part of the query, not as a number added after the query runs.
+Typed AST nodes represent the operands and operation. The shared encoder helps identify and order
+those operands; it never generates SQL or decides whether a result is correct. A numeric result is
+released only when a registered specification proves that the selected query matches the request.
 
 ## Serving flow
 
-1. `registry.detect_calculations()` extracts explicit calculation syntax.
+1. `registry.detect_calculations()` extracts an explicit calculation request.
 2. The existing encoder supplies role-specific column similarities such as `numerator`,
    `denominator`, `measure`, and `rate`.
 3. Each specification binds only type- and domain-eligible columns and returns `CalculationPlan`
    objects containing AST expressions, units, rules, and named bindings.
 4. `CalculationQueryExpander` adds those expressions to the ordinary bounded candidate pool and
    obtains joins from `SchemaGraph`, including complete composite keys.
-5. Normal deterministic ranking orders the pool. Learned similarities are inspectable soft features.
+5. Normal deterministic ranking orders the pool. Learned similarities are named soft features.
 6. `describe_computation()` records each selected expression, complete join predicate, guaranteed
    filter, and set-operation branch.
 7. The registry selects the first ranked candidate satisfying every detected calculation. When none
-   does, serving removes the numeric result and returns structured unmet evidence.
+   does, serving removes the numeric result and returns structured evidence explaining what is missing.
 
 ## Registered specifications
 

@@ -1,10 +1,9 @@
 # Deterministic SQL Planner
 
-This is PreReasoner's own-data SQL planner — the single, deterministic path from a
-question over your uploaded tables to executed SQL. The planner searches a bounded space
-of valid SQL abstract syntax trees (ASTs) and ranks them with hand-written, fully
-inspectable features. It does not sample SQL tokens from a decoder, and it uses no trained
-SQL proposer or learned candidate ranker. The frozen encoder contributes similarity features.
+This is the own-data SQL planner: the path from a question over uploaded tables to executed SQL.
+It searches a bounded set of valid abstract syntax trees (ASTs), then ranks them with named rules
+and stable tie-breaking. It does not sample SQL tokens from a decoder. The frozen encoder contributes
+similarity features, but it is not a SQL writer or a learned candidate ranker.
 
 ## What it does
 
@@ -14,7 +13,7 @@ Given a question, tables, and foreign keys, the planner:
 2. Links question roles to tables, columns, operators, and values.
 3. Constructs and validates candidate ASTs.
 4. Expands recursive queries, constraints, extrema, and set operations when applicable.
-5. Ranks candidates with hand-written, fully-inspectable deterministic features.
+5. Ranks candidates with named deterministic features.
 6. Renders only validated ASTs to SQL.
 
 Foreign keys may contain one or several ordered column pairs. A composite key remains one
@@ -22,9 +21,8 @@ logical graph edge and one `Join`; rendering produces an atomic conjunction such
 `ON child.country = parent.country AND child.postal = parent.postal`. The validator rejects
 any component that does not connect the new table to the existing join graph.
 
-The same inputs always produce the same candidate **ordering** — the planner's selection is
-deterministic, which removes sampling variance. It does not remove natural-language ambiguity,
-schema-linking errors, missing search rules, or ranking errors.
+The same inputs produce the same candidate **ordering**. That removes sampling variance, not
+natural-language ambiguity, schema-linking errors, missing search rules, or ranking errors.
 
 ## Architecture
 
@@ -46,10 +44,9 @@ question + tables + foreign keys
       validated SQL
 ```
 
-AST construction and ranking logic are hand-written and fully inspectable. The frozen trained
-encoder supplies deterministic role and schema similarities, but there is no trained SQL proposer,
-decoder, or learned candidate ranker. Every candidate must pass AST validation before it can be
-rendered to SQL.
+AST construction and ranking logic are hand-written. The frozen encoder supplies deterministic role
+and schema similarities, but there is no trained SQL proposer, decoder, or learned candidate ranker.
+Every candidate must pass AST validation before it can be rendered to SQL.
 
 ## Public API
 

@@ -1,7 +1,7 @@
-# Developer Getting Started
+# Developer getting started
 
-This is the canonical setup guide. Start with the public-checkout path, which needs neither downloaded
-weights nor PostgreSQL, and add runtime dependencies only for the component you are changing. The
+Use this guide to get a clean checkout running. The first path needs neither model files nor
+PostgreSQL. Add the larger runtime only when the part you are changing needs it. The
 [documentation map](README.md) labels current, opt-in, external, and planned behavior.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) after the first successful test run. Contributors changing
@@ -10,9 +10,10 @@ inventory and then consult [KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMEN
 implemented and planned activation work. Never infer a data owner from a domain label such as
 healthcare, tax, or retail.
 
-## 1. Choose A Development Level
+## 1. Choose a development level
 
-You do not need the entire production stack for every change.
+You do not need the entire production stack for every change. Start with the smallest environment
+that can exercise the code you are touching.
 
 | Work | Required |
 |---|---|
@@ -57,7 +58,7 @@ The default [weight repository](https://huggingface.co/prereasoner/prereasoner-w
 requires no account or token. The fetch command pins an immutable repository commit and validates every
 file hash before installation. `HF_TOKEN` is only needed for an explicitly configured private replacement.
 
-## 3. Run Fast Tests First
+## 3. Run fast tests first
 
 ```powershell
 python -m tests.test_sql_ast
@@ -75,9 +76,10 @@ python -m ruff check engine db training tests orchestrator mcp_server regress --
 python -m compileall -q engine db training tests orchestrator mcp_server regress
 ```
 
-These establish the planner, routing, reference-data, frontend-state, and syntax baseline without a live database.
+These establish the planner, routing, reference-data, frontend-state, and syntax baseline without a
+live database.
 
-## 4. Start PostgreSQL And The Engine
+## 4. Start PostgreSQL and the engine
 
 Provision the runtime weights before building the engine image. Then start PostgreSQL, run
 the one-time seed, and start the engine:
@@ -120,7 +122,7 @@ $env:ENRICHMENT_ACTIVE_DATASETS = "iana_country"
 Do not use the sync role to run `engine.server`. Roll a source back only to a validated
 retired release with `python -m db.sync.releases --schema iana --release-id <release-id>`.
 
-## 5. Make A First Request
+## 5. Make a first request
 
 ```powershell
 $request = @{
@@ -140,7 +142,7 @@ it also carries the conversation id and can include route evidence, typing, inte
 calculation evidence, provenance, or warnings when those mechanisms participated. Treat absent
 optional evidence as path-specific, not as a different API version.
 
-## 6. Understand Private References
+## 6. Understand private references
 
 A reference table is a user-owned dimension whose first column is its unique join key. For example:
 
@@ -162,7 +164,7 @@ The lifecycle is:
 Reference selection does not scan question words, use gold SQL, or create a second planner. It uses the same
 relationship graph that will be handed to AST search.
 
-## 7. Run The Frontend
+## 7. Run the frontend
 
 ```powershell
 npm install --global firebase-tools
@@ -180,7 +182,7 @@ sessionStorage.setItem('pr_test_auth', '1');
 The frontend has no build step. `reason.html` and `knowledge.html` load the shared classic script
 `web/public/lib/workbook.js`.
 
-## 8. Find The Right Owner
+## 8. Find the right owner
 
 | Change | Start here | Primary test |
 |---|---|---|
@@ -207,7 +209,7 @@ The frontend has no build step. `reason.html` and `knowledge.html` load the shar
 `CLAUDE.md` is the repository's machine-agent change discipline and ownership map. Human contributors should follow
 the same principle: extend the current owner, migrate every caller, and delete the displaced implementation.
 
-## 9. Validate Before A Pull Request
+## 9. Validate before a pull request
 
 ```powershell
 $env:RUN_ENGINE_TESTS = "0"
@@ -224,7 +226,7 @@ Read the `tests.run_all` summary carefully. Suites that lack weights, database a
 those skips in the pull request. Planner behavior changes also require a fresh serving-faithful Spider evaluation,
 while frontend or reference plumbing changes do not unless they alter planner inputs used by Spider.
 
-## 10. Common Failure Modes
+## 10. Common failure modes
 
 - **Engine does not start:** run `python -m engine.fetch_weights` and verify `engine/data/weights_manifest.json`.
 - **World tests skip:** set `KB_PG_PASSWORD` and seed the knowledgebase.

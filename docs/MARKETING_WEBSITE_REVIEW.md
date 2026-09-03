@@ -6,6 +6,10 @@ Claims were compared on 2026-09-01 against the live `prereasoner.com` pages, the
 the separately owned FormFacade checkout, and the implementation and release contracts in this
 repository. Recheck the live pages at release time; this file is evidence, not website source.
 
+The approved, plain-language replacement copy is in
+[PREREASONER_MARKETING_COPY.md](PREREASONER_MARKETING_COPY.md). It is kept here, alongside the
+implementation evidence, because the website source has a separate repository owner.
+
 ## Repository Boundary
 
 The engine, application, ETL, infrastructure, and technical documentation live in this repository.

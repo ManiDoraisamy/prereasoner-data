@@ -1,17 +1,17 @@
-# Training And Model Promotion
+# Training and model promotion
 
-This page explains the model code that is active now, how its data is built, and how a candidate
-becomes the one promoted runtime bundle. Historical experiment detail lives in
-`training/props/pipeline.md`; it is not a second production path.
+This page explains which model code runs today, how its data is built, and how one candidate becomes
+the runtime bundle. Historical experiments live in `training/props/pipeline.md`; they are background,
+not another serving path.
 
-## Semantic Contract
+## What the model learns
 
-Schema.org 30.0 is the vocabulary: 1,521 properties, 926 classes, inheritance, domains, and ranges.
-It supplies names and relationships, not factual rows. Wikidata and source-owned publisher releases
-provide observations that explicit adapters project into those named coordinates.
+Schema.org 30.0 supplies the vocabulary: 1,521 properties, 926 classes, inheritance, domains, and
+ranges. It supplies names and relationships, not factual rows. Wikidata and publisher-owned source
+releases provide observations that explicit adapters map to those coordinates.
 
 The model learns relation and column shapes. Mutable answer facts remain in versioned PostgreSQL
-source releases. No model is allowed to invent a join, arithmetic rule, or factual value.
+source releases. The model does not invent a join, arithmetic rule, or factual value.
 
 ## Runtime Architecture
 

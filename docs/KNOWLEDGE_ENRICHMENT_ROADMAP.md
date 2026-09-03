@@ -6,8 +6,7 @@ Document type: **mixed implementation ledger and forward roadmap**. For the curr
 complete describe shipped code. Milestone prose and target schemas remain planned until their named
 gate passes.
 
-Status: **SOURCE MATERIALIZATION COMPLETE FOR NINE SOURCES; GUARDED M0 INTEGRATION IMPLEMENTED.**
-Nine source-owned schemas now hold validated active snapshots: IANA, CLDR, Google
+Current status: nine source-owned schemas now hold validated active snapshots: IANA, CLDR, Google
 libphonenumber, GeoNames, ECB, EC TEDB, Nager.Date, CDC/NCHS, and NIH/NLM CDE. WHO ICD-11
 and LOINC importers are implemented but correctly create no schema without licensed source
 access. Exact releases, tables, counts, scope, and limitations live in

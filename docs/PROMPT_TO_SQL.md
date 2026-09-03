@@ -1,20 +1,19 @@
-# From prompt to SQL — how PreReasoner reads a question
+# From question to SQL
 
-*A walkthrough for new developers. If you remember one thing: PreReasoner does **not** generate SQL as a
-stream of text tokens. The transformer produces a **typed readout**, and a deterministic search **assembles a
-parse tree** from it. That is why every answer is inspectable and byte-for-byte reproducible.*
+This walkthrough follows one request through PreReasoner. The important boundary is simple:
+the model provides typed signals about the question and the tables; the planner assembles and
+checks the SQL query. It does not write SQL one token at a time.
 
-![How a prompt becomes SQL: the last transformer layer is a units×anchors activation matrix; a deterministic search builds a typed AST from it, which renders to a SQL string.](img/readout-to-sql.svg)
+![How a question becomes SQL: the model supplies typed signals, a deterministic search builds a typed AST, and the AST renders to SQL.](img/readout-to-sql.svg)
 
-We trace the prompt **`"total amount in France"`** through the stack. (It happens to be a *world* query — more
-on that at the end — but the core own-data machinery is the same for every question.)
+We trace **`"total amount in France"`** through the stack. This happens to need public world data,
+but the own-data planning steps are the same for an ordinary table question.
 
 ---
 
-## Stage 1 — the prompt becomes a `units × anchors` matrix
+## Stage 1 - the question becomes typed signals
 
-There is **no autoregressive decoder**. The encoder is asked one thing: *what does each part of the question,
-and each column of the data, mean?*
+The encoder is asked one thing: what does each part of the question and each column of the data mean?
 
 [`engine/encoder_overlay.py:_question_readout`](../engine/encoder_overlay.py) builds a small graph of **units**:
 

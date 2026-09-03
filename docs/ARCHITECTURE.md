@@ -1,13 +1,14 @@
 # Architecture
 
-Status: **current runtime architecture**. Future changes are called out as targets or pending work;
-they are not described in the present tense. See the [documentation map](README.md) for the boundary
-between current, opt-in, external, and planned capabilities.
+Status: **current runtime architecture**. Future changes are marked as targets or pending work;
+they are not shipped features. See the [documentation map](README.md) for the difference between
+current, opt-in, external, and planned behavior.
 
-PreReasoner turns a question and tabular data into inspectable SQL, executes that SQL, and returns the rows and
-trace. The engine does not use a decoder to generate SQL or numeric answers. A frozen Qwen model supplies semantic
-signals; typed AST construction, candidate ordering, routing, joins, validation, and execution are deterministic for
-fixed inputs, configuration, database state, and model artifacts.
+PreReasoner represents a question, its data, and its source evidence as named dimensions. The current
+runtime composes those dimensions into a checked SQL query, runs it, and returns the result with its
+rows and trace. A frozen Qwen model supplies signals about intent and schema. It does not generate
+SQL or numeric answers. AST construction, routing, joins, validation, ranking, and execution are
+deterministic for fixed inputs, configuration, database state, and model files.
 
 Read [GETTING_STARTED.md](GETTING_STARTED.md) first when setting up the repository. Read
 [SQL_AST.md](SQL_AST.md) for planner internals, [SOURCE_DATA.md](SOURCE_DATA.md) for
@@ -62,21 +63,20 @@ bounded set, applies the production foreign-key detector to uploaded and saved t
 connected to the request. Selection runs to a fixed point, so a valid multi-hop chain can be included. Selected
 references then become ordinary typed planner tables; there is no reference-specific SQL generator.
 
-## Semantic Contract: Ontology, Observations, And Facts
+## Semantic Contract: Vocabulary, Observations, And Facts
 
-The semantic architecture has three layers that must not be conflated:
+Keep these three layers separate:
 
-1. **Schema.org is the semantic shell.** The pinned Schema.org 30.0 contract defines the class,
-   property, inheritance, domain, and range coordinates that training and serving name. A coordinate
-   remains representable even when no training source currently supplies examples for it.
-2. **Source-owned datasets supply observations.** Wikidata properties are mapped into Schema.org
-   properties, and publisher relations are projected through explicit source mappings. Wikidata is
-   currently the largest single corpus contributor and the public entity-identity bridge; it is not
-   the ontology or the authority for facts owned by IANA, CLDR, GeoNames, ECB, CDC, NLM, or another
-   publisher.
-3. **Versioned source releases supply answer facts.** Models learn semantic shapes, not mutable
-   values. A model may recognize an exchange-rate relation, but a dated rate must still come from a
-   pinned ECB release and pass deterministic temporal and calculation checks.
+1. **Schema.org is the vocabulary.** The pinned Schema.org 30.0 contract defines the classes,
+   properties, inheritance, domains, and ranges that training and serving can name. A coordinate
+   can be represented even when the current corpus has no examples for it.
+2. **Source-owned datasets supply observations.** Wikidata properties are mapped to Schema.org
+   properties, and publisher relations are exposed through explicit source mappings. Wikidata is
+   the main public entity-identity bridge; it is not the authority for facts owned by IANA, CLDR,
+   GeoNames, ECB, CDC, NLM, or another publisher.
+3. **Versioned source releases supply answer facts.** Models learn how a question and a column fit
+   together, not mutable values. A model may recognize an exchange-rate relation, but the dated rate
+   still comes from a pinned ECB release and must pass temporal and calculation checks.
 
 There are currently two learned stages over this contract. The shared encoder uses a historical
 71-property compatibility basis derived primarily from capped Wikidata observations, plus
@@ -180,8 +180,7 @@ multi-step operations that genuinely require a world dependency. `engine.routing
 a primitive prediction alone cannot seize a self-contained own-data question.
 
 World lookup may depend on Wikidata availability for an uncached entity. Existing cached data and emitted SQL make
-successful results reproducible, but external source availability is an operational dependency rather than model
-entropy.
+successful results reproducible, but a missing external source is an operational failure, not a model failure.
 
 ## Named-Dimension Typing And Its Evidence
 

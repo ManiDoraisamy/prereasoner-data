@@ -1,9 +1,10 @@
-# Web Frontend
+# Web frontend
 
-`web/` is a static Firebase Hosting application with no bundler or framework. It presents uploaded data, references,
-SQL derivations, and results as a workbook with a conversational rail.
+`web/` is the static Firebase Hosting client. It lets a user attach tables, ask a question, inspect
+the query and source rows, and review the result in a workbook-style view. There is no bundler or
+framework; the pages use the browser APIs and classic JavaScript modules already in the repository.
 
-## Runtime Shape
+## Runtime shape
 
 - `reason.html` and `knowledge.html` load the same classic script, `public/lib/workbook.js`.
 - Firebase Authentication supplies the ID token used by authenticated engine routes.
@@ -12,7 +13,7 @@ SQL derivations, and results as a workbook with a conversational rail.
   completed HTTP response renders the same result.
 - Conversation snapshots preserve the visible workbook and rail without re-running a query on reload.
 
-## Workbook Sheet Types
+## Workbook sheet types
 
 | Class | Meaning | Editable |
 |---|---|---|
@@ -33,7 +34,7 @@ Reference actions have distinct meanings:
 Dirty state and AI-cell provenance survive conversation snapshot reloads. The first reference column is the join key;
 the engine requires non-empty, unique keys and unique column names.
 
-## Page Map
+## Page map
 
 | Page | Purpose |
 |---|---|
@@ -48,7 +49,7 @@ the engine requires non-empty, unique keys and unique column names.
 state, rendering, editing, reference lifecycle, conversation restoration, trace subscription, and request submission.
 `public/lib/firebase-init.js` bridges Firebase module APIs into the classic page scripts.
 
-## Local Development
+## Local development
 
 Start the engine first, then serve Hosting:
 

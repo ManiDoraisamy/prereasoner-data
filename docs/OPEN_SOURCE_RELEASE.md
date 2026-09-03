@@ -73,7 +73,7 @@ is reviewed and applied. Remaining launch gates are external or deployment-speci
 verify the public model bundle in the release image, verify browser-key
 restrictions, run live auth/isolation tests, and record a seeded release-database regression.
 
-Schema.org should be described as the semantic shell. Wikidata and publisher datasets supply
+Schema.org should be described as the semantic vocabulary. Wikidata and publisher datasets supply
 training observations and runtime facts under their own terms; Wikidata is not the primary ontology.
 The current multi-source Schema.org head is the active ontology-validated class vocabulary and can
 propose resolver families. The shared historical encoder was trained primarily from mapped Wikidata

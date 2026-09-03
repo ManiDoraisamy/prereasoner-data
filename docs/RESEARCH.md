@@ -1,9 +1,9 @@
-# PreReasoner — Research positioning
+# PreReasoner - research positioning
 
-> **Why the approach is novel, and what we can and cannot claim.** For *how the system works*,
-> see [ARCHITECTURE.md](ARCHITECTURE.md); for *how to reproduce the model*, see
-> [../training/README.md](../training/README.md). This doc is the argument and the evidence —
-> written so a reviewer can find every claim's ground and every caveat.
+This document explains the approach, the evidence behind it, and the limits of the claims. For
+the implementation, see [ARCHITECTURE.md](ARCHITECTURE.md). For model reproduction, see
+[../training/README.md](../training/README.md). Each claim should point to a test, artifact, or
+source release rather than rely on product language.
 
 > **Current-status boundary.** The taxonomy re-anchor in section 6 is historical lineage, not the
 > active class vocabulary. Production uses a 90-coordinate shared Qwen/LoRA representation plus

@@ -2,10 +2,11 @@
 
 ## Summary
 
-PreReasoner is a neuro-symbolic tabular reasoning system. Learned components emit embeddings,
-named Schema.org property probabilities, class scores, and structural relevance signals. Typed SQL
-search, routing ownership, source-key authorization, calculation semantics, SQL rendering, and
-execution are deterministic for fixed inputs and pinned artifacts.
+PreReasoner is a tabular question-answering system with a learned semantic layer and a deterministic
+SQL layer. Learned components provide embeddings, Schema.org property probabilities, class scores,
+and structural relevance signals. Typed SQL search, route ownership, source-key authorization,
+calculation semantics, SQL rendering, and execution are deterministic for fixed inputs and pinned
+artifacts.
 
 Schema.org 30.0 is the semantic coordinate system. Wikidata and publisher-owned releases provide
 observations projected into that vocabulary; they do not define it. Mutable facts remain in
