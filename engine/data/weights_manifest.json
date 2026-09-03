@@ -2,7 +2,7 @@
   "committed_artifacts": {
     "schema_class_signatures.json": {
       "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
-      "sha256": "e99988e9861bdff72612ffc4db4988a1d1f0a126122600e567727d214cfeb21a"
+      "sha256": "4aa01af4a07027ee56c31a053e16901dbb157c45780408147e14a72c9398a5fe"
     },
     "schema_org_v30.json": {
       "note": "tracked in git (not fetched); compiled from the pinned Schema.org source by training/schema_org/compile_contract.py",
@@ -10,7 +10,11 @@
     },
     "schema_property_model.json": {
       "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
-      "sha256": "4a2bf8f40e2192ea0ed068a762271c54cb8a7531a2e915740f92f20c75e1676b"
+      "sha256": "45bed90b0ae9f25dd827a96eea89fceb8b03ec3d941990268e2e74158f87f0d1"
+    },
+    "schema_training_manifest.json": {
+      "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
+      "sha256": "d8b9dfe09f13501a3e394da6120e097a75b9ea1ebdf6261bdcd073962555363f"
     }
   },
   "files": {
@@ -20,9 +24,9 @@
     "primitives.npz": "2daecaa89b465dafd65a22427ca144a97018d82a9bf192120bfef5e5366d7ebc",
     "qwen_lora/adapter_config.json": "9e9d1bb22602d4cb1a01b48af9d8ecb460a6c3dfe1320f6840727bdfb086e266",
     "qwen_lora/adapter_model.safetensors": "1ef13f8bf69b6e51d6e2a61d7170a82f32bb6cfb393e7542d28b7bb447c51ce4",
-    "schema_property_head.pt": "a7eb4bc295a3bc1a3d8b773925a323099828b471f2317f49e02644fc42fe30e5"
+    "schema_property_head.pt": "cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c"
   },
   "repository": "prereasoner/prereasoner-weights",
-  "revision": "95adff733a81f1310993785d07577ea38d8d22a4",
+  "revision": "0b5c2a5d4de3e488cd366633d95ce922755d3900",
   "version": 1
 }
