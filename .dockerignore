@@ -10,6 +10,7 @@
 .env.*
 !.env.example
 .venv
+.venv*
 venv
 .idea
 .vscode

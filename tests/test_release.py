@@ -338,7 +338,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     )
     assert 'choices=("engine", "sync")' in source
     assert '"build_target": target' in source
-    for ignore in (".venv/", "service-account*.json", "*.tfstate"):
+    for ignore in (".venv*/", "service-account*.json", "*.tfstate"):
         assert ignore in _text(".gcloudignore")
 
 
