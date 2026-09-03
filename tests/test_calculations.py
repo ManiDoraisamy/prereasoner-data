@@ -852,6 +852,16 @@ def test_decimal_execution_is_exact_and_backend_compatible():
         raise AssertionError("unbounded decimal exponent was accepted")
 
 
+def test_training_database_adapter_preserves_postgres_decimal():
+    import psycopg2.extensions
+
+    from training.lib import pg as training_pg  # noqa: F401
+
+    value = psycopg2.extensions.string_types[1700]("9007199254740993.1", None)
+    ok(isinstance(value, Decimal) and value == Decimal("9007199254740993.1"),
+       "training database imports must not globally coerce PostgreSQL NUMERIC to float")
+
+
 TESTS = [
     test_intent_is_not_a_bare_currency_phrase,
     test_filter_conversion_and_annotation_matrix,
@@ -876,6 +886,7 @@ TESTS = [
     test_intent_thresholds_are_checkpoint_calibrated,
     test_model_promotion_is_atomic_and_marks_unpublished_candidates,
     test_decimal_execution_is_exact_and_backend_compatible,
+    test_training_database_adapter_preserves_postgres_decimal,
 ]
 
 

@@ -13,18 +13,6 @@ from __future__ import annotations
 import os
 
 import psycopg2
-import psycopg2.extensions
-
-
-def _numeric_to_py(value, cur):
-    """NUMERIC -> int when integral else float (keeps aggregates JSON-serializable)."""
-    if value is None:
-        return None
-    f = float(value)
-    return int(f) if f.is_integer() else f
-
-
-psycopg2.extensions.register_type(psycopg2.extensions.new_type((1700,), "NUMERIC2PY", _numeric_to_py))
 
 
 def _pg():

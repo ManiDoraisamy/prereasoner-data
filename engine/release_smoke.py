@@ -13,10 +13,16 @@ def run() -> dict:
     connection = _pg()
     try:
         cursor = connection.cursor()
-        cursor.execute("SELECT max(version) FROM chat.schema_migration")
-        chat_version = cursor.fetchone()[0]
-        if chat_version is None or int(chat_version) < 2:
-            raise RuntimeError("chat application migrations are incomplete")
+        # Exercise the v2 request-budget schema through the serving role instead of
+        # exposing the admin-only migration ledger to runtime.
+        cursor.execute(
+            "SELECT period, bucket_start, subject_key, operation, request_count "
+            "FROM chat.request_usage WHERE false"
+        )
+        cursor.execute(
+            "SELECT lease_id, subject_key, operation, expires_at "
+            "FROM chat.request_lease WHERE false"
+        )
         cursor.execute("SELECT to_regclass('knowledgebase.schedule'), to_regclass('knowledgebase.exchange_rate')")
         schedule, exchange_rate = cursor.fetchone()
         if schedule is None or exchange_rate is None:
@@ -52,7 +58,7 @@ def run() -> dict:
             connection.commit()
         finally:
             connection.close()
-    return {"ok": True, "chat_migration": int(chat_version), "exact_total": rows[0][0]}
+    return {"ok": True, "request_budgets": True, "exact_total": rows[0][0]}
 
 
 def main() -> int:
