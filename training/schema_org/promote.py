@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -32,6 +33,7 @@ from engine.artifact_provenance import (
 )
 from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION
 from engine.config import DATA_DIR as RUNTIME_DIR
+from engine.schema_decode import ClassDecoder
 from engine.schema_org import load_contract
 from training.schema_org.paths import EXPERIMENTS_DIR, MANIFEST_PATH
 
@@ -107,6 +109,9 @@ def gate(candidate: Path) -> list[str]:
         )
     if signatures.get("property_model_pending", True):
         problems.append("class signatures were never calibrated (property_model_pending is set)")
+    signature_schema = signatures.get("schema_version")
+    if signature_schema not in (1, 2):
+        problems.append("class signatures use an unsupported schema version")
     if _sha256(candidate / "schema_property_head.pt") != meta.get("weights_sha256"):
         problems.append("weights do not match the hash recorded in the property model meta")
     if not _valid_json_identity(meta):
@@ -172,7 +177,8 @@ def gate(candidate: Path) -> list[str]:
             problems.append(
                 "candidate removes currently servable classes: " + ", ".join(removed)
             )
-    if not meta.get("trained_properties"):
+    trained_properties = set(meta.get("trained_properties") or ())
+    if not trained_properties:
         problems.append("no property dimensions were trained")
     gates = meta.get("calibration_gates") or {}
     qualified = set(meta.get("qualified_properties") or ())
@@ -193,6 +199,54 @@ def gate(candidate: Path) -> list[str]:
     for row in signatures.get("classes", ()):
         if not row.get("servable"):
             continue
+        if signature_schema == 2:
+            signature = row.get("signature") or ()
+            bias = row.get("bias")
+            threshold = row.get("threshold")
+            if row.get("score_model") != "logistic_property_probability":
+                problems.append(
+                    f"schema-v2 class lacks the logistic score model: {row.get('uri')}"
+                )
+            if len(signature) < 2:
+                problems.append(
+                    f"schema-v2 class has fewer than two named dimensions: {row.get('uri')}"
+                )
+            if not isinstance(bias, (int, float)) or not math.isfinite(float(bias)):
+                problems.append(f"schema-v2 class has an invalid bias: {row.get('uri')}")
+            if (
+                not isinstance(threshold, (int, float))
+                or not math.isfinite(float(threshold))
+                or not 0.0 <= float(threshold) <= 1.0
+            ):
+                problems.append(f"schema-v2 class has an invalid threshold: {row.get('uri')}")
+            for item in signature:
+                prop = item.get("property")
+                weight = item.get("weight")
+                if prop not in trained_properties:
+                    problems.append(
+                        f"schema-v2 class uses an untrained property: {row.get('uri')} -> {prop}"
+                    )
+                if (
+                    not isinstance(weight, (int, float))
+                    or not math.isfinite(float(weight))
+                    or "ontology_weight" not in item
+                ):
+                    problems.append(
+                        f"schema-v2 class has an invalid signed contribution: "
+                        f"{row.get('uri')} -> {prop}"
+                    )
+            if (
+                isinstance(bias, (int, float))
+                and math.isfinite(float(bias))
+                and isinstance(threshold, (int, float))
+                and ClassDecoder.score_signature(
+                    {}, signature, bias=float(bias),
+                    score_model="logistic_property_probability",
+                ) >= float(threshold)
+            ):
+                problems.append(
+                    f"schema-v2 class crosses its threshold without property evidence: {row.get('uri')}"
+                )
         validation = (class_metrics.get(row.get("uri")) or {}).get("validation") or {}
         test = (class_metrics.get(row.get("uri")) or {}).get("test") or {}
         if (

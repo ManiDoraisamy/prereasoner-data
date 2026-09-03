@@ -22,4 +22,4 @@ numpy==1.26.4
 psycopg2-binary>=2.9,<3
 
 # corpus clustering only (corpus/cluster_columns.py MiniBatchKMeans) — not needed for train/anchor/calibrate
-scikit-learn>=1.4,<2
+scikit-learn==1.9.0

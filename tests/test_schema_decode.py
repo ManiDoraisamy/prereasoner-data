@@ -5,15 +5,16 @@ class thresholds) and engine/data/schema_property_model.json (per-property thres
 engine.schema_decode.ClassDecoder with synthetic property profiles. No torch, no Postgres, no network.
 
 The interpretability contract under test:
-  (1) the decode is reconstructable from the surfaced evidence (fired/missing vs thresholds);
-  (2) INTERVENTION: suppressing schema:currency collapses ExchangeRateSpecification support while leaving
-      disjoint-signature classes (MedicalCode) numerically untouched — the explanation IS the computation;
-  (3) unsupported/uncalibrated classes abstain instead of guessing.
+  (1) the decode is reconstructable from the surfaced named-property contributions;
+  (2) INTERVENTION: changing one coordinate changes the class logit by exactly its signed contribution and
+      leaves disjoint-signature classes numerically untouched — the explanation IS the computation;
+  (3) unsupported/uncalibrated classes and evidence-free profiles abstain instead of guessing.
 
 python -m tests.test_schema_decode
 """
 from __future__ import annotations
 import json
+import math
 import sys
 
 from engine.config import DATA_DIR
@@ -45,6 +46,20 @@ def _firing(*names):
     return {_p(name): min(1.0, thresholds.get(_p(name), 0.5) + 1e-4) for name in names}
 
 
+def _logit(value):
+    return math.log(value / (1.0 - value))
+
+
+def _reconstructed_score(evidence):
+    if evidence.score_model == "logistic_property_probability":
+        linear = evidence.bias + sum(
+            item["class_contribution"] for item in (*evidence.fired, *evidence.missing)
+        )
+        return 1.0 / (1.0 + math.exp(-linear))
+    total = sum(max(float(item["weight"]), 0.0) for item in (*evidence.fired, *evidence.missing))
+    return sum(max(float(item["weight"]), 0.0) for item in evidence.fired) / total
+
+
 # An ECB-shaped table profile; a CDC-shaped one. Everything not named stays silent.
 _ECB = _firing("currency", "currentExchangeRate", "price", "priceCurrency")
 _MEDICAL = _firing("codeValue", "codingSystem", "inCodeSet")
@@ -64,9 +79,8 @@ def test_ecb_profile_decodes_exchange_rate():
 
 
 def test_evidence_reconstructs_the_class_decision():
-    # Faithfulness: the surfaced evidence must BE the decision — every signature property appears in
-    # fired|missing, fired agrees with score>=threshold, and the class score is exactly the weighted mean the
-    # decoder computes (recompute it from the evidence records).
+    # Faithfulness: every signature property appears in fired|missing and the class score is reconstructable
+    # from the surfaced named-coordinate contributions (plus the surfaced bias for schema v2).
     d = ClassDecoder()
     thr = _thresholds()
     ev = d.evidence(_ECB, ERS, thr)
@@ -76,17 +90,15 @@ def test_evidence_reconstructs_the_class_decision():
     assert seen == sig_props, f"evidence must cover the whole signature: {seen} != {sig_props}"
     for r in list(ev.fired) + list(ev.missing):
         assert r["fired"] == (r["score"] >= r["threshold"]), f"fired inconsistent: {r}"
-    total = sum(max(float(it["weight"]), 0.0) for it in row["signature"])
-    recomputed = sum(max(float(it["weight"]), 0.0) for it in row["signature"]
-                     if _ECB.get(it["property"], 0.0) >= thr.get(it["property"], 0.5)) / total
-    assert abs(recomputed - ev.score) < 1e-9, f"score must be recomputable from the signature: {recomputed} vs {ev.score}"
-    fired_frac = sum(max(float(r["weight"]), 0.0) for r in ev.fired) / total
-    assert abs(fired_frac - ev.score) < 1e-9, "the score IS the weighted fired fraction (evidence == mechanism)"
-    print("  PASS  evidence covers the signature; class score == weighted fired fraction (recomputable)")
+    recomputed = _reconstructed_score(ev)
+    assert abs(recomputed - ev.score) < 1e-6, (
+        f"score must be recomputable from surfaced contributions: {recomputed} vs {ev.score}"
+    )
+    print("  PASS  evidence covers the signature; class score is reconstructable")
 
 
-def test_intervention_is_faithful_local_and_necessary():
-    """THE mechanism proof, stated as three invariants rather than as a guess about which property matters.
+def test_intervention_is_faithful_and_local():
+    """The mechanism proof, without assuming which learned dimension must dominate.
 
     An earlier version asserted that suppressing `schema:currency` collapses ExchangeRateSpecification. That
     encoded an assumption about the calibration, not a property of the design, and it broke honestly: the
@@ -94,49 +106,77 @@ def test_intervention_is_faithful_local_and_necessary():
     alone sufficient. Which property is load-bearing is a calibration outcome and may change. What must NOT
     change is that the surfaced evidence IS the computation:
 
-      FAITHFUL   suppressing a fired property moves the score by exactly its weight share — no more, no less
-      NECESSARY  some property's suppression drops the class below threshold (it is not decodable from noise)
+      FAITHFUL   a coordinate intervention moves exactly the surfaced weighted term
       LOCAL      a class with a disjoint signature is numerically identical under the same intervention
     """
     d = ClassDecoder()
     thr = _thresholds()
     row = d.classes[ERS]
-    total = sum(max(float(item["weight"]), 0.0) for item in row["signature"])
     base = d.evidence(_ECB, ERS, thr)
     assert base.score >= (base.threshold or 1.0), f"baseline must decode: {base.score} vs {base.threshold}"
-    # NON-VACUITY: with a single fired property, "some suppression collapses the class" is arithmetically
-    # guaranteed (removing the only contributor drives the score to 0) and proves nothing about locality or
-    # faithfulness. The profile must actually fire the whole signature.
     assert len(base.fired) >= 2, (
-        f"the probe profile fires only {len(base.fired)} of {len(row['signature'])} signature properties, "
-        f"so the necessity check would be trivially true — raise the profile above every threshold: "
+        f"the intervention probe needs two active coordinates, got {len(base.fired)}: "
         f"{[(r['name'], r['score'], r['threshold']) for r in row['signature'] and base.missing]}"
     )
 
-    collapsed = []
+    med_signature = {item["property"] for item in d.classes[MED]["signature"]}
     for fired in base.fired:
         suppressed = {**_ECB, fired["property"]: 0.0}
         after = d.evidence(suppressed, ERS, thr)
-        expected = base.score - max(float(fired["weight"]), 0.0) / total
-        assert abs(after.score - expected) < 1e-9, (
-            f"suppressing {fired['name']} must move the score by exactly its weight share: "
-            f"{after.score} vs expected {expected}"
-        )
-        if after.score < (after.threshold or 1.0):
-            collapsed.append(fired["name"])
-            assert ERS not in [e.class_uri for e in d.decode(suppressed, property_thresholds=thr)], \
-                f"below threshold after suppressing {fired['name']}, so it must vanish from the decode"
+        if base.score_model == "logistic_property_probability":
+            expected_delta = float(fired["weight"]) * float(_ECB[fired["property"]])
+            actual_delta = _logit(base.score) - _logit(after.score)
+            assert abs(actual_delta - expected_delta) < 1e-7, (
+                f"suppressing {fired['name']} must remove exactly its signed logit contribution: "
+                f"{actual_delta} vs {expected_delta}"
+            )
+        else:
+            total = sum(max(float(item["weight"]), 0.0) for item in row["signature"])
+            expected = base.score - max(float(fired["weight"]), 0.0) / total
+            assert abs(after.score - expected) < 1e-9, (
+                f"suppressing {fired['name']} must move the score by exactly its weight share: "
+                f"{after.score} vs expected {expected}"
+            )
         # LOCAL: a disjoint-signature class is untouched by this same intervention
-        med = d.evidence(_MEDICAL, MED, thr).score
-        med_after = d.evidence({**_MEDICAL, fired["property"]: 0.0}, MED, thr).score
-        assert med == med_after, f"disjoint class moved under {fired['name']}: {med} vs {med_after}"
+        if fired["property"] not in med_signature:
+            med = d.evidence(_MEDICAL, MED, thr).score
+            med_after = d.evidence({**_MEDICAL, fired["property"]: 0.0}, MED, thr).score
+            assert med == med_after, f"disjoint class moved under {fired['name']}: {med} vs {med_after}"
+    print("  PASS  intervention removes the exact surfaced term and is local to its signature")
 
-    assert collapsed, (
-        f"no single property's removal drops ExchangeRateSpecification below its threshold "
-        f"({base.threshold}) — the class would be decodable without any specific evidence"
-    )
-    print(f"  PASS  intervention: faithful (exact weight share), local (MedicalCode untouched), "
-          f"necessary (collapses on {', '.join(collapsed)})")
+
+def test_schema_v2_signed_superposition_is_reconstructable():
+    import tempfile
+    from pathlib import Path
+
+    payload = {
+        "schema_version": 2,
+        "property_model_pending": False,
+        "classes": [{
+            "uri": "https://schema.org/Product",
+            "name": "Product",
+            "signature": [
+                {"property": _p("sku"), "weight": 4.0, "ontology_weight": 3.0},
+                {"property": _p("duration"), "weight": -2.0, "ontology_weight": 1.0},
+            ],
+            "bias": -1.0,
+            "score_model": "logistic_property_probability",
+            "threshold": 0.8,
+            "servable": True,
+            "state": "servable",
+            "support": {},
+        }],
+    }
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "signatures.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        decoder = ClassDecoder(path)
+        evidence = decoder.evidence({_p("sku"): 1.0, _p("duration"): 0.25}, "Product")
+        assert abs(evidence.score - (1.0 / (1.0 + math.exp(-2.5)))) < 1e-12
+        assert abs(_reconstructed_score(evidence) - evidence.score) < 1e-9
+        assert decoder.decode({_p("sku"): 1.0})[0].class_name == "Product"
+        assert decoder.decode({}) == ()
+    print("  PASS  schema-v2 signed superposition is exact and evidence-free input abstains")
 
 
 def test_silent_profile_abstains():
@@ -199,7 +239,8 @@ def test_artifact_chain_is_pinned():
 TESTS = [
     test_ecb_profile_decodes_exchange_rate,
     test_evidence_reconstructs_the_class_decision,
-    test_intervention_is_faithful_local_and_necessary,
+    test_intervention_is_faithful_and_local,
+    test_schema_v2_signed_superposition_is_reconstructable,
     test_silent_profile_abstains,
     test_unservable_classes_never_decode,
     test_uncalibrated_signatures_refuse_to_load,

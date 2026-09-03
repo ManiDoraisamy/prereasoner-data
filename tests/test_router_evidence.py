@@ -2,7 +2,7 @@
 
 The tests inject URI-indexed property profiles, avoiding Torch and PostgreSQL,
 then prove that the surfaced class, score, threshold, and property evidence are
-the same weighted superposition used by the production decoder.
+the same named-dimension superposition used by the production decoder.
 
 python -m tests.test_router_evidence
 """
@@ -17,7 +17,21 @@ def _class_row(router, name):
 
 
 def _full_profile(router, name):
-    return {item["property"]: 1.0 for item in _class_row(router, name)["signature"]}
+    row = _class_row(router, name)
+    if row.get("score_model") == "logistic_property_probability":
+        return {
+            item["property"]: 1.0 if float(item["weight"]) > 0.0 else 0.0
+            for item in row["signature"]
+        }
+    return {item["property"]: 1.0 for item in row["signature"]}
+
+
+def _expected_score(router, row, profile):
+    return router.decoder.score_signature(
+        profile, row["signature"], router.thresholds,
+        bias=float(row.get("bias", 0.0)),
+        score_model=row.get("score_model", "weighted_firing_fraction"),
+    )
 
 
 def test_evidence_reconstructs_the_decode():
@@ -26,30 +40,33 @@ def test_evidence_reconstructs_the_decode():
     profile = _full_profile(r, "Movie")
     ev = r._class_evidence(profile, row["uri"])
     assert ev.servable and ev.class_name == "Movie"
-    assert ev.score == 1.0
-    assert {item["property"] for item in ev.fired} == {
+    assert abs(ev.score - _expected_score(r, row, profile)) < 1e-12
+    assert ev.score >= ev.threshold
+    assert {item["property"] for item in (*ev.fired, *ev.missing)} == {
         item["property"] for item in row["signature"]
     }
-    assert not ev.missing
-    for item in ev.fired:
+    for item in (*ev.fired, *ev.missing):
         assert item["fired"] == (item["score"] >= item["threshold"])
         assert item["threshold"] == round(r.thresholds[item["property"]], 6)
-    print("  PASS  evidence exactly reconstructs Movie's weighted property signature")
+    print("  PASS  evidence exactly reconstructs Movie's named-property signature")
 
 
 def test_evidence_is_ordered_fired_first():
     r = Router()
     row = _class_row(r, "Movie")
     profile = _full_profile(r, "Movie")
-    missing_property = row["signature"][-1]["property"]
+    missing_property = next(
+        item["property"] for item in row["signature"] if profile[item["property"]] > 0.0
+    )
     profile[missing_property] = 0.0
     ev = r._class_evidence(profile, row["uri"])
     combined = [*ev.fired, *ev.missing]
-    assert combined and combined[0]["fired"] and not combined[-1]["fired"]
-    assert ev.missing[-1]["property"] == missing_property
-    expected = r.decoder.score_signature(profile, row["signature"], r.thresholds)
+    assert combined and all(item["fired"] for item in ev.fired)
+    assert all(not item["fired"] for item in ev.missing)
+    assert missing_property in {item["property"] for item in ev.missing}
+    expected = _expected_score(r, row, profile)
     assert abs(ev.score - expected) < 1e-12
-    print("  PASS  fired and missing evidence reproduces the weighted class score")
+    print("  PASS  fired and missing evidence reproduces the class score")
 
 
 def test_route_surfaces_evidence_matching_the_family():
@@ -58,10 +75,17 @@ def test_route_surfaces_evidence_matching_the_family():
     r._profile = lambda values, header=None: profile
     out = r.route(["Arrival", "Moonlight", "Parasite"], header="movie")
     assert out is not None and out["class"] == "https://schema.org/Movie", out
-    assert out["family"] == "film" and out["frac"] == 1.0
+    row = _class_row(r, "Movie")
+    assert out["family"] == "film"
+    assert out["frac"] == round(_expected_score(r, row, profile), 6)
+    assert out["class_threshold"] == row["threshold"]
+    assert out["class_score_model"] == row.get("score_model", "weighted_firing_fraction")
+    assert out["class_bias"] == float(row.get("bias", 0.0))
     assert out["ontology_version"] == "30.0"
     assert out["model_artifact_sha256"] == r.model_artifact_sha256
-    assert all(item["fired"] for item in out["evidence"])
+    assert {item["property"] for item in out["evidence"]} == {
+        item["property"] for item in row["signature"]
+    }
     print("  PASS  route surfaces the canonical class, family, artifact, and actual evidence")
 
 

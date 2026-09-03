@@ -125,13 +125,9 @@ def _precision_threshold(scores: np.ndarray, labels: np.ndarray,
     # fell below it and the class abstained. Every point in that interval yields the SAME true and false
     # positive counts on validation, so the midpoint is free: identical held-out metrics, maximal distance
     # from both classes. Where the classes are not separable the interval is narrow and this is a no-op.
-    # `margin` applies ONLY to per-property thresholds, which are compared against raw model scores and so
-    # must tolerate distribution shift. CLASS thresholds are compared against a weighted fraction of
-    # ALREADY-thresholded property firing — a discrete quantity over a handful of signature properties —
-    # and widening there does not buy robustness, it lowers the evidentiary bar. Measured: with margin
-    # applied, ExchangeRateSpecification's threshold fell to 0.289, under the 0.45 that `currency` alone
-    # scores, so the class would have decoded from a currency column with no exchange rate present. The
-    # necessity check in tests/test_schema_decode.py caught it.
+    # `margin` applies only to independently decoded property thresholds. Class thresholds are calibrated
+    # on a joint logistic score and are kept at an observed validation boundary; moving that boundary below
+    # the selected score can admit a different combination of dimensions that validation never certified.
     threshold = (chosen + lower) / 2.0 if margin and lower < chosen else chosen
     return threshold, True
 
@@ -178,152 +174,79 @@ def _class_metrics(
     return metrics, scope
 
 
-def _fit_class_weights(
+def _fit_continuous_class_model(
     signature: list[dict], train_profiles: list[dict[str, float]],
-    train_truth: np.ndarray, property_thresholds: dict[str, float],
-) -> list[dict]:
-    """Fit non-negative class weights from training-only named-property firings.
+    train_truth: np.ndarray, validation_profiles: list[dict[str, float]],
+    validation_truth: np.ndarray, validation_property_sets: list[frozenset[str]],
+) -> tuple[list[dict], float, float, bool, dict, float]:
+    """Fit and calibrate one interpretable class superposition without test data.
 
-    Ontology lift identifies the eligible coordinates, but it is not a calibrated
-    class model: correlated generic properties can outweigh a rare diagnostic one.
-    This bounded logistic fit learns only the relative positive contribution of the
-    already-selected named dimensions. The decoder still exposes the exact weighted
-    firing sum, and validation remains the sole source of the decision threshold.
+    Every feature is an ontology-named property probability. Training fits signed
+    contributions and a bias; validation chooses both regularization and the highest-
+    recall threshold satisfying the class precision floor. No hidden feature enters
+    the score, and untouched test labels are not accepted by this API.
     """
-    if len(signature) < 2 or not len(train_profiles):
-        return copy.deepcopy(signature)
-    truth = train_truth.astype(np.float64)
-    positives = int(truth.sum())
-    negatives = len(truth) - positives
-    if not positives or not negatives:
-        return copy.deepcopy(signature)
+    from sklearn.linear_model import LogisticRegression
 
     ordered = sorted(copy.deepcopy(signature), key=lambda item: item["property"])
-    features = np.array([
-        [
-            float(profile.get(item["property"], 0.0))
-            >= float(property_thresholds.get(item["property"], 0.5))
-            for item in ordered
-        ]
-        for profile in train_profiles
-    ], dtype=np.float64)
-    weights = np.array([max(float(item["weight"]), 0.0) for item in ordered])
-    weights /= max(float(weights.mean()), 1e-12)
-    bias = math.log(positives / negatives)
-    sample_weights = np.where(
-        truth > 0.5,
-        len(truth) / (2.0 * positives),
-        len(truth) / (2.0 * negatives),
-    )
-    normalizer = float(sample_weights.sum())
-    for step in range(1200):
-        logits = np.clip(features @ weights + bias, -30.0, 30.0)
-        probabilities = 1.0 / (1.0 + np.exp(-logits))
-        residual = (probabilities - truth) * sample_weights
-        learning_rate = 0.2 / math.sqrt(1.0 + step / 100.0)
-        gradient = features.T @ residual / normalizer + 1e-3 * weights
-        bias_gradient = float(residual.sum()) / normalizer
-        update = learning_rate * gradient
-        weights = np.maximum(0.0, weights - update)
-        bias -= learning_rate * bias_gradient
-        if max(float(np.max(np.abs(update))), abs(learning_rate * bias_gradient)) < 1e-8:
-            break
-    if not np.any(weights > 0):
-        return ordered
-    weights /= float(weights.max())
-    for item, weight in zip(ordered, weights):
-        item["ontology_weight"] = item["weight"]
-        item["weight"] = round(float(weight), 8)
-    return [item for item in ordered if item["weight"] > 0]
-
-
-def _select_class_signature(
-    signature: list[dict], validation_profiles: list[dict[str, float]],
-    validation_truth: np.ndarray, validation_property_sets: list[frozenset[str]],
-    property_thresholds: dict[str, float],
-) -> tuple[list[dict], float, bool, dict]:
-    """Select a compact class signature using validation data only.
-
-    A raw ontology-derived signature is a set of individually useful dimensions, not a promise that every
-    positive table exposes all of them. Adding another legitimate property can therefore reduce the
-    weighted fired fraction of sparse tables. Search every two-property seed, then deterministically add
-    dimensions while recall at the precision floor improves. The complete signature is also reduced, so
-    useful interactions are not limited to pair seeds. Test labels are deliberately absent from this API.
-    """
-    if len(signature) < 2:
+    if len(ordered) < 2:
         empty_scores = np.zeros(len(validation_truth))
         metrics, _scope = _class_metrics(
-            empty_scores, validation_truth, validation_property_sets, signature, 1.0,
+            empty_scores, validation_truth, validation_property_sets, ordered, 1.0,
         )
-        return signature, 1.0, False, metrics
+        return ordered, 0.0, 1.0, False, metrics, 0.0
 
-    ordered = sorted(signature, key=lambda item: item["property"])
-    cache: dict[tuple[int, ...], tuple[float, bool, dict]] = {}
+    def matrix(profiles):
+        return np.array([
+            [float(profile.get(item["property"], 0.0)) for item in ordered]
+            for profile in profiles
+        ], dtype=np.float64)
 
-    def evaluate(indices: tuple[int, ...]) -> tuple[float, bool, dict]:
-        if indices not in cache:
-            subset = [ordered[index] for index in indices]
-            scores = np.array([
-                ClassDecoder.score_signature(profile, subset, property_thresholds)
-                for profile in validation_profiles
-            ])
-            provisional, scope = _class_metrics(
-                scores, validation_truth, validation_property_sets, subset, 1.0,
-            )
-            threshold, feasible = _precision_threshold(
-                scores[scope], validation_truth[scope], MIN_CLASS_PRECISION, margin=False,
-            )
-            metrics, _scope = _class_metrics(
-                scores, validation_truth, validation_property_sets, subset, threshold,
-            )
-            assert provisional["evidence_coverage"] == metrics["evidence_coverage"]
-            cache[indices] = threshold, feasible, metrics
-        return cache[indices]
-
-    def rank(indices: tuple[int, ...]) -> tuple:
-        threshold, feasible, metrics = evaluate(indices)
-        effective_recall = metrics["recall"] * metrics["evidence_coverage"]
-        return (
-            int(feasible), effective_recall, metrics["recall"], metrics["precision"], -len(indices),
-            sum(float(ordered[index]["weight"]) for index in indices),
-            tuple(ordered[index]["property"] for index in indices), -threshold,
+    train_x = matrix(train_profiles)
+    validation_x = matrix(validation_profiles)
+    if not int(train_truth.sum()) or int(train_truth.sum()) == len(train_truth):
+        metrics, _scope = _class_metrics(
+            np.zeros(len(validation_truth)), validation_truth,
+            validation_property_sets, ordered, 1.0,
         )
+        return ordered, 0.0, 1.0, False, metrics, 0.0
 
-    pairs = [
-        (left, right)
-        for left in range(len(ordered))
-        for right in range(left + 1, len(ordered))
-    ]
-    # Several pair seeds avoid committing the greedy search to one local optimum. Current raw signatures
-    # have at most eleven dimensions, so this is bounded and cheap compared with encoder inference.
-    seeds = sorted(pairs, key=rank, reverse=True)[:8]
-    seeds.append(tuple(range(len(ordered))))
-    finalists = []
-    for seed in seeds:
-        current = seed
-        while True:
-            additions = [
-                tuple(sorted((*current, index)))
-                for index in range(len(ordered)) if index not in current
-            ]
-            improved = max(additions, key=rank) if additions else current
-            if rank(improved) <= rank(current):
-                break
-            current = improved
-        finalists.append(current)
+    candidates = []
+    for regularization in (0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0,
+                           10.0, 30.0, 100.0, 300.0, 1000.0):
+        model = LogisticRegression(
+            C=regularization, class_weight="balanced", solver="liblinear",
+            random_state=19, max_iter=3000,
+        )
+        model.fit(train_x, train_truth)
+        validation_scores = model.predict_proba(validation_x)[:, 1]
+        provisional, scope = _class_metrics(
+            validation_scores, validation_truth, validation_property_sets, ordered, 1.0,
+        )
+        threshold, feasible = _precision_threshold(
+            validation_scores[scope], validation_truth[scope],
+            MIN_CLASS_PRECISION, margin=False,
+        )
+        metrics, _scope = _class_metrics(
+            validation_scores, validation_truth, validation_property_sets, ordered, threshold,
+        )
+        assert provisional["evidence_coverage"] == metrics["evidence_coverage"]
+        rank = (
+            int(feasible), metrics["recall"] * metrics["evidence_coverage"],
+            metrics["recall"], metrics["precision"], -regularization,
+        )
+        candidates.append((rank, regularization, model, threshold, feasible, metrics))
 
-    current = tuple(range(len(ordered)))
-    while len(current) > 2:
-        removals = [tuple(index for index in current if index != removed) for removed in current]
-        improved = max(removals, key=rank)
-        if rank(improved) <= rank(current):
-            break
-        current = improved
-    finalists.append(current)
-
-    chosen = max(set(finalists), key=rank)
-    threshold, feasible, metrics = evaluate(chosen)
-    return [ordered[index] for index in chosen], threshold, feasible, metrics
+    _rank, regularization, model, threshold, feasible, metrics = max(
+        candidates, key=lambda item: item[0]
+    )
+    for item, coefficient in zip(ordered, model.coef_[0]):
+        item["ontology_weight"] = item["weight"]
+        item["weight"] = round(float(coefficient), 8)
+    return (
+        ordered, round(float(model.intercept_[0]), 8), threshold, feasible, metrics,
+        regularization,
+    )
 
 
 def _error_sources(scores: np.ndarray, labels: np.ndarray, threshold: float,
@@ -582,37 +505,32 @@ def main() -> None:
             continue
         row["raw_signature"] = row["signature"]
         row["signature"] = [item for item in row["signature"]
-                            if item["property"] in qualified_properties]
+                            if item["property"] in prop_index]
         if len(row["signature"]) < 2:
             row["threshold"] = None
             row["servable"] = False
             row["state"] = "calibration_failed"
             class_metrics[uri] = {
                 "threshold": None,
-                "reason": "fewer_than_two_validation_qualified_properties",
-                "qualified_property_count": len(row["signature"]),
+                "reason": "fewer_than_two_trained_properties",
+                "trained_property_count": len(row["signature"]),
             }
             continue
         truth = np.array([1 if uri in item.classes else 0 for item in instances], dtype=np.int8)
-        row["signature"] = _fit_class_weights(
-            row["signature"], train_profiles, truth[split_index["train"]], thresholds,
+        (
+            row["signature"], row["bias"], threshold, feasible,
+            validation_metrics, row["regularization_c"],
+        ) = _fit_continuous_class_model(
+            row["signature"], train_profiles, truth[split_index["train"]],
+            validation_profiles, truth[split_index["validation"]],
+            validation_property_sets,
         )
-        if len(row["signature"]) < 2:
-            row["threshold"] = None
-            row["servable"] = False
-            row["state"] = "calibration_failed"
-            class_metrics[uri] = {
-                "threshold": None,
-                "reason": "fewer_than_two_positive_fitted_weights",
-                "qualified_property_count": len(row["signature"]),
-            }
-            continue
-        row["signature"], threshold, feasible, validation_metrics = _select_class_signature(
-            row["signature"], validation_profiles, truth[split_index["validation"]],
-            validation_property_sets, thresholds,
-        )
+        row["score_model"] = "logistic_property_probability"
         scores = np.array([
-            ClassDecoder.score_signature(profile, row["signature"], thresholds)
+            ClassDecoder.score_signature(
+                profile, row["signature"], thresholds,
+                bias=row["bias"], score_model=row["score_model"],
+            )
             for profile in profiles
         ])
         test_scores = scores[split_index["test"]]
@@ -638,10 +556,12 @@ def main() -> None:
         class_metrics[uri] = {
             "threshold": round(threshold, 8),
             "calibration_feasible": feasible,
-            "qualified_property_count": len(row["signature"]),
+            "trained_property_count": len(row["signature"]),
+            "regularization_c": row["regularization_c"],
             "validation": validation_metrics,
             "test": test_metrics,
         }
+    signatures["schema_version"] = 2
     signatures.pop("artifact_sha256", None)
     signatures["property_model_pending"] = False
     signatures["artifact_sha256"] = canonical_json_sha256(signatures)
@@ -676,7 +596,7 @@ def main() -> None:
             "class_test_min_precision": MIN_CLASS_TEST_PRECISION,
             "class_test_min_recall": MIN_CLASS_TEST_RECALL,
             "class_test_min_evidence_coverage": MIN_CLASS_TEST_EVIDENCE_COVERAGE,
-            "class_weight_model": "nonnegative_logistic_on_training_firings",
+            "class_weight_model": "logistic_on_named_property_probabilities",
         },
         "property_metrics": property_metrics,
         "qualified_properties": tuple(uri for uri in properties if uri in qualified_properties),

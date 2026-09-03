@@ -141,10 +141,9 @@ class SchemaInterpreter:
             {"property": uri, "name": schema_name(uri), "score": round(score, 6),
              "threshold": round(self.thresholds.get(uri, 0.5), 6),
              "qualified": uri in self.qualified,
-             # An unqualified dim never counts as fired: its threshold did not survive the precision floor,
-             # so treating it as evidence would put an uncalibrated signal next to a calibrated one in the
-             # served explanation. Class signatures already exclude these, so this only aligns the surfaced
-             # property list with what the decode actually used.
+             # An unqualified dimension is not independently asserted as a property. A schema-v2 class may
+             # still use its continuous score inside a jointly calibrated named-property superposition; the
+             # class evidence reports that signed contribution explicitly.
              "fired": uri in self.qualified and score >= self.thresholds.get(uri, 0.5)}
             for uri, score in profile.items()
         ]

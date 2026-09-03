@@ -397,53 +397,45 @@ def test_schema_promotion_preserves_the_served_class_surface():
     )
 
 
-def test_class_signature_selection_drops_recall_harming_dimensions():
+def test_class_model_is_a_deterministic_signed_named_dimension_superposition():
     import numpy as np
 
-    from training.schema_org.train_property_head import _select_class_signature
+    from training.schema_org.train_property_head import _fit_continuous_class_model
 
     signature = [
-        {"property": "a", "weight": 1.0},
-        {"property": "b", "weight": 1.0},
-        {"property": "c", "weight": 1.0},
-    ]
-    profiles = [
-        {"a": 1.0, "b": 1.0, "c": 0.0},
-        {"a": 1.0, "b": 1.0, "c": 0.0},
-        {"a": 1.0, "b": 0.0, "c": 1.0},
-        {"a": 0.0, "b": 0.0, "c": 1.0},
-    ]
-    selected, _threshold, feasible, metrics = _select_class_signature(
-        signature, profiles, np.array([1, 1, 0, 0], dtype=np.int8),
-        [frozenset({"a", "b"}), frozenset({"a", "b"}),
-         frozenset({"a", "c"}), frozenset({"c"})],
-        {"a": 0.5, "b": 0.5, "c": 0.5},
-    )
-    assert [item["property"] for item in selected] == ["a", "b"]
-    assert feasible and metrics["precision"] == 1.0 and metrics["recall"] == 1.0
-    assert metrics["evidence_coverage"] == 1.0
-
-
-def test_class_weights_are_training_fit_named_dimensions():
-    import numpy as np
-
-    from training.schema_org.train_property_head import _fit_class_weights
-
-    signature = [
-        {"property": "diagnostic", "weight": 1.0},
+        {"property": "diagnostic", "weight": 4.0},
+        {"property": "anti_signal", "weight": 2.0},
         {"property": "generic", "weight": 1.0},
     ]
-    profiles = [
-        *({"diagnostic": 1.0, "generic": 1.0} for _ in range(50)),
-        *({"diagnostic": 0.0, "generic": 1.0} for _ in range(50)),
+    positive = {"diagnostic": 0.95, "anti_signal": 0.05, "generic": 0.8}
+    negative = {"diagnostic": 0.05, "anti_signal": 0.95, "generic": 0.8}
+    train_profiles = [
+        *(dict(positive) for _ in range(50)),
+        *(dict(negative) for _ in range(50)),
     ]
-    truth = np.array([1] * 50 + [0] * 50, dtype=np.int8)
-    first = _fit_class_weights(signature, profiles, truth, {"diagnostic": 0.5, "generic": 0.5})
-    second = _fit_class_weights(signature, profiles, truth, {"diagnostic": 0.5, "generic": 0.5})
-    learned = {item["property"]: item["weight"] for item in first}
-    assert first == second
-    assert learned["diagnostic"] > learned.get("generic", 0.0)
-    assert all("ontology_weight" in item for item in first)
+    validation_profiles = [
+        *(dict(positive) for _ in range(20)),
+        *(dict(negative) for _ in range(20)),
+    ]
+    train_truth = np.array([1] * 50 + [0] * 50, dtype=np.int8)
+    validation_truth = np.array([1] * 20 + [0] * 20, dtype=np.int8)
+    property_sets = [frozenset(positive) for _ in validation_profiles]
+    args = (
+        signature, train_profiles, train_truth, validation_profiles,
+        validation_truth, property_sets,
+    )
+    first = _fit_continuous_class_model(*args)
+    second = _fit_continuous_class_model(*args)
+    fitted, bias, threshold, feasible, metrics, regularization = first
+    weights = {item["property"]: item["weight"] for item in fitted}
+    assert first == second, "fixed data and seed must produce an identical class artifact"
+    assert feasible and metrics["precision"] == 1.0 and metrics["recall"] == 1.0
+    assert metrics["evidence_coverage"] == 1.0
+    assert weights["diagnostic"] > 0 and weights["anti_signal"] < 0
+    assert abs(weights["diagnostic"]) > abs(weights["generic"])
+    assert all("ontology_weight" in item for item in fitted)
+    assert isinstance(bias, float) and 0.0 < threshold <= 1.0
+    assert regularization > 0
 
 
 def test_class_metrics_separate_evidence_coverage_from_accuracy():
@@ -480,8 +472,7 @@ TESTS = [
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_schema_training_selection_never_reads_test_evidence,
     test_schema_promotion_preserves_the_served_class_surface,
-    test_class_signature_selection_drops_recall_harming_dimensions,
-    test_class_weights_are_training_fit_named_dimensions,
+    test_class_model_is_a_deterministic_signed_named_dimension_superposition,
     test_class_metrics_separate_evidence_coverage_from_accuracy,
 ]
 
