@@ -1,4 +1,4 @@
-"""Build ontology-constrained class signatures and honest support states."""
+"""Build Schema.org-named class signatures and honest support states."""
 from __future__ import annotations
 
 import argparse
@@ -39,6 +39,38 @@ def _real_selection_sources(source_counts) -> list[str]:
     )
 
 
+def _signature_candidates(class_counts, n_train: int, global_counts,
+                          train_instances: int, compatible_properties) -> list[dict]:
+    """Return empirically supported named dimensions with explicit ontology status.
+
+    Schema.org ``domainIncludes`` is advisory rather than a closed-world validation
+    rule, and one source relation can represent companion classes. Restricting a
+    class to its direct domain properties discarded useful, fully named evidence
+    such as ``priceCurrency`` from an exchange-rate relation. Every coordinate must
+    still be a corpus-validated Schema.org property; this flag keeps the distinction
+    visible instead of silently treating companion evidence as a direct domain.
+    """
+    compatible = set(compatible_properties)
+    candidates = []
+    for prop, count in class_counts.items():
+        if count < MIN_PROPERTY_COUNT or not n_train:
+            continue
+        frequency = count / n_train
+        global_frequency = global_counts[prop] / max(train_instances, 1)
+        lift = frequency / max(global_frequency, 1 / max(train_instances, 1))
+        if frequency >= MIN_PROPERTY_FREQUENCY and lift >= MIN_LIFT:
+            candidates.append({
+                "property": prop,
+                "ontology_compatible": prop in compatible,
+                "frequency": round(frequency, 6),
+                "lift": round(lift, 6),
+                "weight": round(math.log1p(lift) * frequency, 6),
+                "count": count,
+            })
+    candidates.sort(key=lambda row: (-row["weight"], row["property"]))
+    return candidates
+
+
 def build(*, corpus_path: str | Path = CORPUS_PATH,
           manifest_path: str | Path = MANIFEST_PATH,
           output_path: str | Path | None = None) -> dict:
@@ -66,22 +98,10 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
         schema_class = contract.classes[uri]
         support = split_counts[uri]
         n_train = support["train"]
-        compatible = set(schema_class.compatible_properties)
-        candidates = []
-        for prop, count in class_property[uri].items():
-            if prop not in compatible or count < MIN_PROPERTY_COUNT or not n_train:
-                continue
-            frequency = count / n_train
-            global_frequency = global_property[prop] / max(train_instances, 1)
-            lift = frequency / max(global_frequency, 1 / max(train_instances, 1))
-            if frequency >= MIN_PROPERTY_FREQUENCY and lift >= MIN_LIFT:
-                candidates.append({
-                    "property": prop, "frequency": round(frequency, 6),
-                    "lift": round(lift, 6),
-                    "weight": round(math.log1p(lift) * frequency, 6),
-                    "count": count,
-                })
-        candidates.sort(key=lambda row: (-row["weight"], row["property"]))
+        candidates = _signature_candidates(
+            class_property[uri], n_train, global_property, train_instances,
+            schema_class.compatible_properties,
+        )
         real_sources = _real_selection_sources(source_split_counts[uri])
         # Test is report-only. It must not decide which classes reach calibration.
         data_ready = _class_data_ready(

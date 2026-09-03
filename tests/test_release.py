@@ -387,6 +387,24 @@ def test_schema_training_selection_never_reads_test_evidence():
     assert "does not satisfy untouched heldout gates" in promotion
 
 
+def test_schema_signatures_keep_named_companion_evidence_explicit():
+    from collections import Counter
+
+    from training.schema_org.signatures import _signature_candidates
+
+    candidates = _signature_candidates(
+        Counter({"currentExchangeRate": 80, "priceCurrency": 75}),
+        100,
+        Counter({"currentExchangeRate": 90, "priceCurrency": 100}),
+        10_000,
+        {"currentExchangeRate"},
+    )
+    by_property = {item["property"]: item for item in candidates}
+    assert set(by_property) == {"currentExchangeRate", "priceCurrency"}
+    assert by_property["currentExchangeRate"]["ontology_compatible"] is True
+    assert by_property["priceCurrency"]["ontology_compatible"] is False
+
+
 def test_schema_promotion_preserves_the_served_class_surface():
     from training.schema_org.promote import _servable_class_uris
 
@@ -492,6 +510,7 @@ TESTS = [
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_schema_training_selection_never_reads_test_evidence,
+    test_schema_signatures_keep_named_companion_evidence_explicit,
     test_schema_promotion_preserves_the_served_class_surface,
     test_class_model_is_a_deterministic_signed_named_dimension_superposition,
     test_class_threshold_uses_the_validation_gap_without_changing_decisions,
