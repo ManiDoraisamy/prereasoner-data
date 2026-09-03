@@ -34,18 +34,6 @@ def _p(name):
     return f"https://schema.org/{name}"
 
 
-def _firing(*names):
-    """A synthetic profile that fires exactly the named properties, derived FROM their calibrated
-    thresholds rather than from a hard-coded constant.
-
-    A literal (0.999) silently went stale when recalibration pushed `currency` to 0.99964: only one
-    signature property then fired, which made the intervention test's necessity check vacuous while it
-    still reported PASS. Deriving from the thresholds keeps these probes true-positive-shaped across
-    retrains, by construction."""
-    thresholds = _thresholds()
-    return {_p(name): min(1.0, thresholds.get(_p(name), 0.5) + 1e-4) for name in names}
-
-
 def _logit(value):
     return math.log(value / (1.0 - value))
 
@@ -60,9 +48,11 @@ def _reconstructed_score(evidence):
     return sum(max(float(item["weight"]), 0.0) for item in evidence.fired) / total
 
 
-# An ECB-shaped table profile; a CDC-shaped one. Everything not named stays silent.
-_ECB = _firing("currency", "currentExchangeRate", "price", "priceCurrency")
-_MEDICAL = _firing("codeValue", "codingSystem", "inCodeSet")
+# Unit-strength named coordinates make mechanism probes independent of separately calibrated property
+# thresholds. Schema-v2 class calibration consumes the continuous values; merely crossing every individual
+# threshold is neither necessary nor sufficient for a joint class decision.
+_ECB = {_p(name): 1.0 for name in ("currency", "currentExchangeRate", "price", "priceCurrency")}
+_MEDICAL = {_p(name): 1.0 for name in ("codeValue", "codingSystem", "inCodeSet")}
 
 
 def test_ecb_profile_decodes_exchange_rate():
