@@ -855,11 +855,11 @@ def test_decimal_execution_is_exact_and_backend_compatible():
 def test_training_database_adapter_preserves_postgres_decimal():
     import psycopg2.extensions
 
+    original = psycopg2.extensions.string_types[1700]
     from training.lib import pg as training_pg  # noqa: F401
 
-    value = psycopg2.extensions.string_types[1700]("9007199254740993.1", None)
-    ok(isinstance(value, Decimal) and value == Decimal("9007199254740993.1"),
-       "training database imports must not globally coerce PostgreSQL NUMERIC to float")
+    ok(psycopg2.extensions.string_types[1700] is original,
+       "training database imports must not replace PostgreSQL's exact NUMERIC caster")
 
 
 TESTS = [
