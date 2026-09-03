@@ -275,17 +275,20 @@ def _text_hash(text: str) -> str:
 
 
 def _trainer_identity() -> dict:
-    """Bind a candidate to immutable trainer source, not merely a corpus commit."""
+    """Bind a candidate to immutable Git blobs, independent of checkout line endings."""
     commit = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True, encoding="utf-8",
     ).strip()
     status = subprocess.check_output(
         ["git", "status", "--porcelain"], cwd=ROOT, text=True, encoding="utf-8",
     ).strip()
-    files = {
-        relative: hashlib.sha256((ROOT / relative).read_bytes()).hexdigest()
-        for relative in TRAINER_INPUTS
-    }
+    files = {}
+    for relative in TRAINER_INPUTS:
+        content = subprocess.check_output(
+            ["git", "show", f"{commit}:{relative}"], cwd=ROOT,
+            stderr=subprocess.DEVNULL,
+        )
+        files[relative] = hashlib.sha256(content).hexdigest()
     return {
         "entrypoint": "training.schema_org.train_property_head",
         "repository_commit": commit,

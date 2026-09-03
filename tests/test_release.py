@@ -349,7 +349,8 @@ def test_schema_training_selection_never_reads_test_evidence():
         _class_data_ready,
         _real_selection_sources,
     )
-    from training.schema_org.train_property_head import _training_properties
+    from training.schema_org.promote import _committed_blob_sha256
+    from training.schema_org.train_property_head import _trainer_identity, _training_properties
 
     support = {
         "train": Counter({"p": 25}),
@@ -374,6 +375,11 @@ def test_schema_training_selection_never_reads_test_evidence():
     assert '"runtime": _runtime_identity(torch, device, args.runner_image)' in source
     assert '"--runner-image"' in source
     assert "schema_embeddings.npz" in _text("training/tools/run_schema_training.sh")
+    trainer = _trainer_identity()
+    assert all(
+        _committed_blob_sha256(trainer["repository_commit"], relative) == expected
+        for relative, expected in trainer["source_files"].items()
+    ), "trainer provenance must hash committed Git blobs, not platform-normalized checkout bytes"
     promotion = _text("training/schema_org/promote.py")
     assert "trainer source does not match its recorded commit" in promotion
     assert "does not identify its immutable runner image" in promotion
