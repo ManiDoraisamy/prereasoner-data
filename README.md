@@ -1,7 +1,7 @@
 # PreReasoner
 
 PreReasoner is an interpretable AI model that shows its reasoning through named dimensions. Every
-answer is derived from your data as an inspectable query.
+answer is derived from your data as an inspectable SQL query, which inturn is generated from the named dimensions deterministically.
 
 [Website](https://prereasoner.com/) | [Try it free](https://chat.prereasoner.com/)
 
