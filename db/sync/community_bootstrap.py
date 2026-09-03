@@ -20,7 +20,8 @@ from db.sync._conn import connect
 
 ROOT = Path(__file__).resolve().parents[2]
 INIT_SQL = ROOT / "db" / "init.sql"
-BOOTSTRAP_VERSION = 2
+BOOTSTRAP_VERSION = 3
+DEFAULT_DATASETS = frozenset({"iana_country"})
 _ROLE = re.compile(r"^[a-z][a-z0-9_]*$")
 _LOCK_NAME = "prereasoner-community-bootstrap"
 
@@ -34,6 +35,7 @@ def command_plan() -> tuple[tuple[str, ...], ...]:
         (sys.executable, "-m", "db.sync.sync_types"),
         (sys.executable, "-m", "db.sync.build_u_s_state"),
         (sys.executable, "-m", "db.sync.app_migrations"),
+        (sys.executable, "-m", "db.sync.sources.iana.sync"),
         (sys.executable, "-m", "db.sync.sources.ecb.sync"),
         (sys.executable, "-m", "db.sync.build_exchange_rate"),
         (sys.executable, "-m", "db.sync.schedule", "--backfill", "--show"),
@@ -122,7 +124,7 @@ def _grant_serving_access(connection, role: str, datasets: frozenset[str]) -> No
 def bootstrap(
     connection,
     role: str,
-    datasets: frozenset[str] = frozenset(),
+    datasets: frozenset[str] = DEFAULT_DATASETS,
     *,
     force: bool = False,
     runner: Callable[[Sequence[str]], None] = _run,
@@ -161,7 +163,7 @@ def main() -> None:
     parser.add_argument("--role", default="serving", help="existing non-superuser serving role")
     parser.add_argument(
         "--datasets",
-        default="",
+        default=",".join(sorted(DEFAULT_DATASETS)),
         help="comma-separated code-approved reference datasets to grant after synchronization",
     )
     parser.add_argument("--force", action="store_true", help="rebuild the minimal world data")

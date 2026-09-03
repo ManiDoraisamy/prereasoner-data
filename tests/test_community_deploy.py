@@ -26,6 +26,7 @@ def test_bootstrap_plan_is_minimal_deterministic_and_non_shell():
         assert command[:2] == (sys.executable, "-m"), command
     assert (sys.executable, "-m", "db.sync.sync_wikidata", "--reset", "--high-only") in plan, \
         "the community seed must stay the bounded --high-only import, not the multi-hour full sync"
+    assert (sys.executable, "-m", "db.sync.sources.iana.sync") in plan
 
 
 def test_bootstrap_builds_every_table_the_maintenance_catalog_promises():
@@ -96,7 +97,7 @@ def test_bootstrap_replays_and_abstains_after_ready_version():
         )
         assert tuple(ran) == bootstrap_module.command_plan()
         assert ("running", None) in events and ("ready", None) in events
-        assert ("serving", frozenset()) in events
+        assert ("serving", frozenset({"iana_country"})) in events
 
         ready = True
         events.clear()
@@ -174,6 +175,7 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "-var=db_availability_type=ZONAL",
         "-var=min_instances=0",
         "-var=enable_external_llm=false",
+        "-var=enrichment_active_datasets=iana_country",
         "image_summary.digest",
         "@${digest}",
         "terraform -chdir=\"$ROOT/infra\" plan",
@@ -183,6 +185,7 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "deploy/gcp/build_context.py --output",
         'status --porcelain --untracked-files=all',
         "engine.release_smoke",
+        "--datasets,iana_country",
         'expected 401',
     ):
         assert required in deploy

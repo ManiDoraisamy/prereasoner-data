@@ -153,7 +153,7 @@ tf_vars() {
     "-var=min_instances=0" \
     "-var=deletion_protection=${protection}" \
     "-var=enable_external_llm=false" \
-    "-var=enrichment_active_datasets=" \
+    "-var=enrichment_active_datasets=iana_country" \
     "-var=rtdb_url="
 }
 
@@ -259,7 +259,7 @@ if ((!SKIP_BOOTSTRAP)); then
     --set-cloudsql-instances="$connection" \
     --set-env-vars="SYNC_PG_HOST=/cloudsql/${connection},SYNC_PG_DB=world,SYNC_PG_USER=postgres" \
     --set-secrets="SYNC_PG_PASSWORD=${DB_SECRET}:latest" \
-    --command=python --args=-m,db.sync.community_bootstrap,--role,"$serving_role" \
+    --command=python --args=-m,db.sync.community_bootstrap,--role,"$serving_role",--datasets,iana_country \
     --tasks=1 --max-retries=0 --task-timeout=7200s --cpu=4 --memory=8Gi
   gcloud run jobs execute "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
 
