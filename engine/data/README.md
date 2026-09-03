@@ -66,5 +66,6 @@ required-artifact assertion, so a container that somehow lacks it fails at start
 silently degraded.
 
 A working copy that has not fetched weights still degrades safely rather than crashing:
-`SchemaInterpreter` fails to construct, `engine/knowledge_query` logs it loudly, and answers are unaffected
-— which is why `tests/test_route_wired.py` asserts the class evidence only when the head is present.
+`SchemaInterpreter` fails to construct, `engine/knowledge_query` logs it loudly, and exact source-key
+grounding remains available. Class-based family proposals and class evidence require the head, which is
+why `tests/test_route_wired.py` asserts them only when that manifested artifact is present.

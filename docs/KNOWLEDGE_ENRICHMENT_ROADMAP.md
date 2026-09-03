@@ -13,7 +13,8 @@ and LOINC importers are implemented but correctly create no schema without licen
 access. Exact releases, tables, counts, scope, and limitations live in
 [`SOURCE_DATA.md`](SOURCE_DATA.md). The runtime can select and materialize an activated,
 eligible snapshot into the existing typed planner. `iana_country` is the first code-approved
-logical dataset; a separate deployment allowlist remains empty by default. The legacy
+logical dataset. Raw Terraform keeps the deployment allowlist empty by default, while the guided
+Community deployment activates `iana_country` after applying its grants. The legacy
 Wikidata rename remains a coordinated migration. This status does not claim production
 enrichment accuracy.
 
@@ -24,13 +25,15 @@ pins, a bounded read-only `SnapshotStore`, deterministic requested-attribute ext
 and policy-aware source adapters with typed match/ambiguity/denial outcomes. The canonical
 schema graph and SQL AST now preserve tuple foreign keys as one `AND` join. Seventeen
 definitions are registered: fifteen are `DISABLED`, the embedded ISO currency fixture is
-`EVALUATION`-only, and `iana_country` is `ACTIVE` but still requires a deployment key.
+`EVALUATION`-only, and `iana_country` is `ACTIVE`. Raw Terraform still requires a deployment key;
+the guided Community deployment supplies it.
 Registration alone is not serving activation. Seven immutable domain profiles, conservative role evidence, compatible-role
 dataset gates, request-local materialization, trusted-edge propagation, and complete replay
 manifests are implemented and wired behind those activation states. The generated contract
 corpus, 35-case public-template development corpus, and IANA activation gate are green.
 True opted-in held-out data and application of grants to the production runtime role remain
-open; default production answers are unchanged.
+open. Raw Terraform keeps ordinary production answers unchanged; the guided Community profile
+explicitly enables the reviewed `iana_country` path.
 
 Schema.org is pinned to **v30.0 (2026-03-19)**. A vocabulary upgrade is a reviewed
 registry change and must update this document, registry hashes, fixtures, and compatibility
@@ -667,8 +670,9 @@ least 0.99 and profile recall at least 0.95 on the held-out corpus.
 10. Implemented: `EnrichmentRuntime` materializes bounded matched rows as
     request-local planner tabs, passes trusted edges through the existing serving stack, and
     emits source/profile/model/private-reference replay identity. `iana_country` requires both
-    registry approval and `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default empty allowlist
-    selects nothing. There is no production registry definition for static FX rates; the
+    registry approval and `ENRICHMENT_ACTIVE_DATASETS=iana_country`; raw Terraform's default empty
+    allowlist selects nothing, while the guided Community deployment sets it. There is no production
+    registry definition for static FX rates; the
     separately documented ECB world projection is source-derived and release-labelled.
 
 Gate: no-intent requests are byte-for-byte unchanged; renamed keys use only validated

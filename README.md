@@ -122,7 +122,7 @@ One PostgreSQL database contains:
 | Scope | Schema | Purpose |
 |---|---|---|
 | Curated shared serving projections | `knowledgebase`; `public.settlement` | Internal resolver index, taxonomy, Wikidata-derived QID/geo projections, and the release-labelled ECB daily exchange-rate projection. These are legacy derived runtime schemas, not source owners; the coordinated Wikidata target is `wikidata` |
-| Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. IANA country-name lookup is code-approved; deployment enablement is empty by default. See `docs/SOURCE_DATA.md` |
+| Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. IANA country-name lookup is code-approved; raw Terraform is empty by default and the guided Community deploy enables it. See `docs/SOURCE_DATA.md` |
 | Conversation | `c_<32hex>` | Uploaded tables and world-resolution bridges for one authorized conversation |
 | User | `m_<md5(sub)>` | Private reference dimensions such as product-to-category or SKU-to-region |
 

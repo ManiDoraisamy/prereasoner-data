@@ -78,13 +78,13 @@ The semantic architecture has three layers that must not be conflated:
    values. A model may recognize an exchange-rate relation, but a dated rate must still come from a
    pinned ECB release and pass deterministic temporal and calculation checks.
 
-There are currently two learned consumers of this contract. The unified column router uses a
-71-property Schema.org basis derived primarily from the capped Wikidata entity corpus, plus
-structural, intent, and calculation training. The separate table-evidence head uses the newer
-multi-source Schema.org corpus. It can emit auditable class evidence but does not route a request or
-change an answer. These are distinct shipped artifacts, not evidence that the unified router has
-already been retrained on every publisher source. See [TRAINING.md](TRAINING.md) and
-[MODEL_CARD.md](MODEL_CARD.md).
+There are currently two learned stages over this contract. The shared encoder uses a historical
+71-property compatibility basis derived primarily from capped Wikidata observations, plus
+structural, intent, and calculation training. The active named-dimension head uses the newer
+multi-source Schema.org corpus and emits calibrated class proposals consumed by `engine/router.py`.
+It can propose a resolver family but cannot authorize a join or change a numeric answer. These are
+distinct artifacts, and their corpus and metric claims must remain separate. See
+[TRAINING.md](TRAINING.md) and [MODEL_CARD.md](MODEL_CARD.md).
 
 ## Domain Semantics And Enrichment
 
@@ -92,8 +92,9 @@ Market-led domain profiles and deterministic shared-reference enrichment are spe
 [KNOWLEDGE_ENRICHMENT_ROADMAP.md](KNOWLEDGE_ENRICHMENT_ROADMAP.md). The active publisher
 inventory is recorded in [SOURCE_DATA.md](SOURCE_DATA.md). A physical source release being
 active does not make it planner-visible. `iana_country` is the first code-approved logical
-dataset in the generic enrichment registry, but deployment still requires
-`ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default empty allowlist keeps that path off.
+dataset in the generic enrichment registry. Raw Terraform still requires
+`ENRICHMENT_ACTIVE_DATASETS=iana_country`; the guided Community deployment sets it after the
+database grant step. The raw Terraform default remains empty.
 The production request flow now contains the guarded integration boundary: explicit intent,
 domain-role recognition, database-backed registry selection, request-local materialization,
 trusted-edge propagation, and serving provenance. Currency conversion is a deliberately
@@ -184,38 +185,31 @@ entropy.
 
 ## Named-Dimension Typing And Its Evidence
 
-Typing is intended to use named Schema.org coordinates, and every typing decision is reported as
-the firing that produced it. The two current consumers have different authority: the legacy column
-family model actively selects candidate world tables and can therefore change routing, while the
-newer table-class head is evidence-only and cannot change an answer.
+Typing uses URI-named Schema.org coordinates, and every class decision reports the computation that
+produced it. `engine/schema_model.py` summarizes a table or column through the shared Qwen encoder and
+emits calibrated probabilities for 80 trained property URIs. `engine/schema_decode.py` computes each
+class as:
 
-**Column families (`engine/router.py`).** One trained encoder reads the legacy 71-coordinate basis of
-`engine/data/alloc.json` off a column, and the family is decoded by consensus: the fraction of a family's
-distinctive properties firing above their per-property Youden-J thresholds (`props_thr.json`). `route()` returns
-that per-property evidence — property, score, threshold, fired — so a decode such as "place at 1.0" is reducible to
-the named properties that produced it. Grounding, not the family, remains the decisive gate for a world join.
-This basis predates strict ontology validation: `GeoCoordinates` is a Schema.org class rather than
-a property, and `taxonName` is not in Schema.org 30.0. The active router therefore does not yet
-fully conform to the ontology-only architecture. Migrating it requires a controlled retrain and
-serving transition; the URI-indexed evidence head must not be represented as that migration.
+```text
+sigmoid(class_bias + sum(property_probability * signed_property_weight))
+```
 
-**Table classes (`engine/schema_decode.py`, `engine/schema_model.py`).** The compiled Schema.org 30.0 contract
-(`engine/schema_org.py`, `engine/data/schema_org_v30.json`) defines 1,521 property URIs and 926 classes as stable
-coordinates. A frozen-Qwen linear head emits a calibrated probability per trained property URI, and a class is a
-deterministic superposition of those coordinates: its score is the weighted fraction of its signature properties
-that fire above their calibrated thresholds — the same consensus rule the family router uses. Because the score is
-exactly the weighted fired fraction, the surfaced fired/missing records are the computation, not a narration of it;
-`tests/test_schema_decode.py` asserts that recomputation and the intervention property (suppressing
-`schema:currency` collapses `ExchangeRateSpecification` while leaving disjoint classes numerically identical).
+The response evidence contains the bias, class threshold, each property probability, signed weight,
+and contribution. `tests/test_schema_decode.py` independently recomputes the score and tests causal
+interventions on named coordinates. This is the actual calculation path, not a generated explanation.
 
-The table head's current trained basis contains 75 named properties. It is not the same checkpoint or
-property basis as the 71-property unified router. Coverage is explicit rather than implied. Every
-ontology class is representable; a class is servable only after it
-clears held-out precision and recall gates, and the artifact records each class as servable, calibration-failed,
-observed-insufficient, or representable-unobserved. Unservable classes abstain. The corpus
-(`training/schema_org/`) projects active publisher releases into class-labelled semantic instances, Wikidata
-entities into per-entity and per-property column instances, and the committed demo uploads into class-free
-negatives.
+The compiled Schema.org 30.0 contract (`engine/schema_org.py`,
+`engine/data/schema_org_v30.json`) represents all 1,521 properties and 926 classes. The promoted head
+trains 80 property coordinates, validation-qualifies 56, and releases 11 classes after validation-only
+selection and untouched-test checks. Unsupported coordinates and classes explicitly abstain.
+
+`engine/router.py` is the one learned column-routing owner. It maps a released class through ontology
+inheritance to a coarse resolver family. A class proposal is never sufficient for a join:
+`engine/knowledge_query.py` verifies that the values ground to source keys. When the model abstains,
+the inherited exact source-membership route can recover grounded coverage. This matters for geo
+classes that do not yet clear model release gates. The old 71-coordinate family consensus remains in
+the bundle only for shared-encoder compatibility and diagnostics; it is not a competing production
+router.
 
 Two corpus invariants are enforced at build time, because a leaking corpus trains cleanly and scores *better*
 for leaking. **Splits are drawn per derivation group, never per instance:** the group is everything left of the
@@ -230,7 +224,8 @@ which identical text spans two splits, or in which the realized split shares dri
 Mutable facts stay outside model weights. The model learns that `quote_currency + effective_date + units_per_eur`
 is an exchange-rate shape; the rate for a date still comes from the pinned `ecb.exchange_rate` release. Class
 evidence is captured through the typing buffer in `engine/knowledge_query.py` and attached to the answer by
-`engine/knowledge.py`; a load or decode failure disables the evidence loudly and never fails a request.
+`engine/knowledge.py`; a load or decode failure falls back to deterministic grounding and never fabricates a
+classification.
 
 ## Deterministic Reference Enrichment
 

@@ -180,13 +180,13 @@ def parse_snapshot(snapshot: bytes, *, enforce_minimums: bool = True) -> NlmData
             json.dumps(document, sort_keys=True, ensure_ascii=True),
         ))
 
-        def visit(elements: list[dict], parent_path: str = "") -> None:
+        def visit(elements: list[dict], parent_path: str = "", *, form_id=tiny_id) -> None:
             for index, element in enumerate(elements):
                 path = f"{parent_path}.{index}" if parent_path else str(index)
                 question = element.get("question") or {}
                 cde = question.get("cde") or {}
                 form_elements.append((
-                    tiny_id, path, parent_path, str(element.get("elementType", "")),
+                    form_id, path, parent_path, str(element.get("elementType", "")),
                     str(element.get("label", "")), str(cde.get("tinyId", "")),
                     str(cde.get("version", "")), str(question.get("datatype", "")),
                     bool(question.get("required", False)),

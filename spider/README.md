@@ -1,27 +1,24 @@
-# Spider Benchmark — Diagnose Before Fixing (v2)
+# Spider Benchmark — Diagnose and Measure
 
-> **Current planner note.** This document records the original diagnostic study of the earlier
-> compose route and its delegate. The own-data SQL layer has since been consolidated to a **single
-> deterministic typed-AST planner** (`engine/tables.py: search_ast` → `engine/sql_search.py`) with
-> subqueries, aliases, self-joins, set operations, nested aggregation, and bounded AST search — and
-> hand-written, fully-inspectable ranking. There is **no separate slot-filler, no `--planner` flag,
-> no `PREREASONER_SQL_PLANNER` env var, and no trained proposer or learned ranker**; the planner runs
-> unconditionally. Start with [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the current implementation
-> and results; use this document for the historical probe methodology and route diagnosis.
+> **Current planner note.** The own-data SQL layer is a **single deterministic typed-AST planner**
+> (`engine/tables.py:search_ast` → `engine/sql_search.py`) with subqueries, aliases, self-joins, set
+> operations, nested aggregation, and bounded AST search. Ranking is hand-written and deterministic.
+> There is no separate slot-filler, `--planner` flag, or learned SQL ranker. Start with
+> [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the implementation contract; this document explains the
+> benchmark and its failure taxonomy.
 
-> **Current headline result.** The serving-faithful config (`--selection serving_top1
-> --max-candidates 25`, byte-for-byte `engine/tables.py:_serve_ast`) scores, over all 1034 Spider dev
-> examples with denotation evaluation:
-> - **standard Spider (`whole_db`, gold-blind, all tables fed): 30.3% strict / 38.9% lenient / 50.0%
->   scalar-gold** (313/1034, 402/1034, 204/408) — the number to compare against other Spider systems;
-> - oracle table selection (`gold_tables`, only the gold-referenced tables fed, the product analogue):
->   37.6% strict / 49.2% lenient / 57.6% scalar-gold (389/1034, 509/1034, 235/408).
+> **Current whole-database result.** The serving-faithful config (`--selection serving_top1
+> --max-candidates 25`, byte-for-byte `engine/tables.py:_serve_ast`) scores, over all 1,034 Spider dev
+> examples with denotation evaluation, **34.7% strict / 43.8% lenient / 54.9% scalar-gold**
+> (359/1,034, 453/1,034, 224/408). This is the current gold-blind comparison number. The oracle
+> `gold_tables` ablation must be rerun whenever the planner changes; its previous 41.0% strict result
+> is historical, not a current release claim.
 >
 > The accuracy is entirely the deterministic planner's. Earlier profile-expansion / trained-proposer
 > "pool recall" experiments have been removed from the tree and are not reproducible from HEAD; see the
 > historical note in [`docs/SQL_AST.md`](../docs/SQL_AST.md).
 
-> **Audience: Claude Code / whoever runs this next.** This is a **diagnostic** spec, not a fix spec.
+> **Audience: contributors.** This is both the reproducible benchmark contract and a diagnostic guide.
 > The goal is to localize *why* PreReasoner scores low on Spider before changing anything. This is
 > **v2**: the v1 spec was written against stale internals (`relate11.py`, `model11.py`, `runtime20/*`,
 > a `/reason` view-DAG) that no longer exist, and against a **guiding hypothesis that the executed
@@ -87,7 +84,8 @@ a "12%." Instead we run the parts that *are* faithful and Postgres-free:
 - The **column-typing router** runs standalone on CPU (Probe C).
 - The **static** envelope + coverage analyses need nothing but the data (Probes A, B).
 
-If you later stand up the seeded world Postgres, re-run the *live* stack and compare against Probe D+.
+For a clean release measurement, run from a clean commit and retain the generated JSON manifest. The
+manifest records the source commit, dirty-worktree flag, code hashes, model hashes, and evaluator settings.
 
 ---
 
@@ -229,15 +227,14 @@ is visible; (d) hand spot-checks gate the histogram.
 
 ```bash
 # from repo root; deps already present: torch(cpu), transformers, peft. weights in engine/data/.
-cd spider/probe
-python fetch_data.py                       # dev.json, tables.json, 20 dev SQLite DBs -> ../data
-python static_probe.py                     # Probe A + B
+python -m spider.probe.fetch_data          # dev.json, tables.json, 20 dev SQLite DBs -> spider/data
+python -m spider.probe.static_probe        # Probe A + B
 
 # Probe D+ — the serving-faithful deterministic typed-AST planner (engine/tables.py:_serve_ast).
 # Standard Spider (the headline comparison number):
-python full_eval.py --dbs ../data/dbs --config whole_db --selection serving_top1 --max-candidates 25
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection serving_top1 --max-candidates 25
 # Oracle table selection (the product-analogue upper bound): same command with --config gold_tables:
-python full_eval.py --dbs ../data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
+python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
 
-python typing_probe.py --dbs ../data/dbs   # Probe C
+python -m spider.probe.typing_probe --dbs spider/data/dbs   # Probe C
 ```

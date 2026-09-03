@@ -75,8 +75,11 @@ restrictions, run live auth/isolation tests, and record a seeded release-databas
 
 Schema.org should be described as the semantic shell. Wikidata and publisher datasets supply
 training observations and runtime facts under their own terms; Wikidata is not the primary ontology.
-The current multi-source Schema.org head is evidence-only, while the unified routing checkpoint was
-trained primarily from mapped Wikidata observations. Do not merge those claims.
+The current multi-source Schema.org head is the active ontology-validated class vocabulary and can
+propose resolver families. The shared historical encoder was trained primarily from mapped Wikidata
+observations and still supplies intent, ranking, and calculation signals. Do not merge their corpus
+or metric claims, and do not describe a learned class proposal as authorization for a join: exact
+source-key grounding remains mandatory.
 
 ## Release Checklist
 

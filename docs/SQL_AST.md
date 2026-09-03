@@ -244,7 +244,7 @@ planner-mode flag, no proposer, and no learned ranker to pass.
 Standard Spider (whole_db — the headline comparison number):
 
 ```bash
-python spider/probe/full_eval.py \
+python -m spider.probe.full_eval \
   --dbs spider/data/dbs --config whole_db \
   --selection serving_top1 --max-candidates 25 \
   --tag serving_whole_db \

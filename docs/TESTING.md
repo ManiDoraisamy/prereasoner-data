@@ -170,7 +170,7 @@ Planner behavior changes require a fresh serving-faithful `whole_db` run:
 
 ```powershell
 python spider/probe/fetch_data.py --include-train
-python spider/probe/full_eval.py `
+python -m spider.probe.full_eval `
   --dbs spider/data/dbs `
   --config whole_db `
   --selection serving_top1 `
@@ -206,7 +206,8 @@ complete optional-chat configuration produces the expected resources. Both image
 dummy immutable digests in this structural plan; no image is pulled.
 
 If Docker or Terraform is unavailable, say so explicitly. Static parsing and unit tests do not replace an image
-build or Terraform validation.
+build or Terraform validation. On a fresh checkout, `terraform init -backend=false` is credential-free; an existing
+working directory with a configured GCS backend must be isolated or initialized with its intended backend first.
 
 ## Pull Request Evidence
 

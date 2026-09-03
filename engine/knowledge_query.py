@@ -28,10 +28,11 @@ import numpy as np
 
 from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.tables import qlit
-from engine.entities import EntityQuery, WORLD_TABLE_TYPE, TYPE_TO_FRIENDLY
+from engine.entities import EntityQuery, WORLD_TABLE_TYPE
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 from engine.encoder_overlay import EncoderQuery, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
+from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.bridge import STOP
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
@@ -52,7 +53,7 @@ def _is_num(v):
         return False
 
 
-class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery):
+class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, EntityQuery):
     """Live /api/knowledge served by the unified encoder: bge for connected entity resolution, the unified encoder
     for the anchored readout + operator + the unconnected free-text bridge. Persists the two bridge tables per
     user and answers the hybrid structured+semantic query; delegates aggregates / plain world joins to
@@ -73,71 +74,6 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery):
                 setattr(self.q11, a, getattr(self, a))
 
     # ---------------- Schema.org evidence + deterministic source grounding ----------------
-    GROUND_FRAC = 0.8
-
-    def _router(self):
-        """Return the generalized Schema.org router, reusing the serving encoder."""
-        r = getattr(self, "_column_router", None)
-        if r is None:
-            from engine.router import Router
-            r = self._column_router = Router(
-                shared=(self.qwen, self.tok, self.model),
-                interpreter=self._schema_interpreter(),
-            )
-        return r
-
-    def _schema_interpreter(self):
-        """Load the Schema.org interpreter once; source-grounded routing survives a load failure."""
-        si = self.__dict__.get("_schema_interp", None)
-        if si is None:
-            try:
-                from engine.schema_model import SchemaInterpreter
-                si = SchemaInterpreter(shared=(self.qwen, self.tok))
-            except Exception as e:                                          # noqa: BLE001 — evidence-only, never fatal
-                print(f"[knowledge_query] schema interpreter unavailable -> class evidence off: {e!r}", flush=True)
-                si = False
-            self._schema_interp = si
-        return si or None
-
-    def _grounds(self, cells, wtype):
-        """Return whether enough distinct cells have exact keys for ``wtype``."""
-        norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
-        if len(norms) < 2:
-            return False
-        cur = self._rconn().cursor()
-        cur.execute('SELECT COUNT(DISTINCT norm) FROM knowledgebase."words" WHERE type=%s AND norm = ANY(%s)', (wtype, norms))
-        hit = cur.fetchone()[0]
-        return hit >= max(2, self.GROUND_FRAC * len(norms))
-
-    @staticmethod
-    def _table_sig(table):
-        """(name, columns, values-hash) — the routing cache key: the model types a given (schema, data) ONCE."""
-        import hashlib
-        return (table["name"], tuple(table["columns"]),
-                hashlib.sha256(
-                    repr([tuple(r) for r in table["rows"]]).encode("utf-8", "replace")
-                ).hexdigest()[:12])
-
-    def begin_typing(self):
-        """Open a per-serve capture buffer for the model's typing evidence. Bracket ONE serve; serves are
-        serialized (server WORLD_LOCK + per-sub advisory lock), so a single instance buffer is safe."""
-        self._typing_run = []
-
-    def take_typing(self):
-        """Close the buffer and return the typing evidence captured during the serve (deduped by column)."""
-        return self.__dict__.pop("_typing_run", None) or []
-
-    def _emit_typing(self, records):
-        """Feed typing records to the active capture buffer (if a serve opened one), deduped by (table,column).
-        Called on BOTH route-cache miss and hit, so a repeat query on cached data still surfaces its typing."""
-        buf = self.__dict__.get("_typing_run")
-        if buf is None or not records:
-            return
-        seen = {(r["table"], r["column"]) for r in buf}
-        for rec in records:
-            if (rec["table"], rec["column"]) not in seen:
-                buf.append(rec)
-
     def route(self, table):
         """Route columns with calibrated Schema.org evidence plus exact source keys.
 
@@ -156,56 +92,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery):
             self._emit_typing(typing)
             return dict(routes)
         routes, typing = {}, []
-        if kb_model_route_enabled():
-            try:
-                r = self._router()
-                for ci, col in enumerate(table["columns"]):
-                    cells = [str(rw[ci]) for rw in table["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
-                    if len(cells) < 3:
-                        continue
-                    if self._avglen(table, col) > self.FREETEXT_MIN_AVGLEN:  # free-text (remarks/notes) is NEVER a world
-                        continue                                            # entity + slow to encode -> skip (perf + sense)
-                    o = r.route(cells, header=col)                         # property consensus -> family (None = abstain/literal)
-                    if not o:
-                        continue
-                    grounded = None
-                    if o["geo"]:
-                        for wtype in ("city", "country", "state"):
-                            friendly = TYPE_TO_FRIENDLY.get(wtype)
-                            if friendly in self.words and self._grounds(cells, wtype):
-                                routes[(table["name"], col)] = friendly
-                                grounded = friendly
-                                break
-                    typing.append({"table": table["name"], "column": col, "family": o["family"],
-                                   "frac": o["frac"], "geo": o["geo"], "grounded_to": grounded,
-                                   "class": o.get("class"), "class_name": o.get("class_name"),
-                                   "class_threshold": o.get("class_threshold"),
-                                   "class_score_model": o.get("class_score_model"),
-                                   "class_bias": o.get("class_bias"),
-                                   "ontology_version": o.get("ontology_version"),
-                                   "model_artifact_sha256": o.get("model_artifact_sha256"),
-                                   "evidence": o.get("evidence", [])})
-            except Exception as e:                                         # NEVER silent: log loudly so a degradation
-                import traceback                                           # to value-membership is visible in the logs
-                print(f"[knowledge_query] !! MODEL ROUTING FAILED -> value-membership fallback: {e!r}", flush=True)
-                traceback.print_exc()
-                routes, typing = {}, []
-            si = self._schema_interpreter()                                # TABLE-level schema.org class decode —
-            if si is not None:                                             # independent of column routing, so a column
-                try:                                                       # failure never kills the class evidence
-                    rep = si.interpret_table(table)
-                    typing.append({"table": table["name"], "column": "*", "kind": "schema_class",
-                                   "classes": rep["classes"],
-                                   "properties": [p for p in rep["properties"] if p["fired"]],
-                                   "abstained": rep["abstained"],
-                                   "ontology_version": rep["ontology_version"],
-                                   "model_artifact_sha256": rep["model_artifact_sha256"],
-                                   "input_sha256": rep["input_sha256"]})
-                except Exception as e:                                     # noqa: BLE001 — evidence-only, never fatal
-                    print(f"[knowledge_query] schema class evidence failed (skipped): {e!r}", flush=True)
+        model_routes, model_typing = self._schema_model_routes(table)
+        routes.update(model_routes)
+        typing.extend(model_typing)
         # This is deliberately the exact source-key helper, not ``super().route``:
-        # the latter also invokes the superseded 71-coordinate router. Production
-        # fallback is source evidence only; unsupported Schema.org classes abstain.
+        # the latter invokes the historical anchored family path. Production has one
+        # learned class router; its abstentions fall back directly to source evidence.
         source_routes = self._value_membership_routes(table)
         for key, world_table in source_routes.items():
             routes.setdefault(key, world_table)

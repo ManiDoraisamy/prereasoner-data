@@ -186,7 +186,8 @@ curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
 
 The engine always serves as a dedicated **non-superuser** role (`serving` by default). There is
 no Terraform option that gives the internet-facing service the `postgres` administration
-credential. Reference enrichment remains off by default.
+credential. Reference enrichment remains off by default in raw Terraform; the guided Community
+deployment explicitly enables the reviewed `iana_country` dataset.
 
 - `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
 - `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)

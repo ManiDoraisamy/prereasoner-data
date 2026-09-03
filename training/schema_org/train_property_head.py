@@ -119,13 +119,10 @@ def _precision_threshold(scores: np.ndarray, labels: np.ndarray,
     # Place the boundary in the MIDDLE of the separating interval, not at its upper edge.
     #
     # Pinning the threshold to the lowest positive score is what made the head brittle out of distribution.
-    # Measured on the promoted artifact: 14 of 75 trained dims are perfectly separable on validation, and
-    # every one had its threshold at min(positive) — `currentExchangeRate` separated with a gap of 0.876
-    # (negatives topped out at 0.124, positives started at 0.999) and the threshold sat at 0.9994. An unseen
-    # ECB table scoring 0.9986 — an emphatic firing, 8x further from the negatives than from the threshold —
-    # fell below it and the class abstained. Every point in that interval yields the SAME true and false
-    # positive counts on validation, so the midpoint is free: identical held-out metrics, maximal distance
-    # from both classes. Where the classes are not separable the interval is narrow and this is a no-op.
+    # A prior release pinned perfectly separable thresholds to the lowest positive score. That made
+    # an emphatic unseen positive fall just below the boundary. Every point in the separating interval
+    # has identical validation counts, so the midpoint gives the released model distance from both classes.
+    # Where the classes are not separable the interval is narrow and this is a no-op.
     # `margin` applies only to independently decoded property thresholds. Class thresholds are calibrated
     # on a joint logistic score and are kept at an observed validation boundary; moving that boundary below
     # the selected score can admit a different combination of dimensions that validation never certified.

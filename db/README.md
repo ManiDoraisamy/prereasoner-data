@@ -209,8 +209,9 @@ See [`docs/SOURCE_DATA.md`](../docs/SOURCE_DATA.md) for exact table counts, sour
 licenses, quality limits, and the credential-gated WHO/LOINC commands. Run
 `python -m tests.test_source_sync` for the hermetic parser/validation suite. These tables
 are materialized foundations and do not become planner-visible merely because their physical
-release is active. `iana_country` is code-approved, but it is selected only when the serving
-deployment explicitly sets `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the default is empty.
+release is active. `iana_country` is code-approved. Raw Terraform selects it only when the serving
+deployment explicitly sets `ENRICHMENT_ACTIVE_DATASETS=iana_country`; the guided Community deployment
+sets it after applying the matching grants. The raw Terraform default is empty.
 
 ## 4. Storage expectations (rough)
 

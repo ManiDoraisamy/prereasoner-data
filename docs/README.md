@@ -79,14 +79,14 @@ candidate shapes, ranking mistakes, source gaps, or entity-resolution errors.
 | Conversation-scoped uploads and user-scoped private references | **Current** | Organization-wide tenancy is not implemented |
 | Wikidata-backed entity grounding | **Current** | Uses legacy `public` and `knowledgebase` storage names pending migration |
 | ECB dated currency conversion | **Current** | Uses a release-labelled derived daily projection |
-| Schema.org class interpretation | **Current, evidence-only** | Cannot choose a route or release an answer |
-| IANA country enrichment | **Opt-in** | Requires code approval, database grants, and `ENRICHMENT_ACTIVE_DATASETS` |
+| Schema.org named-dimension interpretation | **Current** | 80 trained properties; 11 released classes propose grounded resolver routes |
+| IANA country enrichment | **Current in guided Community deploy** | Raw Terraform remains opt-in; the one-click deployment applies grants and activates `iana_country` |
 | Other synchronized publisher datasets | **Current storage, not serving** | Physical releases exist; planner activation remains gated |
 | Firebase trace streaming | **Opt-in** | Responses still work when RTDB is disabled |
 | Anthropic conversational orchestration | **Opt-in** | Requires the deployment switch and operator configuration |
 | Runtime weights | **External** | Public, manifest-pinned Hugging Face bundle; fetched on demand |
 | Seeded knowledge database | **External** | Not included as a snapshot; built through source ETL |
-| `wikidata` schema migration, ontology-clean router retrain, organization tenancy, and generic temporal enrichment | **Planned** | Do not describe as shipped |
+| `wikidata` storage migration, organization tenancy, and generic temporal enrichment | **Planned** | Do not describe as shipped |
 
 ## Canonical Documents
 

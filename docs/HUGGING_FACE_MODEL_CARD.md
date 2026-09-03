@@ -48,10 +48,11 @@ The base Qwen model is downloaded separately from its publisher.
 
 ## Model Boundary
 
-The model emits scores and embeddings for column properties, structural intent, routing evidence,
-and calculation operands. These scores cannot directly add a table, join, calculation, route, or
-answer. Deterministic code applies typed constraints, explicit source grounding, abstention rules,
-and execution checks.
+The model emits named Schema.org property probabilities, calibrated class proposals, embeddings for
+structural intent and ranking, and calculation operand signals. A released class may propose a
+coarse resolver family, but no score can authorize a table, join, calculation, or answer.
+Deterministic code applies ontology mapping, exact source grounding, typed constraints, abstention
+rules, and execution checks.
 
 Schema.org 30.0 supplies the named semantic coordinate system. Wikidata and publisher datasets
 supply observations mapped into those coordinates; mutable source facts are not intended to be
@@ -65,11 +66,11 @@ See the source repository's
 [Spider results](https://github.com/ManiDoraisamy/prereasoner-data/blob/main/spider/results/RESULTS.md)
 for component boundaries, denominators, and limitations.
 
-The bytes in this bundle are immutable and hash-verified. The currently published unified-router
-checkpoint does not have a complete machine-readable record of its source-corpus hash, split,
-random seed, and held-out report. Do not treat its historical training run as independently
-reproducible, combine metrics from different heads, or infer support for every representable
-Schema.org class. Unsupported and under-calibrated coordinates abstain.
+The bytes in this bundle are immutable and hash-verified. The promoted Schema.org head has a
+machine-readable corpus, split, seed, dependency, encoder, and held-out metric manifest. The shared
+encoder's historical training run has less completely recorded source-corpus provenance; do not combine metrics from the two
+tracks. All 926 Schema.org classes are representable, but only the released calibrated subset is
+servable. Unsupported and under-calibrated coordinates abstain.
 
 ## Intended Use
 

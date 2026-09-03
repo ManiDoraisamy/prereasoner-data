@@ -77,10 +77,11 @@ All source constraints are validated and each source has exactly one active rele
 are currently no active-release views. Serving must resolve and pin a release explicitly;
 queries must never read a source table without a `release_id` predicate.
 
-Serving status is independent of this physical release ledger. As of 2026-08-17,
+Serving status is independent of this physical release ledger. As of 2026-09-03,
 `iana.country_code` is the only code-approved logical source dataset, under registry name
-`iana_country`; deployments remain off unless their allowlist names it. All other source
-definitions are disabled. CLDR currency data is intentionally not activated: code, localized
+`iana_country`. Raw Terraform keeps the enrichment allowlist empty unless an operator names a
+dataset, while the guided Community deployment supplies `iana_country` explicitly after grants.
+All other source definitions are disabled. CLDR currency data is intentionally not activated: code, localized
 name, symbol, and fraction facts live in separate locale-aware tables, so a single
 `cldr.currency_code` lookup would lose required semantics.
 
@@ -188,5 +189,5 @@ projection, not direct planner access to arbitrary `ecb` rows.
 Other publisher tables remain planner-invisible unless a code-approved registry definition,
 deployment allowlist, grants, eligibility evidence, bounded request-local materialization,
 and release evaluation all agree. At this revision, `iana_country` is the only such
-source-registry dataset approved for activation; ECB conversion is the explicit derived-world
-exception described above.
+source-registry dataset approved for activation; the guided Community path activates it. ECB
+conversion is the explicit derived-world exception described above.

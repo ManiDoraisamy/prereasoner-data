@@ -6,10 +6,11 @@
 > written so a reviewer can find every claim's ground and every caveat.
 
 > **Current-status boundary.** The taxonomy re-anchor in section 6 is historical lineage, not the
-> shipped model. Production currently uses a 90-coordinate property/intent encoder for column
-> routing and a separate URI-indexed Schema.org head for evidence. The router still contains two
-> legacy non-property coordinates and is not yet the ontology-clean multi-source target described
-> in `ARCHITECTURE.md`.
+> active class vocabulary. Production uses a 90-coordinate shared Qwen/LoRA representation plus
+> the promoted URI-indexed Schema.org head. `engine/router.py` consumes calibrated class proposals
+> from that head and `engine/knowledge_query.py` requires exact source-key grounding before a join.
+> The shared representation retains two historical non-property coordinates for compatibility; they
+> are not part of the active Schema.org class vocabulary.
 
 ## Contents
 
@@ -90,10 +91,11 @@ hand-built graph prior — so we don't claim that.
 ## 3. Why this is not RAG (it's closer to the inverse)
 
 The intended factual boundary is "fetch world facts from an external store instead of generating
-them from weights" — but that is just *using a database*, which predates RAG by decades. The
-legacy router's entity-name supervision can still absorb entity-to-property associations, so the
-stronger claim that no mutable fact signal exists in any weight is not justified until that
-supervision is replaced.
+them from weights" — but that is just *using a database*, which predates RAG by decades. The shared
+encoder retains historical entity-name supervision, so the stronger claim that no mutable fact
+signal exists in any weight is not justified for that compatibility artifact. The active
+Schema.org head uses evidence-visible, group-isolated multi-source instances; mutable answer facts
+still come from source releases.
 On every operative axis the two are opposites:
 
 | | **RAG** | **PreReasoner** |
@@ -111,8 +113,8 @@ stack collapses into one exact query. RAG searches; this queries.*
 **One honest caveat.** The optional hosted language assistant can present results, resolve
 ambiguity, and orchestrate tools, but it does not own the executed query or numeric result.
 Learned, *soft* engine steps include **type classification + entity
-resolution** — which world table a column routes to (via legacy property-family consensus and
-calibrated thresholds) and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
+resolution** — which world table a column proposes via Schema.org named-property class scores and
+calibrated thresholds, and which world entity a cell resolves to (`knowledgebase."words"` exact-norm
 match first, then a bge-small cosine nearest-neighbour above threshold). Both steps are
 interpretable, and they are *classification / resolution*, not answer-generation; once the cell
 is resolved to a **QID**, the row match and the computation that follow are exact equality joins.
@@ -237,36 +239,35 @@ The tabular system's load-bearing fragilities, stated plainly:
 
 ## 8. Reproducing the models
 
-There are two current training tracks and one historical warm start:
+There are two model tracks and one historical warm start:
 
 1. **Source databases** — `db/README.md` and `SOURCE_DATA.md` build the Wikidata entity store and
    publisher-owned releases.
-2. **Unified column router** — `training/props/pipeline.md` maps capped Wikidata observations into
-   the legacy property-named basis, adds intent and calculation supervision, trains on GPU, and
-   promotes one manifest-pinned encoder bundle.
-3. **Schema.org evidence head** — `python -m training.schema_org.corpus` builds the group-disjoint
-   multi-source corpus; `train_property_head.py` trains the URI-indexed head; `promote.py` installs
-   the calibrated evidence artifacts.
+2. **Shared intent and ranking encoder** — `training/props/pipeline.md` maps capped Wikidata
+   observations into a historical property-named basis, adds intent and calculation supervision,
+   and promotes the encoder bundle consumed by serving.
+3. **Schema.org named-dimension model** — `python -m training.schema_org.corpus` builds the
+   group-disjoint multi-source corpus; `train_property_head.py` trains the URI-indexed head;
+   `promote.py` installs calibrated property and class artifacts used by `engine/router.py`.
 4. **Historical gen20 taxonomy** — `training/train/`, `training/taxonomy/`, and
    `training/anchor/` supply the warm-start lineage. They do not reproduce the shipped property
    model by themselves.
 
-The current stable router bundle is byte-pinned but lacks complete machine-readable corpus, split,
-seed, and metric provenance. The Schema.org head carries those records. See `TRAINING.md`,
-`MODEL_CARD.md`, and `DATA_CARD.md` for the release boundary.
+The promoted Schema.org head carries complete machine-readable corpus, split, seed, dependency,
+encoder, and held-out metric provenance. The shared encoder's historical training source corpus is
+less completely recorded; see `TRAINING.md`, `MODEL_CARD.md`, and `DATA_CARD.md` for the release
+boundary.
 
 ---
 
 ## 9. Summary for reviewers
 
 > PreReasoner combines learned semantic signals with specified relational structure. The current
-> production column router reads a 90-coordinate Qwen/LoRA plus relational-model representation and
-> actively selects candidate world tables; a separate multi-source Schema.org head emits
-> URI-indexed table evidence but does not route or answer. Foreign-key discovery, typed AST search,
-> calculation verification, and execution are deterministic. Schema.org defines the semantic
-> vocabulary; Wikidata and publisher datasets provide observations, QID bridges, and pinned facts.
-> The architecture target is one ontology-valid semantic path, but the current router predates that
-> target, contains two invalid property coordinates, and was trained with entity-name supervision
-> that does not always expose the labelled property value. Those are release limitations, not
-> interpretability claims. The historical 93-dimension taxonomy re-anchor remains evidence about an
-> earlier experiment only.
+> production class vocabulary is the multi-source Schema.org 30.0 head: named property probabilities
+> form calibrated class proposals, and exact source-key grounding authorizes a world join. The shared
+> Qwen/LoRA representation also supplies structural intent, ranking, and calculation retrieval.
+> Foreign-key discovery, typed AST search, calculation verification, and execution are deterministic.
+> Schema.org defines the semantic vocabulary; Wikidata and publisher datasets provide observations,
+> QID bridges, and pinned facts. All ontology classes are representable, while only the calibrated
+> supported subset is servable and the rest abstain. Historical taxonomy experiments remain lineage,
+> not active model behavior.

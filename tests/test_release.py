@@ -36,6 +36,18 @@ def test_public_artifact_boundary():
     assert gitleaks.count("paths =") == 1
 
 
+def test_spider_evaluator_supports_module_invocation():
+    result = subprocess.run(
+        [sys.executable, "-m", "spider.probe.full_eval", "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "--config" in result.stdout
+
+
 def test_public_weight_bundle_is_manifested_and_documented():
     manifest = json.loads(_text("engine/data/weights_manifest.json"))
     assert manifest["repository"] == "prereasoner/prereasoner-weights"

@@ -144,56 +144,26 @@ and large binaries. This repo starts clean; the private repos remain as archives
 
 Apache 2.0 — the patent grant matters for research code intended for broad reuse.
 
-## The Schema.org named-property head supersedes the 9-family router
+## The generalized Schema.org head is the active class-routing vocabulary
 
-Two learned typers exist today. `engine/router.py` decodes an uploaded COLUMN to one of 9 families over a
-71-coordinate Schema.org-property-named basis whose supervision instances come primarily from
-Wikidata (Wikidata is not the vocabulary authority); `engine/schema_model.py` decodes a TABLE to
-Schema.org classes over a URI-indexed basis compiled from Schema.org 30.0 and trained on all active
-publisher releases. They share an architecture — consensus over calibrated per-property firing — and they
-now share a granularity, because the corpus emits column-shaped instances rendered by the same
-`summarize_table` serving function the interpreter uses.
+The retirement gate recorded here on 2026-08-20 has been completed. `engine/router.py` now consumes
+the URI-indexed Schema.org property head and calibrated class signatures; it no longer executes the
+old nine-family property-consensus decoder. The shared Qwen/LoRA encoder and historical allocation
+remain because structural intent, ranking, calculation retrieval, and the generalized head use that
+representation. They are not a second class-routing owner.
 
-The decision is that the head is the successor and the router is scheduled for retirement, for three
-reasons that are properties of the design rather than of the current metrics:
+The promoted v2 class model is a deterministic logistic superposition of surfaced property
+probabilities and signed weights. It represents every Schema.org 30.0 class, releases only classes
+that pass validation-only selection and untouched-test gates, and abstains everywhere else.
 
-* **One ontology, validated.** The router's basis was assembled without checking terms against Schema.org,
-  so it carries dimensions that are not properties at all — `GeoCoordinates` is a class, `taxonName` is not
-  a Schema.org term in any version — and dimensions whose supervision came from a hardcoded modal stamp
-  over a corpus file that no longer exists in the repository. The head rejects both by construction.
-* **One coordinate space.** Families are a closed 9-way partition; the head's coordinates are 1,521
-  property URIs with inheritance, so a new domain extends the basis instead of needing a new family.
-* **One evidence contract.** Coverage is explicit per class (servable / calibration-failed /
-  observed-insufficient / representable-unobserved) rather than implied by a family's existence.
+The model's authority remains deliberately narrow:
 
-Retirement is gated on measurement, not on this decision: the head must match or beat the router on
-column typing under the same held-out split before `engine/knowledge_query.py` routing migrates onto it.
-Until that is measured and recorded in `spider/results/RESULTS.md`, the router remains the production owner
-of world-join column typing and its `alloc.json` / `props_thr.json` / `families.json` bundle stays pinned.
-Two owners is a documented, expiring state — not a permanent boundary.
+* a released class may propose a coarse resolver family;
+* ontology inheritance defines that class-to-family mapping;
+* exact source-key grounding authorizes the world join;
+* deterministic membership fallback preserves grounded coverage when the model abstains; and
+* typed planners and calculation specifications remain the only owners of SQL and arithmetic.
 
-**Removal condition:** the head matches or beats the router on per-column family typing. **Removal date:
-2026-11-19.**
-
-**Measured 2026-08-20 — the router stays. The head is not yet a candidate.** Both models were run over the
-same six columns (three geo entity columns, one person column, two literals): router 5/6, head 2/6. The head
-abstained on *every* entity column and was correct only on the two literals, where abstention is the right
-answer anyway. The cause is structural rather than marginal: the router's entire production responsibility is
-geo column typing for world joins, and its geo family spans City, Country, AdministrativeArea, Hospital,
-School, CollegeOrUniversity, LandmarksOrHistoricalBuildings and Place — of which the head currently has
-**zero** servable. Its six servable classes (ExchangeRateSpecification, UnitPriceSpecification, Movie,
-Periodical, Product, Taxon) do not intersect that job at all.
-
-What the measurement does show is that the head's *property* layer already reads these columns correctly —
-`addressCountry` and `countryOfOrigin` fire on a country column, `foundingLocation` on a city column — and it
-is only the class layer that abstains. So the unblocking condition is specific and testable: the geo classes
-must clear the serving gates (held-out precision >= 0.90, recall >= 0.60), which today they cannot because
-their signatures are built from properties whose Wikidata values are QID references the capped snapshot does
-not contain. **That is a data problem, the same one that makes 28 legacy dims unreachable, and no amount of
-recalibration fixes it.** Re-run the comparison after a Person/entity source lands; until then "two owners"
-is the correct state, not a deferred cleanup.
-
-Note the measurement also surfaced a router weakness worth keeping in view: it typed a column of person names
-(`customer`) as `place` at 0.50. That is the documented design — the router proposes a family and *grounding*
-disposes, so a name column that does not ground to real cities is dropped before any join — but it means the
-router's raw family output should not be read as a standalone type judgement.
+This separation lets new publisher observations expand named Schema.org coordinates without adding
+another hand-built family model, while preventing a plausible learned classification from granting
+access to unrelated source facts.

@@ -36,14 +36,24 @@ if ROOT not in sys.path:
 
 warnings.filterwarnings("ignore")
 
-from hardness import eval_hardness
-from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_budget
-from spider_eval import (
-    compare,
-    record_integrated_result,
-    recursive_gold_table_names,
-    spider_foreign_keys,
-)
+try:
+    from .hardness import eval_hardness
+    from .evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_budget
+    from .spider_eval import (
+        compare,
+        record_integrated_result,
+        recursive_gold_table_names,
+        spider_foreign_keys,
+    )
+except ImportError:  # direct `python full_eval.py` from spider/probe remains supported
+    from hardness import eval_hardness
+    from evalutil import load_capped, build_mem_db, exec_sql_timed, run_with_budget
+    from spider_eval import (
+        compare,
+        record_integrated_result,
+        recursive_gold_table_names,
+        spider_foreign_keys,
+    )
 
 DIFFS = ["easy", "medium", "hard", "extra"]
 # Routing is NOT mirrored here — it is IMPORTED from the ONE shared router (engine.routing), the same module
