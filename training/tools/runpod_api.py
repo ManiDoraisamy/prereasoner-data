@@ -99,11 +99,13 @@ def _clear(pid: str) -> None:
 
 def create(max_minutes: int) -> str:
     # RunPod REST does not accept the CLI-documented `terminateAfter` field. Arm the
-    # provider-supplied, pod-scoped CLI before /start.sh instead. The caller's finally
-    # block remains a second, independent deletion path.
+    # provider-supplied, pod-scoped CLI before /start.sh instead. Current images use
+    # ``pod delete``; the older spelling remains only as a compatibility fallback.
+    # The caller's finally block is a second, independent deletion path.
     guard_seconds = max_minutes * 60
     delete_self = (
         f"sleep {guard_seconds}; "
+        'runpodctl pod delete "$RUNPOD_POD_ID" || '
         'runpodctl remove pod "$RUNPOD_POD_ID" || '
         'curl -fsS -X DELETE "https://rest.runpod.io/v1/pods/$RUNPOD_POD_ID" '
         '-H "Authorization: Bearer $RUNPOD_API_KEY"'
