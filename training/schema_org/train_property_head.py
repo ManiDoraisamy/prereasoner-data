@@ -226,7 +226,7 @@ def _fit_continuous_class_model(
         )
         threshold, feasible = _precision_threshold(
             validation_scores[scope], validation_truth[scope],
-            MIN_CLASS_PRECISION, margin=False,
+            MIN_CLASS_PRECISION,
         )
         metrics, _scope = _class_metrics(
             validation_scores, validation_truth, validation_property_sets, ordered, threshold,

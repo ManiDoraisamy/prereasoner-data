@@ -445,6 +445,20 @@ def test_class_model_is_a_deterministic_signed_named_dimension_superposition():
     assert regularization > 0
 
 
+def test_class_threshold_uses_the_validation_gap_without_changing_decisions():
+    import numpy as np
+
+    from training.schema_org.train_property_head import _metrics, _precision_threshold
+
+    scores = np.array([0.91, 0.81, 0.22, 0.10])
+    truth = np.array([1, 1, 0, 0], dtype=np.int8)
+    edge, feasible = _precision_threshold(scores, truth, 0.97, margin=False)
+    midpoint, midpoint_feasible = _precision_threshold(scores, truth, 0.97)
+    assert feasible and midpoint_feasible
+    assert edge == 0.81 and midpoint == (0.81 + 0.22) / 2.0
+    assert _metrics(scores, truth, edge) == _metrics(scores, truth, midpoint)
+
+
 def test_class_metrics_separate_evidence_coverage_from_accuracy():
     import numpy as np
 
@@ -480,6 +494,7 @@ TESTS = [
     test_schema_training_selection_never_reads_test_evidence,
     test_schema_promotion_preserves_the_served_class_surface,
     test_class_model_is_a_deterministic_signed_named_dimension_superposition,
+    test_class_threshold_uses_the_validation_gap_without_changing_decisions,
     test_class_metrics_separate_evidence_coverage_from_accuracy,
 ]
 

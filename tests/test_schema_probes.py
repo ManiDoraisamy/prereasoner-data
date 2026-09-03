@@ -82,9 +82,8 @@ PROPERTY_PROBES = [
 # is the threshold placed to admit this particular out-of-distribution score. Only the first is a property
 # of the model. Measured here: codingSystem scores 0.884 on the table that carries "coding system:
 # ICD-10-CM" and 0.004 on the same codes without it — a 0.88 separation, i.e. the column is read correctly.
-# It nonetheless sits ~0.02 under the threshold, which is placed at the midpoint of its validation
-# separating interval. That residual is recorded rather than tuned away: moving the placement rule to catch
-# one probe would be fitting the calibration to the test.
+# Class calibration is tested separately from this property-level discrimination: a property can remain
+# below its independent assertion threshold while its continuous probability contributes to a class score.
 DISCRIMINATION_PROBES = [
     ("codingSystem", DIAGNOSES, DIAGNOSES_NO_SYSTEM, 0.50),
     ("inCodeSet", DIAGNOSES, DIAGNOSES_NO_SYSTEM, 0.50),
