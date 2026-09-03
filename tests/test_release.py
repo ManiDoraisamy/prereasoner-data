@@ -408,10 +408,29 @@ def test_class_signature_selection_drops_recall_harming_dimensions():
     ]
     selected, _threshold, feasible, metrics = _select_class_signature(
         signature, profiles, np.array([1, 1, 0, 0], dtype=np.int8),
+        [frozenset({"a", "b"}), frozenset({"a", "b"}),
+         frozenset({"a", "c"}), frozenset({"c"})],
         {"a": 0.5, "b": 0.5, "c": 0.5},
     )
     assert [item["property"] for item in selected] == ["a", "b"]
     assert feasible and metrics["precision"] == 1.0 and metrics["recall"] == 1.0
+    assert metrics["evidence_coverage"] == 1.0
+
+
+def test_class_metrics_separate_evidence_coverage_from_accuracy():
+    import numpy as np
+
+    from training.schema_org.train_property_head import _class_metrics
+
+    metrics, scope = _class_metrics(
+        np.array([0.9, 0.1, 0.1]), np.array([1, 1, 0], dtype=np.int8),
+        [frozenset({"a", "b"}), frozenset({"a"}), frozenset({"a", "b"})],
+        [{"property": "a", "weight": 1.0}, {"property": "b", "weight": 1.0}],
+        0.8,
+    )
+    assert scope.tolist() == [True, False, True]
+    assert metrics["precision"] == 1.0 and metrics["recall"] == 1.0
+    assert metrics["evidence_coverage"] == 0.5
 
 
 TESTS = [
@@ -433,6 +452,7 @@ TESTS = [
     test_schema_training_selection_never_reads_test_evidence,
     test_schema_promotion_preserves_the_served_class_surface,
     test_class_signature_selection_drops_recall_harming_dimensions,
+    test_class_metrics_separate_evidence_coverage_from_accuracy,
 ]
 
 

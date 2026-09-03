@@ -198,11 +198,15 @@ def gate(candidate: Path) -> list[str]:
         if (
             validation.get("precision", 0) < gates.get("class_min_precision", 1)
             or validation.get("recall", 0) < gates.get("class_min_recall", 1)
+            or validation.get("evidence_coverage", 0)
+            < gates.get("class_min_evidence_coverage", 1)
         ):
             problems.append(f"servable class does not satisfy recorded gates: {row.get('uri')}")
         if (
             test.get("precision", 0) < release_gates.get("class_test_min_precision", 1)
             or test.get("recall", 0) < release_gates.get("class_test_min_recall", 1)
+            or test.get("evidence_coverage", 0)
+            < release_gates.get("class_test_min_evidence_coverage", 1)
         ):
             problems.append(
                 f"servable class does not satisfy untouched heldout gates: {row.get('uri')}"

@@ -62,8 +62,11 @@ MIN_PROPERTY_PRECISION = 0.95
 MIN_PROPERTY_RECALL = 0.60
 MIN_CLASS_PRECISION = 0.97
 MIN_CLASS_RECALL = 0.70
+MIN_CLASS_EVIDENCE_PROPERTIES = 2
+MIN_CLASS_EVIDENCE_COVERAGE = 0.25
 MIN_CLASS_TEST_PRECISION = 0.90
 MIN_CLASS_TEST_RECALL = 0.60
+MIN_CLASS_TEST_EVIDENCE_COVERAGE = 0.20
 
 
 def _training_properties(property_order, property_support, property_groups) -> tuple[str, ...]:
@@ -145,9 +148,40 @@ def _metrics(scores: np.ndarray, labels: np.ndarray, threshold: float) -> dict:
             "f1": round(f1, 6)}
 
 
+def _class_metrics(
+    scores: np.ndarray, truth: np.ndarray, property_sets: list[frozenset[str]],
+    signature: list[dict], threshold: float,
+) -> tuple[dict, np.ndarray]:
+    """Evaluate class inference only where its named property evidence is observable.
+
+    Source identity tells us an entity's class even when a packed facet exposes only one broad property.
+    That fragment is still useful property supervision, but it cannot establish a class superposition and
+    must not be counted as a class false negative. Negatives always remain in scope. Coverage is reported
+    and gated separately so a tiny, convenient subset cannot certify a class.
+    """
+    signature_properties = {item["property"] for item in signature}
+    positive = truth.astype(bool)
+    positive_count = int(positive.sum())
+    evidenced_positive = np.array([
+        bool(is_positive) and len(signature_properties & properties) >= MIN_CLASS_EVIDENCE_PROPERTIES
+        for is_positive, properties in zip(positive, property_sets)
+    ])
+    scope = ~positive | evidenced_positive
+    metrics = _metrics(scores[scope], truth[scope], threshold)
+    eligible = int(evidenced_positive.sum())
+    metrics.update({
+        "all_positives": positive_count,
+        "evidence_eligible_positives": eligible,
+        "evidence_coverage": round(eligible / max(positive_count, 1), 6),
+        "min_evidence_properties": MIN_CLASS_EVIDENCE_PROPERTIES,
+    })
+    return metrics, scope
+
+
 def _select_class_signature(
     signature: list[dict], validation_profiles: list[dict[str, float]],
-    validation_truth: np.ndarray, property_thresholds: dict[str, float],
+    validation_truth: np.ndarray, validation_property_sets: list[frozenset[str]],
+    property_thresholds: dict[str, float],
 ) -> tuple[list[dict], float, bool, dict]:
     """Select a compact class signature using validation data only.
 
@@ -159,7 +193,10 @@ def _select_class_signature(
     """
     if len(signature) < 2:
         empty_scores = np.zeros(len(validation_truth))
-        return signature, 1.0, False, _metrics(empty_scores, validation_truth, 1.0)
+        metrics, _scope = _class_metrics(
+            empty_scores, validation_truth, validation_property_sets, signature, 1.0,
+        )
+        return signature, 1.0, False, metrics
 
     ordered = sorted(signature, key=lambda item: item["property"])
     cache: dict[tuple[int, ...], tuple[float, bool, dict]] = {}
@@ -171,16 +208,24 @@ def _select_class_signature(
                 ClassDecoder.score_signature(profile, subset, property_thresholds)
                 for profile in validation_profiles
             ])
-            threshold, feasible = _precision_threshold(
-                scores, validation_truth, MIN_CLASS_PRECISION, margin=False,
+            provisional, scope = _class_metrics(
+                scores, validation_truth, validation_property_sets, subset, 1.0,
             )
-            cache[indices] = threshold, feasible, _metrics(scores, validation_truth, threshold)
+            threshold, feasible = _precision_threshold(
+                scores[scope], validation_truth[scope], MIN_CLASS_PRECISION, margin=False,
+            )
+            metrics, _scope = _class_metrics(
+                scores, validation_truth, validation_property_sets, subset, threshold,
+            )
+            assert provisional["evidence_coverage"] == metrics["evidence_coverage"]
+            cache[indices] = threshold, feasible, metrics
         return cache[indices]
 
     def rank(indices: tuple[int, ...]) -> tuple:
         threshold, feasible, metrics = evaluate(indices)
+        effective_recall = metrics["recall"] * metrics["evidence_coverage"]
         return (
-            int(feasible), metrics["recall"], metrics["precision"], -len(indices),
+            int(feasible), effective_recall, metrics["recall"], metrics["precision"], -len(indices),
             sum(float(ordered[index]["weight"]) for index in indices),
             tuple(ordered[index]["property"] for index in indices), -threshold,
         )
@@ -223,13 +268,15 @@ def _select_class_signature(
 
 
 def _error_sources(scores: np.ndarray, labels: np.ndarray, threshold: float,
-                   indices: np.ndarray, instances) -> dict:
+                   indices: np.ndarray, instances, scope: np.ndarray | None = None) -> dict:
     """Compact diagnostics; test errors are reported but never used for calibration."""
     predicted = scores >= threshold
     labels = labels.astype(bool)
     false_positive = Counter()
     false_negative = Counter()
     for local_index, corpus_index in enumerate(indices):
+        if scope is not None and not scope[local_index]:
+            continue
         source = instances[int(corpus_index)].source
         if predicted[local_index] and not labels[local_index]:
             false_positive[source] += 1
@@ -467,6 +514,9 @@ def main() -> None:
     class_metrics = {}
     profiles = [dict(zip(properties, row)) for row in probabilities]
     validation_profiles = [profiles[int(index)] for index in split_index["validation"]]
+    validation_property_sets = [
+        frozenset(instances[int(index)].properties) for index in split_index["validation"]
+    ]
     for uri, row in by_uri.items():
         if row["state"] != "data_ready_uncalibrated":
             continue
@@ -485,7 +535,8 @@ def main() -> None:
             continue
         truth = np.array([1 if uri in item.classes else 0 for item in instances], dtype=np.int8)
         row["signature"], threshold, feasible, validation_metrics = _select_class_signature(
-            row["signature"], validation_profiles, truth[split_index["validation"]], thresholds,
+            row["signature"], validation_profiles, truth[split_index["validation"]],
+            validation_property_sets, thresholds,
         )
         scores = np.array([
             ClassDecoder.score_signature(profile, row["signature"], thresholds)
@@ -493,14 +544,20 @@ def main() -> None:
         ])
         test_scores = scores[split_index["test"]]
         test_truth = truth[split_index["test"]]
-        test_metrics = _metrics(test_scores, test_truth, threshold)
+        test_property_sets = [
+            frozenset(instances[int(index)].properties) for index in split_index["test"]
+        ]
+        test_metrics, test_scope = _class_metrics(
+            test_scores, test_truth, test_property_sets, row["signature"], threshold,
+        )
         test_metrics.update(_error_sources(
-            test_scores, test_truth, threshold, split_index["test"], instances,
+            test_scores, test_truth, threshold, split_index["test"], instances, test_scope,
         ))
         servable = (
             feasible
             and validation_metrics["precision"] >= MIN_CLASS_PRECISION
             and validation_metrics["recall"] >= MIN_CLASS_RECALL
+            and validation_metrics["evidence_coverage"] >= MIN_CLASS_EVIDENCE_COVERAGE
         )
         row["threshold"] = round(threshold, 8)
         row["servable"] = servable
@@ -539,10 +596,13 @@ def main() -> None:
             "property_min_validation_groups": MIN_PROPERTY_VALIDATION_GROUPS,
             "class_min_precision": MIN_CLASS_PRECISION,
             "class_min_recall": MIN_CLASS_RECALL,
+            "class_min_evidence_properties": MIN_CLASS_EVIDENCE_PROPERTIES,
+            "class_min_evidence_coverage": MIN_CLASS_EVIDENCE_COVERAGE,
         },
         "release_gates": {
             "class_test_min_precision": MIN_CLASS_TEST_PRECISION,
             "class_test_min_recall": MIN_CLASS_TEST_RECALL,
+            "class_test_min_evidence_coverage": MIN_CLASS_TEST_EVIDENCE_COVERAGE,
         },
         "property_metrics": property_metrics,
         "qualified_properties": tuple(uri for uri in properties if uri in qualified_properties),
