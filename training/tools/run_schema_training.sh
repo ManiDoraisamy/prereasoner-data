@@ -58,3 +58,9 @@ for artifact in \
   test -f "$candidate/$artifact"
   cp "$candidate/$artifact" "$output_dir/$artifact"
 done
+# Derived public-corpus embeddings are not a serving artifact, but returning the
+# fingerprinted cache makes calibration iteration reproducible without another
+# GPU pass. train_property_head validates the encoder hash before every reuse.
+if [[ -f "$root/training/schema_org/data/schema_embeddings.npz" ]]; then
+  cp "$root/training/schema_org/data/schema_embeddings.npz" "$output_dir/schema_embeddings.npz"
+fi

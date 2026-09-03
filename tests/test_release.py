@@ -373,6 +373,7 @@ def test_schema_training_selection_never_reads_test_evidence():
     assert '"trainer": _trainer_identity()' in source
     assert '"runtime": _runtime_identity(torch, device, args.runner_image)' in source
     assert '"--runner-image"' in source
+    assert "schema_embeddings.npz" in _text("training/tools/run_schema_training.sh")
     promotion = _text("training/schema_org/promote.py")
     assert "trainer source does not match its recorded commit" in promotion
     assert "does not identify its immutable runner image" in promotion
@@ -423,6 +424,28 @@ def test_class_signature_selection_drops_recall_harming_dimensions():
     assert metrics["evidence_coverage"] == 1.0
 
 
+def test_class_weights_are_training_fit_named_dimensions():
+    import numpy as np
+
+    from training.schema_org.train_property_head import _fit_class_weights
+
+    signature = [
+        {"property": "diagnostic", "weight": 1.0},
+        {"property": "generic", "weight": 1.0},
+    ]
+    profiles = [
+        *({"diagnostic": 1.0, "generic": 1.0} for _ in range(50)),
+        *({"diagnostic": 0.0, "generic": 1.0} for _ in range(50)),
+    ]
+    truth = np.array([1] * 50 + [0] * 50, dtype=np.int8)
+    first = _fit_class_weights(signature, profiles, truth, {"diagnostic": 0.5, "generic": 0.5})
+    second = _fit_class_weights(signature, profiles, truth, {"diagnostic": 0.5, "generic": 0.5})
+    learned = {item["property"]: item["weight"] for item in first}
+    assert first == second
+    assert learned["diagnostic"] > learned.get("generic", 0.0)
+    assert all("ontology_weight" in item for item in first)
+
+
 def test_class_metrics_separate_evidence_coverage_from_accuracy():
     import numpy as np
 
@@ -458,6 +481,7 @@ TESTS = [
     test_schema_training_selection_never_reads_test_evidence,
     test_schema_promotion_preserves_the_served_class_surface,
     test_class_signature_selection_drops_recall_harming_dimensions,
+    test_class_weights_are_training_fit_named_dimensions,
     test_class_metrics_separate_evidence_coverage_from_accuracy,
 ]
 

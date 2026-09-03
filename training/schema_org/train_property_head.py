@@ -178,6 +178,65 @@ def _class_metrics(
     return metrics, scope
 
 
+def _fit_class_weights(
+    signature: list[dict], train_profiles: list[dict[str, float]],
+    train_truth: np.ndarray, property_thresholds: dict[str, float],
+) -> list[dict]:
+    """Fit non-negative class weights from training-only named-property firings.
+
+    Ontology lift identifies the eligible coordinates, but it is not a calibrated
+    class model: correlated generic properties can outweigh a rare diagnostic one.
+    This bounded logistic fit learns only the relative positive contribution of the
+    already-selected named dimensions. The decoder still exposes the exact weighted
+    firing sum, and validation remains the sole source of the decision threshold.
+    """
+    if len(signature) < 2 or not len(train_profiles):
+        return copy.deepcopy(signature)
+    truth = train_truth.astype(np.float64)
+    positives = int(truth.sum())
+    negatives = len(truth) - positives
+    if not positives or not negatives:
+        return copy.deepcopy(signature)
+
+    ordered = sorted(copy.deepcopy(signature), key=lambda item: item["property"])
+    features = np.array([
+        [
+            float(profile.get(item["property"], 0.0))
+            >= float(property_thresholds.get(item["property"], 0.5))
+            for item in ordered
+        ]
+        for profile in train_profiles
+    ], dtype=np.float64)
+    weights = np.array([max(float(item["weight"]), 0.0) for item in ordered])
+    weights /= max(float(weights.mean()), 1e-12)
+    bias = math.log(positives / negatives)
+    sample_weights = np.where(
+        truth > 0.5,
+        len(truth) / (2.0 * positives),
+        len(truth) / (2.0 * negatives),
+    )
+    normalizer = float(sample_weights.sum())
+    for step in range(1200):
+        logits = np.clip(features @ weights + bias, -30.0, 30.0)
+        probabilities = 1.0 / (1.0 + np.exp(-logits))
+        residual = (probabilities - truth) * sample_weights
+        learning_rate = 0.2 / math.sqrt(1.0 + step / 100.0)
+        gradient = features.T @ residual / normalizer + 1e-3 * weights
+        bias_gradient = float(residual.sum()) / normalizer
+        update = learning_rate * gradient
+        weights = np.maximum(0.0, weights - update)
+        bias -= learning_rate * bias_gradient
+        if max(float(np.max(np.abs(update))), abs(learning_rate * bias_gradient)) < 1e-8:
+            break
+    if not np.any(weights > 0):
+        return ordered
+    weights /= float(weights.max())
+    for item, weight in zip(ordered, weights):
+        item["ontology_weight"] = item["weight"]
+        item["weight"] = round(float(weight), 8)
+    return [item for item in ordered if item["weight"] > 0]
+
+
 def _select_class_signature(
     signature: list[dict], validation_profiles: list[dict[str, float]],
     validation_truth: np.ndarray, validation_property_sets: list[frozenset[str]],
@@ -514,6 +573,7 @@ def main() -> None:
     class_metrics = {}
     profiles = [dict(zip(properties, row)) for row in probabilities]
     validation_profiles = [profiles[int(index)] for index in split_index["validation"]]
+    train_profiles = [profiles[int(index)] for index in split_index["train"]]
     validation_property_sets = [
         frozenset(instances[int(index)].properties) for index in split_index["validation"]
     ]
@@ -534,6 +594,19 @@ def main() -> None:
             }
             continue
         truth = np.array([1 if uri in item.classes else 0 for item in instances], dtype=np.int8)
+        row["signature"] = _fit_class_weights(
+            row["signature"], train_profiles, truth[split_index["train"]], thresholds,
+        )
+        if len(row["signature"]) < 2:
+            row["threshold"] = None
+            row["servable"] = False
+            row["state"] = "calibration_failed"
+            class_metrics[uri] = {
+                "threshold": None,
+                "reason": "fewer_than_two_positive_fitted_weights",
+                "qualified_property_count": len(row["signature"]),
+            }
+            continue
         row["signature"], threshold, feasible, validation_metrics = _select_class_signature(
             row["signature"], validation_profiles, truth[split_index["validation"]],
             validation_property_sets, thresholds,
@@ -603,6 +676,7 @@ def main() -> None:
             "class_test_min_precision": MIN_CLASS_TEST_PRECISION,
             "class_test_min_recall": MIN_CLASS_TEST_RECALL,
             "class_test_min_evidence_coverage": MIN_CLASS_TEST_EVIDENCE_COVERAGE,
+            "class_weight_model": "nonnegative_logistic_on_training_firings",
         },
         "property_metrics": property_metrics,
         "qualified_properties": tuple(uri for uri in properties if uri in qualified_properties),
