@@ -41,6 +41,15 @@
 .ptab th,.ptab td{border-bottom:1px solid #efeafa;border-right:1px solid #efeafa;padding:6px 11px;text-align:left;color:var(--card-ink);white-space:nowrap}
 .ptab th{background:#f3effd;color:var(--brand);font-weight:600}
 .ptab td.rn,.ptab th.rn{background:#faf9ff;color:#b3acce;text-align:center;width:38px;font-size:11px}
+/* "More examples" badge + the example-question picker (reuses the preview modal chrome) */
+.morex{all:unset;cursor:pointer;color:#fff;opacity:.85;font-size:13px;font-weight:600;letter-spacing:.2px;padding:7px 16px;border:1px solid rgba(255,255,255,.45);border-radius:9999px;transition:opacity .15s,background .15s}
+.morex:hover{opacity:1;background:rgba(255,255,255,.12)}
+.exlist{padding:8px}
+.exlist button{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:10px}
+.exlist button:hover{background:#f3effd}
+.exlist .xq{font:600 13.5px var(--mono);color:var(--card-ink)}
+.exlist .xd{font-size:12px;color:var(--card-ink-dim);margin-top:3px}
+.exlist .xempty{padding:14px;color:var(--card-ink-dim);font-size:13px}
 </style>
 </head><body>
 <div class=page>
@@ -64,6 +73,7 @@
         <button class=send type=submit aria-label="Ask"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width="2.4" stroke-linecap=round stroke-linejoin=round><line x1=12 y1=20 x2=12 y2=5></line><polyline points="6 11 12 5 18 11"></polyline></svg></button>
       </div>
     </div>
+    <button type=button class=morex id=morex aria-haspopup=dialog>More examples</button>
     <div class=err id=err></div>
   </form>
   </div>
@@ -72,6 +82,8 @@
 <input type=file id=file accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple style="display:none">
 <div class=pbackdrop id=pbackdrop onclick=closePreview()></div>
 <div class=preview id=preview><button class=px onclick=closePreview() aria-label=Close>&times;</button><div class=ph id=ph></div><div id=ptabwrap></div></div>
+<div class=pbackdrop id=exbackdrop onclick=closeExamples()></div>
+<div class=preview id=examples role=dialog aria-label="Example questions"><button class=px onclick=closeExamples() aria-label=Close>&times;</button><div class=ph>Example questions <span class=c>&middot; pick one to load its dataset</span></div><div class=exlist id=exlist></div></div>
 <script src="lib/shared.js"></script>
 <script>
 // Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
@@ -112,6 +124,27 @@ function openPreview(i){
   $('preview').style.display='block'; $('pbackdrop').style.display='block';
 }
 function closePreview(){$('preview').style.display='none'; $('pbackdrop').style.display='none';}
+/* "More examples": every /dataset/<dir>/ ships a prompt.txt; the picker lists them and a click loads
+   that dataset + prompt via the same ?load= URL the shareable dataset.txt index uses. */
+let EXAMPLES=null;
+async function openExamples(){
+  $('examples').style.display='block'; $('exbackdrop').style.display='block';
+  if(EXAMPLES)return;
+  try{
+    const idx=await fetch('/dataset/dataset.txt').then(r=>{ if(!r.ok)throw new Error('HTTP '+r.status); return r.text(); });
+    const dirs=idx.trim().split('\n').map(l=>l.split(':')[0].trim()).filter(Boolean);
+    EXAMPLES=(await Promise.all(dirs.map(d=>
+      fetch('/dataset/'+d+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>'')
+        .then(p=>({dir:d, prompt:p.trim()}))))).filter(e=>e.prompt);
+  }catch(_){ EXAMPLES=[]; }
+  $('exlist').innerHTML=EXAMPLES.length
+    ? EXAMPLES.map(e=>'<button type=button data-load="'+esc(e.dir)+'"><div class=xq>'+esc(e.prompt)+'</div><div class=xd>'+esc(e.dir)+'</div></button>').join('')
+    : '<div class=xempty>The examples did not load — please try again.</div>';
+  if(!EXAMPLES.length)EXAMPLES=null;                                              // a failed fetch retries on the next open
+  [...$('exlist').querySelectorAll('button')].forEach(b=>b.onclick=()=>{location.href='/?load='+encodeURIComponent(b.dataset.load);});
+}
+function closeExamples(){$('examples').style.display='none'; $('exbackdrop').style.display='none';}
+$('morex').addEventListener('click',openExamples);
 try{                                                       // returning from /picker: attach the imported Google Sheet + restore the prompt
   const pend=sessionStorage.getItem(SS.PENDING_SHEETS);
   if(pend){ const t=JSON.parse(pend); if(t&&t.length){ SHEETS=t; isSample=false; } sessionStorage.removeItem(SS.PENDING_SHEETS); }

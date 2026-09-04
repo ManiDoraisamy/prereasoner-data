@@ -72,6 +72,18 @@ for (const dir of fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir,
 assert(html.includes("fetch('/dataset/'+DATASET+'/prompt.txt')"), 'the page must fetch the dataset prompt');
 assert(html.includes("$('q').value===Q0"), 'the prompt must only replace the pristine default question');
 assert(html.includes(".get('load')"), 'the dataset selector must be the ?load= query parameter');
+// "More examples": the badge under the prompt opens a picker built from dataset.txt + each
+// prompt.txt, and picking one navigates to the same ?load= URL the shareable index uses.
+assert(html.includes('id=morex') && html.includes('>More examples</button>'),
+  'the More examples badge must sit under the prompt card');
+assert(html.includes("fetch('/dataset/dataset.txt')"), 'the picker must list datasets from dataset.txt');
+assert(html.includes("'/dataset/'+d+'/prompt.txt'"), 'the picker must show each dataset prompt');
+assert(html.includes("location.href='/?load='+encodeURIComponent(b.dataset.load)"),
+  'picking an example must navigate to its ?load= URL');
+const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
+assert(/min-width:1000px[^}]*\{[^}]*\.hero-left \.h1\{white-space:nowrap/.test(css.replace(/\s+/g, '')) ||
+  css.includes('.hero-left .h1{white-space:nowrap;max-width:none}'),
+  'the hero headline must render as one line on desktop widths');
 // dataset.txt is the shareable index: one line per dataset directory, in exactly the ?load= form
 // the page implements. Regenerating it here keeps the list complete when a dataset is added.
 const dirs = fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir, d)).isDirectory()).sort();

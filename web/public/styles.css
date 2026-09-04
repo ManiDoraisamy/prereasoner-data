@@ -70,6 +70,10 @@ body{font-family:var(--disp);background:var(--grad);color:var(--ink);min-height:
 .hero-left .sub{text-align:center}
 .hero-left .promptcard{width:100%}
 .hero-left .err{align-self:stretch;text-align:center}
+/* desktop: the headline reads as ONE line (the column is 720px but the h1 may exceed it, centered) */
+@media(min-width:1000px){
+  .hero-left .h1{white-space:nowrap;max-width:none}
+}
 @media(max-width:880px){
   .hero{padding:12px 24px 40px}
 }
