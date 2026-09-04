@@ -124,8 +124,7 @@ assert(html.includes('<span class=pl>+</span></button>'), 'the add button is a b
 assert(html.includes("location.href='picker'"), 'the Google Sheets flow must round-trip via /picker');
 assert(html.includes('>Attach a spreadsheet and ask a question</div>'),
   'the generic headline invites the attach-and-ask action');
-assert(html.includes('>Get the result with the query and rows behind it.</div>'),
-  'the subline promises the visible derivation');
+assert(!/<div class=sub>/.test(html), 'the hero carries no subline under the headline');
 assert(html.includes('placeholder="What question do you have about your spreadsheet?"'),
   'the placeholder must not repeat the headline');
 // Each landing rewrites the headline, placeholder, and the bare "+"'s accessible name to its source.

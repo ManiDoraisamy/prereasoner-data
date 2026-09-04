@@ -67,7 +67,6 @@ body{font-family:var(--disp);background:var(--grad);color:var(--ink);min-height:
 .hero-left{width:100%;max-width:720px;display:flex;flex-direction:column;align-items:center;gap:24px}
 /* match formfacade.com hero headline: Inter 500 (medium), ~44px, -1px tracking */
 .hero-left .h1{font-size:clamp(32px,3.4vw,44px);font-weight:500;line-height:1.3;letter-spacing:-1px;text-align:center;text-wrap:normal}
-.hero-left .sub{text-align:center}
 .hero-left .promptcard{width:100%}
 .hero-left .err{align-self:stretch;text-align:center}
 /* desktop: the headline reads as ONE line (the column is 720px but the h1 may exceed it, centered) */
