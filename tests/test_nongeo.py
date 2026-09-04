@@ -34,6 +34,19 @@ def main():
     from regress.live_schema import live_schema
     schema = live_schema().name
     fails = []
+    # -ies PLURALS must name the type (regression: the question gate matched only "<type>s?", so
+    # "universities" never matched "university" and the whole family fell to the clarify path even
+    # though the cells grounded). Positive UK + contrastive US on the same table.
+    UNI = {"name": "applications", "columns": ["university", "applicants"], "rows": [
+        ["Arts University Plymouth", 90], ["Bath Spa University", 60],          # Q145 (UK)
+        ["Adelphi University", 120], ["Adams State University", 80]]}           # Q30 (US)
+    for country, want in (("United Kingdom", 150), ("United States", 200)):
+        ru = Q.serve([UNI], f"total applicants for universities in {country}", schema=schema)
+        gu = _scalar(ru)
+        print(f"applicants, {country} universities -> {gu} (exp {want})  model={(ru or {}).get('model','')[:46]}")
+        if gu != want:
+            fails.append(f"plural 'universities' {country} != {want} (got {gu})")
+
     # SUM the uploaded metric over US hospitals (every entity pre-synchronized in words)
     r1 = Q.serve([HOSP], "total beds for hospitals in United States", schema=schema)
     got1 = _scalar(r1)

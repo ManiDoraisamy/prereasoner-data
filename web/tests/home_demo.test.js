@@ -38,7 +38,7 @@ assert.strictEqual(customers.length, 10, 'the demo must retain all 9 customers')
 // customer-orders.csv is the SAME orders denormalized with each customer's city and tier. Assert the
 // join, not just the shape: a hand-edited drift between the two datasets would silently change what
 // the two demo variants answer for the same question.
-const denorm = parse(csvText('customer-orders/customer-orders.csv'));
+const denorm = parse(csvText('customer-orders/orders.csv'));
 assert.deepStrictEqual(denorm[0], ['order ID', 'customer', 'city', 'tier', 'ordered', 'currency', 'amount']);
 const byName = new Map(customers.slice(1).map(c => [c[1], c]));
 const expected = parse(csvText('customers-orders/orders.csv')).slice(1).map(o => {
@@ -50,7 +50,7 @@ assert.deepStrictEqual(denorm.slice(1), expected,
   'customer-orders.csv must equal customers ⋈ orders exactly');
 
 // The page selects a dataset by ?dataset= with the denormalized single sheet as the default.
-assert(/'customer-orders':\['customer-orders'\]/.test(html), 'customer-orders must be a registered dataset');
+assert(/'customer-orders':\['orders'\]/.test(html), 'customer-orders must be a registered dataset');
 assert(/'customers-orders':\['customers','orders'\]/.test(html), 'customers-orders must load both CSVs');
 assert(/\?p:'customer-orders'/.test(html), 'the default dataset must be the denormalized customer-orders');
 assert(html.includes("fetch('/dataset/'+DATASET+'/'+n+'.csv')"), 'the demo must load from /dataset/<name>/');

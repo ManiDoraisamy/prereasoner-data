@@ -26,10 +26,18 @@ from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 ENTITY_TYPES = {"country": "country", "nation": "country", "continent": "continent",
                 "state": "state", "american_state": "state", "province": "state", "region": "state",
                 "element": "element", "city": "city", "municipality": "city"}
-# function words that are never an entity — dropped as candidates so we don't waste NN lookups (the threshold
-# would reject them anyway, but "in"->India 0.68 etc. is noise we skip up front).
+# Closed-class function words that are never an entity — dropped as candidates BEFORE the NN lookup.
+# This is a correctness guard, not an optimization: the embedding NN happily clears the threshold on
+# them ("from" -> Belarus at 0.82 turned "orders from Paris" into a Belarus filter and a wrong 0),
+# and a closed-class word can never be the value the question filters by.
 STOP = {"in", "the", "of", "a", "an", "for", "to", "by", "on", "at", "with", "and", "or", "is", "are",
-        "how", "many", "much", "total", "sum", "average", "count", "number", "all", "each", "per", "their"}
+        "how", "many", "much", "total", "sum", "average", "count", "number", "all", "each", "per", "their",
+        "from", "into", "onto", "over", "under", "between", "during", "since", "until", "about", "across",
+        "after", "before", "above", "below", "against", "through", "within", "without",
+        "where", "which", "who", "whom", "whose", "what", "when", "why",
+        "was", "were", "be", "been", "does", "did", "do", "has", "have", "had",
+        "will", "would", "can", "could", "should", "shall", "may", "might",
+        "that", "this", "these", "those", "there", "than", "as", "if", "not", "no", "but", "it", "its"}
 # QID-keyed table (exact Wikidata label) -> the `type` its rows carry in knowledgebase."words" (cell-side bridge resolution).
 # The tables are the qid-keyed knowledgebase."city"/"country" (via WORLD_NAMES); the planner resolves both the cell
 # bridge and the filter to QIDS, so every world join + filter is qid PK/FK.

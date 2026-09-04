@@ -298,6 +298,16 @@ def main():
         eu = (((reu.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
         ok("Europe -> 2-hop continent sum = 220 (France+Germany, Tokyo excluded)", eu == 220, f"got={eu}")
 
+    # C2b function words never resolve as entities (regression: the embedding NN cleared the threshold on
+    # "from" -> Belarus at 0.82, so "orders from Paris" grew a country=Q184 filter and answered a wrong 0
+    # instead of the count). "from X" and "in X" must be the same question.
+    got = {}
+    for prep in ("from", "in"):
+        rfp = _retry(lambda p=prep: qc.serve([CUST], f"how many customers {p} Paris", sub))
+        got[prep] = (((rfp or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("'from Paris' counts like 'in Paris' (1 customer, never 0)",
+       got["from"] == got["in"] == 1, f"got={got}")
+
     # C2b conversion serve path with a test-local rate table. The clarify gate must not
     # reinterpret "US" as the country when exact `rate_to_usd` arithmetic realizes it.
     from engine.enrichment import ExplicitKeyEdge

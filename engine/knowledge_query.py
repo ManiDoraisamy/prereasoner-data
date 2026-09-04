@@ -222,7 +222,13 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     continue
                 # the QUESTION must name this type ('...for hospitals...') — 'total amount in France' names no type,
                 # so a person-name column (which grounds as some entity type) can't hijack the plain geo aggregate.
-                if not any(_re.search(r"\b" + w + r"s?\b", ql) for w in wl.replace("_", " ").split() if len(w) > 3):
+                # English plural forms count as naming the type: hospital->hospitals (-s), university->universities
+                # (-y/-ies), church->churches (-es); a bare "s?" missed every -ies plural and silently dropped the
+                # university family to the clarify path.
+                def _names_type(w):
+                    stem = _re.escape(w[:-1]) + r"(?:y|ies)" if w.endswith("y") else _re.escape(w) + r"(?:s|es)?"
+                    return _re.search(r"\b" + stem + r"\b", ql)
+                if not any(_names_type(w) for w in wl.replace("_", " ").split() if len(w) > 3):
                     continue
                 cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' "
                             "AND table_name=%s AND column_name='country'", (wl,))
