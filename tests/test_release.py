@@ -343,6 +343,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert "validate_weight_bundle" in source
     assert 'for relative in manifest["files"]' in source
     assert {"engine", "db", "regress", "mcp_server", "orchestrator"} <= set(SOURCE_ALLOWLIST)
+    assert "requirements.lock.txt" in SOURCE_ALLOWLIST
     assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
     assert {"Dockerfile.sync", "cloudbuild.sync.yaml", "db"} <= set(SOURCE_SYNC_ALLOWLIST)
     assert not {"engine", "training", "tests", "spider", "world_eval"} & set(
@@ -357,15 +358,75 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         assert ignore in _text(".gcloudignore")
 
 
+def test_release_installs_only_hash_locked_dependencies():
+    locks = (
+        "requirements.lock.txt",
+        "requirements-ci.lock.txt",
+        "requirements-ci-windows.lock.txt",
+        "orchestrator/requirements.lock.txt",
+        "db/sync/requirements-core.lock.txt",
+        "db/sync/requirements.lock.txt",
+        "deploy/gcp/requirements.lock.txt",
+        "training/requirements.lock.txt",
+    )
+    for relative in locks:
+        lock = _text(relative)
+        assert "--hash=sha256:" in lock, f"release dependency lock has no hashes: {relative}"
+    assert "--require-hashes -r /tmp/requirements.lock.txt" in _text("Dockerfile")
+    assert "--require-hashes -r orchestrator/requirements.lock.txt" in _text(
+        "Dockerfile.orchestrator"
+    )
+    assert "--require-hashes -r /tmp/requirements-core.lock.txt" in _text("Dockerfile.sync")
+    assert "--require-hashes -r requirements-ci.lock.txt" in _text(".github/workflows/ci.yml")
+    assert "--require-hashes -r deploy/gcp/requirements.lock.txt" in _text(
+        "deploy/gcp/deploy.sh"
+    )
+    assert "if [[ ! -x" in _text("deploy/gcp/deploy.sh")
+    assert _text("deploy/gcp/deploy.sh").count("--require-hashes -r deploy/gcp/requirements.lock.txt") == 1
+    from deploy.dependency_locks import check
+
+    check()
+
+
+def test_world_evaluation_records_release_provenance():
+    source = _text("world_eval/run.py")
+    for field in (
+        "source_commit",
+        "worktree_dirty",
+        "weights_revision",
+        "weights_manifest_sha256",
+        "release_id",
+        "last_refreshed_at",
+    ):
+        assert f'"{field}"' in source
+    assert "validate_weight_bundle" in source
+    assert "knowledgebase.schedule" in source
+
+
+def test_gpu_training_preserves_the_runner_cuda_torch():
+    from training.tools.install_dependencies import _without_torch
+
+    lock = _text("training/requirements.lock.txt")
+    gpu_lock = _without_torch(lock)
+    assert "torch==" in lock
+    assert "torch==" not in gpu_lock
+    runner = _text("training/tools/run_schema_training.sh")
+    assert "python -m training.tools.install_dependencies gpu" in runner
+    assert "pip install" not in runner
+
+
 def test_schema_training_selection_never_reads_test_evidence():
     from collections import Counter
 
+    from training.schema_org.promote import _committed_blob_sha256
     from training.schema_org.signatures import (
         _class_data_ready,
         _real_selection_sources,
     )
-    from training.schema_org.promote import _committed_blob_sha256
-    from training.schema_org.train_property_head import _trainer_identity, _training_properties
+    from training.schema_org.train_property_head import (
+        _trainer_identity,
+        _training_properties,
+    )
 
     support = {
         "train": Counter({"p": 25}),
@@ -524,6 +585,9 @@ TESTS = [
     test_runpod_transfers_are_inside_the_owned_lease,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
+    test_release_installs_only_hash_locked_dependencies,
+    test_world_evaluation_records_release_provenance,
+    test_gpu_training_preserves_the_runner_cuda_torch,
     test_schema_training_selection_never_reads_test_evidence,
     test_schema_signatures_keep_named_companion_evidence_explicit,
     test_schema_promotion_preserves_the_served_class_surface,

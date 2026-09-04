@@ -17,8 +17,8 @@ that can exercise the code you are touching.
 
 | Work | Required |
 |---|---|
-| Typed AST, routing, reference selection | `requirements-ci.txt`; no model weights or Postgres |
-| Source parser or synchronizer | `db/sync/requirements.txt`; PostgreSQL only for an actual load |
+| Typed AST, routing, reference selection | `requirements-ci-windows.lock.txt`; no model weights or Postgres |
+| Source parser or synchronizer | `db/sync/requirements.lock.txt` on Linux; PostgreSQL only for an actual load |
 | Browser state and static UI | Node 20 and a static/Firebase server |
 | Full engine request | Runtime weights and PostgreSQL |
 | World grounding | Runtime weights and a seeded knowledgebase; some uncached Wikidata entities also need network access |
@@ -39,14 +39,17 @@ py -3.11 -m venv .venv
 Copy-Item .env.example .env
 ```
 
-Install `requirements-ci.txt` for deterministic development and CI-equivalent tests. Install
-`requirements.txt` only when running the model-backed engine or live world suites:
+Install the hash-locked Windows test environment for deterministic development. GitHub Actions uses
+the corresponding Linux lock. The matching `.txt` file without `.lock` is the maintained input used
+to regenerate both locks:
 
 ```powershell
-pip install -r requirements-ci.txt
-# Full runtime only:
-pip install -r requirements.txt
+pip install --require-hashes -r requirements-ci-windows.lock.txt
 ```
+
+`requirements.lock.txt` is the Linux serving-image lock and is installed by `Dockerfile`. Use the
+container for the full model-backed runtime; do not install that Linux lock into a Windows virtual
+environment.
 
 Runtime artifacts are deliberately not committed. Fetch the manifest-pinned bundle:
 

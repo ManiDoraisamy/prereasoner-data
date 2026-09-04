@@ -13,14 +13,15 @@ frontend tests without downloading model weights or provisioning a production da
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements-ci.txt
+pip install --require-hashes -r requirements-ci-windows.lock.txt
 $env:RUN_ENGINE_TESTS = "0"
 $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 node web/tests/workbook_reference.test.js
 ```
 
-CI runs the same Python boundary, Ruff fatal checks, frontend tests, and Terraform
+CI installs `requirements-ci.lock.txt`, the Linux lock generated from the same input, and runs the
+same Python boundary, Ruff fatal checks, frontend tests, and Terraform
 format/validation. The typed planner does not need PyTorch at import time; model libraries
 are loaded only by model-backed methods.
 
@@ -85,8 +86,8 @@ source-key grounding remains mandatory.
 
 1. Run `python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9`.
    Run `python -m bandit -q -r engine db training orchestrator mcp_server -x tests -lll`.
-2. Run `python -m pip_audit` for `requirements-ci.txt`, `orchestrator/requirements.txt`,
-   `requirements.txt`, `training/requirements.txt`, and `db/sync/requirements.txt`; then run the
+2. Run `python -m pip_audit` for every committed lock on its target platform. The CUDA-enabled Torch
+   runtime is supplied and verified by the immutable training runner; then run the
    CI-equivalent public-checkout suite and frontend test shown above.
 3. Run `python -m tests.run_all`; record every live/external skip separately.
 4. Maintainer-only: run `python -m regress.run_regression --require-world` against the fully
@@ -106,6 +107,21 @@ source-key grounding remains mandatory.
     not the mutable `latest` tag. If RTDB is enabled, confirm the cleanup job is scheduled.
 13. Leave `admin_emails` empty unless the admin dashboard is required; when enabled, verify the
     explicit Firebase email allowlist with both authorized and unauthorized accounts.
+
+## Updating Dependencies
+
+Dependency inputs are the short `requirements*.txt` files; release and CI installs use the generated
+hash-locked files. Use `uv==0.9.26`, regenerate the affected Linux or Windows lock with the target
+shown in its header, then record and verify the input-to-lock identity:
+
+```powershell
+python -m deploy.dependency_locks --record
+python -m deploy.dependency_locks
+```
+
+Commit the input, lock, and `deploy/dependency_locks.json` together. The CPU training lock reproduces
+local training and audits. The bounded GPU runner preserves its CUDA-enabled Torch from the declared
+runner image and records that runtime in the model candidate manifest.
 
 ## Deployment Boundary
 

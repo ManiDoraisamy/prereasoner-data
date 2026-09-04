@@ -27,6 +27,7 @@ from pathlib import Path
 
 from engine.artifact_provenance import (
     canonical_json_sha256,
+    json_artifact_bytes,
     semantic_encoder_fingerprint,
     sha256_file,
     validate_weight_bundle,
@@ -269,27 +270,30 @@ def gate(candidate: Path) -> list[str]:
     return problems
 
 
-def _atomic_copy(source: Path, destination: Path) -> None:
+def _atomic_bytes(payload: bytes, destination: Path) -> None:
     with tempfile.NamedTemporaryFile(prefix=f".{destination.name}.", dir=destination.parent,
                                      delete=False) as handle:
         temporary = Path(handle.name)
     try:
-        temporary.write_bytes(source.read_bytes())
+        temporary.write_bytes(payload)
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
 
 
+def _atomic_copy(source: Path, destination: Path) -> None:
+    _atomic_bytes(source.read_bytes(), destination)
+
+
 def _atomic_json(path: Path, value: dict) -> None:
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=f".{path.name}.",
-                                     dir=path.parent, delete=False) as handle:
-        temporary = Path(handle.name)
-        json.dump(value, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-    try:
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
+    _atomic_bytes(json_artifact_bytes(value, indent=2), path)
+
+
+def _promoted_artifact_bytes(path: Path) -> bytes:
+    """Return release bytes, canonicalizing JSON before it enters the manifest."""
+    if path.suffix == ".json":
+        return json_artifact_bytes(json.loads(path.read_text(encoding="utf-8")))
+    return path.read_bytes()
 
 
 def _verify_published_head(repository: str, revision: str, expected_sha256: str) -> None:
@@ -326,6 +330,7 @@ def promote(candidate: Path, *, revision: str | None, local_only: bool) -> None:
             manifest.get("repository", ""), revision,
             manifest["files"]["schema_property_head.pt"],
         )
+    promoted_bytes = {name: _promoted_artifact_bytes(candidate / name) for name in ARTIFACTS}
     for name in ("schema_property_model.json", "schema_class_signatures.json",
                  "schema_training_manifest.json"):
         if name not in manifest.get("committed_artifacts", {}) and name != "schema_training_manifest.json":
@@ -333,14 +338,20 @@ def promote(candidate: Path, *, revision: str | None, local_only: bool) -> None:
         manifest.setdefault("committed_artifacts", {}).setdefault(name, {
             "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
         })
-        manifest["committed_artifacts"][name]["sha256"] = sha256_file(candidate / name)
+        manifest["committed_artifacts"][name]["sha256"] = hashlib.sha256(
+            promoted_bytes[name]
+        ).hexdigest()
     manifest["revision"] = revision
     if local_only:
         manifest["unpublished_local"] = True
     else:
         manifest.pop("unpublished_local", None)
     for name in ARTIFACTS:
-        _atomic_copy(candidate / name, RUNTIME_DIR / name)
+        destination = RUNTIME_DIR / name
+        if name.endswith(".json"):
+            _atomic_bytes(promoted_bytes[name], destination)
+        else:
+            _atomic_copy(candidate / name, destination)
     _atomic_json(manifest_path, manifest)
     validate_weight_bundle(RUNTIME_DIR, manifest)
     meta = json.loads((RUNTIME_DIR / "schema_property_model.json").read_text(encoding="utf-8"))

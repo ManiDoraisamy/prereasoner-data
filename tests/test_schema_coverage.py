@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from engine.artifact_provenance import sha256_file
+from engine.artifact_provenance import canonical_json_sha256, sha256_file
 from engine.config import DATA_DIR
 from engine.fetch_weights import WEIGHTS
 
@@ -304,8 +304,17 @@ def test_runtime_bundle_is_fully_fetchable_and_pinned():
         "Schema.org model metadata and the runtime manifest pin different property heads"
     )
     for name, record in manifest["committed_artifacts"].items():
-        assert sha256_file(DATA_DIR / name) == record["sha256"], (
+        path = DATA_DIR / name
+        assert b"\r" not in path.read_bytes(), f"committed JSON artifact is not LF-canonical: {name}"
+        assert sha256_file(path) == record["sha256"], (
             f"committed runtime artifact {name} does not match weights_manifest.json"
+        )
+    training = json.loads((DATA_DIR / "schema_training_manifest.json").read_text(encoding="utf-8"))
+    recorded_identity = training.pop("artifact_sha256")
+    assert recorded_identity == canonical_json_sha256(training)
+    for name, expected in training["artifacts"].items():
+        assert sha256_file(DATA_DIR / name) == expected, (
+            f"training provenance for {name} does not match the promoted runtime artifact"
         )
     print("  PASS  every promoted runtime artifact is fetchable or committed and hash-pinned")
 

@@ -96,7 +96,7 @@ See `docs/DATA_CARD.md` for composition and limitations and `docs/SOURCE_DATA.md
 
 ## Build, Train, Promote
 
-From a clean repository with exact dependencies from `training/requirements.txt`:
+From a clean repository with the CPU environment in `training/requirements.lock.txt`:
 
 ```powershell
 python -m training.schema_org.corpus
@@ -134,9 +134,10 @@ For a GPU run, use `training/tools/run_schema_training.sh` through:
 python -m training.tools.runpod_api lease --help
 ```
 
-The wrapper creates a bounded lease and terminates the pod on success, failure, timeout,
-interruption, and process exit. `--keep` is the explicit exceptional behavior. Never use an ad hoc
-pod-creation command for repository training.
+The wrapper creates a bounded lease from a digest-pinned image and terminates the pod on success,
+failure, timeout, interruption, and process exit. The runner verifies its CUDA-enabled Torch before
+installing the rest of the hash-locked training closure. `--keep` is the explicit exceptional
+behavior. Never use an ad hoc pod-creation command for repository training.
 
 ## Runtime Artifacts
 

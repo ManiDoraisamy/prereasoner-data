@@ -9,16 +9,71 @@ the live KnowledgeReasoner (the /api/reason path) on the same upload+question an
   python world_eval/run.py
 """
 from __future__ import annotations
-import json
+
 import os
+import subprocess
 import sys
 import warnings
+from datetime import datetime, timezone
+from pathlib import Path
 
 warnings.filterwarnings("ignore")
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = Path(HERE).parent
 sys.path.insert(0, HERE)                       # sibling cases.py
-sys.path.insert(0, os.path.dirname(HERE))      # repo root for `engine`
-from cases import CASES                          # noqa: E402
+sys.path.insert(0, str(ROOT))                  # repo root for `engine`
+from cases import CASES
+
+
+def _git(*args: str) -> str | None:
+    try:
+        return subprocess.check_output(
+            ("git", "-C", str(ROOT), *args), text=True, stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def _runtime_provenance() -> dict:
+    from engine.artifact_provenance import load_weights_manifest, validate_weight_bundle
+    from engine.config import DATA_DIR
+
+    manifest = load_weights_manifest(DATA_DIR)
+    if manifest is None:
+        raise RuntimeError("world evaluation requires weights_manifest.json")
+    fingerprint = validate_weight_bundle(DATA_DIR, manifest)
+    commit = _git("rev-parse", "HEAD")
+    status = _git("status", "--porcelain")
+    if not commit or status is None:
+        raise RuntimeError("world evaluation requires readable Git provenance")
+    return {
+        "source_commit": commit,
+        "worktree_dirty": bool(status),
+        "weights_repository": manifest.get("repository"),
+        "weights_revision": manifest.get("revision"),
+        "weights_manifest_sha256": fingerprint,
+    }
+
+
+def _database_provenance(cur) -> list[dict]:
+    cur.execute("SELECT to_regclass('knowledgebase.schedule')")
+    if cur.fetchone()[0] is None:
+        raise RuntimeError("world evaluation requires knowledgebase.schedule provenance")
+    cur.execute(
+        'SELECT table_name, source, source_schema, last_release_id, last_refreshed_at, row_count '
+        'FROM knowledgebase."schedule" ORDER BY table_name'
+    )
+    return [
+        {
+            "table": table,
+            "source": source,
+            "source_schema": source_schema,
+            "release_id": release_id,
+            "last_refreshed_at": refreshed.isoformat() if refreshed else None,
+            "row_count": row_count,
+        }
+        for table, source, source_schema, release_id, refreshed, row_count in cur.fetchall()
+    ]
 
 
 def _is_num(v):
@@ -57,17 +112,7 @@ def _rowset(rows):
     return sorted(tuple(sorted((_norm(c) for c in r), key=str)) for r in rows)
 
 
-def main():
-    import engine.config  # noqa: F401 — autoloads .env
-    if not os.environ.get("KB_PG_PASSWORD"):
-        print("KB_PG_PASSWORD not set — cannot run the world model"); sys.exit(2)
-    from engine.pg import _pg
-    from engine.knowledge import KnowledgeReasoner
-    print("loading KnowledgeReasoner (encoder + bge + spaCy + live PG)...", flush=True)
-    Q = KnowledgeReasoner()
-    sub = os.environ.get("AUTH_TEST_SUB", "world_eval")
-    conn = _pg(); conn.autocommit = True; cur = conn.cursor()
-
+def _evaluate_cases(reasoner, cur, sub: str) -> tuple[dict, list[dict]]:
     agg = {"n": 0, "pass": 0, "lenient": 0}
     out = []
     for c in CASES:
@@ -81,7 +126,7 @@ def main():
         # --- PREDICTION: the live world path ---
         perr = None; psql = None; pred = []
         try:
-            r = Q.serve([dict(t) for t in c["tables"]], c["question"], sub)
+            r = reasoner.serve([dict(t) for t in c["tables"]], c["question"], sub)
             pred = (r.get("result") or {}).get("rows") or []
             perr = r.get("error"); psql = (r.get("sql") or "")
         except Exception as e:                                   # noqa: BLE001
@@ -101,13 +146,42 @@ def main():
         out.append({"label": c["label"], "cap": c["cap"], "question": c["question"],
                     "oracle": [list(map(str, r)) for r in oracle], "pred": [list(map(str, r)) for r in pred],
                     "verdict": verdict, "passed": passed, "lenient": lenient, "pred_sql": psql, "error": perr})
-    conn.close()
+    return agg, out
+
+
+def main():
+    import engine.config  # noqa: F401 — autoloads .env
+    if not os.environ.get("KB_PG_PASSWORD"):
+        print("KB_PG_PASSWORD not set — cannot run the world model"); sys.exit(2)
+    from engine.artifact_provenance import write_json_artifact
+    from engine.knowledge import KnowledgeReasoner
+    from engine.pg import _pg
+
+    print("loading KnowledgeReasoner (encoder + bge + spaCy + live PG)...", flush=True)
+    reasoner = KnowledgeReasoner()
+    sub = os.environ.get("AUTH_TEST_SUB", "world_eval")
+    conn = _pg()
+    try:
+        conn.autocommit = True
+        cur = conn.cursor()
+        agg, out = _evaluate_cases(reasoner, cur, sub)
+        database = _database_provenance(cur)
+    finally:
+        conn.close()
     n = agg["n"] or 1
     print(f"\n=== WORLD EVAL: {agg['pass']}/{agg['n']} exact ({100*agg['pass']/n:.0f}%), "
           f"{agg['lenient']}/{agg['n']} lenient ({100*agg['lenient']/n:.0f}%) ===")
     os.makedirs(os.path.join(HERE, "results"), exist_ok=True)
-    json.dump({"n": agg["n"], "exact": agg["pass"], "lenient": agg["lenient"], "cases": out},
-              open(os.path.join(HERE, "results", "world_eval_results.json"), "w"), indent=2)
+    result = {
+        "n": agg["n"],
+        "exact": agg["pass"],
+        "lenient": agg["lenient"],
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "runtime": _runtime_provenance(),
+        "database": database,
+        "cases": out,
+    }
+    write_json_artifact(os.path.join(HERE, "results", "world_eval_results.json"), result, indent=2)
     print("wrote world_eval/results/world_eval_results.json")
 
 

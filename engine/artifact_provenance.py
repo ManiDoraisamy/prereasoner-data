@@ -4,9 +4,9 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
-
+from typing import Any
 
 WEIGHTS_MANIFEST = "weights_manifest.json"
 
@@ -52,6 +52,25 @@ def canonical_json_sha256(value: Any) -> str:
         value, ensure_ascii=True, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def json_artifact_bytes(value: Any, *, indent: int | None = None) -> bytes:
+    """Serialize a JSON artifact identically on every operating system."""
+    options: dict[str, Any] = {
+        "allow_nan": False,
+        "ensure_ascii": True,
+        "sort_keys": True,
+    }
+    if indent is None:
+        options["separators"] = (",", ":")
+    else:
+        options["indent"] = indent
+    return (json.dumps(value, **options) + "\n").encode("utf-8")
+
+
+def write_json_artifact(path: str | Path, value: Any, *, indent: int | None = None) -> None:
+    """Write canonical UTF-8 JSON without platform newline translation."""
+    Path(path).write_bytes(json_artifact_bytes(value, indent=indent))
 
 
 def load_weights_manifest(data_dir: str | Path) -> dict[str, Any] | None:

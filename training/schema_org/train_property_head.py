@@ -24,6 +24,7 @@ import numpy as np
 from engine.artifact_provenance import (
     canonical_json_sha256,
     semantic_encoder_fingerprint,
+    write_json_artifact,
 )
 from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR
 from engine.schema_decode import ClassDecoder
@@ -45,12 +46,14 @@ TRAINER_INPUTS = (
     "training/schema_org/signatures.py",
     "training/schema_org/paths.py",
     "training/tools/run_schema_training.sh",
+    "training/tools/install_dependencies.py",
     "engine/schema_model.py",
     "engine/schema_decode.py",
     "engine/encoder.py",
     "engine/schema_org.py",
     "engine/artifact_provenance.py",
     "training/requirements.txt",
+    "training/requirements.lock.txt",
 )
 MIN_PROPERTY_TRAIN = 25
 MIN_PROPERTY_VALIDATION = 10
@@ -567,8 +570,7 @@ def main() -> None:
     signatures.pop("artifact_sha256", None)
     signatures["property_model_pending"] = False
     signatures["artifact_sha256"] = canonical_json_sha256(signatures)
-    signatures_path.write_text(json.dumps(signatures, sort_keys=True, ensure_ascii=True,
-                                          separators=(",", ":")) + "\n", encoding="utf-8")
+    write_json_artifact(signatures_path, signatures)
 
     torch.save(best_state, model_path)
     meta = {
@@ -608,8 +610,7 @@ def main() -> None:
     state_bytes = model_path.read_bytes()
     meta["weights_sha256"] = hashlib.sha256(state_bytes).hexdigest()
     meta["artifact_sha256"] = canonical_json_sha256(meta)
-    meta_path.write_text(json.dumps(meta, sort_keys=True, ensure_ascii=True,
-                                    separators=(",", ":")) + "\n", encoding="utf-8")
+    write_json_artifact(meta_path, meta)
     artifact_paths = {
         "schema_property_head.pt": model_path,
         "schema_property_model.json": meta_path,
@@ -647,11 +648,7 @@ def main() -> None:
         },
     }
     training_manifest["artifact_sha256"] = canonical_json_sha256(training_manifest)
-    (out_dir / "schema_training_manifest.json").write_text(
-        json.dumps(training_manifest, sort_keys=True, ensure_ascii=True,
-                   separators=(",", ":")) + "\n",
-        encoding="utf-8",
-    )
+    write_json_artifact(out_dir / "schema_training_manifest.json", training_manifest)
     passed_properties = len(qualified_properties)
     servable_classes = sum(row["servable"] for row in by_uri.values())
     print(

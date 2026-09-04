@@ -1,0 +1,2 @@
+# Dependencies used by the local/Cloud Shell release packager, not by the runtime image.
+huggingface_hub==1.29.0

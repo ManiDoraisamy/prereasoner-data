@@ -27,11 +27,15 @@ The cases intentionally cover different execution shapes:
 | `total_amount_france` | city -> country, two uploaded tables, sum |
 | `count_customers_france` | city -> country, count |
 
-## Current result
+## Last recorded result
 
-The current isolated run is **8/8 exact (100%) and 8/8 lenient (100%)**. It was run
+The last isolated run is **8/8 exact (100%) and 8/8 lenient (100%)**. It was run
 with the seeded Postgres world database and the same serving model used by the
 world endpoint.
+
+This result predates the provenance-bearing output format and is retained as regression history,
+not as evidence for a new release. A release run must record the source commit, clean-worktree state,
+weight repository and revision, weight-manifest fingerprint, and the maintained-table release state.
 
 | Case | Result |
 |---|---|
@@ -58,9 +62,9 @@ database snapshot, and run:
 python -m world_eval.run
 ```
 
-The evaluator writes `world_eval/results/world_eval_results.json`. The database
-snapshot is part of the test fixture in operational use; do not compare runs made
-against different source releases as if they were the same benchmark.
+The evaluator writes `world_eval/results/world_eval_results.json`, including the exact runtime and
+database provenance. Do not compare runs made against different source releases as if they were the
+same benchmark.
 
 ## Limits
 

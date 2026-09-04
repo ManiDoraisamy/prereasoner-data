@@ -7,6 +7,7 @@ import json
 import urllib.request
 from pathlib import Path
 
+from engine.artifact_provenance import write_json_artifact
 from engine.schema_org import (
     CONTRACT_PATH,
     SCHEMA_ORG_SOURCE,
@@ -132,8 +133,7 @@ def download(url: str = SCHEMA_ORG_SOURCE) -> bytes:
 def write_contract(payload: dict, path: str | Path = CONTRACT_PATH) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, sort_keys=True, ensure_ascii=True,
-                               separators=(",", ":")) + "\n", encoding="utf-8")
+    write_json_artifact(path, payload)
 
 
 def main() -> None:

@@ -139,7 +139,8 @@ official calendar can supersede it only through a separate source-owned contract
 
 ## Sync Commands
 
-Install ingestion dependencies with `pip install -r db/sync/requirements.txt`, set the
+Install ingestion dependencies on Linux with
+`pip install --require-hashes -r db/sync/requirements.lock.txt`, set the
 `KB_PG_*` variables, and run:
 
 ```powershell

@@ -7,7 +7,9 @@ the same named-dimension superposition used by the production decoder.
 python -m tests.test_router_evidence
 """
 from __future__ import annotations
+
 import sys
+from unittest.mock import patch
 
 from engine.router import Router
 
@@ -101,8 +103,8 @@ def test_abstain_still_returns_none():
 # ---- the SERVING capture: the model's typing evidence is collected during a serve and attached to the answer,
 # ---- so the learned world-grounding decision reaches the user. These exercise the REAL capture methods on a
 # ---- KnowledgeQuery / KnowledgeReasoner built WITHOUT __init__ (no Postgres, no model) — pure buffer logic.
-from engine.knowledge_query import KnowledgeQuery
 from engine.knowledge import KnowledgeReasoner
+from engine.knowledge_query import KnowledgeQuery
 
 _REC = {"table": "customers", "column": "city", "family": "place", "frac": 0.75, "geo": True,
         "grounded_to": "Cities in the World", "evidence": [{"property": "GeoCoordinates", "fired": True}]}
@@ -151,18 +153,13 @@ def test_table_sig_is_value_sensitive():
 
 def test_source_grounding_is_the_only_model_abstention_fallback():
     import inspect
-    import engine.knowledge_query as knowledge_query
 
     qw = _bare_qw()
     qw._value_membership_routes = lambda _table: {("customers", "city"): "city"}
-    original = knowledge_query.kb_model_route_enabled
-    knowledge_query.kb_model_route_enabled = lambda: False
-    try:
+    with patch("engine.knowledge_typing.kb_model_route_enabled", return_value=False):
         qw.begin_typing()
         routes = qw.route({"name": "customers", "columns": ["city"], "rows": [["Paris"]]})
         typing = qw.take_typing()
-    finally:
-        knowledge_query.kb_model_route_enabled = original
     assert routes == {("customers", "city"): "city"}
     assert typing == [{
         "table": "customers", "column": "city", "kind": "source_grounding",

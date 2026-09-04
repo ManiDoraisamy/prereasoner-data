@@ -1,0 +1,57 @@
+{
+  "generator": {
+    "tool": "uv",
+    "version": "0.9.26"
+  },
+  "locks": {
+    "db/sync/requirements-core.lock.txt": {
+      "input": "db/sync/requirements-core.txt",
+      "input_sha256": "9ce9c4c77a37a3b263c7471d42cae0c2c8948d49fc2d0e120a7794d43869dd95",
+      "lock_sha256": "9286473d52befa50fa65f678ce91245d5215c9b067bd68c859ed422034041e12",
+      "target": "linux-x86_64-python3.11"
+    },
+    "db/sync/requirements.lock.txt": {
+      "input": "db/sync/requirements.txt",
+      "input_sha256": "eb4b028d81dd33a9fc34a7f3f0494aa3abc19f8a72e0b71f786aba234d8c7ba4",
+      "lock_sha256": "aec97999203e402fb698e6cf3a0f630b4e7084c4ae641fcf5e4ee53ff67851fc",
+      "target": "linux-x86_64-python3.11"
+    },
+    "deploy/gcp/requirements.lock.txt": {
+      "input": "deploy/gcp/requirements.txt",
+      "input_sha256": "0bf0ef9ae25c5b7c783ea258f313c19c35657837f40cf422c47f16516f1065e0",
+      "lock_sha256": "e80f0cbb56b9283d540af69c736c500872579ce207b0005d675091e6c361f02b",
+      "target": "linux-x86_64-python3.11"
+    },
+    "orchestrator/requirements.lock.txt": {
+      "input": "orchestrator/requirements.txt",
+      "input_sha256": "3bd239d349f06d6f857205726a2618df02ccd4d282550cba22103ee7124f2a4f",
+      "lock_sha256": "ad1d3a14dee67b7eebe5430a3c9aaeb2b145144a47143a8031418fb9416417bc",
+      "target": "linux-x86_64-python3.11"
+    },
+    "requirements-ci-windows.lock.txt": {
+      "input": "requirements-ci.txt",
+      "input_sha256": "ecd586e0e6fceec5e0100bdbe74fbfe6b34f8727eb8ebbd2ea75a2afc4760d55",
+      "lock_sha256": "9c9370b447c3a0f4be6a9cd1031fbee54642efefa411da0b621aedd11d21cc57",
+      "target": "windows-x86_64-python3.11"
+    },
+    "requirements-ci.lock.txt": {
+      "input": "requirements-ci.txt",
+      "input_sha256": "ecd586e0e6fceec5e0100bdbe74fbfe6b34f8727eb8ebbd2ea75a2afc4760d55",
+      "lock_sha256": "9b09318620e137d8f3440300a9f51bb55b1c5398c50efbef7aa0212edb6a1118",
+      "target": "linux-x86_64-python3.11"
+    },
+    "requirements.lock.txt": {
+      "input": "requirements.txt",
+      "input_sha256": "9b1021eaf6c0b15e07b0b0b967f7a7e6016b9ea541704b96a36eecb423cfaccd",
+      "lock_sha256": "7c782a5f5aa2668b051e53a280973213552a87a12afbeb32b8685c3281ffcb8a",
+      "target": "linux-x86_64-python3.11"
+    },
+    "training/requirements.lock.txt": {
+      "input": "training/requirements.txt",
+      "input_sha256": "e1029903663a3083db619236a4489dcee456167db6c51db4a1f4c97ec53d7683",
+      "lock_sha256": "db946266db38668cdc25fdf043501b6524ac5e79e1843c15ed24211533454828",
+      "target": "linux-x86_64-python3.11-cpu"
+    }
+  },
+  "schema_version": 1
+}

@@ -156,7 +156,7 @@ For planner, routing, enrichment, sync-parser, and migration work, install only 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements-ci.txt
+pip install --require-hashes -r requirements-ci-windows.lock.txt
 $env:RUN_ENGINE_TESTS = "0"
 $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all

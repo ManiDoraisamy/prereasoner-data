@@ -2,7 +2,7 @@
   "committed_artifacts": {
     "schema_class_signatures.json": {
       "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
-      "sha256": "23f0dc1d84291795a556243c56c6899b5b711537034a22c746c8a75b33a95a2e"
+      "sha256": "a7fbdb229248ac2827ae4ba3547a55a0217abfb5a224f4af80f0bf1841e5eb96"
     },
     "schema_org_v30.json": {
       "note": "tracked in git (not fetched); compiled from the pinned Schema.org source by training/schema_org/compile_contract.py",
@@ -10,11 +10,11 @@
     },
     "schema_property_model.json": {
       "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
-      "sha256": "bae57da777698c864946d1f0922da327e686daf92eb98d12825a067fad882725"
+      "sha256": "c8819d6bdcd218879ce4aa0768a51ccbc7c50af8c2600c63f7a097d3c7208d86"
     },
     "schema_training_manifest.json": {
       "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
-      "sha256": "3abd5d93b74c81f9d420c26c9a4588404b5ec658ca888f7c21711073e169c136"
+      "sha256": "3655eb6bfecfca812c99174c914590691edd3b71833eec73273c47c29eb1090a"
     }
   },
   "files": {

@@ -10,7 +10,11 @@ from dataclasses import replace
 from pathlib import Path
 
 import engine.config  # noqa: F401 - loads the repository .env before engine.pg connects
-from engine.artifact_provenance import canonical_json_sha256, sha256_file
+from engine.artifact_provenance import (
+    canonical_json_sha256,
+    sha256_file,
+    write_json_artifact,
+)
 from engine.domain_profiles import PROFILES
 from engine.pg import _pg
 from engine.schema_model import sample_values
@@ -471,8 +475,7 @@ def build(*, corpus_path: str | Path = DEFAULT_CORPUS,
     }
     manifest_path = Path(manifest_path)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, sort_keys=True, ensure_ascii=True,
-                                        indent=2) + "\n", encoding="utf-8")
+    write_json_artifact(manifest_path, manifest, indent=2)
     print(
         f"semantic corpus: {count} instances sha256:{digest}\n"
         f"sources={dict(sorted(by_source.items()))}\n"

@@ -12,8 +12,8 @@ WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
 COPY LICENSE THIRD_PARTY.md /licenses/
-COPY orchestrator/requirements.txt /app/orchestrator/requirements.txt
-RUN pip install --no-cache-dir -r orchestrator/requirements.txt
+COPY orchestrator/requirements.lock.txt /app/orchestrator/requirements.lock.txt
+RUN pip install --no-cache-dir --require-hashes -r orchestrator/requirements.lock.txt
 
 # The orchestrator uses only engine.config plus the lightweight auth and trace modules imported by /chat.
 # Copy those modules explicitly so local model weights and the heavy serving implementation cannot accidentally

@@ -196,8 +196,9 @@ cache_dir="${HOME}/.cache/prereasoner-deploy"
 venv="${cache_dir}/venv"
 if [[ ! -x "${venv}/bin/python" ]]; then
   python3 -m venv "$venv"
-  "${venv}/bin/python" -m pip install --quiet --disable-pip-version-check huggingface_hub==1.29.0
 fi
+"${venv}/bin/python" -m pip install --quiet --disable-pip-version-check \
+  --require-hashes -r deploy/gcp/requirements.lock.txt
 (
   cd "$ROOT"
   HF_TOKEN= HF_HUB_DISABLE_IMPLICIT_TOKEN=1 "${venv}/bin/python" -m engine.fetch_weights

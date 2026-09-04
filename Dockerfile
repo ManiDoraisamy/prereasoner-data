@@ -23,12 +23,13 @@ ENV PIP_NO_CACHE_DIR=1 \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# requirements.txt pins the CPU torch wheel via its own --extra-index-url line and
+# requirements.lock.txt pins the complete CPU stack and hashes every distribution. requirements.txt
+# remains the human-maintained input used to regenerate it. The lock installs the CPU torch wheel and
 # installs spaCy's en_core_web_md straight from the release wheel (no post-install
 # `spacy download` step needed — but keep the assertion below so a future requirements
 # edit that drops the model wheel fails the build, not the first request).
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt \
+COPY requirements.lock.txt /tmp/requirements.lock.txt
+RUN pip install --require-hashes -r /tmp/requirements.lock.txt \
  && python -c "import spacy; spacy.load('en_core_web_md')"
 
 # Pre-bake the Hugging Face models the engine loads at startup (the Qwen encoder base)

@@ -8,8 +8,8 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
-COPY db/sync/requirements-core.txt /tmp/requirements-core.txt
-RUN pip install -r /tmp/requirements-core.txt
+COPY db/sync/requirements-core.lock.txt /tmp/requirements-core.lock.txt
+RUN pip install --require-hashes -r /tmp/requirements-core.lock.txt
 COPY db/ /app/db/
 COPY LICENSE THIRD_PARTY.md /licenses/
 

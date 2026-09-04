@@ -7,7 +7,7 @@ import math
 from collections import Counter, defaultdict
 from pathlib import Path
 
-from engine.artifact_provenance import canonical_json_sha256
+from engine.artifact_provenance import canonical_json_sha256, write_json_artifact
 from engine.schema_org import load_contract
 from training.schema_org.instances import read_jsonl
 from training.schema_org.paths import CORPUS_PATH, MANIFEST_PATH, experiment_dir
@@ -143,8 +143,7 @@ def build(*, corpus_path: str | Path = CORPUS_PATH,
     artifact["artifact_sha256"] = canonical_json_sha256(artifact)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(artifact, sort_keys=True, ensure_ascii=True,
-                                      separators=(",", ":")) + "\n", encoding="utf-8")
+    write_json_artifact(output_path, artifact)
     states = Counter(row["state"] for row in classes)
     print(f"class signatures: {dict(sorted(states.items()))} -> {output_path}", flush=True)
     return artifact

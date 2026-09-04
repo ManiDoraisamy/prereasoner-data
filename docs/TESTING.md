@@ -8,12 +8,9 @@ Spider accuracy evaluation. They answer different questions and should not be co
 Run these before involving models, PostgreSQL, or network services:
 
 ```powershell
-pip install -r requirements-ci.txt
-python -m pip_audit -r requirements-ci.txt
-python -m pip_audit -r orchestrator/requirements.txt
-python -m pip_audit -r requirements.txt
-python -m pip_audit -r training/requirements.txt
-python -m pip_audit -r db/sync/requirements.txt
+pip install --require-hashes -r requirements-ci-windows.lock.txt
+python -m pip_audit -r requirements-ci-windows.lock.txt
+python -m deploy.dependency_locks
 python -m bandit -q -r engine db training orchestrator mcp_server -x tests -lll
 python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
 python -m tests.test_sql_ast
@@ -37,8 +34,9 @@ git diff --check
 ```
 
 These cover typed AST behavior, deterministic routing, private-reference selection and validation, workbook
-reference state, JavaScript syntax, and Python syntax. `requirements-ci.txt` is intentionally independent of the
-model stack. Live engine suites still require `requirements.txt`, model artifacts, and PostgreSQL.
+reference state, JavaScript syntax, and Python syntax. The platform locks generated from
+`requirements-ci.txt` are intentionally independent of the model stack. Live engine suites still
+require the serving container, model artifacts, and PostgreSQL.
 
 `regress.product_templates` runs 35 source-cited public-template development cases, five for
 each domain profile. These fixtures measure deterministic recognition but are not customer
@@ -123,6 +121,10 @@ The workbook reference tests run in a Node VM with a minimal browser/Firebase ha
 ```powershell
 node web/tests/workbook_reference.test.js
 ```
+
+The remaining locks target Linux containers. The `python-hermetic` GitHub Actions job audits them
+on Linux; auditing them from Windows asks pip to resolve Windows-only transitive dependencies and is
+not a valid check of the release image.
 
 They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, and snapshot restoration. Run
 `node --check` on every changed JavaScript file as well.

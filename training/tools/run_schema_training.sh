@@ -29,7 +29,7 @@ for required in "$corpus" "$lora_dir"; do
   fi
 done
 
-python -m pip install --disable-pip-version-check -r "$root/training/requirements.txt"
+python -m training.tools.install_dependencies gpu
 
 mkdir -p "$root/training/schema_org/data" "$root/engine/data/qwen_lora" "$output_dir"
 cp "$corpus" "$root/training/schema_org/data/semantic_instances.jsonl"

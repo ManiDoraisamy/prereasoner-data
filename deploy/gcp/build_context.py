@@ -20,7 +20,7 @@ SOURCE_ALLOWLIST = (
     "LICENSE",
     "THIRD_PARTY.md",
     "cloudbuild.yaml",
-    "requirements.txt",
+    "requirements.lock.txt",
     "engine",
     "db",
     "regress",

@@ -103,7 +103,8 @@ python -m tests.test_schema_coverage
 python -m tests.test_schema_decode
 ```
 
-Training dependencies are exact-pinned in `training/requirements.txt`. Candidate artifacts stay in
+`training/requirements.txt` is the maintained input; its transitive CPU environment is hash-locked in
+`training/requirements.lock.txt`. Candidate artifacts stay in
 ignored experiment directories; promotion is the only writer of runtime model files.
 
 ## Licensing And Privacy
