@@ -686,9 +686,9 @@ jsonschema-specifications==2025.9.1 \
     --hash=sha256:98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe \
     --hash=sha256:b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d
     # via jsonschema
-mcp==1.29.1 \
-    --hash=sha256:1967ba4c315f7a375146209949f45950d18b0efd2f913d7cf3400bc723ee5f04 \
-    --hash=sha256:b6310eeb59153300c4ab8b9aec4c52f4819a2d6a8e429eb43d908bed7c783648
+mcp==2.1.1 \
+    --hash=sha256:1c6c31c5d6471c58db76af3af8af67f46d11d01f0a59077d0a308cbdb3d3e915 \
+    --hash=sha256:50b7ba1ebbe117008ea7bdd288234043e69c20b403d6851d19661e6d431a75ef
     # via -r orchestrator/requirements.txt
 msgpack==1.2.2 \
     --hash=sha256:06d95f61de7afe4f4ff908a6feebfcb070d0582ac87c9cf3cedf8551cf634516 \
