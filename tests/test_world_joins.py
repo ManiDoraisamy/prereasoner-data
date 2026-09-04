@@ -15,6 +15,7 @@ Runs against the LIVE world Postgres on the consolidated single-model path.
   python -m tests.test_world_joins
 """
 from __future__ import annotations
+
 import os
 import sys
 
@@ -53,7 +54,8 @@ def main():
         print("set KB_PG_PASSWORD to run"); return 1
     from engine.knowledge_query import KnowledgeQuery
     Q = KnowledgeQuery()
-    schema = os.environ.get("AUTH_TEST_SUB", "joins_test")
+    from regress.live_schema import live_schema
+    schema = live_schema().name
     npass = 0
     for label, tbl, exp_table, q, exp in CASES:
         routes = Q.route(tbl)

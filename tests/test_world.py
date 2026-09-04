@@ -5,9 +5,9 @@ the column router, population ranking, aggregates, and the lat/lng NEARBY geo pr
   python -m tests.test_world
 """
 from __future__ import annotations
+
 import os
 import sys
-import time
 
 P, F = 0, 0
 
@@ -23,9 +23,9 @@ def ok(name, cond, detail=""):
 def main():
     if not os.environ.get("KB_PG_PASSWORD"):
         print("KB_PG_PASSWORD not set — skipping (live world Postgres)"); return
-    from engine.pg import _pg
-    from engine.knowledge_compose import ComposedKnowledgeQuery
     from engine.knowledge import KnowledgeReasoner
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine.pg import _pg
 
     # --- (A) expanded type hierarchy synced ---
     cn = _pg(); cur = cn.cursor()
@@ -54,7 +54,8 @@ def main():
        all(x is None or (x.get("class", "").startswith("https://schema.org/") and x.get("evidence"))
            for x in (o, o2)))
 
-    sub = f"test_world_{int(time.time())}"
+    from regress.live_schema import live_schema
+    sub = live_schema().name
     CUST = {"name": "customers", "columns": ["name", "city", "amount"],
             "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
     qc = ComposedKnowledgeQuery()

@@ -15,11 +15,12 @@ served answer is checked against them. Geo lazy-fill can be slow on first hit ->
   python -m tests.test_geo
 """
 from __future__ import annotations
-from decimal import Decimal
+
 import os
 import re
 import sys
 import time
+from decimal import Decimal
 
 P, F = 0, 0
 
@@ -120,11 +121,11 @@ def main():
     if not os.environ.get("KB_PG_PASSWORD"):
         print("KB_PG_PASSWORD not set — skipping (live world Postgres)")
         return
-    from engine.pg import _pg
-    from engine.knowledge_compose import ComposedKnowledgeQuery
     from engine.knowledge import KnowledgeReasoner
-
-    sub = os.environ.get("GEO_TEST_SUB", "geotest")
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine.pg import _pg
+    from regress.live_schema import live_schema
+    sub = live_schema("GEO_TEST_SUB").name
     cn = _pg()
     cur = cn.cursor()
 

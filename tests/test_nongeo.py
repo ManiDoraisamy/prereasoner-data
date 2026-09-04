@@ -6,6 +6,7 @@ lazy-filled from Wikidata first. Live world Postgres.
   python -m tests.test_nongeo
 """
 from __future__ import annotations
+
 import os
 import sys
 from decimal import Decimal
@@ -30,7 +31,8 @@ def main():
         print("set KB_PG_PASSWORD"); return 1
     from engine.knowledge_query import KnowledgeQuery
     Q = KnowledgeQuery()
-    schema = os.environ.get("AUTH_TEST_SUB", "nongeo_test")
+    from regress.live_schema import live_schema
+    schema = live_schema().name
     fails = []
     # SUM the uploaded metric over US hospitals (lazy-fills the ones not already in words)
     r1 = Q.serve([HOSP], "total beds for hospitals in United States", schema=schema)

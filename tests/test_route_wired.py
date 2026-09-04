@@ -13,9 +13,10 @@ Asserts, with the production routing stack wired into KnowledgeQuery.route():
   python -m tests.test_route_wired
 """
 from __future__ import annotations
+
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 
 CUST = {"name": "customers", "columns": ["name", "city", "remarks"], "rows": [
     ["Ada", "Paris", "package arrived late and damaged, terrible delivery"],
@@ -34,7 +35,8 @@ def main():
         from engine.tables import qident
     except ImportError as e:
         print(f"missing serving dep ({e}); install: pip install -r requirements.txt"); return 1
-    schema = os.environ.get("AUTH_TEST_SUB", "route_demo")
+    from regress.live_schema import live_schema
+    schema = live_schema().name
     Q = KnowledgeQuery()
     fails = []
 

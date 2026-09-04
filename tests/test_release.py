@@ -349,6 +349,14 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert not {"engine", "training", "tests", "spider", "world_eval"} & set(
         SOURCE_SYNC_ALLOWLIST
     )
+    assert {
+        "engine/__init__.py",
+        "engine/enrichment/__init__.py",
+        "engine/enrichment/registry.py",
+    } <= set(SOURCE_SYNC_ALLOWLIST)
+    sync_dockerfile = _text("Dockerfile.sync")
+    assert "COPY engine/enrichment/registry.py" in sync_dockerfile
+    assert "COPY engine/ /app/engine/" not in sync_dockerfile
     assert 'choices=("engine", "sync")' in source
     assert '"build_target": target' in source
     workflow = _text(".github/workflows/ci.yml")
@@ -356,6 +364,24 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert "prereasoner-sync:ci -c \"from db.sync.community_bootstrap" in workflow
     for ignore in (".venv*/", "service-account*.json", "*.tfstate"):
         assert ignore in _text(".gcloudignore")
+
+
+def test_live_database_tests_allocate_production_shaped_schemas():
+    from regress.live_schema import live_schema
+
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "regress.live_schema.atexit.register"
+    ) as register:
+        first = live_schema()
+        second = live_schema()
+    assert re.fullmatch(r"c_[0-9a-f]{32}", first.name)
+    assert re.fullmatch(r"c_[0-9a-f]{32}", second.name)
+    assert first.name != second.name and first.managed and second.managed
+    assert register.call_count == 2
+
+    with patch.dict("os.environ", {"AUTH_TEST_SUB": "explicit_test_schema"}, clear=True):
+        explicit = live_schema()
+    assert explicit.name == "explicit_test_schema" and not explicit.managed
 
 
 def test_release_installs_only_hash_locked_dependencies():
@@ -585,6 +611,7 @@ TESTS = [
     test_runpod_transfers_are_inside_the_owned_lease,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
+    test_live_database_tests_allocate_production_shaped_schemas,
     test_release_installs_only_hash_locked_dependencies,
     test_world_evaluation_records_release_provenance,
     test_gpu_training_preserves_the_runner_cuda_torch,

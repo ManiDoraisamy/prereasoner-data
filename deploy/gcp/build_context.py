@@ -2,13 +2,13 @@
 from __future__ import annotations
 
 import argparse
-from io import BytesIO
 import json
-from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tarfile
+from io import BytesIO
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -34,9 +34,15 @@ SOURCE_SYNC_ALLOWLIST = (
     "THIRD_PARTY.md",
     "cloudbuild.sync.yaml",
     "db",
+    "engine/__init__.py",
+    "engine/enrichment/__init__.py",
+    "engine/enrichment/registry.py",
 )
 
-from engine.artifact_provenance import load_weights_manifest, validate_weight_bundle  # noqa: E402
+from engine.artifact_provenance import (  # noqa: E402
+    load_weights_manifest,
+    validate_weight_bundle,
+)
 
 
 def _git(*args: str) -> str:

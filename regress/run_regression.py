@@ -13,6 +13,7 @@ engine image, where torch + the model weights live — GitHub CI can only compil
   python -m regress.run_regression --offline  # offline only
 """
 from __future__ import annotations
+
 import argparse
 import os
 import sys
@@ -43,9 +44,9 @@ class Engine:
     """Loads the trained encoder once; routes + runs a case exactly like the live serve() (offline, world=None)."""
 
     def __init__(self):
+        from engine.compose import ComposeEngine
         from engine.encoder_overlay import EncoderQuery
         from engine.primitive_head import PrimitiveReader
-        from engine.compose import ComposeEngine
         self.enc = EncoderQuery()
         self.reader = PrimitiveReader(encoder=self.enc)
         self.compose = ComposeEngine(reader=self.reader)
@@ -108,7 +109,7 @@ def run_unit_checks():
     joins.py regression is only visible here — a compose-routed share/having question over these sheets would
     hit it."""
     from engine.joins import discover_fks
-    from regress.offline_cases import STORES, EMPLOYEES
+    from regress.offline_cases import EMPLOYEES, STORES
     print("\n=== UNIT invariants (engine.joins compose-path FK discovery) ===")
     fails = []
     # STARTUP-IMPORT smoke: the container runs server.main(), which does `from engine.enrichment import ...`.
@@ -118,7 +119,9 @@ def run_unit_checks():
     import importlib
     for _startup_module in ("engine.enrichment", "engine.domain_typing", "engine.domain_profiles"):
         try:
-            importlib.import_module(_startup_module)
+            module = importlib.import_module(_startup_module)
+            if _startup_module == "engine.enrichment":
+                getattr(module, "EnrichmentRuntime")
             print(f"  ok   startup import {_startup_module}")
         except Exception as exc:  # noqa: BLE001
             fails.append(f"STARTUP import {_startup_module} failed at build: {type(exc).__name__}: {exc}")
@@ -166,9 +169,9 @@ def run_unit_checks():
     # (3) The typed-AST search calls self._is_id (surrogate-key test), so EVERY TableQuery subclass used in
     # serving must have it — the PG own-data planner _TableQueryPg lacked it and crashed live (offline
     # EncoderQuery has it, so this is invisible to the model tiers). Pin every serving subclass.
-    from engine.tables import TableQuery
-    from engine.pg import _TableQueryPg
     from engine.encoder_overlay import EncoderQuery
+    from engine.pg import _TableQueryPg
+    from engine.tables import TableQuery
     missing = [c.__name__ for c in (TableQuery, _TableQueryPg, EncoderQuery) if not hasattr(c, "_is_id")]
     if missing:
         fails.append(f"REG TableQuery subclass(es) missing _is_id -> typed-AST search crashes: {missing}")

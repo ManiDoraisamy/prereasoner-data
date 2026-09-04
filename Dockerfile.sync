@@ -11,6 +11,9 @@ WORKDIR /app
 COPY db/sync/requirements-core.lock.txt /tmp/requirements-core.lock.txt
 RUN pip install --require-hashes -r /tmp/requirements-core.lock.txt
 COPY db/ /app/db/
+COPY engine/__init__.py /app/engine/__init__.py
+COPY engine/enrichment/__init__.py /app/engine/enrichment/__init__.py
+COPY engine/enrichment/registry.py /app/engine/enrichment/registry.py
 COPY LICENSE THIRD_PARTY.md /licenses/
 
 CMD ["python", "-m", "db.sync.sources.wikidata.sync"]

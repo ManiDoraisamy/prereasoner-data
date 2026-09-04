@@ -35,8 +35,10 @@ scalar / contains / min-rows / forbidden-value assertions on the executed denota
 - The **world tier** needs the seeded Cloud SQL + `KB_PG_PASSWORD` (Secret Manager) + `tests/` in the
   image; wire it with a Cloud SQL proxy step running `--require-world`, or run it pre-deploy against a
   seeded dev/staging DB. **A skipped world tier is not a pass** (`--require-world` enforces this).
-- **GitHub CI** (`.github/workflows/ci.yml`) can only compile-check — torch + the gitignored weights are
-  not present in a bare checkout, so the model-driven tiers run in the image build, not in CI.
+- **GitHub CI** (`.github/workflows/ci.yml`) runs the hermetic suites, PostgreSQL numeric parity,
+  web checks, Terraform validation, and builds all three release images from the public weight bundle.
+  It also generates SBOMs and blocks critical known vulnerabilities. The model-backed regression tiers
+  still run against a seeded database before deployment.
 
 ## Adding a case
 

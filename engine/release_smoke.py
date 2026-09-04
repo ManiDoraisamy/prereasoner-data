@@ -1,11 +1,19 @@
 """Model-image/database release smoke run as the real serving identity."""
 from __future__ import annotations
 
-import hashlib
 import json
+import uuid
 
-from engine.pg import _TableQueryPg, _pg
-from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SQLType, SelectItem, SelectQuery, render_query
+from engine.pg import _pg, _TableQueryPg
+from engine.sql_ast import (
+    Aggregate,
+    BinaryExpr,
+    ColumnRef,
+    SelectItem,
+    SelectQuery,
+    SQLType,
+    render_query,
+)
 from engine.tables import table_from_rows
 
 
@@ -36,7 +44,9 @@ def run() -> dict:
     finally:
         connection.close()
 
-    schema = "c_" + hashlib.md5(b"prereasoner-release-smoke", usedforsecurity=False).hexdigest()
+    # A unique production-shaped schema proves the runtime role can provision a
+    # fresh conversation and cannot collide with a schema owned by an older role.
+    schema = f"c_{uuid.uuid4().hex}"
     table = table_from_rows(
         "ledger", ["amount", "rate"],
         [["9007199254740993.1", "0.1"], ["0.1", "0.2"]],

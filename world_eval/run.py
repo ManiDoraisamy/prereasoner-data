@@ -159,7 +159,8 @@ def main():
 
     print("loading KnowledgeReasoner (encoder + bge + spaCy + live PG)...", flush=True)
     reasoner = KnowledgeReasoner()
-    sub = os.environ.get("AUTH_TEST_SUB", "world_eval")
+    from regress.live_schema import live_schema
+    sub = live_schema().name
     conn = _pg()
     try:
         conn.autocommit = True

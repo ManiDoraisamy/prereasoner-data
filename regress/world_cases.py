@@ -11,6 +11,7 @@ hermetic mini-seed for fast CI is a documented follow-up, see regress/README.md)
 Authored, NOT run in the offline dev environment (no Postgres here). Runs where the seed exists.
 """
 from __future__ import annotations
+
 import os
 import subprocess
 import sys
@@ -47,26 +48,38 @@ def _scalar(res):
 def run():
     failed = []
     from engine.knowledge import KnowledgeReasoner
-    sub = os.environ.get("AUTH_TEST_SUB", "regress_world")
-    Q = KnowledgeReasoner()
-    for c in CURATED:
-        try:
-            res = Q.serve([dict(t) for t in c["tables"]], c["question"], sub)
-            got = _scalar(res)
-            ok = (got == c["expect_scalar"]) if "expect_scalar" in c else \
-                 (isinstance(got, int) and got >= c["expect_min"])
-            print(f"  {'ok  ' if ok else 'FAIL'} {c['name']}: got {got}"
-                  f" (want {c.get('expect_scalar', '>=' + str(c.get('expect_min')))})")
-            if not ok:
+    from regress.live_schema import live_schema
+
+    lease = live_schema()
+    sub = lease.name
+    previous_sub = os.environ.get("AUTH_TEST_SUB")
+    os.environ["AUTH_TEST_SUB"] = sub
+    try:
+        Q = KnowledgeReasoner()
+        for c in CURATED:
+            try:
+                res = Q.serve([dict(t) for t in c["tables"]], c["question"], sub)
+                got = _scalar(res)
+                ok = (got == c["expect_scalar"]) if "expect_scalar" in c else \
+                     (isinstance(got, int) and got >= c["expect_min"])
+                print(f"  {'ok  ' if ok else 'FAIL'} {c['name']}: got {got}"
+                      f" (want {c.get('expect_scalar', '>=' + str(c.get('expect_min')))})")
+                if not ok:
+                    failed.append(c["name"])
+            except Exception as e:                           # noqa: BLE001
+                print(f"  FAIL {c['name']}: {type(e).__name__}: {e}")
                 failed.append(c["name"])
-        except Exception as e:                               # noqa: BLE001
-            print(f"  FAIL {c['name']}: {type(e).__name__}: {e}")
-            failed.append(c["name"])
-    # reuse the maintained oracle suites
-    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    for mod in ENGINE_SUITES:
-        rc = subprocess.call([sys.executable, "-m", mod], cwd=root)
-        print(f"  {'ok  ' if rc == 0 else 'FAIL'} {mod} (exit {rc})")
-        if rc != 0:
-            failed.append(mod)
+        # Reuse the maintained oracle suites under the same serving-owned schema.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        for mod in ENGINE_SUITES:
+            rc = subprocess.call([sys.executable, "-m", mod], cwd=root, env=os.environ.copy())
+            print(f"  {'ok  ' if rc == 0 else 'FAIL'} {mod} (exit {rc})")
+            if rc != 0:
+                failed.append(mod)
+    finally:
+        if previous_sub is None:
+            os.environ.pop("AUTH_TEST_SUB", None)
+        else:
+            os.environ["AUTH_TEST_SUB"] = previous_sub
+        lease.close()
     return failed
