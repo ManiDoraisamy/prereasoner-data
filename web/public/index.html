@@ -131,10 +131,12 @@ async function openExamples(){
   $('examples').style.display='block'; $('exbackdrop').style.display='block';
   if(EXAMPLES)return;
   // Built from DATASETS — the SAME map ?load= resolves against — so every row listed is one that really
-  // loads, and each row names the CSV files it attaches (the chips you get), not its directory path.
+  // loads, and each row names the sheets it attaches, not its directory path. The names are printed
+  // VERBATIM so a row reads exactly like the chips it produces; no ".csv" is appended, because a chip
+  // is a SHEET name (an uploaded .xlsx contributes one chip per worksheet and has no file extension).
   EXAMPLES=(await Promise.all(Object.keys(DATASETS).map(d=>
     fetch('/dataset/'+d+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>'')
-      .then(p=>({dir:d, files:DATASETS[d].map(n=>n+'.csv').join(', '), prompt:p.trim()}))
+      .then(p=>({dir:d, files:DATASETS[d].join(', '), prompt:p.trim()}))
   ))).filter(e=>e.prompt);
   $('exlist').innerHTML=EXAMPLES.length
     ? EXAMPLES.map(e=>'<button type=button data-load="'+esc(e.dir)+'"><div class=xq>'+esc(e.prompt)+'</div><div class=xd>'+esc(e.files)+'</div></button>').join('')

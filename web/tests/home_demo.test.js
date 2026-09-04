@@ -79,12 +79,15 @@ assert(html.includes('id=morex') && html.includes('>More examples</button>'),
 assert(html.includes('Object.keys(DATASETS)'),
   'the picker must list exactly the datasets ?load= can resolve, so no row silently loads the default');
 assert(html.includes("'/dataset/'+d+'/prompt.txt'"), 'the picker must show each dataset prompt');
-// A row names the CSV files it attaches — the chips the user gets — not the directory path, which is
-// an internal detail they never see anywhere else in the UI.
-assert(/files:DATASETS\[d\]\.map\(n=>n\+'\.csv'\)/.test(html),
-  "each picker row must list its dataset's CSV files");
-assert(html.includes('<div class=xd>\'+esc(e.files)+\'</div>'), 'the row subtitle must render the CSV file names');
+// A row names the sheets it attaches — the chips the user gets — not the directory path, which is an
+// internal detail they never see anywhere else. The names must be printed VERBATIM from the same
+// DATASETS values the chips are rendered from, so the dialog and the chips read identically; no
+// ".csv" decoration, because a chip is a sheet name (an .xlsx upload has one chip per worksheet).
+assert(/files:DATASETS\[d\]\.join\(', '\)/.test(html),
+  'picker rows must name sheets exactly as the chips do, with no extension appended');
+assert(html.includes('<div class=xd>\'+esc(e.files)+\'</div>'), 'the row subtitle must render the sheet names');
 assert(!html.includes('<div class=xd>\'+esc(e.dir)+\'</div>'), 'the row subtitle must not be the directory name');
+assert(/name:n,/.test(html), 'the chip name must be the same DATASETS value the picker prints');
 assert(html.includes("location.href='/?load='+encodeURIComponent(b.dataset.load)"),
   'picking an example must navigate to its ?load= URL');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
