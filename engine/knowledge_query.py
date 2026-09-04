@@ -4,9 +4,11 @@ This realizes the unified-encoder objective in production (not just /api/dimensi
   * OPERATOR + OPERAND from the metric space  — inherited EncoderQuery.read_op_all (no MEASURE_NOUNS/table_noun);
     the delegate (aggregate / pure world-join) path is EntityQuery.serve, which calls THIS read_op_all via MRO.
   * BRIDGE TABLES persisted per user on Postgres (the thesis: "an interpretable model is a database"):
-      "<t> connected to wikipedia"   = resolved FKs (cell -> world key + country), via bge + world.words (exact
-                                       entity resolution; same-space NOT required — the join is on a string key).
-      "<t> unconnected to wikipedia" = a unified-encoder vector(896) per free-text cell (remarks, notes, …),
+      "<t> connected to wikipedia"   = legacy bridge name for resolved FKs (cell -> world key + country), via bge +
+                                       knowledgebase.words (exact entity resolution; same-space NOT required —
+                                       the join is on a string key).
+      "<t> unconnected to wikipedia" = legacy bridge name for a unified-encoder vector(896) per free-text cell
+                                       (remarks, notes, …),
                                        so a free-text MEANING is kept as an embedding.
   * HYBRID structured+semantic query — "who complained about bad delivery in France" =
         connected:   country = 'France'                      (world join, bge-resolved)
@@ -128,17 +130,17 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
 
     # ---------------- NON-GEO world join over pre-synchronized facts ----------------
     # The faithful Wikidata tables (knowledgebase."hospital"/"software"/...) join like the geo ones: resolve the uploaded
-    # cell -> the type's qid (world.words, type=<leaf>), JOIN knowledgebase."<leaf>" ON qid, filter by a world attribute
+    # cell -> the type's qid (knowledgebase.words, type=<leaf>), JOIN knowledgebase."<leaf>" ON qid, filter by a world attribute
     # (country), aggregate the uploaded metric. Missing facts abstain; serving never fetches or writes them.
     def _resolve_world_qid(self, value, label, type_qid):
-        """value -> the world qid. world.words.type stores the EXACT Wikidata label (what the offline
+        """value -> the world qid. knowledgebase.words.type stores the EXACT Wikidata label (what the offline
         syncs insert), NOT the snake routing leaf — so look it up by that exact label, else a
         multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path forever.
         Exact norm match, then bge NN. A miss remains unresolved until an offline source sync supplies it."""
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
         _r = cur.fetchone()
-        wl = (str(_r[0]) if _r and _r[0] else label)                  # the exact label, matching the lazy insert
+        wl = (str(_r[0]) if _r and _r[0] else label)                  # the exact label used by the offline projection
         n = normalize_surface(value)
         cur.execute('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL LIMIT 1', (wl, n))
         row = cur.fetchone()
@@ -284,7 +286,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
 
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
-        _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # wikipedia table = the EXACT Wikidata label
+        _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # table = the EXACT Wikidata label
         qids = sorted({wq for wq, _ in pairs})
         # country filter is qid = qid (plan["country"] is a country QID; w."country" is the country's qid FK)
         cur.execute(f'SELECT qid FROM knowledgebase."{wl}" WHERE qid = ANY(%s) AND lower("country") = lower(%s)', (qids, country))
@@ -351,7 +353,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     # ---------------- clarify: detect a query that dropped part of the question + propose a rephrasing ----------------
     def _word_qid(self, w):
         """the world qid a single content word resolves to (exact normalized match in knowledgebase.\"words\" across the geo
-        entity types), so _uncovered can tell a word is COVERED when its QID appears in the qid-keyed wikipedia SQL."""
+        entity types), so _uncovered can tell a word is COVERED when its QID appears in the qid-keyed knowledgebase SQL."""
         try:
             cur = self._rconn().cursor()
             cur.execute('SELECT qid FROM knowledgebase."words" WHERE norm=%s AND qid IS NOT NULL '
@@ -413,7 +415,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             if _re.search(r"\b" + _re.escape(w) + r"\b", sqll):  # the word literally appears in the SQL (a filter value
                 continue                                         # like continent='Asia') -> it WAS used; covered. This
             wq = self._word_qid(w)                               # qid-keyed SQL: a word is COVERED if its resolved QID
-            if wq and wq.lower() in sqll:                        # appears (wikipedia filters on qids, e.g. continent='Q46')
+            if wq and wq.lower() in sqll:                        # appears (knowledgebase filters on qids, e.g. continent='Q46')
                 continue
             ent = self._best_world_entity([w])                   # also catches continents/currencies _best_world_entity
             #                                                      doesn't resolve (it only knows country/city).
@@ -500,7 +502,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return {"proposed": proposed.strip(), "bindings": bindings}
 
     def _country_name_for_qid(self, qid):
-        """A resolved country comes back as a QID (world.words stores qids), but the connected bridge's `country`
+        """A resolved country comes back as a QID (knowledgebase.words stores qids), but the connected bridge's `country`
         column holds the canonical country NAME (canon_country). Map qid -> name so the hybrid filter and the city
         context-disambiguation compare name-vs-name. Returns None if the qid isn't a known country."""
         import re

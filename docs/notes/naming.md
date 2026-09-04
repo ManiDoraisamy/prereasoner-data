@@ -29,7 +29,7 @@ both present and populated) — that is the source of the confusion, not a missi
 ## Why the split exists (root cause)
 
 **City and country** were moved onto the qid-keyed `knowledgebase."<type>"` schema first — see
-[ARCHITECTURE.md](../ARCHITECTURE.md) ADR #6 ("QID-keyed schema, lazy-synced"): homonym-free joins on `qid`,
+[ARCHITECTURE.md](../ARCHITECTURE.md) ADR #6 ("QID-keyed schema, offline-synced"): homonym-free joins on `qid`,
 and 2-hop world filters (`city.country.continent`). **`u_s_state` was migrated later** (an aggregate qid-keyed
 table — see below). **Element and the remaining families were *not* migrated** — they remain on the older
 friendly, name-keyed `knowledgebase."<Friendly>"` tables (e.g. `knowledgebase."Elements in the World"`, joined
@@ -106,7 +106,7 @@ applies if needed). Elements are now source-grounded by the value-membership fal
 `Elements in the World` view. The non-`u_s_state` friendly tables also still carry `country` as a name, so a country
 **filter** on those is a known gap — migrate them the same way (qid FK table) when needed.
 
-## Separate issue (historical): value undercounts were WDQS lazy-fill, not naming
+## Separate issue (historical): value undercounts were WDQS request-time fill, not naming
 
 `test_world_joins` value mismatches seen locally in 2026-08 (France 180 vs 220, empty state result) were
 **not** the naming issue — they were Wikidata (WDQS) lazy-fill timeouts from a dev machine. Request-time

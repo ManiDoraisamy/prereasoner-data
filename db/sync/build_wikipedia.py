@@ -1,8 +1,8 @@
 """Pre-create legacy qid-keyed Wikidata serving tables.
 
 For each taxonomy leaf, this adds an empty table named by the exact Wikidata label and
-copies the columns from the existing ``knowledgebase.<snake_label>`` mirror. Lazy entity
-synchronization can also create these tables, so running this command is optional.
+copies the columns from the existing ``knowledgebase.<snake_label>`` mirror. It is an
+offline preparation step; serving never creates these tables or fills their rows.
 
 This builder is deliberately additive: it never drops or replaces a table or schema. An
 existing incompatible alias is an operator-visible error, not permission to destroy data.
@@ -79,7 +79,7 @@ def main():
     conn = connect(); cur = conn.cursor()
     leaf_qid = _leaf_qid()
 
-    # ---- 1+2: wikipedia schema + EMPTY faithful tables, qid PRIMARY KEY ----
+    # ---- 1+2: knowledgebase schema + EMPTY faithful tables, qid PRIMARY KEY ----
     cur.execute("CREATE SCHEMA IF NOT EXISTS knowledgebase")
     cur.execute('SELECT qid, label FROM knowledgebase."types"')
     qlabel = {q: l for q, l in cur.fetchall()}

@@ -1,15 +1,15 @@
 """EXPANDED geo test suite (LIVE world Postgres). Covers the two geo capabilities of KnowledgeReasoner end to end,
 plus the canonical regressions and composite view-stacks, with ORACLE-checked expectations computed directly off
-the live `world`/`wikipedia`/`public` schemas (so the numbers are derived, not hard-coded guesses):
+the live `knowledgebase`/`public` schemas (so the numbers are derived, not hard-coded guesses):
 
   (A) NEARBY by lat/lng        — "big cities near Paris", "cities near Tokyo": haversine distance ordering
                                  (nearest first), reference resolution, lat/lng both used.
-  (B) Big cities by POPULATION — "top N cities by population", population-ranked view stack (world.Cities join).
+  (B) Big cities by POPULATION — "top N cities by population", population-ranked view stack (knowledgebase.Cities join).
   (C) Canonical regressions    — France->sum, Europe->2-hop continent, hospital router typing, composite stacks.
   (D) Edge cases               — nearby+big filter behaviour, population+group, nearby reference miss.
 
 The (A)/(B) ORACLES are recomputed here in SQL from the SAME live tables the serve path reads, then the model's
-served answer is checked against them. Geo lazy-fill can be slow on first hit -> per-call retry with backoff.
+served answer is checked against them. A cold database round-trip can be slow on first hit -> per-call retry with backoff.
 
   Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_geo
@@ -49,7 +49,7 @@ def warn(name, detail=""):
 
 
 def _retry(fn, tries=3, base=4.0):
-    """Geo lazy-fill (and a cold first DB round-trip) can be slow; retry a serve call a few times before giving up."""
+    """A cold first DB round-trip can be slow; retry a serve call a few times before giving up."""
     last = None
     for i in range(tries):
         try:
@@ -103,7 +103,7 @@ def oracle_nearby(cur, ref, big, limit=5):
 
 
 def oracle_city_pop(cur, city):
-    """Resolve a city cell -> qid (world.words, is_primary then population), then its world.Cities population. The
+    """Resolve a city cell -> qid (knowledgebase.words, is_primary then population), then its knowledgebase.Cities population. The
     exact pick() the compose/entity layers use for the population view stack. -> (qid, population) or (None, None)."""
     cur.execute("SELECT qid, is_primary, (props->>'population')::bigint FROM knowledgebase.\"words\" "
                 "WHERE type='city' AND qid IS NOT NULL AND norm=%s", (_norm(city),))
@@ -228,9 +228,9 @@ def main():
 
     # ============================================================ (B) Big cities by POPULATION ===================
     print("\n== (B) big cities by POPULATION ==", flush=True)
-    # oracle: per-city population from world.Cities (the table the view stack joins)
+    # oracle: per-city population from knowledgebase.Cities (the table the view stack joins)
     citypop = {c: oracle_city_pop(cur, c)[1] for c in ["Paris", "Lyon", "Berlin", "Tokyo"]}
-    ok("oracle: all demo cities have a population in world.Cities",
+    ok("oracle: all demo cities have a population in knowledgebase.Cities",
        all(v is not None for v in citypop.values()), f"{citypop}")
     top3_oracle = [c for c, _ in sorted(citypop.items(), key=lambda kv: (kv[1] or -1), reverse=True)[:3]]
 
@@ -264,7 +264,7 @@ def main():
         else:
             warn("population: city label not surfaced in the answer rows (only the population number)",
                  f"cols={(rp.get('result') or {}).get('columns')}")
-        # the population values must be the REAL world.Cities numbers, not row counts (guards a 'population not synced'
+        # the population values must be the REAL knowledgebase.Cities numbers, not row counts (guards a 'population not synced'
         # / 'population column missing' regression where the stack would fall back to COUNT=1 per city).
         ok("population: values are real magnitudes, not 1-per-row counts",
            any(p and p > 1000 for p in pops), f"pops={pops}")
@@ -438,7 +438,7 @@ def main():
        any(v.get("wtable") == "city" and v.get("rows") for v in rslides),
        f"slides={[(v or {}).get('wtable') or 'unconnected' for v in rslides]}")
 
-    # C3 hospital ROUTER typing (the robust, deterministic regression — end-to-end non-geo serve is lazy-fill-slow).
+    # C3 hospital ROUTER typing (the robust, deterministic regression; end-to-end data is pre-synchronized).
     from engine.router import Router
     rtr = Router()
     oh = rtr.route(["Mayo Clinic", "Cleveland Clinic", "Mount Sinai", "Johns Hopkins Hospital"], header="hospital")

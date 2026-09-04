@@ -87,16 +87,16 @@ The runner executes the canonical suites in this order:
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |
-| `tests.test_nongeo` | Non-geographic world resolution and lazy fill |
+| `tests.test_nongeo` | Non-geographic world resolution from pre-synchronized projections |
 | `tests.test_world_joins` | Country, continent, and state world-table joins |
 | `tests.test_route_wired` | Model-driven route to SQL end to end |
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 | `tests.test_schema_probes` | Live property/class generalization and cross-process determinism |
 
-The live suites need runtime weights and a seeded PostgreSQL knowledgebase. The orchestrator suite is also
-external and can be excluded with `RUN_ORCHESTRATOR_TESTS=0`. Some live suites need network access for an
-uncached Wikidata entity. The runner reports unavailable suites as skipped so local development can continue, but a
-skip is not a passing integration test. Record exact skips and prerequisites in a pull request.
+The live suites need runtime weights and a seeded PostgreSQL knowledgebase with pre-synchronized source
+projections. The orchestrator suite is also external and can be excluded with `RUN_ORCHESTRATOR_TESTS=0`.
+Request tests do not fetch Wikidata. The runner reports unavailable suites as skipped so local development can
+continue, but a skip is not a passing integration test. Record exact skips and prerequisites in a pull request.
 
 Run live suites sequentially. They create and replace shared test fixtures; concurrently launching two aggregate
 runs against one database can make one suite observe the other's fixture state.

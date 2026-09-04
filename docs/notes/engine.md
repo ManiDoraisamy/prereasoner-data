@@ -22,10 +22,10 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `knowledge_tables.py` | `KnowledgeTableQuery` (implicit world `word_*` tables, meaning graph, freshness). |
 | `pg.py` | `PgQuery`, `_TableQueryPg`; `_pg()` is fully config-driven (host/port/db/user/sslmode/password). |
 | `resolve_base.py` | `RoutedQuery` (generalized routing + country aliases + States/Elements configs). |
-| `entities.py` | `EntityQuery` (bge embedding NN entity resolution, pgvector `words`, cell bridges, lazy city fill). |
+| `entities.py` | `EntityQuery` (bge embedding NN entity resolution, pgvector `words`, and cell bridges). |
 | `encoder_overlay.py` | `EncoderQuery`; `load_encoder` — the single loader for `encoder_meta.pt`/`encoder.pt`/`qwen_lora`. |
 | `compose.py` | `ComposeEngine`. |
-| `knowledge_query.py` | `KnowledgeQuery`; model-driven column routing (`KB_MODEL_ROUTE`), non-geo world joins + lazy fill. |
+| `knowledge_query.py` | `KnowledgeQuery`; model-driven column routing (`KB_MODEL_ROUTE`) and non-geo world joins over pre-synchronized facts. |
 | `knowledge_compose.py` | `ComposedKnowledgeQuery`; also the conversational detectors (`_has_data_signal`, `_human_tone`). |
 | `knowledge.py` | `KnowledgeReasoner` (geo NEARBY wrapper; the shared serving entry point for reason/knowledge; the conversational coverage pre-gate + present-tagging). |
 | `dimension.py` | `DimensionModel`. |
@@ -128,8 +128,8 @@ layout.
 - The engine initializes firebase-admin via ADC for token verification even when
   `RTDB_URL` is unset; serving `/api/reason`/`/api/knowledge` therefore needs Google
   credentials unless `AUTH_TEST_SUB` is set.
-- `tests/test_nongeo.py` / lazy fill hit live Wikidata (WDQS + API) —
-  network-dependent and slow by design.
+- `tests/test_nongeo.py` and `tests/test_world_joins.py` read the seeded projections through the
+  serving role. Source synchronization is a separate offline job; request tests do not call WDQS.
 
 ## Behavior note: clarify never surfaces a raw QID
 

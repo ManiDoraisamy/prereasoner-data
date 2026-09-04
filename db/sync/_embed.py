@@ -8,19 +8,15 @@ normalize_surface() is the deterministic exact-match key stored in words.norm:
 'the U.S.A.' -> 'usa', 'the United States' -> 'unitedstates', 'New York' -> 'newyork'.
 """
 from __future__ import annotations
-import re
 
 import numpy as np
 
 from engine.model_revisions import BGE_MODEL_ID as _MODEL_ID, BGE_REVISION as _MODEL_REVISION
 
-
-def normalize_surface(s):
-    """lowercase, drop a leading 'the', squish to alphanumerics."""
-    s = (s or "").strip().lower()
-    if s.startswith("the "):
-        s = s[4:]
-    return re.sub(r"[^a-z0-9]+", "", s)
+try:
+    from _normalize import normalize_surface
+except ImportError:
+    from ._normalize import normalize_surface
 
 
 class Embedder:

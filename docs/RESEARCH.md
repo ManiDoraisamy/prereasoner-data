@@ -223,13 +223,13 @@ The tabular system's load-bearing fragilities, stated plainly:
    phrasing behaviour (sell/earn/spend, how much/many, mean/typical/per) should be pre-registered
    before wiring deeper into a production product.
 3. **Taxonomy routing on the long tail.** The re-anchor fixed the 46 non-geo leaves it covered
-   (§6), but the `wikipedia` schema lazy-syncs more types than that and the taxonomy is broader
-   still. Column *names* fire inconsistently, which is why routing reads cell **values**, not
-   headers — watch the tail as long-tail types are added to the lazy-sync.
-4. **Resolution threshold + lazy-sync freshness.** A cell resolves to a QID by exact-norm match
-   then embedding NN ≥ threshold, then triggers a lazy Wikidata fill; the near-miss band
-   (sub-threshold entities the clarify gate should catch) and the cold-fill latency deserve
-   measurement before relying on them under load.
+   (§6), but the `knowledgebase` schema has more offline type tables than that and the taxonomy
+   is broader still. Column *names* fire inconsistently, which is why routing reads cell **values**,
+   not headers — watch the tail as more type tables are synchronized.
+4. **Resolution threshold + snapshot coverage.** A cell resolves to a QID by exact-norm match
+   then embedding NN ≥ threshold. A value missing from the pinned snapshot is not fetched during
+   serving; it is an explicit abstention. Measure the near-miss band and the coverage of each
+   released snapshot before relying on a new type under load.
 
 > Note: the operator/plan is read from the anchored `intent_*` dims; there is no separate
 > auxiliary "small model on a handful of golden pairs." The generalization risk is real but lives

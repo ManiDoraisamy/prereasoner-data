@@ -219,7 +219,7 @@ class ComposedKnowledgeQuery:
 
     def _emit_resolve_slide(self, cur, table, column, col_rows, ridx):
         """Stream ONE resolution slide for a CONNECTED string column: the knowledgebase."<type>" rows (qid + the faithful
-        Wikidata columns it lazy-filled) for the entities this column resolved to. The client renders <table> with
+        Wikidata columns from the pre-synchronized projection for the entities this column resolved to. The client renders <table> with
         <column> highlighted above this world table, whose `name` column is highlighted to match. Best-effort."""
         try:
             from engine.trace import ctx_emit

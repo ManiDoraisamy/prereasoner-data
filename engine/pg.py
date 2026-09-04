@@ -68,13 +68,13 @@ def _pg():
 
 
 def _load_user_schema(cur, schema, sch, tablemap):
-    """Create the per-user schema, (re)load the uploaded sheets as tables, set search_path = "<schema>", world.
+    """Create the per-user schema, (re)load the uploaded sheets as tables, set search_path = "<schema>", knowledgebase.
     `schema` MUST be a server-verified identifier (the Google sub); it is only ever quoted, never executed."""
     cur.execute(f'CREATE SCHEMA IF NOT EXISTS {qident(schema)}')
-    # user schema + world FIRST (they own every table the planner names); `public` LAST so the pgvector `vector`
+    # user schema + knowledgebase FIRST (they own every table the planner names); `public` LAST so the pgvector `vector`
     # type and its `<=>` operator (installed in public) resolve for the embedding bridge. No shadowing:
-    # uploads live in <schema>, world tables/views in world; public holds only the raw Wikidata import + pgvector.
-    cur.execute(f'SET search_path TO {qident(schema)}, knowledgebase, public')   # wikipedia FIRST: bare world-table names (city/country) resolve to the qid-keyed wikipedia schema
+    # uploads live in <schema>, shared projections in knowledgebase; public holds only the raw Wikidata import + pgvector.
+    cur.execute(f'SET search_path TO {qident(schema)}, knowledgebase, public')   # knowledgebase FIRST: bare world-table names resolve to qid-keyed projections
     by_t = {}
     for c in sch:
         by_t.setdefault(c["table"], []).append(c)

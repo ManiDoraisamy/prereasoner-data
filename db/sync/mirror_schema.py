@@ -1,10 +1,7 @@
 """FULL SCHEMA MIRROR — for every concrete accepted/added taxonomy leaf, discover its
-real Wikidata property schema and CREATE the empty faithful table in the `wikipedia`
-schema. Data is NOT bulk-loaded — it fills lazily via sync_entity.lazy_resolve /
-ensure_entity when a CSV cell misses in knowledgebase."words".
-
-OPTIONAL: ensure_entity creates missing tables on demand anyway; running this just
-pre-creates them (and warms the property discovery) so first queries are faster.
+real Wikidata property schema and CREATE the empty faithful table in the `knowledgebase`
+schema. This is an offline preparation step. It does not bulk-load rows and is never
+called by serving; run a per-type sync afterwards when a table is intended to be usable.
 
 Abstract leaves (legal form, taxonomic rank, "person or organization", ...) are
 SKIPPED — they aren't world-entity tables.

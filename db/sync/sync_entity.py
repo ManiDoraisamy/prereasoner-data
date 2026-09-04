@@ -1,5 +1,5 @@
-"""Faithful per-TYPE Wikidata sync + the LAZY single-entity sync the engine uses at
-query time (standalone copy of the engine's sync_wikidata_world module).
+"""Faithful per-TYPE Wikidata sync plus an explicit single-entity maintenance command.
+This module is an offline sync tool; it is never imported by the serving request path.
 
 For a taxonomy type (qid), this:
   1. DISCOVERS the type's real schema from Wikidata (property-frequency over a sample of
@@ -7,19 +7,19 @@ For a taxonomy type (qid), this:
      String / Monolingualtext / GlobeCoordinate) and dropping Wikimedia cruft.
   2. CREATES the faithful table with one TEXT column per kept property (snake_cased
      label) + qid + name; item-valued properties store the related entity's QID (FK).
-  3. POPULATES it from WDQS — bulk (--max N), schema-only (--schema-only), or lazily one
-     entity at a time (--lazy VALUE, or ensure_entity()/lazy_resolve() when imported).
+  3. POPULATES it from WDQS — bulk (--max N), schema-only (--schema-only), or an explicit
+     operator-selected entity (--lazy VALUE).
 
-The lazy path is what a fresh deployment relies on: knowledgebase."<exact Wikidata label>"
-tables start EMPTY (or nonexistent — ensure_table creates them on demand) and fill as
-CSV cells resolve. Each lazily-synced entity is also registered in knowledgebase."words" so it
-resolves instantly next time.
+The per-entity mode is an operator maintenance action: knowledgebase."<exact Wikidata label>"
+tables start EMPTY (or nonexistent — ensure_table creates them for this maintenance run).
+Each explicitly synchronized entity is also registered in knowledgebase."words" so it resolves
+in the next offline snapshot. This module is never called by serving.
 
 Run:
   export KB_PG_HOST=... KB_PG_PASSWORD=...        # see db/sync/_conn.py
   python db/sync/sync_entity.py --qid Q6256 --label country --max 1000   # bulk one type
-  python db/sync/sync_entity.py --qid Q515  --label city --schema-only   # table only, data lazy
-  python db/sync/sync_entity.py --qid Q515  --label city --lazy "Kyoto"  # sync one entity
+  python db/sync/sync_entity.py --qid Q515  --label city --schema-only   # table only, no rows
+  python db/sync/sync_entity.py --qid Q515  --label city --lazy "Kyoto"  # sync one entity offline
 """
 from __future__ import annotations
 import argparse
@@ -131,8 +131,7 @@ def fetch(qid, props, limit):
 
 
 def find_entity(value, type_qid):
-    """The Wikidata entity named `value` that is an instance (P31/P279*) of type_qid — the lazy lookup when
-    a CSV cell didn't resolve in world.words. Search API for candidates, then a cheap ASK per candidate."""
+    """Find a Wikidata entity named `value` under type_qid for an explicit sync action."""
     for cq in wbsearch(value):
         try:
             if ask(f"ASK {{ wd:{cq} wdt:P31/wdt:P279* wd:{type_qid} }}"):
@@ -169,8 +168,7 @@ def wlabel(cur, type_qid):
 
 
 def ensure_table(cur, label, props):
-    """the faithful wikipedia table (exact-label name, qid PK + qid-FK columns); created on demand if a
-    type was never mirrored (build_wikipedia.py pre-creates the known ones; this covers the long tail)."""
+    """Create the faithful exact-label table for an offline maintenance action."""
     coldefs = ['"qid" TEXT PRIMARY KEY', '"name" TEXT'] + [f'"{c}" TEXT' for _p, c, _l, _t in props]
     cur.execute(f'CREATE TABLE IF NOT EXISTS knowledgebase."{label}" ({", ".join(coldefs)})')
 
@@ -179,10 +177,10 @@ _PROPS_CACHE = {}                                                            # t
 
 
 def ensure_entity(eqid, type_qid, value=None):
-    """LAZY SYNC: make sure entity `eqid` exists in knowledgebase."<exact label>" (fetch the faithful row from
-    Wikidata + INSERT, qid PK + qid FKs) and is registered in knowledgebase."words" (so it resolves next time).
-    Used both when a cell resolves to a qid that isn't in the (empty) table yet AND from lazy_resolve.
-    Returns the qid. Idempotent."""
+    """Synchronize one explicitly selected entity and register its lookup word.
+
+    This function is for the offline maintenance command only; serving never calls it.
+    """
     conn = _pg(); conn.autocommit = True; cur = conn.cursor()
     wl = wlabel(cur, type_qid)
     props = _PROPS_CACHE.get(type_qid)
@@ -208,8 +206,7 @@ def ensure_entity(eqid, type_qid, value=None):
 
 
 def lazy_resolve(value, type_qid, label=None):
-    """A CSV cell that didn't resolve in world.words -> find it in Wikidata (search+ASK), then
-    ensure_entity syncs the faithful row into knowledgebase."<exact label>". Returns the qid or None."""
+    """Explicitly resolve and synchronize one operator-selected entity."""
     eqid = find_entity(value, type_qid)
     if not eqid:
         print(f"  lazy: {value!r} not found in Wikidata as {type_qid}", flush=True); return None
@@ -220,8 +217,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--qid"); ap.add_argument("--label", required=True)
     ap.add_argument("--max", type=int, default=1000); ap.add_argument("--show", action="store_true")
-    ap.add_argument("--schema-only", action="store_true", help="create the faithful table but DON'T bulk-populate (lazy data)")
-    ap.add_argument("--lazy", help="LAZY: find this value in Wikidata as --label/--qid, sync it + register in words")
+    ap.add_argument("--schema-only", action="store_true", help="create the faithful table without populating rows")
+    ap.add_argument("--lazy", help="explicitly find this value in Wikidata and sync it + register its word")
     a = ap.parse_args()
 
     if a.lazy:
@@ -233,10 +230,10 @@ def main():
     if not props:
         print("  no real-attribute properties (abstract type?) — skipped"); return 0
 
-    if a.schema_only:                                          # FULL SCHEMA MIRROR: create the table, data stays lazy
+    if a.schema_only:                                          # prepare the table; row population remains an offline step
         conn = _pg(); conn.autocommit = True; cur = conn.cursor()
         ensure_table(cur, a.label, props)
-        print(f'  CREATED (schema only) knowledgebase."{a.label}" ({len(props)} property columns) — data lazy', flush=True)
+        print(f'  CREATED (schema only) knowledgebase."{a.label}" ({len(props)} property columns) — no rows populated', flush=True)
         return 0
 
     rows = fetch(a.qid, props, a.max)

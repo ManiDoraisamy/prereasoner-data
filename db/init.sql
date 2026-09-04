@@ -5,7 +5,7 @@
 --
 -- Creates every extension, schema, static table and index the engine expects.
 -- Idempotent: safe to re-run. Population is done by the scripts in db/sync/
--- (bulk) and by the engine's lazy sync at query time (see db/README.md).
+-- (bulk/offline) by the db/sync pipeline (see db/README.md). Serving reads shared facts only.
 --
 -- The engine connects as a single role (typically `postgres`) named by
 -- KB_PG_USER; it CREATEs conversation and private-reference schemas, so the role
@@ -30,7 +30,7 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 --    knowledgebase : THE shared serving schema — the "words" resolution index,
 --                    the "types" taxonomy, the qid-keyed faithful Wikidata tables
 --                    (one per taxonomy leaf, exact Wikidata label as table name,
---                    lazily filled), and the friendly name-keyed tables + views.
+--                    populated by offline sync), and the friendly name-keyed tables + views.
 --                    (Named "knowledgebase" — NOT "world" — because "world model"
 --                    means a learned dynamics model in ML; this is a lookup KB.)
 --    c_<32hex> conversation schemas hold uploads, selected reference copies, and
@@ -41,7 +41,7 @@ CREATE SCHEMA IF NOT EXISTS knowledgebase;
 
 -- ----------------------------------------------------------------------------
 -- 2. public — raw Wikidata world model
---    Populated by db/sync/sync_wikidata.py (live WDQS, recommended) or
+--    Populated offline by db/sync/sync_wikidata.py (WDQS) or
 --    db/sync/import_dump.py (HF parquet dump, legacy).
 --    Read by: db/sync/build_world.py + build_words.py (transforms into knowledgebase.*),
 --    and directly by the engine's geo NEARBY path.
@@ -140,8 +140,8 @@ CREATE INDEX IF NOT EXISTS ix_label_trgm          ON public.entity_label USING g
 -- 3. knowledgebase."words" — THE entity-resolution index (pgvector).
 --    One row per SURFACE form (label or alias) -> canonical entity + qid.
 --    embedding = bge-small-en-v1.5 [CLS], L2-normalized, 384-dim; cosine via <=>.
---    Populated by db/sync/build_words.py; single rows appended by the engine's
---    lazy sync (sync_entity.ensure_entity) and by sync_types.py (type='type').
+--    Populated by db/sync/build_words.py and sync_types.py (type='type'). Serving never
+--    appends rows here.
 --    Read by the entity resolver, cell bridges, world grounding, and lookup paths.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS knowledgebase."words" (
@@ -169,7 +169,7 @@ CREATE INDEX IF NOT EXISTS ix_words_hnsw       ON knowledgebase."words" USING hn
 --    Populated by db/sync/sync_types.py from db/sync/data/taxonomy.csv.
 --    resolver_type links legacy words.type strings ('city') to the node qid
 --    (Q515) — set by db/sync/unify_words_qid.py (or sync_types.py).
---    Read by lazy entity table naming, world-QID resolution, and taxonomy routing.
+--    Read by world-QID resolution and taxonomy routing.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS knowledgebase."types" (
   qid           text PRIMARY KEY,
@@ -272,8 +272,8 @@ CREATE TABLE IF NOT EXISTS knowledgebase."exchange_rate" (
 -- Maintenance catalog: which world tables are actually kept up to date, how often each is expected
 -- to refresh, and when it last did. Rows are declared by db/sync/schedule.py (the ONE writer) and
 -- read at serving time by the freshness guard, so a table with no per-row updated_at can still be
--- judged stale instead of silently passing. The "... in the World" VIEWS below and the lazy-fill
--- entity tables are deliberately excluded — see that module's docstring.
+-- judged stale instead of silently passing. The "... in the World" VIEWS below are deliberately
+-- excluded; qid projections are listed when an offline builder maintains them.
 CREATE TABLE IF NOT EXISTS knowledgebase."schedule" (
   table_name        text PRIMARY KEY,
   source            text NOT NULL,
@@ -305,15 +305,14 @@ CREATE OR REPLACE VIEW knowledgebase."Continents in the World" AS SELECT * FROM 
 CREATE OR REPLACE VIEW knowledgebase."States in the World"     AS SELECT * FROM knowledgebase."States";
 
 -- ----------------------------------------------------------------------------
--- 6. Qid-keyed faithful Wikidata tables. INTENTIONALLY EMPTY HERE.
+-- 6. Qid-keyed faithful Wikidata tables. INTENTIONALLY EMPTY HERE unless an offline sync has
+--    populated a projection.
 --    Tables are named by the EXACT Wikidata type label (e.g. knowledgebase."city",
 --    knowledgebase."hospital") with columns = the type's discovered Wikidata
---    properties (all text) + qid PRIMARY KEY + name. They are created:
---      * lazily at query time by the engine (sync_entity.ensure_table via
---        ensure_entity/lazy_resolve — the normal path), or
---      * up front by db/sync/build_wikipedia.py / mirror_schema.py (optional).
---    Rows are lazily fetched one entity at a time from Wikidata when a CSV
---    cell resolves to a qid that is not in the table yet.
+--    properties (all text) + qid PRIMARY KEY + name. They are created/populated by offline
+--    db/sync builders. build_qid_world.py maintains city/country projections from public.*;
+--    build_wikipedia.py and mirror_schema.py can pre-create faithful long-tail tables for a
+--    separately run per-type sync. Serving reads these tables and abstains when a qid is absent.
 -- ----------------------------------------------------------------------------
 
 -- ----------------------------------------------------------------------------

@@ -12,7 +12,7 @@ showing the sub, and the rest of the dashboard still works.
 
 Auth: gated to an explicit email allowlist (ADMIN_EMAILS; empty by default). NOT the normal user auth - a logged-in
 non-admin gets 403. Every destructive op RE-VALIDATES the schema id shape (c_<32 hex>) before DROP SCHEMA, so
-a bug or crafted id can never drop an arbitrary schema (world/wikipedia/public/chat are never matched).
+a bug or crafted id can never drop an arbitrary schema (knowledgebase/public/chat are never matched).
 """
 from __future__ import annotations
 import os

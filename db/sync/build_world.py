@@ -26,7 +26,7 @@ try:
 except ImportError:
     from ._conn import connect                    # imported as a package module
 
-SRC = "Wikidata (live WDQS)"
+SRC = "Wikidata synchronized snapshot"
 
 TRUNCATE = '''
 TRUNCATE knowledgebase."Cities", knowledgebase."Countries", knowledgebase."Places",

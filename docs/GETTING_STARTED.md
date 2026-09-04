@@ -21,7 +21,7 @@ that can exercise the code you are touching.
 | Source parser or synchronizer | `db/sync/requirements.lock.txt` on Linux; PostgreSQL only for an actual load |
 | Browser state and static UI | Node 20 and a static/Firebase server |
 | Full engine request | Runtime weights and PostgreSQL |
-| World grounding | Runtime weights and a seeded knowledgebase; some uncached Wikidata entities also need network access |
+| World grounding | Runtime weights and a seeded knowledgebase with the required offline projections |
 | Conversational presentation | Everything above plus `ANTHROPIC_API_KEY` |
 
 Start with hermetic tests. Add infrastructure only when the owner you are changing needs it.

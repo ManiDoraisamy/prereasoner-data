@@ -171,7 +171,7 @@ filters by country. The path is:
 
 1. route a column to a grounded entity type;
 2. resolve cell values to QIDs through exact normalized lookup, then embedding fallback;
-3. lazily materialize required Wikidata-backed rows;
+3. read the required rows from the pinned, offline-built Wikidata projection;
 4. persist a conversation-scoped cell-to-QID bridge;
 5. join through QID foreign keys and execute the requested operation.
 
@@ -179,8 +179,8 @@ filters by country. The path is:
 multi-step operations that genuinely require a world dependency. `engine.routing.compose_owns()` is the authority;
 a primitive prediction alone cannot seize a self-contained own-data question.
 
-World lookup may depend on Wikidata availability for an uncached entity. Existing cached data and emitted SQL make
-successful results reproducible, but a missing external source is an operational failure, not a model failure.
+World lookup does not contact Wikidata at request time. Missing rows or ambiguous keys are an explicit
+coverage/abstention outcome; synchronization and release activation are offline operational responsibilities.
 
 ## Named-Dimension Typing And Its Evidence
 

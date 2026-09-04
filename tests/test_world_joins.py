@@ -6,9 +6,9 @@ The independently-routed joins, with the world-table name each column routes to 
 docs/notes/naming.md). city/country use the exact-label knowledgebase."<type>" tables; u_s_state uses the
 aggregate qid-keyed knowledgebase."u_s_state" (built by db/sync/build_u_s_state.py) — name-join, but country/continent
 are qid FKs so the filter is exact:
-  city      -> "city"       (wikipedia.city;    filter by country / continent)
-  country   -> "country"    (wikipedia.country; filter by continent)
-  u_s_state -> "u_s_state"  (world.u_s_state;   filter by country — Lombardy/Sicily in Italy)
+  city      -> "city"       (knowledgebase.city;    filter by country / continent)
+  country   -> "country"    (knowledgebase.country; filter by continent)
+  u_s_state -> "u_s_state"  (knowledgebase.u_s_state; filter by country — Lombardy/Sicily in Italy)
 Runs against the LIVE world Postgres on the consolidated single-model path.
 
   Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
@@ -27,8 +27,8 @@ STATE = {"name": "s", "columns": ["state", "amount"],
          "rows": [["Lombardy", 100], ["Bavaria", 50], ["Texas", 80], ["Sicily", 30]]}
 
 # (label, table, expected_table, question, expected_scalar)
-# expected_table = the world-table name the column routes to. city/country use the qid-keyed wikipedia
-# exact-label names ("city"/"country"); u_s_state uses the friendly name-keyed table (docs/notes/naming.md).
+# expected_table = the world-table name the column routes to. city/country use the qid-keyed knowledgebase
+# exact-label names ("city"/"country"); u_s_state is the aggregate qid-keyed projection (docs/notes/naming.md).
 CASES = [
     ("city->city (country filter)",       CITY,    "city",                "total amount in France",   220),  # Paris+Lyon+Nice
     ("city->city (continent filter)",     CITY,    "city",                "total amount in Europe",   270),  # +Berlin, -Tokyo

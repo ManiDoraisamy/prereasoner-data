@@ -18,7 +18,10 @@ import os
 
 import psycopg2
 
-from engine.embeddings import normalize_surface
+try:
+    from _normalize import normalize_surface
+except ImportError:
+    from ._normalize import normalize_surface
 
 
 def _conn():
@@ -32,38 +35,56 @@ def _conn():
     )
 
 
+def rebuild(connection) -> dict[str, int]:
+    """Rebuild the derived state projection in one transaction."""
+    cur = connection.cursor()
+    try:
+        cur.execute("SELECT norm, qid FROM knowledgebase.\"words\" WHERE type='state'")
+        states = dict(cur.fetchall())
+        cur.execute("SELECT norm, qid FROM knowledgebase.\"words\" WHERE type='country'")
+        countries = dict(cur.fetchall())
+        # country qid -> continent qid, for the 2-hop FK (parity with city.country.continent).
+        cur.execute('SELECT qid, continent FROM knowledgebase."country" WHERE continent IS NOT NULL')
+        continent_of = dict(cur.fetchall())
+
+        cur.execute('SELECT name, country FROM knowledgebase."States"')
+        src = cur.fetchall()
+
+        # Idempotent rebuild: the table is the derived, qid-keyed projection of knowledgebase."States".
+        cur.execute('TRUNCATE knowledgebase."u_s_state"')
+        ins = skipped = 0
+        for name, country in src:
+            sq = states.get(normalize_surface(name or ""))
+            if not sq:
+                skipped += 1
+                continue
+            cq = countries.get(normalize_surface(country or ""))
+            cont = continent_of.get(cq) if cq else None
+            # ON CONFLICT: two state-name spellings in knowledgebase."States" can normalize to the same qid.
+            cur.execute('INSERT INTO knowledgebase."u_s_state" (qid, name, country, continent) VALUES (%s,%s,%s,%s) '
+                        'ON CONFLICT (qid) DO NOTHING', (sq, name, cq, cont))
+            ins += cur.rowcount
+        cur.execute('SELECT count(*) FROM knowledgebase."u_s_state"')
+        total = cur.fetchone()[0]
+        connection.commit()
+        return {"inserted": ins, "skipped": skipped, "total": total}
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        cur.close()
+
+
 def main():
-    c = _conn()
-    cur = c.cursor()
-    cur.execute("SELECT norm, qid FROM knowledgebase.\"words\" WHERE type='state'")
-    states = dict(cur.fetchall())
-    cur.execute("SELECT norm, qid FROM knowledgebase.\"words\" WHERE type='country'")
-    countries = dict(cur.fetchall())
-    # country qid -> continent qid, for the 2-hop FK (parity with city.country.continent).
-    cur.execute('SELECT qid, continent FROM knowledgebase."country" WHERE continent IS NOT NULL')
-    continent_of = dict(cur.fetchall())
-
-    cur.execute('SELECT name, country FROM knowledgebase."States"')
-    src = cur.fetchall()
-
-    # Idempotent rebuild: the table is the derived, qid-keyed projection of knowledgebase."States".
-    cur.execute('TRUNCATE knowledgebase."u_s_state"')
-    ins = skipped = 0
-    for name, country in src:
-        sq = states.get(normalize_surface(name or ""))
-        if not sq:
-            skipped += 1
-            continue
-        cq = countries.get(normalize_surface(country or ""))
-        cont = continent_of.get(cq) if cq else None
-        # ON CONFLICT: two state-name spellings in knowledgebase."States" can normalize to the same qid.
-        cur.execute('INSERT INTO knowledgebase."u_s_state" (qid, name, country, continent) VALUES (%s,%s,%s,%s) '
-                    'ON CONFLICT (qid) DO NOTHING', (sq, name, cq, cont))
-        ins += cur.rowcount
-    c.commit()
-    cur.execute('SELECT count(*) FROM knowledgebase."u_s_state"')
-    total = cur.fetchone()[0]
-    print(f"world.u_s_state populated: inserted {ins}, skipped {skipped} (no state qid), total {total}")
+    connection = _conn()
+    try:
+        counts = rebuild(connection)
+    finally:
+        connection.close()
+    print(
+        "knowledgebase.u_s_state populated: "
+        f"inserted {counts['inserted']}, skipped {counts['skipped']}, total {counts['total']}"
+    )
 
 
 if __name__ == "__main__":

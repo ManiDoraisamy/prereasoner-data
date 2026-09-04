@@ -81,10 +81,83 @@ def test_qid_world_projection_is_an_offline_atomic_transform():
     assert "urllib" not in source and "requests" not in source
 
 
+def test_state_projection_builder_does_not_pull_the_model_runtime():
+    """The state projection builder must stay importable in the minimal sync image."""
+    source = _text("db/sync/build_u_s_state.py")
+    assert "from engine.embeddings" not in source
+    assert "import torch" not in source
+    assert "from engine" not in source
+    from db.sync.build_u_s_state import normalize_surface
+    from db.sync._normalize import normalize_surface as shared_normalize_surface
+
+    assert normalize_surface is shared_normalize_surface
+    assert normalize_surface("The U.S.") == "us"
+    assert normalize_surface("New York") == "newyork"
+
+
+def test_state_projection_rebuild_is_atomic_and_reports_unresolved_rows():
+    from db.sync.build_u_s_state import rebuild
+
+    class Cursor:
+        def __init__(self):
+            self.rowcount = 1
+            self.rows = []
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if "type='state'" in text:
+                self.rows = [("newyork", "Q1384")]
+            elif "type='country'" in text:
+                self.rows = [("unitedstates", "Q30")]
+            elif 'FROM knowledgebase."country"' in text:
+                self.rows = [("Q30", "Q49")]
+            elif 'FROM knowledgebase."States"' in text:
+                self.rows = [("New York", "United States"), ("Unknown", "United States")]
+            elif 'SELECT count(*) FROM knowledgebase."u_s_state"' in text:
+                self.rows = [(1,)]
+            else:
+                self.rows = []
+
+        def fetchall(self):
+            return list(self.rows)
+
+        def fetchone(self):
+            return self.rows[0]
+
+        def close(self):
+            pass
+
+    class Connection:
+        def __init__(self):
+            self.cursor_value = Cursor()
+            self.commits = 0
+            self.rollbacks = 0
+
+        def cursor(self):
+            return self.cursor_value
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+        def close(self):
+            pass
+
+    connection = Connection()
+    assert rebuild(connection) == {"inserted": 1, "skipped": 1, "total": 1}
+    sql = "\n".join(statement for statement, _ in connection.cursor_value.statements)
+    assert 'TRUNCATE knowledgebase."u_s_state"' in sql
+    assert connection.commits == 1 and connection.rollbacks == 0
+
+
 def test_bootstrap_builds_every_table_the_maintenance_catalog_promises():
     """A deployment must not advertise upkeep for a table it never built.
 
-    `knowledgebase.schedule` is seeded from `db/sync/schedule.py:CATALOG`, and each non-lazy
+    `knowledgebase.schedule` is seeded from `db/sync/schedule.py:CATALOG`, and each offline-maintained
     entry names the `db/sync/<module>.py` that produces it. Those builders must all run in the
     bootstrap, or the catalog claims a table the community database does not have.
     """
@@ -307,6 +380,8 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
 
 TESTS = [
     test_bootstrap_plan_is_minimal_deterministic_and_non_shell,
+    test_state_projection_builder_does_not_pull_the_model_runtime,
+    test_state_projection_rebuild_is_atomic_and_reports_unresolved_rows,
     test_bootstrap_builds_every_table_the_maintenance_catalog_promises,
     test_bootstrap_replays_and_abstains_after_ready_version,
     test_bootstrap_records_failure_and_rejects_privileged_serving_role,

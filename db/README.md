@@ -19,7 +19,7 @@ The database holds source, application, and tenant schema families:
 | Schema | Contents | Created and filled by |
 |---|---|---|
 | `public` | raw Wikidata geo/type import (`settlement`, `country`, `admin`, `continent`, `currency`, `element`, `timezone`, `entity_label`) | `init.sql`, then `sync/sync_wikidata.py` |
-| `knowledgebase` | Resolution index, taxonomy, friendly world tables/views, and QID-keyed faithful Wikidata tables named by exact type label | `init.sql` plus Wikidata sync scripts; entity rows also fill lazily |
+| `knowledgebase` | Resolution index, taxonomy, friendly world tables/views, and QID-keyed faithful Wikidata tables named by exact type label | `init.sql` plus offline Wikidata sync/projection scripts |
 | `iana` | Pinned IANA country codes, canonical zones, aliases, representative locations, and country-zone mappings | `python -m db.sync.sources.iana.sync` |
 | `cldr` | Pinned CLDR territory/currency code data, localized names/symbols, temporal currency usage, and unit metadata | `python -m db.sync.sources.cldr.sync` |
 | `google_libphonenumber` | Numbering-region patterns and formatting metadata | `python -m db.sync.sources.google_libphonenumber.sync` |
@@ -85,26 +85,24 @@ export KB_PG_HOST=<INSTANCE_IP> KB_PG_SSLMODE=require KB_PG_PASSWORD="$PW"
 `CREATE EXTENSION vector / pg_trgm` in `init.sql` works as the `postgres` user on
 Cloud SQL (it is granted `cloudsqlsuperuser`).
 
-## 2. What a fresh deployment gets automatically (lazy) vs what must be pre-synced
+## 2. What a fresh deployment creates vs what must be pre-synced
 
-**Lazy (automatic, nothing to run):**
+**Created by the serving engine:**
 
-- `knowledgebase."<type>"` tables — created **on demand** by the engine
-  (`ensure_entity`/`ensure_table` in the lazy sync) and filled **one entity at a
-  time** from live Wikidata whenever an uploaded CSV cell resolves to a qid that
-  isn't stored yet. This covers the entire non-geo world (hospitals, software,
-  films, ...) and the qid-keyed city/country joins.
-- conversation schemas, upload/selected-reference tables, and bridge tables — created per request.
+- conversation schemas, upload/selected-reference tables, and bridge tables — created per request;
 - per-user master schemas and tables — created when authenticated users save references.
+
+Serving is deliberately read-only and network-free for shared facts. It never creates a
+Wikidata table, fetches a missing entity, or appends to `knowledgebase."words"`. A value that
+is not present in the synchronized indexes is unresolved and the request abstains or clarifies.
 
 **Must be pre-synced (the engine cannot answer without them):**
 
 - `knowledgebase."words"` — the pgvector resolution index. *Every* entity resolution
   ("cities in US", value-membership column routing, the cell bridge) does an exact
   `norm` match and/or an HNSW `<=>` search here. Empty index ⇒ nothing resolves,
-  and even the lazy path is gated on words/types lookups.
-- `knowledgebase."types"` — the taxonomy; the lazy sync derives the qid-keyed table
-  name for a type from `types.label`, and qid taxonomy walks read it.
+  and world grounding is gated on the words index.
+- `knowledgebase."types"` — the taxonomy and resolver-type mapping used by world grounding.
 - `public.settlement` (with lat/lng) — the geo NEARBY primitive
   ("big cities near Paris") reads it directly.
 - `knowledgebase."Cities"/"Countries"/...` — the planner's friendly world tables/views.
@@ -122,12 +120,14 @@ python db/sync/sync_wikidata.py --reset --high-only  # countries/currencies/elem
 python db/sync/build_world.py                        # friendly world tables from public.*
 python db/sync/build_words.py --cities               # the pgvector words index (+HNSW)
 python db/sync/sync_types.py                         # taxonomy -> knowledgebase."types" + type words
+python -m db.sync.build_qid_world                     # offline city/country serving projections
+python -m db.sync.build_u_s_state                    # offline state projection
 python db/sync/unify_words_qid.py                    # verify the qid walk (optional health check)
 ```
 
 That makes the demo paths work: entity resolution ("US"→United States), world joins
-(city→country→continent), aggregates, geo NEARBY (for cities ≥100k), and the lazy
-qid-keyed entity fill for anything else.
+(city→country→continent), aggregates, geo NEARBY (for cities ≥100k), and any qid-keyed
+entity tables that were included in the offline sync.
 
 ### Full sync (complete settlement long tail + aliases; several hours of WDQS)
 
@@ -136,7 +136,9 @@ python db/sync/sync_wikidata.py --reset              # settlements down to pop>=
 python db/sync/build_world.py
 python db/sync/build_words.py --cities --city-aliases   # ~213k word rows incl. Wikidata aliases ("Bombay"->Mumbai)
 python db/sync/sync_types.py
-python db/sync/mirror_schema.py                      # optional: pre-create knowledgebase."<leaf>" mirror schemas
+python -m db.sync.build_qid_world
+python -m db.sync.build_u_s_state
+python db/sync/mirror_schema.py                      # optional: discover/pre-create long-tail type tables
 python db/sync/build_wikipedia.py                    # optional: pre-create empty qid-PK entity tables
 ```
 
@@ -145,12 +147,16 @@ python db/sync/build_wikipedia.py                    # optional: pre-create empt
 chunk cache dir). The importer pins an immutable dataset revision; the WDQS path above has
 better city coverage.
 
-### Per-type / single-entity sync
+### Per-type / single-entity sync (offline maintenance only)
 
 ```bash
 python db/sync/sync_entity.py --qid Q6256 --label country --max 1000   # bulk one type
-python db/sync/sync_entity.py --qid Q515 --label city --lazy "Kyoto"   # one entity, like the engine does
+python db/sync/sync_entity.py --qid Q515 --label city --lazy "Kyoto"   # one entity for a maintainer
 ```
+
+These commands are sync/maintenance tools. They are never imported by the serving request
+path. After a per-type sync, rebuild `words` and any qid projections that depend on it before
+serving the new snapshot.
 
 ### Source-owned reference sync
 
@@ -221,7 +227,7 @@ sets it after applying the matching grants. The raw Terraform default is empty.
 | minimal seed (`--high-only`, words `--cities`) | ~10k settlements, ~40–60k word rows ⇒ **well under 1 GB** incl. HNSW |
 | full sync | ~174k settlements, ~213k word rows (384-dim vectors ≈ 1.5 KB each) ⇒ words table + HNSW index ≈ 1 GB; **~2–3 GB total** |
 | nine active publisher-source schemas (2026-08-17) | about **985 MB** total: GeoNames 650 MB, NLM CDE 175 MB, ECB 75 MB, CLDR 61 MB, and smaller sources |
-| lazy growth | one qid-keyed entity row + one `words` row per newly seen entity; conversation bridges and private reference schemas grow with use |
+| serving growth | conversation bridges and private reference schemas grow with use; shared reference tables change only during an offline release |
 
 The verified Cloud SQL database was 3,229 MB after these imports. A 20 GB disk remains
 comfortable for the active set, but a future full Open Food Facts or GLEIF import requires a

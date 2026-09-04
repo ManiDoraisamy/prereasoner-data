@@ -7,10 +7,11 @@
 
 What the engine expects in Postgres: the extensions, schemas, static tables and
 indexes created by `db/init.sql`, and the objects that the `db/sync/` pipeline
-(bulk) and the engine (lazy, at query time) populate on top of it. This note
-records the contract precisely — column types, index parameters, and the split
-between what is pre-synced vs lazily filled — so a fresh instance can be
-reproduced faithfully.
+offline pipeline populates on top of it. Serving creates only conversation/private
+objects; it reads shared facts and never calls a source API or mutates shared reference
+data. This note records the contract precisely — column types, index parameters, and
+the split between offline reference data and request-local objects — so a fresh instance
+can be reproduced faithfully.
 
 ## 1. Extensions
 
@@ -64,8 +65,8 @@ Indexes exactly as in `init.sql` (incl. the `gin_trgm_ops` one).
 text, embedding vector(384), qid text, canon_country text, is_primary boolean)`.
 One row per SURFACE form (label or alias) → canonical entity + qid; the embedding
 is bge-small-en-v1.5 [CLS], L2-normalized, 384-dim (cosine via `<=>`). Populated
-by `db/sync/build_words.py`; single rows appended by the engine's lazy sync
-(`sync_entity.ensure_entity`) and by `sync_types.py` (`type='type'`). Indexes:
+by `db/sync/build_words.py` and by `sync_types.py` (`type='type'`). Serving never
+appends rows. Indexes:
 - `ix_words_type_norm (type, norm)` — exact normalized match
 - `ix_words_hnsw USING hnsw (embedding vector_cosine_ops)` — **created with no
   explicit parameters ⇒ pgvector defaults m=16, ef_construction=64 are the
@@ -113,18 +114,19 @@ by name).
 | `c_<32hex>."<t> unconnected to wikipedia"` | `(__pk bigint, 'column' text, value text, embedding vector(896))` | `engine.knowledge_query._persist_main_unconn` |
 | `m_<md5(sub)>."<reference>"` | all-text dimension; first column is a primary/unique key | `engine.master.save_master` |
 
-## 5. Lazy-fill vs pre-sync (confirmed from code)
+## 5. Offline reference data vs request-local objects
 
-Lazy at query time (never needs pre-sync): the qid-keyed Wikidata tables AND
-rows (`ensure_entity` creates the table + fetches one entity from Wikidata per
-miss; the `entities` cell bridge lazily syncs resolved city qids + their countries
-so 2-hop joins hit). Per-user schemas/bridges.
+Offline sync is required for all shared facts: `knowledgebase."words"`,
+`knowledgebase."types"`, `public.settlement`, `knowledgebase."Cities"/"Countries"/…`,
+and any qid-keyed entity tables or source-owned releases used by a deployment. The
+city/country QID projections are rebuilt by `db/sync/build_qid_world.py`; long-tail
+faithful tables are created and populated by explicit offline per-type sync jobs.
+If a requested value is absent or ambiguous, serving abstains or clarifies. It never
+contacts Wikidata, creates a shared table, or appends to the shared `words` index.
 
-Pre-sync required: `knowledgebase."words"` (all resolution paths gate on it — an empty
-index resolves nothing, and even `_resolve_world_qid`'s lazy branch fires only
-after words/types lookups), `knowledgebase."types"` (lazy table naming reads
-`types.label`), `public.settlement` (NEARBY reads it directly),
-`knowledgebase."Cities"/"Countries"/…` (planner + `knowledge_compose` read them).
+Request-local objects are the per-conversation upload/reference tables and persisted
+resolution bridges, plus private master schemas. They are owned by the serving path and
+are isolated by the conversation/user authorization checks.
 
 ## 6. Connection contract
 
@@ -146,13 +148,13 @@ The bulk-population pipeline. Run order and per-script detail are in
 | `_conn.py` | the ONE Postgres connection helper (env-driven; see §6) |
 | `_embed.py` | bge-small embedder + `normalize_surface` + `pgvector_literal` (shared by the sync scripts) |
 | `import_dump.py` | imports the raw Wikidata world into `public.*` from the HF parquet dump (legacy); `ensure_schema` applies `db/init.sql`; resumable via `import_ckpt` |
-| `sync_wikidata.py` | imports the raw Wikidata world into `public.*` from live WDQS (recommended); `--reset` applies `db/init.sql` first |
+| `sync_wikidata.py` | imports the raw Wikidata world into `public.*` from WDQS as an offline release step; `--reset` applies `db/init.sql` first |
 | `build_world.py` | transforms `public.*` → the friendly `knowledgebase."Cities"/"Countries"/…` tables (TRUNCATE+INSERT; `init.sql` owns the DDL) |
 | `build_words.py` | builds the `knowledgebase."words"` resolution index (HNSW dropped during bulk load, rebuilt after) |
 | `build_u_s_state.py` | builds the aggregate qid-keyed `knowledgebase."u_s_state"` from `"States"` + `words` (no WDQS calls; see docs/notes/naming.md) |
 | `sync_types.py` | builds `knowledgebase."types"` from `db/sync/data/taxonomy.csv` (minimal P279 walker, cache at `db/sync/data/p279_cache.json`); sets `resolver_type` |
-| `sync_entity.py` | standalone Wikidata entity sync (the engine keeps its own copy for the runtime lazy path) |
-| `mirror_schema.py` / `build_wikipedia.py` | optionally pre-create the qid-keyed Wikidata tables up front (otherwise created lazily at query time) |
+| `sync_entity.py` | standalone offline Wikidata per-type/entity sync for maintainers; never imported by serving |
+| `mirror_schema.py` / `build_wikipedia.py` | optionally pre-create qid-keyed Wikidata tables before an explicit offline population run |
 | `unify_words_qid.py` | migration/health-check (sets `resolver_type`; `sync_types.py` already does this on fresh builds) |
 | `archive_conversation.py` | serializes/restores a conversation's data schema to/from GCS (pg_dump→gzip→GCS) |
 | `data/taxonomy.csv` | 42 accepted taxonomy leaves |

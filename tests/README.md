@@ -39,11 +39,18 @@ These require the manifest-pinned runtime artifacts and a seeded PostgreSQL know
 | Command | Covers |
 |---|---|
 | `python -m tests.test_world` | Type hierarchy, routing, aggregates, population, and nearby queries |
-| `python -m tests.test_nongeo` | Non-geo world joins and lazy Wikidata fill; requires outbound network |
+| `python -m tests.test_nongeo` | Non-geo world joins over pre-synchronized projections; requires seeded Postgres |
 | `python -m tests.test_world_joins` | Join coverage for routable world tables |
 | `python -m tests.test_route_wired` | Trained model driving routing end to end |
 | `python -m tests.test_geo` | Geo SQL oracles and concurrency regression |
 | `python -m tests.test_schema_probes` | Live property/class generalization and deterministic evidence |
+| `python -m tests.test_datasets` | Every public demo workbook and its shipped prompt |
+
+`test_datasets` discovers the workbooks under `web/public/dataset/` and requires one verified
+expectation for each directory. It covers the current 11 demos across own-data aggregates,
+Wikidata-backed hospital/restaurant/bank joins, country/continent joins, and ECB conversion.
+Do not add a public demo until its source rows, routing path, expected result, and live regression
+are all recorded in that test.
 
 First runs can be slow because Qwen, PEFT, sentence-transformers, and spaCy load on CPU. `test_geo` intentionally
 constructs a second model instance for its deadlock regression.

@@ -30,7 +30,7 @@ ENTITY_TYPES = {"country": "country", "nation": "country", "continent": "contine
 # would reject them anyway, but "in"->India 0.68 etc. is noise we skip up front).
 STOP = {"in", "the", "of", "a", "an", "for", "to", "by", "on", "at", "with", "and", "or", "is", "are",
         "how", "many", "much", "total", "sum", "average", "count", "number", "all", "each", "per", "their"}
-# wikipedia table (exact Wikidata label) -> the `type` its rows carry in knowledgebase."words" (cell-side bridge resolution).
+# QID-keyed table (exact Wikidata label) -> the `type` its rows carry in knowledgebase."words" (cell-side bridge resolution).
 # The tables are the qid-keyed knowledgebase."city"/"country" (via WORLD_NAMES); the planner resolves both the cell
 # bridge and the filter to QIDS, so every world join + filter is qid PK/FK.
 # Route value -> the `type` its cells carry in knowledgebase."words" (for cell-side bridge resolution).
@@ -396,7 +396,7 @@ class EntityQuery(RoutedQuery):
                     # canonical NAME, but the table joins on `qid`, so a name/qid join returned 0 rows — every
                     # country-column world join was empty. Map canon -> qid through knowledgebase."words" (the SAME index the
                     # bridge resolved through) and join on qid. Robust to official-vs-common name mismatch
-                    # (China's canon 'China' -> Q148 -> wikipedia.country.qid Q148), which a name-join silently drops.
+                    # (China's canon 'China' -> Q148 -> knowledgebase.country.qid Q148), which a name-join silently drops.
                     # knowledgebase."words" has MANY rows per entity (one per altLabel), all sharing the qid, so DISTINCT ON
                     # (canonical) collapses to ONE qid per name — else the aggregate fans out by the altLabel count.
                     w = f"{b}_w"
