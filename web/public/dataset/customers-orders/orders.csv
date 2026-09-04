@@ -1,0 +1,24 @@
+order ID,customer,ordered,currency,amount
+101,Sherlock Holmes,"Magnifying Glass, Brass",GBP,118
+102,Sherlock Holmes,Calabash Pipe,GBP,95
+103,Sherlock Holmes,Deerstalker Cap,GBP,72
+104,Dr. John Watson,Webley Service Revolver,GBP,340
+105,Dr. John Watson,Leather Medical Bag,GBP,185
+106,Hercule Poirot,Moustache Wax (waxed tips),EUR,38
+107,Hercule Poirot,Tisane Set,EUR,64
+108,Hercule Poirot,Patent Leather Shoes,EUR,220
+109,Inspector Clouseau,Gabardine Trench Coat,EUR,310
+110,Inspector Clouseau,Disguise Kit,EUR,210
+111,Chuck Bartowski,Nerd Herd Tie,USD,25
+112,Chuck Bartowski,Handheld Spy Computer,USD,480
+113,Nancy Drew,Blue Roadster (restored),USD,2850
+114,Nancy Drew,Pocket Flashlight,USD,40
+115,Nancy Drew,"Magnifying Glass, Brass",USD,118
+116,Scooby-Doo,Scooby Snacks,USD,35
+117,Scooby-Doo,Dog Collar (SD tag),USD,60
+118,Scooby-Doo,The Mystery Machine (van),USD,3400
+119,Byomkesh Bakshi,Case Notebook,INR,40
+120,Byomkesh Bakshi,Reading Glasses,INR,85
+121,Arsene Lupin,Top Hat,EUR,180
+122,Arsene Lupin,Monocle,EUR,95
+123,Arsene Lupin,"Lockpick Set, Professional",EUR,175

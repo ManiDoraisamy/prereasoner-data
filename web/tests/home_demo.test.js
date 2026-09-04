@@ -6,15 +6,23 @@ const vm = require('vm');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'public', 'index.html'), 'utf8');
 
-function stringConstant(name) {
-  const match = html.match(new RegExp(`const ${name}=('(?:\\\\.|[^'])*');`));
-  assert(match, `missing ${name} demo constant`);
-  return vm.runInNewContext(match[1]);
+// The demo workbooks live as plain CSVs under public/dataset/<name>/, fetched by ?dataset=.
+const dsDir = path.join(__dirname, '..', 'public', 'dataset');
+const csvText = rel => fs.readFileSync(path.join(dsDir, rel), 'utf8');
+function parseLine(line) {                     // quoted-field aware ("Magnifying Glass, Brass")
+  const out = []; let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) { if (ch === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else inQ = false; } else cur += ch; }
+    else if (ch === '"') inQ = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur); return out;
 }
+const parse = text => text.trim().split('\n').map(parseLine);
 
-const orders = stringConstant('ORD');
-const orderLines = orders.split('\n');
-
+const orderLines = csvText('customers-orders/orders.csv').trim().split('\n');
 assert.strictEqual(
   orderLines[0],
   'order ID,customer,ordered,currency,amount',
@@ -23,11 +31,36 @@ assert.strictEqual(
 assert.strictEqual(orderLines.length, 24, 'the demo must retain all 23 orders');
 assert(orderLines.slice(1).every(line => /,(USD|EUR|GBP|INR),[0-9.]+$/.test(line)),
   'every demo order must have a supported currency code before amount');
+const customers = parse(csvText('customers-orders/customers.csv'));
+assert.deepStrictEqual(customers[0], ['customer ID', 'name', 'city', 'tier']);
+assert.strictEqual(customers.length, 10, 'the demo must retain all 9 customers');
+
+// customer-orders.csv is the SAME orders denormalized with each customer's city and tier. Assert the
+// join, not just the shape: a hand-edited drift between the two datasets would silently change what
+// the two demo variants answer for the same question.
+const denorm = parse(csvText('customer-orders/customer-orders.csv'));
+assert.deepStrictEqual(denorm[0], ['order ID', 'customer', 'city', 'tier', 'ordered', 'currency', 'amount']);
+const byName = new Map(customers.slice(1).map(c => [c[1], c]));
+const expected = parse(csvText('customers-orders/orders.csv')).slice(1).map(o => {
+  const c = byName.get(o[1]);
+  assert(c, `order for unknown customer ${o[1]}`);
+  return [o[0], o[1], c[2], c[3], o[2], o[3], o[4]];
+});
+assert.deepStrictEqual(denorm.slice(1), expected,
+  'customer-orders.csv must equal customers ⋈ orders exactly');
+
+// The page selects a dataset by ?dataset= with the denormalized single sheet as the default.
+assert(/'customer-orders':\['customer-orders'\]/.test(html), 'customer-orders must be a registered dataset');
+assert(/'customers-orders':\['customers','orders'\]/.test(html), 'customers-orders must load both CSVs');
+assert(/\?p:'customer-orders'/.test(html), 'the default dataset must be the denormalized customer-orders');
+assert(html.includes("fetch('/dataset/'+DATASET+'/'+n+'.csv')"), 'the demo must load from /dataset/<name>/');
+assert(html.includes('await DEMO_LOAD'), 'submit must wait for the demo fetch so a fast Ask cannot race it');
 // FX comes from the knowledgebase (ECB daily sync -> knowledgebase."exchange_rate"), never from a
 // demo sheet: an illustrative rate table on the page would SHADOW the real rates, because an
 // uploaded rate sheet deliberately wins over the knowledge join (own data first).
 assert(!/const FX=/.test(html), 'no illustrative rate sheet may ship on the page');
-assert(!/illustrative fx rates/.test(html), 'the default workbook must not include a rate sheet');
+assert(!fs.readdirSync(dsDir, { recursive: true }).some(f => /fx|rate/i.test(String(f))),
+  'no dataset directory may contain a rate sheet');
 assert(html.includes('>total amount in France in US dollars</textarea>'),
   'the default question must exercise world filtering and currency conversion');
 

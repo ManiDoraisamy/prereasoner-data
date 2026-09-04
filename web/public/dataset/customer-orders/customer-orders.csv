@@ -1,0 +1,24 @@
+order ID,customer,city,tier,ordered,currency,amount
+101,Sherlock Holmes,London,Gold,"Magnifying Glass, Brass",GBP,118
+102,Sherlock Holmes,London,Gold,Calabash Pipe,GBP,95
+103,Sherlock Holmes,London,Gold,Deerstalker Cap,GBP,72
+104,Dr. John Watson,London,Silver,Webley Service Revolver,GBP,340
+105,Dr. John Watson,London,Silver,Leather Medical Bag,GBP,185
+106,Hercule Poirot,Brussels,Gold,Moustache Wax (waxed tips),EUR,38
+107,Hercule Poirot,Brussels,Gold,Tisane Set,EUR,64
+108,Hercule Poirot,Brussels,Gold,Patent Leather Shoes,EUR,220
+109,Inspector Clouseau,Paris,Bronze,Gabardine Trench Coat,EUR,310
+110,Inspector Clouseau,Paris,Bronze,Disguise Kit,EUR,210
+111,Chuck Bartowski,Burbank,Silver,Nerd Herd Tie,USD,25
+112,Chuck Bartowski,Burbank,Silver,Handheld Spy Computer,USD,480
+113,Nancy Drew,Toledo,Gold,Blue Roadster (restored),USD,2850
+114,Nancy Drew,Toledo,Gold,Pocket Flashlight,USD,40
+115,Nancy Drew,Toledo,Gold,"Magnifying Glass, Brass",USD,118
+116,Scooby-Doo,Cleveland,Bronze,Scooby Snacks,USD,35
+117,Scooby-Doo,Cleveland,Bronze,Dog Collar (SD tag),USD,60
+118,Scooby-Doo,Cleveland,Bronze,The Mystery Machine (van),USD,3400
+119,Byomkesh Bakshi,Kolkata,Silver,Case Notebook,INR,40
+120,Byomkesh Bakshi,Kolkata,Silver,Reading Glasses,INR,85
+121,Arsene Lupin,Paris,Gold,Top Hat,EUR,180
+122,Arsene Lupin,Paris,Gold,Monocle,EUR,95
+123,Arsene Lupin,Paris,Gold,"Lockpick Set, Professional",EUR,175
