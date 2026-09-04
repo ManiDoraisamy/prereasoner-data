@@ -1,8 +1,11 @@
 customer-orders: https://chat.prereasoner.com/?load=customer-orders
 customers-orders: https://chat.prereasoner.com/?load=customers-orders
 formesign-contracts: https://chat.prereasoner.com/?load=formesign-contracts
+formesign-hospital-transfers: https://chat.prereasoner.com/?load=formesign-hospital-transfers
 formesign-intake: https://chat.prereasoner.com/?load=formesign-intake
+formfacade-bank-deposits: https://chat.prereasoner.com/?load=formfacade-bank-deposits
 formfacade-leads: https://chat.prereasoner.com/?load=formfacade-leads
 formfacade-workshops: https://chat.prereasoner.com/?load=formfacade-workshops
+neartail-catering: https://chat.prereasoner.com/?load=neartail-catering
 neartail-orders: https://chat.prereasoner.com/?load=neartail-orders
 neartail-shipping: https://chat.prereasoner.com/?load=neartail-shipping

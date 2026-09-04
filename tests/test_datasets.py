@@ -31,6 +31,9 @@ EXPECTED = {
     "neartail-shipping": ("world", 46),           # city -> country -> continent two-hop grounding
     "formesign-intake": ("own", 6),               # document-type value filter; no knowledge join
     "formesign-contracts": ("world+fx", 23568),   # continent filter + four-currency ECB conversion to USD
+    "formesign-hospital-transfers": ("world", 46),  # hospital entity join, filtered to US hospitals
+    "neartail-catering": ("world", 9600),         # restaurant entity join, filtered to US restaurants
+    "formfacade-bank-deposits": ("world", 1550),  # bank entity join, filtered to Swiss banks
 }
 FX_TOLERANCE = 0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
 
