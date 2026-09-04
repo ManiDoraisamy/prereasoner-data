@@ -130,15 +130,14 @@ let EXAMPLES=null;
 async function openExamples(){
   $('examples').style.display='block'; $('exbackdrop').style.display='block';
   if(EXAMPLES)return;
-  try{
-    const idx=await fetch('/dataset/dataset.txt').then(r=>{ if(!r.ok)throw new Error('HTTP '+r.status); return r.text(); });
-    const dirs=idx.trim().split('\n').map(l=>l.split(':')[0].trim()).filter(Boolean);
-    EXAMPLES=(await Promise.all(dirs.map(d=>
-      fetch('/dataset/'+d+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>'')
-        .then(p=>({dir:d, prompt:p.trim()}))))).filter(e=>e.prompt);
-  }catch(_){ EXAMPLES=[]; }
+  // Built from DATASETS — the SAME map ?load= resolves against — so every row listed is one that really
+  // loads, and each row names the CSV files it attaches (the chips you get), not its directory path.
+  EXAMPLES=(await Promise.all(Object.keys(DATASETS).map(d=>
+    fetch('/dataset/'+d+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>'')
+      .then(p=>({dir:d, files:DATASETS[d].map(n=>n+'.csv').join(', '), prompt:p.trim()}))
+  ))).filter(e=>e.prompt);
   $('exlist').innerHTML=EXAMPLES.length
-    ? EXAMPLES.map(e=>'<button type=button data-load="'+esc(e.dir)+'"><div class=xq>'+esc(e.prompt)+'</div><div class=xd>'+esc(e.dir)+'</div></button>').join('')
+    ? EXAMPLES.map(e=>'<button type=button data-load="'+esc(e.dir)+'"><div class=xq>'+esc(e.prompt)+'</div><div class=xd>'+esc(e.files)+'</div></button>').join('')
     : '<div class=xempty>The examples did not load — please try again.</div>';
   if(!EXAMPLES.length)EXAMPLES=null;                                              // a failed fetch retries on the next open
   [...$('exlist').querySelectorAll('button')].forEach(b=>b.onclick=()=>{location.href='/?load='+encodeURIComponent(b.dataset.load);});

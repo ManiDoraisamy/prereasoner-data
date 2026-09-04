@@ -76,8 +76,15 @@ assert(html.includes(".get('load')"), 'the dataset selector must be the ?load= q
 // prompt.txt, and picking one navigates to the same ?load= URL the shareable index uses.
 assert(html.includes('id=morex') && html.includes('>More examples</button>'),
   'the More examples badge must sit under the prompt card');
-assert(html.includes("fetch('/dataset/dataset.txt')"), 'the picker must list datasets from dataset.txt');
+assert(html.includes('Object.keys(DATASETS)'),
+  'the picker must list exactly the datasets ?load= can resolve, so no row silently loads the default');
 assert(html.includes("'/dataset/'+d+'/prompt.txt'"), 'the picker must show each dataset prompt');
+// A row names the CSV files it attaches — the chips the user gets — not the directory path, which is
+// an internal detail they never see anywhere else in the UI.
+assert(/files:DATASETS\[d\]\.map\(n=>n\+'\.csv'\)/.test(html),
+  "each picker row must list its dataset's CSV files");
+assert(html.includes('<div class=xd>\'+esc(e.files)+\'</div>'), 'the row subtitle must render the CSV file names');
+assert(!html.includes('<div class=xd>\'+esc(e.dir)+\'</div>'), 'the row subtitle must not be the directory name');
 assert(html.includes("location.href='/?load='+encodeURIComponent(b.dataset.load)"),
   'picking an example must navigate to its ?load= URL');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
