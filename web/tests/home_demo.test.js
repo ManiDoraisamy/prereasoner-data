@@ -55,6 +55,22 @@ assert(/'customers-orders':\['customers','orders'\]/.test(html), 'customers-orde
 assert(/\?p:'customer-orders'/.test(html), 'the default dataset must be the denormalized customer-orders');
 assert(html.includes("fetch('/dataset/'+DATASET+'/'+n+'.csv')"), 'the demo must load from /dataset/<name>/');
 assert(html.includes('await DEMO_LOAD'), 'submit must wait for the demo fetch so a fast Ask cannot race it');
+// Every dataset directory ships a prompt.txt, is registered on the page with its exact CSV list,
+// and the page only prefills a PRISTINE question box (a typed or restored question always wins).
+const registered = {};
+for (const m of html.matchAll(/'([a-z-]+)':\[([^\]]*)\]/g)) {
+  registered[m[1]] = m[2].split(',').map(s => s.replace(/'/g, '').trim()).filter(Boolean);
+}
+for (const dir of fs.readdirSync(dsDir)) {
+  const files = fs.readdirSync(path.join(dsDir, dir));
+  const prompt = files.includes('prompt.txt') && csvText(path.join(dir, 'prompt.txt')).trim();
+  assert(prompt, `${dir} must ship a non-empty prompt.txt`);
+  const csvs = files.filter(f => f.endsWith('.csv')).map(f => f.replace(/\.csv$/, '')).sort();
+  assert.deepStrictEqual((registered[dir] || []).slice().sort(), csvs,
+    `${dir} must be registered on the page with exactly its CSVs`);
+}
+assert(html.includes("fetch('/dataset/'+DATASET+'/prompt.txt')"), 'the page must fetch the dataset prompt');
+assert(html.includes("$('q').value===Q0"), 'the prompt must only replace the pristine default question');
 // FX comes from the knowledgebase (ECB daily sync -> knowledgebase."exchange_rate"), never from a
 // demo sheet: an illustrative rate table on the page would SHADOW the real rates, because an
 // uploaded rate sheet deliberately wins over the knowledge join (own data first).

@@ -29,7 +29,8 @@ SUITES = ["tests.test_sql_ast", "tests.test_calculations", "tests.test_routing",
           "tests.test_request_limits", "tests.test_release", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator"]
 ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",
-                 "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes"]
+                 "tests.test_route_wired", "tests.test_geo", "tests.test_schema_probes",
+                 "tests.test_datasets"]
 
 
 def main():

@@ -74,19 +74,28 @@
 <div class=preview id=preview><button class=px onclick=closePreview() aria-label=Close>&times;</button><div class=ph id=ph></div><div id=ptabwrap></div></div>
 <script src="lib/shared.js"></script>
 <script>
-// Demo workbooks live in /dataset/<name>/ as plain CSVs, selected by ?dataset=. The default is the
-// single denormalized sheet (orders with each customer's city and tier); customers-orders is the
-// two-sheet FK-join variant. FX comes from the knowledgebase (ECB), never from a demo sheet.
-const DATASETS={'customer-orders':['customer-orders'],'customers-orders':['customers','orders']};
+// Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
+// question, selected by ?dataset=. The default is the single denormalized sheet (orders with each
+// customer's city and tier); customers-orders is the two-sheet FK-join variant; the three product
+// demos mix prompts that do and do not need a knowledgebase join. FX comes from the knowledgebase
+// (ECB), never from a demo sheet.
+const DATASETS={'customer-orders':['customer-orders'],'customers-orders':['customers','orders'],
+  'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake']};
 const DATASET=(p=>Object.prototype.hasOwnProperty.call(DATASETS,p)?p:'customer-orders')(
   new URLSearchParams(location.search).get('dataset'));
 const $=id=>document.getElementById(id);
+const Q0=$('q').value;                                     // the HTML fallback question, captured before any restore
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo
-const DEMO_LOAD=Promise.all(DATASETS[DATASET].map(n=>
-  fetch('/dataset/'+DATASET+'/'+n+'.csv').then(r=>{ if(!r.ok)throw new Error(n+': HTTP '+r.status); return r.text(); })
-    .then(t=>({name:n, data:t.replace(/\r\n/g,'\n').trim()}))
-)).then(t=>{ if(isSample){ SHEETS=t; renderChips(); } })   // an upload or picker return that landed first wins
-  .catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
+const DEMO_LOAD=Promise.all([
+  Promise.all(DATASETS[DATASET].map(n=>
+    fetch('/dataset/'+DATASET+'/'+n+'.csv').then(r=>{ if(!r.ok)throw new Error(n+': HTTP '+r.status); return r.text(); })
+      .then(t=>({name:n, data:t.replace(/\r\n/g,'\n').trim()})))),
+  fetch('/dataset/'+DATASET+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>''),
+]).then(([t,p])=>{
+  if(isSample){ SHEETS=t; renderChips(); }                 // an upload or picker return that landed first wins
+  p=p.trim();                                              // the dataset's prompt fills a PRISTINE box only — never
+  if(p&&$('q').value===Q0)$('q').value=p;                  // a question the user typed or a picker round-trip restored
+}).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
 function loginSoon(){ alert("Sign-in is coming soon. The live version will ask you to log in after you ask."); }
 function renderChips(){
   $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span></span>').join('');

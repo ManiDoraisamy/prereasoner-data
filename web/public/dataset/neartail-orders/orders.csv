@@ -1,0 +1,11 @@
+order ID,customer,item,quantity,unit price,amount,city
+5001,Amelie Laurent,Sourdough Loaf,2,6,12,Paris
+5002,Ben Carter,Croissant Box,1,14,14,Lyon
+5003,Chloe Dubois,Lemon Tart,3,9,27,Paris
+5004,David Kim,Baguette,4,3,12,Marseille
+5005,Eva Novak,Opera Cake,1,32,32,Paris
+5006,Farid Azizi,Croissant Box,2,14,28,Lyon
+5007,Grace Chen,Macaron Set,2,18,36,Paris
+5008,Hugo Bernard,Sourdough Loaf,1,6,6,Nice
+5009,Ines Moreau,Quiche Lorraine,2,11,22,Paris
+5010,Jack Wilson,Baguette,6,3,18,Lyon
