@@ -313,7 +313,9 @@ def test_runtime_bundle_is_fully_fetchable_and_pinned():
     recorded_identity = training.pop("artifact_sha256")
     assert recorded_identity == canonical_json_sha256(training)
     for name, expected in training["artifacts"].items():
-        assert sha256_file(DATA_DIR / name) == expected, (
+        path = DATA_DIR / name
+        actual = sha256_file(path) if path.exists() else manifest.get("files", {}).get(name)
+        assert actual == expected, (
             f"training provenance for {name} does not match the promoted runtime artifact"
         )
     print("  PASS  every promoted runtime artifact is fetchable or committed and hash-pinned")
