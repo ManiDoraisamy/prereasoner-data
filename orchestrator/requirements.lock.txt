@@ -372,9 +372,9 @@ docstring-parser==0.18.0 \
     --hash=sha256:292510982205c12b1248696f44959db3cdd1740237a968ea1e2e7a900eeb2015 \
     --hash=sha256:b3fcbed555c47d8479be0796ef7e19c2670d428d72e96da63f3a40122860374b
     # via anthropic
-firebase-admin==6.9.0 \
-    --hash=sha256:06496c3d1380a8f69e3817045b244ce8578d8ad19af3f85c510ac4d8fe0433ca \
-    --hash=sha256:75c261c074dcf33a2bcc8366b94ad96255da3fe24079c30220186d489d553ad5
+firebase-admin==7.5.0 \
+    --hash=sha256:6e2810cec954c6e69f21fd6dac9db152a0ba3fe11b7f8793830ad1e3a0032e20 \
+    --hash=sha256:a37383d9c2e406d82a660776679672bed74407fc50bde7aa1418ed436d0346b7
     # via -r orchestrator/requirements.txt
 google-api-core==2.36.0 \
     --hash=sha256:32779307b52e64c9a9592a3621de6281676ecaeea299fe8524e4637ab7ac2531 \
