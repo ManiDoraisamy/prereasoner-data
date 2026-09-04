@@ -1,4 +1,4 @@
-"""PreReasoner engine — the consolidated serving package.
+"""Prereasoner engine — the consolidated serving package.
 
 One server (`python -m engine.server`) exposes three endpoints on one process:
 

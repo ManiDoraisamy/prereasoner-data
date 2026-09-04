@@ -4,7 +4,7 @@ Status: **current runtime architecture**. Future changes are marked as targets o
 they are not shipped features. See the [documentation map](README.md) for the difference between
 current, opt-in, external, and planned behavior.
 
-PreReasoner represents a question, its data, and its source evidence as named dimensions. The current
+Prereasoner represents a question, its data, and its source evidence as named dimensions. The current
 runtime composes those dimensions into a checked SQL query, runs it, and returns the result with its
 rows and trace. A frozen Qwen model supplies signals about intent and schema. It does not generate
 SQL or numeric answers. AST construction, routing, joins, validation, ranking, and execution are

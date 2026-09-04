@@ -1,7 +1,7 @@
 """World-model eval cases. Each case = an uploaded CSV table (or two) + a natural-language question +
 an ORACLE SQL. The oracle computes the EXPECTED answer by JOINING the clean world-model tables
 (knowledgebase."Countries" / "Cities" / "Elements") against the upload — so the gold is derived from the world DB
-at eval time, not hand-labelled. PreReasoner runs its own resolve+route+view-stack path; run.py compares.
+at eval time, not hand-labelled. Prereasoner runs its own resolve+route+view-stack path; run.py compares.
 
 The oracle references each uploaded table by its `name` (run.py exposes them as CTEs) and the world tables
 directly. Test values use canonical entity names that exist in the clean world tables so the exact-name

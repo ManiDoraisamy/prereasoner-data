@@ -6,7 +6,7 @@ deployment at `chat.prereasoner.com`. The published, user-facing notice is
 flow, processor, retention rule, or deletion path changes.
 
 The reference service is operated by MailRecipe LLC, 340 S Lemon Ave #9974, Walnut, CA 91789,
-United States. The Guesswork team builds PreReasoner; it is not a different data controller for
+United States. The Guesswork team builds Prereasoner; it is not a different data controller for
 the reference service.
 
 ## Product Rule: Disclosure Without Consent UI

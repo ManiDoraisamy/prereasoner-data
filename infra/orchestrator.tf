@@ -50,7 +50,7 @@ variable "anthropic_model" {
 resource "google_service_account" "chat_run" {
   count        = var.enable_orchestrator ? 1 : 0
   account_id   = "${var.chat_service_name}-run"
-  display_name = "PreReasoner orchestrator (Cloud Run)"
+  display_name = "Prereasoner orchestrator (Cloud Run)"
   depends_on   = [google_project_service.apis]
 }
 

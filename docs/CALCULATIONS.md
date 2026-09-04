@@ -1,6 +1,6 @@
 # Deterministic calculations
 
-PreReasoner treats arithmetic as part of the query, not as a number added after the query runs.
+Prereasoner treats arithmetic as part of the query, not as a number added after the query runs.
 Typed AST nodes represent the operands and operation. The shared encoder helps identify and order
 those operands; it never generates SQL or decides whether a result is correct. A numeric result is
 released only when a registered specification proves that the selected query matches the request.

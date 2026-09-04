@@ -1,4 +1,4 @@
-"""run_all.py — run the full PreReasoner test suite and report a single pass/fail.
+"""run_all.py — run the full Prereasoner test suite and report a single pass/fail.
 
 Runs each suite as a subprocess and aggregates exit codes. Suites self-skip when their infra isn't
 present, so this is safe to run anywhere:

@@ -1,4 +1,4 @@
-"""The ONE PreReasoner server. Serves all three inference paths from a single process:
+"""The ONE Prereasoner server. Serves all three inference paths from a single process:
 
   POST /api/reason    — the composition reasoner (view-stacking) on the live world path. Firebase auth
                         derives the verified user; the working Postgres schema is the CONVERSATION (owned

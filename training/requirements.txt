@@ -1,4 +1,4 @@
-# PreReasoner training pipeline - aligned with the supported serving environment.
+# Prereasoner training pipeline - aligned with the supported serving environment.
 #
 # The pin below installs the CPU wheel, which is enough for anchoring, calibration, validation,
 # and smoke runs. GPU jobs must use the same PyTorch version from the CUDA index matching the

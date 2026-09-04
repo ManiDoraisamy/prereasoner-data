@@ -1,4 +1,4 @@
-title = "PreReasoner secret scanning"
+title = "Prereasoner secret scanning"
 
 [extend]
 useDefault = true

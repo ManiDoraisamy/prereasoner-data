@@ -20,7 +20,7 @@
 > historical note in [`docs/SQL_AST.md`](../docs/SQL_AST.md).
 
 > **Audience: contributors.** This is both the reproducible benchmark contract and a diagnostic guide.
-> The goal is to localize *why* PreReasoner scores low on Spider before changing anything. This is
+> The goal is to localize *why* Prereasoner scores low on Spider before changing anything. This is
 > **v2**: the v1 spec was written against stale internals (`relate11.py`, `model11.py`, `runtime20/*`,
 > a `/reason` view-DAG) that no longer exist, and against a **guiding hypothesis that the executed
 > probes below partly refute**. v2 is rewritten against the *actual* engine (`engine/*`) and carries
@@ -32,9 +32,9 @@
 
 ---
 
-## 0. What PreReasoner actually is (the mental model the v1 spec got wrong)
+## 0. What Prereasoner actually is (the mental model the v1 spec got wrong)
 
-PreReasoner is **not** a general NL→SQL model. It is an *interpretable spreadsheet-QA* engine. For a
+Prereasoner is **not** a general NL→SQL model. It is an *interpretable spreadsheet-QA* engine. For a
 question over uploaded tables it:
 
 1. **Types columns** with a trained encoder (Qwen2.5-0.5B + LoRA + a relational readout) to a **42-leaf

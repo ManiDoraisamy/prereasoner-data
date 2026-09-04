@@ -1,4 +1,4 @@
-# The Sonnet orchestrator + the PreReasoner MCP server (docs/MCP.md).
+# The Sonnet orchestrator + the Prereasoner MCP server (docs/MCP.md).
 #
 # One lean image: the orchestrator HTTP server spawns the MCP server as a stdio subprocess (same image),
 # and the MCP server calls the engine over HTTP (ENGINE_BASE_URL). NO torch/transformers/spaCy here — the

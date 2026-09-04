@@ -1,4 +1,4 @@
-# PreReasoner - research positioning
+# Prereasoner - research positioning
 
 This document explains the approach, the evidence behind it, and the limits of the claims. For
 the implementation, see [ARCHITECTURE.md](ARCHITECTURE.md). For model reproduction, see
@@ -98,7 +98,7 @@ Schema.org head uses evidence-visible, group-isolated multi-source instances; mu
 still come from source releases.
 On every operative axis the two are opposites:
 
-| | **RAG** | **PreReasoner** |
+| | **RAG** | **Prereasoner** |
 |---|---|---|
 | Dimensions | **unnamed** embedding dims | **named** dims (`city`, `hospital`, `currency`, `intent_agg_sum`, …) |
 | Retrieval | **approximate** cosine / ANN top-k | **exact** SQL equality join on `qid` |
@@ -123,14 +123,14 @@ is resolved to a **QID**, the row match and the computation that follow are exac
 
 ## 4. Why this is not agentic text→SQL (and not a post-hoc probe)
 
-Two adjacent approaches are worth contrasting explicitly, because PreReasoner's contribution is
+Two adjacent approaches are worth contrasting explicitly, because Prereasoner's contribution is
 precisely what it declines to do.
 
 **Versus instruct-LLM / agentic text→SQL.** The mainstream recipe prompts a large instruct model
 to *emit a SQL string* autoregressively (optionally in an agent loop with retries and
 self-critique). That string is a black-box generation: it can hallucinate columns, silently drop
 a clause, or invent a join, and the only "explanation" available is a second after-the-fact
-rationalization from the same model. PreReasoner inverts this. There is **no model that writes
+rationalization from the same model. Prereasoner inverts this. There is **no model that writes
 SQL**. The query is assembled by a deterministic template from (a) the learned-yet-legible
 readout — *what each column/cell is* and *what the question asks for* — and (b) the specified FK
 + world structure. The operator (`SUM`/`COUNT`/`AVG`) is read off the anchored `intent_agg_*`
@@ -146,7 +146,7 @@ linear probe (or a sparse autoencoder) on a frozen model's activations *after* t
 claims the probe's accuracy reveals what the model "knows." That is a read *of* the
 representation, not a property *of* it: the probe can be a wide linear classifier fitting
 structure the model never used, and nothing constrains the model to keep the concept legible.
-PreReasoner moves the interpretability *into the training objective*: the named dims are anchored
+Prereasoner moves the interpretability *into the training objective*: the named dims are anchored
 by MSE on raw activations *while the model trains*, so legibility is enforced, not discovered.
 The readout is the model's own output dimensions — there is no auxiliary probe to disagree with
 the deployed path (`training/calibrate/validate_route.py` tests the *served* model's grounded
@@ -262,7 +262,7 @@ boundary.
 
 ## 9. Summary for reviewers
 
-> PreReasoner combines learned semantic signals with specified relational structure. The current
+> Prereasoner combines learned semantic signals with specified relational structure. The current
 > production class vocabulary is the multi-source Schema.org 30.0 head: named property probabilities
 > form calibrated class proposals, and exact source-key grounding authorizes a world join. The shared
 > Qwen/LoRA representation also supplies structural intent, ranking, and calculation retrieval.

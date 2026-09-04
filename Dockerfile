@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# PreReasoner serving engine.
+# Prereasoner serving engine.
 #
 #   docker build -t prereasoner-engine .
 #   docker run -p 8080:8080 -e KB_PG_HOST=... -e KB_PG_PASSWORD=... prereasoner-engine
@@ -37,7 +37,7 @@ RUN pip install --require-hashes -r /tmp/requirements.lock.txt \
 # boot — the startup probe times out and HF rate limits unauthenticated pulls.
 ENV HF_HOME=/opt/hf
 COPY engine/model_revisions.py /tmp/prereasoner_model_revisions.py
-# Both pinned base models and the manifested PreReasoner bundle are public. Builds therefore need no
+# Both pinned base models and the manifested Prereasoner bundle are public. Builds therefore need no
 # maintainer secret and are reproducible by a third-party Cloud Build project. Hugging Face may apply
 # lower anonymous rate limits, so cloudbuild.yaml keeps a generous timeout.
 RUN PYTHONPATH=/tmp python - <<'PY'
@@ -101,7 +101,7 @@ for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lo
     [ -e "$DATA_DIR/$f" ] || missing="$missing $f"
 done
 if [ -n "$missing" ]; then
-    echo "FATAL: PreReasoner model artifacts are missing from $DATA_DIR:" >&2
+    echo "FATAL: Prereasoner model artifacts are missing from $DATA_DIR:" >&2
     echo "   $missing" >&2
     echo "" >&2
     echo "These files are gitignored (large binaries) and were not present when the image" >&2

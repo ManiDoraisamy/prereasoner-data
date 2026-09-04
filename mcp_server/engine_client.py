@@ -1,4 +1,4 @@
-"""engine_client.py — the HTTP call to the PreReasoner engine + response shaping.
+"""engine_client.py — the HTTP call to the Prereasoner engine + response shaping.
 
 Kept separate from the MCP transport (server.py) so it is unit-testable without the `mcp` package or a
 subprocess: `shape_reason_response(...)` is a pure function over the engine's JSON, and `call_query(...)`
@@ -101,7 +101,7 @@ def call_query(question: str, tables: list[dict], job_id: str | None = None,
         r = httpx.post(f"{base}/api/reason", json=body, headers=headers,
                        timeout=timeout or DEFAULT_TIMEOUT)
     except httpx.HTTPError as e:
-        return {"status": "error", "error": f"could not reach the PreReasoner engine at {base}: {e}"}
+        return {"status": "error", "error": f"could not reach the Prereasoner engine at {base}: {e}"}
     # The engine returns 200 for most in-band outcomes; 401/500 carry a top-level {"error": ...}.
     try:
         j = r.json()

@@ -1,4 +1,4 @@
-"""Probe D (the crown-jewel): run the PreReasoner COMPOSITION CORE end-to-end on Spider, Postgres-free.
+"""Probe D (the crown-jewel): run the Prereasoner COMPOSITION CORE end-to-end on Spider, Postgres-free.
 
 The live serving stack (KnowledgeReasoner -> ComposedKnowledgeQuery -> KnowledgeQuery) is Postgres-gated and cannot run
 here. BUT the reasoning core it delegates to — ComposeEngine + the LEARNED 10-primitive head

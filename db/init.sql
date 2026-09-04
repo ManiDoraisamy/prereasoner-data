@@ -1,5 +1,5 @@
 -- ============================================================================
--- PreReasoner world database — bootstrap for a FRESH Postgres instance.
+-- Prereasoner world database — bootstrap for a FRESH Postgres instance.
 --
 --   psql "$KB_PG_URL" -f db/init.sql        (or via docker exec, see db/README.md)
 --

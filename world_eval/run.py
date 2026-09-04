@@ -1,4 +1,4 @@
-"""World-model eval — the ORACLE joins the world tables, PreReasoner runs its own path, compare.
+"""World-model eval — the ORACLE joins the world tables, Prereasoner runs its own path, compare.
 
 For each case: build the uploaded table(s) as SQL CTE(s), run the case's oracle SQL (which JOINs the upload
 against knowledgebase."Countries"/"Cities"/"Elements") to get the EXPECTED rows straight from the world DB; then run

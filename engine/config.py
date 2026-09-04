@@ -35,7 +35,7 @@ Env contract:
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
   ORCH_PORT            port for the orchestrator chat server          (default 8090)
-  MCP_SERVER_CMD       argv (JSON list) to launch the PreReasoner MCP server (default: python -m mcp_server.server)
+  MCP_SERVER_CMD       argv (JSON list) to launch the Prereasoner MCP server (default: python -m mcp_server.server)
   ENGINE_BEARER_TOKEN  read by the MCP SERVER only: the Firebase token to forward to the engine. The
                        orchestrator sets this per session in the MCP server's env; unset locally (the engine
                        runs with AUTH_TEST_SUB). Never a request field the LLM sees.
@@ -127,7 +127,7 @@ def kb_model_route_enabled():
     return os.environ.get("KB_MODEL_ROUTE", "1") != "0"
 
 
-# ---------- MCP layer: Sonnet orchestrator + PreReasoner MCP server (docs/MCP.md) ----------
+# ---------- MCP layer: Sonnet orchestrator + Prereasoner MCP server (docs/MCP.md) ----------
 # Static knobs resolve at import (mirrors BASE_MODEL_ID); the security-sensitive key is call-time
 # (mirrors kb_pg_password) so a clear error beats an anthropic auth stack trace.
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
@@ -158,7 +158,7 @@ def anthropic_api_key():
 
 
 def mcp_server_cmd():
-    """argv used to spawn the PreReasoner MCP server over stdio. Overridable as a JSON list so the
+    """argv used to spawn the Prereasoner MCP server over stdio. Overridable as a JSON list so the
     transport/entrypoint can change without code edits (matches the 'every knob is an env var' contract)."""
     raw = os.environ.get("MCP_SERVER_CMD")
     if raw:

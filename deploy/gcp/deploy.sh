@@ -177,7 +177,7 @@ fi
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]] \
   || die "deployment requires a clean checkout; commit or remove every local change first"
 
-confirm DEPLOY "PreReasoner will create a ZONAL Cloud SQL instance, Artifact Registry, Cloud Run service, Secret Manager secrets, a Cloud Build, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
+confirm DEPLOY "Prereasoner will create a ZONAL Cloud SQL instance, Artifact Registry, Cloud Run service, Secret Manager secrets, a Cloud Build, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
 
 # Register cleanup before creating state, build contexts, temporary jobs, or identities.
 # Every failure from this point onward owns its rollback path.
@@ -246,7 +246,7 @@ if ((!SKIP_BOOTSTRAP)); then
 
   if ! gcloud iam service-accounts describe "$BOOTSTRAP_SA" --project="$PROJECT_ID" >/dev/null 2>&1; then
     gcloud iam service-accounts create "$bootstrap_account" --project="$PROJECT_ID" \
-      --display-name="Temporary PreReasoner database bootstrap"
+      --display-name="Temporary Prereasoner database bootstrap"
   fi
   gcloud projects add-iam-policy-binding "$PROJECT_ID" \
     --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/cloudsql.client --condition=None --quiet >/dev/null
@@ -289,7 +289,7 @@ for _ in {1..60}; do
       --data '{"data":"amount\\n1","question":"total amount"}' \
       "${service_url}/api/reason")"
     [[ "$auth_status" == "401" ]] || die "reasoning endpoint auth smoke returned HTTP ${auth_status}, expected 401"
-    printf '\nPreReasoner Community Edition is ready.\nEngine: %s\nState:  gs://%s/%s\n' \
+    printf '\nPrereasoner Community Edition is ready.\nEngine: %s\nState:  gs://%s/%s\n' \
       "$service_url" "$STATE_BUCKET" "$STATE_PREFIX"
     printf 'The engine API requires a Firebase ID token. Follow web/README.md to attach your own Firebase web client.\n'
     exit 0

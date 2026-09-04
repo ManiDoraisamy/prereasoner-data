@@ -1,6 +1,6 @@
-# PreReasoner Website Copy
+# Prereasoner Website Copy
 
-This is the approved copy source for the separate PreReasoner marketing website. It lives in this
+This is the approved copy source for the separate Prereasoner marketing website. It lives in this
 repository so product language, implementation, and evidence can be reviewed together.
 
 The website source is in the separate FormFacade repository. This file does not authorize edits or
@@ -11,7 +11,7 @@ deployment there. Copy should be applied there deliberately by the website owner
 - Lead with the task and the benefit.
 - Use short sentences and concrete verbs: ask, match, join, calculate, check, read, and show.
 - Say what the user can see. Prefer `query`, `formula`, `matched rows`, and `source` to abstract terms.
-- Make comparisons fair. State what Excel Copilot or Gemini does well before explaining where PreReasoner differs.
+- Make comparisons fair. State what Excel Copilot or Gemini does well before explaining where Prereasoner differs.
 - Do not promise perfect accuracy, no AI, no embeddings, real-time source data, add-on behavior, or organization-wide sharing unless the implementation and release evidence support it.
 - Keep compliance claims tied to the actual deployment, privacy policy, and service scope.
 
@@ -23,7 +23,7 @@ AI built from named dimensions.
 
 ### Supporting copy
 
-Attach a Google Sheet, Excel file, or CSV. PreReasoner maps the question and your data to named
+Attach a Google Sheet, Excel file, or CSV. Prereasoner maps the question and your data to named
 dimensions, then compiles them into a checked derivation. Today that derivation runs as typed SQL,
 so every dimension can be combined, checked against real rows, and rerun. The same semantic layer
 connects tables to public knowledge, private references, and domain-specific calculations.
@@ -49,7 +49,7 @@ Copilot for Excel that shows the dimensions behind the calculation.
 
 ### Supporting copy
 
-Ask a workbook a question in plain English. PreReasoner maps the question to named dimensions,
+Ask a workbook a question in plain English. Prereasoner maps the question to named dimensions,
 matches the right columns, and returns the answer with the query and source rows that produced it.
 
 ### What it is for
@@ -57,16 +57,16 @@ matches the right columns, and returns the answer with the query and source rows
 Use it when the number matters more than a quick suggestion: totals, grouped results, lookups,
 date filters, currency conversion, and joins between sheets.
 
-### PreReasoner and Microsoft 365 Copilot
+### Prereasoner and Microsoft 365 Copilot
 
 Microsoft 365 Copilot is a broad Excel assistant. It can edit worksheets, generate formulas, create
 charts and PivotTables, format data, build lookups, and explain formulas. It is useful when you want
 help changing a workbook or exploring its data. Microsoft says to review and verify generated
 insights and formulas.
 
-PreReasoner is narrower. It is for asking a question and checking the answer.
+Prereasoner is narrower. It is for asking a question and checking the answer.
 
-| Common Excel workflow | PreReasoner |
+| Common Excel workflow | Prereasoner |
 |---|---|
 | Ask Copilot to add a formula column | Returns the calculation and the query that ran it |
 | Add helper columns to normalize, classify, or convert values | Shows the typed operation and its inputs in the derivation view |
@@ -93,7 +93,7 @@ Ask your Google Sheet a question. Read exactly how it answered.
 
 ### Supporting copy
 
-Import a Google Sheet and ask about the data in plain English. PreReasoner shows the result, the
+Import a Google Sheet and ask about the data in plain English. Prereasoner shows the result, the
 matched rows, and the query used to calculate it. The original Sheet is not silently changed.
 
 ### Short feature list
@@ -104,13 +104,13 @@ matched rows, and the query used to calculate it. The original Sheet is not sile
 - **Read the calculation** - See filters, joins, groups, and arithmetic.
 - **Check before sharing** - Review the result and its source path.
 
-### PreReasoner and Gemini in Sheets
+### Prereasoner and Gemini in Sheets
 
 Gemini in Google Sheets can create tables and formulas, analyze data, make charts, and apply actions
 such as filters, sorting, formatting, and PivotTables. That makes it a useful general assistant for
 working inside a Sheet.
 
-PreReasoner is for a different moment: you have a question and want a result you can inspect. It
+Prereasoner is for a different moment: you have a question and want a result you can inspect. It
 does not replace the Sheet's formulas or editing tools. It adds a query and source-row view for the
 answer it computes.
 
@@ -122,7 +122,7 @@ Join the right rows. Do not guess from similar text.
 
 ### Supporting copy
 
-Link a text column to a public or private reference table with a key. PreReasoner resolves the value,
+Link a text column to a public or private reference table with a key. Prereasoner resolves the value,
 checks the relationship, and joins the rows needed for the answer.
 
 ### Example
@@ -135,7 +135,7 @@ shows that decision.
 
 Type, link, join, return.
 
-PreReasoner can use uploaded tables, user-owned reference tables, and approved source releases. A
+Prereasoner can use uploaded tables, user-owned reference tables, and approved source releases. A
 reference table is selected only when the relationship graph connects it to the request. Unrelated
 private references are not added to the query.
 
@@ -147,7 +147,7 @@ A confidence score is not a reason.
 
 ### Supporting copy
 
-PreReasoner returns the named inputs, the query, and the source path behind a result. A reviewer can
+Prereasoner returns the named inputs, the query, and the source path behind a result. A reviewer can
 run the same request against the same data and inspect what changed when the result changes.
 
 ### Short feature list
@@ -162,7 +162,7 @@ run the same request against the same data and inspect what changed when the res
 
 ### Heading
 
-Run the PreReasoner engine on your own data.
+Run the Prereasoner engine on your own data.
 
 ### Supporting copy
 
@@ -190,7 +190,7 @@ Use these short labels in the product menu:
 
 | Product | Label |
 |---|---|
-| PreReasoner | Auditable answers from your data |
+| Prereasoner | Auditable answers from your data |
 | Excel Copilot | Ask Excel. Read the calculation. |
 | Sheets Copilot | Ask a Sheet. Check the result. |
 | Structured RAG | Join rows by key, not similarity |

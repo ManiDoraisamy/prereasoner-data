@@ -1,6 +1,6 @@
 # MCP And Conversational Orchestration
 
-PreReasoner exposes the same engine through HTTP and MCP. MCP is an adapter, not a second reasoning engine.
+Prereasoner exposes the same engine through HTTP and MCP. MCP is an adapter, not a second reasoning engine.
 
 ## Components
 

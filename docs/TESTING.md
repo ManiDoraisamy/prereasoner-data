@@ -1,6 +1,6 @@
 # Testing
 
-PreReasoner has hermetic tests, browser-state tests, live database integrations, a deployment regression gate, and
+Prereasoner has hermetic tests, browser-state tests, live database integrations, a deployment regression gate, and
 Spider accuracy evaluation. They answer different questions and should not be collapsed into one green badge.
 
 ## Quick Local Checks

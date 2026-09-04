@@ -1,4 +1,4 @@
-// regression.js — AUTO-GENERATED browser regression for the PreReasoner engine, hitting the LIVE /api/reason
+// regression.js — AUTO-GENERATED browser regression for the Prereasoner engine, hitting the LIVE /api/reason
 // endpoint. Do NOT hand-edit the cases: the generator (build_regression20.py) lives in the training/tools area of
 // the model repo — regenerate there and re-copy.
 //

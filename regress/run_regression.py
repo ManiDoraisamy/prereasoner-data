@@ -1,4 +1,4 @@
-"""PreReasoner regression gate — run BEFORE every deploy.
+"""Prereasoner regression gate — run BEFORE every deploy.
 
 Two tiers, run together:
   * OFFLINE (always): the non-world text-to-SQL golden cases (regress/offline_cases.py), executed through the

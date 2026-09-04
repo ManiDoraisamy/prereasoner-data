@@ -1,6 +1,6 @@
-# Deploy PreReasoner Community Edition
+# Deploy Prereasoner Community Edition
 
-This walkthrough builds and deploys PreReasoner into **your** Google Cloud project. It creates
+This walkthrough builds and deploys Prereasoner into **your** Google Cloud project. It creates
 billable resources, including a Zonal Cloud SQL instance. Cloud Run scales to zero; Cloud SQL is
 the main recurring cost.
 
@@ -23,7 +23,7 @@ gcloud config set project "${GOOGLE_CLOUD_PROJECT}"
 ```
 
 The script never receives a service-account key and never sends your Google credential to
-PreReasoner. Terraform and `gcloud` use the active short-lived Google authorization directly.
+Prereasoner. Terraform and `gcloud` use the active short-lived Google authorization directly.
 
 ## Deploy
 

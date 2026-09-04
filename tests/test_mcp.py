@@ -1,4 +1,4 @@
-"""test_mcp.py — the PreReasoner MCP server layer.
+"""test_mcp.py — the Prereasoner MCP server layer.
 
 Two parts, both dependency-light (no seeded Postgres, no model weights, no Anthropic key):
   (A) UNIT — shape_reason_response's status-mapping matrix (pure function; docs/MCP.md).

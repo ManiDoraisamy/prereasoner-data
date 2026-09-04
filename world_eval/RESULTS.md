@@ -1,6 +1,6 @@
 # World-model evaluation
 
-This suite measures the part of PreReasoner that Spider cannot measure: deterministic
+This suite measures the part of Prereasoner that Spider cannot measure: deterministic
 source grounding, world-table joins, world attributes, and calculations over the
 joined rows. Spider is self-contained; this suite uses the live `knowledgebase`
 tables and an oracle query for each case.
@@ -10,7 +10,7 @@ tables and an oracle query for each case.
 Each case contains uploaded rows, a question, and an independent SQL oracle. The
 oracle joins the uploaded rows to `knowledgebase."Countries"`,
 `knowledgebase."Cities"`, or `knowledgebase."Elements"` and computes the expected
-denotation. PreReasoner runs its normal `KnowledgeReasoner` path against the same
+denotation. Prereasoner runs its normal `KnowledgeReasoner` path against the same
 database. `world_eval/run.py` compares row sets using the same exact and lenient
 definitions used by the Spider reports.
 

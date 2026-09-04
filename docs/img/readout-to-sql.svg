@@ -1,5 +1,5 @@
 <svg viewBox="0 0 680 916" xmlns="http://www.w3.org/2000/svg" role="img" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif">
-  <title>How PreReasoner turns a prompt into SQL</title>
+  <title>How Prereasoner turns a prompt into SQL</title>
   <desc>The transformer's last layer is a units-by-anchors activation matrix, not SQL tokens; a deterministic search assembles a typed AST parse tree from it, which is then rendered to a SQL string.</desc>
   <rect x="0" y="0" width="680" height="916" fill="#ffffff"/>
   <defs>

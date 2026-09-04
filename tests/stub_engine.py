@@ -1,4 +1,4 @@
-"""tests/stub_engine.py — a fake PreReasoner engine for testing the layers ABOVE it (MCP server,
+"""tests/stub_engine.py — a fake Prereasoner engine for testing the layers ABOVE it (MCP server,
 orchestrator, chat UI) WITHOUT a seeded world Postgres, model weights, or Docker.
 
 It returns responses in the engine's exact documented shapes (docs/MCP.md): an answer with a `views`

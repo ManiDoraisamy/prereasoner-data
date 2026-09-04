@@ -1,4 +1,4 @@
-# PreReasoner engine — SERVING dependencies (CPU), exact pins or bounded major versions.
+# Prereasoner engine — SERVING dependencies (CPU), exact pins or bounded major versions.
 #   pip install -r requirements.txt
 # torch is the CPU build (the extra index below); serving is CPU-only by default (DEVICE=cpu).
 # spaCy needs the en_core_web_md model — installed here straight from the release wheel.

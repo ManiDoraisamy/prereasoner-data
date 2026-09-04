@@ -1,6 +1,6 @@
 # Marketing Website Review
 
-Status: read-only review of the separate PreReasoner marketing website. This document records
+Status: read-only review of the separate Prereasoner marketing website. This document records
 findings; it does not authorize changes to the website repository or a production deployment.
 Claims were compared on 2026-09-01 against the live `prereasoner.com` pages, their local source in
 the separately owned FormFacade checkout, and the implementation and release contracts in this
@@ -25,10 +25,10 @@ separate operations.
 
 ## Intended Product Structure
 
-The website history contains seven deliberate PreReasoner revisions from 2026-08-30 through
+The website history contains seven deliberate Prereasoner revisions from 2026-08-30 through
 2026-09-01. The current structure is intentional:
 
-- PreReasoner;
+- Prereasoner;
 - Excel Copilot;
 - Sheets Copilot;
 - Structured RAG; and
@@ -104,7 +104,7 @@ the current implementation.
 
 ### Sheets Behavior
 
-The current product imports a user-selected Google Sheet into the PreReasoner workbook. It does not
+The current product imports a user-selected Google Sheet into the Prereasoner workbook. It does not
 install as a Workspace add-on, modify the original Sheet, write derivations back to that source, or
 automatically refresh when the source changes. Marketing should distinguish the imported workbook
 views from the original Google Sheet.
@@ -118,9 +118,9 @@ the corresponding commercial offer are live.
 
 ### Privacy And Compliance
 
-The shared footer displays a Formesign SOC 2 badge on PreReasoner pages even though the badge does
-not establish PreReasoner scope. The generic website privacy/terms pages also need to match the
-hosted PreReasoner data flow, including Google/Firebase, PostgreSQL, Anthropic-assisted chat when
+The shared footer displays a Formesign SOC 2 badge on Prereasoner pages even though the badge does
+not establish Prereasoner scope. The generic website privacy/terms pages also need to match the
+hosted Prereasoner data flow, including Google/Firebase, PostgreSQL, Anthropic-assisted chat when
 enabled, retention, and deletion. This should be durable policy text, not repeated consent dialogs.
 
 ## Launch Evidence Checklist
@@ -135,7 +135,7 @@ Before the website owner marks Community Edition and the hosted plans generally 
    the separately deployed Firebase browser client is part of the advertised Community offer.
 5. Limit Structured RAG copy to user-scoped references until organization tenancy is implemented.
 6. Verify each advertised quota, billing flow, workspace feature, SSO/DPA offer, and compliance claim.
-7. Publish PreReasoner-specific privacy and terms pages and remove unrelated product badges.
+7. Publish Prereasoner-specific privacy and terms pages and remove unrelated product badges.
 8. Test desktop/mobile navigation, overflow, images, CTA destinations, pricing links, privacy links,
    and the complete signup-to-answer flow in production.
 

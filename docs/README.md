@@ -1,6 +1,6 @@
 # Documentation Map
 
-Start here if you are new to the repository. PreReasoner is built around named dimensions: explicit
+Start here if you are new to the repository. Prereasoner is built around named dimensions: explicit
 classes, properties, relationships, and calculations that connect language to data and source facts.
 The current runtime uses typed SQL to compose and check those dimensions. This page tells you what
 runs today, what needs an external service, and what is still a plan. A roadmap is not a runtime

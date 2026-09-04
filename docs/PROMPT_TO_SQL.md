@@ -1,6 +1,6 @@
 # From question to SQL
 
-This walkthrough follows one request through PreReasoner. The important boundary is simple:
+This walkthrough follows one request through Prereasoner. The important boundary is simple:
 the model provides typed signals about the question and the tables; the planner assembles and
 checks the SQL query. It does not write SQL one token at a time.
 
@@ -58,7 +58,7 @@ aggregate: SUM -> amount      filter -> France      projection: ∅      group: 
 
 ## Stage 3 — a deterministic search assembles a typed AST
 
-This is the step people expect an LLM to do by "writing SQL". PreReasoner instead **searches over typed trees**.
+This is the step people expect an LLM to do by "writing SQL". Prereasoner instead **searches over typed trees**.
 [`engine/sql_search.py:SQLSearcher.search`](../engine/sql_search.py) runs a bounded beam search that *constructs*
 candidate queries out of the frozen dataclass nodes in [`engine/sql_ast.py`](../engine/sql_ast.py):
 
@@ -96,7 +96,7 @@ Because the model only **types + reads intent** and a deterministic planner **as
   win, so the planner cannot emit malformed SQL.
 
 Contrast with a GPT-style pipeline, which decodes SQL **left-to-right as tokens** and can hallucinate columns or
-syntax. PreReasoner trades some raw coverage (it's a 0.5B model) for an auditable, reproducible path.
+syntax. Prereasoner trades some raw coverage (it's a 0.5B model) for an auditable, reproducible path.
 
 ## The one caveat in this example: world queries
 

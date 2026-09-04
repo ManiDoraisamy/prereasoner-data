@@ -1,12 +1,12 @@
-# PreReasoner
+# Prereasoner
 
-PreReasoner is an interpretable AI system built around named dimensions. It maps language, data,
+Prereasoner is an interpretable AI system built around named dimensions. It maps language, data,
 and source facts to explicit semantic properties and classes, then composes those dimensions into an
 inspectable derivation.
 
 [Website](https://prereasoner.com/) | [Try it](https://chat.prereasoner.com/)
 
-Today, PreReasoner compiles those dimensions into typed SQL over tables. SQL gives each derivation a
+Today, Prereasoner compiles those dimensions into typed SQL over tables. SQL gives each derivation a
 precise execution path: the dimensions can be combined, checked against real rows, and rerun by a
 reviewer. The same semantic model extends to public knowledge, source-grounded enrichment,
 structured retrieval, and domain-specific calculations without hiding the decision in generated text.
@@ -16,7 +16,7 @@ attributes, relationships, and calculations that can be grounded in different so
 across domains. SQL is the first concrete execution target because it makes each derivation
 inspectable, testable, and useful today.
 
-For a table question, PreReasoner identifies the columns and relationships it needs, searches a
+For a table question, Prereasoner identifies the columns and relationships it needs, searches a
 bounded set of valid SQL queries, and returns the result with the query and supporting rows.
 
 The learned model helps identify intent, column roles, and schema relationships. It does not generate
@@ -37,7 +37,7 @@ Text-to-SQL may stop because the table has no country column.
 Vector search embeds the cities and returns what looks like French. Strasbourg comes back. So does
 Kehl, a German town near Strasbourg. Similarity is not membership.
 
-PreReasoner can link the city column to a reference table, resolve each city to its entity, and join
+Prereasoner can link the city column to a reference table, resolve each city to its entity, and join
 that entity to its country. Kehl is in Germany, so it is left out. The query and the join are
 visible in the result.
 

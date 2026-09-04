@@ -1,6 +1,6 @@
 # regress/ — the pre-deploy regression gate
 
-One command that runs **both** halves of what PreReasoner does and fails on any regression:
+One command that runs **both** halves of what Prereasoner does and fails on any regression:
 
 ```
 python -m regress.run_regression            # offline tier + world tier (world runs iff KB_PG_PASSWORD)

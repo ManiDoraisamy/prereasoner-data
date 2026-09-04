@@ -1,4 +1,4 @@
-# Build + push the orchestrator (Sonnet chat backend + PreReasoner MCP server) image, GATED on tests.
+# Build + push the orchestrator (Sonnet chat backend + Prereasoner MCP server) image, GATED on tests.
 #
 #   gcloud builds submit --config cloudbuild.orchestrator.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=latest

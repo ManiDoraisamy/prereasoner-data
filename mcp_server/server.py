@@ -1,4 +1,4 @@
-"""PreReasoner MCP server (stdio) — exposes the auditable engine as MCP tools.
+"""Prereasoner MCP server (stdio) — exposes the auditable engine as MCP tools.
 
 Run: python -m mcp_server.server   (stdio transport; launched by the orchestrator per session)
 

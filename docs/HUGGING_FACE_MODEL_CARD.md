@@ -9,10 +9,10 @@ tags:
   - lora
 ---
 
-# PreReasoner Runtime Weights
+# Prereasoner Runtime Weights
 
 This repository contains the public, manifest-pinned runtime weights for
-[PreReasoner](https://github.com/ManiDoraisamy/prereasoner-data), an interpretable
+[Prereasoner](https://github.com/ManiDoraisamy/prereasoner-data), an interpretable
 table-question-answering system. Learned components produce semantic evidence; a deterministic,
 typed AST planner owns SQL construction, joins, calculation verification, rendering, and execution.
 The bundle is not a standalone text-generating model.
@@ -74,7 +74,7 @@ servable. Unsupported and under-calibrated coordinates abstain.
 
 ## Intended Use
 
-- Semantic evidence for the matching PreReasoner source revision.
+- Semantic evidence for the matching Prereasoner source revision.
 - Research on deterministic SQL planning informed by named learned dimensions.
 - Local table and spreadsheet question answering with inspectable plans.
 
@@ -87,6 +87,6 @@ servable. Unsupported and under-calibrated coordinates abstain.
 
 ## License
 
-The PreReasoner weight bundle is released under Apache-2.0. The base model and source datasets retain
+The Prereasoner weight bundle is released under Apache-2.0. The base model and source datasets retain
 their own licenses and terms; see
 [`THIRD_PARTY.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/main/THIRD_PARTY.md).

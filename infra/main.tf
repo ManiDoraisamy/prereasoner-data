@@ -1,4 +1,4 @@
-# PreReasoner GCP deployment — the core Cloud Run engine + one Cloud SQL Postgres.
+# Prereasoner GCP deployment — the core Cloud Run engine + one Cloud SQL Postgres.
 # The optional chat service is declared in orchestrator.tf. Firebase Auth, RTDB, and Hosting are managed
 # OUTSIDE Terraform: enabling Firebase on a project is a one-time console/CLI step and
 # `firebase deploy` owns hosting — see infra/README.md.
@@ -37,7 +37,7 @@ resource "google_artifact_registry_repository" "engine" {
   repository_id = var.artifact_repo
   location      = var.region
   format        = "DOCKER"
-  description   = "PreReasoner engine images (built via cloudbuild.yaml)"
+  description   = "Prereasoner engine images (built via cloudbuild.yaml)"
 
   depends_on = [google_project_service.apis]
 }
@@ -157,7 +157,7 @@ resource "google_secret_manager_secret_version" "db_password" {
 
 resource "google_service_account" "run" {
   account_id   = "${var.service_name}-run"
-  display_name = "PreReasoner engine (Cloud Run)"
+  display_name = "Prereasoner engine (Cloud Run)"
 
   depends_on = [google_project_service.apis]
 }
@@ -423,7 +423,7 @@ resource "google_cloud_scheduler_job" "trace_cleanup" {
 
 resource "google_service_account" "sync" {
   account_id   = "${var.service_name}-sync"
-  display_name = "PreReasoner privileged source synchronization"
+  display_name = "Prereasoner privileged source synchronization"
 
   depends_on = [google_project_service.apis]
 }

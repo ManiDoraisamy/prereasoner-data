@@ -22,7 +22,7 @@ call this tool once per hop and pass intermediate values forward.
 OUTPUT: {status: "answered"|"clarify"|"error", answer:{columns,rows}, sql, clarify}."""
 
 DESCRIBE_DESC = """\
-Report what PreReasoner believes each column of the user's tables IS (city / hospital / free-text /
+Report what Prereasoner believes each column of the user's tables IS (city / hospital / free-text /
 numeric …), so you know the coverage boundary before routing a question to `prereasoner_query`. Use it
-when unsure whether a question's entities are ones PreReasoner can type. It reports the model's column
+when unsure whether a question's entities are ones Prereasoner can type. It reports the model's column
 typing, not which cells resolved to specific world entities."""

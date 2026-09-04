@@ -1,6 +1,6 @@
 # Third-Party Models And Data
 
-PreReasoner's source code is licensed under [Apache-2.0](LICENSE). That license does not replace the terms of
+Prereasoner's source code is licensed under [Apache-2.0](LICENSE). That license does not replace the terms of
 models, datasets, hosted services, or Python and JavaScript packages used with the project.
 
 The principal runtime and training inputs are listed below. Schema.org defines the semantic

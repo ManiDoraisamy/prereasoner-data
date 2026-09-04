@@ -1,6 +1,6 @@
 cff-version: 1.2.0
-message: "If you use PreReasoner in your research, please cite it as below."
-title: "PreReasoner: Interpretable data reasoning as inspectable SQL over world knowledge"
+message: "If you use Prereasoner in your research, please cite it as below."
+title: "Prereasoner: Interpretable data reasoning as inspectable SQL over world knowledge"
 authors:
   - family-names: "Doraisamy"
     given-names: "Mani"

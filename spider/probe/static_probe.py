@@ -2,7 +2,7 @@
 
 Neither needs the model or Postgres: they read the gold SQL (dev.json, with the official pre-parsed
 `sql` dict) and the schemas (tables.json), and characterise how much of Spider even falls inside the
-PreReasoner engine's structural reach — the ceiling any amount of linking work could hit.
+Prereasoner engine's structural reach — the ceiling any amount of linking work could hit.
 
 Envelope is grounded in what the engine's planners actually emit (verified against engine/compose.py,
 engine/primitives.py, engine/tables.py):

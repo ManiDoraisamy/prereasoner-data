@@ -1,4 +1,4 @@
-# infra/ — deploying PreReasoner to Google Cloud
+# infra/ — deploying Prereasoner to Google Cloud
 
 For a new, isolated Community Edition project, the supported guided path is
 [`deploy/gcp/deploy.sh`](../deploy/gcp/README.md). It provisions a private state bucket, builds the

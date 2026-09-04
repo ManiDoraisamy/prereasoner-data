@@ -1,4 +1,4 @@
-# PreReasoner CI: lightweight deterministic behavior and structural checks.
+# Prereasoner CI: lightweight deterministic behavior and structural checks.
 # Public CI runs the deterministic suites with the Linux lock generated from requirements-ci.txt. Model-backed and live
 # Postgres tests remain deployment gates because weights and seeded source data are external.
 

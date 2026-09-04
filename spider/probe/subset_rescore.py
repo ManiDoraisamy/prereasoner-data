@@ -1,6 +1,6 @@
 """Re-score a full_eval per-example file on the NON-WORLD (pure text-to-SQL) subset of Spider dev.
 
-Rationale: PreReasoner has two separable capabilities — (1) text-to-SQL over self-contained data, and
+Rationale: Prereasoner has two separable capabilities — (1) text-to-SQL over self-contained data, and
 (2) world-model resolution+join (only `city`/`country` have world tables). Spider tests only (1). A Spider
 example whose gold query references a world-typed column (country/city) is where (2) would intrude on the
 live system, so it belongs in the WORLD suite, not the Spider suite. This script partitions dev into
@@ -8,7 +8,7 @@ world-touching vs clean and recomputes accuracy on the clean subset (no model re
 
 Usage: python subset_rescore.py <per_example_1.json> [<per_example_2.json> ...] [--broad]
   --broad also excludes state/province/continent/region/nationality (wikipedia entities without a world
-  table — PreReasoner can't resolve them, so by default they STAY in Spider; --broad reports the sensitivity).
+  table — Prereasoner can't resolve them, so by default they STAY in Spider; --broad reports the sensitivity).
 """
 import json, os, re, sys
 
@@ -21,7 +21,7 @@ COUNTRY = {"country", "countries", "nation", "nations", "nationality", "national
            "countryname", "countryid", "countrycode2", "governmentform"}
 CITY = {"city", "cities", "town", "towns", "capital", "cityname", "cityid", "district"}
 CORE = COUNTRY | CITY
-# Broader geo entities (wikipedia-resolvable, but NO world table in PreReasoner -> plain strings by default).
+# Broader geo entities (wikipedia-resolvable, but NO world table in Prereasoner -> plain strings by default).
 BROAD_EXTRA = {"state", "states", "province", "provinces", "continent", "continents", "region", "regions"}
 
 

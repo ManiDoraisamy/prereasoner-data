@@ -1,4 +1,4 @@
-"""Probe D+ (headline): reproduce the PreReasoner system's text-to-SQL on Spider, fully OFFLINE.
+"""Probe D+ (headline): reproduce the Prereasoner system's text-to-SQL on Spider, fully OFFLINE.
 
 The live stack routes each question (ComposedKnowledgeQuery._composed):
   * a question whose LEARNED primitive head fires a DEPTH primitive
