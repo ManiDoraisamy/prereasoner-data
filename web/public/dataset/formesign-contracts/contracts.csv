@@ -1,0 +1,9 @@
+contract,client,country,currency,value,signed
+Service Agreement,Acme GmbH,Germany,EUR,12000,2026-07-02
+License,Sakura KK,Japan,JPY,900000,2026-07-05
+NDA,Nimbus Inc,United States,USD,5000,2026-07-06
+Maintenance,Ganga Ltd,India,INR,400000,2026-07-08
+License,Han Solutions,South Korea,KRW,3000000,2026-07-10
+Service Agreement,Aurora Ltda,Brazil,BRL,30000,2026-07-12
+NDA,Teacup Ltd,United Kingdom,GBP,4000,2026-07-15
+Maintenance,Dragon Trade Co,China,CNY,80000,2026-07-18

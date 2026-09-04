@@ -61,7 +61,7 @@ const registered = {};
 for (const m of html.matchAll(/'([a-z-]+)':\[([^\]]*)\]/g)) {
   registered[m[1]] = m[2].split(',').map(s => s.replace(/'/g, '').trim()).filter(Boolean);
 }
-for (const dir of fs.readdirSync(dsDir)) {
+for (const dir of fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir, d)).isDirectory())) {
   const files = fs.readdirSync(path.join(dsDir, dir));
   const prompt = files.includes('prompt.txt') && csvText(path.join(dir, 'prompt.txt')).trim();
   assert(prompt, `${dir} must ship a non-empty prompt.txt`);
@@ -71,6 +71,14 @@ for (const dir of fs.readdirSync(dsDir)) {
 }
 assert(html.includes("fetch('/dataset/'+DATASET+'/prompt.txt')"), 'the page must fetch the dataset prompt');
 assert(html.includes("$('q').value===Q0"), 'the prompt must only replace the pristine default question');
+assert(html.includes(".get('load')"), 'the dataset selector must be the ?load= query parameter');
+// dataset.txt is the shareable index: one line per dataset directory, in exactly the ?load= form
+// the page implements. Regenerating it here keeps the list complete when a dataset is added.
+const dirs = fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir, d)).isDirectory()).sort();
+assert.strictEqual(
+  csvText('dataset.txt'),
+  dirs.map(d => `${d}: https://chat.prereasoner.com/?load=${d}`).join('\n') + '\n',
+  'dataset.txt must list every dataset directory as <dir>: https://chat.prereasoner.com/?load=<dir>');
 // FX comes from the knowledgebase (ECB daily sync -> knowledgebase."exchange_rate"), never from a
 // demo sheet: an illustrative rate table on the page would SHADOW the real rates, because an
 // uploaded rate sheet deliberately wins over the knowledge join (own data first).

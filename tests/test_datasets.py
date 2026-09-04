@@ -26,8 +26,11 @@ EXPECTED = {
     "customer-orders": ("world+fx", 1126.66),     # city -> country join + ECB conversion (as-of drift tolerated)
     "customers-orders": ("world+fx", 1126.66),    # same question through the two-sheet FK join
     "formfacade-leads": ("world", 62000),         # country column -> continent grounding (Europe)
+    "formfacade-workshops": ("own", 4),           # AVG with a value filter; no knowledge join
     "neartail-orders": ("own", 5),                # city column answers directly; no knowledge join
+    "neartail-shipping": ("world", 46),           # city -> country -> continent two-hop grounding
     "formesign-intake": ("own", 6),               # document-type value filter; no knowledge join
+    "formesign-contracts": ("world+fx", 23568),   # continent filter + four-currency ECB conversion to USD
 }
 FX_TOLERANCE = 0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
 

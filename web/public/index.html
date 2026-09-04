@@ -80,9 +80,10 @@
 // demos mix prompts that do and do not need a knowledgebase join. FX comes from the knowledgebase
 // (ECB), never from a demo sheet.
 const DATASETS={'customer-orders':['customer-orders'],'customers-orders':['customers','orders'],
-  'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake']};
+  'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake'],
+  'formfacade-workshops':['feedback'],'neartail-shipping':['deliveries'],'formesign-contracts':['contracts']};
 const DATASET=(p=>Object.prototype.hasOwnProperty.call(DATASETS,p)?p:'customer-orders')(
-  new URLSearchParams(location.search).get('dataset'));
+  new URLSearchParams(location.search).get('load'));
 const $=id=>document.getElementById(id);
 const Q0=$('q').value;                                     // the HTML fallback question, captured before any restore
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo

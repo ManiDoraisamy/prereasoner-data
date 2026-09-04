@@ -1,0 +1,8 @@
+customer-orders: https://chat.prereasoner.com/?load=customer-orders
+customers-orders: https://chat.prereasoner.com/?load=customers-orders
+formesign-contracts: https://chat.prereasoner.com/?load=formesign-contracts
+formesign-intake: https://chat.prereasoner.com/?load=formesign-intake
+formfacade-leads: https://chat.prereasoner.com/?load=formfacade-leads
+formfacade-workshops: https://chat.prereasoner.com/?load=formfacade-workshops
+neartail-orders: https://chat.prereasoner.com/?load=neartail-orders
+neartail-shipping: https://chat.prereasoner.com/?load=neartail-shipping
