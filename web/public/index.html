@@ -42,8 +42,12 @@
 .ptab th{background:#f3effd;color:var(--brand);font-weight:600}
 .ptab td.rn,.ptab th.rn{background:#faf9ff;color:#b3acce;text-align:center;width:38px;font-size:11px}
 /* "More examples" badge + the example-question picker (reuses the preview modal chrome) */
-.morex{all:unset;cursor:pointer;color:#f8f9fa;font-size:13px;font-weight:500;letter-spacing:2px;text-transform:uppercase;padding:9px 22px;border:1px solid #f8f9fa;border-radius:9999px;transition:background .15s}
-.morex:hover{background:rgba(255,255,255,.16)}
+/* the formfacade.com "More >" affordance: a plain text link with a chevron — Inter 14/400, no
+   border, no padding, no uppercase. Formfacade paints it brand purple on white; the same purple on
+   this purple backdrop would vanish, so only the colour carries over to white. */
+.morex{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;color:#fff;font-size:14px;font-weight:400;line-height:1}
+.morex:hover{text-decoration:underline}
+.morex svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .exlist{padding:8px}
 .exlist button{all:unset;cursor:pointer;display:block;width:100%;box-sizing:border-box;padding:11px 14px;border-radius:10px}
 .exlist button:hover{background:#f3effd}
@@ -72,7 +76,7 @@
         <button class=send type=submit aria-label="Ask"><svg viewBox="0 0 24 24" fill=none stroke=currentColor stroke-width="2.4" stroke-linecap=round stroke-linejoin=round><line x1=12 y1=20 x2=12 y2=5></line><polyline points="6 11 12 5 18 11"></polyline></svg></button>
       </div>
     </div>
-    <button type=button class=morex id=morex aria-haspopup=dialog>More examples</button>
+    <button type=button class=morex id=morex aria-haspopup=dialog>More examples<svg viewBox="0 0 24 24" aria-hidden=true><polyline points="9 6 15 12 9 18"></polyline></svg></button>
     <div class=err id=err></div>
   </form>
   </div>

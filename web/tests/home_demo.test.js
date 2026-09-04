@@ -74,8 +74,10 @@ assert(html.includes("$('q').value===Q0"), 'the prompt must only replace the pri
 assert(html.includes(".get('load')"), 'the dataset selector must be the ?load= query parameter');
 // "More examples": the badge under the prompt opens a picker built from dataset.txt + each
 // prompt.txt, and picking one navigates to the same ?load= URL the shareable index uses.
-assert(html.includes('id=morex') && html.includes('>More examples</button>'),
-  'the More examples badge must sit under the prompt card');
+assert(html.includes('id=morex') && html.includes('>More examples<svg'),
+  'the More examples link must sit under the prompt card and carry its chevron');
+assert(/\.morex\{[^}]*border:/.test(html) === false && /\.morex\{[^}]*font-size:14px/.test(html),
+  'it is a plain 14px text link (the formfacade "More >" affordance), not a bordered pill');
 assert(html.includes('Object.keys(DATASETS)'),
   'the picker must list exactly the datasets ?load= can resolve, so no row silently loads the default');
 assert(html.includes("'/dataset/'+d+'/prompt.txt'"), 'the picker must show each dataset prompt');
