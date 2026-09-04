@@ -16,7 +16,7 @@ peft==0.19.1                    # loads / trains the qwen_lora adapter (lib/enco
 huggingface_hub==1.29.0
 
 # numerics
-numpy==1.26.4
+numpy==2.4.6
 
 # world DB (Cloud SQL / any Postgres) — corpus building (capped.entity), world provisioning, route grounding
 psycopg2-binary>=2.9,<3
