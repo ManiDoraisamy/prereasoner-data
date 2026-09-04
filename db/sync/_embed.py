@@ -18,6 +18,10 @@ try:
 except ImportError:
     from ._normalize import normalize_surface
 
+# normalize_surface is RE-EXPORTED: the sync builders import it from here alongside the
+# embedder so script-mode and package-mode callers share one import site.
+__all__ = ["Embedder", "pgvector_literal", "normalize_surface"]
+
 
 class Embedder:
     """Lazy singleton around bge-small. `.encode(texts) -> (n, 384) float32`, L2-normalized rows."""
