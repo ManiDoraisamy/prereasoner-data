@@ -1,6 +1,6 @@
-"""NON-GEO world join + LAZY Wikidata fill. An uploaded table of a non-geo type (hospital/...) joins its
-faithful world table, filtered by country, aggregating the uploaded metric; entities not in world.words are
-lazy-filled from Wikidata first. Live world Postgres.
+"""NON-GEO world join over pre-synchronized facts. An uploaded table of a non-geo type (hospital/...)
+joins its faithful world table, filtered by country, aggregating the uploaded metric; entities not in
+world.words abstain (serving never fetches or writes shared facts). Live world Postgres.
 
   Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_nongeo
@@ -34,7 +34,7 @@ def main():
     from regress.live_schema import live_schema
     schema = live_schema().name
     fails = []
-    # SUM the uploaded metric over US hospitals (lazy-fills the ones not already in words)
+    # SUM the uploaded metric over US hospitals (every entity pre-synchronized in words)
     r1 = Q.serve([HOSP], "total beds for hospitals in United States", schema=schema)
     got1 = _scalar(r1)
     print(f"total beds, US hospitals -> {got1} (exp 240)  model={r1.get('model','')[:46]}")
@@ -65,7 +65,7 @@ def main():
         exact_ok = False
     if not exact_ok or not isinstance(exact_value, str):
         fails.append(f"exact non-geo SUM rounded or used unsafe wire type (got {exact_value!r})")
-    print("\n" + ("PASS — non-geo world join + lazy Wikidata fill works" if not fails
+    print("\n" + ("PASS — non-geo world join over pre-synchronized facts works" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0
 
