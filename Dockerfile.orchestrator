@@ -6,7 +6,7 @@
 #
 # Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
 # Run:    docker run -p 8090:8090 -e ANTHROPIC_API_KEY=... -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
-FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
+FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
