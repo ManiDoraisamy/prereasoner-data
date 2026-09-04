@@ -1,13 +1,15 @@
 /* Prereasoner — the prereasoner.com brand palette, shared by index + dimension.
    Tokens measured off the live marketing site (2026-09-04): primary #5d33fb (its CTA fill),
    deep #4d2dfb (its pressed state), accent #c84a05 (its RESEARCH PAPER badge), and its brand
-   gradient #5d33fb -> #b161fc at 90deg. The marketing HERO paints that gradient at 50% alpha
-   over white for an airy banner; this app paints it at FULL opacity because white UI text sits
-   on it edge to edge — at 50% the headline falls to 1.8:1, unreadable. Full opacity keeps the
-   centred content between 4.1:1 and 5.5:1, better than the 3.06:1 of the palette it replaces. */
+   gradient #5d33fb -> #b161fc at 90deg. Its hero element carries that purple TWICE — a
+   background-color at 50% alpha and the gradient background-image at 50% painted over it — so
+   the colour it actually renders over white is #8666fc -> #b07dfc, which is what --grad holds.
+   (Compositing only one of the two layers gives a washed-out #ae99fd; only the raw stops give a
+   garish #5d33fb. Both were tried and rejected against a screenshot of the live site.) White
+   display text lands at 3.9:1 to 2.9:1 here, matching the brand's own contrast. */
 :root{
   --brand:#5d33fb; --brand-deep:#4d2dfb; --accent:#c84a05;
-  --grad:linear-gradient(90deg,#5d33fb 0%,#b161fc 100%);
+  --grad:linear-gradient(90deg,#8666fc 0%,#b07dfc 100%);
   --ink:#fff; --ink-dim:rgba(255,255,255,.80); --ink-faint:rgba(255,255,255,.50);
   --card-ink:#1e1340; --card-ink-dim:#5b4a8f; --card-line:rgba(93,51,251,.10);
   --disp:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -68,7 +70,7 @@ body{font-family:var(--disp);background:var(--grad);color:var(--ink);min-height:
 .filecard .x{all:unset;cursor:pointer;color:var(--card-ink-dim);font-size:18px;padding:0 6px}.filecard .x:hover{color:#d33}
 /* landing — the chat widget is the hero: one centered column, prompt card front and center */
 .page{min-height:100vh;display:flex;flex-direction:column}
-.sitefoot{flex:0 0 auto;padding:0 36px 18px;text-align:center}.sitefoot a{color:rgba(255,255,255,.72);font-size:12px;text-decoration:none}.sitefoot a:hover{color:#fff;text-decoration:underline}
+.sitefoot{flex:0 0 auto;padding:0 36px 18px;text-align:center}.sitefoot a{color:rgba(255,255,255,.85);font-size:12px;text-decoration:none}.sitefoot a:hover{color:#fff;text-decoration:underline}
 .hero{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:24px 40px 56px;display:flex;align-items:center;justify-content:center}
 .hero-left{width:100%;max-width:720px;display:flex;flex-direction:column;align-items:center;gap:24px}
 /* match formfacade.com hero headline: Inter 500 (medium), ~44px, -1px tracking */
