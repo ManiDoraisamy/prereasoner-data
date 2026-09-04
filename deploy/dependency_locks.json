@@ -13,7 +13,7 @@
     "db/sync/requirements.lock.txt": {
       "input": "db/sync/requirements.txt",
       "input_sha256": "eb4b028d81dd33a9fc34a7f3f0494aa3abc19f8a72e0b71f786aba234d8c7ba4",
-      "lock_sha256": "aec97999203e402fb698e6cf3a0f630b4e7084c4ae641fcf5e4ee53ff67851fc",
+      "lock_sha256": "5d2a1d0ba830acec377187919024e0fd6c89f1e6a578023864eefbd56c5dbe74",
       "target": "linux-x86_64-python3.11"
     },
     "deploy/gcp/requirements.lock.txt": {
@@ -49,7 +49,7 @@
     "training/requirements.lock.txt": {
       "input": "training/requirements.txt",
       "input_sha256": "e1029903663a3083db619236a4489dcee456167db6c51db4a1f4c97ec53d7683",
-      "lock_sha256": "db946266db38668cdc25fdf043501b6524ac5e79e1843c15ed24211533454828",
+      "lock_sha256": "674843c80acb3ff1340fff27b2a2a1f5c5dca584f1e19f357115939e764f550c",
       "target": "linux-x86_64-python3.11-cpu"
     }
   },
