@@ -6,7 +6,10 @@ import re
 import sys
 
 import engine.conversations as conversations
-from db.reference_grants import _LAZY_FILL_FUNCTIONS, apply_lazy_fill_grants
+from db.reference_grants import (
+    _LEGACY_LAZY_FILL_FUNCTIONS,
+    apply_shared_read_boundary,
+)
 from db.sync.app_migrations import (
     CHAT_MIGRATIONS,
     KNOWLEDGEBASE_MIGRATIONS,
@@ -97,13 +100,12 @@ def test_knowledgebase_migration_installs_definer_functions():
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():
-    """Regression for the live failure: 'CREATE TABLE ... knowledgebase' as the
-    SELECT-only serving role -> permission denied for schema knowledgebase."""
-    source = pathlib.Path("engine/knowledge_sync.py").read_text(encoding="utf-8")
-    assert "CREATE TABLE IF NOT EXISTS knowledgebase" not in source
-    assert "INSERT INTO knowledgebase" not in source
-    for name in ("lazy_ensure_table", "lazy_upsert_entity", "lazy_register_word"):
-        assert f"knowledgebase.{name}(" in source
+    """Shared facts are synchronized offline; requests neither fetch nor write them."""
+    assert not pathlib.Path("engine/knowledge_sync.py").exists()
+    for relative in ("engine/entities.py", "engine/knowledge_query.py"):
+        source = pathlib.Path(relative).read_text(encoding="utf-8")
+        assert "engine.knowledge_sync" not in source
+        assert "urllib.request" not in source
 
 
 class _GrantCursor:
@@ -117,10 +119,10 @@ class _GrantCursor:
         text = str(statement)
         if "to_regprocedure" in text:
             self.one = (params[0] if self.functions_exist else None,)
-        elif "GRANT EXECUTE ON FUNCTION" in text:
+        elif "REVOKE EXECUTE ON FUNCTION" in text:
             self.grants.append(text)
         elif "has_function_privilege" in text:
-            self.one = (True,)
+            self.one = (False,)
         elif "has_schema_privilege" in text:
             self.one = (False, False)           # no CREATE, no direct DML
         elif "to_regclass" in text:
@@ -134,21 +136,18 @@ class _GrantCursor:
         return self.one
 
 
-def test_lazy_fill_grants_require_migration_and_audit_direct_writes():
+def test_shared_read_boundary_revokes_legacy_write_functions():
     cur = _GrantCursor(functions_exist=False)
-    try:
-        apply_lazy_fill_grants(cur, "serving")
-        raise AssertionError("missing functions must fail the bootstrap")
-    except RuntimeError as exc:
-        assert "app_migrations" in str(exc)
+    apply_shared_read_boundary(cur, "serving")
     cur = _GrantCursor()
-    apply_lazy_fill_grants(cur, "serving")
-    assert len([g for g in cur.grants if "GRANT EXECUTE" in g]) == len(_LAZY_FILL_FUNCTIONS) == 3
+    apply_shared_read_boundary(cur, "serving")
+    revokes = [statement for statement in cur.grants if "REVOKE EXECUTE" in statement]
+    assert len(revokes) == len(_LEGACY_LAZY_FILL_FUNCTIONS) == 3
     # The serving freshness guard READS the catalog, so the bootstrap must grant it — SELECT only.
     assert any("GRANT SELECT ON TABLE" in g and "schedule" in g for g in cur.grants)
     missing = _GrantCursor(schedule_exists=False)
     try:
-        apply_lazy_fill_grants(missing, "serving")
+        apply_shared_read_boundary(missing, "serving")
         raise AssertionError("a missing schedule table must fail the bootstrap")
     except RuntimeError as exc:
         assert "app_migrations" in str(exc)
@@ -161,7 +160,7 @@ def test_request_path_contains_no_shared_chat_ddl():
 
 def test_schedule_catalog_is_honest_about_what_it_claims():
     """The catalog must describe the tables the world path ACTUALLY joins, and must not silently
-    imply upkeep. A lazy-filled table declares cadence None on purpose."""
+    imply an automatic cadence for manually rebuilt projections."""
     from db.sync.schedule import CATALOG
     names = {m.table_name for m in CATALOG}
     # The tables engine/data/word_*.json routes a filter to must all be declared, or the guard
@@ -174,9 +173,9 @@ def test_schedule_catalog_is_honest_about_what_it_claims():
     by_name = {m.table_name: m for m in CATALOG}
     assert by_name["exchange_rate"].cadence_hours == 24, "the ECB job runs daily"
     assert by_name["exchange_rate"].source_schema == "ecb", "must point at the release table"
-    for lazy in ("city", "country"):
-        assert by_name[lazy].cadence_hours is None, f"{lazy} is lazy-filled, not scheduled"
-        assert "never re-verified" in by_name[lazy].note, "the lack of upkeep must be stated"
+    for projection in ("city", "country"):
+        assert by_name[projection].cadence_hours is None
+        assert "build_qid_world.py" in by_name[projection].note
     assert all(m.cadence_hours is None or m.cadence_hours > 0 for m in CATALOG)
 
 
@@ -221,7 +220,7 @@ TESTS = [
     test_chat_migration_is_admin_run_and_idempotent,
     test_knowledgebase_migration_installs_definer_functions,
     test_serving_path_has_no_direct_knowledgebase_writes,
-    test_lazy_fill_grants_require_migration_and_audit_direct_writes,
+    test_shared_read_boundary_revokes_legacy_write_functions,
     test_schedule_catalog_is_honest_about_what_it_claims,
     test_schedule_migration_and_base_schema_agree,
     test_serving_guard_consults_the_catalog_instead_of_skipping,

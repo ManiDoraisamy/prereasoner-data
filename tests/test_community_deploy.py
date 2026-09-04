@@ -26,7 +26,59 @@ def test_bootstrap_plan_is_minimal_deterministic_and_non_shell():
         assert command[:2] == (sys.executable, "-m"), command
     assert (sys.executable, "-m", "db.sync.sync_wikidata", "--reset", "--high-only") in plan, \
         "the community seed must stay the bounded --high-only import, not the multi-hour full sync"
+    assert (sys.executable, "-m", "db.sync.build_qid_world") in plan, \
+        "QID serving projections must be built before requests, never lazily"
     assert (sys.executable, "-m", "db.sync.sources.iana.sync") in plan
+
+
+def test_qid_world_projection_is_an_offline_atomic_transform():
+    from db.sync.build_qid_world import rebuild
+
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+            self.rowcount = 0
+            self.one = (0,)
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if 'INSERT INTO knowledgebase."country"' in text and "SELECT qid" in text:
+                self.rowcount = 196
+            elif 'INSERT INTO knowledgebase."city"' in text and "SELECT qid" in text:
+                self.rowcount = 1234
+            elif text.startswith('SELECT count(*) FROM knowledgebase."'):
+                self.one = (1234 if '"city"' in text else 196,)
+
+        def fetchone(self):
+            return self.one
+
+        def close(self):
+            return None
+
+    class Connection:
+        def __init__(self):
+            self.cursor_value = Cursor()
+            self.commits = 0
+            self.rollbacks = 0
+
+        def cursor(self):
+            return self.cursor_value
+
+        def commit(self):
+            self.commits += 1
+
+        def rollback(self):
+            self.rollbacks += 1
+
+    connection = Connection()
+    assert rebuild(connection) == {"city": 1234, "country": 196}
+    sql = "\n".join(statement for statement, _ in connection.cursor_value.statements)
+    assert "FROM public.settlement" in sql and "FROM public.country" in sql
+    assert 'TRUNCATE knowledgebase."city", knowledgebase."country"' in sql
+    assert connection.commits == 1 and connection.rollbacks == 0
+    source = _text("db/sync/build_qid_world.py")
+    assert "urllib" not in source and "requests" not in source
 
 
 def test_bootstrap_builds_every_table_the_maintenance_catalog_promises():

@@ -64,11 +64,9 @@ CHAT_MIGRATIONS = (
     ),
 )
 
-# The ONLY knowledgebase write path the serving role gets (engine/knowledge_sync.py).
-# The functions are SECURITY DEFINER and owned by the admin role that runs this
-# migration; serving receives EXECUTE from db.reference_grants and keeps zero direct
-# INSERT/UPDATE/DELETE/CREATE on the schema.  search_path is pinned so the dynamic
-# SQL cannot be captured; identifiers pass through format(%I).
+# Legacy compatibility functions from the former request-time Wikidata fill path.
+# Their SQL is retained because migration checksums are immutable. New bootstrap
+# code revokes runtime EXECUTE; only offline synchronization may write shared facts.
 _LAZY_ENSURE_TABLE = """
 CREATE OR REPLACE FUNCTION knowledgebase.lazy_ensure_table(label text, cols text[])
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER

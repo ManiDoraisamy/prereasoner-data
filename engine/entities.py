@@ -70,8 +70,9 @@ class EntityQuery(RoutedQuery):
         # first statement and leaves it "idle in transaction" until an explicit commit — holding read locks on
         # knowledgebase."words"/the bridge tables. Two service instances serving the SAME per-user sub then wedge each other
         # (a concurrent ALTER TABLE on the bridge blocks ~indefinitely on that relation lock; a measured 833s stall).
-        # Every write here is idempotent (CREATE/ADD COLUMN IF NOT EXISTS, DELETE+INSERT refresh, ensure_entity ON
-        # CONFLICT DO NOTHING), so per-statement autocommit is safe and the explicit .commit() calls become no-ops.
+        # Every write here is idempotent (per-user bridge CREATE/ADD COLUMN IF NOT EXISTS, DELETE+INSERT refresh),
+        # so per-statement autocommit is safe and the explicit .commit() calls become no-ops. Shared knowledgebase
+        # tables are never written from this path.
         if self._rcn is None or self._rcn.closed:
             self._rcn = _pg()
             self._rcn.autocommit = True
@@ -287,17 +288,6 @@ class EntityQuery(RoutedQuery):
         for c in cells:
             q = pick(c)
             (exact_rows.append((c, q)) if q else fuzzy.append(c))
-        if exact_rows:                                            # LAZY-SYNC the resolved cities into knowledgebase."city"
-            try:                                                  # (tables start empty; fill the qids we just resolved)
-                from engine.knowledge_sync import ensure_entity
-                qids = [q for _c, q in exact_rows]
-                for q in qids:
-                    ensure_entity(q, "Q515")                      # city type = Q515 -> knowledgebase."city" (qid PK + qid FKs)
-                cur.execute('SELECT DISTINCT country FROM knowledgebase."city" WHERE qid = ANY(%s) AND country IS NOT NULL', (qids,))
-                for (cq,) in cur.fetchall():                      # cascade the FK: fill each city's COUNTRY so 2-hop
-                    ensure_entity(cq, "Q6256")                    # filters (continent) can join knowledgebase."country"
-            except Exception as e:                                # noqa: BLE001 — never block the query on a sync miss
-                print(f"[entities] city lazy-fill failed: {e}", flush=True)
         parts = []
         if exact_rows:
             parts.append("SELECT * FROM (VALUES " +
@@ -346,16 +336,6 @@ class EntityQuery(RoutedQuery):
             rows.append((cell, ctx, q))
         if not rows:
             return None
-        try:                                                      # LAZY-SYNC the resolved cities + their countries
-            from engine.knowledge_sync import ensure_entity           # (qid PK + country qid FK) so 2-hop joins hit
-            qids = [q for _c, _x, q in rows]
-            for q in qids:
-                ensure_entity(q, "Q515")
-            cur.execute('SELECT DISTINCT country FROM knowledgebase."city" WHERE qid = ANY(%s) AND country IS NOT NULL', (qids,))
-            for (cq,) in cur.fetchall():
-                ensure_entity(cq, "Q6256")
-        except Exception as e:                                    # noqa: BLE001 — never block the query on a sync miss
-            print(f"[entities] disamb city lazy-fill failed: {e}", flush=True)
         vals = ", ".join(f"({qlit(c)}, {qlit(x)}, {qlit(q)})" for c, x, q in rows)
         return f"SELECT * FROM (VALUES {vals}) AS ex(cell, ctx, qid)"
 

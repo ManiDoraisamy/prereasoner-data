@@ -126,15 +126,15 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         self._emit_typing(typing)
         return routes
 
-    # ---------------- NON-GEO world join + LAZY fill ----------------
+    # ---------------- NON-GEO world join over pre-synchronized facts ----------------
     # The faithful Wikidata tables (knowledgebase."hospital"/"software"/...) join like the geo ones: resolve the uploaded
     # cell -> the type's qid (world.words, type=<leaf>), JOIN knowledgebase."<leaf>" ON qid, filter by a world attribute
-    # (country), aggregate the uploaded metric. Cells not in words are LAZY-filled from Wikidata first.
+    # (country), aggregate the uploaded metric. Missing facts abstain; serving never fetches or writes them.
     def _resolve_world_qid(self, value, label, type_qid):
-        """value -> the world qid. world.words.type stores the EXACT Wikidata label (what knowledge_sync's
-        ensure_entity inserts), NOT the snake routing leaf — so look it up by that exact label, else a lazy-filled
-        multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path forever. Exact
-        norm match, then bge NN, then LAZY Wikidata fill on a miss."""
+        """value -> the world qid. world.words.type stores the EXACT Wikidata label (what the offline
+        syncs insert), NOT the snake routing leaf — so look it up by that exact label, else a
+        multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path forever.
+        Exact norm match, then bge NN. A miss remains unresolved until an offline source sync supplies it."""
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
         _r = cur.fetchone()
@@ -150,18 +150,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         row = cur.fetchone()
         if row and row[1] is not None and row[1] >= 0.85:
             return row[0]
-        try:                                                              # LAZY: pull this one entity from Wikidata
-            from engine.knowledge_sync import lazy_resolve
-            return lazy_resolve(value, type_qid, label)
-        except Exception as e:                                            # noqa: BLE001
-            print(f"[knowledge_query] lazy_resolve failed for {value!r}/{label}: {e}", flush=True); return None
+        return None
 
     def _world_type_map(self):
         """{snake(leaf label) -> type qid} for the mirrored non-geo tables, from taxonomy.csv. Cached."""
         m = getattr(self, "_wtmap", None)
         if m is None:
             import csv as _csv
-            from engine.knowledge_sync import snake
+            from engine.taxonomy import snake
             m = {}
             try:
                 for r in _csv.DictReader(open(DATA_DIR / "taxonomy.csv", encoding="utf-8")):
@@ -258,7 +254,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     def _serve_world_type(self, norm, question, sch, plan, schema):
         """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
         e.g. hospitals.csv(hospital, beds) + 'total beds for hospitals in United States' -> resolve each hospital to
-        knowledgebase.\"hospital\" (lazy-fill from Wikidata on miss), keep those whose .country = 'United States', SUM(beds)."""
+        a pre-synchronized knowledgebase.\"hospital\" row, keep those whose .country = 'United States', SUM(beds)."""
         t = plan["table"]; label = plan["label"]; country = plan["country"]
         ci = t["columns"].index(plan["col"])
         op = (self.read_op_model([t], question)[0]) or "COUNT"
@@ -290,12 +286,6 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
         _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # wikipedia table = the EXACT Wikidata label
         qids = sorted({wq for wq, _ in pairs})
-        try:                                                              # LAZY-SYNC the resolved entities into knowledgebase."<wl>"
-            from engine.knowledge_sync import ensure_entity                   # (qid PK + country qid FK) so the join below hits
-            for q in qids:
-                ensure_entity(q, plan["qid"])
-        except Exception as e:                                            # noqa: BLE001 — never block on a sync miss
-            print(f"[knowledge_query] non-geo lazy-fill failed: {e}", flush=True)
         # country filter is qid = qid (plan["country"] is a country QID; w."country" is the country's qid FK)
         cur.execute(f'SELECT qid FROM knowledgebase."{wl}" WHERE qid = ANY(%s) AND lower("country") = lower(%s)', (qids, country))
         keep = {r[0] for r in cur.fetchall()}
@@ -314,7 +304,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                f'WHERE w."country" = {qlit(country)}')
         return {"question": question, "as_of": None, "sql": sql,
                 "result": {"columns": [disp], "rows": [[val]]},          # "columns" (NOT "cols") — the client render +
-                "model": f'engine - non-geo world join (knowledgebase."{wl}", lazy-filled)'}  # geo path both use .columns
+                "model": f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'}
 
     # ---------------- connected / unconnected split ----------------
     def _avglen(self, table, col):
@@ -535,7 +525,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, _, _ = self.schema(norm, fks)
         is_agg = self.read_op_all(question, sch) is not None
-        if is_agg and schema:                                         # NON-GEO world join (hospital/software/... + lazy fill)
+        if is_agg and schema:                                         # NON-GEO world join over synchronized facts
             try:
                 ngp = self._nongeo_plan(norm, question)
                 if ngp:

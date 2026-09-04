@@ -111,23 +111,27 @@ the service runs.
 The world database schema had accreted across generations of setup scripts; no single file
 described it. [db/init.sql](db/init.sql) is now the reconstructed, idempotent contract
 (extensions, `words` + HNSW index, world tables), and [db/README.md](db/README.md) documents
-what fills lazily from Wikidata at query time versus what must be pre-seeded. Notably, geo
-queries are plain-SQL haversine — no PostGIS — so the stock `pgvector` image suffices.
+which projections each sync step pre-seeds. Notably, geo queries are plain-SQL haversine —
+no PostGIS — so the stock `pgvector` image suffices.
 
-## Lazy-fill writes go through admin-owned definer functions
+## Serving is read-only on shared facts; request-time Wikidata fill removed
 
-The serving role is SELECT-only on `knowledgebase` (infra/README §6), but the entity
-lazy-fill ([engine/knowledge_sync.py](engine/knowledge_sync.py)) must write at request time:
-create long-tail entity tables, insert faithful rows, register words. Discovered live
-2026-08-27, when the first serving-role deployment logged `permission denied for schema
-knowledgebase` on every world query that resolved entities. Rather than granting serving
-INSERT/CREATE (which would let a SQL-injection-level attacker forge curated rows — exchange
-rates included), the three writes are SECURITY DEFINER functions owned by the migration
-admin (`db.sync.app_migrations`), with `search_path` pinned, identifiers routed through
-`format(%I)`, and the entity upsert restricted to qid-PRIMARY-KEY tables by its
-`ON CONFLICT (qid)` arbiter. Serving gets EXECUTE on exactly those three
-(`db.reference_grants`, audited); direct schema writes stay denied. One code path — local
-development as postgres calls the same functions.
+Superseded decision, kept for the record. Through 2026-09-03 the entity path lazy-filled
+`knowledgebase."city"`/`"country"`/long-tail tables from Wikidata at request time
+(`engine/knowledge_sync.py`, deleted). When the serving role lost schema write access
+(2026-08-27, `permission denied for schema knowledgebase` on every resolving world query),
+the writes were routed through three admin-owned SECURITY DEFINER functions with pinned
+`search_path`, `format(%I)` identifiers, and a qid-PK `ON CONFLICT (qid)` arbiter, granted
+EXECUTE-only to serving.
+
+The 2026-09-04 release-gate rerun as the real serving role exposed the deeper problem: a
+request could stall on WDQS network fetches and return flaky undercounts, contradicting the
+deterministic-source contract. Request-time fill is now removed entirely. `knowledgebase."city"`
+and `"country"` are rebuilt offline by [db/sync/build_qid_world.py](db/sync/build_qid_world.py)
+from the synchronized `public.settlement`/`public.country` staging tables; a resolution miss
+abstains instead of fetching. The definer functions' SQL remains in `db.sync.app_migrations`
+only because migration checksums are immutable; `db.reference_grants.apply_shared_read_boundary`
+revokes their EXECUTE and audits that serving keeps zero write paths into shared facts.
 
 ## Reproduction honesty
 

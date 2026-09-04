@@ -10,9 +10,8 @@ Deliberately NOT listed here:
 
 * the ``"... in the World"`` relations — they are VIEWS over the base tables (db/init.sql:282-287),
   so scheduling them would double-count the same data;
-* the lazy-fill entity tables (``city``, ``hospital``, ``film`` …) created at request time by
-  engine/knowledge_sync.py — they have no maintenance cadence by construction, and listing them
-  would make the catalog claim upkeep that nobody performs.
+* non-geographic entity projections that have not been placed under a declared sync job. Serving
+  never creates or refreshes shared entity tables.
 
 ``cadence_hours = None`` is a first-class, honest value: the table is rebuilt from a snapshot on
 demand, not on a timer. It means "no automatic refresh", NOT "unknown".
@@ -42,13 +41,10 @@ CATALOG: tuple[Maintained, ...] = (
                "ECB euro reference rates; rebuilt at 16:30 UTC by the <service_name>-ecb-rates-refresh "
                "Cloud Run job (infra/main.tf). The ECB does not publish at weekends, so a refresh may "
                "legitimately find no new print."),
-    # The three tables the world-filter path actually joins. They are LAZY-FILLED per request by
-    # engine/knowledge_sync.py:ensure_entity, so a row is fetched once when first needed and never
-    # re-verified. cadence_hours=None states that plainly rather than implying upkeep nobody does.
-    Maintained("city", "wikidata-lazy", None, None,
-               "Filled on demand when an uploaded cell first resolves to a city; rows are never re-verified."),
-    Maintained("country", "wikidata-lazy", None, None,
-               "Filled on demand from a resolved city's country FK; rows are never re-verified."),
+    Maintained("city", "wikidata", None, None,
+               "QID projection rebuilt offline by db/sync/build_qid_world.py from public.settlement."),
+    Maintained("country", "wikidata", None, None,
+               "QID projection rebuilt offline by db/sync/build_qid_world.py from public.country."),
     Maintained("words", "wikidata", None, None,
                "The pgvector resolution index (db/sync/build_words.py); rebuilt with the snapshot."),
     Maintained("types", "wikidata", None, None,

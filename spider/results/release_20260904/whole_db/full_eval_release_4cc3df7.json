@@ -1,0 +1,106 @@
+{
+  "n": 1034,
+  "config": "whole_db",
+  "selection": "serving_top1",
+  "compose": true,
+  "signals": true,
+  "max_candidates": 25,
+  "artifacts": {
+    "dev": "30d64a3fccde493226df79687aed9e4a1c0129525baf44f29c0573d914d758a4",
+    "encoder": "53fd3d37c64525be45a372d487b3e4f1e7f39b13fdccb8c9eaacf89e22c953b2",
+    "encoder_meta": "0ce503fd3939bf402da992ba05d4605072d08f24f21788a08316809480f3a5cb",
+    "engine/calculations/core.py": "4265a45eef6dd3fffb346807ea916c01e8b22f9ef8773f4450011c42fbc30132",
+    "engine/calculations/registry.py": "ad2569eac3da51d32a21e5bbdb906b1da67c99f7b5b7cbd017c8b11e8819e1b9",
+    "engine/calculations/search.py": "bcfe1090ccc474017a08ce00675faac93b205051b2aa82381bfac5d82b30756e",
+    "engine/calculations/specifications.py": "7887d86c53df661470ffb3ff8581f7b9e6bcceb5a2013018ee13915a3cf36201",
+    "engine/compose.py": "bc7b8288da5d2523ed9334f117a26463fa3f722c4d4a1120bf6b1e19070fdfd6",
+    "engine/encoder_overlay.py": "e62b5312e44eb6fb52add2da93a3f673138515bb3ebdeca2d61cd940a658233c",
+    "engine/knowledge_compose.py": "7513993875c390f917c65288fd96ed0f3673dc216998f4302ab7215a8f45d942",
+    "engine/primitive_head.py": "376fb75bbbe81d11e7ce36899048a088ab7704f87cb9362676a91dd0428ff7b7",
+    "engine/routing.py": "1924d39096ff95182706a302994bc3a9d0ac7a624f1ec16334079eed1a5cc3ae",
+    "engine/sql_ast.py": "39467b091dcd9639a3f807f2298398cbff36916cafada81d3786a466de519155",
+    "engine/sql_candidate.py": "0f401dbfb29fbdb86ca54445f9913493d69952dd999c7749af0a395e650f9a3c",
+    "engine/sql_constraints.py": "66bb046ec3399e7427b08c9183113c5f699d9d9dba946cc409ddd5fd3e041176",
+    "engine/sql_expansion.py": "214cd22935676096efd8d067e55e888baeee1539dbe8d83b8bc4f037af7e704d",
+    "engine/sql_extrema.py": "30d45e6e21aaaf0398ff01342e0adf22fe46cb03edfa031f86323c20ec5db98e",
+    "engine/sql_profile.py": "1e718036e793cf0e7329f68f03c3fcab9bcdc00c25b1a327d484b4b64483b18d",
+    "engine/sql_profile_expansion.py": "85f8df12053495a830ae817b9ec4bf0e4a60c98fecc0e672426c107e711547f2",
+    "engine/sql_rank.py": "74ca349c12f6ee02deaf62114c1a814d912572e1bfa1a353b41743031f2e8c6e",
+    "engine/sql_recursive.py": "6d4a2e8bf711ecbe6821341010fea697c6a60ff97fdcee7b7679238a2a497d96",
+    "engine/sql_schema.py": "8a0a5a934022e6e688e289aa847298ded9c63cc57dd5755c179330005466e72e",
+    "engine/sql_search.py": "0e1f8bcdb2d94dc2a7d336d6bba364ce9bbe3af7279fa4b0e1ca9dbd4da45f5e",
+    "engine/tables.py": "5032d2360f05d2997e6b058f1dd649ed23eb739aa9fdab02d4eb4c5e17aca919",
+    "eval_harness": "e69097342d216485efd391bde0fa3a63aaf8f648374d01de26ff55eea0cf6608",
+    "tables": "61bb20aa401f03164e2d7f3b16509b7b5f79cc9c943ca7bd159046df1159e2ed",
+    "encoder_adapter": "9083d3ee0376c414d1c5efd1e76eefbc9863ab731225fe75ae4320e3fee95409",
+    "source_commit": "4cc3df73eec7c455c5c672f2a705904bb0b7cd51",
+    "worktree_dirty": false
+  },
+  "answered_pct": 96.7,
+  "error_pct": 3.3,
+  "correct_lenient_pct": 43.8,
+  "correct_strict_pct": 34.7,
+  "scalar_gold_accuracy_pct": 54.9,
+  "scalar_gold_n": 408,
+  "totals": {
+    "n": 1034,
+    "scalar_total": 408,
+    "answered": 1000,
+    "correct_lenient": 453,
+    "correct_strict": 359,
+    "scalar_correct": 224,
+    "over_budget": 22,
+    "error": 34
+  },
+  "error_stage_histogram": {
+    "ast_search": 34
+  },
+  "path_histogram": {
+    "ast": 1034
+  },
+  "path_correct_lenient": {
+    "ast": 453
+  },
+  "by_difficulty": {
+    "easy": {
+      "n": 248,
+      "scalar_total": 173,
+      "answered": 243,
+      "correct_lenient": 138,
+      "correct_strict": 121,
+      "scalar_correct": 107,
+      "over_budget": 1,
+      "error": 5
+    },
+    "medium": {
+      "n": 446,
+      "answered": 432,
+      "correct_lenient": 179,
+      "correct_strict": 128,
+      "over_budget": 4,
+      "scalar_total": 101,
+      "scalar_correct": 54,
+      "error": 14
+    },
+    "hard": {
+      "n": 174,
+      "answered": 163,
+      "correct_lenient": 88,
+      "correct_strict": 63,
+      "over_budget": 6,
+      "scalar_total": 77,
+      "scalar_correct": 46,
+      "error": 11
+    },
+    "extra": {
+      "n": 166,
+      "answered": 162,
+      "correct_lenient": 48,
+      "correct_strict": 47,
+      "over_budget": 11,
+      "scalar_total": 57,
+      "scalar_correct": 17,
+      "error": 4
+    }
+  }
+}

@@ -238,11 +238,11 @@ terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest
   -target=google_secret_manager_secret_version.serving_db_password
 
 # 2. Run application migrations and bootstrap grants as the privileged postgres role (via
-#    cloud-sql-proxy, as in step 3 above). The migration owns shared chat DDL and installs the
-#    admin-owned SECURITY DEFINER lazy-fill functions (knowledgebase.lazy_ensure_table /
-#    lazy_upsert_entity / lazy_register_word — engine/knowledge_sync.py's only write path).
-#    The grants step gives serving chat DML plus EXECUTE on exactly those three functions and
-#    audits that direct knowledgebase writes stay denied.
+#    cloud-sql-proxy, as in step 3 above). The migration owns shared chat DDL; the legacy
+#    lazy-fill definer functions remain only because migration checksums are immutable.
+#    The grants step gives serving chat DML, REVOKES any legacy EXECUTE on those functions
+#    (db.reference_grants.apply_shared_read_boundary), and audits that serving keeps zero
+#    write paths into knowledgebase — shared facts are written by offline sync only.
 SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.sync.app_migrations
 #    Seed the world-table maintenance catalog and backfill last_refreshed_at from the evidence
 #    that already exists (each active <source>.release row, else the newest per-row updated_at).

@@ -17,10 +17,10 @@ _CHAT_TABLES = (
     "user_profile", "conversation", "user_conversation", "request_usage", "request_lease",
 )
 
-# The ONLY knowledgebase write path serving gets: the admin-owned SECURITY DEFINER
-# lazy-fill functions installed by db.sync.app_migrations (engine/knowledge_sync.py
-# is their one caller).  Direct DML/DDL on the schema stays denied and is audited.
-_LAZY_FILL_FUNCTIONS = (
+# Older deployments exposed these admin-owned functions to the serving role for
+# request-time Wikidata fill. Serving is now network-free and read-only against
+# shared facts; bootstrap revokes any grant left by an older release.
+_LEGACY_LAZY_FILL_FUNCTIONS = (
     "knowledgebase.lazy_ensure_table(text, text[])",
     "knowledgebase.lazy_upsert_entity(text, text[], text[])",
     "knowledgebase.lazy_register_word(text, text, text, text, text, text)",
@@ -64,25 +64,26 @@ def apply_chat_grants(cur, runtime_role: str) -> None:
             raise RuntimeError(f"chat privilege audit failed for {runtime_role} on {qualified}")
 
 
-def apply_lazy_fill_grants(cur, runtime_role: str) -> None:
-    """Grant EXECUTE on the lazy-fill definer functions; prove direct writes stay denied."""
+def apply_shared_read_boundary(cur, runtime_role: str) -> None:
+    """Revoke legacy write functions and prove shared serving data is read-only."""
     if not _IDENTIFIER.fullmatch(runtime_role or ""):
         raise ValueError("runtime_role must be a lowercase PostgreSQL identifier")
     role_id = sql.Identifier(runtime_role)
-    for signature in _LAZY_FILL_FUNCTIONS:
+    for signature in _LEGACY_LAZY_FILL_FUNCTIONS:
+        cur.execute("SELECT to_regprocedure(%s)", (signature,))
+        if cur.fetchone()[0] is not None:
+            cur.execute(sql.SQL("REVOKE EXECUTE ON FUNCTION {} FROM {}").format(
+                sql.SQL(signature), role_id,
+            ))
+    for signature in _LEGACY_LAZY_FILL_FUNCTIONS:
         cur.execute("SELECT to_regprocedure(%s)", (signature,))
         if cur.fetchone()[0] is None:
-            raise RuntimeError(
-                f"lazy-fill function missing (run db.sync.app_migrations first): {signature}")
-        cur.execute(sql.SQL("GRANT EXECUTE ON FUNCTION {} TO {}").format(
-            sql.SQL(signature), role_id,
-        ))
-    for signature in _LAZY_FILL_FUNCTIONS:
+            continue
         cur.execute("SELECT has_function_privilege(%s, %s, 'EXECUTE')",
                     (runtime_role, signature))
-        if not cur.fetchone()[0]:
+        if cur.fetchone()[0]:
             raise RuntimeError(
-                f"lazy-fill EXECUTE audit failed for {runtime_role} on {signature}")
+                f"legacy shared-write function still executable by {runtime_role}: {signature}")
     cur.execute(
         "SELECT has_schema_privilege(%s, 'knowledgebase', 'CREATE'), "
         "has_table_privilege(%s, 'knowledgebase.words', 'INSERT,UPDATE,DELETE')",
@@ -141,7 +142,7 @@ def apply_reference_grants(cur, runtime_role: str, dataset_names) -> dict[str, t
 
     role_id = sql.Identifier(runtime_role)
     apply_chat_grants(cur, runtime_role)
-    apply_lazy_fill_grants(cur, runtime_role)
+    apply_shared_read_boundary(cur, runtime_role)
     if not targets:
         return targets
     for schema_name, tables in targets.items():

@@ -20,7 +20,7 @@ from db.sync._conn import connect
 
 ROOT = Path(__file__).resolve().parents[2]
 INIT_SQL = ROOT / "db" / "init.sql"
-BOOTSTRAP_VERSION = 3
+BOOTSTRAP_VERSION = 4
 DEFAULT_DATASETS = frozenset({"iana_country"})
 _ROLE = re.compile(r"^[a-z][a-z0-9_]*$")
 _LOCK_NAME = "prereasoner-community-bootstrap"
@@ -33,6 +33,7 @@ def command_plan() -> tuple[tuple[str, ...], ...]:
         (sys.executable, "-m", "db.sync.build_world"),
         (sys.executable, "-m", "db.sync.build_words", "--cities"),
         (sys.executable, "-m", "db.sync.sync_types"),
+        (sys.executable, "-m", "db.sync.build_qid_world"),
         (sys.executable, "-m", "db.sync.build_u_s_state"),
         (sys.executable, "-m", "db.sync.app_migrations"),
         (sys.executable, "-m", "db.sync.sources.iana.sync"),

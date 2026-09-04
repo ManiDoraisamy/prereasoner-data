@@ -29,8 +29,9 @@ reproduced faithfully.
 - `knowledgebase` — THE shared serving schema (named `knowledgebase`, **not** `world`,
   because "world model" means a learned dynamics model in ML — this is a lookup KB).
   Holds `"words"` (resolution index), `"types"` (taxonomy), the qid-keyed faithful
-  Wikidata tables (exact-Wikidata-label names — created lazily by
-  `engine/knowledge_sync.ensure_table`, or up front by `db/sync/build_wikipedia.py`),
+  Wikidata tables (exact-Wikidata-label names — `"city"`/`"country"` rebuilt offline by
+  `db/sync/build_qid_world.py`, the long tail pre-created by `db/sync/build_wikipedia.py`;
+  serving never creates or fills them),
   AND the friendly name-keyed tables + `"... in the World"` views
   (`"Cities"`/`"Countries"`/`"Elements"`/… read by `engine/knowledge_compose`).
 - `chat` — conversation identity + ownership (`user_profile` / `conversation` /
@@ -104,8 +105,8 @@ by name).
 
 | Object | Naming | Creator code path |
 |---|---|---|
-| `knowledgebase."<exact Wikidata label>"` | e.g. `knowledgebase."city"`, `knowledgebase."hospital"`, `knowledgebase."academic journal"` — label from `knowledgebase."types".label`, truncated to 63 chars; shared labels suffixed `" (Qxxx)"` by `build_wikipedia.py` | `engine/knowledge_sync.ensure_table` (via `ensure_entity`/`lazy_resolve`, called from `entities` cell bridges + `knowledge_query._resolve_world_qid`/`_serve_world_type`); pre-creatable up front by `db/sync/build_wikipedia.py` (qid-PK copies) or `mirror_schema.py` |
-| rows in the qid-keyed tables | one row per entity, qid PK, all-TEXT property columns, item-valued props store the related entity's **qid** (FK) | `ensure_entity` → `fetch_one` (WDQS), `ON CONFLICT (qid) DO NOTHING`; each also INSERTs a `knowledgebase."words"` row |
+| `knowledgebase."<exact Wikidata label>"` | e.g. `knowledgebase."city"`, `knowledgebase."hospital"`, `knowledgebase."academic journal"` — label from `knowledgebase."types".label`, truncated to 63 chars; shared labels suffixed `" (Qxxx)"` by `build_wikipedia.py` | offline sync only: `db/sync/build_qid_world.py` rebuilds `"city"`/`"country"`; `db/sync/build_wikipedia.py` (qid-PK copies) or `mirror_schema.py` pre-create the long tail. Serving reads and abstains on a miss |
+| rows in the qid-keyed tables | one row per entity, qid PK, all-TEXT property columns, item-valued props store the related entity's **qid** (FK) | offline sync (`build_qid_world.py` from `public.settlement`/`public.country`; per-type syncs for the long tail); serving never inserts rows or `"words"` entries |
 | `c_<32hex>` schema | authorized conversation id | `engine.conversations.resolve_conversation` + `engine.pg._load_user_schema` |
 | `c_<32hex>."<upload-or-selected-reference>"` | typed request table | `engine.pg._load_user_schema` (DROP + CREATE on each serve; INTEGER→BIGINT, REAL→exact NUMERIC(58,20)) |
 | `c_<32hex>."<t> connected to wikipedia"` | `('column' text, value text, world_type text, world_key text, country text, world_qid text)` | `engine.knowledge_query._persist_connected` |

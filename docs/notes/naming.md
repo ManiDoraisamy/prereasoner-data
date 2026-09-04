@@ -106,11 +106,10 @@ applies if needed). Elements are now source-grounded by the value-membership fal
 `Elements in the World` view. The non-`u_s_state` friendly tables also still carry `country` as a name, so a country
 **filter** on those is a known gap — migrate them the same way (qid FK table) when needed.
 
-## Separate issue: value undercounts are WDQS lazy-fill, not naming
+## Separate issue (historical): value undercounts were WDQS lazy-fill, not naming
 
-`test_world_joins` value mismatches seen locally (France 180 vs 220, empty state result) are **not** the
-naming issue — they are **Wikidata (WDQS) lazy-fill timeouts** from a dev machine
-(`[entities] city lazy-fill failed: The read operation timed out`, `engine/knowledge_sync.py`). The tests'
-synthetic entities/2-hop facts aren't in the seed, so the engine calls WDQS to fill them; those calls time
-out locally and the sums undercount. In prod Cloud Run (warm DB, reliable egress) the fills succeed and the
-values match. The lazy-fill timeout/retry was widened for local robustness; it is still network-dependent.
+`test_world_joins` value mismatches seen locally in 2026-08 (France 180 vs 220, empty state result) were
+**not** the naming issue — they were Wikidata (WDQS) lazy-fill timeouts from a dev machine. Request-time
+fill was removed on 2026-09-04 (see DECISIONS.md "Serving is read-only on shared facts"): the projections
+are now built offline by `db/sync/build_qid_world.py`, a resolution miss abstains, and this failure mode
+cannot recur. Kept here because the diagnosis explains historical undercounts in old logs.
