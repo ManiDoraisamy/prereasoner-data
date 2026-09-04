@@ -125,6 +125,10 @@ assert(html.includes("location.href='picker'"), 'the Google Sheets flow must rou
 assert(html.includes('>Attach a spreadsheet and ask a question</div>'),
   'the generic headline invites the attach-and-ask action');
 assert(!/<div class=sub>/.test(html), 'the hero carries no subline under the headline');
+// The brand mark is the marketing site's front door (prereasoner.com), not the app root: this IS
+// the app, so "/" is already where the visitor stands.
+assert(html.includes('<a class=brand href="https://prereasoner.com/">'),
+  'the header brand must link to the marketing site');
 assert(html.includes('placeholder="What question do you have about your spreadsheet?"'),
   'the placeholder must not repeat the headline');
 // Each landing rewrites the headline, placeholder, and the bare "+"'s accessible name to its source.
@@ -220,5 +224,11 @@ for (const required of ['What we process', 'Anthropic', 'Google Cloud and Fireba
 }
 assert(privacy.includes('toward operating this assistant layer locally'),
   'the policy must state the local-model direction without making it a user setting');
+// Its brand mark points at the marketing site like every other; the separate "Back to the app"
+// link is what returns here (the two used to be the same destination).
+assert(privacy.includes('<a class="brand" href="https://prereasoner.com/">'),
+  'the privacy page brand must link to the marketing site');
+assert(privacy.includes('<a class="back" href="/">'),
+  'the privacy page must keep a distinct link back to the app');
 
 console.log("home demo + landing routes + picker + privacy: passed");
