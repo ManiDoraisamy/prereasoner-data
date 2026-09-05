@@ -185,8 +185,12 @@ body.app{background:#fff}
 .provtag{display:inline-block;margin-left:6px;font:800 8.5px/1 var(--disp);letter-spacing:.06em;padding:2px 4px;border-radius:4px;vertical-align:middle}
 .provtag.src{background:#e2f5e9;color:#178a3a}
 .provtag.ai{background:#ece6fb;color:var(--brand)}
+.provtag.kb{background:#e3f0fb;color:#175e8a}
+.provtag.fx{background:#fdf0e3;color:#a05a12}
 .wb th.prov-src{box-shadow:inset 0 -2px 0 #b7e4c6}
 .wb th.prov-ai{box-shadow:inset 0 -2px 0 #cbbdf3}
+.wb th.prov-kb{box-shadow:inset 0 -2px 0 #b5d7f0}
+.wb th.prov-fx{box-shadow:inset 0 -2px 0 #f2d4ad}
 /* B3: autofilled reference cells (edit to confirm) */
 .wb td.aicell{background:#f7f4ff;position:relative}
 .wb td.aicell::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:#c3b2f0}

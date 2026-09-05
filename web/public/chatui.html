@@ -206,7 +206,7 @@ function resolveSlide(r){
   if(!r) return "";
   const src = tableBubble([r.column||"cell"], (r.rows||[]).map(x=>[x]), (r.table||"")+" · "+(r.column||""), {hlcol:r.column});
   const world = (r.unconnected || !r.columns) ? "" :
-    tableBubble(r.columns, r.rows, (r.wtable||"world")+" (wikipedia)", {hlcol:r.hlcol||"name"});
+    tableBubble(r.columns, r.rows, (r.wtable||"world")+" (knowledgebase)", {hlcol:r.hlcol||"name"});
   return src + world + '<div class="bubble"><div class="think">'+SPINNER+' resolved '+esc(r.column||"")+'</div></div>';
 }
 function stopPlay(){ if(playTimer){clearInterval(playTimer);playTimer=null;} $("play").innerHTML = PLAY; }

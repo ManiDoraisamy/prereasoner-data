@@ -18,7 +18,7 @@ from engine.joins import discover_fks, join_plan
 ORDERS = {"name": "orders", "columns": ["city", "amount"],
           "rows": [["Paris", 100], ["Lyon", 80], ["Chennai", 90], ["Chennai", 60]]}
 # The world-meaning table ComposeEngine joins: geo value (col 0) -> attributes (country, ...).
-WORLD = {"name": "world meaning", "columns": ["city", "country"],
+WORLD = {"name": "knowledgebase", "columns": ["city", "country"],
          "rows": [["Paris", "France"], ["Lyon", "France"], ["Chennai", "India"]]}
 
 # A STRING foreign key (the sample demo): orders.customer holds a NAME, not a number, and references
@@ -28,7 +28,7 @@ CUSTOMERS = {"name": "customers", "columns": ["customer ID", "name", "city"],
 ORDERS_FK = {"name": "orders", "columns": ["order ID", "customer", "ordered", "amount"],
              "rows": [[101, "Holmes", "Pipe", 100], [102, "Clouseau", "Coat", 310],
                       [103, "Lupin", "Hat", 180], [104, "Holmes", "Cap", 20]]}
-WORLD2 = {"name": "world meaning", "columns": ["city", "country"],
+WORLD2 = {"name": "knowledgebase", "columns": ["city", "country"],
           "rows": [["London", "UK"], ["Paris", "France"]]}
 
 

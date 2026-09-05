@@ -77,10 +77,23 @@ function renderGrid(m){
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
   const shown=rows.slice(0,MAX_RENDER_ROWS);
   const edit=(m.cls==='input'||m.cls==='master');            // input + master are EDITABLE; derived/reference are read-only but STILL navigable
-  // B1: per-column provenance on derived/reference sheets — SRC = carried from your data, AI = added by lookup/derivation.
+  // B1: per-column provenance on derived/reference sheets. SRC = carried from your data. Columns the
+  // derivation ADDED name their actual source instead of a generic "AI": KB = joined from the public
+  // knowledgebase (Wikidata/publisher projections), FX = computed with ECB reference rates. AI remains
+  // only for derived columns with no more specific source.
   const inputCols=new Set(BOOK.filter(s=>s.cls==='input').flatMap(s=>(s.cols||[]).map(c=>String(c).toLowerCase())));
   const showProv=(m.cls==='deriv'||m.cls==='ref');
-  const provOf=c=>inputCols.has(String(c).toLowerCase())?'src':'ai';
+  const KB_COLS=new Set(['qid','country','continent','currency','currency_name','population','capital','hemisphere','lat','lng','world_key']);
+  const provOf=c=>{ const n=String(c).toLowerCase();
+    if(inputCols.has(n))return 'src';
+    if(/^rate(_|$)|_rate$|^rate_published$|^converted\b/.test(n))return 'fx';
+    if(KB_COLS.has(n)||n.endsWith('_qid'))return 'kb';
+    return 'ai'; };
+  const PROV_TAG={src:'SRC', kb:'KB', fx:'FX', ai:'AI'};
+  const PROV_TITLE={src:'From your data',
+    kb:'Joined from the public knowledgebase (Wikidata and publisher sources)',
+    fx:'Computed with ECB reference rates from the knowledgebase',
+    ai:'Added by a deterministic derivation — worth a sanity-check'};
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
   for(let ci=0;ci<cols.length;ci++){ const pv=showProv?provOf(cols[ci]):'';
     if(m.cls==='master'&&m._editCol===ci){                    // inline column-name editor — spreadsheet-style, no prompt() dialog
@@ -90,8 +103,8 @@ function renderGrid(m){
       continue; }
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
-                        :(pv?' title="'+(pv==='src'?'From your data':'Added by a public-source lookup or deterministic derivation — worth a sanity-check')+'"':''))
-      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+(pv==='src'?'SRC':'AI')+'</span>':'')+'</th>'; }
+                        :(pv?' title="'+PROV_TITLE[pv]+'"':''))
+      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+PROV_TAG[pv]+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
   const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // editable: one trailing blank "new record" row
@@ -118,7 +131,7 @@ function tokCls(tk){const u=tk.toUpperCase();
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
 const KINDLBL={input:'Your data',deriv:'Derived',ref:'Public source',master:'Reference'};
-function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|reference) lookup/i.test(n)) n='enriched'; return n; }
+function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|knowledgebase|reference) lookup/i.test(n)) n='enriched'; return n; }
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }

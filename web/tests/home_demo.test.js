@@ -195,6 +195,19 @@ for (const [stored, pathname, want, why] of [
   assert.strictEqual(runReturnPath(stored, pathname), want, `returnPath(${stored}) — ${why}`);
 }
 
+// --- provenance tags: derived columns name their actual source, not a generic "AI" -----------
+{
+  const wbSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+  for (const tag of ["src:'SRC'", "kb:'KB'", "fx:'FX'", "ai:'AI'"]) {
+    assert(wbSrc.includes(tag), `provenance must include the ${tag} tag`);
+  }
+  assert(/ECB reference rates/.test(wbSrc), 'the FX tag must attribute the ECB rates');
+  assert(/public knowledgebase/.test(wbSrc), 'the KB tag must attribute the knowledgebase');
+  assert(!/connected to wikipedia|world meaning/.test(wbSrc), 'no legacy wikipedia/world-meaning strings in the client');
+  const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
+  assert(cssSrc.includes('.provtag.kb') && cssSrc.includes('.provtag.fx'), 'the KB and FX tags must be styled');
+}
+
 // --- external LLM: disclosure has one permanent home and never interrupts the user's workflow.
 const wb = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
 const chat = fs.readFileSync(path.join(__dirname, '..', 'public', 'chatui.html'), 'utf8');

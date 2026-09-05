@@ -29,7 +29,7 @@ from engine.pg import _pg
 
 # conversation_id is also a Postgres schema name — keep it a safe, fixed-shape identifier.
 _ID_RE = re.compile(r"^c_[0-9a-f]{32}$")
-MAX_CONVERSATIONS_PER_USER = 100
+MAX_CONVERSATIONS_PER_USER = 500
 MAX_STATE_BYTES = 1 * 1024 * 1024
 
 

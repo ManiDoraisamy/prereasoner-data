@@ -28,7 +28,7 @@ class KnowledgeBridgeMixin:
     }
 
     def _conn_bridge_name(self, main_table):
-        return f"{main_table} connected to wikipedia"
+        return f"{main_table} connected to knowledgebase"
 
     def _materialize(self, inner_sql):
         cursor = self._rconn().cursor()
@@ -40,6 +40,8 @@ class KnowledgeBridgeMixin:
         bridge_name = self._conn_bridge_name(main_table)
         cursor = self._rconn().cursor()
         cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {qident(schema)}")
+        legacy_bridge = f"{main_table} connected to wikipedia"          # pre-rename bridge in existing conversations
+        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(legacy_bridge)}")
         cursor.execute(
             f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(bridge_name)} {self.CONN_DDL}"
         )
@@ -166,7 +168,9 @@ class KnowledgeBridgeMixin:
             ]
             cursor.execute(insert, [primary_key, *values])
 
-        unconnected = f"{table_name} unconnected to wikipedia"
+        unconnected = f"{table_name} unconnected to knowledgebase"
+        legacy_unconnected = f"{table_name} unconnected to wikipedia"      # pre-rename bridge in existing conversations
+        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(legacy_unconnected)}")
         cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(unconnected)}")
         cursor.execute(
             f"CREATE TABLE {qident(schema)}.{qident(unconnected)} "
@@ -194,7 +198,7 @@ class KnowledgeBridgeMixin:
         self._pg_schema = schema
         predicate_vector = pgvector_literal(_norm_vec(self._encode([predicate])[0]))
         connected = self._conn_bridge_name(table_name)
-        unconnected = f"{table_name} unconnected to wikipedia"
+        unconnected = f"{table_name} unconnected to knowledgebase"
         route_column = plan["conn"][0][0] if plan["conn"] else None
         connection = _pg()
         try:

@@ -4,10 +4,10 @@ This realizes the unified-encoder objective in production (not just /api/dimensi
   * OPERATOR + OPERAND from the metric space  — inherited EncoderQuery.read_op_all (no MEASURE_NOUNS/table_noun);
     the delegate (aggregate / pure world-join) path is EntityQuery.serve, which calls THIS read_op_all via MRO.
   * BRIDGE TABLES persisted per user on Postgres (the thesis: "an interpretable model is a database"):
-      "<t> connected to wikipedia"   = legacy bridge name for resolved FKs (cell -> world key + country), via bge +
+      "<t> connected to knowledgebase"   = the bridge of resolved FKs (cell -> world key + country), via bge +
                                        knowledgebase.words (exact entity resolution; same-space NOT required —
                                        the join is on a string key).
-      "<t> unconnected to wikipedia" = legacy bridge name for a unified-encoder vector(896) per free-text cell
+      "<t> unconnected to knowledgebase" = a unified-encoder vector(896) per free-text cell
                                        (remarks, notes, …),
                                        so a free-text MEANING is kept as an embedding.
   * HYBRID structured+semantic query — "who complained about bad delivery in France" =

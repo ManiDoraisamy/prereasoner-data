@@ -1,10 +1,10 @@
 """The CONNECTED / UNCONNECTED bridge design. Each uploaded string column is split:
 
-  "<csv> connected to wikipedia"   : PK + FK columns to world tables. A column is CONNECTED when >=80% of its
+  "<csv> connected to knowledgebase"   : PK + FK columns to world tables. A column is CONNECTED when >=80% of its
                                      VALUES resolve to a world type (value-membership routing). The FK is the
                                      resolved key (city -> settlement qid -> country), so a filter that is
                                      NOT in the upload ("France") is answered by joining the world.
-  "<csv> unconnected to wikipedia" : PK + a unified-encoder VECTOR per free-text column (e.g. remarks). Free
+  "<csv> unconnected to knowledgebase" : PK + a unified-encoder VECTOR per free-text column (e.g. remarks). Free
                                      text doesn't resolve to any world entity, so we keep its MEANING as an
                                      embedding.
 

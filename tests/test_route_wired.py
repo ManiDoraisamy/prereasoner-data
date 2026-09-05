@@ -67,7 +67,7 @@ def main():
 
     # (3) world_qid in the persisted bridge = the model's table qid (Q515 city)
     cur = Q._rconn().cursor()
-    bn = Q._conn_bridge_name("customers")                     # "customers connected to wikipedia"
+    bn = Q._conn_bridge_name("customers")                     # "customers connected to knowledgebase"
     cur.execute(f'SELECT DISTINCT "world_type","world_qid" FROM {qident(schema)}.{qident(bn)} WHERE "column"=%s', ("city",))
     bridge = cur.fetchall()
     print(f"\nbridge world_type/world_qid for 'city': {bridge}")

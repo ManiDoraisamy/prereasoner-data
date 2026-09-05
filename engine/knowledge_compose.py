@@ -213,7 +213,7 @@ class ComposedKnowledgeQuery:
                 # drop an enriched attr whose name collides with the geo column itself (a COUNTRY column enriches a
                 # 'country' attr -> two 'country' columns -> ComposeEngine._load crashed 'duplicate column name').
                 attrs = sorted({k for d in ent.values() for k in d if not k.startswith("_") and k != geocol})
-                result = {"name": "world meaning", "columns": [geocol] + attrs,
+                result = {"name": "knowledgebase", "columns": [geocol] + attrs,
                           "rows": [[v] + [d.get(a) for a in attrs] for v, d in ent.items()]}
         return result
 

@@ -20,7 +20,7 @@ _FRANCE = {
     "question": "total amount in France",
     "sql": ("SELECT SUM(orders.amount) AS total FROM customers "
             "JOIN orders ON orders.customer_id = customers.customer_id "
-            "JOIN \"customers connected to wikipedia\" b ON b.column='city' AND lower(b.value)=lower(customers.city) "
+            "JOIN \"customers connected to knowledgebase\" b ON b.column='city' AND lower(b.value)=lower(customers.city) "
             "JOIN knowledgebase.\"city\" ON knowledgebase.\"city\".qid = b.world_key "
             "WHERE knowledgebase.\"city\".country = 'Q142'"),
     "result": {"columns": ["total"], "rows": [[270]]},

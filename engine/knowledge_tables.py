@@ -1,4 +1,4 @@
-"""Relational attention from an uploaded CSV to the IMPLICIT world meaning tables.
+"""Relational attention from an uploaded CSV to the IMPLICIT knowledgebase tables.
 
 A CSV's city column is ROUTED to the city word-table by its concept (read off the anchored dims) and joined
 on the NORMALIZED string — concept picks the TABLE, string picks the ROW. A filter value that is ABSENT from
@@ -687,7 +687,7 @@ class KnowledgeTableQuery:
                     "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()}, "dims": coldims,
                     "meaning_join": None, "provenance": None, "warnings": [],
                     "debug": self._debug_input(norm, question, [], [], [], False),
-                    "model": "engine - CSV -> world meaning join + bitemporal/freshness"}
+                    "model": "engine - CSV -> knowledgebase join + bitemporal/freshness"}
         if joins:
             fw, disamb, warnings = self._world_joins(upfrom, joins, sch, norm, mtab, route_col, as_of, mf)
         else:
@@ -834,7 +834,7 @@ class KnowledgeTableQuery:
                 "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()}, "dims": coldims,
                 "meaning_join": join_desc, "provenance": prov, "warnings": warnings,
                 "debug": self._debug_input(norm, question, world_sections, feats, plan, False),
-                "model": "engine - CSV -> world meaning join + bitemporal/freshness"}
+                "model": "engine - CSV -> knowledgebase join + bitemporal/freshness"}
         from engine.calculations import (
             BranchEvidence, ComputationEvidence, JoinFact, OutputEvidence, PredicateFact,
             assess_calculations,
