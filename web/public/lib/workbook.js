@@ -669,7 +669,13 @@ async function startTurn(){
   const uid=window.__uid;
   const streaming=!!(uid&&window.subscribeTurn);
   const turnId=(crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+'-'+Math.random().toString(36).slice(2));
-  const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text(); return (r.ok&&t.trim().charAt(0)==='{')?JSON.parse(t):null; }catch(_){ return null; } };
+  const parseBody=async r=>{ try{ if(!r)return null; const t=await r.text();
+    const j=t.trim().charAt(0)==='{'?JSON.parse(t):null;
+    if(r.ok)return j;
+    // A 4xx is a TERMINAL server rejection (validation/limits) — surface its error instead of returning
+    // null, which reads as "proxy timeout, keep waiting" and once masked a 413 as an endless spinner.
+    if(j&&j.error&&r.status>=400&&r.status<500)return {error:j.error};
+    return null; }catch(_){ return null; } };
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
     body:JSON.stringify({message:question, tables:SHEETS, history:HISTORY, turnId:turnId,
@@ -867,7 +873,9 @@ async function run(){
       }
     }catch(_){}
   }
-  try{ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } }catch(_){}   // restore ORCH context on reload
+  // restore ORCH context ONLY when resuming an existing conversation (same guard the snapshot restore uses
+  // below) — a fresh conversation must never inherit another conversation's transcript.
+  try{ if(convId()){ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } } }catch(_){}
   wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); MASTER_READY=loadMaster();
   window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
   // RESTORE the saved snapshot (turns + derived sheets + result) instead of re-running the model. Only when it

@@ -187,7 +187,10 @@ $('f').addEventListener('submit',async function(e){
     sessionStorage.setItem(SS.TABLES,JSON.stringify(valid));
     sessionStorage.setItem(SS.CSV,valid[0].data); sessionStorage.setItem(SS.NAME,valid[0].name);
     sessionStorage.setItem(SS.Q,q);
-    sessionStorage.removeItem('pr_conversation_id');                                // a query from home starts a NEW conversation
+    // A query from home starts a NEW conversation: clear ALL conversation-scoped state, exactly like
+    // newConversation() does. Leaving pr_orch_history behind leaked every prior conversation's transcript
+    // into the new one's /chat body until it crossed the server's history cap -> 413 on every submit.
+    ['pr_conversation_id','pr_orch_history','pr_conv_state'].forEach(k=>sessionStorage.removeItem(k));
   }catch(_){}
   location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
 });
