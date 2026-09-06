@@ -179,11 +179,12 @@ jobs:
           python -m pip install --require-hashes -r deploy/gcp/requirements.lock.txt
           python -m engine.fetch_weights
           python deploy/gcp/build_context.py --output /tmp/prereasoner-build
+          python deploy/gcp/build_context.py --target chat --output /tmp/prereasoner-chat-build
           python deploy/gcp/build_context.py --target sync --output /tmp/prereasoner-sync-build
       - name: Build release containers
         run: |
           docker build -t prereasoner-engine:ci /tmp/prereasoner-build
-          docker build -f /tmp/prereasoner-build/Dockerfile.orchestrator -t prereasoner-chat:ci /tmp/prereasoner-build
+          docker build -f /tmp/prereasoner-chat-build/Dockerfile.orchestrator -t prereasoner-chat:ci /tmp/prereasoner-chat-build
           docker build -f /tmp/prereasoner-sync-build/Dockerfile.sync -t prereasoner-sync:ci /tmp/prereasoner-sync-build
           docker run --rm --entrypoint python prereasoner-engine:ci -c "import engine.server; print('engine import OK')"
           docker run --rm --entrypoint python prereasoner-chat:ci -m mcp_server.healthcheck

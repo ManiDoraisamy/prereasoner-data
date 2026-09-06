@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT))
 
 SOURCE_ALLOWLIST = (
     ".dockerignore",
+    ".gcloudignore",
     "Dockerfile",
     "Dockerfile.orchestrator",
     "LICENSE",
@@ -27,8 +28,27 @@ SOURCE_ALLOWLIST = (
     "mcp_server",
     "orchestrator",
 )
+SOURCE_CHAT_ALLOWLIST = (
+    ".dockerignore",
+    ".gcloudignore",
+    "Dockerfile.orchestrator",
+    "LICENSE",
+    "THIRD_PARTY.md",
+    "cloudbuild.orchestrator.yaml",
+    "engine/__init__.py",
+    "engine/auth.py",
+    "engine/config.py",
+    "engine/model_revisions.py",
+    "engine/request_limits.py",
+    "engine/request_validation.py",
+    "engine/trace.py",
+    "mcp_server",
+    "orchestrator",
+    "tests",
+)
 SOURCE_SYNC_ALLOWLIST = (
     ".dockerignore",
+    ".gcloudignore",
     "Dockerfile.sync",
     "LICENSE",
     "THIRD_PARTY.md",
@@ -59,12 +79,17 @@ def require_clean_head() -> str:
 
 def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
-    if target not in {"engine", "sync"}:
+    allowlists = {
+        "engine": SOURCE_ALLOWLIST,
+        "chat": SOURCE_CHAT_ALLOWLIST,
+        "sync": SOURCE_SYNC_ALLOWLIST,
+    }
+    if target not in allowlists:
         raise ValueError(f"unknown build target: {target}")
     if output.exists() and any(output.iterdir()):
         raise RuntimeError(f"build context must be empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
-    allowlist = SOURCE_ALLOWLIST if target == "engine" else SOURCE_SYNC_ALLOWLIST
+    allowlist = allowlists[target]
     archive = subprocess.check_output((
         "git", "-C", str(ROOT), "archive", "--format=tar", commit,
         "--", *allowlist,
@@ -100,9 +125,12 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
             shutil.copyfile(source, destination)
         validate_weight_bundle(output / "engine" / "data", manifest)
         provenance = output / "engine" / "data" / "build_provenance.json"
-    else:
+    elif target == "sync":
         fingerprint = "source-only"
         provenance = output / "db" / "sync" / "build_provenance.json"
+    else:
+        fingerprint = "source-only"
+        provenance = output / "orchestrator" / "build_provenance.json"
     provenance.write_text(json.dumps({
         "build_target": target,
         "source_commit": commit,
@@ -114,7 +142,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--target", choices=("engine", "sync"), default="engine")
+    parser.add_argument("--target", choices=("engine", "chat", "sync"), default="engine")
     args = parser.parse_args()
     commit, fingerprint = create_context(args.output, args.target)
     print(f"build context ready: target={args.target} commit={commit} weights={fingerprint}")

@@ -1,6 +1,7 @@
 # Build + push the engine image to Artifact Registry.
 #
-#   gcloud builds submit --config cloudbuild.yaml \
+#   python deploy/gcp/build_context.py --output /tmp/prereasoner-engine-build
+#   gcloud builds submit /tmp/prereasoner-engine-build --config /tmp/prereasoner-engine-build/cloudbuild.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=<commit-or-release-id>
 #
 # Run this BEFORE `terraform apply`, resolve the pushed tag to its registry digest, and

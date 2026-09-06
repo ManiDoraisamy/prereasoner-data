@@ -362,7 +362,11 @@ def test_runpod_retries_only_idempotent_transfers():
 
 
 def test_cloud_build_context_is_git_archive_plus_manifested_weights():
-    from deploy.gcp.build_context import SOURCE_ALLOWLIST, SOURCE_SYNC_ALLOWLIST
+    from deploy.gcp.build_context import (
+        SOURCE_ALLOWLIST,
+        SOURCE_CHAT_ALLOWLIST,
+        SOURCE_SYNC_ALLOWLIST,
+    )
 
     source = _text("deploy/gcp/build_context.py")
     assert '"archive", "--format=tar"' in source
@@ -371,6 +375,16 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert {"engine", "db", "regress", "mcp_server", "orchestrator"} <= set(SOURCE_ALLOWLIST)
     assert "requirements.lock.txt" in SOURCE_ALLOWLIST
     assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
+    assert {
+        "Dockerfile.orchestrator",
+        "cloudbuild.orchestrator.yaml",
+        "mcp_server",
+        "orchestrator",
+        "tests",
+    } <= set(SOURCE_CHAT_ALLOWLIST)
+    assert not {"training", "spider", "world_eval", "infra", "db"} & set(
+        SOURCE_CHAT_ALLOWLIST
+    )
     assert {"Dockerfile.sync", "cloudbuild.sync.yaml", "db"} <= set(SOURCE_SYNC_ALLOWLIST)
     assert not {"engine", "training", "tests", "spider", "world_eval"} & set(
         SOURCE_SYNC_ALLOWLIST
@@ -383,9 +397,11 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     sync_dockerfile = _text("Dockerfile.sync")
     assert "COPY engine/enrichment/registry.py" in sync_dockerfile
     assert "COPY engine/ /app/engine/" not in sync_dockerfile
-    assert 'choices=("engine", "sync")' in source
+    assert 'choices=("engine", "chat", "sync")' in source
     assert '"build_target": target' in source
     workflow = _text(".github/workflows/ci.yml")
+    assert "--target chat --output /tmp/prereasoner-chat-build" in workflow
+    assert "prereasoner-chat:ci /tmp/prereasoner-chat-build" in workflow
     assert "prereasoner-engine:ci -c \"import engine.server" in workflow
     assert "prereasoner-sync:ci -c \"from db.sync.community_bootstrap" in workflow
     for ignore in (".venv*/", "service-account*.json", "*.tfstate"):

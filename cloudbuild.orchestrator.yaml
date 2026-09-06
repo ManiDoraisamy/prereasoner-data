@@ -1,6 +1,7 @@
 # Build + push the orchestrator (Sonnet chat backend + Prereasoner MCP server) image, GATED on tests.
 #
-#   gcloud builds submit --config cloudbuild.orchestrator.yaml \
+#   python deploy/gcp/build_context.py --target chat --output /tmp/prereasoner-chat-build
+#   gcloud builds submit /tmp/prereasoner-chat-build --config /tmp/prereasoner-chat-build/cloudbuild.orchestrator.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=latest
 #
 # The `test` step runs the two suites compatible with this lean image before building. `test_mcp`

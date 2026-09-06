@@ -59,7 +59,10 @@ Terraform consumes an immutable image digest; it does not build. From the repo r
 
 ```bash
 gcloud services enable cloudbuild.googleapis.com artifactregistry.googleapis.com
-gcloud builds submit --config cloudbuild.yaml
+python -m engine.fetch_weights
+python deploy/gcp/build_context.py --output /tmp/prereasoner-engine-build
+gcloud builds submit /tmp/prereasoner-engine-build \
+  --config /tmp/prereasoner-engine-build/cloudbuild.yaml
 ```
 
 (The very first submit may fail with "repository not found" if the Artifact Registry
@@ -67,9 +70,9 @@ repo doesn't exist yet — either run step 2 first and re-submit, or pre-create 
 `gcloud artifacts repositories create prereasoner --repository-format=docker
 --location=us-central1`.)
 
-The repo-root `.gcloudignore` keeps the gitignored weights in the upload — do not
-delete it (without it, gcloud falls back to `.gitignore` and ships a weights-less
-image).
+The context builder requires a clean Git `HEAD`, archives only reviewed serving files, verifies every
+weight against `engine/data/weights_manifest.json`, and writes the source commit into the image context.
+Do not replace it with a direct working-tree upload.
 
 ### 2. Terraform apply
 
@@ -142,7 +145,9 @@ or state.
 gcloud secrets create prereasoner-chat-anthropic-key --replication-policy=automatic
 printf '%s' "$ANTHROPIC_API_KEY" | \
   gcloud secrets versions add prereasoner-chat-anthropic-key --data-file=-
-gcloud builds submit --config cloudbuild.orchestrator.yaml
+python deploy/gcp/build_context.py --target chat --output /tmp/prereasoner-chat-build
+gcloud builds submit /tmp/prereasoner-chat-build \
+  --config /tmp/prereasoner-chat-build/cloudbuild.orchestrator.yaml
 
 # Resolve the pushed tag to an immutable digest, then use the same backend/state and
 # engine variables as the core apply in step 2.
