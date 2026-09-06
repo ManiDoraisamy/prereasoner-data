@@ -331,9 +331,10 @@ class ComposedKnowledgeQuery:
     def _run_engine(self, tables, question, sub, as_of, emit=None, world=None):
         """Build the composed view stack (join -> world_join -> world_filter -> ... -> aggregate) for `question`
         and shape it into the serve response (views carry their own columns/rows so the UI can walk each step).
-        `emit` streams the trace to RTDB live: status:resolving during the (slow) world lookup, then each view.
-        When `world` is passed (serve() hoisted the lookup to route on world-grounding) the caller has ALREADY
-        emitted status:resolving before that lookup, so we don't re-emit it here."""
+        `emit` streams ONLY status here (status:resolving around a standalone world lookup). Views are NEVER
+        streamed from the build: ownership/answer-match is decided by the caller AFTER this returns, and a
+        stack streamed before that decision painted a wrong trail over the delegate's correct answer
+        (2026-09-06) — the caller streams the chosen response's views via _emit_response_views."""
         if world is None:                                     # standalone call (the re-expression path): do our own
             if emit:                                          # lookup and stream resolving around it.
                 emit("status", "resolving")
@@ -345,10 +346,6 @@ class ComposedKnowledgeQuery:
             item = {"name": view["name"], **_trace_view(view)}
             item["rows"] = [list(row) for row in view["rows"][:50]]
             views.append(item)
-        if emit:
-            emit("status", "running")
-            for i, v in enumerate(views):
-                emit(f"views/{i}", _trace_view(v))
         final = res["views"][-1] if res["views"] else None
         return {"question": question, "as_of": as_of, "error": None,
                 "model": "engine - composed view stack",
@@ -356,6 +353,16 @@ class ComposedKnowledgeQuery:
                 "world_dependency": res.get("world_dependency"),
                 "sql": final["sql"] if final else None,
                 "result": res["answer"]}
+
+    @staticmethod
+    def _emit_response_views(emit, resp):
+        """Stream the CHOSEN response's views (SHEETS_AS_REASONING: the streamed trail and the returned
+        trail are the same trail). Call only after ownership / answer-match is decided."""
+        if not emit:
+            return
+        emit("status", "running")
+        for i, v in enumerate(resp.get("views") or []):
+            emit(f"views/{i}", _trace_view(v))
 
     @staticmethod
     def _is_scalar(result):
@@ -423,12 +430,15 @@ class ComposedKnowledgeQuery:
                     er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world)
                     if compose_owns(er.get("views"), er.get("world_dependency"),
                                     (er.get("result") or {}).get("rows"), required_ops(question)):
+                        self._emit_response_views(emit, er)
                         return er
                 except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
                     print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
-            return (self.qw.serve(tables, question, as_of=as_of, schema=sub,
-                                  explicit_fks=explicit_fks)
-                    if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
+            deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
+                                   explicit_fks=explicit_fks)
+                     if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
+            self._emit_response_views(emit, deleg)        # ownership refused -> the DELEGATE's trail streams
+            return deleg
         # Not gated to the engine: the delegate owns clarify / list / hybrid / non-geo / plain answers.
         deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                explicit_fks=explicit_fks)
@@ -445,19 +455,20 @@ class ComposedKnowledgeQuery:
                 self._world_lookup(norm, sub)
             except Exception as e:                        # noqa: BLE001 — slides never break the answer
                 print(f"resolution slides skipped: {type(e).__name__}", flush=True)
-            if emit:
-                for i, v in enumerate(deleg.get("views") or []):
-                    emit(f"views/{i}", _trace_view(v))
+            self._emit_response_views(emit, deleg)
             return deleg
         # But a CLEAN world-filtered scalar aggregate (a world join in meaning_join, one number, NO clarify) is
-        # re-expressed as the view stack so the reasoning is shown — kept only if it matches the delegate's answer.
+        # re-expressed as the view stack so the reasoning is shown — kept only if it matches the delegate's answer
+        # (views stream only AFTER the match check: the chosen trail is the streamed trail).
         if (not deleg.get("clarify") and not deleg.get("error")
                 and deleg.get("meaning_join") and self._is_scalar(deleg.get("result"))):
             try:
                 er = self._run_engine(tables, question, sub, as_of, emit=emit)
                 if er and self._same_answer(er.get("result"), deleg.get("result")):
+                    self._emit_response_views(emit, er)
                     return er
                 print("view re-expression answer mismatch; keeping delegate", flush=True)
             except Exception as e:                        # noqa: BLE001 — re-expression is best-effort; never breaks the answer
                 print(f"view re-expression failed, keeping delegate: {type(e).__name__}", flush=True)
+        self._emit_response_views(emit, deleg)
         return deleg

@@ -470,11 +470,13 @@ def main():
                            ["NDA", "Nimbus Inc", "United States", "USD", 5000],
                            ["Maintenance", "Ganga Ltd", "India", "INR", 400000],
                            ["License", "Han Solutions", "South Korea", "KRW", 3000000]]}
-    rasia = _retry(lambda: qc.serve([_CONTRACTS], "total value for contracts in Asia in US dollars", sub))
+    asia_stream = []
+    rasia = _retry(lambda: qc.serve([_CONTRACTS], "total value for contracts in Asia in US dollars", sub,
+                                    emit=lambda node, value: asia_stream.append((node, value))))
     asia_rows = ((rasia or {}).get("result") or {}).get("rows") or []
     ok("fx+world+2hop: an Asia conversion delegates to the conversion path, never compose",
        "composed" not in ((rasia or {}).get("model") or "")
-       and (rasia.get("currency") or {}).get("realization") == "converted",
+       and ((rasia or {}).get("currency") or {}).get("realization") == "converted",
        f"model={(rasia or {}).get('model')} currency={(rasia or {}).get('currency')}")
     ok("fx+world+2hop: one converted scalar (never a raw mixed-currency sum)",
        len(asia_rows) == 1 and len(asia_rows[0]) == 1 and exact(asia_rows[0][0]) > 0
@@ -483,6 +485,16 @@ def main():
     asia_trail = [v.get("op") for v in (rasia or {}).get("views") or []]
     ok("fx+world+2hop: the trail is lookup -> filtered -> calculated -> total",
        asia_trail == ["world_join", "world_filter", "convert", "group_agg"], f"trail={asia_trail}")
+    # The STREAMED trail must equal the RETURNED trail. A refused compose build once streamed its raw
+    # mixed-currency stack live; the browser painted it over the delegate's converted answer, so the
+    # calculated sheet vanished from the workbook while the number was right (2026-09-06).
+    streamed = {}
+    for node, value in asia_stream:                          # last write per views/<i> node wins, like RTDB
+        if node.startswith("views/") and isinstance(value, dict):
+            streamed[node] = value.get("op")
+    streamed_ops = [op for _n, op in sorted(streamed.items(), key=lambda kv: int(kv[0].split("/")[1]))]
+    ok("fx+world+2hop: the streamed trail equals the returned trail (no refused-compose ghost stack)",
+       streamed_ops == asia_trail, f"streamed={streamed_ops} returned={asia_trail}")
     try:
         _json.dumps((rtrail or {}).get("views") or [])
         trail_serializable = True
