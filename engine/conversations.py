@@ -16,7 +16,7 @@ conversation id is minted server-side.
 
 The `chat` schema (in the same `world` database):
   user_profile(user_id PK, created_at, last_seen)          -- the Google identity (verified sub)
-  conversation(conversation_id PK, initial_prompt, tables jsonb, created_at)
+  conversation(conversation_id PK, source/state bytes, activity/expiry timestamps)
   user_conversation(user_id, conversation_id, created_at)  -- ownership link (PK both)
 conversation_id doubles as the name of that conversation's data schema (validated `c_<32 hex>`).
 """
@@ -24,13 +24,15 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from datetime import datetime, timedelta, timezone
 
+from engine import config
 from engine.pg import _pg
 
 # conversation_id is also a Postgres schema name — keep it a safe, fixed-shape identifier.
 _ID_RE = re.compile(r"^c_[0-9a-f]{32}$")
-MAX_CONVERSATIONS_PER_USER = 500
 MAX_STATE_BYTES = 1 * 1024 * 1024
+MAX_PAGE_SIZE = 100
 
 
 class NotOwned(Exception):
@@ -55,6 +57,29 @@ def _store_tables(sheets):
     return out[:8]
 
 
+def _encoded_size(value) -> int:
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _expiry(now=None):
+    current = now or datetime.now(timezone.utc)
+    return current + timedelta(days=config.conversation_retention_days())
+
+
+def _user_metadata_bytes(cur, user_id) -> int:
+    cur.execute('SELECT COALESCE(SUM(c.source_bytes + c.state_bytes), 0) '
+                'FROM "chat"."conversation" c '
+                'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+                'WHERE uc.user_id = %s', (user_id,))
+    return int(cur.fetchone()[0] or 0)
+
+
+def _check_storage(cur, user_id, *, previous=0, replacement=0):
+    projected = _user_metadata_bytes(cur, user_id) - int(previous) + int(replacement)
+    if projected > config.max_conversation_storage_bytes():
+        raise QuotaExceeded("conversation storage limit reached")
+
+
 def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
     """Return the conversation id to use as the working schema. Upserts the user profile.
     If `conversation_id` is given it MUST belong to `user_id` (else NotOwned). Otherwise a new
@@ -66,6 +91,10 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
             cur = conn.cursor()
             cur.execute('INSERT INTO "chat"."user_profile" (user_id) VALUES (%s) '
                         'ON CONFLICT (user_id) DO UPDATE SET last_seen = now()', (user_id,))
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                        (f"prereasoner-conversation-quota:{user_id}",))
+            stored_tables = _store_tables(sheets)
+            source_bytes = _encoded_size(stored_tables)
             if conversation_id:
                 if not _ID_RE.match(conversation_id):
                     raise NotOwned("bad conversation id")
@@ -76,17 +105,27 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                 # Keep the stored source tables in step with the schema this run rebuilds, so a later
                 # re-open (get_conversation) — and a GCS archive — never diverges from the live data.
                 if sheets:
-                    cur.execute('UPDATE "chat"."conversation" SET tables = %s WHERE conversation_id = %s',
-                                (json.dumps(_store_tables(sheets)), conversation_id))
+                    cur.execute('SELECT source_bytes FROM "chat"."conversation" WHERE conversation_id = %s',
+                                (conversation_id,))
+                    previous = int(cur.fetchone()[0] or 0)
+                    _check_storage(cur, user_id, previous=previous, replacement=source_bytes)
+                    cur.execute('UPDATE "chat"."conversation" SET tables = %s, source_bytes = %s, '
+                                'last_active_at = now(), expires_at = %s WHERE conversation_id = %s',
+                                (json.dumps(stored_tables), source_bytes, _expiry(), conversation_id))
+                else:
+                    cur.execute('UPDATE "chat"."conversation" SET last_active_at = now(), expires_at = %s '
+                                'WHERE conversation_id = %s', (_expiry(), conversation_id))
                 conn.commit()
                 return conversation_id
             cur.execute('SELECT count(*) FROM "chat"."user_conversation" WHERE user_id = %s', (user_id,))
-            if int(cur.fetchone()[0]) >= MAX_CONVERSATIONS_PER_USER:
+            if int(cur.fetchone()[0]) >= config.max_conversations_per_user():
                 raise QuotaExceeded("conversation limit reached")
+            _check_storage(cur, user_id, replacement=source_bytes)
             cid = _new_id()
-            cur.execute('INSERT INTO "chat"."conversation" (conversation_id, initial_prompt, tables) '
-                        'VALUES (%s, %s, %s)',
-                        (cid, (initial_prompt or "")[:2000], json.dumps(_store_tables(sheets))))
+            cur.execute('INSERT INTO "chat"."conversation" '
+                        '(conversation_id, initial_prompt, tables, source_bytes, expires_at) '
+                        'VALUES (%s, %s, %s, %s, %s)',
+                        (cid, (initial_prompt or "")[:2000], json.dumps(stored_tables), source_bytes, _expiry()))
             cur.execute('INSERT INTO "chat"."user_conversation" (user_id, conversation_id) VALUES (%s, %s)',
                         (user_id, cid))
             conn.commit()
@@ -101,20 +140,44 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
         conn.close()
 
 
-def list_conversations(user_id, limit=50):
-    """The user's conversations, newest first — for the drawer. Ownership-scoped by the join."""
+def conversation_page(user_id, limit=50, before=None):
+    """One cursor page of the user's conversations, newest first."""
+    limit = max(1, min(int(limit), MAX_PAGE_SIZE))
+    if before:
+        try:
+            before_time, before_id = str(before).rsplit("|", 1)
+            before = datetime.fromisoformat(before_time.replace("Z", "+00:00"))
+            if not _ID_RE.fullmatch(before_id):
+                raise ValueError
+        except (TypeError, ValueError) as exc:
+            raise ValueError("before cursor is invalid") from exc
     conn = _pg()
     try:
         cur = conn.cursor()
+        where = 'WHERE uc.user_id = %s '
+        params = [user_id]
+        if before:
+            where += 'AND (c.created_at, c.conversation_id) < (%s, %s) '
+            params.extend((before, before_id))
+        params.append(limit + 1)
         cur.execute('SELECT c.conversation_id, c.initial_prompt, c.created_at '
                     'FROM "chat"."conversation" c '
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
-                    'WHERE uc.user_id = %s ORDER BY c.created_at DESC LIMIT %s', (user_id, int(limit)))
+                    f'{where}ORDER BY c.created_at DESC, c.conversation_id DESC LIMIT %s', params)
         rows = cur.fetchall()
         conn.commit()
-        return [{"id": r[0], "question": r[1] or "", "ts": r[2].isoformat() if r[2] else ""} for r in rows]
+        has_more = len(rows) > limit
+        rows = rows[:limit]
+        items = [{"id": r[0], "question": r[1] or "", "ts": r[2].isoformat() if r[2] else ""}
+                 for r in rows]
+        cursor = (f'{items[-1]["ts"]}|{items[-1]["id"]}' if has_more and items else None)
+        return {"conversations": items, "next_cursor": cursor}
     finally:
         conn.close()
+
+
+def list_conversations(user_id, limit=50):
+    return conversation_page(user_id, limit)["conversations"]
 
 
 def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
@@ -126,9 +189,12 @@ def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
     try:
         try:
             cur = conn.cursor()
-            cur.execute('SELECT 1 FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
+            cur.execute('SELECT c.source_bytes, c.state_bytes FROM "chat"."conversation" c '
+                        'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+                        'WHERE c.conversation_id = %s AND uc.user_id = %s',
                         (conversation_id, user_id))
-            if not cur.fetchone():
+            owned = cur.fetchone()
+            if not owned:
                 raise NotOwned("conversation not found")       # not yours OR absent — same answer
             from engine.trace import delete_traces
             trace_count = delete_traces(rtdb_uid, conversation_id)
@@ -187,6 +253,9 @@ def get_conversation(user_id, conversation_id):
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                     'WHERE uc.user_id = %s AND c.conversation_id = %s', (user_id, conversation_id))
         row = cur.fetchone()
+        if row:
+            cur.execute('UPDATE "chat"."conversation" SET last_active_at = now(), expires_at = %s '
+                        'WHERE conversation_id = %s', (_expiry(), conversation_id))
         conn.commit()
         if not row:
             raise NotOwned("conversation not found")
@@ -206,15 +275,23 @@ def save_state(user_id, conversation_id, state):
     try:
         try:
             cur = conn.cursor()
-            cur.execute('SELECT 1 FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                        (f"prereasoner-conversation-quota:{user_id}",))
+            cur.execute('SELECT c.source_bytes, c.state_bytes FROM "chat"."conversation" c '
+                        'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+                        'WHERE c.conversation_id = %s AND uc.user_id = %s',
                         (conversation_id, user_id))
-            if not cur.fetchone():
+            owned = cur.fetchone()
+            if not owned:
                 raise NotOwned("conversation not found")       # not yours OR absent
             encoded = json.dumps(state)
-            if len(encoded.encode("utf-8")) > MAX_STATE_BYTES:
+            state_bytes = len(encoded.encode("utf-8"))
+            if state_bytes > MAX_STATE_BYTES:
                 raise QuotaExceeded("conversation state is too large")
-            cur.execute('UPDATE "chat"."conversation" SET state = %s WHERE conversation_id = %s',
-                        (encoded, conversation_id))
+            _check_storage(cur, user_id, previous=int(owned[1] or 0), replacement=state_bytes)
+            cur.execute('UPDATE "chat"."conversation" SET state = %s, state_bytes = %s, '
+                        'last_active_at = now(), expires_at = %s WHERE conversation_id = %s',
+                        (encoded, state_bytes, _expiry(), conversation_id))
             conn.commit()
             return {"saved": conversation_id}
         except Exception:
@@ -222,6 +299,31 @@ def save_state(user_id, conversation_id, state):
                 conn.rollback()
             except Exception:                                  # noqa: BLE001
                 pass
+            raise
+    finally:
+        conn.close()
+
+
+def cleanup_expired_conversations(*, limit=500, now=None) -> int:
+    """Delete expired conversation schemas and metadata in one bounded transaction."""
+    limit = max(1, min(int(limit), 5000))
+    current = now or datetime.now(timezone.utc)
+    conn = _pg()
+    try:
+        try:
+            cur = conn.cursor()
+            cur.execute('SELECT conversation_id FROM "chat"."conversation" '
+                        'WHERE expires_at <= %s ORDER BY expires_at LIMIT %s FOR UPDATE SKIP LOCKED',
+                        (current, limit))
+            ids = [row[0] for row in cur.fetchall() if _ID_RE.fullmatch(row[0] or "")]
+            for cid in ids:
+                cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s', (cid,))
+                cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
+                cur.execute('DROP SCHEMA IF EXISTS "%s" CASCADE' % cid)
+            conn.commit()
+            return len(ids)
+        except Exception:
+            conn.rollback()
             raise
     finally:
         conn.close()

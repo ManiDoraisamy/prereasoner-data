@@ -169,7 +169,21 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                         # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
                         question = (block.input or {}).get("question", "")
-                        print(f"[chat] turn={turn_id} call={call_idx} rewrote -> {question!r}", flush=True)
+                        # INTENT GUARD. Distilling a strategic sentence into an engine query is this
+                        # orchestrator's job, but the rewrite must not LOSE intent the engine parses
+                        # deterministically: "in US dollars" is what selects the FX conversion, and a
+                        # rewrite that dropped it shipped an unconverted total as the answer (reproduced
+                        # live 2026-09-06). On a history-free turn the user's message is the sole source
+                        # of intent, so if it names a conversion target and the model's question does
+                        # not, the user's own words replace the lossy rewrite. With prior history the
+                        # model is resolving context ("and Germany?"), where this comparison cannot apply.
+                        if call_idx == 0 and not history:
+                            from engine.currency_intent import currency_conversion_target
+                            wanted = currency_conversion_target(user_message)
+                            if wanted and not currency_conversion_target(question):
+                                print(f"[chat] intent_guard=currency target={wanted}", flush=True)
+                                question = user_message.strip()
+                        print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
                         _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
                         call_idx += 1
                         args = {"question": question, "tables": tables, "job_id": job_id}

@@ -9,6 +9,10 @@ from engine.request_limits import (
     JSONBodyError, RequestGate, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
 )
 from engine.request_budget import BudgetPolicy, PostgresRequestBudget
+from engine.request_validation import (
+    MAX_TABLE_IDENTIFIER_BYTES, RequestValidationError, canonical_table_name,
+    validate_reason_request,
+)
 from orchestrator.validation import validate_chat_request
 
 
@@ -37,6 +41,17 @@ def test_auth_test_sub_is_ignored_outside_explicit_nonproduction():
     with patch.dict("os.environ", {"AUTH_TEST_SUB": "local", "APP_ENV": "test"}, clear=False):
         with patch.object(config, "APP_ENV", "test"):
             assert config.auth_test_sub() == "local"
+
+
+def test_conversation_lifecycle_limits_are_bounded_and_configurable():
+    with patch.dict("os.environ", {
+        "CONVERSATION_RETENTION_DAYS": "99999",
+        "MAX_CONVERSATIONS_PER_USER": "0",
+        "MAX_CONVERSATION_STORAGE_BYTES": "1",
+    }, clear=False):
+        assert config.conversation_retention_days() == 3650
+        assert config.max_conversations_per_user() == 1
+        assert config.max_conversation_storage_bytes() == 1024 * 1024
 
 
 def test_admin_access_fails_closed_without_an_explicit_allowlist():
@@ -88,6 +103,54 @@ def test_chat_validation_normalizes_and_bounds_inputs():
             validate_chat_request(bad)
             raise AssertionError
         except ValueError:
+            pass
+
+
+def test_table_names_are_canonical_bounded_and_unique_at_every_boundary():
+    long_name = "Quarterly Revenue " * 20
+    canonical = canonical_table_name(long_name)
+    assert len(canonical.encode("ascii")) <= MAX_TABLE_IDENTIFIER_BYTES
+    assert canonical == canonical_table_name(long_name)
+    assert canonical_table_name("Sales.csv") == "sales"
+    assert canonical_table_name("***", 3) == "t3"
+
+    duplicate = {
+        "question": "total amount",
+        "tables": [
+            {"name": "Sales.csv", "data": "amount\n1"},
+            {"name": "sales", "data": "amount\n2"},
+        ],
+    }
+    for validate, request in (
+        (validate_reason_request, duplicate),
+        (validate_chat_request, {"message": "total amount", "tables": duplicate["tables"]}),
+    ):
+        try:
+            validate(request)
+            raise AssertionError("canonical table-name collision was accepted")
+        except RequestValidationError as exc:
+            assert exc.status_code == 400 and "same identifier" in str(exc)
+
+
+def test_reason_validation_rejects_unbounded_or_invalid_fields():
+    valid = validate_reason_request({
+        "question": " total amount ",
+        "tables": {"name": "Revenue Report.xlsx", "data": "amount\n1"},
+        "jobId": "job_1",
+    })
+    assert valid["question"] == "total amount"
+    assert valid["tables"] == [{"name": "revenue_report", "data": "amount\n1"}]
+    assert valid["jobId"] == "job_1"
+    for body in (
+        {"question": 1, "tables": []},
+        {"question": "x", "tables": [], "jobId": "bad/path"},
+        {"question": "x", "tables": [], "as_of": "yesterday"},
+        {"question": "x", "tables": [], "conversation_id": "c_not-an-id"},
+    ):
+        try:
+            validate_reason_request(body)
+            raise AssertionError("invalid reasoning request was accepted")
+        except RequestValidationError:
             pass
 
 
@@ -160,9 +223,12 @@ TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
     test_cors_requires_exact_configured_origin,
     test_auth_test_sub_is_ignored_outside_explicit_nonproduction,
+    test_conversation_lifecycle_limits_are_bounded_and_configurable,
     test_admin_access_fails_closed_without_an_explicit_allowlist,
     test_postgres_connect_retries_transport_errors_but_not_authentication,
     test_chat_validation_normalizes_and_bounds_inputs,
+    test_table_names_are_canonical_bounded_and_unique_at_every_boundary,
+    test_reason_validation_rejects_unbounded_or_invalid_fields,
     test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
     test_shared_request_gate_releases_capacity_and_limits_rate,
     test_distributed_paid_budget_is_atomic_and_releases_lease,

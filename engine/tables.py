@@ -24,6 +24,7 @@ from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - pu
 from engine.fk_edges import edges
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 from engine.relations import relate
+from engine.request_validation import canonical_table_name
 
 MAX_ROWS, MAX_LEN = 12, 48
 FORBID = re.compile(r"\b(insert|update|delete|drop|alter|create|attach|detach|pragma|replace|truncate|vacuum|with)\b", re.I)
@@ -138,9 +139,7 @@ def _typed(v):
 
 def table_name(name, index=0):
     """Return the canonical SQL/planner name for an uploaded or saved table."""
-    value = re.sub(r"\.csv$", "", (name or "").strip(), flags=re.I)
-    value = re.sub(r"[^0-9A-Za-z_]+", "_", value).strip("_").lower()
-    return value or f"t{index}"
+    return canonical_table_name(name, index)
 
 
 def _unquote(s):

@@ -63,7 +63,7 @@ class ComposedKnowledgeQuery:
             # world-filtered scalar as the view stack (guarded by _same_answer) so the reasoning is still shown.
             return bool(self.reader.present(question) & DEPTH_PRIMS)
         except Exception as e:                            # noqa: BLE001 — the gate must never break the world path
-            print("compose gate failed, delegating:", e, flush=True)
+            print(f"compose gate failed, delegating: {type(e).__name__}", flush=True)
             return False
 
     # A question with a DATA-INTENT word, or that names a schema column/table, or whose token resolves to a
@@ -205,15 +205,20 @@ class ComposedKnowledgeQuery:
                         # CONTEXT (set under its LOCK), so _world_lookup needn't thread `emit` through.
                         self._emit_resolve_slide(cur, t["name"], col, col_rows, _ridx)
                     except Exception as e:                # noqa: BLE001 — a column that won't resolve is skipped
-                        print("world lookup skipped", t["name"], col, ":", e, flush=True)
+                        print(f"world lookup skipped: {type(e).__name__}", flush=True)
                 elif not self._is_numeric(cells):         # UNCONNECTED free-text string column -> the embedding slide
                     self._emit_unconnected_slide(t["name"], col, _ridx)
             if ent and result is None:
                 self._enrich(cur, ent)                    # join each entity's source table + country -> continent/currency
-                # drop an enriched attr whose name collides with the geo column itself (a COUNTRY column enriches a
-                # 'country' attr -> two 'country' columns -> ComposeEngine._load crashed 'duplicate column name').
-                attrs = sorted({k for d in ent.values() for k in d if not k.startswith("_") and k != geocol})
-                result = {"name": "knowledgebase", "columns": [geocol] + attrs,
+                # Drop enriched attrs colliding with ANY uploaded column, not just the geo column: an
+                # orders sheet with its own 'currency' column plus the world 'currency' attr produced a
+                # duplicate that surfaced as an unreadable dedup name ("currency:1") in the derivation.
+                # The uploaded column wins; the world value stays available through its own reference sheet.
+                taken = {geocol} | {str(c) for c in t.get("columns", ())}
+                attrs = sorted({k for d in ent.values() for k in d if not k.startswith("_") and k not in taken})
+                # The materialized fact table must NOT be named "knowledgebase" — that is the SCHEMA's
+                # name, and the displayed SQL then reads as a namespace that does not exist as a table.
+                result = {"name": "knowledgebase facts", "columns": [geocol] + attrs,
                           "rows": [[v] + [d.get(a) for a in attrs] for v, d in ent.items()]}
         return result
 
@@ -250,7 +255,7 @@ class ComposedKnowledgeQuery:
                                             "columns": cols, "rows": rows, "hlcol": hlcol})
             ridx[0] += 1
         except Exception as e:                                             # noqa: BLE001 — streaming must never break the answer
-            print("resolve slide skipped:", e, flush=True)
+            print(f"resolve slide skipped: {type(e).__name__}", flush=True)
 
     def _emit_unconnected_slide(self, table, column, ridx):
         """Stream a resolution slide for a free-text (UNCONNECTED) string column: it's embedded into the unified-encoder
@@ -261,7 +266,7 @@ class ComposedKnowledgeQuery:
             ctx_emit(f"resolve/{ridx[0]}", {"table": table, "column": column, "unconnected": True})
             ridx[0] += 1
         except Exception as e:                                             # noqa: BLE001
-            print("unconnected slide skipped:", e, flush=True)
+            print(f"unconnected slide skipped: {type(e).__name__}", flush=True)
 
     @staticmethod
     def _is_numeric(cells):
@@ -291,7 +296,7 @@ class ComposedKnowledgeQuery:
                 cur.execute(f'SELECT {sel} FROM knowledgebase."{table}" WHERE "{keycol}" = ANY(%s)', (keys,))
                 by_key = {row[0]: row[1:] for row in cur.fetchall()}
             except Exception as e:                        # noqa: BLE001
-                print(f"entity attrs skipped ({table}):", e, flush=True); continue
+                print(f"entity attrs skipped: {type(e).__name__}", flush=True); continue
             for val, wk in pairs:
                 for (_, name), v in zip(cols, by_key.get(wk, ())):
                     if v is not None:
@@ -303,7 +308,7 @@ class ComposedKnowledgeQuery:
                             (countries,))
                 cc = {n: (co, cu) for n, co, cu in cur.fetchall()}
             except Exception as e:                        # noqa: BLE001
-                print("continent/currency skipped:", e, flush=True); cc = {}
+                print(f"continent/currency skipped: {type(e).__name__}", flush=True); cc = {}
             for d in ent.values():
                 co_cu = cc.get(d.get("country"))
                 if co_cu:
@@ -406,9 +411,7 @@ class ComposedKnowledgeQuery:
                                     (er.get("result") or {}).get("rows")):
                         return er
                 except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
-                    import traceback
-                    print("composed serve failed, delegating to KnowledgeQuery:", e, flush=True)
-                    traceback.print_exc()
+                    print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
             return (self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                   explicit_fks=explicit_fks)
                     if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
@@ -427,7 +430,7 @@ class ComposedKnowledgeQuery:
                 norm, _ = self.qw.ingest(tables)
                 self._world_lookup(norm, sub)
             except Exception as e:                        # noqa: BLE001 — slides never break the answer
-                print("resolution slides skipped:", e, flush=True)
+                print(f"resolution slides skipped: {type(e).__name__}", flush=True)
             if emit:
                 for i, v in enumerate(deleg.get("views") or []):
                     emit(f"views/{i}", {k: v[k] for k in ("op", "label", "sql", "columns", "rows")})
@@ -442,8 +445,6 @@ class ComposedKnowledgeQuery:
                     return er
                 print("view re-expression answer mismatch; keeping delegate", flush=True)
             except Exception as e:                        # noqa: BLE001 — re-expression is best-effort; never breaks the answer
-                import traceback
-                print("view re-expression failed, keeping delegate:", e, flush=True)
-                traceback.print_exc()
+                print(f"view re-expression failed, keeping delegate: {type(e).__name__}", flush=True)
         return deleg
 from engine.numeric import parse_decimal

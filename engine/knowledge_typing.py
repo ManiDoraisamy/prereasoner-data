@@ -7,7 +7,6 @@ caller must still apply deterministic source-key grounding.
 from __future__ import annotations
 
 import hashlib
-import traceback
 
 from engine.config import kb_model_route_enabled
 from engine.entities import TYPE_TO_FRIENDLY
@@ -41,10 +40,7 @@ class KnowledgeTypingMixin:
 
                 interpreter = SchemaInterpreter(shared=(self.qwen, self.tok))
             except Exception as error:  # noqa: BLE001 - deterministic grounding remains available
-                print(
-                    f"[knowledge_query] schema interpreter unavailable -> class proposals off: {error!r}",
-                    flush=True,
-                )
+                print(f"[knowledge_query] schema interpreter unavailable: {type(error).__name__}", flush=True)
                 interpreter = False
             self._schema_interp = interpreter
         return interpreter or None
@@ -138,11 +134,7 @@ class KnowledgeTypingMixin:
                     }
                 )
         except Exception as error:  # noqa: BLE001 - source-membership fallback is the safety boundary
-            print(
-                f"[knowledge_query] !! MODEL ROUTING FAILED -> value-membership fallback: {error!r}",
-                flush=True,
-            )
-            traceback.print_exc()
+            print(f"[knowledge_query] model routing failed: {type(error).__name__}", flush=True)
             # Keep the interpreter fallback available when only the learned column
             # proposal failed. Exact source membership remains the join authority.
             routes, typing = {}, []
@@ -165,5 +157,5 @@ class KnowledgeTypingMixin:
                     }
                 )
             except Exception as error:  # noqa: BLE001 - class evidence never authorizes a join
-                print(f"[knowledge_query] schema class evidence failed (skipped): {error!r}", flush=True)
+                print(f"[knowledge_query] schema class evidence failed: {type(error).__name__}", flush=True)
         return routes, typing

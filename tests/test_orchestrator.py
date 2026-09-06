@@ -85,6 +85,17 @@ def main():
         ok(len(answered) >= 1, "at least one prereasoner_query call was made")
         ok("270" in r1["reply"], "the French total (270) from the tool appears in the reply")
 
+        # Rule 1b — deterministic intent survives the rewrite. The model may distill a strategic
+        # sentence, but a phrase the engine parses deterministically (the FX conversion target)
+        # must reach the engine: a rewrite that dropped "in US dollars" shipped an unconverted
+        # total as the answer on 2026-09-06. The stub echoes the received question into the trace,
+        # so this asserts at the exact boundary the guard protects.
+        print("[1b] conversion intent survives to the engine")
+        r1b = asyncio.run(chat("total amount in France in US dollars"))
+        sent = [t.get("question", "") for t in r1b["traces"]]
+        ok(any("us dollar" in q.lower() for q in sent),
+           f"the engine-received question keeps the USD conversion (got {sent})")
+
         # Rule 4 — a clarify must pass through, never be smoothed into a fabricated answer.
         print("[4] clarify passes through, not smoothed over")
         r2 = asyncio.run(chat("What is our total revenue by region?"))

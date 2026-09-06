@@ -30,7 +30,7 @@ from engine.config import HOST, PORT, external_llm_enabled
 from engine.auth import _verify_principal, _bearer
 from engine.tables import csv_table, table_name
 from engine.trace import emitter, stream_final, set_ctx
-from engine.conversations import (resolve_conversation, list_conversations, get_conversation,
+from engine.conversations import (resolve_conversation, conversation_page, get_conversation,
                                    delete_conversation, delete_all_conversations, save_state, NotOwned,
                                    QuotaExceeded)
 from engine import master
@@ -40,6 +40,8 @@ from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from engine.request_limits import (
     JSONBodyError, RequestGate, RequestLease, SlidingWindowLimiter, allowed_origin, read_json_object,
 )
+from engine.request_validation import RequestValidationError, validate_reason_request
+from engine.provenance import ProvenanceContext
 
 
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
@@ -157,7 +159,16 @@ class H(BaseHTTPRequestHandler):
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
             if path == "/api/conversations":
-                self._send(200, json.dumps({"conversations": list_conversations(sub)})); return
+                try:
+                    limit = int((qs.get("limit") or ["50"])[0])
+                except ValueError:
+                    self._send(400, json.dumps({"error": "limit is invalid"})); return
+                before = (qs.get("before") or [None])[0]
+                try:
+                    page = conversation_page(sub, limit, before)
+                except ValueError as exc:
+                    self._send(400, json.dumps({"error": str(exc)})); return
+                self._send(200, json.dumps(page)); return
             cid = (qs.get("id") or [""])[0]
             try:
                 self._send(200, json.dumps(get_conversation(sub, cid)))
@@ -419,6 +430,10 @@ class H(BaseHTTPRequestHandler):
             req = self._read_json()
             if req is None:
                 return
+            try:
+                req = validate_reason_request(req)
+            except RequestValidationError as exc:
+                self._send(exc.status_code, json.dumps({"error": str(exc)})); return
             sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = VERIFIED user id (auth); uid = RTDB /runs key
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
@@ -427,31 +442,15 @@ class H(BaseHTTPRequestHandler):
             if not allowed:
                 self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
                 return
-            sheets = req.get("tables")
-            if isinstance(sheets, dict):
-                sheets = [sheets]
-            if sheets is not None and (not isinstance(sheets, list) or len(sheets) > MAX_SHEETS):
-                self._send(413, json.dumps({"error": "too many tables"})); return
-            total_chars = 0
-            for sheet in (sheets or []):
-                if not isinstance(sheet, dict) or not isinstance(sheet.get("data", ""), str):
-                    self._send(400, json.dumps({"error": "table data must be text"})); return
-                data_chars = len(sheet.get("data") or "")
-                total_chars += data_chars
-                if data_chars > MAX_TABLE_CHARS or total_chars > MAX_TABLE_TOTAL_CHARS:
-                    self._send(413, json.dumps({"error": "uploaded tables are too large"})); return
+            sheets = req["tables"]
             if sheets:
-                tabs = [csv_table(s["data"], table_name(s.get("name"), i))
+                tabs = [csv_table(s["data"], s["name"])
                         for i, s in enumerate(sheets[:MAX_SHEETS]) if isinstance(s, dict) and (s.get("data") or "").strip()]
             else:
-                data = req.get("data", "")
-                if not isinstance(data, str):
-                    self._send(400, json.dumps({"error": "CSV data must be text"})); return
-                if len(data) > MAX_TABLE_CHARS:
-                    self._send(413, json.dumps({"error": "uploaded table is too large"})); return
+                data = req["data"]
                 if not data.strip():
                     self._send(200, json.dumps({"error": "no CSV (need {tables:[…], question})"})); return
-                tabs = [csv_table(data, table_name(req.get("table", "data"), 0))]
+                tabs = [csv_table(data, req["table"])]
             if not tabs:
                 self._send(200, json.dumps({"error": "no CSV rows"})); return
             truncated = []
@@ -459,8 +458,10 @@ class H(BaseHTTPRequestHandler):
                 if len(t["rows"]) > MAX_ROWS:
                     truncated.append(f"{t['name']}: only the first {MAX_ROWS} rows were used ({len(t['rows'])} uploaded)")
                     t["rows"] = t["rows"][:MAX_ROWS]
+            uploaded_count = len(tabs)
             references = master.relevant_tables(sub, tabs, MAX_SHEETS - len(tabs), MAX_ROWS)
             tabs.extend(references["tables"])
+            reference_count = len(references["tables"])
             enrichment = None
             if ENRICHMENT is not None:
                 from engine.enrichment.runtime import table_versions
@@ -482,7 +483,11 @@ class H(BaseHTTPRequestHandler):
                 self._send(404, json.dumps({"error": "conversation not found"})); return
             except QuotaExceeded as exc:
                 self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
-            emit = emitter(uid, req.get("jobId"))            # RTDB key = the Firebase uid (== browser auth.uid); no-op if no jobId
+            provenance_context = ProvenanceContext(
+                tabs, uploaded_count=uploaded_count, reference_count=reference_count,
+                enrichment=enrichment,
+            )
+            emit = provenance_context.wrap_emitter(emitter(uid, req.get("jobId")))
             emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
             emit("status", "running")
             with WORLD_LOCK:
@@ -496,6 +501,7 @@ class H(BaseHTTPRequestHandler):
                     )
                 finally:
                     set_ctx(None)
+            res = provenance_context.decorate_response(res)
             if isinstance(res, dict):
                 res["conversation_id"] = conv                # so the browser persists it for follow-up turns
             if truncated and isinstance(res, dict):

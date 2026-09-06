@@ -370,7 +370,7 @@ class ComposeEngine:
 
     # Logical, self-describing view names (so the generated SQL reads "FROM filtered" not "FROM b2" — easier to
     # debug). Deduped with a numeric suffix when an op repeats (two filters -> filtered, filtered_2).
-    _VNAME = {"join": "combined", "world_join": "wikipedia_lookup", "world_filter": "filtered",
+    _VNAME = {"join": "combined", "world_join": "knowledgebase_lookup", "world_filter": "filtered",
               "filter": "filtered", "time_filter": "date_filtered", "having": "filtered", "group_agg": "total",
               "topn": "top_results", "sort": "sorted", "yoy": "year_over_year", "running": "running_total",
               "divide": "ratio", "share": "share"}

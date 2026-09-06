@@ -12,11 +12,13 @@ function setConversation(cid){
   const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&convId())||FAILMSG);   // now that the id landed, a follow-up can safely attach to this conversation
 }
 function prettyTs(iso){ if(!iso)return ''; try{ return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } }
-async function listConversations(){
+async function listConversations(before){
   try{ const tk=await window.ensureToken();
-    const r=await fetch(API_BASE+'/api/conversations',{headers:{Authorization:'Bearer '+tk}});
-    if(!r.ok) return []; const j=await r.json(); return j.conversations||[];
-  }catch(_){ return []; }
+    const url=API_BASE+'/api/conversations?limit=50'+(before?'&before='+encodeURIComponent(before):'');
+    const r=await fetch(url,{headers:{Authorization:'Bearer '+tk}});
+    if(!r.ok) return {conversations:[],next_cursor:null}; const j=await r.json();
+    return {conversations:j.conversations||[],next_cursor:j.next_cursor||null};
+  }catch(_){ return {conversations:[],next_cursor:null}; }
 }
 async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt) at its own URL
   const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.classList.add('loading');
@@ -38,19 +40,23 @@ function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').cl
 async function renderDrawer(){
   const list=$('convlist'); if(!list)return;
   list.innerHTML='<div class=convempty>Loading…</div>';
-  const convs=await listConversations();
+  const page=await listConversations(), convs=page.conversations;
   list.innerHTML='';
   if(!convs.length){ list.innerHTML='<div class=convempty>Your past conversations will appear here.</div>'; return; }
   const cur=convId();
   // Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
   // id/question come from the server and must not be interpolated into markup or an inline handler.
-  for(const c of convs){
+  const appendItems=(items,before=null)=>items.forEach(c=>{
     const b=document.createElement('div'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
     const q=document.createElement('div'); q.className='cq'; q.textContent=c.question||'(untitled)'; b.appendChild(q);
     if(c.ts){ const t=document.createElement('div'); t.className='ct'; t.textContent=prettyTs(c.ts); b.appendChild(t); }
     const x=document.createElement('button'); x.className='convdel'; x.dataset.del=c.id; x.title='Delete conversation'; x.textContent='×'; b.appendChild(x);
-    list.appendChild(b);
-  }
+    list.insertBefore(b,before);
+  });
+  appendItems(convs);
+  if(page.next_cursor){ let cursor=page.next_cursor; const more=document.createElement('button'); more.className='convclear'; more.textContent='Load older conversations';
+    more.onclick=async()=>{more.disabled=true;const next=await listConversations(cursor);appendItems(next.conversations,more);
+      cursor=next.next_cursor;if(cursor)more.disabled=false;else more.remove();}; list.appendChild(more); }
   const clr=document.createElement('button'); clr.className='convclear'; clr.textContent='Clear all conversations'; clr.onclick=clearAllConvs;
   list.appendChild(clr);
 }
@@ -79,7 +85,7 @@ function convSnapshot(){
   const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||(s.cls==='master'&&(!s.saved||s.dirty))).map(s=>({
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
     rows:s.cls==='master'?(s.rows||[]).map(r=>r.slice()):(s.rows||[]).slice(0,MAX_RENDER_ROWS),
-    sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
+    sql:s.sql||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
     cellAI:s.cls==='master'&&s.cellAI?[...s.cellAI]:undefined }));
   const refcands=REFCANDS.map(c=>({name:c.name, key:c.key, vals:(c.vals||[]).slice(0,500),   // the AVAILABLE list must survive reload so "+ Reference" persists
     cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
@@ -92,7 +98,7 @@ function saveConvState(){                                     // persist the sna
   const cid=convId(); if(!cid) return;
   const st=convSnapshot(); if(!st||st.cid!==cid) return;
   const body=JSON.stringify({id:cid, state:st});
-  if(body.length>3000000) return;                            // don't persist an oversized snapshot (server also caps)
+  if(new TextEncoder().encode(JSON.stringify(st)).byteLength>1024*1024) return; // match engine.conversations.MAX_STATE_BYTES
   try{ sessionStorage.setItem('pr_conv_state', body.length?JSON.stringify(st):''); }catch(_){}   // IMMEDIATE: a same-tab refresh restores the latest
   clearTimeout(_saveStateT);
   _saveStateT=setTimeout(async ()=>{                         // DEBOUNCED: durable server persist (survives a fresh session / other device)
@@ -106,7 +112,7 @@ function restoreConvState(st){                               // render a stored 
   if(!st||st.v!==1||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
-      rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, saved:!!s.saved, dirty:!!s.dirty,
+      rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
       cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});
     if(s.cls==='master'&&s.name) MSEEN.add(referenceKey(s.name,s.cols)); });   // don't let loadMaster duplicate it
   if(Array.isArray(st.refcands)){                            // AVAILABLE candidates (removed or never-shown) -> "+ Reference" persists across reload

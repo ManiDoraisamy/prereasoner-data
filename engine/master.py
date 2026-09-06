@@ -254,7 +254,7 @@ def relevant_tables(user_id, source_tables, limit, row_limit):
                 try:
                     full = get_master(user_id, stored_name)
                 except Exception:  # noqa: BLE001 - preserve own-data answer and disclose omission
-                    LOG.exception("selected reference table %s could not be loaded", stored_name)
+                    LOG.exception("selected reference table could not be loaded")
                     warnings.append(
                         f'Saved reference "{stored_name}" was selected but could not be loaded.'
                     )

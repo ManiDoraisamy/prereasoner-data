@@ -190,7 +190,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             try:
                 r = self._router()
             except Exception as exc:                                     # noqa: BLE001
-                print(f"[knowledge_query] schema router unavailable -> source grounding only: {exc!r}", flush=True)
+                print(f"[knowledge_query] schema router unavailable: {type(exc).__name__}", flush=True)
         cur = self._rconn().cursor()
         for t in norm:
             for ci, col in enumerate(t["columns"]):
@@ -201,7 +201,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     try:
                         evidence = r.route(cells, header=col)
                     except Exception as exc:                              # noqa: BLE001
-                        print(f"[knowledge_query] column evidence unavailable for {col!r}: {exc!r}", flush=True)
+                        print(f"[knowledge_query] column evidence unavailable: {type(exc).__name__}", flush=True)
                         evidence = None
                     if evidence:
                         self._emit_typing([{
@@ -523,7 +523,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             row = cur.fetchone()
             return row[0] if row and row[0] else None
         except Exception as e:                                        # noqa: BLE001 — a lookup miss must not hard-fail the world path
-            print(f"[knowledge_query] country name lookup failed for {qid!r}: {e}", flush=True)
+            print(f"[knowledge_query] country name lookup failed: {type(e).__name__}", flush=True)
             return None
 
     def serve(self, tables, question, as_of=None, schema=None, explicit_fks=()):
@@ -539,8 +539,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 if ngp:
                     return self._serve_world_type(norm, question, sch, ngp, schema)
             except Exception as e:                                    # noqa: BLE001 — fall through to the geo/delegate path
-                import traceback
-                print(f"[knowledge_query] non-geo world serve failed, falling through: {e!r}", flush=True); traceback.print_exc()
+                print(f"[knowledge_query] non-geo serving failed: {type(e).__name__}", flush=True)
         cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
         pred = "" if is_agg else self._semantic_predicate(question, [cr[2]] if cr else [])
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
@@ -555,9 +554,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 return self._serve_hybrid(norm, fks, sch, question, pred, plan,
                                           cname, as_of, schema)
             except Exception as e:                                   # noqa: BLE001 — never hard-fail the world path
-                import traceback
-                print("hybrid serve failed, delegating to EntityQuery:", e, flush=True)
-                traceback.print_exc()
+                print(f"hybrid serve failed, delegating: {type(e).__name__}", flush=True)
         # Delegate the aggregate / plain-world-join path to EntityQuery EXPLICITLY (not super()): in this MRO
         # TableQuery precedes EntityQuery (EncoderQuery pulls TableQuery in early), so super().serve would hit the
         # 2-arg TableQuery.serve. EntityQuery.serve's own super() is relative to EntityQuery and correctly chains
@@ -582,12 +579,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     realized = currency_conversion_words(currency["target"])
                     dropped = [word for word in dropped if word not in realized]
             except Exception as e:                           # noqa: BLE001 — the gate must never break the world path
-                print("coverage check failed:", e, flush=True); dropped = []
+                print(f"coverage check failed: {type(e).__name__}", flush=True); dropped = []
             if dropped:
                 try:
                     c = self._clarify(question, norm, fks, sch)
                 except Exception as e:                       # noqa: BLE001
-                    print("clarify failed:", e, flush=True); c = None
+                    print(f"clarify failed: {type(e).__name__}", flush=True); c = None
                 if c and c["proposed"].strip().lower() != (question or "").strip().lower():
                     return {"question": question, "as_of": as_of, "clarify": True,
                             "original_sql": (res or {}).get("sql"), "proposed": c["proposed"],

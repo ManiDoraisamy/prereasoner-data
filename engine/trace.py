@@ -39,7 +39,7 @@ def emitter(uid, job_id):
         ensure_app()
         from firebase_admin import db
     except Exception as e:                               # noqa: BLE001 — no RTDB -> just don't stream
-        print(f"[trace] RTDB unavailable, streaming disabled: {e}", flush=True)
+        print(f"[trace] unavailable error={type(e).__name__}", flush=True)
         return _NOOP
 
     created_at = time.time()
@@ -49,14 +49,14 @@ def emitter(uid, job_id):
             "expires_at": created_at + (rtdb_trace_retention_days() * 86400),
         })
     except Exception as e:                           # noqa: BLE001 — streaming is best-effort
-        print(f"[trace] trace metadata write failed: {e}", flush=True)
+        print(f"[trace] metadata_write_failed error={type(e).__name__}", flush=True)
 
     def emit(node, value, merge=False):
         try:
             ref = db.reference(f"{base}/{node}" if node else base)
             (ref.update if merge else ref.set)(value)
         except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
-            print(f"[trace] emit({node!r}) failed: {e}", flush=True)
+            print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
     return emit
 
 

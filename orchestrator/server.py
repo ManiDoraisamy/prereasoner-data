@@ -30,6 +30,7 @@ from engine.request_limits import (
     JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
 from orchestrator.orchestrator import run_chat
+from engine.request_validation import RequestValidationError
 from orchestrator.validation import validate_chat_request
 
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
@@ -127,8 +128,8 @@ class H(BaseHTTPRequestHandler):
                 return
             try:
                 message, tables, history, turn_id, conversation_id = validate_chat_request(req)
-            except ValueError as exc:
-                self._send(400, json.dumps({"error": str(exc)})); return
+            except RequestValidationError as exc:
+                self._send(exc.status_code, json.dumps({"error": str(exc)})); return
             token = self._bearer()
             # AUTH GATE (required): run_chat drives PAID Sonnet inference on the owner's key, so demand a verified
             # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
@@ -138,7 +139,7 @@ class H(BaseHTTPRequestHandler):
                 from engine.auth import _verify_principal
                 sub, uid = _verify_principal(token)
             except Exception as e:                           # noqa: BLE001
-                print("orchestrator auth verify failed:", e, flush=True)
+                print(f"orchestrator auth verify failed: {type(e).__name__}", flush=True)
                 sub, uid = None, None
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
@@ -160,7 +161,7 @@ class H(BaseHTTPRequestHandler):
                     emit = emitter(uid, turn_id)
                     emit("status", "running")
                 except Exception as e:                       # noqa: BLE001 — streaming must never block the answer
-                    print("orchestrator stream setup skipped:", e, flush=True)
+                    print(f"orchestrator stream setup skipped: {type(e).__name__}", flush=True)
             fut = asyncio.run_coroutine_threadsafe(
                 run_chat(message, tables, history,
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,

@@ -362,7 +362,7 @@ class EntityQuery(RoutedQuery):
             cur.execute('SELECT qid, canonical FROM knowledgebase."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL', (qids,))
             lbl = {q: c for q, c in cur.fetchall()}
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
-            print(f"[entities] qid->label resolve failed: {e}", flush=True); return
+            print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True); return
         if lbl:
             result["rows"] = [([lbl.get(str(r[0]), r[0])] + list(r[1:])) if r else r for r in rows]
 

@@ -17,6 +17,9 @@ Env contract:
   RTDB_URL             Firebase RTDB url for live trace streaming — OPTIONAL. Unset => streaming is a
                        clean no-op; the HTTP response still carries the full JSON answer.
   RTDB_TRACE_RETENTION_DAYS age-based trace retention (default 7; enforced by the cleanup job).
+  CONVERSATION_RETENTION_DAYS inactivity retention for stored conversations (default 90).
+  MAX_CONVERSATIONS_PER_USER durable conversation-count cap (default 100).
+  MAX_CONVERSATION_STORAGE_BYTES per-user stored source/state byte cap (default 256 MiB).
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
   APP_ENV              environment name; test bypasses are honored only in development/test.
   CORS_ORIGINS         comma-separated exact browser origins; empty disables cross-origin responses.
@@ -97,6 +100,30 @@ def rtdb_trace_retention_days() -> int:
     except ValueError:
         days = 7
     return max(1, min(days, 365))
+
+
+def conversation_retention_days() -> int:
+    try:
+        days = int(os.environ.get("CONVERSATION_RETENTION_DAYS", "90"))
+    except ValueError:
+        days = 90
+    return max(1, min(days, 3650))
+
+
+def max_conversations_per_user() -> int:
+    try:
+        count = int(os.environ.get("MAX_CONVERSATIONS_PER_USER", "100"))
+    except ValueError:
+        count = 100
+    return max(1, min(count, 1000))
+
+
+def max_conversation_storage_bytes() -> int:
+    try:
+        size = int(os.environ.get("MAX_CONVERSATION_STORAGE_BYTES", str(256 * 1024 * 1024)))
+    except ValueError:
+        size = 256 * 1024 * 1024
+    return max(1024 * 1024, min(size, 10 * 1024 * 1024 * 1024))
 
 
 def auth_test_sub():

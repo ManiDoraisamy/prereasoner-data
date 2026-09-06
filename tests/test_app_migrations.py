@@ -68,14 +68,22 @@ class _Connection:
 
 
 def test_chat_migration_is_admin_run_and_idempotent():
-    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2]
+    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3]
     assert CHAT_MIGRATIONS[0].name == "conversation_state"
     connection = _Connection()
-    assert migrate_chat(connection) == (1, 2)
+    assert migrate_chat(connection) == (1, 2, 3)
     assert migrate_chat(connection) == ()
     assert connection.commits == 2 and connection.rollbacks == 0
     assert any("ALTER TABLE \"chat\".\"conversation\"" in statement
                for statement, _ in connection.cursor_value.statements)
+    lifecycle = CHAT_MIGRATIONS[2]
+    assert lifecycle.name == "conversation_storage_lifecycle"
+    joined = "\n".join(lifecycle.statements)
+    for column in ("source_bytes", "state_bytes", "last_active_at", "expires_at"):
+        assert column in joined
+    assert "ix_chat_conversation_expiry" in joined
+    assert "chat_conversation_id_shape" in joined
+    assert "SET DEFAULT" in joined
 
 
 def test_knowledgebase_migration_installs_definer_functions():
@@ -96,7 +104,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert migrate_knowledgebase(connection) == (1, 2)   # definer functions, then the schedule table
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
-    assert migrate_chat(connection) == (1, 2)
+    assert migrate_chat(connection) == (1, 2, 3)
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():
@@ -156,6 +164,45 @@ def test_shared_read_boundary_revokes_legacy_write_functions():
 def test_request_path_contains_no_shared_chat_ddl():
     assert not hasattr(conversations, "_CHAT_DDL")
     assert not hasattr(conversations, "_ensure")
+
+
+def test_expired_conversation_cleanup_is_bounded_and_identifier_guarded():
+    from unittest.mock import patch
+
+    valid = "c_" + "a" * 32
+
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            self.statements.append((str(statement), params))
+
+        def fetchall(self):
+            return [(valid,), ("knowledgebase",)]
+
+    class Connection:
+        def __init__(self):
+            self.cur, self.commits, self.rollbacks, self.closed = Cursor(), 0, 0, False
+
+        def cursor(self): return self.cur
+        def commit(self): self.commits += 1
+        def rollback(self): self.rollbacks += 1
+        def close(self): self.closed = True
+
+    connection = Connection()
+    with patch.object(conversations, "_pg", return_value=connection):
+        assert conversations.cleanup_expired_conversations(limit=10) == 1
+    sql = "\n".join(statement for statement, _ in connection.cur.statements)
+    assert f'DROP SCHEMA IF EXISTS "{valid}" CASCADE' in sql
+    assert 'DROP SCHEMA IF EXISTS "knowledgebase"' not in sql
+    assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
+
+
+def test_retention_job_bypasses_model_artifact_gate():
+    dockerfile = pathlib.Path("Dockerfile").read_text(encoding="utf-8")
+    assert '"engine.retention_cleanup"' in dockerfile
+    assert '"engine.trace_cleanup"' not in dockerfile
 
 
 def test_schedule_catalog_is_honest_about_what_it_claims():
@@ -225,6 +272,8 @@ TESTS = [
     test_schedule_migration_and_base_schema_agree,
     test_serving_guard_consults_the_catalog_instead_of_skipping,
     test_request_path_contains_no_shared_chat_ddl,
+    test_expired_conversation_cleanup_is_bounded_and_identifier_guarded,
+    test_retention_job_bypasses_model_artifact_gate,
 ]
 
 

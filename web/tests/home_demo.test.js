@@ -124,7 +124,7 @@ for (const svg of ['anthropic-paper.svg', 'interpretability-blog.svg']) {
 // irrelevant to Google (the browser key is restricted by ORIGIN, not path), measured 2026-08-29.
 assert(html.includes('<span class=pl>+</span></button>'), 'the add button is a bare "+" everywhere');
 assert(html.includes("location.href='picker'"), 'the Google Sheets flow must round-trip via /picker');
-assert(html.includes('>Attach a spreadsheet and ask a question</div>'),
+assert(html.includes('>Attach a spreadsheet and ask a question</h1>'),
   'the generic headline invites the attach-and-ask action');
 assert(!/<div class=sub>/.test(html), 'the hero carries no subline under the headline');
 // The brand mark is the marketing site's front door (prereasoner.com), not the app root: this IS
@@ -195,18 +195,34 @@ for (const [stored, pathname, want, why] of [
   assert.strictEqual(runReturnPath(stored, pathname), want, `returnPath(${stored}) — ${why}`);
 }
 
-// --- provenance tags: derived columns name their actual source, not a generic "AI" -----------
+// --- provenance tags: render the server contract; never classify by column name -----------
 {
   const wbSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
-  for (const tag of ["src:'SRC'", "kb:'KB'", "fx:'FX'", "ai:'AI'"]) {
-    assert(wbSrc.includes(tag), `provenance must include the ${tag} tag`);
+  assert(wbSrc.includes('m.columnProvenance'), 'headers must read server-authored column provenance');
+  assert(wbSrc.includes('column_provenance'), 'HTTP/trace views must preserve the wire field');
+  assert(!wbSrc.includes('KB_COLS') && !wbSrc.includes('inputCols.has'),
+    'the client must not infer provenance from a global column-name list');
+  for (const tag of ["return 'SRC'", "return 'CALC'", "return 'WIKI'", "return 'ECB'"]) {
+    assert(wbSrc.includes(tag), `provenance must render the ${tag} source label`);
   }
-  assert(/ECB reference rates/.test(wbSrc), 'the FX tag must attribute the ECB rates');
-  assert(/public knowledgebase/.test(wbSrc), 'the KB tag must attribute the knowledgebase');
   assert(!/connected to wikipedia|world meaning/.test(wbSrc), 'no legacy wikipedia/world-meaning strings in the client');
   const cssSrc = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
-  assert(cssSrc.includes('.provtag.kb') && cssSrc.includes('.provtag.fx'), 'the KB and FX tags must be styled');
+  assert(cssSrc.includes('.provtag.kb') && cssSrc.includes('.provtag.mixed'), 'reference and mixed tags must be styled');
 }
+
+// Excel parsing is fixed, bounded, and isolated from the application thread.
+{
+  const reader = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'xlsx-reader.js'), 'utf8');
+  const worker = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'xlsx-worker.js'), 'utf8');
+  assert(!html.includes('xlsx/0.18.5') && !html.includes('XLSX.read('), 'the landing must not execute the vulnerable parser inline');
+  assert(worker.includes("xlsx-0.20.3.full.min.js"), 'the worker must pin the patched vendored SheetJS build');
+  assert(reader.includes('MAX_XLSX_BYTES') && reader.includes('WORKER_TIMEOUT_MS'), 'compressed input and parse time must be bounded');
+  assert(worker.includes('MAX_ROWS') && worker.includes('MAX_COLUMNS') && worker.includes('MAX_OUTPUT_CHARS'),
+    'expanded workbook dimensions must be bounded');
+}
+
+assert(html.includes('id=loginbtn') && html.includes('ensureSignedIn'), 'Login must invoke the real Firebase auth flow');
+assert(!html.includes('loginSoon'), 'the dead coming-soon login handler must be removed');
 
 // --- external LLM: disclosure has one permanent home and never interrupts the user's workflow.
 const wb = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');

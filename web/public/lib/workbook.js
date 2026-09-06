@@ -77,25 +77,21 @@ function renderGrid(m){
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
   const shown=rows.slice(0,MAX_RENDER_ROWS);
   const edit=(m.cls==='input'||m.cls==='master');            // input + master are EDITABLE; derived/reference are read-only but STILL navigable
-  // B1: per-column provenance on derived/reference sheets. SRC = carried from your data. Columns the
-  // derivation ADDED name their actual source instead of a generic "AI": KB = joined from the public
-  // knowledgebase (Wikidata/publisher projections), FX = computed with ECB reference rates. AI remains
-  // only for derived columns with no more specific source.
-  const inputCols=new Set(BOOK.filter(s=>s.cls==='input').flatMap(s=>(s.cols||[]).map(c=>String(c).toLowerCase())));
+  // Provenance comes from the server's computation trace. Column names are never used
+  // to guess origin: identical names can legitimately occur in uploads and references.
   const showProv=(m.cls==='deriv'||m.cls==='ref');
-  const KB_COLS=new Set(['qid','country','continent','currency','currency_name','population','capital','hemisphere','lat','lng','world_key']);
-  const provOf=c=>{ const n=String(c).toLowerCase();
-    if(inputCols.has(n))return 'src';
-    if(/^rate(_|$)|_rate$|^rate_published$|^converted\b/.test(n))return 'fx';
-    if(KB_COLS.has(n)||n.endsWith('_qid'))return 'kb';
-    return 'ai'; };
-  const PROV_TAG={src:'SRC', kb:'KB', fx:'FX', ai:'AI'};
-  const PROV_TITLE={src:'From your data',
-    kb:'Joined from the public knowledgebase (Wikidata and publisher sources)',
-    fx:'Computed with ECB reference rates from the knowledgebase',
-    ai:'Added by a deterministic derivation — worth a sanity-check'};
+  const pcols=Array.isArray(m.columnProvenance)?m.columnProvenance:[];
+  const provTag=p=>{if(!p)return ''; if(p.kind==='input')return 'SRC'; if(p.kind==='derived')return 'CALC';
+    const s=String(p.source||'REF').toUpperCase(); if(s.includes('WIKIDATA'))return 'WIKI';
+    if(s.includes('CENTRAL BANK')||s==='ECB')return 'ECB'; if(s.includes('IANA'))return 'IANA';
+    if(s.includes('SAVED REFERENCE'))return 'REF'; return s.replace(/[^A-Z0-9]/g,'').slice(0,6)||'REF';};
+  const provClass=p=>p&&p.kind==='input'?'src':p&&p.kind==='derived'?'ai':p&&p.kind==='mixed'?'mixed':'kb';
+  const provTitle=p=>{if(!p)return ''; let out=p.kind==='input'?'From your uploaded data':
+      p.kind==='derived'?'Calculated by Prereasoner':'Reference data from '+(p.source||'a published source');
+    if(p.operation)out+=' · '+p.operation; if(p.release_id)out+=' · release '+p.release_id;
+    if(Array.isArray(p.inputs)&&p.inputs.length)out+=' · inputs: '+p.inputs.join(', '); return out;};
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
-  for(let ci=0;ci<cols.length;ci++){ const pv=showProv?provOf(cols[ci]):'';
+  for(let ci=0;ci<cols.length;ci++){ const pr=showProv?pcols[ci]:null, pv=provClass(pr);
     if(m.cls==='master'&&m._editCol===ci){                    // inline column-name editor — spreadsheet-style, no prompt() dialog
       h+='<th class=colnamewrap><input class=colnameedit data-orig="'+escAttr(cols[ci])+'" value="'+escAttr(cols[ci])+'" placeholder="column name" spellcheck=false autocomplete=off '
         +'onkeydown="event.stopPropagation(); if(event.key===\'Enter\'){this.blur();} else if(event.key===\'Escape\'){this.value=this.dataset.orig; this.blur();}" '
@@ -103,8 +99,8 @@ function renderGrid(m){
       continue; }
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
-                        :(pv?' title="'+PROV_TITLE[pv]+'"':''))
-      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+PROV_TAG[pv]+'</span>':'')+'</th>'; }
+                        :(pv?' title="'+escAttr(provTitle(pr))+'"':''))
+      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+esc(provTag(pr))+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
   const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // editable: one trailing blank "new record" row
@@ -131,7 +127,7 @@ function tokCls(tk){const u=tk.toUpperCase();
   if(/world|meaning/i.test(tk))return 'world';
   return '';}
 const KINDLBL={input:'Your data',deriv:'Derived',ref:'Public source',master:'Reference'};
-function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|knowledgebase|reference) lookup/i.test(n)) n='enriched'; return n; }
+function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|knowledgebase|reference)[_ ]lookup/i.test(n)) n='enriched'; return n; }
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
@@ -562,14 +558,14 @@ function appendView(v){
   VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
   const label=stepLabel(v);                                  // short logical name (never v1/step_1/b2)
   STATUS=stepStatus(v);
-  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||''});
+  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||'', columnProvenance:v.column_provenance||[]});
 }
 function appendResolve(r){
   dropStale();
   RESOLVES.push(r);
   STATUS='Looking up '+(r.column||'the world')+'…';
   if(!r.unconnected&&r.columns)
-    addSheet({id:'r'+RUN+'_'+RESOLVES.length, cls:'ref', name:(r.wtable||'world'), cols:r.columns||[], rows:r.rows||[]});   // just "city", not "city (wikipedia)"
+    addSheet({id:'r'+RUN+'_'+RESOLVES.length, cls:'ref', name:(r.wtable||'world'), cols:r.columns||[], rows:r.rows||[], columnProvenance:r.column_provenance||[]});
   else paint();
 }
 function markDone(){ if(SETTLED)return; DONE=true; clearTimeout(doneTimer); doneTimer=setTimeout(finalize,400); }
@@ -577,7 +573,7 @@ function finalize(){
   if(SETTLED)return; settle();
   if(!VIEWS.length){                                          // delegated (no composition) — synthesize the single result sheet
     const r=(J&&J.result)||{};
-    appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[]});
+    appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[],column_provenance:r.column_provenance||[]});
   } else if(J&&J.result&&Array.isArray(J.result.rows)){       // the last view's table is the authoritative final answer
     const lv=VIEWS[VIEWS.length-1], lm=BOOK.filter(s=>s.cls==='deriv').pop();
     lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows;   // an empty result ([]) legitimately shows "no rows"
@@ -718,7 +714,7 @@ function addCall(uid,c){                                      // an engine call 
     onResult:r=>{ if(!r||!Array.isArray(r.rows))return;
       if(!BOOK.some(s=>s.cls==='deriv'&&!s.stale)) dropStale();   // a data result with no fresh derivation of its own -> retire the prior turn's stale steps; NEVER graft this answer onto them
       const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale).pop();
-      if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.result=true; if(last.id===ACTIVE)paint(); } else paint(); },
+      if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.columnProvenance=r.column_provenance||last.columnProvenance||[]; last.result=true; if(last.id===ACTIVE)paint(); } else paint(); },
     onStatus:()=>{}, onClarify:()=>{}, onLowConfidence:()=>{}, onPresent:()=>{}, onError:()=>{},
   });
   callSubs.push(sub);
@@ -729,7 +725,8 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
     if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v); rendered=true; }); }   // composed query: the full view stack
     else if(eng.sql&&eng.answer&&Array.isArray(eng.answer.rows)){                                                  // typed-AST own-data path returns one SQL + answer, no view stack -> surface it as a single step so the SQL + result are visible
       const agg=/\b(sum|count|avg|min|max)\s*\(/i.test(eng.sql);
-      appendView({op:agg?'group_agg':'select', label:'result', columns:eng.answer.columns||[], rows:eng.answer.rows, sql:eng.sql}); rendered=true; }
+      appendView({op:agg?'group_agg':'select', label:'result', columns:eng.answer.columns||[], rows:eng.answer.rows, sql:eng.sql,
+        column_provenance:eng.answer.column_provenance||[]}); rendered=true; }
   });
   if(!rendered && (j.traces||[]).some(t=>Array.isArray(((t.engine||{}).result||{}).rows))) dropStale();   // a data answer with no derivation at all -> don't leave the prior turn's stale steps showing as this answer's
 }

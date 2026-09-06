@@ -50,7 +50,7 @@ class KnowledgeReasoner:
                         "clarify": None, "error": None, "result": None,
                         "model": "engine - conversational (not a data query)"}
         except Exception as e:                                              # noqa: BLE001 — never block a real query
-            print("coverage pre-gate skipped:", e, flush=True)
+            print(f"coverage pre-gate skipped: {type(e).__name__}", flush=True)
         self.qw.begin_typing()                                              # capture the model's per-column typing
         try:                                                                # evidence emitted while this serve routes
             res = (self.composed.serve(
@@ -111,7 +111,7 @@ class KnowledgeReasoner:
                     and self.composed._human_tone(question, tables)):
                 res["present"] = True
         except Exception as e:                                              # noqa: BLE001 — never break the answer
-            print("present flag skipped:", e, flush=True)
+            print(f"present flag skipped: {type(e).__name__}", flush=True)
         return res
 
     def _ref_and_limit(self, question):
