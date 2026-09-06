@@ -170,12 +170,13 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
                         question = (block.input or {}).get("question", "")
                         # The system prompt (rules 3-4) owns question fidelity: a standalone question is
-                        # passed in the user's exact words, and a follow-up rewrite carries every qualifier
-                        # from the conversation. A rewrite that dropped "in US dollars" shipped an
-                        # unconverted total on 2026-09-06 — the prompt then had no such rule. The boundary
-                        # is asserted where it matters: test_orchestrator checks the engine-RECEIVED
-                        # question on both the standalone and the follow-up shape (measured 10/10 on the
-                        # amended prompt), so a prompt regression fails the live suite instead of shipping.
+                        # passed in the user's exact words, and a follow-up rewrite carries every
+                        # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
+                        # an unconverted total on 2026-09-06 — the prompt then had no such rule. The
+                        # boundary is asserted where it matters: test_orchestrator checks the
+                        # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
+                        # prompt regression fails the live suite instead of shipping. No per-dimension
+                        # code guard: it covered only currency and could never cover qualifier carry-over.
                         print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
                         _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
                         call_idx += 1

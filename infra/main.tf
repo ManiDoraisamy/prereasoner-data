@@ -373,8 +373,9 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
 # One scheduled retention owner deletes expired PostgreSQL conversations and, when configured,
 # expired RTDB traces. It runs the same immutable engine image as serving.
 resource "google_cloud_run_v2_job" "retention_cleanup" {
-  name     = "${var.service_name}-retention-cleanup"
-  location = var.region
+  name                = "${var.service_name}-retention-cleanup"
+  location            = var.region
+  deletion_protection = false # stateless cleanup runner; the retained data lives in PostgreSQL/RTDB, not the job
 
   template {
     template {
