@@ -26,7 +26,7 @@ from engine.entities import WORLD_TABLE_TYPE
 from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
 from engine.compose import ComposeEngine
-from engine.routing import DEPTH_PRIMS, WORLD_MEASURES, compose_owns
+from engine.routing import DEPTH_PRIMS, WORLD_MEASURES, compose_owns, required_ops
 from engine.numeric import parse_decimal
 
 
@@ -422,7 +422,7 @@ class ComposedKnowledgeQuery:
                 try:
                     er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world)
                     if compose_owns(er.get("views"), er.get("world_dependency"),
-                                    (er.get("result") or {}).get("rows")):
+                                    (er.get("result") or {}).get("rows"), required_ops(question)):
                         return er
                 except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
                     print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)

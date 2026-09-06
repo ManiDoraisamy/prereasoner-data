@@ -262,7 +262,13 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     def _serve_world_type(self, norm, question, sch, plan, schema):
         """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
         e.g. hospitals.csv(hospital, beds) + 'total beds for hospitals in United States' -> resolve each hospital to
-        a pre-synchronized knowledgebase.\"hospital\" row, keep those whose .country = 'United States', SUM(beds)."""
+        a pre-synchronized knowledgebase.\"hospital\" row, keep those whose .country = 'United States', SUM(beds).
+
+        The per-cell entity resolution is the engine's resolver (Python). Every relational step AFTER it is
+        EXECUTED PostgreSQL over a VALUES relation of the resolved upload, returned as the derivation trail
+        (docs/SHEETS_AS_REASONING.md): lookup -> filtered -> total, with `sql` the statement that actually
+        produced each sheet's rows — this path once shipped an illustrative `resolve(...)` pseudo-SQL and a
+        Python-side fold with no visible filter step."""
         t = plan["table"]; label = plan["label"]; country = plan["country"]
         ci = t["columns"].index(plan["col"])
         op = (self.read_op_model([t], question)[0]) or "COUNT"
@@ -272,9 +278,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                             and c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])), None)
             if not measure:
                 op = "COUNT"
-        mi = t["columns"].index(measure) if measure else None
 
-        pairs = []                                                        # (world_qid, measure_value)
+        resolved = []                                                     # (upload row, resolved world qid)
         for rw in t["rows"]:
             v = str(rw[ci]) if ci < len(rw) and rw[ci] not in (None, "") else None
             if not v:
@@ -282,37 +287,59 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             wq = self._resolve_world_qid(v, label, plan["qid"])
             if not wq:
                 continue
-            mv = None
-            if mi is not None and mi < len(rw):
-                try:
-                    mv = parse_decimal(rw[mi])
-                except (ValueError, TypeError):
-                    mv = None
-            pairs.append((wq, mv))
+            resolved.append((list(rw), wq))
 
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
         _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # table = the EXACT Wikidata label
-        qids = sorted({wq for wq, _ in pairs})
-        # country filter is qid = qid (plan["country"] is a country QID; w."country" is the country's qid FK)
-        cur.execute(f'SELECT qid FROM knowledgebase."{wl}" WHERE qid = ANY(%s) AND lower("country") = lower(%s)', (qids, country))
-        keep = {r[0] for r in cur.fetchall()}
-        hit = [(wq, mv) for wq, mv in pairs if wq in keep]
-        if op == "COUNT":
-            val = len(hit)
-        elif op == "SUM":
-            val = sum((mv for _wq, mv in hit if mv is not None), start=parse_decimal(0))
-        else:                                                             # AVG
-            mvs = [mv for _wq, mv in hit if mv is not None]
-            val = sum(mvs, start=parse_decimal(0)) / len(mvs) if mvs else parse_decimal(0)
-        if not isinstance(val, int):
-            val = wire_decimal(val)
         disp = f'{op}({measure})' if measure else 'COUNT(*)'
-        sql = (f'SELECT {disp} FROM "{t["name"]}" u JOIN knowledgebase."{wl}" w ON w.qid = resolve(u."{plan["col"]}") '
-               f'WHERE w."country" = {qlit(country)}')
-        return {"question": question, "as_of": None, "sql": sql,
+        model = f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'
+        if not resolved:                                                  # nothing resolved -> empty aggregate, no trail
+            val = 0
+            return {"question": question, "as_of": None, "sql": None,
+                    "result": {"columns": [disp], "rows": [[val]]}, "views": [], "model": model}
+
+        cols = list(t["columns"])
+        values = ", ".join(
+            "(" + ", ".join(qlit("" if v is None else str(v)) for v in rw + [wq]) + ")"
+            for rw, wq in resolved)
+        ucols = ", ".join(f'u."{c}"' for c in cols)
+        alias = ", ".join(f'"{c}"' for c in cols + ["__qid"])
+        base = f'FROM (VALUES {values}) AS u({alias}) JOIN knowledgebase."{wl}" w ON w.qid = u."__qid"'
+        where = f' WHERE lower(w."country") = lower({qlit(country)})'
+        lookup_sql = f'SELECT {ucols}, w."country" {base} LIMIT 50'
+        filtered_sql = f'SELECT {ucols}, w."country" {base}{where} LIMIT 50'
+        if op == "COUNT":
+            agg = "COUNT(*)"
+        else:                                                             # empty cells -> NULL, so SUM/AVG skip them
+            agg = f'COALESCE({op}(NULLIF(u."{measure}", \'\')::numeric), 0)'
+        total_sql = f'SELECT {agg} {base}{where}'
+
+        cur.execute(lookup_sql)
+        lrows = [list(r) for r in cur.fetchall()]
+        cur.execute(filtered_sql)
+        frows = [list(r) for r in cur.fetchall()]
+        cur.execute(total_sql)
+        val = cur.fetchone()[0]
+        if not isinstance(val, int):
+            val = wire_decimal(parse_decimal(val))
+        # country values are QIDs; display them as labels (SHEETS_AS_REASONING rule 5)
+        labels = self._qid_labels({r[-1] for r in lrows} | {country})
+        for r in lrows + frows:
+            r[-1] = labels.get(str(r[-1]), r[-1])
+        views = [
+            {"name": "knowledgebase_lookup", "op": "world_join",
+             "label": f'join {t["name"]} to the world on {plan["col"]}',
+             "sql": lookup_sql, "columns": cols + ["country"], "rows": lrows},
+            {"name": "filtered", "op": "world_filter",
+             "label": f'where country = {labels.get(country, country)!r}',
+             "sql": filtered_sql, "columns": cols + ["country"], "rows": frows},
+            {"name": "total", "op": "group_agg", "label": "total",
+             "sql": total_sql, "columns": [disp], "rows": [[val]]},
+        ]
+        return {"question": question, "as_of": None, "sql": total_sql,
                 "result": {"columns": [disp], "rows": [[val]]},          # "columns" (NOT "cols") — the client render +
-                "model": f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'}
+                "views": views, "model": model}
 
     # ---------------- connected / unconnected split ----------------
     def _avglen(self, table, col):

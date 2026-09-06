@@ -68,22 +68,37 @@ def _composes(plan, result_rows) -> bool:
     return False
 
 
-def route(plan, world_dependency=None, result_rows=None) -> Route:
+def required_ops(question) -> frozenset:
+    """Ops the QUESTION explicitly demands, derived from the shared intent owners (never re-detected by
+    callers — both serving and the eval call THIS). Currently: an explicit currency-conversion target
+    requires a ``convert`` step. A plan that cannot realize a required op must not win ownership —
+    standing on it silently drops the requirement (a compose stack raw-summed mixed currencies and
+    dropped 'in US dollars' on 2026-09-06)."""
+    from engine.currency_intent import currency_conversion_target
+    return frozenset({"convert"}) if currency_conversion_target(str(question or "")) else frozenset()
+
+
+def route(plan, world_dependency=None, result_rows=None, required=frozenset()) -> Route:
     """THE routing decision — the single pure function BOTH serving and the Spider eval call.
 
     ``plan``             the built compose view stack (list of dicts) or flat op list (the eval's res['plan']).
     ``world_dependency`` ComposeEngine.run's explicit record, or None when no world join grounded.
     ``result_rows``      the engine's result rows (confirms a world group-by produced a real breakdown).
+    ``required``         ops the question explicitly demands (see ``required_ops``); a plan missing any of
+                         them cannot own the query, no matter how well it grounds or composes.
 
-    Returns Route.COMPOSE iff the plan grounds a NECESSARY world dependency AND composes over it. Otherwise
-    Route.DELEGATE — hand off to the delegate, which owns own-data (the typed-AST planner) and ordinary world
-    lookups (KnowledgeQuery). route() decides ONLY compose-ownership; the AST-vs-KnowledgeQuery split is made
-    downstream, so a necessary-but-non-composing world lookup is DELEGATE, not COMPOSE."""
+    Returns Route.COMPOSE iff the plan realizes every required op, grounds a NECESSARY world dependency,
+    AND composes over it. Otherwise Route.DELEGATE — hand off to the delegate, which owns own-data (the
+    typed-AST planner) and ordinary world lookups (KnowledgeQuery). route() decides ONLY compose-ownership;
+    the AST-vs-KnowledgeQuery split is made downstream, so a necessary-but-non-composing world lookup is
+    DELEGATE, not COMPOSE."""
+    if required and not set(required) <= set(_ops(plan)):
+        return Route.DELEGATE                                 # an explicit requirement the plan cannot realize
     if not (world_dependency and world_dependency.get("is_necessary")):
         return Route.DELEGATE                                 # no NECESSARY world dependency -> delegate (own-data)
     return Route.COMPOSE if _composes(plan, result_rows) else Route.DELEGATE
 
 
-def compose_owns(plan, world_dependency=None, result_rows=None) -> bool:
+def compose_owns(plan, world_dependency=None, result_rows=None, required=frozenset()) -> bool:
     """Boolean convenience over ``route``: does the ComposeEngine own this query?"""
-    return route(plan, world_dependency, result_rows) is Route.COMPOSE
+    return route(plan, world_dependency, result_rows, required) is Route.COMPOSE

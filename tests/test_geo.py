@@ -458,6 +458,31 @@ def main():
     ok("fx+world single sheet: no combined step; trail is lookup -> filtered -> calculated -> total",
        one_trail == ["world_join", "world_filter", "convert", "group_agg"],
        f"trail={[(v.get('op'), v.get('name')) for v in (rone or {}).get('views') or []]}")
+
+    # ROUTING: an explicit conversion target must never be owned by compose (its op library has no
+    # 'convert'). The shipped failure: 'total value for contracts in Asia in US dollars' -> compose
+    # grounded Asia via continent, grouped by contract, and RAW-SUMMED JPY+KRW as bare numbers while
+    # dropping 'in US dollars' (2026-09-06). With required_ops routing it delegates to the conversion
+    # path: a single converted scalar through the 2-hop continent filter.
+    _CONTRACTS = {"name": "contracts", "columns": ["contract", "client", "country", "currency", "value"],
+                  "rows": [["Service Agreement", "Acme GmbH", "Germany", "EUR", 12000],
+                           ["License", "Sakura KK", "Japan", "JPY", 900000],
+                           ["NDA", "Nimbus Inc", "United States", "USD", 5000],
+                           ["Maintenance", "Ganga Ltd", "India", "INR", 400000],
+                           ["License", "Han Solutions", "South Korea", "KRW", 3000000]]}
+    rasia = _retry(lambda: qc.serve([_CONTRACTS], "total value for contracts in Asia in US dollars", sub))
+    asia_rows = ((rasia or {}).get("result") or {}).get("rows") or []
+    ok("fx+world+2hop: an Asia conversion delegates to the conversion path, never compose",
+       "composed" not in ((rasia or {}).get("model") or "")
+       and (rasia.get("currency") or {}).get("realization") == "converted",
+       f"model={(rasia or {}).get('model')} currency={(rasia or {}).get('currency')}")
+    ok("fx+world+2hop: one converted scalar (never a raw mixed-currency sum)",
+       len(asia_rows) == 1 and len(asia_rows[0]) == 1 and exact(asia_rows[0][0]) > 0
+       and exact(asia_rows[0][0]) != Decimal("4300000"),   # 900000+400000+3000000 raw-added
+       f"rows={asia_rows}")
+    asia_trail = [v.get("op") for v in (rasia or {}).get("views") or []]
+    ok("fx+world+2hop: the trail is lookup -> filtered -> calculated -> total",
+       asia_trail == ["world_join", "world_filter", "convert", "group_agg"], f"trail={asia_trail}")
     try:
         _json.dumps((rtrail or {}).get("views") or [])
         trail_serializable = True

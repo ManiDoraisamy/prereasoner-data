@@ -15,7 +15,7 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
 |---|----|----|----|----|
 | 1 | (upload) | the user's sheet names | always | the uploaded rows, untouched (green: the AI never writes here) |
 | 2 | `join` | `combined` | **two or more uploaded sheets are actually joined** | the joined row set with the columns of every participating sheet |
-| 3 | `world_join` | `knowledgebase_lookup` ("reference lookup") | a knowledgebase reference table is joined | the base rows **plus every reference column any later step uses** (e.g. `country`) |
+| 3 | `world_join` | `knowledgebase_lookup` (renders as "enriched") | a knowledgebase reference table is joined | the base rows **plus every reference column any later step uses** (e.g. `country`), badged with the reference source |
 | 4 | `filter` / `world_filter` / `time_filter` / `having` | `filtered` | rows are dropped | the kept rows; the step label names the human-readable condition |
 | 5 | `convert` | `calculated` | per-row arithmetic (e.g. currency) | each input value beside the exact factor used (rate + its publication date) and the derived column, so the Result is visibly that column aggregated |
 | 6 | `group_agg` / `topn` / `sort` / `yoy` / `running` / `divide` / `share` | `total` / `top_results` / … | the final shaping | the aggregate the Result overlays |

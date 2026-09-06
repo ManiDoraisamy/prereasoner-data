@@ -65,6 +65,27 @@ def test_world_group_by_stands():
     print("  PASS  world group-by -> compose; scalar world agg -> delegate")
 
 
+def test_required_op_the_plan_cannot_realize_delegates():
+    # A question that EXPLICITLY requires an op the plan does not realize can never be owned by that plan,
+    # however well it grounds and composes. The shipped failure: 'total value for contracts in Asia in US
+    # dollars' -> compose grounded Asia, grouped by contract, and RAW-SUMMED mixed currencies because its
+    # op library has no 'convert' (2026-09-06). required_ops derives {'convert'} from the shared currency
+    # intent owner; routing then refuses ownership and the delegate's conversion path realizes it.
+    from engine.routing import required_ops
+    grouped = [{"op": "world_join"}, {"op": "world_filter"},
+               {"op": "group_agg", "columns": ["contract", "value"]}]
+    rows = [["License", 3900000], ["Maintenance", 480000]]
+    assert compose_owns(grouped, _NECESSARY, rows) is True                       # without the requirement it stands
+    assert compose_owns(grouped, _NECESSARY, rows, frozenset({"convert"})) is False   # with it, it must delegate
+    # a (hypothetical) plan that DOES realize the required op still stands.
+    converted = grouped + [{"op": "convert"}]
+    assert compose_owns(converted, _NECESSARY, rows, frozenset({"convert"})) is True
+    # the derivation itself: an explicit conversion target requires 'convert'; a plain question requires nothing.
+    assert required_ops("total value for contracts in Asia in US dollars") == {"convert"}
+    assert required_ops("total value for contracts in Asia") == frozenset()
+    print("  PASS  a required op the plan cannot realize -> delegate")
+
+
 def test_constants_are_coherent():
     assert "having" in COMPOSITION_OPS and "having" not in WORLD_DEP_OPS   # own-data HAVING is the planner's
     assert WORLD_DEP_OPS == {"world_join", "world_filter"}
@@ -147,6 +168,7 @@ TESTS = [
     test_redundant_world_join_is_own_data,
     test_plain_world_lookup_defers_to_delegate,
     test_world_group_by_stands,
+    test_required_op_the_plan_cannot_realize_delegates,
     test_constants_are_coherent,
     test_contrastive_redundant_world_filter_with_joinable_city,
     test_contrastive_abbreviation_still_needs_world,

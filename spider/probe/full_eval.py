@@ -60,7 +60,7 @@ DIFFS = ["easy", "medium", "hard", "extra"]
 # live serving uses, so the eval can never drift from production. DEPTH_PRIMS is the primitive-head EVIDENCE to
 # build a compose plan; compose_owns is the AUTHORITY (a grounded world dependency). Spider tables are world-less,
 # so compose_owns is always False here -> every question routes to the typed-AST planner.
-from engine.routing import DEPTH_PRIMS, compose_owns
+from engine.routing import DEPTH_PRIMS, compose_owns, required_ops
 
 
 def _git_provenance(root):
@@ -195,7 +195,8 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
             try:
                 r = compose_predict(eng, tabs, question)
                 # AUTHORITY: a NECESSARY grounded world dependency (world_dependency is None on Spider -> AST).
-                if compose_owns(r.get("plan"), r.get("world_dependency"), r.get("rows")):
+                if compose_owns(r.get("plan"), r.get("world_dependency"), r.get("rows"),
+                                required_ops(question)):
                     return r
             except Exception:                     # noqa: BLE001 — live serve() delegates on engine error
                 pass

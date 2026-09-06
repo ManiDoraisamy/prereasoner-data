@@ -53,6 +53,21 @@ def main():
     print(f"total beds, US hospitals -> {got1} (exp 240)  model={r1.get('model','')[:46]}")
     if got1 != 240:
         fails.append(f"SUM beds US != 240 (got {got1})")
+    # The derivation trail (docs/SHEETS_AS_REASONING.md): lookup -> filtered -> total, each sheet's SQL
+    # the EXECUTED statement (this path once shipped `resolve(...)` pseudo-SQL and no visible filter),
+    # country values displayed as labels, and the filter dropping the non-US rows visibly.
+    trail = [(v.get("op"), v.get("name")) for v in r1.get("views") or []]
+    if trail != [("world_join", "knowledgebase_lookup"), ("world_filter", "filtered"), ("group_agg", "total")]:
+        fails.append(f"non-geo trail wrong: {trail}")
+    v_lookup, v_filtered = (r1.get("views") or [{}, {}])[0], (r1.get("views") or [{}, {}])[1]
+    if "country" not in (v_lookup.get("columns") or []):
+        fails.append(f"lookup sheet missing the country column the filter uses: {v_lookup.get('columns')}")
+    if not any(str(r[-1]) == "United States" for r in v_lookup.get("rows") or []):
+        fails.append(f"lookup country shows qids, not labels: {[(r or [None])[-1] for r in v_lookup.get('rows') or []]}")
+    if len(v_filtered.get("rows") or []) >= len(v_lookup.get("rows") or [None]):
+        fails.append("filtered sheet drops nothing — the country filter is invisible again")
+    if "resolve(" in (r1.get("sql") or "") or any("resolve(" in (v.get("sql") or "") for v in r1.get("views") or []):
+        fails.append("illustrative pseudo-SQL (resolve(...)) returned — sheets must show executed SQL only")
     if "columns" not in (r1.get("result") or {}):                  # the client render reads result.columns (NOT .cols);
         fails.append("result missing 'columns' key — the UI table would render empty")  # the value alone isn't enough
     # COUNT US hospitals
