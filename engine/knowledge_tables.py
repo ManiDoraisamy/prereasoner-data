@@ -767,23 +767,61 @@ class KnowledgeTableQuery:
                                      else v.isoformat() if isinstance(v, (datetime.date, datetime.datetime))
                                      else v for v in row] for row in c.fetchall()]
 
-                        # The full derivation trail, one sheet per step (the compose stack's
-                        # join -> filter -> aggregate design): the resolution slides stream
-                        # separately from the serving host (knowledge_compose).
+                        # The full derivation trail, one sheet per step, in the ONE step grammar
+                        # every emitter follows (docs/SHEETS_AS_REASONING.md): combined only when
+                        # uploaded sheets really joined; a world lookup is its own reference-lookup
+                        # sheet showing the columns later steps use; filters follow. The resolution
+                        # slides stream separately from the serving host (knowledge_compose).
                         response_views = []
-                        if updescs or joins:                 # a real combine happened -> the joined rows
-                            joined_sql = f'SELECT {fact_q}.* {fw_join} LIMIT 50'
+                        if updescs:                          # >=2 uploaded sheets joined -> the combined table
+                            combined_proj = ", ".join(f'{qident(t)}.*' for t in joined)
+                            joined_sql = f'SELECT {combined_proj} {upfrom} LIMIT 50'
                             jc = con.execute(joined_sql)
                             response_views.append({
-                                "name": "joined", "op": "join",
+                                "name": "combined", "op": "join",
                                 "label": "join " + " + ".join(joined),
                                 "sql": joined_sql, "columns": [d[0] for d in jc.description],
                                 "rows": _wire_rows(jc),
                             })
+                        # Reference columns any later step uses (the filter attribute, a projected
+                        # world attribute) — shown BEFORE anything references them (rule 2: no
+                        # forward references), with QIDs resolved to labels for display (rule 5).
+                        upload_names = {t["name"] for t in norm}
+                        wcols = []
+                        if mf:
+                            wcols.append((mf["filter_table"], mf["attr"]))
+                        if wtarget and wtarget["table"] not in upload_names:
+                            wcols.append((wtarget["table"], wtarget["col"]))
+                        wcols = list(dict.fromkeys(wcols))
+                        qid_labels = {}
+                        if joins and wcols:
+                            fact_cols = next((t["columns"] for t in norm if t["name"] == world_rate["fact"]), [])
+                            aliases = [c if c not in fact_cols else f"{t} {c}" for (t, c) in wcols]
+                            wproj = "".join(f', {qident(t)}.{qident(c)} AS {qident(a)}'
+                                            for (t, c), a in zip(wcols, aliases))
+                            lookup_sql = f'SELECT {fact_q}.*{wproj} {fw_join} LIMIT 50'
+                            lc = con.execute(lookup_sql)
+                            lrows = _wire_rows(lc)
+                            n_fact = len(lc.description) - len(wcols)
+                            wanted = {str(r[i]) for r in lrows for i in range(n_fact, len(r))
+                                      if re.fullmatch(r"Q\d+", str(r[i]))}
+                            if mf and re.fullmatch(r"Q\d+", str(mf["value"])):
+                                wanted.add(str(mf["value"]))     # the filter label needs it even off-page
+                            qid_labels = self._qid_labels(wanted) if hasattr(self, "_qid_labels") else {}
+                            for r in lrows:
+                                for i in range(n_fact, len(r)):
+                                    r[i] = qid_labels.get(str(r[i]), r[i])
+                            response_views.append({
+                                "name": "knowledgebase_lookup", "op": "world_join",
+                                "label": f'join {mtab} to the world on {route_col}',
+                                "sql": lookup_sql, "columns": [d[0] for d in lc.description],
+                                "rows": lrows,
+                            })
                         if conds:                            # the world/own filter -> the kept rows
                             filtered_sql = f'SELECT {fact_q}.* {fw_no_rate} LIMIT 50'
                             fc = con.execute(filtered_sql)
-                            flabel = (f'where {mf["attr"]} = {mf["value"]!r}' if mf else
+                            human = qid_labels.get(mf["value"], mf["value"]) if mf else None
+                            flabel = (f'where {mf["attr"]} = {human!r}' if mf else
                                       "where " + " and ".join(f"{c} = {v!r}" for (_t, c, v) in own_filters))
                             response_views.append({
                                 "name": "filtered", "op": "world_filter" if mf else "filter",

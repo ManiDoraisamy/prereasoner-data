@@ -149,7 +149,9 @@ replay. The legacy Wikidata schema migration is still pending.
     identity through emitted views. Publisher adapters provide release IDs. The browser renders this contract and
     never classifies a column by its name.
 11. The engine returns rows, SQL, route evidence, intermediate views, and provenance. Trace writes are best effort
-    and do not determine the answer.
+    and do not determine the answer. Every emitted view stack follows the one derivation-trail contract in
+    `docs/SHEETS_AS_REASONING.md` (step grammar, no forward references, executed SQL only); emitters extend that
+    grammar in place rather than inventing per-path sheet shapes.
 
 ## Request And Provenance Contracts
 

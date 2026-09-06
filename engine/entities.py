@@ -347,22 +347,27 @@ class EntityQuery(RoutedQuery):
         vals = ", ".join(f"({qlit(c)}, {qlit(x)}, {qlit(q)})" for c, x, q in rows)
         return f"SELECT * FROM (VALUES {vals}) AS ex(cell, ctx, qid)"
 
-    def _labelize_qids(self, result):
-        """Resolve entity QIDs in the FIRST projected column to canonical labels via knowledgebase."words" (the qid->canonical
-        index; knowledgebase."types" holds only the taxonomy, not entity labels). So a projected world entity-attribute column
-        ('which continent is Kyoto in' -> country.continent = 'Q48') reads 'Asia', not the bare qid. Non-qid values
-        (a plain text projection) pass through unchanged."""
-        import re as _re
-        rows = result.get("rows") or []
-        qids = sorted({str(r[0]) for r in rows if r and _re.fullmatch(r"Q\d+", str(r[0]))})
+    def _qid_labels(self, qids):
+        """qid -> canonical label via knowledgebase."words" (the qid->canonical index; knowledgebase."types" holds
+        only the taxonomy, not entity labels). Returns {} on a lookup miss so callers degrade to showing the qid."""
+        qids = sorted({q for q in qids if q})
         if not qids:
-            return
+            return {}
         try:
             cur = self._rconn().cursor()
             cur.execute('SELECT qid, canonical FROM knowledgebase."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL', (qids,))
-            lbl = {q: c for q, c in cur.fetchall()}
+            return {q: c for q, c in cur.fetchall()}
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
-            print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True); return
+            print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True)
+            return {}
+
+    def _labelize_qids(self, result):
+        """Resolve entity QIDs in the FIRST projected column to canonical labels, so a projected world
+        entity-attribute column ('which continent is Kyoto in' -> country.continent = 'Q48') reads 'Asia',
+        not the bare qid (SHEETS_AS_REASONING rule 5). Non-qid values pass through unchanged."""
+        import re as _re
+        rows = result.get("rows") or []
+        lbl = self._qid_labels(str(r[0]) for r in rows if r and _re.fullmatch(r"Q\d+", str(r[0])))
         if lbl:
             result["rows"] = [([lbl.get(str(r[0]), r[0])] + list(r[1:])) if r else r for r in rows]
 

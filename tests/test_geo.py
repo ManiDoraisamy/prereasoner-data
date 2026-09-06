@@ -426,16 +426,38 @@ def main():
        and (rtrail.get("currency") or {}).get("realization") == "converted",
        f"got={trail_value} error={(rtrail or {}).get('error')}")
     trail = [(v.get("op"), v.get("name")) for v in (rtrail or {}).get("views") or []]
-    ok("fx+world: the view trail is joined -> filtered -> calculated -> total",
-       [op for op, _ in trail] == ["join", "world_filter", "convert", "group_agg"],
+    ok("fx+world: the trail follows the step grammar (combined -> lookup -> filtered -> calculated -> total)",
+       [op for op, _ in trail] == ["join", "world_join", "world_filter", "convert", "group_agg"],
        f"trail={trail}")
     wviews = {v.get("name"): v for v in (rtrail or {}).get("views") or []}
-    jrows = (wviews.get("joined") or {}).get("rows") or []
+    jrows = (wviews.get("combined") or {}).get("rows") or []
+    lview = wviews.get("knowledgebase_lookup") or {}
     frows = (wviews.get("filtered") or {}).get("rows") or []
     crows = (wviews.get("calculated") or {}).get("rows") or []
-    ok("fx+world: joined shows every order; filtered keeps exactly the rows the conversion uses",
+    ok("fx+world: combined shows every order; filtered keeps exactly the rows the conversion uses",
        len(jrows) == 3 and len(frows) == 2 and len(frows) == len(crows),
-       f"joined={len(jrows)} filtered={len(frows)} calculated={len(crows)}")
+       f"combined={len(jrows)} filtered={len(frows)} calculated={len(crows)}")
+    # SHEETS_AS_REASONING rule 2: the lookup sheet must SHOW the reference column the filter uses,
+    # and rule 5: its values display as labels, not bare QIDs.
+    lcols = lview.get("columns") or []
+    country_i = lcols.index("country") if "country" in lcols else -1
+    ok("fx+world: the reference-lookup sheet shows the country column the filter will use",
+       country_i >= 0 and any(str(r[country_i]) == "France" for r in lview.get("rows") or []),
+       f"lookup_cols={lcols} rows={lview.get('rows')}")
+    flabel = (wviews.get("filtered") or {}).get("label") or ""
+    ok("fx+world: the filter label is human-readable (France, not Q142)",
+       "France" in flabel and "Q142" not in flabel, f"label={flabel!r}")
+
+    # A SINGLE uploaded sheet with a world filter must NOT show a 'combined' step (rule 3: a world
+    # lookup is not a combine) — the trail starts at the reference lookup. This exact shape shipped
+    # as a pointless orders-copy 'combined' tab on 2026-09-06.
+    _ONE = {"name": "orders", "columns": ["city", "currency", "amount"],
+            "rows": [["Paris", "EUR", 310], ["Paris", "EUR", 210], ["London", "GBP", 100]]}
+    rone = _retry(lambda: qc.serve([_ONE], "total amount in France in US dollars", sub))
+    one_trail = [v.get("op") for v in (rone or {}).get("views") or []]
+    ok("fx+world single sheet: no combined step; trail is lookup -> filtered -> calculated -> total",
+       one_trail == ["world_join", "world_filter", "convert", "group_agg"],
+       f"trail={[(v.get('op'), v.get('name')) for v in (rone or {}).get('views') or []]}")
     try:
         _json.dumps((rtrail or {}).get("views") or [])
         trail_serializable = True
