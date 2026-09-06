@@ -91,7 +91,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   <h2>Storage and retention</h2>
   <p>Conversation metadata, uploaded and derived tables, and saved workbook state are stored in
   user-scoped PostgreSQL schemas. Conversations expire after 90 days without activity by default.
-  The service also limits each account to 100 stored conversations, 256 MiB of serialized source
+  The service also limits each account to 500 stored conversations, 256 MiB of serialized source
   and workbook state, and 1 MiB per workbook snapshot. Reasoning traces stored in Firebase Realtime
   Database expire after seven days by default. A daily retention job applies both policies.</p>
 
