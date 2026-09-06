@@ -85,16 +85,25 @@ def main():
         ok(len(answered) >= 1, "at least one prereasoner_query call was made")
         ok("270" in r1["reply"], "the French total (270) from the tool appears in the reply")
 
-        # Rule 1b — deterministic intent survives the rewrite. The model may distill a strategic
-        # sentence, but a phrase the engine parses deterministically (the FX conversion target)
-        # must reach the engine: a rewrite that dropped "in US dollars" shipped an unconverted
-        # total as the answer on 2026-09-06. The stub echoes the received question into the trace,
-        # so this asserts at the exact boundary the guard protects.
-        print("[1b] conversion intent survives to the engine")
+        # Rule 1b — a standalone question reaches the engine in the user's words (prompt rule 3).
+        # A rewrite that dropped "in US dollars" shipped an unconverted total on 2026-09-06. The
+        # stub echoes the received question into the trace, so this asserts at the exact boundary.
+        print("[1b] standalone question passes through with its conversion intact")
         r1b = asyncio.run(chat("total amount in France in US dollars"))
         sent = [t.get("question", "") for t in r1b["traces"]]
         ok(any("us dollar" in q.lower() for q in sent),
            f"the engine-received question keeps the USD conversion (got {sent})")
+
+        # Rule 1c — a follow-up rewrite carries the conversation's qualifiers (prompt rule 4):
+        # after a France-in-USD turn, "how about Germany?" must become a Germany question that
+        # still converts to USD. This is the case no per-dimension code guard could cover.
+        print("[1c] follow-up rewrite carries the USD qualifier")
+        r1c = asyncio.run(chat("how about Germany?", history=[
+            {"role": "user", "content": "total amount in France in US dollars"},
+            {"role": "assistant", "content": "Your total for France comes to about 1,127 in US dollars."}]))
+        sent_c = [t.get("question", "") for t in r1c["traces"]]
+        ok(any("german" in q.lower() and "us dollar" in q.lower() for q in sent_c),
+           f"the rewritten follow-up keeps Germany AND the USD conversion (got {sent_c})")
 
         # Rule 4 — a clarify must pass through, never be smoothed into a fabricated answer.
         print("[4] clarify passes through, not smoothed over")
