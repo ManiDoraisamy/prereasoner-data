@@ -34,7 +34,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 <header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: September 1, 2026</div>
+  <div class="updated">Last updated: September 6, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -90,13 +90,19 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>Storage and retention</h2>
   <p>Conversation metadata, uploaded and derived tables, and saved workbook state are stored in
-  user-scoped PostgreSQL schemas. Reasoning traces stored in Firebase Realtime Database expire after
-  seven days by default. Operational logs are designed not to contain raw request bodies,
-  credentials, or customer rows.</p>
+  user-scoped PostgreSQL schemas. Conversations expire after 90 days without activity by default.
+  The service also limits each account to 100 stored conversations, 256 MiB of serialized source
+  and workbook state, and 1 MiB per workbook snapshot. Reasoning traces stored in Firebase Realtime
+  Database expire after seven days by default. A daily retention job applies both policies.</p>
+
+  <p>Operational logs contain operation names, sizes, and error classes. They do not contain raw
+  request bodies, questions, conversation history, generated SQL, credentials, spreadsheet rows,
+  or full error messages.</p>
 
   <h2>Deletion</h2>
   <p>Deleting a conversation removes its owned PostgreSQL data and the reasoning traces indexed to
-  that conversation. The delete-all action removes the signed-in user's reasoning-trace subtree.
+  that conversation. The delete-all action removes every conversation owned by the signed-in user
+  and the user's complete reasoning-trace subtree.
   Deleting only the Firebase identity does not currently erase every PostgreSQL or trace record.
   For complete account-linked deletion, email
   <a href="mailto:mani.doraisamy@gmail.com">mani.doraisamy@gmail.com</a>.</p>

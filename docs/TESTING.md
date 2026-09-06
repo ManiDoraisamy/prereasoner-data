@@ -11,8 +11,7 @@ Run these before involving models, PostgreSQL, or network services:
 pip install --require-hashes -r requirements-ci-windows.lock.txt
 python -m pip_audit -r requirements-ci-windows.lock.txt
 python -m deploy.dependency_locks
-python -m bandit -q -r engine db training orchestrator mcp_server -x tests -lll
-python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
+python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll
 python -m tests.test_sql_ast
 python -m tests.test_calculations
 python -m tests.test_master_ingest
@@ -23,13 +22,19 @@ python -m tests.test_schema_coverage
 python -m tests.test_enrichment
 python -m tests.test_source_sync
 python -m tests.test_app_migrations
+python -m tests.test_request_limits
+python -m tests.test_conversations
+python -m tests.test_provenance
 python -m tests.test_release
 python -m regress.product_templates
 python -m regress.source_activation
 node --check web/public/lib/workbook.js
 node web/tests/home_demo.test.js
 node web/tests/workbook_reference.test.js
-python -m compileall -q engine db training tests orchestrator mcp_server regress
+npm ci
+npm run test:browser
+python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
+python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
 git diff --check
 ```
 
@@ -37,6 +42,8 @@ These cover typed AST behavior, deterministic routing, private-reference selecti
 reference state, JavaScript syntax, and Python syntax. The platform locks generated from
 `requirements-ci.txt` are intentionally independent of the model stack. Live engine suites still
 require the serving container, model artifacts, and PostgreSQL.
+CI additionally scans the complete Git history with the immutable Gitleaks v3 action; a shallow local
+working-tree scan is not equivalent to that gate.
 
 `regress.product_templates` runs 35 source-cited public-template development cases, five for
 each domain profile. These fixtures measure deterministic recognition but are not customer
@@ -83,6 +90,9 @@ The runner executes the canonical suites in this order:
 | `tests.test_enrichment` | M0 profile/role contracts, intent contrastives, value typing, bounded adapters, domain gates, request-local materialization, tuple edges, replay manifests, and serving-shaped benchmarks |
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
 | `tests.test_app_migrations` | Application schema migrations, the world-table maintenance catalog, and least-privilege grants |
+| `tests.test_request_limits` | Canonical request validation, resource bounds, auth bypass isolation, and paid-request budgets |
+| `tests.test_conversations` | Stable pagination, atomic storage accounting, snapshot limits, and owned deletion |
+| `tests.test_provenance` | Typed output lineage, source/release identity, and HTTP/stream parity |
 | `tests.test_release` | Public-tree invariants: artifact boundary, secure model pins, privacy route, and canonical owners |
 | `tests.test_mcp` | MCP response shape and engine adapter |
 | `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
@@ -114,7 +124,7 @@ The gate covers core FK invariants, representative own-data SQL, canonical world
 wiring, and non-geographic grounding. Its own-data tier uses the same post-ranking calculation admissibility selector
 as live `TableQuery` serving; the gate must not execute raw rank 1 through a parallel policy path.
 
-## Browser State Tests
+## Browser Tests
 
 The workbook reference tests run in a Node VM with a minimal browser/Firebase harness:
 
@@ -128,6 +138,19 @@ not a valid check of the release image.
 
 They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, and snapshot restoration. Run
 `node --check` on every changed JavaScript file as well.
+
+The release journey uses Playwright and a local deterministic API fixture:
+
+```powershell
+npm ci
+npx playwright install chromium
+npm run test:browser
+```
+
+`web/tests/browser/release-flow.spec.js` signs in through the local client contract, creates and uploads a real
+XLSX workbook through the production Web Worker parser, waits for an answer, checks source and calculation
+provenance, opens the SQL trace, asks a follow-up, and deletes the conversation. The API response is a fixture so
+the browser test is deterministic; Python integration suites separately cover the real engine and database.
 
 For a manual browser pass, start Firebase Hosting from `web/`:
 
@@ -201,6 +224,10 @@ terraform -chdir=infra fmt -check
 terraform -chdir=infra init -backend=false -input=false
 terraform -chdir=infra validate
 ```
+
+The engine image entrypoint lets `python -m engine.retention_cleanup` run without loading model artifacts. Execute
+that command only against a disposable or explicitly selected database. CI asserts the entrypoint contract without
+connecting to customer storage; the live database suite covers cleanup behavior with isolated fixtures.
 
 CI also runs credential-free, no-refresh plans to prove that the default creates no chat
 resources, that `enable_orchestrator=true` fails without `anthropic_secret_id`, and that a

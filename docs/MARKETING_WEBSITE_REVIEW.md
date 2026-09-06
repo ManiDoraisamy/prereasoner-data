@@ -2,7 +2,7 @@
 
 Status: read-only review of the separate Prereasoner marketing website. This document records
 findings; it does not authorize changes to the website repository or a production deployment.
-Claims were compared on 2026-09-01 against the live `prereasoner.com` pages, their local source in
+Claims were compared on 2026-09-06 against the live `prereasoner.com` pages, their local source in
 the separately owned FormFacade checkout, and the implementation and release contracts in this
 repository. Recheck the live pages at release time; this file is evidence, not website source.
 
@@ -61,8 +61,8 @@ These are findings for the website owner. They are not changes to make from this
 
 The source repository and the configured
 [runtime-weight repository](https://huggingface.co/prereasoner/prereasoner-weights) are now public.
-The reviewed marketing page still contains "GitHub coming at launch" and "Hugging Face weights coming
-at launch" placeholders, so the website owner should replace those placeholders with the public links.
+The live Community Edition page links both repositories and no longer contains the former "coming at
+launch" placeholders. This item is resolved on the website as reviewed on 2026-09-06.
 
 The weight release includes license metadata and is pinned by immutable revision and file hashes. Its
 model card honestly records the historical unified-router checkpoint's remaining corpus, split, seed,
@@ -71,10 +71,11 @@ historical training run is independently reproducible.
 
 ### Knowledgebase Distribution
 
-The website says the global knowledgebase is included. This repository contains deterministic ETL
-and source manifests, but it does not distribute a seeded production database. Clarify at launch
-whether Community Edition downloads a versioned snapshot or rebuilds source-owned tables through
-the ETL. In either case, preserve source licenses, release identities, and freshness metadata.
+The website says the global knowledgebase is included. This repository does not distribute a seeded
+production database: the Community deployer builds its minimal Wikidata, IANA, and ECB serving data
+from publisher artifacts through the deterministic ETL. The website should say this directly so
+"included" is not read as a bundled database snapshot. Source licenses, release identities, and
+freshness metadata remain part of that build contract.
 
 ### Deployment Promise
 
@@ -82,6 +83,8 @@ The repository now provides a guided **Deploy to Google Cloud** button and one c
 `deploy/gcp/deploy.sh`. It creates isolated state, builds and tests the public artifact, applies the
 cost-reduced infrastructure profile, initializes the minimal world database, and removes the
 temporary bootstrap identity. The website can link the exact snippet in `deploy/gcp/button.html`.
+The live Community Edition page did not contain that button or a Google Cloud Shell link when checked
+on 2026-09-06.
 
 Do not describe this as anonymous, free, or a complete hosted browser application. Google still
 requires authentication, a billing-enabled project, IAM authorization, and one cost confirmation.
@@ -119,9 +122,12 @@ the corresponding commercial offer are live.
 ### Privacy And Compliance
 
 The shared footer displays a Formesign SOC 2 badge on Prereasoner pages even though the badge does
-not establish Prereasoner scope. The generic website privacy/terms pages also need to match the
-hosted Prereasoner data flow, including Google/Firebase, PostgreSQL, Anthropic-assisted chat when
-enabled, retention, and deletion. This should be durable policy text, not repeated consent dialogs.
+not establish Prereasoner scope. The linked Community Edition privacy page is currently a generic
+Google Forms add-on policy. It says the product receives form responses and uploaded files and names
+Stripe, OpenAI, and Sarvam AI, but it does not document Prereasoner's Firebase identity, PostgreSQL
+conversations, 90-day inactivity retention, delete-all behavior, minimized logs, or the
+operator-controlled Anthropic path. Its stated effective date is 2019. Replace it with
+product-specific durable policy text aligned with `PRIVACY.md`; do not add repeated consent dialogs.
 
 ## Launch Evidence Checklist
 

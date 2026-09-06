@@ -317,6 +317,23 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     assert "Type %s to continue" in deploy
     assert "gcloud auth login --update-adc" in deploy
     assert "--allow-unauthenticated" not in deploy
+    terraform = _text("infra/main.tf")
+    assert 'resource "google_cloud_run_v2_job" "retention_cleanup"' in terraform
+    assert 'command = ["python", "-m", "engine.retention_cleanup"]' in terraform
+    retention = terraform.split(
+        'resource "google_cloud_run_v2_job" "retention_cleanup"', 1
+    )[1].split('resource "google_cloud_run_v2_job_iam_member"', 1)[0]
+    for dependency in (
+        "google_project_iam_member.run_cloudsql",
+        "google_secret_manager_secret_iam_member.run_serving_db_password",
+        "google_secret_manager_secret_version.serving_db_password",
+        "google_project_iam_member.run_rtdb",
+    ):
+        assert dependency in retention
+    artifact_registry = terraform.split(
+        'resource "google_artifact_registry_repository" "engine"', 1
+    )[1].split('resource "google_sql_database_instance"', 1)[0]
+    assert "run_cloudsql" not in artifact_registry
 
     ci = _text(".github/workflows/ci.yml")
     assert "sed -i 's/backend \"gcs\" {}/backend \"local\" {}/'" in ci
@@ -338,6 +355,12 @@ def test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer():
             pass
         else:
             raise AssertionError("invalid release-smoke answer was accepted")
+
+
+def test_release_smoke_checks_current_chat_migration():
+    smoke = _text("engine/release_smoke.py")
+    for column in ("source_bytes", "state_bytes", "last_active_at", "expires_at"):
+        assert column in smoke
 
 
 def test_serving_identity_cannot_read_the_admin_database_secret():
@@ -372,7 +395,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.1.0"]
+    assert query["cloudshell_git_branch"] == ["v0.2.0"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -387,6 +410,7 @@ TESTS = [
     test_bootstrap_records_failure_and_rejects_privileged_serving_role,
     test_public_deployer_has_isolated_state_and_cost_safe_defaults,
     test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer,
+    test_release_smoke_checks_current_chat_migration,
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
     test_marketing_button_opens_the_pinned_public_walkthrough,

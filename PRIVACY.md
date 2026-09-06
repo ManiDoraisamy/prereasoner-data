@@ -29,8 +29,9 @@ generated SQL, query results, and reasoning traces. Depending on deployment conf
   in user-scoped schemas.
 - Firebase Authentication processes identity and session information.
 - Firebase Realtime Database can temporarily store reasoning traces under `/runs/{uid}/{jobId}`.
-- Application logs can contain operational errors. Deployers must not add raw request bodies,
-  credentials, or customer rows to logs.
+- Application logs record stable operation names, sizes, and exception classes. Request bodies,
+  prompts, conversation history, generated SQL, credentials, customer rows, source values, and
+  full exception messages are not logged by the serving or orchestrator request paths.
 
 Firebase identity is verified server-side. Client-supplied user IDs do not select storage
 ownership. Google Sheets imports use the narrow `drive.file` scope and read only a file the user
@@ -66,16 +67,22 @@ SQL execution, and verification remain deterministic.
 
 ## Retention and Deletion
 
-Conversation deletion removes owned PostgreSQL metadata, its per-conversation schema, and RTDB
-jobs indexed to that conversation. Delete-all removes the verified Firebase user's entire
-`/runs/{uid}` subtree. A configured RTDB deletion failure aborts the operation rather than reporting
-privacy deletion as successful.
+Stored conversations expire after 90 days of inactivity by default (`CONVERSATION_RETENTION_DAYS`,
+bounded to 1-3650 days). Reopening, querying, or saving a conversation refreshes that expiry. The
+default per-user limits are 100 durable conversations and 256 MiB of serialized source tables plus
+workbook state. Each persisted workbook snapshot is limited to 1 MiB. These limits bound application
+storage; PostgreSQL backups follow the operator's separately configured backup policy.
+
+Conversation deletion removes owned PostgreSQL metadata, its per-conversation schema, and RTDB jobs
+indexed to that conversation. Delete-all removes the verified Firebase user's conversations and
+entire `/runs/{uid}` subtree. A configured RTDB deletion failure aborts the operation rather than
+reporting privacy deletion as successful.
 
 When RTDB is enabled, new trace jobs carry a seven-day expiry by default
-(`RTDB_TRACE_RETENTION_DAYS`, bounded to 1-365 days). The Terraform deployment creates a Cloud Run
-cleanup job and a daily Cloud Scheduler trigger; deployments managed outside Terraform must run
-`python -m engine.trace_cleanup` with Firebase Admin credentials on the same cadence. Older traces
-without expiry metadata require a one-time operator cleanup.
+(`RTDB_TRACE_RETENTION_DAYS`, bounded to 1-365 days). Terraform creates one daily Cloud Run retention
+job for PostgreSQL conversations and RTDB traces. Deployments managed outside Terraform must run
+`python -m engine.retention_cleanup` with database access and, when RTDB is enabled, Firebase Admin
+credentials on the same cadence. Older traces without expiry metadata require a one-time operator cleanup.
 
 Deleting a Firebase account is not currently an application-level request to erase PostgreSQL or
 RTDB data. The hosted policy therefore directs complete deletion requests to the operator. A

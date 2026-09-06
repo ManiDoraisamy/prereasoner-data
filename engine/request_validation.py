@@ -82,8 +82,12 @@ def validate_tables(value, *, allow_single: bool = False) -> list[dict]:
     for index, table in enumerate(value):
         if not isinstance(table, dict):
             raise RequestValidationError("each table must be an object")
-        raw_name = table.get("name") or f"t{index}"
-        data = table.get("data") or ""
+        raw_name = table.get("name", f"t{index}")
+        data = table.get("data", "")
+        if raw_name in (None, ""):
+            raw_name = f"t{index}"
+        if data is None:
+            data = ""
         if not isinstance(raw_name, str) or not isinstance(data, str):
             raise RequestValidationError("table name and data must be strings")
         display_name = raw_name.strip()

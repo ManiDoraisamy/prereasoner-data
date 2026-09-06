@@ -15,7 +15,7 @@ Hosting for `web/` are managed outside Terraform; see step 1.
 
 ```
 browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run "prereasoner-api"
-   │                                                        │ 4Gi / 2 vCPU, scale 0..3
+   │                                                        │ 8Gi / 4 vCPU, scale 0..3
    ├── Firebase Auth (ID tokens, verified in-app)           │ unix socket /cloudsql/...
    └── Firebase RTDB  (live trace stream, optional) <───────┤
                                             Cloud SQL Postgres 16 (pgvector) "world"
@@ -87,11 +87,14 @@ terraform init -reconfigure \
 terraform apply -var project_id=<PROJECT> \
   -var image=<region>-docker.pkg.dev/<project>/<repo>/engine@sha256:<digest> \
   -var rtdb_url=https://<project>-default-rtdb.firebaseio.com \
-  -var rtdb_trace_retention_days=7                         # omit rtdb_url to disable streaming
+  -var rtdb_trace_retention_days=7 \
+  -var conversation_retention_days=90
 ```
 
 Outputs include `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`,
 and the serving-role secret. `chat_url` is null unless the optional orchestrator is enabled.
+The daily retention job always removes expired PostgreSQL conversations; when `rtdb_url` is set, the
+same job also removes expired RTDB traces.
 
 The service will deploy but return errors on `/api/reason`/`/api/knowledge` until the
 database is seeded (next step). `/api/healthz` reports readiness once the models are loaded;
@@ -308,7 +311,7 @@ Notes:
 | Component | Config | Est. monthly |
 |---|---|---|
 | Cloud SQL | `db-custom-1-3840` (1 vCPU / 3.75 GB), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
-| Cloud Run | 4 Gi / 2 vCPU, min 0 (scale to zero) | $0 idle; ~$0.21/active-hour (light demo use: a few $) |
+| Cloud Run | 8 Gi / 4 vCPU, min 0 in Community (scale to zero) | Usage based; verify the current regional price before apply |
 | Artifact Registry | ~3–4 GB image | ~$0.40 |
 | Secret Manager | 1 secret, few accesses | < $0.10 |
 | Cloud Build | E2_HIGHCPU_8, ~20 min/build | ~$0.30 per build |

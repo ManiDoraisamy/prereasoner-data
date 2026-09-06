@@ -18,12 +18,16 @@ $env:RUN_ENGINE_TESTS = "0"
 $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 node web/tests/workbook_reference.test.js
+npm ci
+npx playwright install chromium
+npm run test:browser
 ```
 
 CI installs `requirements-ci.lock.txt`, the Linux lock generated from the same input, and runs the
-same Python boundary, Ruff fatal checks, frontend tests, and Terraform
-format/validation. The typed planner does not need PyTorch at import time; model libraries
-are loaded only by model-backed methods.
+same Python boundary, correctness-critical Ruff checks over every tracked Python package, the real-XLSX
+Playwright journey, PostgreSQL numeric parity, Terraform format/validation, container builds, SBOM generation,
+critical-vulnerability scans, and a full-history Gitleaks scan. The typed planner does not need PyTorch at import time; model libraries are
+loaded only by model-backed methods.
 
 ## External Artifacts
 
@@ -53,26 +57,25 @@ source and deterministic non-model test path are reproducible without those depl
   checkpoint lacks complete machine-readable corpus, split, seed, and metric provenance. See `MODEL_CARD.md`.
 - **Production launch:** not established by a source release. It additionally requires the public model
   bundle in an immutable tested image, non-superuser database serving, protected state and backups,
-  restricted browser keys, live auth/isolation tests, and a release-database regression run.
+  restricted browser keys, live auth/isolation tests, the scheduled retention job, and a release-database
+  regression run.
 
-Community Edition is an intentional launch offer and must not be removed because its release
-artifacts are still being prepared. Its current evidence gaps and the separately owned marketing
-repository boundary are recorded in `docs/MARKETING_WEBSITE_REVIEW.md`. Before the offer is marked
-generally available, retain the now-public manifested weight link and provide either a versioned
-reference snapshot or a verified clean-build data path. Changes to this repository do not authorize edits or deployment
+Community Edition is an intentional release offer. The runtime weights are public and manifest-pinned;
+the guided Google Cloud path rebuilds its minimal Wikidata, IANA, and ECB serving data instead of shipping
+a database snapshot. The separately owned marketing-repository boundary and remaining website findings are
+recorded in `docs/MARKETING_WEBSITE_REVIEW.md`. Changes to this repository do not authorize edits or deployment
 of the marketing website.
 
-The source tree is designed for an open-source code release, but readiness belongs to one exact,
-clean commit that has completed the checklist below. A dirty working tree or a prior deployment is
-not release evidence. The hosted launch remains conditional.
+Release readiness belongs to one exact, clean, tagged commit that has completed the checklist below.
+A dirty working tree or a prior deployment is not release evidence. Hosted readiness must be recorded
+separately for the exact image digest and database release used in production.
 External LLM calls are disabled unless the operator enables the deployment switch. Hosted operators
 must publish an accurate privacy notice and establish an appropriate legal basis and processor terms.
 The target Terraform configuration uses dedicated service accounts, a non-superuser serving role,
-regional Cloud SQL with backups/PITR, immutable image digests, and RTDB cleanup when trace streaming
-is enabled. Those are code-level guarantees only until a plan against the restored production state
-is reviewed and applied. Remaining launch gates are external or deployment-specific: provision and
-verify the public model bundle in the release image, verify browser-key
-restrictions, run live auth/isolation tests, and record a seeded release-database regression.
+Cloud SQL backups/PITR, immutable image digests, daily conversation cleanup, and RTDB cleanup when trace
+streaming is enabled. Those are code-level guarantees until a plan against the intended deployment state is
+reviewed and applied. Before a hosted rollout, verify the public model bundle in the release image, browser-key
+restrictions, live auth/isolation behavior, and a seeded release-database regression.
 
 Schema.org should be described as the semantic vocabulary. Wikidata and publisher datasets supply
 training observations and runtime facts under their own terms; Wikidata is not the primary ontology.
@@ -84,8 +87,8 @@ source-key grounding remains mandatory.
 
 ## Release Checklist
 
-1. Run `python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9`.
-   Run `python -m bandit -q -r engine db training orchestrator mcp_server -x tests -lll`.
+1. Run `python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9`.
+   Run `python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll`.
 2. Run `python -m pip_audit` for every committed lock on its target platform. The CUDA-enabled Torch
    runtime is supplied and verified by the immutable training runner; then run the
    CI-equivalent public-checkout suite and frontend test shown above.
@@ -94,18 +97,22 @@ source-key grounding remains mandatory.
    seeded release database. A public checkout without that database must record this gate as skipped.
 5. For planner changes, run a fresh provenance-bearing Spider `whole_db` evaluation and compare per-example losses.
 6. Run `terraform -chdir=infra fmt -check`, `terraform -chdir=infra init -backend=false`, and `terraform -chdir=infra validate`.
-7. Build both containers. The chat image is optional; its build must pass the real MCP stdio handshake.
-8. Run `gitleaks git --redact --log-opts='--all'` and scan tracked files/history for customer
+7. Run `npm ci`, install the pinned Playwright Chromium build, and run `npm run test:browser`. The journey must
+   exercise the real XLSX worker path, sign-in contract, answer, provenance, SQL trace, follow-up, and deletion.
+8. Build the engine, source-sync, and optional chat containers. The chat image must pass the real MCP stdio
+   handshake when it is included.
+9. Run `gitleaks git --redact --log-opts='--all'` and scan tracked files/history for customer
    data, database dumps, model binaries, local state, and generated checkpoints. The configured
    exception is limited to documented public browser identifiers in `web/public/lib/config.js`.
-9. Review `THIRD_PARTY.md`, source-specific licenses, `MODEL_CARD.md`, `DATA_CARD.md`,
+10. Review `THIRD_PARTY.md`, source-specific licenses, `MODEL_CARD.md`, `DATA_CARD.md`,
    `SECURITY.md`, and `CITATION.cff`.
-10. Tag only an exact tested commit. Keep benchmark outputs tied to that commit and artifact hashes.
-11. Provision weights into an empty directory with `python -m engine.fetch_weights` and verify every
+11. Tag only an exact tested commit. Keep benchmark outputs tied to that commit and artifact hashes.
+12. Provision weights into an empty directory with `python -m engine.fetch_weights` and verify every
     external and committed artifact against `weights_manifest.json`.
-12. Confirm Cloud Run serves through a non-superuser database role and deploy an image by digest,
-    not the mutable `latest` tag. If RTDB is enabled, confirm the cleanup job is scheduled.
-13. Leave `admin_emails` empty unless the admin dashboard is required; when enabled, verify the
+13. Confirm Cloud Run serves through a non-superuser database role and deploy an image by digest,
+    not the mutable `latest` tag. Confirm the daily conversation-retention job exists; if RTDB is enabled, it
+    must clean expired traces in the same run.
+14. Leave `admin_emails` empty unless the admin dashboard is required; when enabled, verify the
     explicit Firebase email allowlist with both authorized and unauthorized accounts.
 
 ## Updating Dependencies

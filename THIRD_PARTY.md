@@ -14,6 +14,7 @@ system; no source's facts are relicensed merely because they are used for traini
 | [spaCy en_core_web_md](https://spacy.io/models/en#en_core_web_md) | English parsing and entity candidates | MIT; the installed wheel contains its license and source notices |
 | [Wikidata](https://www.wikidata.org/wiki/Wikidata:Copyright) | Entity identifiers and the largest current set of property-labelled training observations | Structured data is CC0; other Wikidata content can have different terms |
 | [Schema.org](https://schema.org/docs/terms.html) | Versioned ontology shell: named classes, properties, and inheritance used by training and evidence | CC BY-SA 3.0 |
+| [SheetJS Community Edition 0.20.3](https://cdn.sheetjs.com/) | Sandboxed browser parsing for attached Excel workbooks; `web/public/vendor/xlsx-0.20.3.full.min.js` is pinned at SHA-256 `cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41` | Apache-2.0 |
 
 The database synchronizers can ingest additional publisher snapshots. Those snapshots are
 not distributed with this repository and remain subject to their publisher terms:

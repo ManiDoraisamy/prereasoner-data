@@ -45,6 +45,7 @@ to regenerate both locks:
 
 ```powershell
 pip install --require-hashes -r requirements-ci-windows.lock.txt
+npm ci
 ```
 
 `requirements.lock.txt` is the Linux serving-image lock and is installed by `Dockerfile`. Use the
@@ -74,9 +75,13 @@ python -m tests.test_schema_coverage
 python -m tests.test_enrichment
 python -m tests.test_source_sync
 python -m tests.test_app_migrations
+python -m tests.test_request_limits
+python -m tests.test_conversations
+python -m tests.test_provenance
 node web/tests/workbook_reference.test.js
-python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
-python -m compileall -q engine db training tests orchestrator mcp_server regress
+npm run test:browser
+python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
+python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
 ```
 
 These establish the planner, routing, reference-data, frontend-state, and syntax baseline without a
@@ -182,8 +187,10 @@ localStorage.setItem('pr_api_base', 'http://localhost:8080');
 sessionStorage.setItem('pr_test_auth', '1');
 ```
 
-The frontend has no build step. `reason.html` and `knowledge.html` load the shared classic script
-`web/public/lib/workbook.js`.
+The frontend has no production build step. `reason.html` and `knowledge.html` load the shared classic script
+`web/public/lib/workbook.js`. Excel files are parsed by `web/public/lib/xlsx-worker.js` using the vendored,
+version-pinned SheetJS build; its compressed, expanded, row, column, worksheet, and time limits are covered by the
+release browser test.
 
 ## 8. Find the right owner
 
@@ -207,7 +214,11 @@ The frontend has no build step. `reason.html` and `knowledge.html` load the shar
 | IANA/CLDR source ingestion | `db/sync/sources/<source>/sync.py` | `tests.test_source_sync` |
 | World grounding | `engine/knowledge_query.py` | live world suites |
 | HTTP/auth adaptation | `engine/server.py` | focused suite plus live request |
+| Canonical request names and limits | `engine/request_validation.py` | `tests.test_request_limits` |
+| Result and trace provenance | `engine/provenance.py` | `tests.test_provenance` |
+| Conversation retention and quotas | `engine/conversations.py`, `engine/retention_cleanup.py` | `tests.test_app_migrations`, live database suite |
 | Workbook lifecycle | `web/public/lib/workbook.js` | `web/tests/workbook_reference.test.js` |
+| XLSX ingestion | `web/public/lib/xlsx-reader.js`, `web/public/lib/xlsx-worker.js` | `npm run test:browser` |
 
 `CLAUDE.md` is the repository's machine-agent change discipline and ownership map. Human contributors should follow
 the same principle: extend the current owner, migrate every caller, and delete the displaced implementation.
@@ -219,8 +230,9 @@ $env:RUN_ENGINE_TESTS = "0"
 $env:RUN_ORCHESTRATOR_TESTS = "0"
 python -m tests.run_all
 node web/tests/workbook_reference.test.js
-python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
-python -m compileall -q engine db training tests orchestrator mcp_server regress
+npm run test:browser
+python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
+python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
 git diff --check
 git status --short
 ```

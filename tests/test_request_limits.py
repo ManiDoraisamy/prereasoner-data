@@ -146,10 +146,22 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
         {"question": "x", "tables": [], "jobId": "bad/path"},
         {"question": "x", "tables": [], "as_of": "yesterday"},
         {"question": "x", "tables": [], "conversation_id": "c_not-an-id"},
+        {"question": "x", "tables": [{"name": 0, "data": "a\n1"}]},
+        {"question": "x", "tables": [{"name": "data", "data": 0}]},
     ):
         try:
             validate_reason_request(body)
             raise AssertionError("invalid reasoning request was accepted")
+        except RequestValidationError:
+            pass
+
+    for body in (
+        {"message": "x", "tables": [{"name": 0, "data": "a\n1"}]},
+        {"message": "x", "tables": [{"name": "data", "data": 0}]},
+    ):
+        try:
+            validate_chat_request(body)
+            raise AssertionError("invalid chat table was accepted")
         except RequestValidationError:
             pass
 

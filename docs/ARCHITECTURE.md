@@ -22,7 +22,8 @@ browser or MCP client
         | authenticated request: tables, question, optional conversation id
         v
 engine/server.py
-        |  HTTP parsing, limits, auth, conversation ownership
+        |  bounded JSON parsing, canonical request validation, auth
+        |  conversation ownership and private-reference selection
         |  private-reference adapter
         v
 engine/knowledge.py
@@ -36,7 +37,8 @@ engine/routing.py
         v
 guarded SQL execution in the conversation schema
         |
-        +-- response: rows and SQL, plus route-specific evidence/provenance
+        +-- engine/provenance.py: typed expression and source lineage
+        +-- response: rows, SQL, evidence, provenance, and source releases
         +-- optional Firebase RTDB progress events
 ```
 
@@ -45,13 +47,13 @@ engine operation to MCP clients. Neither component owns data reasoning or may in
 
 ## Data Scopes
 
-The PostgreSQL deployment uses four distinct scopes:
+The PostgreSQL deployment uses five distinct scopes:
 
 | Scope | Schema | Contents |
 |---|---|---|
 | Wikidata shared data (legacy names) | `knowledgebase`, `public` | Current resolution index, taxonomy, Wikidata-backed entity tables, and staging/geo data; target migration is described below |
 | Synchronized reference sources | See `SOURCE_DATA.md` | Nine publisher-owned schemas with active physical releases; logical datasets remain separately deployment-gated |
-| Application metadata | `chat` | Admin-migrated conversation, user-profile, and ownership tables; serving receives DML only |
+| Application metadata | `chat` | Admin-migrated conversation, user-profile, ownership, quota, activity, and expiry tables; serving receives DML only |
 | Conversation | `c_<32hex>` | Uploaded tables and persisted world-resolution bridges |
 | User | `m_<md5(subject)>` | Reusable private reference tables |
 
@@ -125,21 +127,43 @@ replay. The legacy Wikidata schema migration is still pending.
 
 ## Request Flow
 
-1. `db/init.sql` plus the privileged application migration command prepare shared `chat` metadata before deployment;
-   `engine.server` then validates the body, verifies the principal, and parses uploaded tables.
-2. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
+1. `db/init.sql` plus the privileged application migration command prepare shared `chat` metadata before deployment.
+2. `engine.request_validation` validates both engine and orchestrator request shapes. It bounds questions, history,
+   table count, per-table size, and aggregate size, then converts display names into one 34-byte canonical table
+   identifier. Names that collide after canonicalization are rejected before parsing or paid inference.
+3. `engine.server` verifies the Firebase principal and parses the validated CSV payloads. Browser XLSX parsing is
+   isolated in `web/public/lib/xlsx-worker.js`, which uses a vendored SheetJS build with compressed, expanded,
+   row, column, worksheet, and time limits.
+4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning.
-3. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
-4. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question.
-5. `engine.routing.route()` makes the single serving route decision. Composition owns only a grounded world
+5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
+6. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question.
+7. `engine.routing.route()` makes the single serving route decision. Composition owns only a grounded world
    dependency that needs multi-step operations. Self-contained uploaded/reference data stays on the AST path.
-6. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
+8. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
    the explicitly reachable shared knowledge tables.
-7. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
+9. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
    scores, the shared registry selects the highest-ranked candidate that realizes every detected calculation. An
    unmet or ambiguous calculation replaces the numeric result with a structured clarification.
-8. The engine returns rows, SQL, route evidence, and intermediate views. Trace writes are best effort and do not
-   determine the answer.
+10. `engine.provenance` maps typed output expressions to their exact table/column operands and propagates source
+    identity through emitted views. Publisher adapters provide release IDs. The browser renders this contract and
+    never classifies a column by its name.
+11. The engine returns rows, SQL, route evidence, intermediate views, and provenance. Trace writes are best effort
+    and do not determine the answer.
+
+## Request And Provenance Contracts
+
+There is one request validator. `orchestrator.validation` is a compatibility import, not a second policy. A table
+display name never reaches SQL directly: `engine.request_validation.canonical_table_name()` removes known file
+extensions, normalizes to ASCII, reserves space for runtime bridge suffixes, and hashes overlong names. The engine
+revalidates orchestrator calls at its own trust boundary.
+
+Provenance has two inputs. Source records describe uploaded tables, selected private references, and activated
+publisher snapshots. Computation records come from the selected typed AST and name each output expression,
+operator, and qualified operand. Intermediate view records propagate those origins through the emitted operation
+stack. `column_provenance` is aligned positionally with `columns`; an absent or malformed record is not inferred by
+the browser. Provenance explains the computation that ran. It does not certify that the selected query was the
+correct interpretation of the question.
 
 ## Own-Data SQL Planner
 
@@ -287,6 +311,23 @@ attributes.
 `engine/master.py` owns this behavior and its database transactions. `engine/server.py` only translates HTTP
 requests and responses.
 
+## Conversation Lifecycle
+
+`engine/conversations.py` is the storage owner. The server mints identifiers in the fixed
+`c_<32 lowercase hex>` shape, checks ownership on every reopen, update, and delete, and enforces the same shape with
+a PostgreSQL constraint before an identifier can name a schema. Conversation lists use a stable
+`(created_at, conversation_id)` cursor so equal timestamps do not skip rows.
+
+Defaults are 100 durable conversations per user, 256 MiB of serialized source and workbook state per user, 1 MiB
+per workbook snapshot, and deletion after 90 days of inactivity. Configuration is bounded in `engine.config`.
+Creation and state replacement share a per-user PostgreSQL advisory transaction lock, making quota checks atomic
+across service instances. Reopening, querying, or saving refreshes the expiry.
+
+`python -m engine.retention_cleanup` is the single scheduled cleanup owner. It deletes expired conversation
+metadata and the corresponding schemas in bounded batches, then removes expired RTDB traces when RTDB is enabled.
+Terraform runs it daily with the non-superuser serving role; the engine container entrypoint exempts only this
+maintenance command from loading model artifacts.
+
 ## Services
 
 | Package | Role | Must not own |
@@ -300,14 +341,16 @@ requests and responses.
 | `spider/` | Serving-faithful evaluation and research artifacts | Production selection shortcuts |
 
 The engine container includes the complete runtime. The orchestrator is opt-in in Docker Compose and Terraform;
-the engine does not require an Anthropic key. The orchestrator container copies only the auth, trace, and
-configuration modules it imports; it does not contain planner weights or engine implementation modules.
+the engine does not require an Anthropic key. The orchestrator container copies only the auth, trace, request
+validation, currency-intent, configuration, and adapter modules it imports; it does not contain planner weights or
+planner implementation modules.
 
 ## Concurrency And Failure Behavior
 
 - Model instances are loaded once per service process and shared by the serving stack.
 - World-sensitive operations are serialized where shared mutable database state requires it.
 - Database operations use bounded inputs and explicit transaction ownership.
+- Cross-instance conversation quotas use a per-user PostgreSQL advisory transaction lock.
 - SQL is read-only, identifiers are quoted, and conversation schemas are ownership checked.
 - Reference writes are atomic and failures are visible to callers.
 - Optional trace or presentation failures do not fabricate a successful answer.
@@ -334,6 +377,9 @@ The repository has one owner per decision:
 - own-data SQL representation: the typed AST;
 - private-reference behavior: `engine.master`;
 - runtime configuration: `engine.config`;
+- request validation and canonical table names: `engine.request_validation`;
+- response and trace lineage: `engine.provenance`;
+- conversation storage and expiry: `engine.conversations` plus `engine.retention_cleanup`;
 - measured Spider claims: `spider/results/RESULTS.md`.
 
 When replacing behavior, migrate every caller and remove the displaced path. Do not add another planner, router,

@@ -33,7 +33,7 @@ project, and sufficient IAM permissions.
 
 ```bash
 gcloud auth login --update-adc
-git clone https://github.com/ManiDoraisamy/prereasoner-data.git
+git clone --branch v0.2.0 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
 cd prereasoner-data
 bash deploy/gcp/deploy.sh --project <PROJECT_ID>
 ```
@@ -49,10 +49,15 @@ Options:
 ```
 
 The Community profile uses Zonal Cloud SQL and `min_instances=0`. It keeps deletion protection on,
-external LLM processing off, and enrichment off. The initial bootstrap loads the high-population
-Wikidata serving projection and complete current ECB history. The deployment creates a functional engine API; the
+external LLM processing off, and activates only the reviewed `iana_country` enrichment dataset. The initial
+bootstrap loads the high-population Wikidata serving projection, IANA country release, and complete current ECB
+history. The deployment creates a functional engine API and a daily PostgreSQL conversation-retention job; the
 included browser client remains a separate Firebase deployment because its Google OAuth identifiers
 and authorized domains belong to each operator.
+
+Before reporting success, the deployer runs the current application migrations, reads the required shared tables
+as the non-superuser serving role, executes an exact-decimal calculation and a model-backed reasoning request in
+the built image, checks service readiness, and verifies that an unauthenticated reasoning request is rejected.
 
 ## State And Replays
 

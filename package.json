@@ -1,0 +1,11 @@
+{
+  "name": "prereasoner-release-tests",
+  "private": true,
+  "scripts": {
+    "test:web": "node web/tests/home_demo.test.js && node web/tests/workbook_reference.test.js",
+    "test:browser": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

@@ -12,7 +12,7 @@ from copy import deepcopy
 
 _PASSTHROUGH_OPS = frozenset({"filter", "time_filter", "world_filter", "topn", "sort", "having"})
 _DERIVED_OPS = frozenset({"group_agg", "yoy", "running", "divide", "share"})
-_WIKIDATA_TABLES = frozenset({"city", "country", "u_s_state", "Elements", "Continents"})
+_WIKIDATA_TABLES = frozenset({"city", "country", "u_s_state", "elements", "continents"})
 
 
 def _record(kind: str, source: str, *, table=None, column=None, release_id=None,
@@ -33,6 +33,7 @@ class ProvenanceContext:
     def __init__(self, tables, *, uploaded_count: int, reference_count: int = 0,
                  enrichment=None):
         self._by_column: dict[str, list[dict]] = {}
+        self._by_location: dict[tuple[str, str], dict] = {}
         self._last: dict[str, dict] = {}
         enrichment_sources = {}
         if enrichment is not None:
@@ -57,6 +58,7 @@ class ProvenanceContext:
                 item = _record(meta["kind"], meta["source"], table=name, column=str(column),
                                release_id=meta.get("release_id"))
                 self._by_column.setdefault(str(column).casefold(), []).append(item)
+                self._by_location[(name.casefold(), str(column).casefold())] = item
 
     @staticmethod
     def _valid_columns(value, columns) -> bool:
@@ -81,6 +83,61 @@ class ProvenanceContext:
             "sources": [deepcopy(item) for item in candidates],
         }
 
+    def _location_record(self, table: str, column: str) -> dict | None:
+        item = self._by_location.get((str(table).casefold(), str(column).casefold()))
+        return deepcopy(item) if item is not None else self._catalog_record(column)
+
+    @staticmethod
+    def _expression_inputs(expression: dict) -> list[str]:
+        kind = expression.get("kind") if isinstance(expression, dict) else None
+        if kind == "column":
+            return [f'{expression.get("table")}.{expression.get("column")}']
+        if kind == "aggregate":
+            return ProvenanceContext._expression_inputs(expression.get("operand") or {})
+        if kind == "binary":
+            return (ProvenanceContext._expression_inputs(expression.get("left") or {})
+                    + ProvenanceContext._expression_inputs(expression.get("right") or {}))
+        return []
+
+    def _expression_record(self, expression: dict, output_column: str) -> dict:
+        kind = expression.get("kind") if isinstance(expression, dict) else None
+        if kind == "column":
+            return (self._location_record(expression.get("table", ""), expression.get("column", ""))
+                    or _record("derived", "Prereasoner", column=output_column,
+                               operation="projection", inputs=self._expression_inputs(expression)))
+        if kind == "aggregate":
+            operation = str(expression.get("function") or "aggregate").upper()
+        elif kind == "binary":
+            operation = str(expression.get("operator") or "calculation")
+        else:
+            operation = kind or "expression"
+        return _record("derived", "Prereasoner", column=output_column, operation=operation,
+                       inputs=self._expression_inputs(expression))
+
+    def _computation_records(self, computation, columns) -> list[dict] | None:
+        if not isinstance(computation, dict) or not computation.get("verified"):
+            return None
+        branches = computation.get("branches")
+        if not isinstance(branches, list) or not branches:
+            return None
+        outputs = [branch.get("outputs") for branch in branches if isinstance(branch, dict)]
+        if len(outputs) != len(branches) or any(not isinstance(row, list) or len(row) != len(columns)
+                                               for row in outputs):
+            return None
+        records = []
+        for index, column in enumerate(columns):
+            alternatives = [self._expression_record(row[index].get("expression") or {}, column)
+                            for row in outputs if isinstance(row[index], dict)]
+            if len(alternatives) != len(outputs):
+                return None
+            if all(item == alternatives[0] for item in alternatives[1:]):
+                records.append(alternatives[0])
+            else:
+                inputs = [value for item in alternatives for value in item.get("inputs", ())]
+                records.append(_record("derived", "Prereasoner", column=column,
+                                       operation="set operation", inputs=inputs))
+        return records
+
     @staticmethod
     def _reference(source: str, column: str, *, table=None, release_id=None) -> dict:
         return _record("reference", source, table=table, column=column, release_id=release_id)
@@ -92,7 +149,8 @@ class ProvenanceContext:
             return deepcopy(existing)
         if resolve:
             table = str(view.get("wtable") or "reference")
-            source = "Wikidata" if table in _WIKIDATA_TABLES else table
+            source = (view.get("source") or
+                      ("Wikidata" if table.casefold() in _WIKIDATA_TABLES else table))
             return [self._reference(source, column, table=table,
                                     release_id=view.get("source_release_id")) for column in columns]
 
@@ -113,7 +171,10 @@ class ProvenanceContext:
                 else:
                     item = carried or catalog
             elif op == "world_join" and carried is None:
-                item = self._reference("Wikidata", column)
+                item = catalog or self._reference(
+                    str(view.get("source") or "Wikidata"), column,
+                    table=view.get("source_table"), release_id=view.get("source_release_id"),
+                )
             elif op in _PASSTHROUGH_OPS:
                 item = carried or catalog
             elif op in _DERIVED_OPS:
@@ -138,18 +199,19 @@ class ProvenanceContext:
             self._last = {column.casefold(): record for column, record in zip(columns, records)}
         return decorated
 
-    def decorate_result(self, result: dict | None) -> dict | None:
+    def decorate_result(self, result: dict | None, *, computation=None) -> dict | None:
         if not isinstance(result, dict):
             return result
         decorated = deepcopy(result)
         columns = [str(column) for column in (decorated.get("columns") or [])]
         existing = decorated.get("column_provenance")
         if not self._valid_columns(existing, columns):
-            records = []
-            for column in columns:
-                records.append(self._last.get(column.casefold()) or self._catalog_record(column)
-                               or _record("derived", "Prereasoner", column=column,
-                                          operation="projection", inputs=tuple(self._last)))
+            records = self._computation_records(computation, columns) or []
+            if not records:
+                for column in columns:
+                    records.append(self._last.get(column.casefold()) or self._catalog_record(column)
+                                   or _record("derived", "Prereasoner", column=column,
+                                              operation="projection", inputs=tuple(self._last)))
             decorated["column_provenance"] = records
         return decorated
 
@@ -179,5 +241,7 @@ class ProvenanceContext:
                     if isinstance(view, dict) and view.get("op") == "convert":
                         view.setdefault("source_release_id", release_id)
         decorated["views"] = [self.decorate_view(view) for view in (decorated.get("views") or [])]
-        decorated["result"] = self.decorate_result(decorated.get("result"))
+        decorated["result"] = self.decorate_result(
+            decorated.get("result"), computation=decorated.get("computation")
+        )
         return decorated

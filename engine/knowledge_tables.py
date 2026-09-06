@@ -574,6 +574,7 @@ class KnowledgeTableQuery:
                         "candidate_count": r.get("candidate_count"),
                         "evidence": r.get("evidence", []), "features": r.get("features", {}),
                     },
+                    "computation": r.get("computation"),
                     "debug": self._debug_input(norm, question, [],   # own-data path: no world table, no meaning plan
                         [{"col": f'{t["name"]}.{c}', "dims": coldims.get(c)} for t in norm for c in t["columns"] if coldims.get(c)], [], True),
                     "model": r.get("model", "engine - own-data planner (own-data SQL; no world-knowledge join)")}
@@ -809,6 +810,7 @@ class KnowledgeTableQuery:
                             "sql": calc_sql,
                             "columns": [d[0] for d in calc_cur.description],
                             "rows": _wire_rows(calc_cur),
+                            "source_release_id": prov.get("release_id"),
                         })
                         # The UI overlays the final Result onto the LAST view, so the total must be
                         # its own view — otherwise the per-row calculated grid is replaced by the SUM.
@@ -899,6 +901,7 @@ class KnowledgeTableQuery:
             )
             join_facts.append(JoinFact(pairs))
         computation = ComputationEvidence((BranchEvidence(outputs, predicates, tuple(join_facts)),))
+        response["computation"] = computation.record()
         assessments = assess_calculations(
             question, norm, graph, computation,
         )

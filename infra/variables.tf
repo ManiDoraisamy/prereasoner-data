@@ -60,7 +60,7 @@ variable "db_availability_type" {
 }
 
 variable "rtdb_url" {
-  description = "Firebase Realtime Database URL for live trace streaming. Empty disables streaming; when set, Terraform also creates the scheduled retention cleanup job."
+  description = "Firebase Realtime Database URL for live trace streaming. Empty disables trace streaming and trace cleanup; PostgreSQL conversation cleanup still runs."
   type        = string
   default     = ""
 }
@@ -91,6 +91,36 @@ variable "rtdb_trace_retention_days" {
   validation {
     condition     = var.rtdb_trace_retention_days >= 1 && var.rtdb_trace_retention_days <= 365 && floor(var.rtdb_trace_retention_days) == var.rtdb_trace_retention_days
     error_message = "rtdb_trace_retention_days must be a whole number from 1 through 365."
+  }
+}
+
+variable "conversation_retention_days" {
+  description = "Days of inactivity before a stored conversation and its PostgreSQL schema are deleted."
+  type        = number
+  default     = 90
+  validation {
+    condition     = var.conversation_retention_days >= 1 && var.conversation_retention_days <= 3650 && floor(var.conversation_retention_days) == var.conversation_retention_days
+    error_message = "conversation_retention_days must be a whole number from 1 through 3650."
+  }
+}
+
+variable "max_conversations_per_user" {
+  description = "Maximum number of durable conversations per authenticated user."
+  type        = number
+  default     = 100
+  validation {
+    condition     = var.max_conversations_per_user >= 1 && var.max_conversations_per_user <= 1000 && floor(var.max_conversations_per_user) == var.max_conversations_per_user
+    error_message = "max_conversations_per_user must be a whole number from 1 through 1000."
+  }
+}
+
+variable "max_conversation_storage_bytes" {
+  description = "Maximum stored source-table and workbook-state bytes per authenticated user."
+  type        = number
+  default     = 268435456
+  validation {
+    condition     = var.max_conversation_storage_bytes >= 1048576 && floor(var.max_conversation_storage_bytes) == var.max_conversation_storage_bytes
+    error_message = "max_conversation_storage_bytes must be a whole number of at least 1 MiB."
   }
 }
 

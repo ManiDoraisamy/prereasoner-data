@@ -62,6 +62,30 @@ CHAT_MIGRATIONS = (
             'ON "chat"."request_lease" (operation, expires_at)',
         ),
     ),
+    ApplicationMigration(
+        3,
+        "conversation_storage_lifecycle",
+        (
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS source_bytes bigint NOT NULL DEFAULT 0',
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS state_bytes bigint NOT NULL DEFAULT 0',
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS last_active_at timestamptz NOT NULL DEFAULT now()',
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS expires_at timestamptz',
+            'UPDATE "chat"."conversation" SET source_bytes = COALESCE(octet_length(tables::text), 0), '
+            'state_bytes = CASE WHEN state IS NULL THEN 0 ELSE octet_length(state::text) END, '
+            'expires_at = COALESCE(expires_at, created_at + interval \'90 days\')',
+            'ALTER TABLE "chat"."conversation" ALTER COLUMN expires_at SET NOT NULL',
+            'ALTER TABLE "chat"."conversation" ALTER COLUMN expires_at '
+            'SET DEFAULT (now() + interval \'90 days\')',
+            'CREATE INDEX IF NOT EXISTS ix_chat_conversation_expiry ON "chat"."conversation" (expires_at)',
+            'ALTER TABLE "chat"."conversation" DROP CONSTRAINT IF EXISTS chat_conversation_id_shape',
+            'ALTER TABLE "chat"."conversation" ADD CONSTRAINT chat_conversation_id_shape '
+            "CHECK (conversation_id ~ '^c_[0-9a-f]{32}$')",
+            'ALTER TABLE "chat"."conversation" DROP CONSTRAINT IF EXISTS chat_conversation_source_bytes_nonnegative',
+            'ALTER TABLE "chat"."conversation" ADD CONSTRAINT chat_conversation_source_bytes_nonnegative CHECK (source_bytes >= 0)',
+            'ALTER TABLE "chat"."conversation" DROP CONSTRAINT IF EXISTS chat_conversation_state_bytes_nonnegative',
+            'ALTER TABLE "chat"."conversation" ADD CONSTRAINT chat_conversation_state_bytes_nonnegative CHECK (state_bytes >= 0)',
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

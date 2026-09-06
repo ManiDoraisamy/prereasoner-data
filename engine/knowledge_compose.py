@@ -27,6 +27,17 @@ from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
 from engine.compose import ComposeEngine
 from engine.routing import DEPTH_PRIMS, WORLD_MEASURES, compose_owns
+from engine.numeric import parse_decimal
+
+
+_TRACE_VIEW_FIELDS = (
+    "op", "label", "sql", "columns", "rows", "source_release_id", "column_provenance",
+)
+
+
+def _trace_view(view):
+    """Keep the wire trace bounded without discarding server-authored lineage."""
+    return {key: view[key] for key in _TRACE_VIEW_FIELDS if key in view}
 
 
 class ComposedKnowledgeQuery:
@@ -329,12 +340,15 @@ class ComposedKnowledgeQuery:
             norm, _ = self.qw.ingest(tables)
             world = self._world_lookup(norm, sub)
         res = self.reason.run(tables, question, world=world)
-        views = [{"name": v["name"], "op": v["op"], "label": v["label"], "sql": v["sql"],
-                  "columns": v["columns"], "rows": [list(r) for r in v["rows"][:50]]} for v in res["views"]]
+        views = []
+        for view in res["views"]:
+            item = {"name": view["name"], **_trace_view(view)}
+            item["rows"] = [list(row) for row in view["rows"][:50]]
+            views.append(item)
         if emit:
             emit("status", "running")
             for i, v in enumerate(views):
-                emit(f"views/{i}", {k: v[k] for k in ("op", "label", "sql", "columns", "rows")})
+                emit(f"views/{i}", _trace_view(v))
         final = res["views"][-1] if res["views"] else None
         return {"question": question, "as_of": as_of, "error": None,
                 "model": "engine - composed view stack",
@@ -433,7 +447,7 @@ class ComposedKnowledgeQuery:
                 print(f"resolution slides skipped: {type(e).__name__}", flush=True)
             if emit:
                 for i, v in enumerate(deleg.get("views") or []):
-                    emit(f"views/{i}", {k: v[k] for k in ("op", "label", "sql", "columns", "rows")})
+                    emit(f"views/{i}", _trace_view(v))
             return deleg
         # But a CLEAN world-filtered scalar aggregate (a world join in meaning_join, one number, NO clarify) is
         # re-expressed as the view stack so the reasoning is shown — kept only if it matches the delegate's answer.
@@ -447,4 +461,3 @@ class ComposedKnowledgeQuery:
             except Exception as e:                        # noqa: BLE001 — re-expression is best-effort; never breaks the answer
                 print(f"view re-expression failed, keeping delegate: {type(e).__name__}", flush=True)
         return deleg
-from engine.numeric import parse_decimal

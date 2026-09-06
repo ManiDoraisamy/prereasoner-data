@@ -319,10 +319,10 @@ CREATE OR REPLACE VIEW knowledgebase."States in the World"     AS SELECT * FROM 
 -- 7. Conversation and private-reference schemas (created by the engine):
 --    c_<32hex> is ownership-checked before use and contains:
 --      "<conversation>"."<upload-or-selected-reference>" -- typed request rows
---      "<conversation>"."<t> connected to wikipedia"     -- resolved FKs:
+--      "<conversation>"."<t> connected to knowledgebase" -- resolved FKs:
 --          ("column" text, "value" text, "world_type" text,
 --           "world_key" text, "country" text, "world_qid" text)
---      "<conversation>"."<t> unconnected to wikipedia"   -- free-text vectors:
+--      "<conversation>"."<t> unconnected to knowledgebase" -- free-text vectors:
 --          ("__pk" bigint, "column" text, "value" text,
 --           "embedding" vector(896))                  -- unified-encoder dim
 --    Queries run with:
@@ -356,12 +356,19 @@ CREATE TABLE IF NOT EXISTS "chat"."user_profile" (
 );
 
 CREATE TABLE IF NOT EXISTS "chat"."conversation" (
-  conversation_id text PRIMARY KEY,                -- also the name of this conversation's data schema (c_<32 hex>)
+  conversation_id text PRIMARY KEY
+    CONSTRAINT chat_conversation_id_shape CHECK (conversation_id ~ '^c_[0-9a-f]{32}$'),
+                                                    -- also the name of this conversation's data schema (c_<32 hex>)
   initial_prompt  text,                            -- the opening question (drawer label)
   tables          jsonb,                           -- the uploaded CSVs [{name,data}] so a conversation re-opens self-contained
   state           jsonb,                           -- renderable client snapshot
-  created_at      timestamptz NOT NULL DEFAULT now()
+  source_bytes    bigint NOT NULL DEFAULT 0 CONSTRAINT chat_conversation_source_bytes_nonnegative CHECK (source_bytes >= 0),
+  state_bytes     bigint NOT NULL DEFAULT 0 CONSTRAINT chat_conversation_state_bytes_nonnegative CHECK (state_bytes >= 0),
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  last_active_at  timestamptz NOT NULL DEFAULT now(),
+  expires_at      timestamptz NOT NULL DEFAULT (now() + interval '90 days')
 );
+CREATE INDEX IF NOT EXISTS ix_chat_conversation_expiry ON "chat"."conversation" (expires_at);
 
 CREATE TABLE IF NOT EXISTS "chat"."user_conversation" (
   user_id         text NOT NULL REFERENCES "chat"."user_profile"(user_id),

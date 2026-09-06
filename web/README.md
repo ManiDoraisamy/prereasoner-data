@@ -8,10 +8,15 @@ framework; the pages use the browser APIs and classic JavaScript modules already
 
 - `reason.html` and `knowledge.html` load the same classic script, `public/lib/workbook.js`.
 - Firebase Authentication supplies the ID token used by authenticated engine routes.
+- The home-page Login button invokes the same Firebase redirect flow used by the workbook; it is not a placeholder.
 - Hosting rewrites `/api/**` to the engine and `/chat` to the optional orchestrator.
 - Firebase Realtime Database can stream trace nodes under `/runs/{uid}/{jobId}`. When RTDB is unavailable, the
   completed HTTP response renders the same result.
 - Conversation snapshots preserve the visible workbook and rail without re-running a query on reload.
+- Excel parsing runs in a disposable Web Worker using vendored SheetJS 0.20.3. Compressed input, expanded output,
+  worksheet, row, column, and parse-time limits are enforced before data reaches the request API.
+- `column_provenance` is authored by the engine from source records and typed computation evidence. The browser
+  renders those records verbatim and does not classify a column by its name.
 
 ## Workbook sheet types
 
@@ -74,11 +79,17 @@ development-only `AUTH_TEST_SUB`; neither is valid production authentication.
 ```powershell
 Get-ChildItem public/lib/*.js | ForEach-Object { node --check $_.FullName }
 node tests/workbook_reference.test.js
+Set-Location ..
+npm ci
+npx playwright install chromium
+npm run test:browser
 ```
 
 `tests/workbook_reference.test.js` evaluates the production classic script in a minimal VM and verifies reference
 row compaction, numeric zero preservation, dirty/provenance snapshot state, successful autosave, and surfaced save
-errors. `tests/regression.js` is the larger signed-in browser regression against a live `/api/reason` endpoint.
+errors. The Playwright release journey uses a real XLSX upload and covers sign-in, answer rendering, provenance,
+SQL trace, follow-up, and deletion against a deterministic local API fixture. `tests/regression.js` remains the
+larger signed-in browser regression against a live `/api/reason` endpoint.
 
 ## Deployment
 

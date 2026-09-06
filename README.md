@@ -89,7 +89,7 @@ public source and weights in your project, applies a cost-reduced Terraform prof
 minimal Wikidata and ECB data, and removes its temporary bootstrap identity. A billing-enabled project and
 Google authorization are required; the marketing website never receives those credentials.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.1.0&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.0&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
 Read the [deployment contract](deploy/gcp/README.md), including cost, state, browser-client, and
 teardown boundaries, before presenting the button as a public install path.
@@ -103,6 +103,9 @@ browser or MCP client
         v
 engine/server.py                 HTTP/auth/request adapter
         |
+        +--> engine/request_validation.py
+        |                       canonical table names and bounded request shapes
+        |
         +--> engine/master.py    validates and selects relevant private references
         |
         v
@@ -115,7 +118,7 @@ engine/knowledge.py              one serving entry point
                 engine/knowledge_query.py, engine/knowledge_compose.py
         |
         v
-Postgres execution + inspectable trace
+Postgres execution + engine/provenance.py + inspectable trace
 ```
 
 The AST planner receives uploaded tables and any selected reference tables in the same typed table format.
@@ -142,6 +145,15 @@ working planner table set. This keeps unrelated cross-conversation data out of t
 Reference tables have a deliberate contract: the first column is a non-empty, unique key; remaining columns are
 attributes. The browser auto-saves changed references before a query. If that save fails, the query is stopped
 instead of silently running against an older copy.
+
+Conversation storage is bounded and expires by inactivity. The defaults are 100 conversations and 256 MiB of
+serialized source/workbook state per user, a 1 MiB workbook snapshot, and 90 days of inactivity. One daily
+retention job removes expired conversation schemas and RTDB traces. Requests and state saves serialize quota
+checks per user in PostgreSQL, so multiple service instances cannot race the limits.
+
+The browser does not guess provenance from column names. The server combines source records with the selected
+typed AST's output expressions and returns one `column_provenance` record per result column, including qualified
+operands and publisher release IDs when a versioned source was used.
 
 ## Local Quickstart
 
@@ -221,9 +233,14 @@ python -m tests.test_schema_coverage
 python -m tests.test_enrichment
 python -m tests.test_source_sync
 python -m tests.test_app_migrations
+python -m tests.test_request_limits
+python -m tests.test_conversations
+python -m tests.test_provenance
 node web/tests/workbook_reference.test.js
-python -m ruff check engine db training tests orchestrator mcp_server regress --select F,E9
-python -m compileall -q engine db training tests orchestrator mcp_server regress
+npm ci
+npm run test:browser
+python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
+python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
 ```
 
 The repository-wide runner executes hermetic suites and then live suites when their prerequisites are available:
@@ -245,7 +262,7 @@ gold-blind headline configuration, while `gold_tables` is an oracle ablation.
 | `web/` | Static workbook UI, Firebase Hosting configuration, and browser tests |
 | `orchestrator/` | Optional conversational tool loop; it presents engine results but does not invent numbers |
 | `mcp_server/` | MCP adapter over the same engine API |
-| `db/` | Reproducible PostgreSQL schema and Wikidata synchronization |
+| `db/` | Reproducible PostgreSQL schema, source synchronization, migrations, and grants |
 | `training/` | Property/intent training and calibration; not imported as a second serving path |
 | `tests/` | Hermetic and live integration suites |
 | `spider/` | Serving-faithful Spider evaluation and recorded results |

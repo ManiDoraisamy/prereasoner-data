@@ -92,8 +92,9 @@ COPY <<'EOF' /app/entrypoint.sh
 #!/bin/sh
 set -e
 DATA_DIR="${PREREASONER_DATA_DIR:-/app/engine/data}"
-# The retention job uses Firebase Admin only; it must not load or require the multi-GB model bundle.
-if [ "$1" = "python" ] && [ "$2" = "-m" ] && [ "$3" = "engine.trace_cleanup" ]; then
+# The retention job uses PostgreSQL and optional Firebase Admin only; it must not load or
+# require the multi-GB model bundle.
+if [ "$1" = "python" ] && [ "$2" = "-m" ] && [ "$3" = "engine.retention_cleanup" ]; then
     exec "$@"
 fi
 missing=""

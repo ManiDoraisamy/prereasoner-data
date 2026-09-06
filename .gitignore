@@ -54,6 +54,8 @@ infra/$plan
 
 # Node / tooling
 node_modules/
+test-results/
+playwright-report/
 
 # OS
 Thumbs.db

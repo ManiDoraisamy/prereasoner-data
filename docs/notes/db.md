@@ -6,8 +6,8 @@
 > [../ARCHITECTURE.md](../ARCHITECTURE.md) for the current-versus-target storage boundary.
 
 What the engine expects in Postgres: the extensions, schemas, static tables and
-indexes created by `db/init.sql`, and the objects that the `db/sync/` pipeline
-offline pipeline populates on top of it. Serving creates only conversation/private
+indexes created by `db/init.sql`, and the objects that the offline `db/sync/`
+pipeline populates on top of it. Serving creates only conversation/private
 objects; it reads shared facts and never calls a source API or mutates shared reference
 data. This note records the contract precisely — column types, index parameters, and
 the split between offline reference data and request-local objects — so a fresh instance
@@ -17,7 +17,7 @@ can be reproduced faithfully.
 
 | Extension | Why | Where used |
 |---|---|---|
-| `vector` (pgvector) | `knowledgebase."words".embedding vector(384)` + HNSW `<=>` cosine search; per-conversation `"<t> unconnected to wikipedia".embedding vector(896)` | `entities._nn` / `_cell_bridge_sql` (LATERAL `<=>`); `knowledge_query._persist_main_unconn` (`vector(hdim)`, hdim=896 for the unified Qwen encoder) |
+| `vector` (pgvector) | `knowledgebase."words".embedding vector(384)` + HNSW `<=>` cosine search; per-conversation `"<t> unconnected to knowledgebase".embedding vector(896)` | `entities._nn` / `_cell_bridge_sql` (LATERAL `<=>`); `knowledge_query._persist_main_unconn` (`vector(hdim)`, hdim=896 for the unified Qwen encoder) |
 | `pg_trgm` | GIN trigram index on `public.entity_label(lower(label))` | `init.sql` `ix_label_trgm` (legacy value matcher) |
 | ~~postgis / earthdistance / cube~~ | **NOT used.** Geo NEARBY computes haversine in plain SQL (`acos/radians/cos/sin` over `public.settlement.lat/lng`) | grep for `earthdistance|postgis|ll_to_earth|cube` = zero code hits |
 
@@ -48,7 +48,7 @@ can be reproduced faithfully.
 
 ## 3. Static tables (created by `db/init.sql`)
 
-### public — raw Wikidata world model
+### public - legacy Wikidata import tables
 `continent(qid PK, name)`, `country(qid PK, name, iso2, iso3, continent_qid,
 continent, capital_qid, currency_code, currency_name, population bigint,
 area_km2 float8, official_language)`, `admin(qid PK, name, country_qid, country,
@@ -110,8 +110,8 @@ by name).
 | rows in the qid-keyed tables | one row per entity, qid PK, all-TEXT property columns, item-valued props store the related entity's **qid** (FK) | offline sync (`build_qid_world.py` from `public.settlement`/`public.country`; per-type syncs for the long tail); serving never inserts rows or `"words"` entries |
 | `c_<32hex>` schema | authorized conversation id | `engine.conversations.resolve_conversation` + `engine.pg._load_user_schema` |
 | `c_<32hex>."<upload-or-selected-reference>"` | typed request table | `engine.pg._load_user_schema` (DROP + CREATE on each serve; INTEGER→BIGINT, REAL→exact NUMERIC(58,20)) |
-| `c_<32hex>."<t> connected to wikipedia"` | `('column' text, value text, world_type text, world_key text, country text, world_qid text)` | `engine.knowledge_query._persist_connected` |
-| `c_<32hex>."<t> unconnected to wikipedia"` | `(__pk bigint, 'column' text, value text, embedding vector(896))` | `engine.knowledge_query._persist_main_unconn` |
+| `c_<32hex>."<t> connected to knowledgebase"` | `('column' text, value text, world_type text, world_key text, country text, world_qid text)` | `engine.knowledge_query._persist_connected` |
+| `c_<32hex>."<t> unconnected to knowledgebase"` | `(__pk bigint, 'column' text, value text, embedding vector(896))` | `engine.knowledge_query._persist_main_unconn` |
 | `m_<md5(sub)>."<reference>"` | all-text dimension; first column is a primary/unique key | `engine.master.save_master` |
 
 ## 5. Offline reference data vs request-local objects

@@ -37,6 +37,10 @@ def run() -> dict:
             "SELECT lease_id, subject_key, operation, expires_at "
             "FROM chat.request_lease WHERE false"
         )
+        cursor.execute(
+            "SELECT source_bytes, state_bytes, last_active_at, expires_at "
+            "FROM chat.conversation WHERE false"
+        )
         cursor.execute("SELECT to_regclass('knowledgebase.schedule'), to_regclass('knowledgebase.exchange_rate')")
         schedule, exchange_rate = cursor.fetchone()
         if schedule is None or exchange_rate is None:
@@ -93,6 +97,7 @@ def run() -> dict:
     return {
         "ok": True,
         "request_budgets": True,
+        "conversation_lifecycle": True,
         "exact_total": rows[0][0],
         "reasoning_sql": reasoning["sql"],
         "reasoning_total": reasoning["result"]["rows"][0][0],

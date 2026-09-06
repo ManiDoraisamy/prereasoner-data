@@ -569,6 +569,10 @@ class TableQuery:
             candidate, result, candidates = None, None, ()
             err = f"{type(exc).__name__}: {exc}"
         sql = candidate.sql if candidate is not None else None
+        computation = None
+        if candidate is not None:
+            from engine.calculations import describe_computation
+            computation = describe_computation(candidate.query)
         response = {
             "question": question,
             "sql": sql,
@@ -594,17 +598,18 @@ class TableQuery:
             "candidate_count": len(candidates),
             "evidence": list(candidate.evidence) if candidate is not None else [],
             "features": dict(candidate.features) if candidate is not None else {},
+            "computation": computation.record() if computation is not None else None,
             "model": "engine - deterministic typed SQL AST planner",
         }
         if candidate is not None:
-            from engine.calculations import assess_calculations, describe_computation
+            from engine.calculations import assess_calculations
             from engine.calculations.registry import attach_calculation_evidence
             from engine.sql_schema import SchemaGraph
             assessments = assess_calculations(
                 question,
                 norm,
                 SchemaGraph.from_planner(sch, fks),
-                describe_computation(candidate.query),
+                computation,
             )
             attach_calculation_evidence(response, assessments)
         return response

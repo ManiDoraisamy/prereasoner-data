@@ -11,7 +11,7 @@ locals {
     "artifactregistry.googleapis.com", # engine image
     "cloudbuild.googleapis.com",       # gcloud builds submit
     "iam.googleapis.com",              # dedicated service account
-    "cloudscheduler.googleapis.com",   # scheduled RTDB trace retention (only when RTDB is enabled)
+    "cloudscheduler.googleapis.com",   # scheduled conversation and trace retention
   ]
 
   image = var.image
@@ -289,6 +289,18 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.admin_emails
       }
       env {
+        name  = "CONVERSATION_RETENTION_DAYS"
+        value = tostring(var.conversation_retention_days)
+      }
+      env {
+        name  = "MAX_CONVERSATIONS_PER_USER"
+        value = tostring(var.max_conversations_per_user)
+      }
+      env {
+        name  = "MAX_CONVERSATION_STORAGE_BYTES"
+        value = tostring(var.max_conversation_storage_bytes)
+      }
+      env {
         name  = "KB_PG_DB"
         value = google_sql_database.world.name
       }
@@ -358,11 +370,10 @@ resource "google_cloud_run_v2_service_iam_member" "invoker" {
   member   = "allUsers"
 }
 
-# RTDB has no native TTL. When trace streaming is enabled, run the same immutable engine image
-# as a small scheduled job so expired trace payloads are deleted with Firebase Admin credentials.
-resource "google_cloud_run_v2_job" "trace_cleanup" {
-  count    = var.rtdb_url != "" ? 1 : 0
-  name     = "${var.service_name}-trace-cleanup"
+# One scheduled retention owner deletes expired PostgreSQL conversations and, when configured,
+# expired RTDB traces. It runs the same immutable engine image as serving.
+resource "google_cloud_run_v2_job" "retention_cleanup" {
+  name     = "${var.service_name}-retention-cleanup"
   location = var.region
 
   template {
@@ -372,46 +383,104 @@ resource "google_cloud_run_v2_job" "trace_cleanup" {
 
       containers {
         image   = local.image
-        command = ["python", "-m", "engine.trace_cleanup"]
+        command = ["python", "-m", "engine.retention_cleanup"]
+        volume_mounts {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
         env {
-          name  = "RTDB_URL"
-          value = var.rtdb_url
+          name  = "KB_PG_HOST"
+          value = "/cloudsql/${google_sql_database_instance.world.connection_name}"
+        }
+        env {
+          name  = "KB_PG_DB"
+          value = google_sql_database.world.name
+        }
+        env {
+          name  = "KB_PG_USER"
+          value = local.serving_user
+        }
+        env {
+          name = "KB_PG_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = local.serving_secret_id
+              version = "latest"
+            }
+          }
         }
         env {
           name  = "RTDB_TRACE_RETENTION_DAYS"
           value = tostring(var.rtdb_trace_retention_days)
         }
+        env {
+          name  = "CONVERSATION_RETENTION_DAYS"
+          value = tostring(var.conversation_retention_days)
+        }
+        dynamic "env" {
+          for_each = var.rtdb_url != "" ? [var.rtdb_url] : []
+          content {
+            name  = "RTDB_URL"
+            value = env.value
+          }
+        }
+      }
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.world.connection_name]
+        }
       }
     }
   }
 
-  depends_on = [google_project_service.apis]
+  depends_on = [
+    google_project_service.apis,
+    google_project_iam_member.run_cloudsql,
+    google_secret_manager_secret_iam_member.run_serving_db_password,
+    google_secret_manager_secret_version.serving_db_password,
+    google_project_iam_member.run_rtdb,
+  ]
 }
 
-resource "google_cloud_run_v2_job_iam_member" "trace_cleanup_invoker" {
-  count    = var.rtdb_url != "" ? 1 : 0
-  name     = google_cloud_run_v2_job.trace_cleanup[0].name
-  location = google_cloud_run_v2_job.trace_cleanup[0].location
+resource "google_cloud_run_v2_job_iam_member" "retention_cleanup_invoker" {
+  name     = google_cloud_run_v2_job.retention_cleanup.name
+  location = google_cloud_run_v2_job.retention_cleanup.location
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_service_account.run.email}"
 }
 
-resource "google_cloud_scheduler_job" "trace_cleanup" {
-  count     = var.rtdb_url != "" ? 1 : 0
-  name      = "${var.service_name}-trace-cleanup"
+resource "google_cloud_scheduler_job" "retention_cleanup" {
+  name      = "${var.service_name}-retention-cleanup"
   region    = var.region
   schedule  = "17 3 * * *"
   time_zone = "Etc/UTC"
 
   http_target {
-    uri         = "https://run.googleapis.com/apis/run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.trace_cleanup[0].name}:run"
+    uri         = "https://run.googleapis.com/apis/run.googleapis.com/v2/projects/${var.project_id}/locations/${var.region}/jobs/${google_cloud_run_v2_job.retention_cleanup.name}:run"
     http_method = "POST"
     oauth_token {
       service_account_email = google_service_account.run.email
     }
   }
 
-  depends_on = [google_cloud_run_v2_job_iam_member.trace_cleanup_invoker]
+  depends_on = [google_cloud_run_v2_job_iam_member.retention_cleanup_invoker]
+}
+
+moved {
+  from = google_cloud_run_v2_job.trace_cleanup[0]
+  to   = google_cloud_run_v2_job.retention_cleanup
+}
+
+moved {
+  from = google_cloud_run_v2_job_iam_member.trace_cleanup_invoker[0]
+  to   = google_cloud_run_v2_job_iam_member.retention_cleanup_invoker
+}
+
+moved {
+  from = google_cloud_scheduler_job.trace_cleanup[0]
+  to   = google_cloud_scheduler_job.retention_cleanup
 }
 
 # ---------- Scheduled ECB rates refresh ----------

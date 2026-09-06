@@ -1,6 +1,7 @@
 """Hermetic invariants for a clean public source checkout."""
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -34,6 +35,17 @@ def test_public_artifact_boundary():
     gitleaks = _text(".gitleaks.toml")
     assert "web/public/lib/config" in gitleaks
     assert gitleaks.count("paths =") == 1
+
+    workflow = _text(".github/workflows/ci.yml")
+    assert "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e" in workflow
+    assert "fetch-depth: 0" in workflow
+
+
+def test_vendored_xlsx_parser_has_the_reviewed_identity():
+    path = ROOT / "web/public/vendor/xlsx-0.20.3.full.min.js"
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert digest == "cc015130aa8521e7f088f88898eba949ccdcbfb38df0bd129b44b7273c3a6f41"
+    assert digest in _text("THIRD_PARTY.md")
 
 
 def test_spider_evaluator_supports_module_invocation():
@@ -597,6 +609,8 @@ def test_class_metrics_separate_evidence_coverage_from_accuracy():
 
 TESTS = [
     test_public_artifact_boundary,
+    test_vendored_xlsx_parser_has_the_reviewed_identity,
+    test_spider_evaluator_supports_module_invocation,
     test_public_weight_bundle_is_manifested_and_documented,
     test_fresh_weight_fetch_stages_committed_artifacts,
     test_supported_model_stack_is_security_baseline,
