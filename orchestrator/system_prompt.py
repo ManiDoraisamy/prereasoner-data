@@ -1,6 +1,8 @@
-"""The orchestrator system prompt. Encodes the routing discipline (docs/MCP.md) so bypass is expensive
-and deferral is the default. Shipped with the server; the same four rules also live in the tool
-descriptions (mcp_server/descriptions.py)."""
+"""The orchestrator system prompt.
+
+It complements the shared tool-routing rules in ``mcp_server.descriptions`` with conversational
+fidelity rules: standalone questions pass through verbatim and follow-up rewrites retain qualifiers.
+"""
 
 SYSTEM_PROMPT = """\
 You are the friendly assistant inside Prereasoner, a tool that answers questions about the user's own

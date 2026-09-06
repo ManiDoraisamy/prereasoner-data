@@ -93,6 +93,9 @@ source-key grounding remains mandatory.
    runtime is supplied and verified by the immutable training runner; then run the
    CI-equivalent public-checkout suite and frontend test shown above.
 3. Run `python -m tests.run_all`; record every live/external skip separately.
+   For a hosted release, the prompt-owned question-fidelity test is mandatory and must not silently
+   skip. Set `REQUIRE_ORCHESTRATOR_TESTS=1` with `ANTHROPIC_API_KEY` available, then run
+   `python -m tests.test_orchestrator` and retain its engine-received-question results as release evidence.
 4. Maintainer-only: run `python -m regress.run_regression --require-world` against the fully
    seeded release database. A public checkout without that database must record this gate as skipped.
 5. For planner changes, run a fresh provenance-bearing Spider `whole_db` evaluation and compare per-example losses.
@@ -110,8 +113,10 @@ source-key grounding remains mandatory.
 12. Provision weights into an empty directory with `python -m engine.fetch_weights` and verify every
     external and committed artifact against `weights_manifest.json`.
 13. Confirm Cloud Run serves through a non-superuser database role and deploy an image by digest,
-    not the mutable `latest` tag. Confirm the daily conversation-retention job exists; if RTDB is enabled, it
-    must clean expired traces in the same run.
+    not the mutable `latest` tag. Audit that the role has no `SUPERUSER`, `CREATEDB`, `CREATEROLE`,
+    `REPLICATION`, or `BYPASSRLS` attribute and is not a member of Cloud SQL's
+    `cloudsqlsuperuser` role. Confirm the daily conversation-retention job exists; if RTDB is enabled,
+    it must clean expired traces in the same run.
 14. Leave `admin_emails` empty unless the admin dashboard is required; when enabled, verify the
     explicit Firebase email allowlist with both authorized and unauthorized accounts.
 

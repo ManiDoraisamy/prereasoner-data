@@ -161,6 +161,20 @@ def test_external_model_deployment_fails_closed():
     assert 'count     = local.external_llm_enabled ? 1 : 0' in main
 
 
+def test_orchestrator_prompt_owns_generic_question_fidelity():
+    prompt = _text("orchestrator/system_prompt.py")
+    orchestrator = _text("orchestrator/orchestrator.py")
+    live_test = _text("tests/test_orchestrator.py")
+    release_guide = _text("docs/OPEN_SOURCE_RELEASE.md")
+
+    assert "EXACT\n   words" in prompt
+    assert "Carry over EVERY qualifier" in prompt
+    assert "currency, time\n   period, top-N, filters" in prompt
+    assert "currency_conversion_target" not in orchestrator
+    assert "REQUIRE_ORCHESTRATOR_TESTS" in live_test
+    assert "REQUIRE_ORCHESTRATOR_TESTS" in release_guide
+
+
 def test_wikidata_precreator_is_non_destructive():
     builder = _text("db/sync/build_wikipedia.py")
     assert "DROP TABLE" not in builder
@@ -616,6 +630,7 @@ TESTS = [
     test_supported_model_stack_is_security_baseline,
     test_privacy_is_a_published_route_not_a_request_dialog,
     test_external_model_deployment_fails_closed,
+    test_orchestrator_prompt_owns_generic_question_fidelity,
     test_wikidata_precreator_is_non_destructive,
     test_local_documentation_links_resolve,
     test_public_test_imports_do_not_require_model_stack,

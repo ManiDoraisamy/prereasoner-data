@@ -103,6 +103,11 @@ The runner executes the canonical suites in this order:
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 | `tests.test_schema_probes` | Live property/class generalization and cross-process determinism |
 
+For a hosted release, set `REQUIRE_ORCHESTRATOR_TESTS=1` before running
+`python -m tests.test_orchestrator`. With that flag, a missing `ANTHROPIC_API_KEY` is a failure rather
+than a skip. The suite checks standalone pass-through and follow-up qualifier carry-over at the exact
+question received by the engine; public pull-request CI keeps this paid external test disabled.
+
 The live suites need runtime weights and a seeded PostgreSQL knowledgebase with pre-synchronized source
 projections. The orchestrator suite is also external and can be excluded with `RUN_ORCHESTRATOR_TESTS=0`.
 Request tests do not fetch Wikidata. The runner reports unavailable suites as skipped so local development can

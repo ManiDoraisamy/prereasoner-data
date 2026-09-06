@@ -9,6 +9,7 @@ import engine.conversations as conversations
 from db.reference_grants import (
     _LEGACY_LAZY_FILL_FUNCTIONS,
     apply_shared_read_boundary,
+    harden_runtime_role,
 )
 from db.sync.app_migrations import (
     CHAT_MIGRATIONS,
@@ -161,6 +162,53 @@ def test_shared_read_boundary_revokes_legacy_write_functions():
         assert "app_migrations" in str(exc)
 
 
+def test_serving_role_has_no_cluster_level_capabilities():
+    class Cursor:
+        def __init__(self, before=(False, True, True, True, True), after=(False,) * 5,
+                     cloudsql_role=True, remains_member=False):
+            self.rows = [before, (cloudsql_role,), after]
+            if cloudsql_role:
+                self.rows.append((remains_member,))
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            self.statements.append((str(statement), params))
+
+        def fetchone(self):
+            return self.rows.pop(0)
+
+    cur = Cursor()
+    harden_runtime_role(cur, "serving")
+    statements = "\n".join(statement for statement, _ in cur.statements)
+    for attribute in ("NOCREATEDB", "NOCREATEROLE", "NOREPLICATION", "NOBYPASSRLS"):
+        assert attribute in statements
+    assert "REVOKE cloudsqlsuperuser" in statements
+
+    ordinary = Cursor(cloudsql_role=False)
+    harden_runtime_role(ordinary, "serving")
+    assert "REVOKE cloudsqlsuperuser" not in "\n".join(
+        statement for statement, _ in ordinary.statements
+    )
+
+    try:
+        harden_runtime_role(Cursor(before=(True, False, False, False, False)), "serving")
+        raise AssertionError("a superuser serving role was accepted")
+    except ValueError:
+        pass
+
+    try:
+        harden_runtime_role(Cursor(after=(False, False, True, False, False)), "serving")
+        raise AssertionError("an incompletely hardened serving role was accepted")
+    except RuntimeError:
+        pass
+
+    try:
+        harden_runtime_role(Cursor(remains_member=True), "serving")
+        raise AssertionError("cloudsqlsuperuser membership survived the hardening audit")
+    except RuntimeError:
+        pass
+
+
 def test_request_path_contains_no_shared_chat_ddl():
     assert not hasattr(conversations, "_CHAT_DDL")
     assert not hasattr(conversations, "_ensure")
@@ -268,6 +316,7 @@ TESTS = [
     test_knowledgebase_migration_installs_definer_functions,
     test_serving_path_has_no_direct_knowledgebase_writes,
     test_shared_read_boundary_revokes_legacy_write_functions,
+    test_serving_role_has_no_cluster_level_capabilities,
     test_schedule_catalog_is_honest_about_what_it_claims,
     test_schedule_migration_and_base_schema_agree,
     test_serving_guard_consults_the_catalog_instead_of_skipping,

@@ -185,7 +185,8 @@ python -m db.sync.migrations
 # Apply application-schema migrations as the privileged admin, before serving flips roles.
 python -m db.sync.app_migrations
 
-# Grant chat DML to an existing non-superuser role; add --datasets when activating references.
+# Remove Cloud SQL's inherited administrator membership and role-level capabilities, grant chat DML,
+# and add read-only access only for activated reference datasets.
 python -m db.reference_grants --role prereasoner_runtime
 
 # Atomically reactivate a previously validated immutable release.

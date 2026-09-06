@@ -3,8 +3,8 @@ and the orchestrator's Claude-facing tool schemas (orchestrator/orchestrator.py)
 rules (docs/MCP.md) live in exactly one place and any client inherits them."""
 
 QUERY_DESC = """\
-Answer ONE data question over the user's uploaded tables by writing and running real SQL (joined to a
-Wikidata world model when the question names a place/type the sheet doesn't contain), and return the
+Answer ONE data question over the user's uploaded tables by writing and running real SQL (joined to
+registered reference sources when the question needs facts the sheet does not contain), and return the
 value plus the exact SQL and the reasoning stack.
 
 WHEN TO CALL THIS (routing discipline — you are the unreliable component, so defer by default):

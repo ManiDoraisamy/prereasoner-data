@@ -5,10 +5,12 @@ artifacts were generated with the serving-faithful selector (`serving_top1`, max
 Spider dev set: 1,034 examples and 20 databases. Each JSON records its exact source commit, code hashes,
 model hashes, settings, and `worktree_dirty=false`.
 
+Last reproduced: **2026-09-06** from clean source commit `93bc1b3`.
+
 | Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
 |---|---|---:|---:|---:|
-| `whole_db` — all tables, gold-blind (standard Spider comparison) | `cf82141` | **359/1,034 (34.7%)** | **453/1,034 (43.8%)** | **224/408 (54.9%)** |
-| `gold_tables` — oracle table set (planner upper bound) | `fb4aa80` | **434/1,034 (42.0%)** | **551/1,034 (53.3%)** | **247/408 (60.5%)** |
+| `whole_db` — all tables, gold-blind (standard Spider comparison) | `93bc1b3` | **359/1,034 (34.7%)** | **453/1,034 (43.8%)** | **224/408 (54.9%)** |
+| `gold_tables` — oracle table set (planner upper bound) | `93bc1b3` | **434/1,034 (42.0%)** | **551/1,034 (53.3%)** | **247/408 (60.5%)** |
 
 The whole-db row is the standard comparison number: it includes table-set selection. The oracle row feeds
 only tables referenced by the gold query and isolates AST reasoning and ranking. Relative to whole-db, the

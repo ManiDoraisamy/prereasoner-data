@@ -1,11 +1,12 @@
 """test_orchestrator.py — the Sonnet orchestrator's routing discipline (docs/MCP.md), against the
-in-process STUB engine so the whole browser->orchestrator->MCP->engine loop is exercised without a seeded
-world Postgres.
+in-process STUB engine so the orchestrator->MCP->engine loop is exercised without a seeded world
+Postgres.
 
 GATED on ANTHROPIC_API_KEY (mirrors how the engine tests gate on KB_PG_PASSWORD): absent => the suite
 self-skips with exit 0 rather than failing, so CI without a key stays green. It loads the repo .env if the
 key isn't already in the environment.
 
+For a hosted-release gate, set REQUIRE_ORCHESTRATOR_TESTS=1 so a missing key fails instead of skipping.
 Run: python -m tests.test_orchestrator
 """
 from __future__ import annotations
@@ -62,6 +63,9 @@ def _start_stub(port):
 def main():
     _load_env()
     if not os.environ.get("ANTHROPIC_API_KEY"):
+        if os.environ.get("REQUIRE_ORCHESTRATOR_TESTS") == "1":
+            print("test_orchestrator: FAIL (ANTHROPIC_API_KEY is required for this release gate)")
+            sys.exit(1)
         print("test_orchestrator: SKIP (ANTHROPIC_API_KEY not set)")
         sys.exit(0)
 
@@ -89,10 +93,19 @@ def main():
         # A rewrite that dropped "in US dollars" shipped an unconverted total on 2026-09-06. The
         # stub echoes the received question into the trace, so this asserts at the exact boundary.
         print("[1b] standalone question passes through with its conversion intact")
-        r1b = asyncio.run(chat("total amount in France in US dollars"))
+        standalone = "total amount in France in US dollars"
+        r1b = asyncio.run(chat(standalone))
         sent = [t.get("question", "") for t in r1b["traces"]]
-        ok(any("us dollar" in q.lower() for q in sent),
-           f"the engine-received question keeps the USD conversion (got {sent})")
+        ok(any(q == standalone for q in sent),
+           f"the engine receives the standalone question verbatim (got {sent})")
+
+        # Rule 1b also covers qualifier families that a currency-specific code guard could not.
+        print("[1b] standalone grouping, limit, and time qualifiers pass through verbatim")
+        qualified = "top 3 customers by total amount per month since January 2025"
+        rq = asyncio.run(chat(qualified))
+        sent_q = [t.get("question", "") for t in rq["traces"]]
+        ok(any(q == qualified for q in sent_q),
+           f"the engine receives all standalone qualifiers verbatim (got {sent_q})")
 
         # Rule 1c — a follow-up rewrite carries the conversation's qualifiers (prompt rule 4):
         # after a France-in-USD turn, "how about Germany?" must become a Germany question that
@@ -102,8 +115,18 @@ def main():
             {"role": "user", "content": "total amount in France in US dollars"},
             {"role": "assistant", "content": "Your total for France comes to about 1,127 in US dollars."}]))
         sent_c = [t.get("question", "") for t in r1c["traces"]]
-        ok(any("german" in q.lower() and "us dollar" in q.lower() for q in sent_c),
-           f"the rewritten follow-up keeps Germany AND the USD conversion (got {sent_c})")
+        ok(any("german" in q.lower() and "us dollar" in q.lower() and "france" not in q.lower()
+               for q in sent_c),
+           f"the rewritten follow-up changes the country and keeps the USD qualifier (got {sent_c})")
+
+        print("[1c] follow-up rewrite carries grouping and limit qualifiers")
+        r1d = asyncio.run(chat("what about 2024?", history=[
+            {"role": "user", "content": "top 3 customers by total amount per month in 2025"},
+            {"role": "assistant", "content": "I found the top three customers for each month in 2025."}]))
+        sent_d = [t.get("question", "") for t in r1d["traces"]]
+        ok(any(all(term in q.lower() for term in ("top 3", "customer", "total", "month", "2024"))
+               and "2025" not in q for q in sent_d),
+           f"the rewritten follow-up changes the year and keeps grouping/limit qualifiers (got {sent_d})")
 
         # Rule 4 — a clarify must pass through, never be smoothed into a fabricated answer.
         print("[4] clarify passes through, not smoothed over")

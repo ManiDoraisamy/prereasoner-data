@@ -189,8 +189,11 @@ curl -X POST "$URL/api/dimension" -H 'Content-Type: application/json' \
 
 The engine always serves as a dedicated **non-superuser** role (`serving` by default). There is
 no Terraform option that gives the internet-facing service the `postgres` administration
-credential. Reference enrichment remains off by default in raw Terraform; the guided Community
-deployment explicitly enables the reviewed `iana_country` dataset.
+credential. Cloud SQL initially adds built-in database users to `cloudsqlsuperuser`; the SQL bootstrap
+removes that membership and the role-level `CREATEDB`, `CREATEROLE`, `REPLICATION`, and `BYPASSRLS`
+capabilities. Database-level `CREATE` on `world` remains because the runtime creates isolated
+conversation schemas. Reference enrichment remains off by default in raw Terraform; the guided
+Community deployment explicitly enables the reviewed `iana_country` dataset.
 
 - `serving_db_role` — name of the mandatory non-superuser Cloud SQL role.
 - `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)
@@ -243,7 +246,8 @@ terraform apply -var project_id=<PROJECT> -var image=<engine-image@sha256:digest
 # 2. Run application migrations and bootstrap grants as the privileged postgres role (via
 #    cloud-sql-proxy, as in step 3 above). The migration owns shared chat DDL; the legacy
 #    lazy-fill definer functions remain only because migration checksums are immutable.
-#    The grants step gives serving chat DML, REVOKES any legacy EXECUTE on those functions
+#    The grants step removes cluster-level role capabilities, gives serving chat DML, REVOKES any
+#    legacy EXECUTE on those functions
 #    (db.reference_grants.apply_shared_read_boundary), and audits that serving keeps zero
 #    write paths into knowledgebase — shared facts are written by offline sync only.
 SYNC_PG_USER=postgres SYNC_PG_PASSWORD=... python -m db.sync.app_migrations

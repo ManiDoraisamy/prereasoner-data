@@ -27,6 +27,43 @@ _LEGACY_LAZY_FILL_FUNCTIONS = (
 )
 
 
+def harden_runtime_role(cur, runtime_role: str) -> None:
+    """Remove cluster-level capabilities that a serving login never needs."""
+    if not _IDENTIFIER.fullmatch(runtime_role or ""):
+        raise ValueError("runtime_role must be a lowercase PostgreSQL identifier")
+    cur.execute(
+        "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
+        "FROM pg_roles WHERE rolname=%s",
+        (runtime_role,),
+    )
+    attributes = cur.fetchone()
+    if attributes is None:
+        raise ValueError(f"PostgreSQL role does not exist: {runtime_role}")
+    if attributes[0]:
+        raise ValueError("the serving role must not be a superuser")
+
+    role_id = sql.Identifier(runtime_role)
+    cur.execute("SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='cloudsqlsuperuser')")
+    cloudsql_superuser_exists = bool(cur.fetchone()[0])
+    if cloudsql_superuser_exists:
+        cur.execute(sql.SQL("REVOKE cloudsqlsuperuser FROM {}").format(role_id))
+    cur.execute(sql.SQL(
+        "ALTER ROLE {} NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS"
+    ).format(role_id))
+    cur.execute(
+        "SELECT rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls "
+        "FROM pg_roles WHERE rolname=%s",
+        (runtime_role,),
+    )
+    hardened = cur.fetchone()
+    if hardened is None or any(hardened):
+        raise RuntimeError(f"serving role attribute audit failed for {runtime_role}: {hardened!r}")
+    if cloudsql_superuser_exists:
+        cur.execute("SELECT pg_has_role(%s, 'cloudsqlsuperuser', 'MEMBER')", (runtime_role,))
+        if cur.fetchone()[0]:
+            raise RuntimeError(f"cloudsqlsuperuser membership audit failed for {runtime_role}")
+
+
 def apply_chat_grants(cur, runtime_role: str) -> None:
     """Grant the serving role only the chat DML it needs after admin migration."""
     if not _IDENTIFIER.fullmatch(runtime_role or ""):
@@ -133,12 +170,7 @@ def apply_reference_grants(cur, runtime_role: str, dataset_names) -> dict[str, t
     if not _IDENTIFIER.fullmatch(runtime_role or ""):
         raise ValueError("runtime_role must be a lowercase PostgreSQL identifier")
     targets = approved_reference_targets(dataset_names)
-    cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname=%s", (runtime_role,))
-    role = cur.fetchone()
-    if role is None:
-        raise ValueError(f"PostgreSQL role does not exist: {runtime_role}")
-    if role[0]:
-        raise ValueError("the serving role must not be a superuser")
+    harden_runtime_role(cur, runtime_role)
 
     role_id = sql.Identifier(runtime_role)
     apply_chat_grants(cur, runtime_role)
