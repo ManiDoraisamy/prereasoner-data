@@ -444,6 +444,9 @@ def test_release_installs_only_hash_locked_dependencies():
     assert "--require-hashes -r orchestrator/requirements.lock.txt" in _text(
         "Dockerfile.orchestrator"
     )
+    assert "--require-hashes -r orchestrator/requirements.lock.txt" in _text(
+        "cloudbuild.orchestrator.yaml"
+    )
     assert "--require-hashes -r /tmp/requirements-core.lock.txt" in _text("Dockerfile.sync")
     assert "--require-hashes -r requirements-ci.lock.txt" in _text(".github/workflows/ci.yml")
     assert "--require-hashes -r deploy/gcp/requirements.lock.txt" in _text(
