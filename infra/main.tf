@@ -20,8 +20,8 @@ locals {
   # necessarily enables it; engine-only deployments must opt in explicitly.
   external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
 
-  serving_user      = var.serving_db_role
-  serving_secret_id = google_secret_manager_secret.serving_db_password.secret_id
+  serving_user                  = var.serving_db_role
+  serving_secret_id             = google_secret_manager_secret.serving_db_password.secret_id
   dataset_attestation_secret_id = google_secret_manager_secret.dataset_attestation.secret_id
 }
 
