@@ -8,6 +8,7 @@ verified identity, never from request data.
 """
 from __future__ import annotations
 
+import re
 import time
 
 import psycopg2
@@ -46,18 +47,41 @@ def _numeric_to_py(v, cur):
 psycopg2.extensions.register_type(psycopg2.extensions.new_type((1700,), "NUMERIC2PY", _numeric_to_py))
 
 
+_SLOW_SQL_MS = 150                                       # a single statement slower than this gets a fingerprint line
+_REDACT_STRINGS = re.compile(r"'(?:[^']|'')*'")          # engine SQL inlines literals via qlit — NEVER log them
+_REDACT_NUMBERS = re.compile(r"\b\d+(?:\.\d+)?\b")
+
+
+def _sql_fingerprint(query):
+    """A privacy-safe template of one statement: string literals and numbers become '?', whitespace
+    collapses. What remains is the STRUCTURE (verbs, tables, columns) — enough to find the code
+    path, nothing of the user's cells or question."""
+    text = query if isinstance(query, str) else str(query)
+    text = _REDACT_STRINGS.sub("?", text)
+    text = _REDACT_NUMBERS.sub("?", text)
+    return " ".join(text.split())[:140]
+
+
 class _TimedCursor(psycopg2.extensions.cursor):
     """Cursor that bills every statement to the request's timing line.
 
     Installed as the cursor_factory in `_pg`, the ONE connection owner for every serving path, so
     the `sql_ms`/`sql_n` totals cover all statements — planner, world lookups, bridge writes and
     the uploaded-sheet load alike — without a call site having to opt in. Outside a request the
-    span/count helpers are no-ops.
+    span/count helpers are no-ops. A statement slower than _SLOW_SQL_MS additionally logs its
+    redacted fingerprint, so a production tail (one slow shape among 40 fast ones) is attributable
+    without attaching a profiler.
     """
 
     def execute(self, query, vars=None):                 # noqa: A002 — psycopg2's parameter name
+        started = time.perf_counter()
         with request_timing.span("sql"):                 # the span publishes its own sql_n
-            return super().execute(query, vars)
+            result = super().execute(query, vars)
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if elapsed_ms >= _SLOW_SQL_MS and request_timing.request_id() is not None:
+            print(f"[timing] slow_sql rid={request_timing.request_id()} ms={elapsed_ms:.0f} "
+                  f"sql={_sql_fingerprint(query)}", flush=True)
+        return result
 
     def executemany(self, query, vars_list):             # noqa: A002 — psycopg2's parameter name
         # One CALL, but psycopg2 sends one statement per parameter set. Counting the call would

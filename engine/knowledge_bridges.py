@@ -1,8 +1,12 @@
 """Persistence and execution for connected and semantic request-local bridges."""
 from __future__ import annotations
 
-import numpy as np
+import hashlib
 
+import numpy as np
+from psycopg2.extras import execute_values
+
+from engine import request_timing
 from engine.embeddings import pgvector_literal
 from engine.knowledge_tables import KnowledgeTableQuery
 from engine.pg import _PGTYPE, _pg
@@ -35,30 +39,33 @@ class KnowledgeBridgeMixin:
         cursor.execute(f"SELECT b.cell, b.wk FROM ({inner_sql}) AS b(cell, wk)")
         return cursor.fetchall()
 
-    def _persist_connected(self, main_table, route_column, world_type, pairs):
-        schema = self._pg_schema
-        bridge_name = self._conn_bridge_name(main_table)
-        cursor = self._rconn().cursor()
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {qident(schema)}")
-        legacy_bridge = f"{main_table} connected to wikipedia"          # pre-rename bridge in existing conversations
-        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(legacy_bridge)}")
-        cursor.execute(
-            f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(bridge_name)} {self.CONN_DDL}"
-        )
-        cursor.execute(
-            "SELECT 1 FROM information_schema.columns WHERE table_schema=%s AND table_name=%s "
-            "AND column_name='world_qid'",
-            (schema, bridge_name),
-        )
-        if not cursor.fetchone():
-            cursor.execute(
-                f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
-                'ADD COLUMN IF NOT EXISTS "world_qid" TEXT'
-            )
-        cursor.execute(
-            f'DELETE FROM {qident(schema)}.{qident(bridge_name)} WHERE "column" = %s',
-            (route_column,),
-        )
+    # ---- bridge state hash: rebuild only what changed ---------------------------------------------------------
+    # The connected bridge is a pure function of (route column, world type, resolved pairs) and the
+    # world snapshot they were resolved against. A follow-up question on unchanged tables used to
+    # re-run the whole persist anyway — DROP legacy, CREATE, catalog check, DELETE, one INSERT per
+    # row, COMMIT — per routed column, per turn. The hash gate skips that rewrite when nothing it
+    # depends on changed; the resolution slides still stream (the browser expects them every turn).
+    _BRIDGE_STATE = "_bridge_state"                       # per-conversation-schema hash ledger
+
+    def _bridge_world_version(self):
+        """Salt for the state hash: the world data's newest refresh + the model revision set. Either
+        moving invalidates every stored bridge hash, so a resync or a promoted model rebuilds."""
+        stamp = self._kb_rows(
+            "SELECT COALESCE(max(last_refreshed_at)::text, '') FROM knowledgebase.\"schedule\"")
+        from engine import model_revisions
+        revisions = sorted((k, str(v)) for k, v in vars(model_revisions).items() if k.isupper())
+        return f"{stamp[0][0] if stamp else ''}|{revisions}"
+
+    def _bridge_state_hash(self, route_column, world_type, pairs):
+        try:
+            payload = repr((route_column, world_type, sorted({(c, k) for c, k in pairs if k}),
+                            self._bridge_world_version()))
+            return hashlib.sha256(payload.encode("utf-8", "replace")).hexdigest()
+        except Exception:                                 # noqa: BLE001 — no hash -> just rebuild
+            return None
+
+    def _bridge_rows(self, cursor, route_column, world_type, pairs):
+        """The bridge rows for `pairs` — shared by the write path and the reuse path (slides only)."""
         keys = sorted({key for _, key in pairs if key})
         countries = {}
         if keys and world_type == "city":
@@ -81,7 +88,6 @@ class KnowledgeBridgeMixin:
             if world_type == "country":
                 for key in keys:
                     countries.setdefault(key, key)
-
         type_qid = self.TYPE_QID.get(world_type)
         seen = set()
         rows = []
@@ -89,17 +95,78 @@ class KnowledgeBridgeMixin:
             if key and (cell, key) not in seen:
                 seen.add((cell, key))
                 rows.append((route_column, cell, world_type, key, countries.get(key), type_qid))
-        if rows:
-            cursor.executemany(
-                f"INSERT INTO {qident(schema)}.{qident(bridge_name)} VALUES (%s,%s,%s,%s,%s,%s)",
-                rows,
-            )
-        self._rconn().commit()
-        self._emit_resolutions(rows)
-        return (
+        return rows
+
+    def _persist_connected(self, main_table, route_column, world_type, pairs):
+        schema = self._pg_schema
+        bridge_name = self._conn_bridge_name(main_table)
+        cursor = self._rconn().cursor()
+        select_sql = (
             f'SELECT "value", "world_key" FROM {qident(schema)}.{qident(bridge_name)} '
             f'WHERE "column" = {qlit(route_column)}'
         )
+        state_hash = self._bridge_state_hash(route_column, world_type, pairs)
+        if state_hash:
+            # Fresh = same hash recorded AND the bridge table actually exists (a dropped table with
+            # a surviving ledger row must rebuild, not serve a SELECT against nothing). The ledger
+            # table is probed via to_regclass FIRST — naming it in a query before it exists is a
+            # plan-time error, not an empty result.
+            cursor.execute(
+                "SELECT to_regclass(%s) IS NOT NULL AND to_regclass(%s) IS NOT NULL",
+                (f'"{schema}"."{self._BRIDGE_STATE}"', f'"{schema}"."{bridge_name}"'),
+            )
+            if cursor.fetchone()[0]:
+                cursor.execute(
+                    f'SELECT "hash" FROM {qident(schema)}.{qident(self._BRIDGE_STATE)} '
+                    'WHERE "bridge" = %s AND "column" = %s',
+                    (bridge_name, route_column),
+                )
+                row = cursor.fetchone()
+                if row and row[0] == state_hash:
+                    self._emit_resolutions(self._bridge_rows(cursor, route_column, world_type, pairs))
+                    request_timing.count("bridge_reuse_n")
+                    return select_sql
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {qident(schema)}")
+        legacy_bridge = f"{main_table} connected to wikipedia"          # pre-rename bridge in existing conversations
+        cursor.execute(f"DROP TABLE IF EXISTS {qident(schema)}.{qident(legacy_bridge)}")
+        cursor.execute(
+            f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(bridge_name)} {self.CONN_DDL}"
+        )
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema=%s AND table_name=%s "
+            "AND column_name='world_qid'",
+            (schema, bridge_name),
+        )
+        if not cursor.fetchone():
+            cursor.execute(
+                f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
+                'ADD COLUMN IF NOT EXISTS "world_qid" TEXT'
+            )
+        cursor.execute(
+            f'DELETE FROM {qident(schema)}.{qident(bridge_name)} WHERE "column" = %s',
+            (route_column,),
+        )
+        rows = self._bridge_rows(cursor, route_column, world_type, pairs)
+        if rows:
+            # ONE paged multi-row INSERT — the same per-row-round-trip fix as the sheet upload.
+            execute_values(
+                cursor,
+                f"INSERT INTO {qident(schema)}.{qident(bridge_name)} VALUES %s",
+                rows, page_size=500,
+            )
+        if state_hash:
+            cursor.execute(
+                f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(self._BRIDGE_STATE)} "
+                '("bridge" TEXT, "column" TEXT, "hash" TEXT, PRIMARY KEY ("bridge", "column"))'
+            )
+            cursor.execute(
+                f"INSERT INTO {qident(schema)}.{qident(self._BRIDGE_STATE)} VALUES (%s,%s,%s) "
+                'ON CONFLICT ("bridge", "column") DO UPDATE SET "hash" = EXCLUDED."hash"',
+                (bridge_name, route_column, state_hash),
+            )
+        self._rconn().commit()
+        self._emit_resolutions(rows)
+        return select_sql
 
     @staticmethod
     def _emit_resolutions(rows):

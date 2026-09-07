@@ -151,6 +151,65 @@ def stream_final(emit, res):
         pass
 
 
+class StreamBuffer:
+    """Coalesce a growing text into bounded RTDB writes on a background thread.
+
+    Built for streaming LLM prose: per-token writes through `emit` would put one ~40ms synchronous
+    network round trip on the serving path PER TOKEN (measured rtdb_ms 328-540 for just 10-15 writes),
+    so the producer calls `update(text_so_far)` as often as it likes — it only stores the latest value —
+    and the flusher writes AT MOST once per `interval`. Writes are FULL-STATE (the whole text so far),
+    which makes them idempotent and self-healing: a reconnecting subscriber reads the node's current
+    value and is caught up, no sequence numbers to replay. `close(final)` writes the authoritative
+    final text synchronously and stops the thread; it is the ONE write callers may rely on.
+    Best-effort like every trace write — a failed flush never breaks the answer."""
+
+    def __init__(self, emit, node, interval=0.1):
+        import threading
+        self._emit = emit
+        self._node = node
+        self._interval = interval
+        self._lock = threading.Lock()
+        self._latest = None                              # newest unflushed text (None = nothing pending)
+        self._wake = threading.Event()
+        self._stop = False
+        self._thread = threading.Thread(target=self._run, name=f"stream-{node}", daemon=True)
+        self._thread.start()
+
+    def update(self, text):
+        """Record the newest text-so-far. Non-blocking; coalesces with any unflushed value."""
+        with self._lock:
+            self._latest = text
+        self._wake.set()
+
+    def _run(self):
+        while True:
+            self._wake.wait()
+            with self._lock:
+                if self._stop:
+                    return
+                text, self._latest = self._latest, None
+                self._wake.clear()
+            if text is not None:
+                try:
+                    self._emit(self._node, text)
+                except Exception:                        # noqa: BLE001 — streaming is best-effort
+                    pass
+            time.sleep(self._interval)                   # rate limit BETWEEN flushes, not before the first
+
+    def close(self, final=None):
+        """Stop the flusher; when `final` is given, write it synchronously as the authoritative value."""
+        with self._lock:
+            self._stop = True
+            self._latest = None
+        self._wake.set()
+        self._thread.join(timeout=2)
+        if final is not None:
+            try:
+                self._emit(self._node, final)
+            except Exception:                            # noqa: BLE001
+                pass
+
+
 # --- per-request emit CONTEXT ------------------------------------------------------------------------------------
 # Lets DEEP resolution code (the bridge build, several inheritance layers down) stream the cell→qid lookup LIVE
 # without threading `emit` through every method signature. The server sets it INSIDE its request LOCK (one request

@@ -240,6 +240,13 @@ function turnHtmlBody(){
     if(!ORCH&&PRESENT) h+=derivLinks();                      // present mode keeps the derivation reachable from the rail
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
+  // LIVE PROSE: an orchestrated turn streams its growing reply onto the turn's RTDB `reply` node
+  // (coalesced full-state writes, docs/SHEETS_AS_REASONING.md untouched — this is rail text only).
+  // Render it as it grows so the answer starts appearing mid-turn; settle() then swaps in the
+  // authoritative CONV text unchanged.
+  if(ORCH&&REPLY&&!SETTLED)
+    return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>'
+          +'<div class=convmsg>'+conv2html(REPLY)+'</div>';
   let h='<div class=statusline>'+(SETTLED?'&#10003; ':'<span class=spin></span> ')+esc(STATUS)+'</div>';
   if(!ORCH){                                                  // orchestrated runs show a clean status while composing; the full,
     const refs=BOOK.filter(s=>s.cls==='ref'), derivs=BOOK.filter(s=>s.cls==='deriv');   // plain-English steps live in the "Reasoning steps" panel once the answer lands
@@ -687,7 +694,7 @@ async function startTurn(){
     UNSUB=window.subscribeTurn(uid,turnId,{
       onStatus:st=>{ if(!live())return; if(st==='done') markTurnDone(); if(st==='error') fail('the assistant hit an error'); },
       onCall:(k,c)=>{ if(!live()||!c||!c.jobId||SEEN_CALL.has(c.jobId))return; SEEN_CALL.add(c.jobId); addCall(uid,c); },
-      onReply:t=>{ if(RUN!==myRun)return; if(t){REPLY=t;} if(!SETTLED)renderRail(); },
+      onReply:t=>{ if(RUN!==myRun)return; if(t!=null){REPLY=t;} if(!SETTLED)renderRail(); },   // ""=a tool round reclaimed its streamed preamble
       onConversation:cid=>{ if(RUN===myRun) setConversation(cid); },   // stable conversation id -> persist + reflect in the URL
       onError:e=>{ if(!live())return; fail(e||'the assistant hit an error'); },
     });

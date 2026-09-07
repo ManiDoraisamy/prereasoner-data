@@ -199,3 +199,23 @@ SQL time). `ix_words_norm_type (norm, type)` replaced the declared-but-never-bui
 `ix_words_type_norm (type, norm)` in BOTH `db/init.sql` and knowledgebase migration v3 before
 either was applied anywhere, keeping one index design. Measured after: the three hot shapes went
 from ~500ms seq scans to <1ms index scans. Type-only lookups remain served by `ix_words_type_qid`.
+
+## Round-2 latency: encode cache, streamed prose, bridge reuse (2026-09-07)
+
+Three additions on the measured evidence of the first round's `[timing]` lines:
+
+* `TableQuery._encode` holds a bounded per-instance LRU keyed on exact text. Measured before:
+  49-70 texts per request, 19 unique — column names re-encoded 5-8x per turn and identically on
+  every follow-up, 60-80% of production request time. A cached text returns the identical vector
+  (strictly more deterministic than re-encoding under different batch padding).
+* The orchestrator streams its rounds (`messages.stream`) and pushes the growing reply through
+  `engine.trace.StreamBuffer` — coalesced FULL-STATE writes to the turn's `reply` node, ≥100ms
+  apart, on a background thread; `close()` + the existing final `reply` emit stay authoritative.
+  Full-state writes are the reconnect story: the node IS the state, no sequence replay. The
+  /api/converse PRESENT reply is deliberately NOT streamed: the serving container speaks HTTP/1.0
+  (no chunked transfer), the call is ~1s total, and flipping the whole server to HTTP/1.1 to shave
+  ~0.5s off the last second is a bad trade. Revisit only alongside a broader server change.
+* `_persist_connected` is gated by a per-conversation content hash (pairs + world refresh stamp +
+  model revisions, ledger table `_bridge_state`): an unchanged bridge skips DROP/DELETE/INSERT
+  entirely (resolution slides still stream), and a rebuilt one uses one paged `execute_values`
+  instead of one INSERT per row. Statements slower than 150ms log a literal-redacted fingerprint.

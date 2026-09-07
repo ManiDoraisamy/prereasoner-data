@@ -27,7 +27,7 @@ SUITES = ["tests.test_sql_ast", "tests.test_calculations", "tests.test_routing",
           "tests.test_schema_coverage", "tests.test_compose", "tests.test_converse", "tests.test_master_ingest",
           "tests.test_enrichment", "tests.test_source_sync", "tests.test_app_migrations",
           "tests.test_request_limits", "tests.test_request_timing", "tests.test_pg_upload",
-          "tests.test_kb_memo",
+          "tests.test_kb_memo", "tests.test_encode_cache", "tests.test_stream_buffer",
           "tests.test_conversations", "tests.test_provenance",
           "tests.test_release", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator"]

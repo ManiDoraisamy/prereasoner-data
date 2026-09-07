@@ -137,81 +137,104 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
         ]
         messages.append({"role": "user", "content": user_message})
 
-        final_text = ""
-        for _ in range(MAX_TOOL_ROUNDS):
-            with request_timing.span("llm"):
-                resp = await client.messages.create(
-                    model=model,
-                    max_tokens=MAX_MODEL_TOKENS,
-                    system=SYSTEM_PROMPT,
-                    thinking={"type": "adaptive"},
-                    tools=CLAUDE_TOOLS,
-                    messages=messages,
-                )
-            # Append the assistant turn verbatim (thinking blocks preserved for same-turn continuation).
-            messages.append({"role": "assistant",
-                             "content": [b.model_dump() for b in resp.content]})
+        # LIVE PROSE: text deltas stream onto the turn's `reply` node through a coalescing buffer
+        # (engine.trace.StreamBuffer — full-state writes, >=100ms apart, background thread) so the
+        # browser shows the answer growing instead of waiting for the whole turn. A round that turns
+        # out to be a tool round clears the node (its preamble text is not the answer); the final
+        # text is written authoritatively by close() below, then `reply` + `status:done` as before.
+        stream_buffer = None
+        if emit:
+            from engine.trace import StreamBuffer
+            stream_buffer = StreamBuffer(lambda node, value: emit(node, value), "reply")
+        try:
+            final_text = ""
+            for _ in range(MAX_TOOL_ROUNDS):
+                round_text = ""
+                with request_timing.span("llm"):
+                    async with client.messages.stream(
+                        model=model,
+                        max_tokens=MAX_MODEL_TOKENS,
+                        system=SYSTEM_PROMPT,
+                        thinking={"type": "adaptive"},
+                        tools=CLAUDE_TOOLS,
+                        messages=messages,
+                    ) as llm_stream:
+                        async for delta in llm_stream.text_stream:
+                            round_text += delta
+                            if stream_buffer is not None and round_text:
+                                stream_buffer.update(round_text)
+                        resp = await llm_stream.get_final_message()
+                # Append the assistant turn verbatim (thinking blocks preserved for same-turn
+                # continuation). The BLOCK OBJECTS go back as-is — the SDK owns their wire shape.
+                # model_dump() here once shipped an SDK-internal field (`parsed_output`) that the
+                # API rejects with 400 "Extra inputs are not permitted" on replay.
+                messages.append({"role": "assistant", "content": resp.content})
 
-            if resp.stop_reason != "tool_use":
-                final_text = "".join(b.text for b in resp.content if b.type == "text").strip()
-                break
+                if resp.stop_reason != "tool_use":
+                    final_text = "".join(b.text for b in resp.content if b.type == "text").strip()
+                    break
+                if stream_buffer is not None and round_text:
+                    stream_buffer.update("")             # tool-round preamble is not the answer
 
-            tool_results = []
-            for block in resp.content:
-                if block.type != "tool_use":
-                    continue
-                if block.name == "prereasoner_query":
-                    # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
-                    job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
-                    question = (block.input or {}).get("question", "")
-                    # The system prompt (rules 3-4) owns question fidelity: a standalone question is
-                    # passed in the user's exact words, and a follow-up rewrite carries every
-                    # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
-                    # an unconverted total on 2026-09-06 — the prompt then had no such rule. The
-                    # boundary is asserted where it matters: test_orchestrator checks the
-                    # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
-                    # prompt regression fails the live suite instead of shipping. No per-dimension
-                    # code guard: it covered only currency and could never cover qualifier carry-over.
-                    print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
-                    _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
-                    call_idx += 1
-                    # The caller's token is passed EXPLICITLY per call. It used to travel as
-                    # ENGINE_BEARER_TOKEN in the subprocess env; in-process that would be shared
-                    # mutable state across concurrent turns of DIFFERENT users, so it is an argument.
-                    with request_timing.span("engine_call"):
-                        shaped = await engine_client.call_query(
-                            question, tables, job_id, conv,
-                            base_url=engine_base_url, token=bearer_token,
-                            request_id=job_id, client=http,
-                        )
-                    if not conv and shaped.get("conversation_id"):
-                        conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session
-                        _emit("conversation_id", conv)    # stream it NOW, mid-turn — the browser unsubscribes from the
-                                                          # turn node on 'status:done' (workbook settle()), so the
-                                                          # post-'done' emit below would be MISSED: no URL, no snapshot save
-                    traces.append({"jobId": job_id, "question": question, "engine": shaped})
-                    tool_results.append({
-                        "type": "tool_result", "tool_use_id": block.id,
-                        "content": json.dumps(_trim_for_model(shaped)),
-                        "is_error": shaped.get("status") == "error",
-                    })
-                elif block.name == "prereasoner_describe":
-                    with request_timing.span("engine_call"):
-                        described = await engine_client.call_describe(
-                            tables, base_url=engine_base_url, token=bearer_token, client=http,
-                        )
-                    tool_results.append({
-                        "type": "tool_result", "tool_use_id": block.id,
-                        "content": json.dumps(described),
-                    })
-                else:
-                    tool_results.append({
-                        "type": "tool_result", "tool_use_id": block.id,
-                        "content": f"unknown tool {block.name}", "is_error": True,
-                    })
-            messages.append({"role": "user", "content": tool_results})
-        else:
-            final_text = final_text or "I wasn't able to complete that within the step budget."
+                tool_results = []
+                for block in resp.content:
+                    if block.type != "tool_use":
+                        continue
+                    if block.name == "prereasoner_query":
+                        # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
+                        job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
+                        question = (block.input or {}).get("question", "")
+                        # The system prompt (rules 3-4) owns question fidelity: a standalone question is
+                        # passed in the user's exact words, and a follow-up rewrite carries every
+                        # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
+                        # an unconverted total on 2026-09-06 — the prompt then had no such rule. The
+                        # boundary is asserted where it matters: test_orchestrator checks the
+                        # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
+                        # prompt regression fails the live suite instead of shipping. No per-dimension
+                        # code guard: it covered only currency and could never cover qualifier carry-over.
+                        print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
+                        _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
+                        call_idx += 1
+                        # The caller's token is passed EXPLICITLY per call. It used to travel as
+                        # ENGINE_BEARER_TOKEN in the subprocess env; in-process that would be shared
+                        # mutable state across concurrent turns of DIFFERENT users, so it is an argument.
+                        with request_timing.span("engine_call"):
+                            shaped = await engine_client.call_query(
+                                question, tables, job_id, conv,
+                                base_url=engine_base_url, token=bearer_token,
+                                request_id=job_id, client=http,
+                            )
+                        if not conv and shaped.get("conversation_id"):
+                            conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session
+                            _emit("conversation_id", conv)    # stream it NOW, mid-turn — the browser unsubscribes from the
+                                                              # turn node on 'status:done' (workbook settle()), so the
+                                                              # post-'done' emit below would be MISSED: no URL, no snapshot save
+                        traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                        tool_results.append({
+                            "type": "tool_result", "tool_use_id": block.id,
+                            "content": json.dumps(_trim_for_model(shaped)),
+                            "is_error": shaped.get("status") == "error",
+                        })
+                    elif block.name == "prereasoner_describe":
+                        with request_timing.span("engine_call"):
+                            described = await engine_client.call_describe(
+                                tables, base_url=engine_base_url, token=bearer_token, client=http,
+                            )
+                        tool_results.append({
+                            "type": "tool_result", "tool_use_id": block.id,
+                            "content": json.dumps(described),
+                        })
+                    else:
+                        tool_results.append({
+                            "type": "tool_result", "tool_use_id": block.id,
+                            "content": f"unknown tool {block.name}", "is_error": True,
+                        })
+                messages.append({"role": "user", "content": tool_results})
+            else:
+                final_text = final_text or "I wasn't able to complete that within the step budget."
+        finally:
+            if stream_buffer is not None:
+                stream_buffer.close()             # the _emit('reply', final_text) below stays authoritative
 
     _emit("reply", final_text)                               # the Sonnet text for the rail
     _emit("status", "done")                                  # terminal — the browser stops waiting
