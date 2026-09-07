@@ -54,3 +54,38 @@ def verify(principal: str | None, ops, signature: str | None) -> bool:
     """Verify the exact principal/operation payload with constant-time comparison."""
     expected = sign(principal, ops)
     return bool(expected and signature and hmac.compare_digest(expected, str(signature)))
+
+
+def verify_quotes(raw_ops, user_message, history=None):
+    """Return normalized ops and whether every quote is present in the current user message.
+
+    The engine remains the authority for grammar and table binding. This boundary owns provenance:
+    a model must not be able to manufacture a quote that the UI later presents as "you said".
+    Historical messages are deliberately excluded — the unused ``history`` parameter documents that
+    contract (an old statement cannot authenticate a newly emitted operation). Invalid quotes are
+    sent without an attestation so the engine returns a deterministic clarify instead of silently
+    accepting or dropping the correction.
+    """
+    if not isinstance(raw_ops, list):
+        return raw_ops, False
+    user_text = str(user_message or "")
+    verified = bool(raw_ops)
+    out = []
+    for raw in raw_ops:
+        op = dict(raw) if isinstance(raw, dict) else raw
+        if not isinstance(op, dict):
+            verified = False
+            out.append(op)
+            continue
+        basis = op.get("basis")
+        if not isinstance(basis, dict):
+            verified = False
+            out.append(op)
+            continue
+        quoted = str(basis.get("text", "")).strip()
+        if (basis.get("source") != "conversation" or not quoted
+                or quoted.casefold() not in user_text.casefold()):
+            verified = False
+        op["basis"] = {"source": "conversation", "text": quoted}
+        out.append(op)
+    return out, verified

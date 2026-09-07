@@ -232,11 +232,10 @@ def test_unclaimed_measure_cannot_inherit_another_measures_currency():
 
 
 def test_orchestrator_attests_only_current_user_quotes():
-    from orchestrator.orchestrator import _verify_dataset_ops
     op = _set()
-    verified, trusted = _verify_dataset_ops([op], "This is in euros.", [])
+    verified, trusted = dataset_attestation.verify_quotes([op], "This is in euros.", [])
     assert trusted is True and "verified" not in verified[0]["basis"]
-    forged, trusted = _verify_dataset_ops(
+    forged, trusted = dataset_attestation.verify_quotes(
         [op], "convert this", [{"role": "user", "content": "This is in euros."}],
     )
     assert trusted is False
