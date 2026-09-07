@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -588,7 +589,14 @@ class H(BaseHTTPRequestHandler):
                     emit("error", "internal server error"); emit("status", "error")
                 except Exception:                        # noqa: BLE001
                     pass
-            print(f"world request failed: {type(e).__name__}", flush=True)
+            # WHERE it failed, not just the exception class. `world request failed: TypeError` with
+            # no location cost a full reproduction cycle against production on 2026-09-07. The frame
+            # list is code positions only — no cell values, question text, or exception message, so
+            # this stays inside the "never log user data" rule the timing line follows.
+            frames = " <- ".join(
+                f"{os.path.basename(f.filename)}:{f.lineno}:{f.name}"
+                for f in reversed(traceback.extract_tb(e.__traceback__)[-4:]))
+            print(f"world request failed: {type(e).__name__} at {frames}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
         finally:
             request_timing.emit("reason", status=getattr(self, "_status", None))

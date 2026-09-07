@@ -28,6 +28,21 @@ def test_sliding_window_limiter_is_bounded_and_expires():
     assert bounded.allow("second", now=100)[0]
 
 
+def test_server_500_logs_where_it_failed_without_user_data():
+    """Regression for a 2026-09-07 production diagnosis dead-end: `world request failed: TypeError`
+    named no location, so the failing line could not be found without reproducing against
+    production. The handler now records code positions (file:line:function) and MUST NOT record the
+    exception message, which can quote a cell value or the user's question."""
+    import pathlib
+    source = pathlib.Path("engine/server.py").read_text(encoding="utf-8")
+    handler = source[source.index("world request failed"):]
+    handler = handler[:handler.index("self._send(500")]
+    assert "traceback.extract_tb" in source, "the 500 path must capture the traceback frames"
+    assert "f.lineno" in source and "f.name" in source, "log file:line:function, not just the class"
+    assert "{e}" not in handler and "str(e)" not in handler, (
+        "the exception MESSAGE may quote user data — log positions only")
+
+
 def test_cors_requires_exact_configured_origin():
     assert allowed_origin("https://app.example", "https://app.example") == "https://app.example"
     assert allowed_origin("https://evil.example", "https://app.example") is None
@@ -233,6 +248,7 @@ def test_distributed_paid_budget_is_atomic_and_releases_lease():
 
 TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
+    test_server_500_logs_where_it_failed_without_user_data,
     test_cors_requires_exact_configured_origin,
     test_auth_test_sub_is_ignored_outside_explicit_nonproduction,
     test_conversation_lifecycle_limits_are_bounded_and_configurable,
