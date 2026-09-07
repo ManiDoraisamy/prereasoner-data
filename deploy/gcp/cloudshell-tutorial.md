@@ -14,7 +14,7 @@ manage IAM, build images, and create Cloud Run and Cloud SQL resources.
 ## Authenticate this temporary shell
 
 Google deliberately withholds account credentials from third-party Open-in-Cloud-Shell repositories.
-Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.0/deploy/gcp/deploy.sh),
+Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.1/deploy/gcp/deploy.sh),
 then authorize this shell explicitly:
 
 ```bash
@@ -51,7 +51,7 @@ continues to show progress and ends with the Cloud Run service URL.
 
 The deployment above is the deterministic engine API. Protected answer endpoints require a Firebase
 ID token. To host the included browser client, follow
-[`web/README.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.0/web/README.md) and attach
+[`web/README.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.1/web/README.md) and attach
 your own Firebase project. External LLM processing remains disabled. The guided profile activates
 only the reviewed IANA country enrichment dataset; other reference datasets remain disabled until
 the operator adds the required source data, grants, and allowlist entry.
