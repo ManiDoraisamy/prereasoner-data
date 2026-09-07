@@ -124,7 +124,37 @@ def test_asserted_currency_column_is_conversation_provenance():
     assert record["inputs"] == ["orders.budget"]
 
 
+def test_saved_reference_decimals_do_not_break_the_response():
+    """Regression for a 2026-09-07 production 500: a user with SAVED REFERENCE data got
+    `world request failed: TypeError` on every request. Reference cells become Decimal via
+    tables._typed and can reach the response without the Postgres round trip that normally
+    normalizes them, so json.dumps raised. The response encoder now applies the existing exact
+    wire contract (numeric.wire_value) and LOGS the leak rather than hiding it."""
+    import json, datetime
+    from decimal import Decimal
+    from engine.server import _json_safe
+
+    payload = {"result": {"columns": ["rate"],
+                          "rows": [[Decimal("1.1622")], [Decimal("4")], [Decimal("0.5")]]},
+               "as_of": datetime.date(2026, 9, 7)}
+    encoded = json.loads(json.dumps(payload, default=_json_safe))
+    rows = encoded["result"]["rows"]
+    # The exact-decimal contract, unchanged: a value no binary float represents exactly crosses the
+    # wire as its canonical STRING; representable and integral values stay JSON numbers.
+    assert rows[0][0] == "1.1622", f"1.1622 must stay exact, got {rows[0][0]!r}"
+    assert rows[1][0] == 4, "integral decimals stay JSON integers"
+    assert rows[2][0] == 0.5, "an exactly representable fraction stays a JSON number"
+    assert encoded["as_of"] == "2026-09-07"
+    # An genuinely unknown type must still fail loudly — this is a normalizer, not a silencer.
+    try:
+        json.dumps({"x": object()}, default=_json_safe)
+        raise AssertionError("an unserializable object must still raise")
+    except TypeError:
+        pass
+
+
 TESTS = [
+    test_saved_reference_decimals_do_not_break_the_response,
     test_provenance_uses_request_roles_not_column_name_guesses,
     test_calculation_and_ecb_columns_keep_distinct_lineage,
     test_http_and_stream_paths_emit_the_same_provenance_shape,

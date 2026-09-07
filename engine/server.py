@@ -20,6 +20,7 @@ Run: python -m engine.server
 from __future__ import annotations
 import json
 import os
+import datetime
 import threading
 import traceback
 import uuid
@@ -41,7 +42,10 @@ from engine.conversations import (resolve_conversation, conversation_page, get_c
                                    QuotaExceeded, DatasetOpsLimitError)
 from engine import master
 from engine import admin
+from decimal import Decimal
+
 from engine import request_timing
+from engine.numeric import wire_value
 from engine.pg import _pg
 from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from engine.request_limits import (
@@ -80,6 +84,26 @@ PAID_BUDGET = PostgresRequestBudget(_pg, {
 
 WORLD_ROUTES = ("/api/reason", "/api/knowledge")
 DIM_ROUTE = "/api/dimension"
+
+
+def _json_safe(value):
+    """Normalize the values PostgreSQL never got a chance to normalize.
+
+    Uploaded cells become `Decimal` in the planner (engine/tables.py:_typed) and return JSON-safe
+    through the NUMERIC caster on the way out of Postgres. A SAVED REFERENCE table's cells can reach
+    the response without that round trip, and `json.dumps` then raises TypeError — which surfaced as
+    a blanket 500 for every request by a user with saved reference data (2026-09-07). `wire_value` is
+    the existing exact-scalar contract, so this normalizes rather than invents. The leak is LOGGED so
+    the boundary that skipped normalization stays visible instead of being silently papered over.
+    """
+    if isinstance(value, Decimal):
+        print(f"[serialize] decimal reached the response unnormalized ({type(value).__name__})",
+              flush=True)
+        return wire_value(value)
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        print("[serialize] date reached the response unnormalized", flush=True)
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
 
 
 class H(BaseHTTPRequestHandler):
@@ -582,7 +606,7 @@ class H(BaseHTTPRequestHandler):
                 if enrichment.warnings:
                     res.setdefault("warnings", []).extend(enrichment.warnings)
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
-            self._send(200, json.dumps(res))
+            self._send(200, json.dumps(res, default=_json_safe))
         except Exception as e:                           # noqa: BLE001
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error
                 try:
