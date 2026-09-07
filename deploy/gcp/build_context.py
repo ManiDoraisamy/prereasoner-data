@@ -40,6 +40,7 @@ SOURCE_CHAT_ALLOWLIST = (
     "engine/config.py",
     "engine/model_revisions.py",
     "engine/request_limits.py",
+    "engine/request_timing.py",
     "engine/request_validation.py",
     "engine/trace.py",
     "mcp_server",

@@ -385,6 +385,24 @@ def test_public_build_needs_no_hugging_face_secret():
     assert "engine.fetch_weights" in _text("deploy/gcp/deploy.sh")
 
 
+def test_chat_image_copy_list_and_build_context_agree():
+    """Regression for an OBSERVED two-build failure (2026-09-07): engine/request_timing.py was added
+    to Dockerfile.orchestrator's COPY but not deploy/gcp/build_context.py's CHAT_ALLOWLIST, so the
+    docker build died on COPY inside Cloud Build. The two curated lists describe the SAME lean image
+    and must name the same engine modules; either one drifting breaks the build (best case) or boots
+    a crashing container (worst case, if COPY silently succeeded on a stale context)."""
+    import re
+    dockerfile = _text("Dockerfile.orchestrator")
+    copy_line = next(line for line in dockerfile.splitlines()
+                     if line.startswith("COPY engine/") and "/app/engine/" in line)
+    copied = set(re.findall(r"engine/[a-z_]+\.py", copy_line))
+    from deploy.gcp.build_context import SOURCE_CHAT_ALLOWLIST
+    allowed = {entry for entry in SOURCE_CHAT_ALLOWLIST if entry.startswith("engine/")}
+    assert copied == allowed, (
+        f"Dockerfile.orchestrator COPY and build_context SOURCE_CHAT_ALLOWLIST disagree — "
+        f"only in COPY: {sorted(copied - allowed)}; only in allowlist: {sorted(allowed - copied)}")
+
+
 def test_marketing_button_opens_the_pinned_public_walkthrough():
     button = _text("deploy/gcp/button.html")
     start = button.index('href="') + len('href="')
@@ -413,6 +431,7 @@ TESTS = [
     test_release_smoke_checks_current_chat_migration,
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
+    test_chat_image_copy_list_and_build_context_agree,
     test_marketing_button_opens_the_pinned_public_walkthrough,
 ]
 
