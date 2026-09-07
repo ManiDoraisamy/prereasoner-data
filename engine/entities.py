@@ -139,11 +139,15 @@ class EntityQuery(RoutedQuery):
         return out[:12]
 
     def _nn(self, vec, type_):
+        # Through the request memo: identical fuzzy lookups repeat across the compose and delegate
+        # passes. Measured (2026-09-07): ~127ms warm, ~1.3s cold per NN; hnsw.ef_search=16 returned
+        # NO row for a filtered city NN (recall loss), so the beam is NOT tunable down — dedupe is
+        # the safe win.
         lit = pgvector_literal(vec)
-        cur = self._rconn().cursor()
-        cur.execute('SELECT qid, 1-(embedding <=> %s::vector) AS sim FROM knowledgebase."words" '            # QID, not the name —
-                    'WHERE type=%s AND qid IS NOT NULL ORDER BY embedding <=> %s::vector LIMIT 1', (lit, type_, lit))
-        r = cur.fetchone()
+        rows = self._kb_rows(
+            'SELECT qid, 1-(embedding <=> %s::vector) AS sim FROM knowledgebase."words" '            # QID, not the name —
+            'WHERE type=%s AND qid IS NOT NULL ORDER BY embedding <=> %s::vector LIMIT 1', (lit, type_, lit))
+        r = rows[0] if rows else None
         return (r[0], float(r[1])) if r else (None, -1.0)                                            # the resolved qid
 
     def _resolve(self, question, type_):

@@ -146,11 +146,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                              (wl, n))
         if rows:
             return rows[0][0]
-        cur = self._rconn().cursor()
         vec = pgvector_literal(Embedder.get().encode([value])[0])
-        cur.execute('SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" WHERE type=%s AND qid IS NOT NULL '
-                    'ORDER BY embedding <=> %s::vector LIMIT 1', (vec, wl, vec))
-        row = cur.fetchone()
+        rows = self._kb_rows(
+            'SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" WHERE type=%s AND qid IS NOT NULL '
+            'ORDER BY embedding <=> %s::vector LIMIT 1', (vec, wl, vec))
+        row = rows[0] if rows else None
         if row and row[1] is not None and row[1] >= 0.85:
             return row[0]
         return None

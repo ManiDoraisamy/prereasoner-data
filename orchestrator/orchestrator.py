@@ -47,7 +47,41 @@ CLAUDE_TOOLS = [
                     "type": "string",
                     "description": "One single-hop data question (one aggregate/filter/join) over the "
                                    "user's uploaded tables, e.g. 'total amount in France'.",
-                }
+                },
+                "dataset_ops": {
+                    "type": "array",
+                    "description": "ONLY when the user states a fact about their own data's meaning "
+                                   "(e.g. 'these amounts are in euros'): closed-grammar metadata ops. "
+                                   "Never invent one — the fact must be stated in the conversation.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "op": {"type": "string",
+                                   "enum": ["set_measure_metadata", "clear_measure_metadata"]},
+                            "table": {"type": "string", "description": "an uploaded sheet name"},
+                            "column": {"type": "string", "description": "the measure column the fact is about"},
+                            "metadata": {
+                                "type": "object",
+                                "properties": {
+                                    "currency": {"type": "string",
+                                                 "description": "ISO 4217 code, e.g. EUR"},
+                                    "date_column": {"type": "string",
+                                                    "description": "optional date column that dates each row's value"},
+                                },
+                                "additionalProperties": False,
+                            },
+                            "basis": {
+                                "type": "object",
+                                "properties": {"source": {"type": "string"},
+                                               "text": {"type": "string",
+                                                        "description": "the user's words that state the fact"}},
+                                "additionalProperties": False,
+                            },
+                        },
+                        "required": ["op", "table", "column"],
+                        "additionalProperties": False,
+                    },
+                },
             },
             "required": ["question"],
             "additionalProperties": False,
@@ -192,7 +226,9 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
                         # prompt regression fails the live suite instead of shipping. No per-dimension
                         # code guard: it covered only currency and could never cover qualifier carry-over.
-                        print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
+                        dataset_ops = (block.input or {}).get("dataset_ops") or None
+                        print(f"[chat] tool_call={call_idx} question_chars={len(question)} "
+                              f"ops={len(dataset_ops or [])}", flush=True)
                         _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
                         call_idx += 1
                         # The caller's token is passed EXPLICITLY per call. It used to travel as
@@ -202,7 +238,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             shaped = await engine_client.call_query(
                                 question, tables, job_id, conv,
                                 base_url=engine_base_url, token=bearer_token,
-                                request_id=job_id, client=http,
+                                request_id=job_id, client=http, dataset_ops=dataset_ops,
                             )
                         if not conv and shaped.get("conversation_id"):
                             conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session

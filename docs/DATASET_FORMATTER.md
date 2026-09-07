@@ -1,6 +1,9 @@
-# Dataset Semantics — design spec (v1 APPROVED SCOPE, not yet implemented)
+# Dataset Semantics — design spec (v1 IMPLEMENTED 2026-09-07)
 
-Status: scope agreed 2026-09-07 after external review; implementation awaits an explicit go.
+Status: v1 is live. Owners: `engine/dataset_semantics.py` (grammar/validate/replay/apply),
+`engine/conversations.py` (persistence, chat migration v4), the orchestrator tool round (emission),
+`workbook.js` (badge). Acceptance: the euros transcript below — 58,000 EUR (Europe) converted to
+USD with the rate in the trail, and the claim re-applied on a follow-up turn from the persisted log.
 Formerly "Dataset Formatter"; renamed because v1 is deliberately NOT a data-cleaning system — it is
 a metadata layer. Upload reshaping is a separate, later design ("upload normalizer", sketched at
 the bottom).

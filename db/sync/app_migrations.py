@@ -86,6 +86,17 @@ CHAT_MIGRATIONS = (
             'ALTER TABLE "chat"."conversation" ADD CONSTRAINT chat_conversation_state_bytes_nonnegative CHECK (state_bytes >= 0)',
         ),
     ),
+    ApplicationMigration(
+        4,
+        "conversation_dataset_ops",
+        (
+            # The append-only dataset-semantics op log (engine/dataset_semantics.py): conversation
+            # claims about the user's own measures ("this is in euros"), replayed per request into
+            # effective metadata. jsonb so a support read can inspect it; the ENGINE is the only
+            # writer and appends through engine.conversations.append_dataset_ops.
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS dataset_ops jsonb',
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

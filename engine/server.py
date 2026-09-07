@@ -31,7 +31,10 @@ from engine.config import HOST, PORT, external_llm_enabled
 from engine.auth import _verify_principal, _bearer
 from engine.tables import csv_table, table_name
 from engine.trace import emitter, stream_final, set_ctx
+from engine import dataset_semantics
+from engine.dataset_semantics import DatasetOpError
 from engine.conversations import (resolve_conversation, conversation_page, get_conversation,
+                                  load_dataset_ops, append_dataset_ops,
                                    delete_conversation, delete_all_conversations, save_state, NotOwned,
                                    QuotaExceeded)
 from engine import master
@@ -492,6 +495,27 @@ class H(BaseHTTPRequestHandler):
                 self._send(404, json.dumps({"error": "conversation not found"})); return
             except QuotaExceeded as exc:
                 self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+            # DATASET SEMANTICS (engine/dataset_semantics.py): validate any incoming ops against the
+            # UPLOADED tables, append them to the conversation's log, replay the full log into
+            # effective metadata, and apply it (a currency claim synthesizes the code column the FX
+            # machinery already consumes). Runs AFTER conversation authorization — ops persist only
+            # on a conversation the caller owns — and BEFORE provenance/serve so the synthesized
+            # column flows through the one existing conversion path. A bad op is a CLARIFY, never a
+            # silent application and never a 500.
+            semantics = []
+            try:
+                incoming = dataset_semantics.validate_ops(
+                    req.get("dataset_ops"), tabs[:uploaded_count])
+                ops_log = (append_dataset_ops(conv, incoming) if incoming
+                           else (load_dataset_ops(conv) if req.get("conversation_id") else []))
+                semantics = dataset_semantics.apply(tabs, ops_log)
+            except DatasetOpError as exc:
+                res = {"question": req.get("question", ""), "clarify": True, "reason": str(exc),
+                       "conversation_id": conv,
+                       "model": "engine - dataset semantics (op rejected)"}
+                emit = emitter(uid, req.get("jobId"))
+                stream_final(emit, res)
+                self._send(200, json.dumps(res)); return
             provenance_context = ProvenanceContext(
                 tabs, uploaded_count=uploaded_count, reference_count=reference_count,
                 enrichment=enrichment,
@@ -521,6 +545,9 @@ class H(BaseHTTPRequestHandler):
             res = provenance_context.decorate_response(res)
             if isinstance(res, dict):
                 res["conversation_id"] = conv                # so the browser persists it for follow-up turns
+            if semantics and isinstance(res, dict):
+                res["dataset_semantics"] = semantics         # the UI badge + audit surface
+                emit("dataset_semantics", semantics)
             if truncated and isinstance(res, dict):
                 res.setdefault("warnings", []).extend(truncated)
             if references["warnings"] and isinstance(res, dict):

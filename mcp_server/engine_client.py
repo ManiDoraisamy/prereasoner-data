@@ -105,7 +105,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      conversation_id: str | None = None,
                      *, base_url: str | None = None, token: str | None = None,
                      timeout: float | None = None, request_id: str | None = None,
-                     client: httpx.AsyncClient | None = None) -> dict[str, Any]:
+                     client: httpx.AsyncClient | None = None,
+                     dataset_ops: list[dict] | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
@@ -121,6 +122,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         body["jobId"] = job_id
     if conversation_id:
         body["conversation_id"] = conversation_id
+    if dataset_ops:
+        body["dataset_ops"] = dataset_ops        # conversation-stated measure metadata (docs/DATASET_FORMATTER.md)
     try:
         async with _http(client, timeout) as http:
             r = await http.post(f"{base}/api/reason", json=body,

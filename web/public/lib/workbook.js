@@ -42,6 +42,9 @@ let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
+let DS_META=[];                                  // dataset semantics: conversation-stated measure metadata [{table, column, currency, basis}]
+                                                 // from the engine's dataset_semantics response field -> a badge on the user's column header
+function noteDatasetSemantics(list){ if(Array.isArray(list)&&list.length){ DS_META=list; paint(); } }
 // ---- orchestrated (Sonnet front-door) mode: WB.chat routes each turn through /chat (Sonnet + engine-MCP),
 // which resolves context ("How about germany?" -> "total amount in Germany") and can make several engine
 // calls per turn. Off by default -> the direct /api/reason path above is byte-identical. ----
@@ -97,10 +100,15 @@ function renderGrid(m){
         +'onkeydown="event.stopPropagation(); if(event.key===\'Enter\'){this.blur();} else if(event.key===\'Escape\'){this.value=this.dataset.orig; this.blur();}" '
         +'onblur="commitColName(\''+m.id+'\','+ci+',this.value,this.dataset.orig)"></th>';
       continue; }
+    // dataset-semantics badge: the conversation stated what this measure MEANS ("this is in euros").
+    // Rendered as a chip on the user's own column header — metadata, never a fake data column.
+    const ds=(m.cls==='input')?DS_META.find(d=>d.table===m.name&&d.column===cols[ci]):null;
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
-                        :(pv?' title="'+escAttr(provTitle(pr))+'"':''))
-      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+esc(provTag(pr))+'</span>':'')+'</th>'; }
+        :(ds?' title="'+escAttr('Denominated in '+ds.currency+' — you said: '+((ds.basis&&ds.basis.text)||'in the chat'))+'"'
+          :(pv?' title="'+escAttr(provTitle(pr))+'"':'')))
+      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+esc(provTag(pr))+'</span>':'')
+      +(ds?'<span class="provtag kb" title="'+escAttr('Supplied in conversation')+'">'+esc(ds.currency)+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
   const nrows=edit?Math.min(shown.length+1,MAX_RENDER_ROWS):shown.length;   // editable: one trailing blank "new record" row
@@ -609,7 +617,7 @@ function renderFromJSON(j){
   if(SETTLED)return;
   if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
-  J=j; (j.views||[]).forEach(v=>appendView(v));
+  J=j; noteDatasetSemantics(j.dataset_semantics); (j.views||[]).forEach(v=>appendView(v));
   if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
 }
@@ -706,6 +714,7 @@ async function startTurn(){
     if(j&&j.conversation_id) setConversation(j.conversation_id);
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
+    if(Array.isArray(j.traces)) j.traces.forEach(t=>noteDatasetSemantics((t.engine||{}).dataset_semantics));   // badge even when views streamed live
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // no live stream -> render from the body
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
@@ -734,6 +743,7 @@ function addCall(uid,c){                                      // an engine call 
 }
 function renderTurnFromHTTP(j){                               // fallback: no RTDB -> build the derivation from the /chat body's traces
   let rendered=false;
+  (j.traces||[]).forEach(t=>{ noteDatasetSemantics((t.engine||{}).dataset_semantics); });
   (j.traces||[]).forEach(t=>{ const eng=t.engine||{};
     if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v); rendered=true; }); }   // composed query: the full view stack
     else if(eng.sql&&eng.answer&&Array.isArray(eng.answer.rows)){                                                  // typed-AST own-data path returns one SQL + answer, no view stack -> surface it as a single step so the SQL + result are visible

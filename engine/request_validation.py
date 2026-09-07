@@ -152,7 +152,37 @@ def validate_reason_request(req: object) -> dict:
     normalized["jobId"] = _optional_id(req, "jobId")
     normalized["conversation_id"] = _optional_id(req, "conversation_id", conversation=True)
     normalized["as_of"] = validate_as_of(req.get("as_of"))
+    normalized["dataset_ops"] = _validate_dataset_ops_shape(req.get("dataset_ops"))
     return normalized
+
+
+def _validate_dataset_ops_shape(ops):
+    """Structural bounds for the dataset-semantics op list (transport tier only).
+
+    Grammar and table binding are owned by engine.dataset_semantics.validate_ops — that tier reads
+    the parsed tables, which this module deliberately does not. Here we only refuse shapes that
+    could not possibly be ops (non-lists, non-string fields, oversized payloads) before anything
+    reaches a conversation write."""
+    if ops is None:
+        return None
+    if not isinstance(ops, list):
+        raise RequestValidationError("dataset_ops must be a list")
+    if len(ops) > 50:
+        raise RequestValidationError("too many dataset_ops")
+    import json as _json
+    for op in ops:
+        if not isinstance(op, dict):
+            raise RequestValidationError("each dataset op must be an object")
+        for key in ("op", "table", "column"):
+            value = op.get(key)
+            if not isinstance(value, str) or not value or len(value) > 200:
+                raise RequestValidationError(f"dataset op field {key!r} must be a short string")
+        metadata = op.get("metadata")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise RequestValidationError("dataset op metadata must be an object")
+        if len(_json.dumps(op, ensure_ascii=False)) > 2000:
+            raise RequestValidationError("dataset op is too large")
+    return ops
 
 
 def validate_chat_request(req: object):

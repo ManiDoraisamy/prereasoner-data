@@ -140,6 +140,50 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
         conn.close()
 
 
+def load_dataset_ops(conversation_id):
+    """The conversation's append-only dataset-semantics op log (engine/dataset_semantics.py).
+
+    Called AFTER resolve_conversation authorized the id, so ownership is already settled. A
+    pre-migration database (no dataset_ops column) reads as an empty log rather than an error —
+    the feature simply stays inert until chat migration v4 runs."""
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute('SELECT dataset_ops FROM "chat"."conversation" WHERE conversation_id = %s',
+                        (conversation_id,))
+        except Exception:                                    # noqa: BLE001 — column absent pre-migration
+            conn.rollback()
+            return []
+        row = cur.fetchone()
+        ops = row[0] if row else None
+        return ops if isinstance(ops, list) else []
+    finally:
+        conn.close()
+
+
+def append_dataset_ops(conversation_id, new_ops):
+    """Append validated ops to the conversation's log and return the FULL updated log.
+
+    Append-only by construction: the log is the audit history (a later `set` supersedes an earlier
+    one at REPLAY time, in dataset_semantics.effective — never by rewriting the stored list)."""
+    if not new_ops:
+        return load_dataset_ops(conversation_id)
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            'UPDATE "chat"."conversation" SET dataset_ops = '
+            "COALESCE(dataset_ops, '[]'::jsonb) || %s::jsonb "
+            'WHERE conversation_id = %s RETURNING dataset_ops',
+            (json.dumps(new_ops), conversation_id))
+        row = cur.fetchone()
+        conn.commit()
+        return row[0] if row and isinstance(row[0], list) else list(new_ops)
+    finally:
+        conn.close()
+
+
 def conversation_page(user_id, limit=50, before=None):
     """One cursor page of the user's conversations, newest first."""
     limit = max(1, min(int(limit), MAX_PAGE_SIZE))
