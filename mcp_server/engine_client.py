@@ -57,7 +57,8 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
             out["sql"] = j.get("sql")
         if j.get("views") is not None:
             out["views"] = j.get("views")           # the reasoning stack the player renders
-        for k in ("meaning_join", "provenance", "warnings", "as_of", "reference"):
+        for k in ("meaning_join", "provenance", "warnings", "as_of", "reference",
+                  "dataset_semantics"):                  # the UI badge rides the trace payload
             if j.get(k) is not None:
                 out[k] = j.get(k)
         # trace coordinates: the browser knows its own uid; we return the jobId the engine streamed under.

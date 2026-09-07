@@ -73,6 +73,14 @@ def test_shape():
     empty = engine_client.shape_reason_response({}, "j")
     ok(empty["status"] == "error", "empty (no result/clarify/error) -> 'error', never a fake answer")
 
+    # Regression for an OBSERVED drop (2026-09-07): the engine returned dataset_semantics but the
+    # shaping whitelist omitted it, so the browser badge never received its data on the chat path.
+    ds = engine_client.shape_reason_response(
+        {"question": "q", "result": {"columns": ["sum"], "rows": [[71573.9]]},
+         "dataset_semantics": [{"table": "responses", "column": "budget", "currency": "EUR"}]}, "j")
+    ok(ds.get("dataset_semantics") == [{"table": "responses", "column": "budget", "currency": "EUR"}],
+       "dataset_semantics survives the shaping (the UI badge rides the trace payload)")
+
 
 # ---------------- (B) integration: against the stub engine ----------------
 def test_integration(base):
