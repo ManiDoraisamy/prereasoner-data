@@ -67,7 +67,9 @@ One row per SURFACE form (label or alias) → canonical entity + qid; the embedd
 is bge-small-en-v1.5 [CLS], L2-normalized, 384-dim (cosine via `<=>`). Populated
 by `db/sync/build_words.py` and by `sync_types.py` (`type='type'`). Serving never
 appends rows. Indexes:
-- `ix_words_type_norm (type, norm)` — exact normalized match
+- `ix_words_norm_type (norm, type)` — exact normalized match, norm-LEADING: serving
+  lookups constrain `type` positively, negatively, or not at all, and on PostgreSQL 16
+  only a norm-leading index seeks for all of them (see DECISIONS.md, 2026-09-07)
 - `ix_words_hnsw USING hnsw (embedding vector_cosine_ops)` — **created with no
   explicit parameters ⇒ pgvector defaults m=16, ef_construction=64 are the
   contract**

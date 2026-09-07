@@ -20,6 +20,7 @@ from pathlib import Path
 
 import numpy as np
 
+from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
@@ -228,14 +229,16 @@ class TableQuery:
         if self.qwen is None:
             raise RuntimeError("no encoder loaded — TableQuery must be overlaid with the trained encoder "
                                "(engine.knowledge_query.load_encoder / engine.encoder_overlay.EncoderQuery)")
-        out = np.zeros((len(texts), self.hdim), np.float32)
-        for i in range(0, len(texts), 64):
-            chunk = texts[i:i + 64]
-            enc = self.tok(chunk, return_tensors="pt", padding=True, truncation=True, max_length=MAX_LEN)
-            h = self.qwen(**enc).last_hidden_state
-            m = enc["attention_mask"].unsqueeze(-1).float()
-            out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().numpy()
-        return out
+        request_timing.count("encode_texts", len(texts))
+        with request_timing.span("encode"):
+            out = np.zeros((len(texts), self.hdim), np.float32)
+            for i in range(0, len(texts), 64):
+                chunk = texts[i:i + 64]
+                enc = self.tok(chunk, return_tensors="pt", padding=True, truncation=True, max_length=MAX_LEN)
+                h = self.qwen(**enc).last_hidden_state
+                m = enc["attention_mask"].unsqueeze(-1).float()
+                out[i:i + len(chunk)] = ((h * m).sum(1) / m.sum(1).clamp(min=1.0)).float().numpy()
+            return out
 
     @_torch_no_grad
     def _layers(self, units, x):

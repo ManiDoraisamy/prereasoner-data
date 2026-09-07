@@ -137,15 +137,16 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         syncs insert), NOT the snake routing leaf — so look it up by that exact label, else a
         multi-word type ('academic journal' vs the routing 'academic_journal') misses the fast path forever.
         Exact norm match, then bge NN. A miss remains unresolved until an offline source sync supplies it."""
-        cur = self._rconn().cursor()
-        cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
-        _r = cur.fetchone()
-        wl = (str(_r[0]) if _r and _r[0] else label)                  # the exact label used by the offline projection
+        # This runs once per uploaded ROW on the non-geo path, so both exact lookups go through the
+        # request memo: repeated cell values and the constant type_qid->label lookup hit Postgres once.
+        _r = self._kb_rows('SELECT label FROM knowledgebase."types" WHERE qid=%s', (type_qid,))
+        wl = (str(_r[0][0]) if _r and _r[0][0] else label)            # the exact label used by the offline projection
         n = normalize_surface(value)
-        cur.execute('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL LIMIT 1', (wl, n))
-        row = cur.fetchone()
-        if row:
-            return row[0]
+        rows = self._kb_rows('SELECT qid FROM knowledgebase."words" WHERE type=%s AND norm=%s AND qid IS NOT NULL LIMIT 1',
+                             (wl, n))
+        if rows:
+            return rows[0][0]
+        cur = self._rconn().cursor()
         vec = pgvector_literal(Embedder.get().encode([value])[0])
         cur.execute('SELECT qid, 1-(embedding <=> %s::vector) FROM knowledgebase."words" WHERE type=%s AND qid IS NOT NULL '
                     'ORDER BY embedding <=> %s::vector LIMIT 1', (vec, wl, vec))
@@ -246,18 +247,17 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         norms = sorted({normalize_surface(str(c)) for c in cells if str(c).strip()})
         if len(norms) < 2:
             return None, None
-        cur = self._rconn().cursor()
-        cur.execute("SELECT type, COUNT(DISTINCT norm) FROM knowledgebase.\"words\" WHERE norm = ANY(%s) "
-                    "AND type NOT IN ('city','country','state','type') GROUP BY type ORDER BY 2 DESC LIMIT 1", (norms,))
-        row = cur.fetchone()
+        rows = self._kb_rows(
+            "SELECT type, COUNT(DISTINCT norm) FROM knowledgebase.\"words\" WHERE norm = ANY(%s) "
+            "AND type NOT IN ('city','country','state','type') GROUP BY type ORDER BY 2 DESC LIMIT 1", (norms,))
+        row = rows[0] if rows else None
         # >=50% of the DISTINCT cells must resolve to ONE non-geo type. The question must separately name that type,
         # so this deterministic fallback remains fail-closed when Schema.org classification abstains.
         if not row or row[1] < max(2, 0.5 * len(norms)):
             return None, None
         wl = row[0]
-        cur.execute('SELECT qid FROM knowledgebase."types" WHERE label=%s LIMIT 1', (wl,))
-        q = cur.fetchone()
-        return (wl, q[0]) if q else (None, None)
+        q = self._kb_rows('SELECT qid FROM knowledgebase."types" WHERE label=%s LIMIT 1', (wl,))
+        return (wl, q[0][0]) if q else (None, None)
 
     def _serve_world_type(self, norm, question, sch, plan, schema):
         """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
@@ -388,11 +388,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         """the world qid a single content word resolves to (exact normalized match in knowledgebase.\"words\" across the geo
         entity types), so _uncovered can tell a word is COVERED when its QID appears in the qid-keyed knowledgebase SQL."""
         try:
-            cur = self._rconn().cursor()
-            cur.execute('SELECT qid FROM knowledgebase."words" WHERE norm=%s AND qid IS NOT NULL '
-                        "AND type IN ('country','continent','city','state') LIMIT 1", (normalize_surface(w),))
-            r = cur.fetchone()
-            return r[0] if r else None
+            r = self._kb_rows('SELECT qid FROM knowledgebase."words" WHERE norm=%s AND qid IS NOT NULL '
+                              "AND type IN ('country','continent','city','state') LIMIT 1",
+                              (normalize_surface(w),))
+            return r[0][0] if r else None
         except Exception:                                        # noqa: BLE001
             return None
 

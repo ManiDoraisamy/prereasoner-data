@@ -38,10 +38,11 @@ Env contract:
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
   ORCH_PORT            port for the orchestrator chat server          (default 8090)
-  MCP_SERVER_CMD       argv (JSON list) to launch the Prereasoner MCP server (default: python -m mcp_server.server)
-  ENGINE_BEARER_TOKEN  read by the MCP SERVER only: the Firebase token to forward to the engine. The
-                       orchestrator sets this per session in the MCP server's env; unset locally (the engine
-                       runs with AUTH_TEST_SUB). Never a request field the LLM sees.
+  ENGINE_BEARER_TOKEN  read by the STANDALONE MCP server only: the Firebase token to forward to the
+                       engine, supplied in its env by whichever MCP client launched it; unset locally
+                       (the engine runs with AUTH_TEST_SUB). Never a request field the LLM sees. The
+                       orchestrator does NOT use it — it calls engine_client in-process and passes the
+                       token explicitly per call, because process env is shared across concurrent turns.
 """
 from __future__ import annotations
 import os
@@ -182,14 +183,3 @@ def anthropic_api_key():
     if not k:
         raise RuntimeError("ANTHROPIC_API_KEY is not set — the Sonnet orchestrator needs it")
     return k
-
-
-def mcp_server_cmd():
-    """argv used to spawn the Prereasoner MCP server over stdio. Overridable as a JSON list so the
-    transport/entrypoint can change without code edits (matches the 'every knob is an env var' contract)."""
-    raw = os.environ.get("MCP_SERVER_CMD")
-    if raw:
-        import json
-        return json.loads(raw)
-    import sys
-    return [sys.executable, "-m", "mcp_server.server"]

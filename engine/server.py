@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from urllib.parse import urlparse, parse_qs
@@ -35,6 +36,7 @@ from engine.conversations import (resolve_conversation, conversation_page, get_c
                                    QuotaExceeded)
 from engine import master
 from engine import admin
+from engine import request_timing
 from engine.pg import _pg
 from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from engine.request_limits import (
@@ -88,6 +90,7 @@ class H(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
     def _send(self, code, body, ctype="application/json", retry_after=None):
+        self._status = code                              # every exit path, so the timing line reports the outcome
         b = body.encode("utf-8")
         self.send_response(code); self.send_header("Content-Type", ctype)
         self._cors()
@@ -426,6 +429,10 @@ class H(BaseHTTPRequestHandler):
     # ---------------- /api/reason + /api/knowledge (Firebase auth + RTDB trace stream) ----------------
     def _post_world(self):
         emit = None                                          # so the except can stream a terminal error to RTDB
+        # ONE timing scope per request, closed in the finally so a 4xx/5xx is measured like a 200.
+        # The id comes from the caller when the orchestrator supplies one, so a chat turn's engine
+        # calls can be correlated with the turn that issued them across the two services.
+        timing_token = request_timing.begin(self.headers.get("X-Request-Id") or uuid.uuid4().hex[:12])
         try:
             req = self._read_json()
             if req is None:
@@ -434,6 +441,8 @@ class H(BaseHTTPRequestHandler):
                 req = validate_reason_request(req)
             except RequestValidationError as exc:
                 self._send(exc.status_code, json.dumps({"error": str(exc)})); return
+            if not self.headers.get("X-Request-Id"):
+                request_timing.set_request_id(req.get("jobId"))   # jobId already ties a call to its chat turn
             sub, uid = _verify_principal(_bearer(self.headers, req))   # sub = VERIFIED user id (auth); uid = RTDB /runs key
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
@@ -490,17 +499,25 @@ class H(BaseHTTPRequestHandler):
             emit = provenance_context.wrap_emitter(emitter(uid, req.get("jobId")))
             emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
             emit("status", "running")
-            with WORLD_LOCK:
+            # lock_wait is measured SEPARATELY from serve: the global lock serializes the engine, so
+            # queueing behind another request and doing the work are different problems with different
+            # fixes, and one line has to tell them apart.
+            with request_timing.span("lock_wait"):
+                WORLD_LOCK.acquire()
+            try:
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
                 try:
                     serve_kwargs = {"emit": emit}
                     if enrichment is not None and enrichment.used:
                         serve_kwargs["explicit_fks"] = enrichment.explicit_fks
-                    res = MODEL.serve(
-                        tabs, req.get("question", ""), conv, req.get("as_of"), **serve_kwargs
-                    )
+                    with request_timing.span("serve"):
+                        res = MODEL.serve(
+                            tabs, req.get("question", ""), conv, req.get("as_of"), **serve_kwargs
+                        )
                 finally:
                     set_ctx(None)
+            finally:
+                WORLD_LOCK.release()
             res = provenance_context.decorate_response(res)
             if isinstance(res, dict):
                 res["conversation_id"] = conv                # so the browser persists it for follow-up turns
@@ -527,6 +544,9 @@ class H(BaseHTTPRequestHandler):
                     pass
             print(f"world request failed: {type(e).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
+        finally:
+            request_timing.emit("reason", status=getattr(self, "_status", None))
+            request_timing.end(timing_token)
 
     # ---------------- /api/dimension (stateless, authenticated) ----------------
     def _post_dimension(self):

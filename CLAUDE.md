@@ -64,6 +64,7 @@ Extend these owners. Do not build parallel replacements.
 | Hermetic SQL planner regression suite | `tests/test_sql_ast.py` |
 | Workbook and reference-data browser lifecycle | `web/public/lib/workbook.js` |
 | Sheets-as-reasoning derivation contract (step grammar, naming, rendering rules) | `docs/SHEETS_AS_REASONING.md` — every view emitter (`engine/compose.py`, the conversion trail in `engine/knowledge_tables.py`) and `web/public/lib/workbook.js` follow it; fix the path, never fork the grammar |
+| Per-request phase timing (the ONE `[timing]` line per served request) | `engine/request_timing.py` — instrument by calling its `span`/`count`/`mark`; do not add a second timing mechanism, and never log prompts, cells, questions or tokens |
 
 The routing decision is `engine/routing.py:route()` — one pure function that both
 `engine/knowledge_compose.py` (serving) and `spider/probe/full_eval.py` (evaluation)

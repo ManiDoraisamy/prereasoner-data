@@ -88,7 +88,7 @@ def test_chat_migration_is_admin_run_and_idempotent():
 
 
 def test_knowledgebase_migration_installs_definer_functions():
-    assert [migration.version for migration in KNOWLEDGEBASE_MIGRATIONS] == [1, 2]
+    assert [migration.version for migration in KNOWLEDGEBASE_MIGRATIONS] == [1, 2, 3]
     assert KNOWLEDGEBASE_MIGRATIONS[0].name == "lazy_fill_definer_functions"
     statements = KNOWLEDGEBASE_MIGRATIONS[0].statements
     definers = [s for s in statements if "SECURITY DEFINER" in s]
@@ -102,7 +102,8 @@ def test_knowledgebase_migration_installs_definer_functions():
     # to entity-shaped (qid PRIMARY KEY) lazy tables.
     assert any("ON CONFLICT (qid) DO NOTHING" in s for s in definers)
     connection = _Connection()
-    assert migrate_knowledgebase(connection) == (1, 2)   # definer functions, then the schedule table
+    # definer functions, then the schedule table, then the words(type, norm) resolution index
+    assert migrate_knowledgebase(connection) == (1, 2, 3)
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
     assert migrate_chat(connection) == (1, 2, 3)
@@ -290,6 +291,31 @@ def test_schedule_migration_and_base_schema_agree():
     assert "schedule_cadence_positive" in ddl and "schedule_cadence_positive" in init
 
 
+def test_words_index_migration_and_base_schema_agree():
+    """Regression for OBSERVED drift: db/init.sql declared a words norm index, deployed production
+    did not have one, and nothing reconciled them — so every resolution lookup sequentially scanned
+    the 790 MB words heap. A fresh database gets the index from init.sql and an existing one gets it
+    from v3; this test fails if either declaration is dropped or the two stop matching. The index is
+    norm-LEADING: the serving shapes constrain type positively, negatively, or not at all, and on
+    PostgreSQL 16 only a norm-leading index can seek for all of them."""
+    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
+    import pathlib
+    v3 = [m for m in KNOWLEDGEBASE_MIGRATIONS if m.version == 3]
+    assert v3 and v3[0].name == "words_norm_type_index", "the words index migration must be v3"
+    ddl = v3[0].statements[0]
+    init = pathlib.Path("db/init.sql").read_text(encoding="utf-8")
+    for declaration in (ddl, init):
+        assert "ix_words_norm_type" in declaration, "both paths must declare the index by name"
+        assert 'knowledgebase."words"(norm, type)' in declaration, (
+            "both paths must build the SAME (norm, type) index — a different column order is a "
+            "different index and would not serve the same lookups")
+    assert 'knowledgebase."words"(type, norm)' not in init, (
+        "the superseded type-leading DDL must not linger in init.sql")
+    assert "IF NOT EXISTS" in ddl, "the migration must be idempotent (v3 may re-run on a fresh db)"
+    assert "CONCURRENTLY" not in ddl, (
+        "migrations run in one transaction, where PostgreSQL forbids CREATE INDEX CONCURRENTLY")
+
+
 def test_serving_guard_consults_the_catalog_instead_of_skipping():
     """Regression for the observed gap: a world table with no per-row updated_at produced NO
     freshness signal at all — the guard simply did not run."""
@@ -319,6 +345,7 @@ TESTS = [
     test_serving_role_has_no_cluster_level_capabilities,
     test_schedule_catalog_is_honest_about_what_it_claims,
     test_schedule_migration_and_base_schema_agree,
+    test_words_index_migration_and_base_schema_agree,
     test_serving_guard_consults_the_catalog_instead_of_skipping,
     test_request_path_contains_no_shared_chat_ddl,
     test_expired_conversation_cleanup_is_bounded_and_identifier_guarded,

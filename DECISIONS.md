@@ -171,3 +171,31 @@ The model's authority remains deliberately narrow:
 This separation lets new publisher observations expand named Schema.org coordinates without adding
 another hand-built family model, while preventing a plausible learned classification from granting
 access to unrelated source facts.
+
+## The engine client is async, and the orchestrator calls it in-process (2026-09-07)
+
+`mcp_server/engine_client.py` became async-first: `call_query`/`call_describe` are coroutines
+awaited by BOTH entry points — the chat orchestrator directly in-process, and the standalone stdio
+MCP server for external clients. The orchestrator previously spawned `python -m mcp_server.server`
+per chat turn purely to relay the same HTTP call; that cost a measured 0.86s of interpreter startup
+per turn and carried the user's token through process-wide env, which becomes cross-user shared
+state once the caller serves concurrent turns in one process. Identity is now an explicit `token=`
+argument on every orchestrator call; the env fallback remains only for the standalone stdio server
+(one client per process). The explicit-token-beats-env contract is pinned by `tests/test_mcp.py`.
+
+This is an API-breaking change for any external PYTHON consumer that imported the previously
+synchronous `call_query`/`call_describe` (they must now await them, or wrap with `asyncio.run`).
+The MCP wire contract — tool names, arguments, and the JSON envelope — is unchanged, so MCP clients
+are unaffected. All in-repo callers were converted in the same change.
+
+## knowledgebase.words is indexed norm-leading (2026-09-07)
+
+Serving resolution/routing/classification lookups filter `words.norm = ANY(...)` with type
+constraints that are positive, NEGATIVE (`type NOT IN`), or absent. On PostgreSQL 16 a
+type-leading index cannot seek for the latter two, and production — which had drifted from
+`db/init.sql` and had NO norm index at all except the city-only partial — served every such lookup
+as a parallel seq scan of the ~790MB heap (measured ~0.5s each, ~10 per request, 87% of server-side
+SQL time). `ix_words_norm_type (norm, type)` replaced the declared-but-never-built
+`ix_words_type_norm (type, norm)` in BOTH `db/init.sql` and knowledgebase migration v3 before
+either was applied anywhere, keeping one index design. Measured after: the three hot shapes went
+from ~500ms seq scans to <1ms index scans. Type-only lookups remain served by `ix_words_type_qid`.

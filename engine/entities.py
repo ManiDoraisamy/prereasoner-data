@@ -86,6 +86,36 @@ class EntityQuery(RoutedQuery):
             self._rcn.autocommit = True
         return self._rcn
 
+    # ---- request-scoped memo for shared-knowledge reads ----
+    def begin_request(self):
+        """Open a fresh request-scoped memo for `_kb_rows`. Called once per serve request by the ONE
+        production entry (engine.knowledge.KnowledgeReasoner.serve), so identical lookups within a
+        request — the routing pass and the delegate pass both resolving the same columns, the non-geo
+        scan re-classifying the same cells — hit Postgres once. Measured before this existed: the
+        three hot `words` lookup shapes ran 2-4x each per request with identical parameters, 5.8s of
+        a 6.6s server-side total. The memo holds only read results from shared knowledgebase tables,
+        which change solely via offline sync — never uploaded data or per-conversation state — so
+        within one request a repeat is exact."""
+        self._kb_memo = {}
+
+    def _kb_rows(self, sql, params=()):
+        """Execute a read-only shared-knowledge lookup, memoized for the current request.
+
+        Keyed on the full (sql, params) tuple: only a byte-identical repeat reuses rows, so this
+        cannot change any answer. Outside a request (no `begin_request`) it is an uncached
+        passthrough. Do NOT route conversation-schema or bridge reads through this — those tables
+        are written mid-request."""
+        memo = getattr(self, "_kb_memo", None)
+        key = (sql, tuple(tuple(p) if isinstance(p, list) else p for p in params))
+        if memo is not None and key in memo:
+            return memo[key]
+        cur = self._rconn().cursor()
+        cur.execute(sql, params)
+        rows = cur.fetchall()
+        if memo is not None:
+            memo[key] = rows
+        return rows
+
     def _candidates(self, question):
         """surface forms worth resolving: spaCy place-ish entities + noun chunks + proper nouns + bare alpha
         tokens. Deduped (case-insensitive), function words dropped, capped. The threshold does the real filtering;
@@ -126,13 +156,13 @@ class EntityQuery(RoutedQuery):
         cands = self._candidates(question)
         if not cands:
             return None
-        cur = self._rconn().cursor()
         norms = {c: normalize_surface(c) for c in cands}
         uniq = sorted({n for n in norms.values() if n})
         by_type = {}                                              # norm -> {type: {canonical}} across ALL types
         if uniq:
-            cur.execute('SELECT norm, type, qid FROM knowledgebase."words" WHERE norm = ANY(%s) AND qid IS NOT NULL', (uniq,))
-            for nm, ty, q_ in cur.fetchall():
+            for nm, ty, q_ in self._kb_rows(
+                    'SELECT norm, type, qid FROM knowledgebase."words" WHERE norm = ANY(%s) AND qid IS NOT NULL',
+                    (uniq,)):
                 by_type.setdefault(nm, {}).setdefault(ty, set()).add(q_)      # collect QIDS — resolve to qid, not name
         for c in sorted(cands, key=lambda x: -len(x)):           # (1) exact match of the requested type, longest first
             cs = by_type.get(norms[c], {}).get(type_)
@@ -182,7 +212,6 @@ class EntityQuery(RoutedQuery):
         'Nation' all route by their values). Column-level aggregation averages out single-value collisions
         (IN = India vs the state Indiana). -> {(table, col): friendly_world_table}."""
         base = table["name"]
-        cur = self._rconn().cursor()
         routes = {}
         for ci, col in enumerate(table["columns"]):
             cells = [str(r[ci]) for r in table["rows"] if ci < len(r) and r[ci] not in (None, "")]
@@ -192,10 +221,10 @@ class EntityQuery(RoutedQuery):
             uniq = sorted({n for n in norms if n})
             if not uniq:
                 continue
-            cur.execute('SELECT DISTINCT norm, type FROM knowledgebase."words" WHERE norm = ANY(%s) '
-                        "AND type IN ('city','country','state','element','continent')", (uniq,))
             ntypes = {}
-            for nm, ty in cur.fetchall():
+            for nm, ty in self._kb_rows(
+                    'SELECT DISTINCT norm, type FROM knowledgebase."words" WHERE norm = ANY(%s) '
+                    "AND type IN ('city','country','state','element','continent')", (uniq,)):
                 ntypes.setdefault(nm, set()).add(ty)
             counts = {}
             for n in norms:
@@ -354,9 +383,9 @@ class EntityQuery(RoutedQuery):
         if not qids:
             return {}
         try:
-            cur = self._rconn().cursor()
-            cur.execute('SELECT qid, canonical FROM knowledgebase."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL', (qids,))
-            return {q: c for q, c in cur.fetchall()}
+            return dict(self._kb_rows(
+                'SELECT qid, canonical FROM knowledgebase."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL',
+                (qids,)))
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
             print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True)
             return {}

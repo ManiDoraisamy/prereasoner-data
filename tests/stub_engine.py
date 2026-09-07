@@ -74,6 +74,12 @@ def _answer(question: str) -> dict:
     }
 
 
+# Every Authorization header the stub received, newest last. Lets a test assert WHICH identity the
+# engine was actually called with — the thing that matters once the caller is in-process and serving
+# concurrent users, where a process-wide token would silently cross requests.
+AUTH_SEEN: list[str | None] = []
+
+
 class H(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -93,6 +99,7 @@ class H(BaseHTTPRequestHandler):
             self._send(200, {"stub": "POST /api/reason | /api/knowledge | /api/dimension"})
 
     def do_POST(self):
+        AUTH_SEEN.append(self.headers.get("Authorization"))
         n = int(self.headers.get("Content-Length", 0))
         try:
             req = json.loads(self.rfile.read(n) or b"{}")

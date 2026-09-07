@@ -11,6 +11,7 @@ compute (the engine has no top-level `status` field).
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
@@ -78,28 +79,53 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
     return out
 
 
-def call_query(question: str, tables: list[dict], job_id: str | None = None,
-               conversation_id: str | None = None,
-               *, base_url: str | None = None, token: str | None = None,
-               timeout: float | None = None) -> dict[str, Any]:
+@asynccontextmanager
+async def _http(client: httpx.AsyncClient | None, timeout: float | None):
+    """Yield the caller's client (connection reuse across a chat turn's calls) or a temporary one."""
+    if client is not None:
+        yield client
+        return
+    async with httpx.AsyncClient(timeout=timeout or DEFAULT_TIMEOUT) as temporary:
+        yield temporary
+
+
+def _headers(token: str | None, request_id: str | None) -> dict[str, str]:
+    """Per-call headers. `token` is passed EXPLICITLY by callers that have one: the env fallback is
+    process-global, so an in-process caller serving concurrent users must never rely on it."""
+    headers = {"content-type": "application/json"}
+    tok = token if token is not None else _bearer_token()
+    if tok:
+        headers["Authorization"] = f"Bearer {tok}"
+    if request_id:
+        headers["X-Request-Id"] = request_id       # correlate this call with the chat turn that issued it
+    return headers
+
+
+async def call_query(question: str, tables: list[dict], job_id: str | None = None,
+                     conversation_id: str | None = None,
+                     *, base_url: str | None = None, token: str | None = None,
+                     timeout: float | None = None, request_id: str | None = None,
+                     client: httpx.AsyncClient | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
     `conversation_id`, when given, keeps every call on ONE conversation schema (else the engine mints a fresh
-    one per call — the orchestrated-mode conversation-spam bug)."""
+    one per call — the orchestrated-mode conversation-spam bug).
+
+    ASYNC because both callers are async: the MCP tool (FastMCP awaits it) and the orchestrator's chat
+    loop, which runs on one shared event loop and would stall every concurrent turn on a blocking POST.
+    One implementation serves both; pass `client` to reuse a connection across a turn's calls."""
     base = (base_url or _engine_base_url()).rstrip("/")
-    tok = token if token is not None else _bearer_token()
-    headers = {"content-type": "application/json"}
-    if tok:
-        headers["Authorization"] = f"Bearer {tok}"
     body: dict[str, Any] = {"tables": tables, "question": question}
     if job_id:
         body["jobId"] = job_id
     if conversation_id:
         body["conversation_id"] = conversation_id
     try:
-        r = httpx.post(f"{base}/api/reason", json=body, headers=headers,
-                       timeout=timeout or DEFAULT_TIMEOUT)
+        async with _http(client, timeout) as http:
+            r = await http.post(f"{base}/api/reason", json=body,
+                                headers=_headers(token, request_id),
+                                timeout=timeout or DEFAULT_TIMEOUT)
     except httpx.HTTPError as e:
         return {"status": "error", "error": f"could not reach the Prereasoner engine at {base}: {e}"}
     # The engine returns 200 for most in-band outcomes; 401/500 carry a top-level {"error": ...}.
@@ -111,37 +137,36 @@ def call_query(question: str, tables: list[dict], job_id: str | None = None,
     return shape_reason_response(j, job_id)
 
 
-def call_describe(tables: list[dict], *, base_url: str | None = None,
-                  token: str | None = None,
-                  timeout: float | None = None) -> dict[str, Any]:
+async def call_describe(tables: list[dict], *, base_url: str | None = None,
+                        token: str | None = None, timeout: float | None = None,
+                        request_id: str | None = None,
+                        client: httpx.AsyncClient | None = None) -> dict[str, Any]:
     """Per-table coverage hint via the engine's stateless /api/dimension.
 
     Honest scope limit (docs/MCP.md): this reports what the model TYPES each column as, not which cells
     actually resolved to world entities. Returns one readout per table.
     """
     base = (base_url or _engine_base_url()).rstrip("/")
-    tok = token if token is not None else _bearer_token()
-    headers = {"content-type": "application/json"}
-    if tok:
-        headers["Authorization"] = f"Bearer {tok}"
+    headers = _headers(token, request_id)
     out: list[dict[str, Any]] = []
-    for t in tables or []:
-        name = t.get("name") or "data"
-        data = t.get("data") or ""
-        if not data.strip():
-            continue
-        try:
-            r = httpx.post(f"{base}/api/dimension",
-                           json={"data": data, "table": name, "mode": "analyze"},
-                           headers=headers,
-                           timeout=timeout or DEFAULT_TIMEOUT)
-            j = r.json()
-        except (httpx.HTTPError, ValueError) as e:
-            out.append({"table": name, "error": str(e)})
-            continue
-        if j.get("error"):
-            out.append({"table": name, "error": j["error"]})
-        else:
+    async with _http(client, timeout) as http:
+        for t in tables or []:
+            name = t.get("name") or "data"
+            data = t.get("data") or ""
+            if not data.strip():
+                continue
+            try:
+                r = await http.post(f"{base}/api/dimension",
+                                    json={"data": data, "table": name, "mode": "analyze"},
+                                    headers=headers,
+                                    timeout=timeout or DEFAULT_TIMEOUT)
+                j = r.json()
+            except (httpx.HTTPError, ValueError) as e:
+                out.append({"table": name, "error": str(e)})
+                continue
+            if j.get("error"):
+                out.append({"table": name, "error": j["error"]})
+                continue
             # columns[].name + a compact top-dimension-per-column summary from the readout.
             cols = []
             for c in (j.get("columns") or []):

@@ -5,26 +5,34 @@ Prereasoner exposes the same engine through HTTP and MCP. MCP is an adapter, not
 ## Components
 
 ```text
-client -> orchestrator/server.py -> orchestrator/orchestrator.py
-                                  -> mcp_server/server.py
-                                  -> mcp_server/engine_client.py
-                                  -> POST /api/reason or /api/dimension
+chat:         client -> orchestrator/server.py -> orchestrator/orchestrator.py
+                                                -> mcp_server/engine_client.py (awaited in-process)
+                                                -> POST /api/reason or /api/dimension
+external MCP: MCP client -> mcp_server/server.py (stdio)
+                          -> mcp_server/engine_client.py
+                          -> POST /api/reason or /api/dimension
 ```
 
-- `mcp_server` publishes `prereasoner_query` and `prereasoner_describe` over stdio.
-- `engine_client.py` maps the engine's answer/clarify/error variants into a stable tool envelope.
+- `engine_client.py` is the ONE engine contract: async coroutines that map the engine's
+  answer/clarify/error variants into a stable tool envelope. Both entry points await it.
+- `mcp_server/server.py` publishes `prereasoner_query` and `prereasoner_describe` over stdio for
+  EXTERNAL MCP clients. The chat orchestrator does not spawn it — a per-turn Python subprocess cost
+  a measured 0.86s of interpreter startup to relay an HTTP call the orchestrator can make itself.
 - `orchestrator` runs an optional Anthropic tool loop. It decides when to call a tool and how to present the result.
 - Numbers and tables must come from the engine tool response. The orchestrator may not calculate or invent them.
 
 ## Identity
 
 Identity is transport context, never a tool argument chosen by the model. The orchestrator verifies the incoming
-Firebase bearer token and passes it to the engine through the MCP subprocess environment. The engine performs its own
-verification and conversation ownership checks.
+Firebase bearer token and passes it EXPLICITLY per `engine_client` call (`token=`), never via process
+environment — env is shared across concurrent turns of different users. The standalone stdio server,
+which serves one client per process, receives the token as `ENGINE_BEARER_TOKEN` in its environment
+from whichever MCP client launched it. The engine performs its own verification and conversation
+ownership checks either way; an explicit `token=` always overrides the env fallback
+(pinned by `tests/test_mcp.py`).
 
 Local tests can use the engine's `AUTH_TEST_SUB` bypass only with `APP_ENV=development` or `APP_ENV=test`.
-Production defaults to fail-closed. `/api/dimension` is authenticated too; the MCP subprocess forwards the
-verified bearer token through `ENGINE_BEARER_TOKEN` rather than treating “stateless” as public.
+Production defaults to fail-closed. `/api/dimension` is authenticated too.
 
 ## Tool Outcomes
 

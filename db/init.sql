@@ -157,7 +157,13 @@ CREATE TABLE IF NOT EXISTS knowledgebase."words" (
   is_primary    boolean               -- global most-populous-per-name flag
 );
 
-CREATE INDEX IF NOT EXISTS ix_words_type_norm  ON knowledgebase."words"(type, norm);
+-- norm-LEADING, deliberately: norm is the selective predicate in every serving lookup. The measured
+-- production shapes (engine/entities.py routing + resolution, engine/knowledge_query.py non-geo
+-- classification) filter `norm = ANY(...)` with type constraints that are positive, NEGATIVE
+-- (`type NOT IN`), or absent — on PostgreSQL 16 a (type, norm) index cannot seek for the latter two
+-- and every lookup sequentially scanned the ~790MB heap (~0.5s each, measured). (norm, type) serves
+-- all four shapes; type-only scans use ix_words_type_qid.
+CREATE INDEX IF NOT EXISTS ix_words_norm_type  ON knowledgebase."words"(norm, type);
 CREATE INDEX IF NOT EXISTS ix_words_type_qid   ON knowledgebase."words"(type, qid);
 CREATE INDEX IF NOT EXISTS ix_words_city_norm  ON knowledgebase."words"(norm) WHERE type = 'city';
 -- HNSW cosine index (pgvector defaults: m=16, ef_construction=64) — the source

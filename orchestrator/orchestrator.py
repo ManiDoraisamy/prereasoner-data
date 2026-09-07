@@ -1,9 +1,14 @@
-"""orchestrator.py — the Sonnet tool loop over the Prereasoner MCP server.
+"""orchestrator.py — the Sonnet tool loop over the Prereasoner engine.
 
-Per chat request we: (1) spawn the MCP server over stdio with the user's Firebase token injected into its
-env (identity passthrough, never a tool argument — docs/MCP.md); (2) run a manual Anthropic tool loop so
-we control the jobId per `prereasoner_query` call and can capture the full engine trace to return to the
-browser; (3) return the assistant reply + one replayable trace per Prereasoner call.
+Per chat request we: (1) run a manual Anthropic tool loop so we control the jobId per
+`prereasoner_query` call and can capture the full engine trace to return to the browser; (2) call the
+engine through `mcp_server.engine_client` — the same coroutine `mcp_server/server.py` exposes to
+external MCP clients — passing the user's Firebase token EXPLICITLY per call (identity passthrough,
+never a tool argument — docs/MCP.md); (3) return the assistant reply + one replayable trace per call.
+
+The MCP stdio server is not in this path. Spawning `python -m mcp_server.server` per chat turn cost a
+measured 0.86s of interpreter startup to relay an HTTP call this process can make itself; it remains
+the entry point for OTHER MCP clients, over the shared `engine_client`.
 
 Manual loop (not the SDK tool_runner) on purpose: we need to mint the jobId, inject the session `tables`
 (kept out of the LLM's context — the model only ever sees the `question`), and keep the full `views` stack
@@ -12,18 +17,17 @@ for the reasoning player while feeding the model only a trimmed result.
 from __future__ import annotations
 
 import json
-import os
 import uuid
 from typing import Any
 
+import httpx
 from anthropic import AsyncAnthropic
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
 
+from engine import request_timing
+from mcp_server import engine_client
 from mcp_server.descriptions import QUERY_DESC, DESCRIBE_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # These are hard ceilings, not model preferences. A single authenticated turn may not create an
 # unbounded paid tool loop even when the upstream model keeps requesting tools.
 MAX_TOOL_ROUNDS = 6
@@ -57,37 +61,6 @@ CLAUDE_TOOLS = [
 ]
 
 
-def _mcp_params(engine_base_url: str, bearer_token: str | None) -> StdioServerParameters:
-    env = dict(os.environ)
-    env["ENGINE_BASE_URL"] = engine_base_url
-    env["PYTHONPATH"] = REPO_ROOT + os.pathsep + env.get("PYTHONPATH", "")
-    if bearer_token:
-        env["ENGINE_BEARER_TOKEN"] = bearer_token
-    else:
-        env.pop("ENGINE_BEARER_TOKEN", None)  # local: engine runs with AUTH_TEST_SUB, no token
-    cmd = _mcp_cmd()
-    return StdioServerParameters(command=cmd[0], args=cmd[1:], env=env, cwd=REPO_ROOT)
-
-
-def _mcp_cmd() -> list[str]:
-    raw = os.environ.get("MCP_SERVER_CMD")
-    if raw:
-        return json.loads(raw)
-    import sys
-    return [sys.executable, "-m", "mcp_server.server"]
-
-
-def _tool_text(result: Any) -> str:
-    """Extract the JSON text a FastMCP tool returned from a CallToolResult."""
-    content = getattr(result, "content", None) or []
-    for block in content:
-        if getattr(block, "type", None) == "text" or hasattr(block, "text"):
-            return block.text
-    # Fallback: some SDK versions expose structured content
-    sc = getattr(result, "structuredContent", None)
-    return json.dumps(sc) if sc is not None else "{}"
-
-
 def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     """What the LLM sees back: the value + status + clarify, NOT the heavy views/rows stack (that goes to
     the reasoning player, not the context window)."""
@@ -103,10 +76,28 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def run_chat(user_message: str, tables: list[dict], history: list[dict], *,
-                   engine_base_url: str, bearer_token: str | None,
-                   api_key: str, model: str, turn_id: str | None = None,
-                   emit=None, conversation_id: str | None = None) -> dict[str, Any]:
+async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:
+    """Run one chat turn under a timing scope, and print the turn's ONE `[timing] chat` line.
+
+    A separate wrapper only because the line must be emitted in a `finally`: a turn that raises is
+    exactly the turn whose phase split is worth having. See `_run_turn` for the turn itself.
+    """
+    timing_token = request_timing.begin(kw.get("turn_id") or uuid.uuid4().hex[:12])
+    status = "ok"
+    try:
+        return await _run_turn(user_message, tables, history, **kw)
+    except BaseException:                                    # noqa: BLE001 — re-raised; we only label the line
+        status = "error"
+        raise
+    finally:
+        request_timing.emit("chat", status=status)
+        request_timing.end(timing_token)
+
+
+async def _run_turn(user_message: str, tables: list[dict], history: list[dict], *,
+                    engine_base_url: str, bearer_token: str | None,
+                    api_key: str, model: str, turn_id: str | None = None,
+                    emit=None, conversation_id: str | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs. Returns {reply, traces, history, conversation_id}.
 
@@ -130,21 +121,25 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
             except Exception:                                # noqa: BLE001 — never break the answer on a stream write
                 pass
 
+    # ONE AsyncClient for the turn: every engine call reuses the connection instead of reopening one,
+    # and nothing blocks the shared event loop. This replaced spawning `python -m mcp_server.server`
+    # per chat turn purely to relay the same HTTP call — a measured 0.86s of interpreter start before
+    # any model or engine work. mcp_server/server.py still exists and still serves EXTERNAL MCP
+    # clients; it and this path now call the same `engine_client` coroutine, so there is one
+    # implementation of the engine contract, not two.
     async with (
         AsyncAnthropic(api_key=api_key) as client,
-        stdio_client(_mcp_params(engine_base_url, bearer_token)) as (read, write),
+        httpx.AsyncClient(timeout=engine_client.DEFAULT_TIMEOUT) as http,
     ):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
+        # Work on a local copy of the full block-level message list for the tool loop.
+        messages: list[dict[str, Any]] = [
+            {"role": m["role"], "content": m["content"]} for m in (history or [])
+        ]
+        messages.append({"role": "user", "content": user_message})
 
-            # Work on a local copy of the full block-level message list for the tool loop.
-            messages: list[dict[str, Any]] = [
-                {"role": m["role"], "content": m["content"]} for m in (history or [])
-            ]
-            messages.append({"role": "user", "content": user_message})
-
-            final_text = ""
-            for _ in range(MAX_TOOL_ROUNDS):
+        final_text = ""
+        for _ in range(MAX_TOOL_ROUNDS):
+            with request_timing.span("llm"):
                 resp = await client.messages.create(
                     model=model,
                     max_tokens=MAX_MODEL_TOKENS,
@@ -153,63 +148,70 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
                     tools=CLAUDE_TOOLS,
                     messages=messages,
                 )
-                # Append the assistant turn verbatim (thinking blocks preserved for same-turn continuation).
-                messages.append({"role": "assistant",
-                                 "content": [b.model_dump() for b in resp.content]})
+            # Append the assistant turn verbatim (thinking blocks preserved for same-turn continuation).
+            messages.append({"role": "assistant",
+                             "content": [b.model_dump() for b in resp.content]})
 
-                if resp.stop_reason != "tool_use":
-                    final_text = "".join(b.text for b in resp.content if b.type == "text").strip()
-                    break
+            if resp.stop_reason != "tool_use":
+                final_text = "".join(b.text for b in resp.content if b.type == "text").strip()
+                break
 
-                tool_results = []
-                for block in resp.content:
-                    if block.type != "tool_use":
-                        continue
-                    if block.name == "prereasoner_query":
-                        # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
-                        job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
-                        question = (block.input or {}).get("question", "")
-                        # The system prompt (rules 3-4) owns question fidelity: a standalone question is
-                        # passed in the user's exact words, and a follow-up rewrite carries every
-                        # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
-                        # an unconverted total on 2026-09-06 — the prompt then had no such rule. The
-                        # boundary is asserted where it matters: test_orchestrator checks the
-                        # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
-                        # prompt regression fails the live suite instead of shipping. No per-dimension
-                        # code guard: it covered only currency and could never cover qualifier carry-over.
-                        print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
-                        _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
-                        call_idx += 1
-                        args = {"question": question, "tables": tables, "job_id": job_id}
-                        if conv:
-                            args["conversation_id"] = conv
-                        result = await session.call_tool("prereasoner_query", args)
-                        shaped = json.loads(_tool_text(result))
-                        if not conv and shaped.get("conversation_id"):
-                            conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session
-                            _emit("conversation_id", conv)    # stream it NOW, mid-turn — the browser unsubscribes from the
-                                                              # turn node on 'status:done' (workbook settle()), so the
-                                                              # post-'done' emit below would be MISSED: no URL, no snapshot save
-                        traces.append({"jobId": job_id, "question": question, "engine": shaped})
-                        tool_results.append({
-                            "type": "tool_result", "tool_use_id": block.id,
-                            "content": json.dumps(_trim_for_model(shaped)),
-                            "is_error": shaped.get("status") == "error",
-                        })
-                    elif block.name == "prereasoner_describe":
-                        result = await session.call_tool("prereasoner_describe", {"tables": tables})
-                        tool_results.append({
-                            "type": "tool_result", "tool_use_id": block.id,
-                            "content": _tool_text(result),
-                        })
-                    else:
-                        tool_results.append({
-                            "type": "tool_result", "tool_use_id": block.id,
-                            "content": f"unknown tool {block.name}", "is_error": True,
-                        })
-                messages.append({"role": "user", "content": tool_results})
-            else:
-                final_text = final_text or "I wasn't able to complete that within the step budget."
+            tool_results = []
+            for block in resp.content:
+                if block.type != "tool_use":
+                    continue
+                if block.name == "prereasoner_query":
+                    # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
+                    job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
+                    question = (block.input or {}).get("question", "")
+                    # The system prompt (rules 3-4) owns question fidelity: a standalone question is
+                    # passed in the user's exact words, and a follow-up rewrite carries every
+                    # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
+                    # an unconverted total on 2026-09-06 — the prompt then had no such rule. The
+                    # boundary is asserted where it matters: test_orchestrator checks the
+                    # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
+                    # prompt regression fails the live suite instead of shipping. No per-dimension
+                    # code guard: it covered only currency and could never cover qualifier carry-over.
+                    print(f"[chat] tool_call={call_idx} question_chars={len(question)}", flush=True)
+                    _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
+                    call_idx += 1
+                    # The caller's token is passed EXPLICITLY per call. It used to travel as
+                    # ENGINE_BEARER_TOKEN in the subprocess env; in-process that would be shared
+                    # mutable state across concurrent turns of DIFFERENT users, so it is an argument.
+                    with request_timing.span("engine_call"):
+                        shaped = await engine_client.call_query(
+                            question, tables, job_id, conv,
+                            base_url=engine_base_url, token=bearer_token,
+                            request_id=job_id, client=http,
+                        )
+                    if not conv and shaped.get("conversation_id"):
+                        conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session
+                        _emit("conversation_id", conv)    # stream it NOW, mid-turn — the browser unsubscribes from the
+                                                          # turn node on 'status:done' (workbook settle()), so the
+                                                          # post-'done' emit below would be MISSED: no URL, no snapshot save
+                    traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                    tool_results.append({
+                        "type": "tool_result", "tool_use_id": block.id,
+                        "content": json.dumps(_trim_for_model(shaped)),
+                        "is_error": shaped.get("status") == "error",
+                    })
+                elif block.name == "prereasoner_describe":
+                    with request_timing.span("engine_call"):
+                        described = await engine_client.call_describe(
+                            tables, base_url=engine_base_url, token=bearer_token, client=http,
+                        )
+                    tool_results.append({
+                        "type": "tool_result", "tool_use_id": block.id,
+                        "content": json.dumps(described),
+                    })
+                else:
+                    tool_results.append({
+                        "type": "tool_result", "tool_use_id": block.id,
+                        "content": f"unknown tool {block.name}", "is_error": True,
+                    })
+            messages.append({"role": "user", "content": tool_results})
+        else:
+            final_text = final_text or "I wasn't able to complete that within the step budget."
 
     _emit("reply", final_text)                               # the Sonnet text for the rail
     _emit("status", "done")                                  # terminal — the browser stops waiting

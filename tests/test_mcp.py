@@ -16,7 +16,9 @@ import sys
 import threading
 from http.server import ThreadingHTTPServer
 
-from tests.stub_engine import H
+import httpx
+
+from tests.stub_engine import H, AUTH_SEEN
 from mcp_server import engine_client
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -78,26 +80,56 @@ def test_integration(base):
     tables = [{"name": "customers", "data": "customer_id,city\n1,Paris\n2,Lyon\n3,Berlin\n"},
               {"name": "orders", "data": "order_id,customer_id,amount\n10,1,120\n11,2,150\n12,3,90\n"}]
 
-    r = engine_client.call_query("total amount in France", tables, "jobA", base_url=base)
+    r = asyncio.run(engine_client.call_query("total amount in France", tables, "jobA", base_url=base))
     ok(r["status"] == "answered", "France query -> answered")
     ok(r["answer"]["rows"] == [[270]], "France total == 270")
     ok(len(r.get("views", [])) == 3, "France answer carries the 3-view stack")
     ok(r["trace"]["jobId"] == "jobA", "trace jobId round-trips")
 
-    r2 = engine_client.call_query("total revenue by region", tables, "jobB", base_url=base)
+    r2 = asyncio.run(engine_client.call_query("total revenue by region", tables, "jobB", base_url=base))
     ok(r2["status"] == "clarify", "ambiguous 'region' query -> clarify")
     ok("region" in (r2["clarify"].get("dropped") or []), "clarify drops 'region'")
 
-    r3 = engine_client.call_query("how much did we sell overall", tables, "jobC", base_url=base)
+    r3 = asyncio.run(engine_client.call_query("how much did we sell overall", tables, "jobC", base_url=base))
     ok(r3["status"] == "answered", "generic query -> answered")
 
-    d = engine_client.call_describe([{"name": "customers", "data": "city\nParis\nLyon\n"}], base_url=base)
+    d = asyncio.run(engine_client.call_describe([{"name": "customers", "data": "city\nParis\nLyon\n"}],
+                                                base_url=base))
     ok("tables" in d and d["tables"], "describe returns per-table readout")
     ok(d["tables"][0].get("columns") is not None, "describe reports columns")
 
     # unreachable engine -> a clean error, never a raised exception
-    bad = engine_client.call_query("x", tables, "jobD", base_url="http://127.0.0.1:9", timeout=2)
+    bad = asyncio.run(engine_client.call_query("x", tables, "jobD",
+                                               base_url="http://127.0.0.1:9", timeout=2))
     ok(bad["status"] == "error", "unreachable engine -> status 'error' (no crash)")
+
+    # AUTH IS PER CALL, NOT PER PROCESS. The orchestrator now calls this coroutine in-process while
+    # serving concurrent users, so an explicit token must win over the process-wide env fallback —
+    # otherwise one user's turn could authenticate as another.
+    os.environ["ENGINE_BEARER_TOKEN"] = "process-wide-token"
+    try:
+        seen = asyncio.run(engine_client.call_query("total amount in France", tables, "jobE",
+                                                    base_url=base, token="caller-token"))
+        ok(seen["status"] == "answered", "explicit-token call still answers")
+        ok(AUTH_SEEN[-1] == "Bearer caller-token",
+           f"explicit token must override the env fallback (engine saw {AUTH_SEEN[-1]!r})")
+        asyncio.run(engine_client.call_query("total amount in France", tables, "jobF", base_url=base))
+        ok(AUTH_SEEN[-1] == "Bearer process-wide-token",
+           "with no explicit token the standalone MCP server's env fallback still applies")
+    finally:
+        os.environ.pop("ENGINE_BEARER_TOKEN", None)
+
+    # One client reused across calls (the per-turn connection reuse the orchestrator relies on).
+    async def two_calls_one_connection():
+        async with httpx.AsyncClient() as shared:
+            a = await engine_client.call_query("total amount in France", tables, "jobG",
+                                               base_url=base, client=shared)
+            b = await engine_client.call_query("how much did we sell overall", tables, "jobH",
+                                               base_url=base, client=shared)
+            return a, b
+    a, b = asyncio.run(two_calls_one_connection())
+    ok(a["status"] == "answered" and b["status"] == "answered",
+       "a shared AsyncClient serves multiple calls in one turn")
 
 
 def test_mcp_server_module_imports():

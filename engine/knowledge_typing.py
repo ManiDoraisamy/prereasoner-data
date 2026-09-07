@@ -50,12 +50,10 @@ class KnowledgeTypingMixin:
         norms = sorted({normalize_surface(str(cell)) for cell in cells if str(cell).strip()})
         if len(norms) < 2:
             return False
-        cursor = self._rconn().cursor()
-        cursor.execute(
+        hit_count = self._kb_rows(
             'SELECT COUNT(DISTINCT norm) FROM knowledgebase."words" WHERE type=%s AND norm = ANY(%s)',
             (world_type, norms),
-        )
-        hit_count = cursor.fetchone()[0]
+        )[0][0]
         return hit_count >= max(2, self.GROUND_FRAC * len(norms))
 
     @staticmethod

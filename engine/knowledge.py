@@ -37,6 +37,7 @@ class KnowledgeReasoner:
         self.qw = self.composed.qw                                              # expose KnowledgeQuery (server warmup: MODEL.qw._spacy())
 
     def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=()):
+        self.qw.begin_request()             # fresh request-scoped memo for shared-knowledge lookups
         if NEAR.search(question or ""):
             r = self._nearby(question)
             if r:

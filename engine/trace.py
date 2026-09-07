@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import time
 
+from engine import request_timing
 from engine.config import RTDB_URL, rtdb_trace_retention_days
 
 _NOOP = lambda *a, **k: None
@@ -52,9 +53,13 @@ def emitter(uid, job_id):
         print(f"[trace] metadata_write_failed error={type(e).__name__}", flush=True)
 
     def emit(node, value, merge=False):
+        # Each write is a SYNCHRONOUS network round trip on the serving thread. rtdb_ms is what makes
+        # that cost visible, and it is the number that decides whether prose streaming can write
+        # per-token or has to batch behind a background writer.
         try:
-            ref = db.reference(f"{base}/{node}" if node else base)
-            (ref.update if merge else ref.set)(value)
+            with request_timing.span("rtdb"):            # the span publishes its own rtdb_n
+                ref = db.reference(f"{base}/{node}" if node else base)
+                (ref.update if merge else ref.set)(value)
         except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
             print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
     return emit

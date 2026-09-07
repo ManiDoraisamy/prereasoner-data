@@ -11,10 +11,12 @@ from __future__ import annotations
 import time
 
 import psycopg2
+from psycopg2.extras import execute_values
 
 from engine.config import (KB_PG_DB, KB_PG_HOST, KB_PG_PORT, KB_PG_SSLMODE, KB_PG_USER,
                            kb_pg_password)
 from engine.numeric import parse_decimal, wire_decimal
+from engine import request_timing
 from engine.sql_ast import render_query
 from engine.tables import TableQuery, qident
 from engine.knowledge_tables import KnowledgeTableQuery
@@ -23,6 +25,7 @@ from engine.knowledge_tables import KnowledgeTableQuery
 # their decimal representation and arithmetic exactly; binary DOUBLE PRECISION does not.
 _PGTYPE = {"INTEGER": "BIGINT", "REAL": "NUMERIC(58,20)", "TEXT": "TEXT"}
 _CONNECT_ATTEMPTS = 3
+_UPLOAD_PAGE_SIZE = 500          # rows per INSERT statement; bounds statement size on wide 5000-row sheets
 _NON_RETRYABLE_CONNECT_ERRORS = (
     "password authentication failed",
     "no pg_hba.conf entry",
@@ -43,6 +46,30 @@ def _numeric_to_py(v, cur):
 psycopg2.extensions.register_type(psycopg2.extensions.new_type((1700,), "NUMERIC2PY", _numeric_to_py))
 
 
+class _TimedCursor(psycopg2.extensions.cursor):
+    """Cursor that bills every statement to the request's timing line.
+
+    Installed as the cursor_factory in `_pg`, the ONE connection owner for every serving path, so
+    the `sql_ms`/`sql_n` totals cover all statements — planner, world lookups, bridge writes and
+    the uploaded-sheet load alike — without a call site having to opt in. Outside a request the
+    span/count helpers are no-ops.
+    """
+
+    def execute(self, query, vars=None):                 # noqa: A002 — psycopg2's parameter name
+        with request_timing.span("sql"):                 # the span publishes its own sql_n
+            return super().execute(query, vars)
+
+    def executemany(self, query, vars_list):             # noqa: A002 — psycopg2's parameter name
+        # One CALL, but psycopg2 sends one statement per parameter set. Counting the call would
+        # under-report the round trips by exactly the factor that makes executemany slow, so the
+        # extra statements are counted explicitly.
+        rows = list(vars_list)
+        with request_timing.span("sql"):
+            result = super().executemany(query, rows)
+        request_timing.count("sql_n", max(0, len(rows) - 1))   # the span already counted one
+        return result
+
+
 def _pg():
     """Connect to Postgres, retrying only transient transport failures.
 
@@ -50,13 +77,14 @@ def _pg():
     centralized here so request helpers do not each grow a different connection policy.
     """
     kw = dict(host=KB_PG_HOST, dbname=KB_PG_DB, user=KB_PG_USER,
-              password=kb_pg_password(), connect_timeout=30)
+              password=kb_pg_password(), connect_timeout=30, cursor_factory=_TimedCursor)
     if not KB_PG_HOST.startswith("/"):
         kw["port"] = KB_PG_PORT
         kw["sslmode"] = KB_PG_SSLMODE
     for attempt in range(_CONNECT_ATTEMPTS):
         try:
-            return psycopg2.connect(**kw)
+            with request_timing.span("pg_connect"):      # the span publishes its own pg_connect_n
+                return psycopg2.connect(**kw)
         except psycopg2.OperationalError as exc:
             message = str(exc).lower()
             if any(marker in message for marker in _NON_RETRYABLE_CONNECT_ERRORS):
@@ -78,15 +106,26 @@ def _load_user_schema(cur, schema, sch, tablemap):
     by_t = {}
     for c in sch:
         by_t.setdefault(c["table"], []).append(c)
-    for tname, cols in by_t.items():
-        cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(tname)}')   # replace on re-upload
-        cur.execute(f'CREATE TABLE {qident(schema)}.{qident(tname)} (' +
-                    ", ".join(f'{qident(c["name"])} {_PGTYPE.get(c["affinity"], "TEXT")}' for c in cols) + ')')
-        t = tablemap[tname]
-        ins = f'INSERT INTO {qident(schema)}.{qident(tname)} VALUES (' + ",".join(["%s"] * len(cols)) + ')'
-        for r in t["rows"]:
-            rd = dict(zip(t["columns"], r))
-            cur.execute(ins, [KnowledgeTableQuery._coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
+    with request_timing.span("upload"):
+        for tname, cols in by_t.items():
+            cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(tname)}')   # replace on re-upload
+            cur.execute(f'CREATE TABLE {qident(schema)}.{qident(tname)} (' +
+                        ", ".join(f'{qident(c["name"])} {_PGTYPE.get(c["affinity"], "TEXT")}' for c in cols) + ')')
+            t = tablemap[tname]
+            # ONE multi-row INSERT per page instead of one statement per row. Each row is still built by
+            # the same `_coerce`, so the values handed to psycopg2 — and therefore NUMERIC exactness and
+            # every adapter — are byte-for-byte what the per-row loop passed. Only the statement count
+            # changes: an uploaded sheet cost one network round trip PER ROW, which made request latency
+            # scale linearly with the upload (measured: 1000 rows took 138s at a 133ms RTT, 0.26s batched).
+            # Paged so a wide 5000-row sheet cannot build one unbounded statement.
+            rows = [
+                [KnowledgeTableQuery._coerce(rd.get(c["name"]), c["affinity"]) for c in cols]
+                for rd in (dict(zip(t["columns"], r)) for r in t["rows"])
+            ]
+            if rows:
+                execute_values(cur, f'INSERT INTO {qident(schema)}.{qident(tname)} VALUES %s',
+                               rows, page_size=_UPLOAD_PAGE_SIZE)
+            request_timing.count("upload_rows", len(t["rows"]))
 
 
 class _PgCon:

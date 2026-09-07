@@ -173,6 +173,23 @@ CREATE TABLE IF NOT EXISTS knowledgebase."schedule" (
 )
 """
 
+# db/init.sql declares this index; deployed databases seeded before it was added never got one on
+# norm at all, and nothing reconciled the difference: production was measured serving every
+# resolution lookup as a parallel sequential scan of the whole 790 MB words heap (~0.5 s each,
+# ~10 per request). norm LEADS (see the init.sql comment): the serving shapes constrain type
+# positively, negatively, or not at all, and on PostgreSQL 16 only a norm-leading index can seek
+# for all of them. A fresh database gets the index from init.sql; this migration brings an existing
+# one into line, and tests/test_app_migrations.py:test_words_index_migration_and_base_schema_agree
+# keeps the two declarations from drifting apart again.
+#
+# Deliberately NOT `CONCURRENTLY`: migrations run inside one admin transaction, where PostgreSQL
+# forbids it. A plain build takes a SHARE lock — serving reads are unaffected, the nightly sync's
+# writes block until it completes. For a large live database, build it out-of-band with
+# CREATE INDEX CONCURRENTLY first (verify indisvalid) and let this recording run become a no-op.
+_WORDS_NORM_TYPE_INDEX = """
+CREATE INDEX IF NOT EXISTS ix_words_norm_type ON knowledgebase."words"(norm, type)
+"""
+
 KNOWLEDGEBASE_MIGRATIONS = (
     ApplicationMigration(
         1,
@@ -191,6 +208,11 @@ KNOWLEDGEBASE_MIGRATIONS = (
         2,
         "maintenance_schedule",
         (_SCHEDULE_TABLE,),
+    ),
+    ApplicationMigration(
+        3,
+        "words_norm_type_index",
+        (_WORDS_NORM_TYPE_INDEX,),
     ),
 )
 

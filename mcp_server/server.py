@@ -1,9 +1,11 @@
 """Prereasoner MCP server (stdio) — exposes the auditable engine as MCP tools.
 
-Run: python -m mcp_server.server   (stdio transport; launched by the orchestrator per session)
+Run: python -m mcp_server.server   (stdio transport; launched by EXTERNAL MCP clients — Claude
+Desktop, IDEs, other agents. The chat orchestrator does NOT spawn this: it awaits the same
+`engine_client` coroutines in-process, so both entry points share one engine contract.)
 
-The tool DESCRIPTIONS below carry the routing-discipline rules (docs/MCP.md) so ANY MCP client — not
-just our orchestrator — inherits them. Tools return a JSON string; the client json.loads the text content.
+The tool DESCRIPTIONS below carry the routing-discipline rules (docs/MCP.md) so ANY MCP client
+inherits them. Tools return a JSON string; the client json.loads the text content.
 """
 from __future__ import annotations
 
@@ -18,16 +20,16 @@ mcp = FastMCP("prereasoner")
 
 
 @mcp.tool(description=QUERY_DESC)
-def prereasoner_query(question: str, tables: list, job_id: str | None = None,
-                      conversation_id: str | None = None) -> str:
+async def prereasoner_query(question: str, tables: list, job_id: str | None = None,
+                            conversation_id: str | None = None) -> str:
     """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id)."""
-    return json.dumps(engine_client.call_query(question, tables or [], job_id, conversation_id))
+    return json.dumps(await engine_client.call_query(question, tables or [], job_id, conversation_id))
 
 
 @mcp.tool(description=DESCRIBE_DESC)
-def prereasoner_describe(tables: list) -> str:
+async def prereasoner_describe(tables: list) -> str:
     """See description. `tables` = [{name, data(raw CSV)}], inline; identity is transport context."""
-    return json.dumps(engine_client.call_describe(tables or []))
+    return json.dumps(await engine_client.call_describe(tables or []))
 
 
 def main() -> None:

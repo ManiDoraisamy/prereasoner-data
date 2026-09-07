@@ -91,10 +91,13 @@ class H(BaseHTTPRequestHandler):
         if path.rstrip("/") == "/healthz":
             self._send(200, json.dumps({"ok": True, "service": "orchestrator"}))
         elif path.rstrip("/") == "/readyz":
+            # Readiness must check what a turn actually uses. That is the engine client this process
+            # calls in-process — NOT mcp_server.server, which is now only the entry point for
+            # external MCP clients and whose health says nothing about this service's ability to serve.
             ready = bool(os.environ.get("ANTHROPIC_API_KEY"))
             try:
-                module = importlib.import_module("mcp_server.server")
-                ready = ready and (hasattr(module, "mcp") or hasattr(module, "main"))
+                module = importlib.import_module("mcp_server.engine_client")
+                ready = ready and hasattr(module, "call_query")
             except Exception:  # noqa: BLE001 - readiness must not expose import details
                 ready = False
             self._send(200 if ready else 503, json.dumps({"ok": ready, "service": "orchestrator"}))
