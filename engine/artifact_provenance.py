@@ -1,12 +1,16 @@
 """Content fingerprints and validation for shipped model artifacts."""
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
+from decimal import Decimal
 import os
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+
+from engine.numeric import wire_value
 
 WEIGHTS_MANIFEST = "weights_manifest.json"
 
@@ -47,9 +51,26 @@ def semantic_encoder_fingerprint(
     })
 
 
+def _canonical_scalar(value: Any) -> Any:
+    """Render a value the canonical hash cannot encode natively, EXACTLY.
+
+    Planner cells are `Decimal` (engine/tables.py:_typed). Hashing a table that contains one raised
+    TypeError, and because enrichment versions every uploaded and saved-reference table
+    (enrichment/runtime.py:table_versions), a single fractional cell in a user's saved reference
+    table 500'd every request they made (2026-09-07). `wire_value` is the repository's exact-scalar
+    contract, so equal numbers hash equally and no precision is invented.
+    """
+    if isinstance(value, Decimal):
+        return wire_value(value)
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not canonically hashable")
+
+
 def canonical_json_sha256(value: Any) -> str:
     payload = json.dumps(
-        value, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        value, ensure_ascii=True, separators=(",", ":"), sort_keys=True,
+        default=_canonical_scalar,
     ).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 

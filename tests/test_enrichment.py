@@ -871,7 +871,33 @@ def test_private_product_corpus_is_metadata_only_consent_bound_and_replayable():
                 pass
 
 
+def test_table_versions_hash_decimal_cells_exactly():
+    """Regression for a 2026-09-07 production 500. Enrichment versions every uploaded and saved
+    reference table; planner cells are Decimal, which the canonical hash could not encode, so ONE
+    fractional cell in a user's saved reference table made every request fail with
+    `world request failed: TypeError`. The hash now uses the repository's exact-scalar contract."""
+    from decimal import Decimal
+    from engine.enrichment.runtime import table_versions
+    from engine.artifact_provenance import canonical_json_sha256
+
+    table = {"name": "ordered", "columns": ["item", "amount"],
+             "rows": [["Top Hat", Decimal("18.50")], ["Monocle", Decimal("120.00")]]}
+    versions = table_versions([table])                     # must not raise
+    assert versions["ordered"].startswith("sha256:")
+    # Equal numbers hash equally regardless of how they were typed, and integral decimals are ints.
+    assert canonical_json_sha256({"x": Decimal("4")}) == canonical_json_sha256({"x": 4})
+    # Different values still hash differently — this normalizes, it does not collapse.
+    assert (canonical_json_sha256({"x": Decimal("18.50")})
+            != canonical_json_sha256({"x": Decimal("18.51")}))
+    try:
+        canonical_json_sha256({"x": object()})
+        raise AssertionError("an unhashable type must still raise")
+    except TypeError:
+        pass
+
+
 TESTS = [
+    test_table_versions_hash_decimal_cells_exactly,
     test_registry_validates_and_pins,
     test_snapshot_and_registry_ids_are_content_complete,
     test_eligibility_required_optional_disqualifying,
