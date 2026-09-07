@@ -1,9 +1,10 @@
 # Dataset Semantics — design spec (v1 IMPLEMENTED 2026-09-07)
 
-Status: v1 is live. Owners: `engine/dataset_semantics.py` (grammar/validate/replay/apply),
+Status: v1 is implemented in the serving code. Owners: `engine/dataset_semantics.py`
+(grammar/validate/replay/apply), `engine/dataset_attestation.py` (orchestrator-to-engine trust),
 `engine/conversations.py` (persistence, chat migration v4), the orchestrator tool round (emission),
-`workbook.js` (badge). Acceptance: the euros transcript below — 58,000 EUR (Europe) converted to
-USD with the rate in the trail, and the claim re-applied on a follow-up turn from the persisted log.
+and `workbook.js` (badge). Acceptance scenario: the euros transcript below — 58,000 EUR (Europe)
+converted to USD with the rate in the trail, and the claim re-applied on a follow-up turn.
 Formerly "Dataset Formatter"; renamed because v1 is deliberately NOT a data-cleaning system — it is
 a metadata layer. Upload reshaping is a separate, later design ("upload normalizer", sketched at
 the bottom).
@@ -42,6 +43,11 @@ column is denominated in EUR."
 - `clear_measure_metadata` — users correct themselves ("actually those were GBP"). A later `set`
   replaces the effective value; the audit history retains every operation.
 
+Every operation carries a `basis` object with `source: "conversation"` and the user's quoted text.
+The orchestrator checks the quote against the current user message and signs the exact operation
+list together with the authenticated principal. The engine verifies that HMAC and persists its own
+`attested: true` marker. A model field or direct browser request cannot create that marker.
+
 Everything else abstains. In particular: a REAL currency column in the upload beats conversation
 metadata (SRC data outranks conversation claims); a metadata op naming a missing table/column is
 rejected with a clarify; no op ever changes a cell.
@@ -50,8 +56,9 @@ rejected with a clarify; no op ever changes a cell.
 
 A tool-using chat turn is two Sonnet rounds (tool request, then final prose). The op rides the
 EXISTING first round — the query tool's schema gains `dataset_ops` next to `question` — so v1 adds
-ZERO new model calls. The orchestrator validates ops against the closed grammar, persists them
-with the conversation, and passes them to the engine with the tables. The true direct path
+ZERO new model calls. The orchestrator verifies the user quote and passes a principal-bound
+attestation; the engine validates the closed grammar and table binding, then persists the operations
+with the conversation. The true direct path
 (`?chat=0`, no model in front of the engine) stays deterministic: it accepts already-persisted
 metadata but never mints it.
 
@@ -61,14 +68,23 @@ and the existing paid-call budgets, unchanged.
 ## Determinism and provenance
 
 - The engine remains the only calculator: metadata feeds the SAME currency machinery a real
-  currency column feeds (per-row rate, rate date, source in the conversion trail).
+  currency column feeds (per-row rate, rate date, source in the conversion trail). Each active
+  measure gets its own private synthesized source column internally, so two monetary columns in
+  one table cannot borrow each other's denomination.
 - The UI shows a badge on the column — `EUR · supplied by user` — never a fake data column.
+- A supplied `date_column` is passed into the rate binder and is the date used for each row's rate;
+  an absent date column uses the request's `as_of` date.
+- The orchestrator verifies the basis quote against the current user message before the engine
+  accepts it. Dataset-operation history is bounded to 200 operations / 64 KiB per conversation.
+- Persisted claims are re-validated when a previously detached sheet returns, so a replacement
+  upload cannot be shadowed by stale metadata or a changed schema.
 - Ops persist in conversation state, so follow-ups and replays see the same effective dataset,
   and the upload/bridge content hashes include applied ops (metadata changes what a bridge and a
   cached analysis are allowed to reuse).
-- Proposed owners (ownership-map rows to add when implementation starts): op schema + validation +
-  application in ONE new engine module; emission inside the existing orchestrator turn
-  (`orchestrator/system_prompt.py` contract + tool schema); persistence with the conversation.
+- Ownership is split deliberately: grammar, validation, replay, and application stay in
+  `engine/dataset_semantics.py`; `engine/dataset_attestation.py` owns authenticated transport; the
+  orchestrator emits and verifies quotes; persistence stays in `engine/conversations.py`;
+  `workbook.js` renders the effective state.
 
 ## Later, separately: the upload normalizer
 

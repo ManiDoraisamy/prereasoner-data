@@ -11,11 +11,15 @@ const conversationSource = fs.readFileSync(
   path.join(__dirname, '..', 'public', 'lib', 'workbook-conversations.js'), 'utf8');
 const workbookSource = fs.readFileSync(
   path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+const firebaseSource = fs.readFileSync(
+  path.join(__dirname, '..', 'public', 'lib', 'firebase-init.js'), 'utf8');
 const source = referenceSource + '\n' + conversationSource + '\n' + workbookSource;
 assert(!source.includes("world_join:'wikipedia lookup'"),
   'shared-data joins must not label non-Wikidata sources such as ECB as Wikipedia');
 assert(source.includes("world_join:'reference lookup'"),
   'shared-data joins must use source-neutral provenance language');
+assert(firebaseSource.includes("at('dataset_semantics')") && firebaseSource.includes('onDatasetSemantics'),
+  'live engine traces must carry dataset-semantics set and clear state');
 let finish;
 const done = new Promise((resolve, reject) => { finish = error => error ? reject(error) : resolve(); });
 const storage = new Map();
@@ -50,10 +54,13 @@ const checks = `
     BOOK = [{id:'m1', cls:'master', name:'sku', cols:['sku','category'], rows:[['A','Apparel']],
              saved:true, dirty:true, cellAI:new Set(['0,1'])}];
     CHAT = [{q:'prior', reply:'answer'}]; SETTLED=false;
+    DS_META = [{table:'orders', column:'amount', currency:'EUR'}];
     const snapshot = convSnapshot();
     const saved = snapshot.sheets[0];
     if (!saved.dirty) throw new Error('dirty state was serialized as clean');
     if (!saved.cellAI || saved.cellAI[0] !== '0,1') throw new Error('cell provenance was not serialized');
+    if (!snapshot.datasetSemantics || snapshot.datasetSemantics[0].currency !== 'EUR')
+      throw new Error('dataset semantics were omitted from the restorable snapshot');
 
     paint = () => {}; saveConvState = () => {};
     let posted = null;

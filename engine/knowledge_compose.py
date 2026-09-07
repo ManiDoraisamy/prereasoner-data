@@ -328,7 +328,7 @@ class ComposedKnowledgeQuery:
                     if co_cu[1]:
                         d["currency"] = co_cu[1]
 
-    def _run_engine(self, tables, question, sub, as_of, emit=None, world=None):
+    def _run_engine(self, tables, question, sub, as_of, emit=None, world=None, dataset_semantics=()):
         """Build the composed view stack (join -> world_join -> world_filter -> ... -> aggregate) for `question`
         and shape it into the serve response (views carry their own columns/rows so the UI can walk each step).
         `emit` streams ONLY status here (status:resolving around a standalone world lookup). Views are NEVER
@@ -382,10 +382,10 @@ class ComposedKnowledgeQuery:
         except (TypeError, ValueError):
             return str(va) == str(vb)
 
-    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=()):
+    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=()):
         if not sub:
             return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
-                                      explicit_fks=explicit_fks)
+                                      explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
         digest = hashlib.sha256(str(sub).encode("utf-8")).digest()
         local_lock = self._serve_locks[int.from_bytes(digest[:2], "big") % len(self._serve_locks)]
         with local_lock:
@@ -396,14 +396,14 @@ class ComposedKnowledgeQuery:
                             ("prereasoner-world-bridge", str(sub)))
                 try:
                     return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
-                                              explicit_fks=explicit_fks)
+                                               explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
                 finally:
                     cur.execute("SELECT pg_advisory_unlock(hashtext(%s), hashtext(%s))",
                                 ("prereasoner-world-bridge", str(sub)))
             finally:
                 cur.close()
 
-    def _serve_locked(self, tables, question, sub, as_of=None, emit=None, explicit_fks=()):
+    def _serve_locked(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=()):
         """Composed (composition primitives / COUNT / world MEASURE) -> the view stack. A plain world-FILTERED
         scalar aggregate ('total amount in France') is ALSO re-expressed as the view stack so the demo SHOWS the
         reasoning (resolve -> world join -> filter -> aggregate) instead of jumping to the number. The delegate
@@ -411,7 +411,7 @@ class ComposedKnowledgeQuery:
         stands when it reproduces the delegate's answer. Everything else delegates unchanged."""
         if explicit_fks:
             return self.qw.serve(tables, question, as_of=as_of, schema=sub,
-                                 explicit_fks=explicit_fks)
+                                 explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
         if self._composed(tables, question):
             # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building —
             # never authority to stand on it. Ground the world dependency FIRST: if nothing resolves against the
@@ -427,7 +427,8 @@ class ComposedKnowledgeQuery:
             world = self._world_lookup(norm, sub)
             if world:
                 try:
-                    er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world)
+                    er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world,
+                                          dataset_semantics=dataset_semantics)
                     if compose_owns(er.get("views"), er.get("world_dependency"),
                                     (er.get("result") or {}).get("rows"), required_ops(question)):
                         self._emit_response_views(emit, er)
@@ -435,14 +436,16 @@ class ComposedKnowledgeQuery:
                 except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
                     print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
             deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
-                                   explicit_fks=explicit_fks)
-                     if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
+                                   explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+                     if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub,
+                                                        dataset_semantics=dataset_semantics))
             self._emit_response_views(emit, deleg)        # ownership refused -> the DELEGATE's trail streams
             return deleg
         # Not gated to the engine: the delegate owns clarify / list / hybrid / non-geo / plain answers.
         deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
-                               explicit_fks=explicit_fks)
-                 if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub))
+                               explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+                 if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub,
+                                                    dataset_semantics=dataset_semantics))
         # A KNOWLEDGEBASE-converted answer already carries its own richer stack (the joined ->
         # filtered -> per-row `calculated` views with the exact rate and its publication date) —
         # compose's re-expression cannot show the rate step, so the delegate wins and its views
@@ -463,7 +466,8 @@ class ComposedKnowledgeQuery:
         if (not deleg.get("clarify") and not deleg.get("error")
                 and deleg.get("meaning_join") and self._is_scalar(deleg.get("result"))):
             try:
-                er = self._run_engine(tables, question, sub, as_of, emit=emit)
+                er = self._run_engine(tables, question, sub, as_of, emit=emit,
+                                      dataset_semantics=dataset_semantics)
                 if er and self._same_answer(er.get("result"), deleg.get("result")):
                     self._emit_response_views(emit, er)
                     return er

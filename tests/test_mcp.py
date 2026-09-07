@@ -80,6 +80,9 @@ def test_shape():
          "dataset_semantics": [{"table": "responses", "column": "budget", "currency": "EUR"}]}, "j")
     ok(ds.get("dataset_semantics") == [{"table": "responses", "column": "budget", "currency": "EUR"}],
        "dataset_semantics survives the shaping (the UI badge rides the trace payload)")
+    headers = engine_client._headers("token", "request", "v1=signature")
+    ok(headers.get("X-Prereasoner-Dataset-Attestation") == "v1=signature",
+       "the shared HTTP client carries the orchestrator's dataset attestation")
 
 
 # ---------------- (B) integration: against the stub engine ----------------

@@ -22,6 +22,7 @@ Env contract:
   MAX_CONVERSATION_STORAGE_BYTES per-user stored source/state byte cap (default 256 MiB).
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
   APP_ENV              environment name; test bypasses are honored only in development/test.
+  DATASET_ATTESTATION_KEY shared engine/orchestrator HMAC key for authenticated dataset claims.
   CORS_ORIGINS         comma-separated exact browser origins; empty disables cross-origin responses.
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
   DEVICE               torch device for the encoder                  (default cpu)

@@ -168,6 +168,11 @@ Hosting route. Do not add a generic popup or model-provider choice to the refere
 The chat startup probe calls `/readyz`, which checks the injected key and imports the real MCP
 server module. `/healthz` is liveness only and must not be used as the deployment readiness gate.
 
+Terraform also creates `${service_name}-dataset-attestation` and injects its current version into
+both services. It authenticates conversation-derived dataset metadata at the engine boundary. Do
+not create a separate value for either service; rotating the Terraform-owned secret rotates both
+bindings together on the next service revision.
+
 ### 4. Deploy the web frontend
 
 `web/firebase.json` already rewrites `/api/**` to the Cloud Run service

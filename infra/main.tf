@@ -22,6 +22,7 @@ locals {
 
   serving_user      = var.serving_db_role
   serving_secret_id = google_secret_manager_secret.serving_db_password.secret_id
+  dataset_attestation_secret_id = google_secret_manager_secret.dataset_attestation.secret_id
 }
 
 resource "google_project_service" "apis" {
@@ -132,6 +133,35 @@ resource "google_secret_manager_secret_version" "serving_db_password" {
 
 resource "google_secret_manager_secret_iam_member" "run_serving_db_password" {
   secret_id = google_secret_manager_secret.serving_db_password.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.run.email}"
+}
+
+# The engine accepts conversation-derived dataset claims only when the orchestrator signs the exact
+# operation list for the authenticated principal. Both services receive this Terraform-owned key;
+# browsers and model output never do.
+resource "random_password" "dataset_attestation" {
+  length  = 64
+  special = false
+}
+
+resource "google_secret_manager_secret" "dataset_attestation" {
+  secret_id = "${var.service_name}-dataset-attestation"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+resource "google_secret_manager_secret_version" "dataset_attestation" {
+  secret      = google_secret_manager_secret.dataset_attestation.id
+  secret_data = random_password.dataset_attestation.result
+}
+
+resource "google_secret_manager_secret_iam_member" "run_dataset_attestation" {
+  secret_id = google_secret_manager_secret.dataset_attestation.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.run.email}"
 }
@@ -262,6 +292,15 @@ resource "google_cloud_run_v2_service" "api" {
         value = "production"
       }
       env {
+        name = "DATASET_ATTESTATION_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = local.dataset_attestation_secret_id
+            version = "latest"
+          }
+        }
+      }
+      env {
         name  = "EXTERNAL_LLM_ENABLED" # authoritative deployment switch; see PRIVACY.md
         value = tostring(local.external_llm_enabled)
       }
@@ -355,6 +394,8 @@ resource "google_cloud_run_v2_service" "api" {
     # Ensure the serving secret and access exist before the service references them.
     google_secret_manager_secret_version.serving_db_password,
     google_secret_manager_secret_iam_member.run_serving_db_password,
+    google_secret_manager_secret_version.dataset_attestation,
+    google_secret_manager_secret_iam_member.run_dataset_attestation,
     google_secret_manager_secret_iam_member.run_anthropic_key,
   ]
 }

@@ -13,6 +13,7 @@ from engine.currency_intent import (
 from engine.knowledge import KnowledgeReasoner
 from engine.knowledge_tables import KnowledgeTableQuery
 from engine.numeric import coerce_numeric, parse_decimal, wire_decimal
+from engine.dataset_semantics import synthetic_currency_column
 from engine.pg import _PGTYPE, _numeric_to_py
 from engine.calculations import (
     ComputationEvidence,
@@ -265,6 +266,32 @@ def test_unjoinable_rate_is_not_advertised():
     )
     ok(malformed_result["available_targets"] == ["USD"],
        "an invalid rate_to suffix is ignored rather than crashing availability")
+
+
+def test_asserted_currency_join_is_scoped_to_its_measure():
+    budget_ccy = synthetic_currency_column("budget")
+    cost_ccy = synthetic_currency_column("cost")
+    sales = {
+        "name": "sales",
+        "columns": ["budget", "cost", budget_ccy, cost_ccy],
+        "rows": [[10, 20, "EUR", "GBP"]],
+    }
+    edges = (
+        {"from_table": "sales", "from_col": budget_ccy,
+         "to_table": "fx", "to_col": "currency_code"},
+        {"from_table": "sales", "from_col": cost_ccy,
+         "to_table": "fx", "to_col": "currency_code"},
+    )
+    graph = SchemaGraph.from_tables((sales, USD_RATES), edges)
+    candidate, assessments, _ = select_calculation_candidate(
+        "total cost in US dollars", (sales, USD_RATES), graph,
+        SQLSearcher(graph).search("total cost in US dollars"),
+    )
+    assessment = next(row for row in assessments if row["specification"] == "currency")
+    ok(candidate is not None and cost_ccy in candidate.sql and budget_ccy not in candidate.sql,
+       "the selected cost conversion joins through cost's asserted currency only")
+    ok(assessment["status"] == "satisfied" and assessment["realization"] == "converted",
+       "measure-scoped asserted currency still produces a verified conversion")
 
 
 def test_only_monetary_measures_can_convert():
@@ -868,6 +895,7 @@ TESTS = [
     test_set_query_requires_every_numeric_branch_to_convert,
     test_filter_evidence_is_guaranteed_on_every_path,
     test_unjoinable_rate_is_not_advertised,
+    test_asserted_currency_join_is_scoped_to_its_measure,
     test_only_monetary_measures_can_convert,
     test_missing_typed_evidence_fails_closed,
     test_decline_contract_reaches_stream_and_mcp,

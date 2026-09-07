@@ -21,13 +21,13 @@ mcp = FastMCP("prereasoner")
 
 @mcp.tool(description=QUERY_DESC)
 async def prereasoner_query(question: str, tables: list, job_id: str | None = None,
-                            conversation_id: str | None = None,
-                            dataset_ops: list | None = None) -> str:
-    """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id). `dataset_ops`
-    carries conversation-stated measure metadata (set/clear_measure_metadata) per
-    docs/DATASET_FORMATTER.md — the engine validates against its closed grammar."""
-    return json.dumps(await engine_client.call_query(question, tables or [], job_id, conversation_id,
-                                                     dataset_ops=dataset_ops))
+                            conversation_id: str | None = None) -> str:
+    """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id).
+
+    Dataset claims are emitted only by the authenticated chat orchestrator because the engine
+    requires a principal-bound transport attestation; arbitrary MCP clients cannot mint them.
+    """
+    return json.dumps(await engine_client.call_query(question, tables or [], job_id, conversation_id))
 
 
 @mcp.tool(description=DESCRIBE_DESC)

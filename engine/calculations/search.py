@@ -50,6 +50,15 @@ class CalculationQueryExpander:
                     if not required:
                         required.add(plan.root_table)
                     for tree in self.schema.join_trees(required, plan.root_table):
+                        join_key_columns = {
+                            column
+                            for edge_index in tree.edge_indexes
+                            for pair in self.schema.foreign_keys[edge_index].column_pairs
+                            for column in pair
+                        }
+                        if any(column not in join_key_columns for role, column in plan.bindings
+                               if role == "source_currency"):
+                            continue
                         query = SelectQuery(
                             select,
                             tree.root,

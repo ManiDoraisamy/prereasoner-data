@@ -25,7 +25,12 @@ function answer(question){
   const input=(column)=>({kind:'input',source:'upload',table:'orders',column});
   const ecb=(column)=>({kind:'reference',source:'European Central Bank',table:'exchange_rate',column,release_id:'ecb-2026-09-05'});
   const calc=(column,operation,inputs)=>({kind:'derived',source:'Prereasoner',column,operation,inputs});
-  return {question,conversation_id:conversation,sql:'SELECT SUM(converted) AS total FROM calculated',
+  return {question,conversation_id:conversation,
+    // Exercise both sides of the client contract: a non-empty claim paints the source-column badge,
+    // while the follow-up's empty effective list must clear it.
+    dataset_semantics:follow?[]:[{table:'orders',column:'amount',currency:'EUR',
+      basis:{source:'conversation',text:'This is in euros.',attested:true},supplied_by:'conversation'}],
+    sql:'SELECT SUM(converted) AS total FROM calculated',
     views:[
       {name:'calculated',op:'convert',label:'calculated',sql:'SELECT amount, rate_to_usd, amount * rate_to_usd AS converted FROM orders',
         columns:['amount','rate_to_usd','converted'],rows:[[100,1.2,120],[50,1.2,60]],

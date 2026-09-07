@@ -32,11 +32,12 @@ from engine.auth import _verify_principal, _bearer
 from engine.tables import csv_table, table_name
 from engine.trace import emitter, stream_final, set_ctx
 from engine import dataset_semantics
+from engine import dataset_attestation
 from engine.dataset_semantics import DatasetOpError
 from engine.conversations import (resolve_conversation, conversation_page, get_conversation,
                                   load_dataset_ops, append_dataset_ops,
                                    delete_conversation, delete_all_conversations, save_state, NotOwned,
-                                   QuotaExceeded)
+                                   QuotaExceeded, DatasetOpsLimitError)
 from engine import master
 from engine import admin
 from engine import request_timing
@@ -504,12 +505,27 @@ class H(BaseHTTPRequestHandler):
             # silent application and never a 500.
             semantics = []
             try:
+                raw_ops = req.get("dataset_ops")
+                attested = (not raw_ops or dataset_attestation.verify(
+                    sub, raw_ops, self.headers.get(dataset_attestation.HEADER)))
                 incoming = dataset_semantics.validate_ops(
-                    req.get("dataset_ops"), tabs[:uploaded_count])
-                ops_log = (append_dataset_ops(conv, incoming) if incoming
-                           else (load_dataset_ops(conv) if req.get("conversation_id") else []))
-                semantics = dataset_semantics.apply(tabs, ops_log)
-            except DatasetOpError as exc:
+                    raw_ops, tabs[:uploaded_count], attested=attested)
+                if incoming:
+                    ops_log = append_dataset_ops(
+                        conv, incoming,
+                        validate=lambda candidate: dataset_semantics.validate_replay(
+                            candidate, tabs[:uploaded_count]),
+                    )
+                else:
+                    ops_log = load_dataset_ops(conv) if req.get("conversation_id") else []
+                    # A claim can survive while its sheet is detached. Re-check it when that sheet
+                    # returns so a replacement upload cannot be silently shadowed by old metadata.
+                    dataset_semantics.validate_replay(ops_log, tabs[:uploaded_count])
+                # Apply only to the uploaded prefix. Saved/published reference tables are separate
+                # trust domains even if a name collision somehow reaches this point; the mutated
+                # upload dictionaries remain the same objects used by the full working table list.
+                semantics = dataset_semantics.apply(tabs[:uploaded_count], ops_log)
+            except (DatasetOpError, DatasetOpsLimitError) as exc:
                 res = {"question": req.get("question", ""), "clarify": True, "reason": str(exc),
                        "conversation_id": conv,
                        "model": "engine - dataset semantics (op rejected)"}
@@ -518,7 +534,7 @@ class H(BaseHTTPRequestHandler):
                 self._send(200, json.dumps(res)); return
             provenance_context = ProvenanceContext(
                 tabs, uploaded_count=uploaded_count, reference_count=reference_count,
-                enrichment=enrichment,
+                enrichment=enrichment, dataset_semantics=semantics,
             )
             emit = provenance_context.wrap_emitter(emitter(uid, req.get("jobId")))
             emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
@@ -536,7 +552,8 @@ class H(BaseHTTPRequestHandler):
                         serve_kwargs["explicit_fks"] = enrichment.explicit_fks
                     with request_timing.span("serve"):
                         res = MODEL.serve(
-                            tabs, req.get("question", ""), conv, req.get("as_of"), **serve_kwargs
+                            tabs, req.get("question", ""), conv, req.get("as_of"),
+                            dataset_semantics=semantics, **serve_kwargs
                         )
                 finally:
                     set_ctx(None)
@@ -545,7 +562,9 @@ class H(BaseHTTPRequestHandler):
             res = provenance_context.decorate_response(res)
             if isinstance(res, dict):
                 res["conversation_id"] = conv                # so the browser persists it for follow-up turns
-            if semantics and isinstance(res, dict):
+            # Include an empty effective list after a clear: [] is the authoritative state that tells
+            # the browser to remove a previously rendered conversation-metadata badge.
+            if isinstance(res, dict) and (incoming or ops_log):
                 res["dataset_semantics"] = semantics         # the UI badge + audit surface
                 emit("dataset_semantics", semantics)
             if truncated and isinstance(res, dict):

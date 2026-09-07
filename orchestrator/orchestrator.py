@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 from anthropic import AsyncAnthropic
 
-from engine import request_timing
+from engine import dataset_attestation, request_timing
 from mcp_server import engine_client
 from mcp_server.descriptions import QUERY_DESC, DESCRIBE_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
@@ -72,13 +72,15 @@ CLAUDE_TOOLS = [
                             },
                             "basis": {
                                 "type": "object",
-                                "properties": {"source": {"type": "string"},
+                                "properties": {"source": {"type": "string",
+                                                           "enum": ["conversation"]},
                                                "text": {"type": "string",
-                                                        "description": "the user's words that state the fact"}},
+                                                        "description": "the user's words in this message that state the fact"}},
+                                "required": ["source", "text"],
                                 "additionalProperties": False,
                             },
                         },
-                        "required": ["op", "table", "column"],
+                        "required": ["op", "table", "column", "basis"],
                         "additionalProperties": False,
                     },
                 },
@@ -110,6 +112,40 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _verify_dataset_ops(raw_ops, user_message, history=None):
+    """Return normalized ops and whether every quote is present in the current user message.
+
+    The engine remains the authority for grammar and table binding. This boundary owns provenance:
+    a model must not be able to manufacture a quote that the UI later presents as "you said".
+    Historical messages are deliberately excluded: an old statement cannot authenticate a newly
+    emitted operation. Invalid quotes are sent without an attestation so the engine returns a
+    deterministic clarify instead of silently accepting or dropping the correction.
+    """
+    if not isinstance(raw_ops, list):
+        return raw_ops, False
+    user_text = str(user_message or "")
+    verified = bool(raw_ops)
+    out = []
+    for raw in raw_ops:
+        op = dict(raw) if isinstance(raw, dict) else raw
+        if not isinstance(op, dict):
+            verified = False
+            out.append(op)
+            continue
+        basis = op.get("basis")
+        if not isinstance(basis, dict):
+            verified = False
+            out.append(op)
+            continue
+        quoted = str(basis.get("text", "")).strip()
+        if (basis.get("source") != "conversation" or not quoted
+                or quoted.casefold() not in user_text.casefold()):
+            verified = False
+        op["basis"] = {"source": "conversation", "text": quoted}
+        out.append(op)
+    return out, verified
+
+
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:
     """Run one chat turn under a timing scope, and print the turn's ONE `[timing] chat` line.
 
@@ -131,7 +167,8 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
 async def _run_turn(user_message: str, tables: list[dict], history: list[dict], *,
                     engine_base_url: str, bearer_token: str | None,
                     api_key: str, model: str, turn_id: str | None = None,
-                    emit=None, conversation_id: str | None = None) -> dict[str, Any]:
+                    emit=None, conversation_id: str | None = None,
+                    principal: str | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs. Returns {reply, traces, history, conversation_id}.
 
@@ -226,7 +263,12 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
                         # prompt regression fails the live suite instead of shipping. No per-dimension
                         # code guard: it covered only currency and could never cover qualifier carry-over.
-                        dataset_ops = (block.input or {}).get("dataset_ops") or None
+                        dataset_ops, quotes_verified = _verify_dataset_ops(
+                            (block.input or {}).get("dataset_ops"), user_message, history,
+                        )
+                        dataset_ops = dataset_ops or None
+                        attestation = (dataset_attestation.sign(principal, dataset_ops)
+                                       if quotes_verified else None)
                         print(f"[chat] tool_call={call_idx} question_chars={len(question)} "
                               f"ops={len(dataset_ops or [])}", flush=True)
                         _emit(f"calls/{call_idx}", {"jobId": job_id, "question": question})
@@ -239,6 +281,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 question, tables, job_id, conv,
                                 base_url=engine_base_url, token=bearer_token,
                                 request_id=job_id, client=http, dataset_ops=dataset_ops,
+                                dataset_attestation=attestation,
                             )
                         if not conv and shaped.get("conversation_id"):
                             conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session

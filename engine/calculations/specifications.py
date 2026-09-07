@@ -22,11 +22,13 @@ from engine.currency_intent import (
     currency_rate_bindings,
     currency_rate_target,
     is_currency_measure_column,
+    is_currency_reference_key,
     is_currency_source_column,
     substitute_currency_filter,
     substitute_currency_target,
 )
 from engine.numeric import parse_decimal
+from engine.dataset_semantics import is_synthetic_currency_column, synthetic_currency_column
 from engine.enrichment.value_types import ISO4217_CODES
 from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, Literal, SQLType
 from engine.sql_schema import SchemaGraph
@@ -67,17 +69,21 @@ def _table_map(tables) -> dict[str, dict]:
     return {str(table.get("name") or ""): table for table in (tables or ())}
 
 
-def _source_profile(tables, measure_tables: tuple[str, ...]) -> dict[str, Any]:
+def _source_profile(tables, measure_columns: tuple[tuple[str, str], ...]) -> dict[str, Any]:
     by_name = _table_map(tables)
     candidates = []
-    for table_name in measure_tables:
+    for table_name, measure_name in measure_columns:
         table = by_name.get(table_name)
         if table is None:
             continue
         columns = [str(column) for column in (table.get("columns") or ())]
-        for index, column in enumerate(columns):
-            if not is_currency_source_column(column):
-                continue
+        private_column = synthetic_currency_column(measure_name)
+        source_columns = ([private_column] if private_column in columns else [
+            column for column in columns
+            if is_currency_source_column(column) and not is_synthetic_currency_column(column)
+        ])
+        for column in source_columns:
+            index = columns.index(column)
             values, unknown, missing = [], [], 0
             for row in table.get("rows") or ():
                 value = row.get(column) if isinstance(row, dict) else row[index] if index < len(row) else None
@@ -128,12 +134,29 @@ def _graph_numeric_rows(graph: SchemaGraph) -> tuple[tuple[str, str], ...]:
     )
 
 
-def _available_currency_targets(graph: SchemaGraph, measure_tables: tuple[str, ...]) -> tuple[str, ...]:
+def _measure_currency_edges(measure: ColumnRef, edge_rows):
+    """Keep public currency edges plus only this measure's private asserted-currency edge."""
+    private_column = synthetic_currency_column(measure.name)
+    return tuple(
+        edge for edge in edge_rows
+        if not (edge[0] == measure.table and is_synthetic_currency_column(edge[1])
+                and edge[1] != private_column)
+    )
+
+
+def _available_currency_targets(
+    graph: SchemaGraph, measure_columns: tuple[tuple[str, str], ...],
+) -> tuple[str, ...]:
     edge_rows = _graph_edge_rows(graph)
     numeric_rows = _graph_numeric_rows(graph)
     available = set()
-    for table in measure_tables:
-        available.update(currency_rate_bindings(table, edge_rows, numeric_rows))
+    for table, column in measure_columns:
+        measure = graph.column_map.get((table, column))
+        if measure is None:
+            continue
+        available.update(currency_rate_bindings(
+            table, _measure_currency_edges(measure.ref, edge_rows), numeric_rows,
+        ))
     return tuple(sorted(available))
 
 
@@ -188,14 +211,38 @@ class CurrencySpecification:
         if intent.operation != "convert" or not intent.target:
             return ()
         edge_rows, numeric_rows = _graph_edge_rows(graph), _graph_numeric_rows(graph)
+        eligible_measures = set(_numeric_candidates(
+            graph,
+            intent.attributes.get("_question", intent.phrase),
+            preferred=_MONEY_WORDS,
+            learned=(operand_scores or {}).get("measure"),
+        ))
         out = []
         for column in graph.columns:
             measure = column.ref
             if not measure.type.numeric or not is_currency_measure_column(measure.name):
                 continue
-            binding = currency_rate_bindings(measure.table, edge_rows, numeric_rows).get(intent.target)
+            if eligible_measures and measure not in eligible_measures:
+                continue
+            measure_edges = _measure_currency_edges(measure, edge_rows)
+            binding = currency_rate_bindings(
+                measure.table, measure_edges, numeric_rows,
+            ).get(intent.target)
             if binding is None or binding not in graph.column_map:
                 continue
+            source_names = {
+                from_column
+                for from_table, from_column, to_table, to_column in measure_edges
+                if from_table == measure.table and to_table == binding[0]
+                and is_currency_source_column(from_column)
+                and is_currency_reference_key(to_column)
+            }
+            if len(source_names) != 1:
+                continue
+            source_key = (measure.table, next(iter(source_names)))
+            if source_key not in graph.column_map:
+                continue
+            source_currency = graph.column_map[source_key].ref
             rate = graph.column_map[binding].ref
             out.append(CalculationPlan(
                 self.name,
@@ -203,7 +250,7 @@ class CurrencySpecification:
                 f"total_{intent.target.lower()}",
                 intent.target,
                 "direct_rate_multiplication",
-                (("measure", measure), ("rate", rate)),
+                (("measure", measure), ("source_currency", source_currency), ("rate", rate)),
                 measure.table,
                 2.0 + _role_score(operand_scores, "measure", measure),
             ))
@@ -264,9 +311,8 @@ class CurrencySpecification:
             for column in output.columns
             if currency_rate_target(column.name) is None
         }))
-        measure_tables = tuple(sorted({table for table, _ in measure_columns}))
-        source = _source_profile(tables, measure_tables)
-        available = _available_currency_targets(graph, measure_tables)
+        source = _source_profile(tables, measure_columns)
+        available = _available_currency_targets(graph, measure_columns)
         proposal_target = next((code for code in available if code != target), "")
         original_question = intent.attributes.get("_question", intent.phrase)
         proposal = substitute_currency_target(original_question, proposal_target) if proposal_target else ""

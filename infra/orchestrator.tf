@@ -2,8 +2,8 @@
 #
 # A SECOND, lightweight Cloud Run service alongside the engine (google_cloud_run_v2_service.api in
 # main.tf). It calls the engine over HTTP and Anthropic over HTTPS; it does NOT touch Postgres or write
-# RTDB (the engine does that when it receives the forwarded Firebase token + jobId). So its SA needs only
-# the Anthropic-key secret — no Cloud SQL, no RTDB roles.
+# RTDB. Its SA needs the Anthropic key, the shared dataset-attestation key, and RTDB access; it does
+# not receive Cloud SQL access.
 #
 # Deploy order (see infra/README.md):
 #   1. gcloud builds submit --config cloudbuild.orchestrator.yaml   # builds+pushes the chat image (tests-gated)
@@ -61,6 +61,13 @@ resource "google_secret_manager_secret_iam_member" "chat_anthropic_key" {
   member    = "serviceAccount:${google_service_account.chat_run[0].email}"
 }
 
+resource "google_secret_manager_secret_iam_member" "chat_dataset_attestation" {
+  count     = var.enable_orchestrator ? 1 : 0
+  secret_id = google_secret_manager_secret.dataset_attestation.id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.chat_run[0].email}"
+}
+
 # The orchestrator streams turn traces (status, calls, reply, conversation_id) to RTDB.
 resource "google_project_iam_member" "chat_rtdb" {
   count   = var.enable_orchestrator && var.rtdb_url != "" ? 1 : 0
@@ -92,8 +99,8 @@ resource "google_cloud_run_v2_service" "chat" {
       max_instance_count = 3
     }
 
-    # I/O-bound (calls Anthropic + the engine), not model-locked like the engine — so a higher
-    # per-instance concurrency is fine. Each request spawns a short-lived MCP stdio subprocess.
+    # I/O-bound (calls Anthropic + the engine), unlike the model-locked engine, so a higher
+    # per-instance concurrency is appropriate. Calls share one in-process HTTP client per turn.
     max_instance_request_concurrency = 20
     timeout                          = "300s" # a multi-hop tool loop can run tens of seconds
 
@@ -119,6 +126,15 @@ resource "google_cloud_run_v2_service" "chat" {
       env {
         name  = "APP_ENV"
         value = "production"
+      }
+      env {
+        name = "DATASET_ATTESTATION_KEY"
+        value_source {
+          secret_key_ref {
+            secret  = local.dataset_attestation_secret_id
+            version = "latest"
+          }
+        }
       }
       env {
         name  = "EXTERNAL_LLM_ENABLED"
@@ -166,6 +182,8 @@ resource "google_cloud_run_v2_service" "chat" {
   depends_on = [
     google_project_service.apis,
     google_secret_manager_secret_iam_member.chat_anthropic_key,
+    google_secret_manager_secret_iam_member.chat_dataset_attestation,
+    google_secret_manager_secret_version.dataset_attestation,
   ]
 }
 

@@ -9,9 +9,11 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
 
 from engine.routing import route, compose_owns, world_grounded, Route, COMPOSITION_OPS, WORLD_DEP_OPS, DEPTH_PRIMS
 from engine.compose import ComposeEngine
+from engine.knowledge_compose import ComposedKnowledgeQuery
 
 
 def _views(*ops):
@@ -53,6 +55,23 @@ def test_plain_world_lookup_defers_to_delegate():
     # delegate is authoritative; route() returns AST (compose does not own it).
     assert route(_views("world_join", "world_filter"), _NECESSARY, result_rows=[[270]]) is Route.DELEGATE
     print("  PASS  plain world lookup -> delegate (route AST)")
+
+
+def test_composed_gate_with_no_world_match_delegates_without_crashing():
+    query = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
+    expected = {"result": {"columns": ["total"], "rows": [[3]]}}
+    query.qw = SimpleNamespace(
+        ingest=lambda tables: (tables, []),
+        serve=lambda *args, **kwargs: expected,
+    )
+    query._composed = lambda tables, question: True
+    query._world_lookup = lambda tables, sub: None
+    result = query._serve_locked(
+        [{"name": "orders", "columns": ["amount"], "rows": [[1], [2]]}],
+        "total amount", "user-a",
+    )
+    assert result is expected
+    print("  PASS  composed cue + empty world lookup -> delegate")
 
 
 def test_world_group_by_stands():
@@ -167,6 +186,7 @@ TESTS = [
     test_necessary_world_composite_stands,
     test_redundant_world_join_is_own_data,
     test_plain_world_lookup_defers_to_delegate,
+    test_composed_gate_with_no_world_match_delegates_without_crashing,
     test_world_group_by_stands,
     test_required_op_the_plan_cannot_realize_delegates,
     test_constants_are_coherent,

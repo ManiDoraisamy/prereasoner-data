@@ -33,6 +33,12 @@ from engine.pg import _pg
 _ID_RE = re.compile(r"^c_[0-9a-f]{32}$")
 MAX_STATE_BYTES = 1 * 1024 * 1024
 MAX_PAGE_SIZE = 100
+MAX_DATASET_OPS = 200
+MAX_DATASET_OP_BYTES = 64 * 1024
+
+
+class DatasetOpsLimitError(ValueError):
+    """The conversation's semantic-operation audit log has reached its bounded quota."""
 
 
 class NotOwned(Exception):
@@ -162,7 +168,7 @@ def load_dataset_ops(conversation_id):
         conn.close()
 
 
-def append_dataset_ops(conversation_id, new_ops):
+def append_dataset_ops(conversation_id, new_ops, *, validate=None):
     """Append validated ops to the conversation's log and return the FULL updated log.
 
     Append-only by construction: the log is the audit history (a later `set` supersedes an earlier
@@ -172,14 +178,41 @@ def append_dataset_ops(conversation_id, new_ops):
     conn = _pg()
     try:
         cur = conn.cursor()
+        # Lock and validate the complete log before writing. Per-request limits are not enough:
+        # repeated turns must not grow one JSONB value without bound or bypass the conversation quota.
+        cur.execute('SELECT dataset_ops FROM "chat"."conversation" '
+                    'WHERE conversation_id = %s FOR UPDATE', (conversation_id,))
+        row = cur.fetchone()
+        if row is None:
+            conn.rollback()
+            return []
+        existing = row[0] if isinstance(row[0], list) else []
+        combined = existing + list(new_ops)
+        # ASCII escaping keeps lone surrogate/control input from making the DB write fail with a
+        # UnicodeEncodeError; the JSON value decodes back to the original text on reads.
+        encoded = json.dumps(combined, ensure_ascii=True, separators=(",", ":"))
+        if len(combined) > MAX_DATASET_OPS or len(encoded.encode("utf-8")) > MAX_DATASET_OP_BYTES:
+            raise DatasetOpsLimitError(
+                f"this conversation has reached its dataset-semantics limit ({MAX_DATASET_OPS} operations)"
+            )
+        if validate is not None:
+            # Validation must see the same locked snapshot that is written. Validating before this
+            # transaction would let two concurrent turns each accept a stale log and persist a
+            # combination that neither request validated.
+            validate(combined)
         cur.execute(
-            'UPDATE "chat"."conversation" SET dataset_ops = '
-            "COALESCE(dataset_ops, '[]'::jsonb) || %s::jsonb "
+            'UPDATE "chat"."conversation" SET dataset_ops = %s::jsonb '
             'WHERE conversation_id = %s RETURNING dataset_ops',
-            (json.dumps(new_ops), conversation_id))
+            (encoded, conversation_id))
         row = cur.fetchone()
         conn.commit()
         return row[0] if row and isinstance(row[0], list) else list(new_ops)
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:                                    # noqa: BLE001
+            pass
+        raise
     finally:
         conn.close()
 

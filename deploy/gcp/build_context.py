@@ -38,6 +38,7 @@ SOURCE_CHAT_ALLOWLIST = (
     "engine/__init__.py",
     "engine/auth.py",
     "engine/config.py",
+    "engine/dataset_attestation.py",
     "engine/model_revisions.py",
     "engine/request_limits.py",
     "engine/request_timing.py",

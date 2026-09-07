@@ -90,7 +90,8 @@ async def _http(client: httpx.AsyncClient | None, timeout: float | None):
         yield temporary
 
 
-def _headers(token: str | None, request_id: str | None) -> dict[str, str]:
+def _headers(token: str | None, request_id: str | None,
+             dataset_attestation: str | None = None) -> dict[str, str]:
     """Per-call headers. `token` is passed EXPLICITLY by callers that have one: the env fallback is
     process-global, so an in-process caller serving concurrent users must never rely on it."""
     headers = {"content-type": "application/json"}
@@ -99,6 +100,9 @@ def _headers(token: str | None, request_id: str | None) -> dict[str, str]:
         headers["Authorization"] = f"Bearer {tok}"
     if request_id:
         headers["X-Request-Id"] = request_id       # correlate this call with the chat turn that issued it
+    if dataset_attestation:
+        from engine.dataset_attestation import HEADER
+        headers[HEADER] = dataset_attestation
     return headers
 
 
@@ -107,7 +111,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      *, base_url: str | None = None, token: str | None = None,
                      timeout: float | None = None, request_id: str | None = None,
                      client: httpx.AsyncClient | None = None,
-                     dataset_ops: list[dict] | None = None) -> dict[str, Any]:
+                     dataset_ops: list[dict] | None = None,
+                     dataset_attestation: str | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
@@ -128,7 +133,7 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
     try:
         async with _http(client, timeout) as http:
             r = await http.post(f"{base}/api/reason", json=body,
-                                headers=_headers(token, request_id),
+                                headers=_headers(token, request_id, dataset_attestation),
                                 timeout=timeout or DEFAULT_TIMEOUT)
     except httpx.HTTPError as e:
         return {"status": "error", "error": f"could not reach the Prereasoner engine at {base}: {e}"}

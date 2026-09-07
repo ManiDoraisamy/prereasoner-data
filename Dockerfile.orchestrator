@@ -1,7 +1,8 @@
-# The Sonnet orchestrator + the Prereasoner MCP server (docs/MCP.md).
+# The Sonnet orchestrator + shared Prereasoner HTTP client (docs/MCP.md).
 #
-# One lean image: the orchestrator HTTP server spawns the MCP server as a stdio subprocess (same image),
-# and the MCP server calls the engine over HTTP (ENGINE_BASE_URL). NO torch/transformers/spaCy here — the
+# One lean image: the orchestrator calls the shared engine client in-process over HTTP
+# (ENGINE_BASE_URL). The stdio MCP entry point remains in the image for external clients. NO
+# torch/transformers/spaCy here — the
 # heavy model image is the separate engine Dockerfile. This container only needs anthropic + mcp + httpx.
 #
 # Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
@@ -27,7 +28,7 @@ RUN mkdir -p /app/engine
 # because it runs from the full repo tree, not from this image.
 # request_timing is the stdlib-only phase-timing collector imported by engine.trace and the
 # orchestrator's tool loop — same boot-failure mode if omitted (caught by the healthcheck below).
-COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py engine/request_limits.py engine/request_validation.py engine/request_timing.py engine/model_revisions.py /app/engine/
+COPY engine/__init__.py engine/config.py engine/auth.py engine/trace.py engine/request_limits.py engine/request_validation.py engine/request_timing.py engine/model_revisions.py engine/dataset_attestation.py /app/engine/
 COPY mcp_server/ /app/mcp_server/
 COPY orchestrator/ /app/orchestrator/
 

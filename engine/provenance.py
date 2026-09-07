@@ -31,7 +31,7 @@ class ProvenanceContext:
     """Decorate one request's HTTP response and streamed trace with column lineage."""
 
     def __init__(self, tables, *, uploaded_count: int, reference_count: int = 0,
-                 enrichment=None):
+                 enrichment=None, dataset_semantics=()):
         self._by_column: dict[str, list[dict]] = {}
         self._by_location: dict[tuple[str, str], dict] = {}
         self._last: dict[str, dict] = {}
@@ -40,6 +40,12 @@ class ProvenanceContext:
             for outcome in getattr(enrichment, "outcomes", ()):
                 if getattr(outcome, "matched", False):
                     enrichment_sources[str(outcome.dataset_name)] = dict(outcome.provenance)
+        asserted_columns = {
+            (str(item.get("table", "")).casefold(),
+             str(item.get("currency_column", "")).casefold()): item
+            for item in (dataset_semantics or ()) if isinstance(item, dict)
+            and item.get("table") and item.get("currency_column")
+        }
 
         for index, table in enumerate(tables):
             name = str(table.get("name") or "")
@@ -55,8 +61,16 @@ class ProvenanceContext:
                     "release_id": source.get("release_id"),
                 }
             for column in table.get("columns") or ():
-                item = _record(meta["kind"], meta["source"], table=name, column=str(column),
-                               release_id=meta.get("release_id"))
+                asserted = asserted_columns.get((name.casefold(), str(column).casefold()))
+                if asserted is not None:
+                    item = _record(
+                        "asserted", "conversation", table=name, column=str(column),
+                        operation="measure currency",
+                        inputs=(f'{name}.{asserted.get("column")}',),
+                    )
+                else:
+                    item = _record(meta["kind"], meta["source"], table=name, column=str(column),
+                                   release_id=meta.get("release_id"))
                 self._by_column.setdefault(str(column).casefold(), []).append(item)
                 self._by_location[(name.casefold(), str(column).casefold())] = item
 

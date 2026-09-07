@@ -8,7 +8,7 @@ Routes:
 
 In production Firebase Hosting serves the static UI and rewrites /chat + /api to the respective Cloud Run
 services (docs/MCP.md); this single-origin server is the local-dev equivalent so the whole
-browser -> orchestrator -> MCP -> engine loop runs from one URL.
+browser -> orchestrator -> shared engine client loop runs from one URL.
 
 Run: python -m orchestrator.server
 """
@@ -25,7 +25,7 @@ from pathlib import Path
 
 import httpx
 
-from engine import config
+from engine import config, dataset_attestation
 from engine.request_limits import (
     JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
@@ -38,8 +38,8 @@ MAX_BODY = 8 * 1024 * 1024
 CHAT_TIMEOUT_SECONDS = 240
 CHAT_GATE = RequestGate(requests=10, window_seconds=60, in_flight=8)
 
-# One asyncio loop in a background thread — the MCP stdio subprocess is spawned on it consistently
-# (avoids per-request loop churn and Windows non-main-thread signal issues).
+# One asyncio loop in a background thread keeps Anthropic and engine HTTP work off request threads
+# and avoids per-request event-loop churn.
 _LOOP = asyncio.new_event_loop()
 threading.Thread(target=_LOOP.run_forever, name="orch-loop", daemon=True).start()
 
@@ -94,7 +94,7 @@ class H(BaseHTTPRequestHandler):
             # Readiness must check what a turn actually uses. That is the engine client this process
             # calls in-process — NOT mcp_server.server, which is now only the entry point for
             # external MCP clients and whose health says nothing about this service's ability to serve.
-            ready = bool(os.environ.get("ANTHROPIC_API_KEY"))
+            ready = bool(os.environ.get("ANTHROPIC_API_KEY")) and dataset_attestation.configured()
             try:
                 module = importlib.import_module("mcp_server.engine_client")
                 ready = ready and hasattr(module, "call_query")
@@ -169,7 +169,8 @@ class H(BaseHTTPRequestHandler):
                 run_chat(message, tables, history,
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,
                          api_key=config.anthropic_api_key(), model=config.ANTHROPIC_MODEL,
-                         turn_id=turn_id, emit=emit, conversation_id=conversation_id),
+                         turn_id=turn_id, emit=emit, conversation_id=conversation_id,
+                         principal=sub),
                 _LOOP,
             )
             res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)

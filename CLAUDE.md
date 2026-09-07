@@ -65,7 +65,7 @@ Extend these owners. Do not build parallel replacements.
 | Workbook and reference-data browser lifecycle | `web/public/lib/workbook.js` |
 | Sheets-as-reasoning derivation contract (step grammar, naming, rendering rules) | `docs/SHEETS_AS_REASONING.md` — every view emitter (`engine/compose.py`, the conversion trail in `engine/knowledge_tables.py`) and `web/public/lib/workbook.js` follow it; fix the path, never fork the grammar |
 | Per-request phase timing (the ONE `[timing]` line per served request) | `engine/request_timing.py` — instrument by calling its `span`/`count`/`mark`; do not add a second timing mechanism, and never log prompts, cells, questions or tokens |
-| Dataset-semantics op grammar, validation, replay, and application (docs/DATASET_FORMATTER.md) | `engine/dataset_semantics.py` — the closed two-op v1 grammar; persistence via `engine/conversations.py:{load,append}_dataset_ops` (chat migration v4); emission ONLY by the existing orchestrator tool round; never a second op grammar or a model-rewritten dataset |
+| Dataset-semantics op grammar, validation, replay, application, and transport trust (docs/DATASET_FORMATTER.md) | `engine/dataset_semantics.py` — the closed two-op v1 grammar; `engine/dataset_attestation.py` — authenticated orchestrator-to-engine transport; persistence via `engine/conversations.py:{load,append}_dataset_ops` (chat migration v4); emission ONLY by the existing orchestrator tool round; never a second op grammar or a model-rewritten dataset |
 
 The routing decision is `engine/routing.py:route()` — one pure function that both
 `engine/knowledge_compose.py` (serving) and `spider/probe/full_eval.py` (evaluation)

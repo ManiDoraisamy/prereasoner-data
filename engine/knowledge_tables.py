@@ -21,6 +21,7 @@ from engine.config import DATA_DIR
 from engine.currency_intent import (
     currency_rate_binding, is_currency_measure_column, is_currency_source_column,
 )
+from engine.dataset_semantics import is_synthetic_currency_column
 from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
@@ -274,7 +275,7 @@ class KnowledgeTableQuery:
             selected,
         )
 
-    def _world_rate_binding(self, question, agg, sch):
+    def _world_rate_binding(self, question, agg, sch, dataset_semantics=()):
         """Bind the conversion to knowledgebase."exchange_rate" when the upload has no rate sheet.
 
         The knowledgebase table joins exactly like a tenant table — conversation + tenant +
@@ -294,11 +295,23 @@ class KnowledgeTableQuery:
         if intent is None or intent.kind != CurrencyIntentKind.OUTPUT:
             return None
         fact = agg[1]
-        ccy_col = next((c["name"] for c in sch if c["table"] == fact
-                        and is_currency_source_column(c["name"])), None)
+        semantic = next((item for item in (dataset_semantics or ())
+                         if item.get("table") == fact and item.get("column") == agg[2]
+                         and item.get("currency")), None)
+        if semantic:
+            ccy_col = semantic.get("currency_column")
+            date_col = semantic.get("date_column")
+            if ccy_col not in [c["name"] for c in sch if c["table"] == fact]:
+                return None
+            if date_col is not None and date_col not in [c["name"] for c in sch if c["table"] == fact]:
+                return None
+        else:
+            ccy_col = next((c["name"] for c in sch if c["table"] == fact
+                            and is_currency_source_column(c["name"])
+                            and not is_synthetic_currency_column(c["name"])), None)
+            date_col = next((c["name"] for c in sch if c["table"] == fact and c.get("is_date")), None)
         # A dated fact table joins the rate of each row's own date; an undated one pins the request's
         # as_of date — the same bitemporal semantics every world join already uses (_join_cond).
-        date_col = next((c["name"] for c in sch if c["table"] == fact and c.get("is_date")), None)
         if not ccy_col:
             return None
         rate_col = f"rate_to_{intent.target.lower()}"
@@ -519,7 +532,7 @@ class KnowledgeTableQuery:
                      f' AND ({qident(R)}.{qident("valid_to")} IS NULL OR {qlit(as_of)} < {qident(R)}.{qident("valid_to")})')
         return cond
 
-    def serve(self, tables, question, as_of=None, explicit_fks=()):
+    def serve(self, tables, question, as_of=None, explicit_fks=(), dataset_semantics=()):
         as_of = as_of or datetime.date.today().isoformat()    # the DECISION time the answer is computed "as of"
         norm, fks = (
             self.q11.ingest(tables, explicit_fks=explicit_fks)
@@ -533,7 +546,7 @@ class KnowledgeTableQuery:
         world_rate = None                                     # knowledgebase-supplied conversion: only when NO uploaded
         conversion_early = self._currency_conversion_binding(question, agg, sch, fks)
         if conversion_early is None:                          # rate sheet binds (own data first)
-            world_rate = self._world_rate_binding(question, agg, sch)
+            world_rate = self._world_rate_binding(question, agg, sch, dataset_semantics)
         q_for_mf = question
         if conversion_early or world_rate:
             # The conversion phrase is CLAIMED by the conversion: "in US dollars" must not also read

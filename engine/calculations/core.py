@@ -290,6 +290,12 @@ def branch_realizes_plan(
     """Prove both the planned output and a complete registered-key path to its operands."""
     if not any(output.expression == plan.expression for output in branch.outputs):
         return False
+    joined_columns = {
+        column for fact in branch.joins for pair in fact.column_pairs for column in pair
+    }
+    if any(column not in joined_columns for role, column in plan.bindings
+           if role == "source_currency"):
+        return False
     required = {column.table for column in plan.required_columns}
     if not required or required == {plan.root_table}:
         return True

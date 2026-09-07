@@ -140,11 +140,89 @@ def test_delete_all_removes_only_owned_valid_conversations_and_user_traces():
     assert connection.commits == 1 and connection.closed
 
 
+def test_append_dataset_ops_is_bounded_and_serialized():
+    class Cursor:
+        def __init__(self, existing):
+            self.existing = existing
+            self.updated = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            self.statements.append((str(statement), params))
+            if "SELECT dataset_ops" in str(statement):
+                self.updated = (self.existing,)
+            elif "UPDATE \"chat\".\"conversation\"" in str(statement):
+                self.updated = (params[0],)
+
+        def fetchone(self):
+            return self.updated
+
+    cid = "c_" + "1" * 32
+    cursor = Cursor([])
+    connection = _Connection(cursor)
+    with patch.object(conversations, "_pg", return_value=connection):
+        assert conversations.append_dataset_ops(cid, [{"op": "clear_measure_metadata",
+                                                        "table": "responses", "column": "budget"}])
+    assert "FOR UPDATE" in cursor.statements[0][0]
+    assert connection.commits == 1
+
+    cursor = Cursor([{"op": "clear_measure_metadata", "table": "responses", "column": "budget"}]
+                    * conversations.MAX_DATASET_OPS)
+    connection = _Connection(cursor)
+    with patch.object(conversations, "_pg", return_value=connection):
+        try:
+            conversations.append_dataset_ops(cid, [{"op": "clear_measure_metadata",
+                                                    "table": "responses", "column": "budget"}])
+            raise AssertionError("dataset operation log exceeded its bound")
+        except conversations.DatasetOpsLimitError:
+            pass
+    assert connection.commits == 0 and connection.rollbacks == 1
+
+    # Full-log validation runs after the row lock and before UPDATE; a rejection rolls the same
+    # transaction back, so no unvalidated prefix can become durable.
+    cursor = Cursor([{"op": "set_measure_metadata", "table": "responses", "column": "budget"}])
+    connection = _Connection(cursor)
+    seen = []
+
+    def reject(combined):
+        seen.append(combined)
+        raise ValueError("bad log")
+
+    with patch.object(conversations, "_pg", return_value=connection):
+        try:
+            conversations.append_dataset_ops(
+                cid,
+                [{"op": "clear_measure_metadata", "table": "responses", "column": "budget"}],
+                validate=reject,
+            )
+            raise AssertionError("validation failure must abort the append")
+        except ValueError as exc:
+            assert str(exc) == "bad log"
+    assert len(seen[0]) == 2
+    assert not any("SET dataset_ops" in statement for statement, _ in cursor.statements)
+    assert connection.commits == 0 and connection.rollbacks == 1
+
+    # The byte cap is independent of the operation-count cap; a small number of oversized
+    # records must not turn JSONB into an unbounded conversation payload.
+    cursor = Cursor([])
+    connection = _Connection(cursor)
+    oversized = [{"op": "clear_measure_metadata", "table": "responses", "column": "budget",
+                  "basis": {"source": "conversation", "text": "x" * conversations.MAX_DATASET_OP_BYTES}}]
+    with patch.object(conversations, "_pg", return_value=connection):
+        try:
+            conversations.append_dataset_ops(cid, oversized)
+            raise AssertionError("dataset operation bytes exceeded their bound")
+        except conversations.DatasetOpsLimitError:
+            pass
+    assert connection.commits == 0 and connection.rollbacks == 1
+
+
 TESTS = [
     test_conversation_page_uses_a_stable_timestamp_and_id_cursor,
     test_save_state_locks_and_replaces_only_the_previous_state_bytes,
     test_save_state_rejects_an_oversized_snapshot_and_rolls_back,
     test_delete_all_removes_only_owned_valid_conversations_and_user_traces,
+    test_append_dataset_ops_is_bounded_and_serialized,
 ]
 
 

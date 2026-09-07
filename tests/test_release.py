@@ -153,12 +153,21 @@ def test_privacy_is_a_published_route_not_a_request_dialog():
 def test_external_model_deployment_fails_closed():
     variables = _text("infra/variables.tf")
     main = _text("infra/main.tf")
+    orchestrator_tf = _text("infra/orchestrator.tf")
     assert 'variable "enable_external_llm"' in variables
     external_var = variables.split('variable "enable_external_llm"', 1)[1].split("}", 1)[0]
     assert re.search(r"default\s*=\s*false", external_var)
     assert "external_llm_enabled = var.enable_external_llm || var.enable_orchestrator" in main
     assert 'value = tostring(local.external_llm_enabled)' in main
     assert 'count     = local.external_llm_enabled ? 1 : 0' in main
+    assert 'resource "google_secret_manager_secret" "dataset_attestation"' in main
+    assert 'name = "DATASET_ATTESTATION_KEY"' in main
+    assert 'name = "DATASET_ATTESTATION_KEY"' in orchestrator_tf
+    assert "local.dataset_attestation_secret_id" in main
+    assert "local.dataset_attestation_secret_id" in orchestrator_tf
+    assert 'resource "google_secret_manager_secret_iam_member" "chat_dataset_attestation"' in orchestrator_tf
+    assert "engine/dataset_attestation.py" in _text("Dockerfile.orchestrator")
+    assert '"engine/dataset_attestation.py"' in _text("deploy/gcp/build_context.py")
 
 
 def test_orchestrator_prompt_owns_generic_question_fidelity():

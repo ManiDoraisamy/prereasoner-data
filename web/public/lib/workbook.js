@@ -44,7 +44,10 @@ let PRESENT=false;                               // present mode: a REAL answer,
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
 let DS_META=[];                                  // dataset semantics: conversation-stated measure metadata [{table, column, currency, basis}]
                                                  // from the engine's dataset_semantics response field -> a badge on the user's column header
-function noteDatasetSemantics(list){ if(Array.isArray(list)&&list.length){ DS_META=list; paint(); } }
+function noteDatasetSemantics(list){
+  // An empty array is an authoritative clear; ignoring it leaves a removed claim painted on the source sheet.
+  if(Array.isArray(list)){ DS_META=list; paint(); }
+}
 // ---- orchestrated (Sonnet front-door) mode: WB.chat routes each turn through /chat (Sonnet + engine-MCP),
 // which resolves context ("How about germany?" -> "total amount in Germany") and can make several engine
 // calls per turn. Off by default -> the direct /api/reason path above is byte-identical. ----
@@ -84,13 +87,13 @@ function renderGrid(m){
   // to guess origin: identical names can legitimately occur in uploads and references.
   const showProv=(m.cls==='deriv'||m.cls==='ref');
   const pcols=Array.isArray(m.columnProvenance)?m.columnProvenance:[];
-  const provTag=p=>{if(!p)return ''; if(p.kind==='input')return 'SRC'; if(p.kind==='derived')return 'CALC';
+  const provTag=p=>{if(!p)return ''; if(p.kind==='input')return 'SRC'; if(p.kind==='asserted')return 'USER'; if(p.kind==='derived')return 'CALC';
     const s=String(p.source||'REF').toUpperCase(); if(s.includes('WIKIDATA'))return 'WIKI';
     if(s.includes('CENTRAL BANK')||s==='ECB')return 'ECB'; if(s.includes('IANA'))return 'IANA';
     if(s.includes('SAVED REFERENCE'))return 'REF'; return s.replace(/[^A-Z0-9]/g,'').slice(0,6)||'REF';};
   const provClass=p=>p&&p.kind==='input'?'src':p&&p.kind==='derived'?'ai':p&&p.kind==='mixed'?'mixed':'kb';
   const provTitle=p=>{if(!p)return ''; let out=p.kind==='input'?'From your uploaded data':
-      p.kind==='derived'?'Calculated by Prereasoner':'Reference data from '+(p.source||'a published source');
+      p.kind==='asserted'?'Supplied in this conversation':p.kind==='derived'?'Calculated by Prereasoner':'Reference data from '+(p.source||'a published source');
     if(p.operation)out+=' · '+p.operation; if(p.release_id)out+=' · release '+p.release_id;
     if(Array.isArray(p.inputs)&&p.inputs.length)out+=' · inputs: '+p.inputs.join(', '); return out;};
   let h='<div class=sheetscroll><table class="wb'+(m.result?' result':'')+(edit?' editable':' readonly')+'"><thead><tr><th class=rn></th>';
@@ -729,6 +732,7 @@ function addCall(uid,c){                                      // an engine call 
   STATUS='Reading as: “'+c.question+'”…'; renderRail();
   if(!uid||!window.subscribeRun)return;
   const sub=window.subscribeRun(uid,c.jobId,{
+    onDatasetSemantics:noteDatasetSemantics,
     onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; SEEN.add(id); appendView(v); },
     onResolve:(k,r)=>{ if(!r||typeof r!=='object'||!r.column)return; const id=c.jobId+'/'+k; if(SEEN_R.has(id))return; SEEN_R.add(id); appendResolve(r); },
     // reconcile this call's last view with its authoritative result rows (calls stream sequentially, so the
@@ -795,6 +799,7 @@ async function startRun(){
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
+      onDatasetSemantics:noteDatasetSemantics,
       onConversation:c=>{ if(RUN!==myRun||!c)return; setConversation(c); renderRail(); },   // arrives early via the stream — persist + reflect in the URL (mirrors the orchestrated path), reliable even if the HTTP body is lost
       onStatus:st=>{ if(!live())return;
         if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Resolving to the world…'; renderRail(); }

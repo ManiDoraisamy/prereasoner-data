@@ -80,7 +80,6 @@ def test_emit_failure_never_raises_out():
 
 
 def test_updates_do_not_block_the_caller():
-    rec = _Recorder()
     slow_calls = []
     def slow_emit(node, value):
         slow_calls.append(value)

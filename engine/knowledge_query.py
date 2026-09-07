@@ -552,7 +552,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             print(f"[knowledge_query] country name lookup failed: {type(e).__name__}", flush=True)
             return None
 
-    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=()):
+    def serve(self, tables, question, as_of=None, schema=None, explicit_fks=(), dataset_semantics=()):
         """Hybrid structured+semantic retrieval when the question has a free-text predicate AND the data has a
         free-text column AND it is not an aggregate; otherwise delegate to EntityQuery (which uses the unified
         operator via read_op_all). Any hybrid error falls back to EntityQuery so the world path never hard-fails."""
@@ -587,7 +587,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # RoutedQuery->PgQuery->KnowledgeTableQuery (skipping TableQuery). read_op_all inside that chain still resolves
         # to EncoderQuery's metric-space operator via MRO.
         res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
-                                explicit_fks=explicit_fks)
+                                explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
         if isinstance(res, dict) and res.get("clarify"):
             return res
         calculations = tuple((res or {}).get("calculations") or ()) if isinstance(res, dict) else ()

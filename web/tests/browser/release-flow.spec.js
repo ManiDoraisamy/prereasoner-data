@@ -47,6 +47,15 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('.sheetband .snm')).toHaveText('Result');
   await expect(page.locator('.sheetband .skind')).toHaveText('total');
   await expect(page.locator('.wb.result tbody')).toContainText('180');
+  await page.locator('.wtab').filter({hasText:'orders'}).click();
+  const amountHeader=page.locator('th').filter({hasText:'amount'}).first();
+  await expect(amountHeader).toContainText('EUR');
+  await expect(amountHeader).toHaveAttribute('title',/Denominated in EUR.*This is in euros/);
+
+  await page.reload();
+  await page.locator('.wtab').filter({hasText:'orders'}).click();
+  await expect(page.locator('th').filter({hasText:'amount'}).first()).toContainText('EUR');
+  await expect.poll(async()=>((await request.get('/__state')).json()).then(v=>v.requestCount)).toBe(1);
 
   await page.locator('.wtab').filter({hasText:'calculated'}).click();
   await expect(page.locator('.provtag')).toHaveText(['SRC','ECB','CALC']);
@@ -58,6 +67,11 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.locator('#chatq').fill('only Paris');
   await page.getByRole('button',{name:'Send'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('120');
+  await page.locator('.wtab').filter({hasText:'orders'}).click();
+  await expect(page.locator('th').filter({hasText:'amount'}).first()).not.toContainText('EUR');
+  await page.reload();
+  await page.locator('.wtab').filter({hasText:'orders'}).click();
+  await expect(page.locator('th').filter({hasText:'amount'}).first()).not.toContainText('EUR');
 
   await page.getByRole('button',{name:'Conversations'}).click();
   const deletion=page.waitForRequest(req=>req.url().endsWith('/api/conversation/delete')&&req.method()==='POST');

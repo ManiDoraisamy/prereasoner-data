@@ -91,7 +91,8 @@ function convSnapshot(){
     cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
     rows:(c.cols&&c.cols.length>1&&c.rows)?((!c.saved||c.dirty)?c.rows.map(r=>r.slice()):c.rows.slice(0,MAX_RENDER_ROWS)):undefined,
     saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
-  return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands};
+  return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
+    datasetSemantics:DS_META};
 }
 let _saveStateT=null;
 function saveConvState(){                                     // persist the snapshot after a turn settles
@@ -125,6 +126,7 @@ function restoreConvState(st){                               // render a stored 
   CHAT=turns.map(t=>({q:t.q, reply:t.reply||'', html:'<div class=convmsg>'+conv2html(t.reply||'')+'</div>'}));
   if(last){ question=last.q; try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
   if(Array.isArray(st.history)) HISTORY=st.history;
+  if(Array.isArray(st.datasetSemantics)) DS_META=st.datasetSemantics;
   SETTLED=true; DONE=true; STATUS='';
   ACTIVE=(st.active && BOOK.some(s=>s.id===st.active)) ? st.active
         : ((BOOK.filter(s=>s.cls==='deriv').pop()||BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null);

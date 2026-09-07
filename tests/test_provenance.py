@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from engine.knowledge_compose import _trace_view
 from engine.provenance import ProvenanceContext
+from engine.dataset_semantics import synthetic_currency_column
 
 
 def test_provenance_uses_request_roles_not_column_name_guesses():
@@ -107,6 +108,22 @@ def test_world_join_prefers_the_registered_publisher_over_a_wikidata_fallback():
     assert record["release_id"] == "iana-2026-09"
 
 
+def test_asserted_currency_column_is_conversation_provenance():
+    currency_column = synthetic_currency_column("budget")
+    context = ProvenanceContext([
+        {"name": "orders", "columns": ["budget", currency_column], "rows": []},
+    ], uploaded_count=1, dataset_semantics=({
+        "table": "orders", "column": "budget", "currency": "EUR",
+        "currency_column": currency_column,
+    },))
+    record = context.decorate_view({
+        "op": "filter", "columns": ["budget", currency_column], "rows": [],
+    })["column_provenance"][1]
+    assert record["kind"] == "asserted"
+    assert record["source"] == "conversation"
+    assert record["inputs"] == ["orders.budget"]
+
+
 TESTS = [
     test_provenance_uses_request_roles_not_column_name_guesses,
     test_calculation_and_ecb_columns_keep_distinct_lineage,
@@ -114,6 +131,7 @@ TESTS = [
     test_result_uses_typed_expression_even_when_alias_matches_input_column,
     test_trace_view_preserves_server_authored_lineage,
     test_world_join_prefers_the_registered_publisher_over_a_wikidata_fallback,
+    test_asserted_currency_column_is_conversation_provenance,
 ]
 
 
