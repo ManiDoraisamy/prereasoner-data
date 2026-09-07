@@ -239,3 +239,34 @@ back immediately. It audits that zero per-tenant schemas still deny CREATE, and 
 The testing lesson is recorded as a release gate in CLAUDE.md: a major release must exercise an
 EXISTING conversation, not only a new one. `eval.txt` follow-ups per demo dataset exist for the
 same reason — the first turn of a fresh conversation is the least representative thing to test.
+
+## Two production defects the first Chrome dataset sweep found (2026-09-08)
+
+The release gate added in 86f0598 was run for the first time and immediately caught a bug that
+every previous check had missed.
+
+**Saved reference data 500'd every request.** `enrichment/runtime.py:table_versions` versions every
+uploaded and saved-reference table by content hash; planner cells are `Decimal`
+(`tables._typed`); `artifact_provenance.canonical_json_sha256` could not encode one. A single
+fractional cell in a user's saved reference table therefore made every request they sent fail with
+`world request failed: TypeError`. Fixed in the hasher via `numeric.wire_value` — the repository's
+exact-scalar contract, so equal numbers hash equally and precision is never invented.
+
+Two process lessons are worth more than the fix:
+
+* The first attempt patched the RESPONSE encoder on a plausible theory and was WRONG. The proof was
+  negative evidence — the new `[serialize]` log never fired — which is why the log line exists.
+  Diagnosis only became possible after running the engine locally under the `serving` role, because
+  the admin role can no longer read tenant schemas (a deliberate consequence of the ownership fix).
+* `world request failed: TypeError` named no location. The 500 handler now records the failing
+  frames (positions only, never the message), and that pinned the caller on the first production
+  request after deploy.
+
+**Open defect, deliberately left failing in `formfacade-leads/eval.txt`.** With a conversation-supplied
+EUR claim, "total budget in Europe in US dollars" converts correctly (72056.4), but the same claim
+followed by a country-scoped turn — engine question "total budget in Germany in US dollars" —
+returns status `answered` with an EMPTY value rather than a number or a clarify. The orchestrator is
+correct in both cases; this is an engine gap in dataset-semantics v1. It could not be reproduced
+outside production within the release window (local runs clarify for BOTH scopes, so the harness does
+not reproduce production conversation state). The eval case stays ACTIVE and failing so the gate
+keeps reporting it; an "answered" status with no value is the part to fix first.

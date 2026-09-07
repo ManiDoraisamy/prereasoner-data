@@ -6,5 +6,11 @@
 # `chat:` = conversational SHORTHAND that only the orchestrated path can resolve. The direct
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
+# KNOWN OPEN DEFECT (2026-09-08): the euros case below passes when it follows the Europe
+# prompt directly, but FAILS when a country-scoped turn ("total budget in Germany") comes
+# between. The orchestrator is correct — it carries the currency onto the latest scope and the
+# engine receives "total budget in Germany in US dollars" — but the ENGINE returns status
+# "answered" with an EMPTY value instead of a number or a clarify. Left ACTIVE and failing on
+# purpose: muting it would hide a correctness defect in dataset-semantics v1. See DECISIONS.md.
 total budget in Germany => 33000
 chat: This is in euros. Whats in USD => ~72056.40
