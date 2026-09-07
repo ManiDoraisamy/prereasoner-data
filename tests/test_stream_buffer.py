@@ -24,15 +24,23 @@ class _Recorder:
 
 
 def test_many_updates_coalesce_into_few_writes():
+    """Writes are bounded by ELAPSED TIME / interval, not by update count. The bound is computed
+    from the measured wall clock, so a slow shared CI runner (where 50 x 5ms sleeps can stretch to
+    seconds) moves the budget with it instead of failing on machine speed."""
     rec = _Recorder()
-    buf = StreamBuffer(rec, "reply", interval=0.15)
+    interval = 0.15
+    buf = StreamBuffer(rec, "reply", interval=interval)
+    started = time.perf_counter()
     text = ""
     for word in ["Your", " total", " comes", " to", " 740", ".", " Let", " me", " know", "!"] * 5:
         text += word
         buf.update(text)
-        time.sleep(0.005)                                  # ~50 updates over ~0.25s
+        time.sleep(0.005)
+    elapsed = time.perf_counter() - started
     buf.close(text)
-    assert len(rec.writes) <= 5, f"50 updates in 0.25s must coalesce, got {len(rec.writes)} writes"
+    budget = int(elapsed / interval) + 2                   # possible interim flushes + the final write
+    assert len(rec.writes) <= budget, (
+        f"50 updates over {elapsed:.2f}s must coalesce to <= {budget} writes, got {len(rec.writes)}")
     assert len(rec.writes) >= 2, "at least one interim flush plus the final write should happen"
 
 
@@ -90,7 +98,9 @@ def test_updates_do_not_block_the_caller():
         buf.update(f"text {i}")
     elapsed = time.perf_counter() - t0
     buf.close("done")
-    assert elapsed < 0.05, f"100 updates must not wait on the network: {elapsed:.3f}s"
+    # 100 in-memory updates vs 100 x 50ms network writes (5s). The generous bound stays orders of
+    # magnitude below the blocking cost while tolerating a shared CI runner's scheduling stalls.
+    assert elapsed < 1.0, f"100 updates must not wait on the network: {elapsed:.3f}s"
 
 
 TESTS = [

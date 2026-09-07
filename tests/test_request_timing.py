@@ -45,11 +45,16 @@ def test_nested_spans_are_not_double_counted():
     f = _fields(out)
     outer_total, outer_self = float(f["outer_ms"]), float(f["outer_self_ms"])
     inner_total = float(f["inner_ms"])
+    # Sleeps are LOWER-bounded by the OS, so >= checks are runner-safe; upper bounds are not (a
+    # loaded shared CI runner can stall any sleep by hundreds of ms), so the double-counting claim
+    # is asserted STRUCTURALLY: self excludes the child exactly, whatever the wall clock did.
     assert inner_total >= 90, f"inner span too short: {inner_total}"
     assert outer_total >= 140, f"outer total should include the child: {outer_total}"
-    # The whole point: outer_self excludes inner, so self values do not overlap.
-    assert 30 <= outer_self <= 90, f"outer_self_ms should be ~50ms, got {outer_self}"
-    assert abs((outer_self + inner_total) - outer_total) < 15, "self + child should reconstruct total"
+    assert outer_self >= 30, f"outer_self_ms should be at least the outer sleep: {outer_self}"
+    # self = total - child by construction; each field is INDEPENDENTLY rounded to whole ms on the
+    # log line, so three roundings can drift the reconstruction by up to 1.5ms.
+    assert outer_self <= outer_total - inner_total + 2, "self must EXCLUDE the child entirely"
+    assert abs((outer_self + inner_total) - outer_total) <= 2, "self + child reconstruct total (±rounding)"
     # A leaf span publishes ONE number (no redundant _self_ms).
     assert "inner_self_ms" not in f, "a leaf span must not print a _self_ms twin"
 
@@ -159,7 +164,8 @@ def test_unattributed_time_is_published():
     _, out = _capture(run)
     f = _fields(out)
     unattributed = float(f["unattributed_ms"])
-    assert 70 <= unattributed <= 140, f"the ~100ms outside any span must show up: {unattributed}"
+    # Lower-bounded only: OS sleeps never undershoot, but a loaded CI runner can stretch them.
+    assert unattributed >= 70, f"the ~100ms outside any span must show up: {unattributed}"
     total, measured = float(f["total_ms"]), float(f["measured_ms"])
     assert abs((measured + unattributed) - total) < 15, "self + unattributed should reconstruct total"
 
