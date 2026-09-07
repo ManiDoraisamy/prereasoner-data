@@ -219,3 +219,23 @@ Three additions on the measured evidence of the first round's `[timing]` lines:
   model revisions, ledger table `_bridge_state`): an unchanged bridge skips DROP/DELETE/INSERT
   entirely (resolution slides still stream), and a rebuilt one uses one paged `execute_values`
   instead of one INSERT per row. Statements slower than 150ms log a literal-redacted fingerprint.
+
+## Per-tenant schema ownership follows the serving role (2026-09-07)
+
+A production 500 (`master write failed: InsufficientPrivilege`) traced to the serving-role
+migration: schemas created while the engine still connected as the admin role stayed ADMIN-OWNED,
+so once serving switched to its least-privilege login it was denied `CREATE ON SCHEMA` there.
+Measured impact: 78 live conversations across 6 users, and all 10 reference-data schemas — every
+reference-table save failed. New schemas were unaffected, which is precisely why it survived every
+release check: all of them created a FRESH conversation.
+
+`db/reference_grants.py:adopt_legacy_tenant_schemas` is the fix and now runs with the other
+boundary work on every bootstrap. It transfers only per-tenant namespaces (`c_<32hex>`,
+`m_<32hex>`) and their tables; shared schemas stay admin-owned and read-only to serving. Because
+PostgreSQL requires the admin to be a member of the target role to reassign ownership — and Cloud
+SQL's `postgres` is not a true superuser — it takes that membership only when missing and gives it
+back immediately. It audits that zero per-tenant schemas still deny CREATE, and raises if any do.
+
+The testing lesson is recorded as a release gate in CLAUDE.md: a major release must exercise an
+EXISTING conversation, not only a new one. `eval.txt` follow-ups per demo dataset exist for the
+same reason — the first turn of a fresh conversation is the least representative thing to test.

@@ -316,6 +316,63 @@ def test_words_index_migration_and_base_schema_agree():
         "migrations run in one transaction, where PostgreSQL forbids CREATE INDEX CONCURRENTLY")
 
 
+def test_legacy_tenant_schemas_are_adopted_by_the_serving_role():
+    """Regression for an OBSERVED production 500 (2026-09-07): after the serving role migration,
+    per-tenant schemas still owned by the admin role denied CREATE, so reference-data saves failed
+    with InsufficientPrivilege and older conversations could not be re-served (78 conversations,
+    6 users, all 10 reference schemas). Fresh-conversation testing could never see it."""
+    from db.reference_grants import adopt_legacy_tenant_schemas
+
+    class Cursor:
+        def __init__(self):
+            self.statements = []
+            self.rows = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append(text)
+            if "FROM pg_namespace" in text and "nspowner" in text:
+                self.rows = [("c_" + "a" * 32,), ("m_" + "b" * 32,)]
+            elif "FROM pg_tables" in text:
+                self.rows = [("orders",)]
+            elif "current_user" in text and "pg_has_role" in text:
+                self.rows = [("postgres", False)]        # admin must take membership to reassign
+            elif "count(*)" in text and "has_schema_privilege" in text:
+                self.rows = [(0,)]                       # audit: nothing left unwritable
+
+        def fetchall(self):
+            return list(self.rows)
+
+        def fetchone(self):
+            return self.rows[0]
+
+    cur = Cursor()
+    adopted = adopt_legacy_tenant_schemas(cur, "serving")
+    assert adopted == {"conversation": 1, "reference": 1, "tables": 2}
+    joined = chr(10).join(cur.statements)
+    # psycopg2 composes identifiers, so assert on the composed parts rather than raw SQL text.
+    assert "ALTER SCHEMA " in joined and "ALTER TABLE " in joined
+    assert "Identifier('c_" in joined and "Identifier('m_" in joined
+    assert "Identifier('orders')" in joined and "Identifier('serving')" in joined
+    # The admin takes role membership only to reassign, and hands it straight back.
+    assert "GRANT " in joined and "REVOKE " in joined
+    assert joined.index("GRANT ") < joined.index("ALTER SCHEMA ") < joined.index("REVOKE ")
+    # Shared schemas must NEVER change hands — serving reads them without owning them.
+    for shared in ("knowledgebase", "chat", "public"):
+        assert f"Identifier('{shared}')" not in joined
+
+    class FailingAudit(Cursor):
+        def execute(self, statement, params=None):
+            super().execute(statement, params)
+            if "count(*)" in str(statement) and "has_schema_privilege" in str(statement):
+                self.rows = [(3,)]                       # three schemas still deny CREATE
+    try:
+        adopt_legacy_tenant_schemas(FailingAudit(), "serving")
+        raise AssertionError("an incomplete adoption must fail loudly, not report success")
+    except RuntimeError as exc:
+        assert "still deny CREATE" in str(exc)
+
+
 def test_serving_guard_consults_the_catalog_instead_of_skipping():
     """Regression for the observed gap: a world table with no per-row updated_at produced NO
     freshness signal at all — the guard simply did not run."""
@@ -343,6 +400,7 @@ TESTS = [
     test_serving_path_has_no_direct_knowledgebase_writes,
     test_shared_read_boundary_revokes_legacy_write_functions,
     test_serving_role_has_no_cluster_level_capabilities,
+    test_legacy_tenant_schemas_are_adopted_by_the_serving_role,
     test_schedule_catalog_is_honest_about_what_it_claims,
     test_schedule_migration_and_base_schema_agree,
     test_words_index_migration_and_base_schema_agree,

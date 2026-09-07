@@ -1,0 +1,10 @@
+# Follow-up evaluation for this demo workbook.
+# Each line: [chat:] <follow-up question> => <expected scalar>
+# Sent IN ORDER, in the SAME conversation, after prompt.txt has been answered.
+# Expected values are derived from the CSVs independently of the engine (docs/TESTING.md);
+# `~` = compare within the FX drift tolerance (the ECB rate moves daily).
+# `chat:` = conversational SHORTHAND that only the orchestrated path can resolve. The direct
+#           engine reads wording literally, so tests.test_datasets skips these; the Chrome
+#           release pass (which drives the real product) is what verifies them.
+how many orders in Lyon => 3
+total amount in Paris => 129

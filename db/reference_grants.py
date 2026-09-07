@@ -101,6 +101,74 @@ def apply_chat_grants(cur, runtime_role: str) -> None:
             raise RuntimeError(f"chat privilege audit failed for {runtime_role} on {qualified}")
 
 
+def adopt_legacy_tenant_schemas(cur, runtime_role: str) -> dict[str, int]:
+    """Transfer per-tenant schemas left owned by an admin role to the serving role.
+
+    OBSERVED IN PRODUCTION (2026-09-07): reference-data saves returned 500
+    ``InsufficientPrivilege`` and older conversations could not be re-served. Per-tenant schemas
+    created while the engine still connected as the admin role stayed admin-OWNED; once serving
+    switched to its least-privilege role, ``CREATE ON SCHEMA`` was denied there, so every write
+    into those schemas failed — 78 live conversations across 6 users, and all 10 reference-data
+    schemas. New schemas were unaffected, which is exactly why fresh-conversation testing missed it.
+
+    Only the per-tenant namespaces (``c_<32hex>`` conversations, ``m_<32hex>`` reference data) and
+    the tables inside them change hands. Shared schemas (``knowledgebase``, ``chat``, ``public``)
+    are deliberately untouched: serving must keep reading them without owning them. Idempotent —
+    already-adopted schemas are skipped — so this is safe to re-run on every bootstrap.
+    """
+    if not _IDENTIFIER.fullmatch(runtime_role or ""):
+        raise ValueError("runtime_role must be a lowercase PostgreSQL identifier")
+    role_id = sql.Identifier(runtime_role)
+    cur.execute(
+        "SELECT nspname FROM pg_namespace "
+        "WHERE (nspname ~ '^c_[0-9a-f]{32}$' OR nspname ~ '^m_[0-9a-f]{32}$') "
+        "AND pg_get_userbyid(nspowner) <> %s ORDER BY nspname",
+        (runtime_role,),
+    )
+    pending = [row[0] for row in cur.fetchall()]
+    adopted = {"conversation": 0, "reference": 0, "tables": 0}
+    # PostgreSQL requires the admin to be a MEMBER of the target role to hand ownership over, and
+    # Cloud SQL's `postgres` is not a true superuser. Take the membership only if it is missing and
+    # give it back afterwards, so the repair does not quietly widen the admin's standing grants.
+    granted_membership = False
+    if pending:
+        cur.execute("SELECT current_user, pg_has_role(current_user, %s, 'MEMBER')", (runtime_role,))
+        admin_role, is_member = cur.fetchone()
+        if not is_member:
+            cur.execute(sql.SQL("GRANT {} TO {}").format(role_id, sql.Identifier(admin_role)))
+            granted_membership = True
+    for schema in pending:
+        schema_id = sql.Identifier(schema)
+        cur.execute(sql.SQL("ALTER SCHEMA {} OWNER TO {}").format(schema_id, role_id))
+        cur.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = %s AND tableowner <> %s",
+            (schema, runtime_role),
+        )
+        for (table_name,) in cur.fetchall():
+            cur.execute(sql.SQL("ALTER TABLE {}.{} OWNER TO {}").format(
+                schema_id, sql.Identifier(table_name), role_id,
+            ))
+            adopted["tables"] += 1
+        adopted["conversation" if schema.startswith("c_") else "reference"] += 1
+
+    if granted_membership:
+        cur.execute(sql.SQL("REVOKE {} FROM {}").format(role_id, sql.Identifier(admin_role)))
+
+    # Audit: the serving role must now be able to create inside every per-tenant schema, or the
+    # same 500 is still waiting for whichever user opens the one that was missed.
+    cur.execute(
+        "SELECT count(*) FROM pg_namespace "
+        "WHERE (nspname ~ '^c_[0-9a-f]{32}$' OR nspname ~ '^m_[0-9a-f]{32}$') "
+        "AND NOT has_schema_privilege(%s, nspname, 'CREATE')",
+        (runtime_role,),
+    )
+    unwritable = cur.fetchone()[0]
+    if unwritable:
+        raise RuntimeError(
+            f"tenant schema adoption audit failed: {unwritable} schema(s) still deny CREATE to {runtime_role}")
+    return adopted
+
+
 def apply_shared_read_boundary(cur, runtime_role: str) -> None:
     """Revoke legacy write functions and prove shared serving data is read-only."""
     if not _IDENTIFIER.fullmatch(runtime_role or ""):
@@ -174,6 +242,9 @@ def apply_reference_grants(cur, runtime_role: str, dataset_names) -> dict[str, t
 
     role_id = sql.Identifier(runtime_role)
     apply_chat_grants(cur, runtime_role)
+    # Runs with the other boundary work: a role migration that leaves per-tenant schemas owned by
+    # the previous identity silently breaks every EXISTING conversation and reference table.
+    adopt_legacy_tenant_schemas(cur, runtime_role)
     apply_shared_read_boundary(cur, runtime_role)
     if not targets:
         return targets

@@ -228,6 +228,35 @@ Minimum validation:
 - Repository-wide change: `python -m tests.run_all`
 - Spider behavior change: fresh serving-faithful `whole_db` evaluation; add
   `gold_tables` only when the oracle ablation answers a specific question
+- MAJOR PRODUCTION RELEASE: every shipped demo dataset, driven in CHROME against
+  the deployed site — `prompt.txt` first, then every `eval.txt` follow-up in the
+  SAME conversation, checking each answer
+
+## Demo-dataset release gate (prompt.txt + eval.txt)
+
+Every directory under `web/public/dataset/` ships two files, and both are contracts:
+
+- `prompt.txt` — the question the home page prefills.
+- `eval.txt` — the ordered follow-ups for that same conversation, one per line as
+  `[chat:] <question> => <expected>`. `~` compares within `FX_TOLERANCE` (ECB rates
+  move daily). `chat:` marks conversational SHORTHAND ("how about Belgium?") that only
+  the orchestrated path can resolve — `tests.test_datasets` skips those and the Chrome
+  pass is what verifies them.
+
+Rules:
+
+- A new dataset directory MUST ship `prompt.txt`, `eval.txt`, and an entry in
+  `tests/test_datasets.py:EXPECTED`. The suite fails on a dataset missing any of them.
+- Expected values are DERIVED FROM THE CSVs independently of the engine. Never paste an
+  engine answer in as its own expectation — that proves reproducibility, not correctness.
+- `python -m tests.test_datasets` (live Postgres) runs prompt + non-`chat:` follow-ups
+  through the production entry point on every repository-wide run.
+- A major release additionally runs ALL datasets in Chrome against the deployed site,
+  including the `chat:` follow-ups. This is the gate that exercises the orchestrated
+  path, conversation state, and the browser — and it must be run against an EXISTING
+  conversation as well as a fresh one. A serving-role migration once left older
+  per-tenant schemas admin-owned; every fresh-conversation test passed while 78 live
+  conversations and all reference-data saves returned 500 (see `DECISIONS.md`).
 
 Run focused tests while developing and the full applicable set before claiming
 completion. Report skipped live suites as skipped; do not call a partially

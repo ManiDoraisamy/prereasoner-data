@@ -56,6 +56,33 @@ def _scalar(res):
     return None
 
 
+def _eval_cases(ds: Path):
+    """Parse eval.txt: ordered follow-ups for the SAME conversation, `question => expected`.
+
+    A `~` prefix marks an FX-derived expectation, checked within FX_TOLERANCE because the ECB rate
+    moves daily. Expected values are derived from the shipped CSVs independently of the engine, so a
+    passing case means the answer is right, not merely reproducible.
+    """
+    path = ds / "eval.txt"
+    if not path.exists():
+        return None
+    cases = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        chat_only = line.startswith("chat:")
+        if chat_only:
+            line = line[len("chat:"):]
+        question, _, expected = line.partition("=>")
+        question, expected = question.strip(), expected.strip()
+        if not question or not expected:
+            raise ValueError(f"{path}: each case must read '<question> => <expected>', got {line!r}")
+        fx = expected.startswith("~")
+        cases.append((question, float(expected.lstrip("~")), fx, chat_only))
+    return cases
+
+
 def main() -> int:
     if not os.environ.get("KB_PG_PASSWORD"):
         print("set KB_PG_PASSWORD"); return 1
@@ -68,6 +95,9 @@ def main() -> int:
     on_disk = {d.name for d in DATASET_DIR.iterdir() if d.is_dir()}
     for missing in sorted(on_disk - set(EXPECTED)):
         fails.append(f"dataset {missing!r} ships without a verified expectation in tests/test_datasets.py")
+    for ds_name in sorted(on_disk):
+        if not (DATASET_DIR / ds_name / "eval.txt").exists():
+            fails.append(f"dataset {ds_name!r} ships without eval.txt (follow-up coverage is required)")
     for gone in sorted(set(EXPECTED) - on_disk):
         fails.append(f"expectation for {gone!r} names a dataset directory that no longer exists")
 
@@ -88,7 +118,26 @@ def main() -> int:
         elif got != want:
             fails.append(f"{name}: {got} != {want}")
 
-    print("\n" + ("PASS — every shipped demo dataset answers its shipped prompt" if not fails
+        # FOLLOW-UPS (eval.txt) — the same conversation, in order. The prompt alone never exercises
+        # qualifier carry-over or conversation-supplied semantics; these do.
+        for question, expected, fx, chat_only in (_eval_cases(ds) or []):
+            if chat_only:
+                print(f"{name}: follow-up {question!r} SKIPPED here — orchestrated path only "
+                      f"(verified by the Chrome release pass)")
+                continue
+            follow = Q.serve(_tables(ds), question, schema=schema)
+            answer = _scalar(follow)
+            print(f"{name}: follow-up {question!r} -> {answer} (exp {'~' if fx else ''}{expected})")
+            if not isinstance(answer, float):
+                fails.append(f"{name} follow-up {question!r}: no numeric answer (got {answer!r})")
+            elif fx:
+                if abs(answer - expected) > expected * FX_TOLERANCE:
+                    fails.append(f"{name} follow-up {question!r}: {answer} outside "
+                                 f"±{FX_TOLERANCE:.0%} of {expected}")
+            elif abs(answer - expected) > 0.01:
+                fails.append(f"{name} follow-up {question!r}: {answer} != {expected}")
+
+    print("\n" + ("PASS — every shipped demo dataset answers its prompt.txt and eval.txt follow-ups" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0
 
