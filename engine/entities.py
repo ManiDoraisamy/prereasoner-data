@@ -20,6 +20,7 @@ from engine.config import DATA_DIR
 from engine.resolve_base import RoutedQuery
 from engine.pg import _pg
 from engine.knowledge_tables import qident, qlit
+from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 
 # filter attr (as named in word_*.json) -> the entity `type` it is matched against in knowledgebase."words"
@@ -218,6 +219,13 @@ class EntityQuery(RoutedQuery):
         base = table["name"]
         routes = {}
         for ci, col in enumerate(table["columns"]):
+            # A synthesized measure-currency column is ENGINE METADATA, not user data: every cell is
+            # the same ISO code. Value-membership resolution happily matched 'EUR' to a city QID and
+            # built a world join on it, so "total budget in Germany in US dollars" filtered
+            # city.country = Germany against a city in Italy, matched nothing, and returned an empty
+            # SUM presented as an answer (2026-09-08). Internal columns are never world entities.
+            if is_synthetic_currency_column(col):
+                continue
             cells = [str(r[ci]) for r in table["rows"] if ci < len(r) and r[ci] not in (None, "")]
             if len(cells) < 3:
                 continue

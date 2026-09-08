@@ -47,7 +47,7 @@ def _tables(ds: Path) -> list[dict]:
 
 
 def _scalar(res):
-    rows = (res or {}).get("result", {}).get("rows") or []
+    rows = ((res or {}).get("result") or {}).get("rows") or []   # a clarify carries result: None
     if rows and rows[0]:
         try:
             return float(str(rows[0][0]).replace(",", ""))
@@ -62,6 +62,10 @@ def _eval_cases(ds: Path):
     A `~` prefix marks an FX-derived expectation, checked within FX_TOLERANCE because the ECB rate
     moves daily. Expected values are derived from the shipped CSVs independently of the engine, so a
     passing case means the answer is right, not merely reproducible.
+
+    The literal `clarify` is the one non-numeric expectation: the question is well formed but matches
+    no rows, and the engine must say so rather than present a blank as the answer. It is expressed
+    here because a wrong BLANK is exactly what a numeric-only gate cannot catch.
     """
     path = ds / "eval.txt"
     if not path.exists():
@@ -78,6 +82,9 @@ def _eval_cases(ds: Path):
         question, expected = question.strip(), expected.strip()
         if not question or not expected:
             raise ValueError(f"{path}: each case must read '<question> => <expected>', got {line!r}")
+        if expected.lower() == "clarify":
+            cases.append((question, None, False, chat_only))
+            continue
         fx = expected.startswith("~")
         cases.append((question, float(expected.lstrip("~")), fx, chat_only))
     return cases
@@ -127,6 +134,13 @@ def main() -> int:
                 continue
             follow = Q.serve(_tables(ds), question, schema=schema)
             answer = _scalar(follow)
+            if expected is None:
+                clarified = bool((follow or {}).get("clarify"))
+                print(f"{name}: follow-up {question!r} -> clarify={clarified} answer={answer!r} (exp clarify)")
+                if not clarified:
+                    fails.append(f"{name} follow-up {question!r}: matched no rows but was presented "
+                                 f"as the answer {answer!r} instead of a clarify")
+                continue
             print(f"{name}: follow-up {question!r} -> {answer} (exp {'~' if fx else ''}{expected})")
             if not isinstance(answer, float):
                 fails.append(f"{name} follow-up {question!r}: no numeric answer (got {answer!r})")

@@ -13,6 +13,7 @@ import sys
 
 from engine.compose import ComposeEngine
 from engine.joins import discover_fks, join_plan
+from engine.knowledge_query import verify_nonempty
 
 
 ORDERS = {"name": "orders", "columns": ["city", "amount"],
@@ -141,7 +142,48 @@ def test_name_signaled_foreign_keys_still_resolve():
     assert ("orders", "customer", "customers", "name") in discover_fks([CUSTOMERS, ORDERS_FK])
 
 
+
+def _agg_result(rows, functions=("SUM",), columns=("sum",)):
+    """The serve() payload shape as it exists BEFORE provenance decoration: the typed planner has
+    published aggregate evidence in `computation`, but `column_provenance` is not attached yet."""
+    return {"question": "q", "sql": "SELECT SUM(...)", "result": {"columns": list(columns), "rows": rows},
+            "computation": {"verified": True, "source": "typed_ast", "branches": [
+                {"outputs": [{"numeric": True, "aggregate_functions": list(functions)}]}]}}
+
+
+def test_aggregate_over_zero_rows_is_not_presented_as_an_answer():
+    """Regression for an OBSERVED silent wrong answer (2026-09-08). SUM over an empty relation is one
+    all-NULL row, which rendered as [['']] and was returned with no clarify -- 'total budget in
+    Africa' on a dataset with no African row looked exactly like a real answer. That blank is what
+    made a mis-routed world join fail silently instead of visibly."""
+    out = verify_nonempty(_agg_result([[""]]), "total budget in Africa")
+    assert out.get("clarify") is True, f"an empty aggregate must not be an answer, got {out}"
+    assert out.get("result") is None, f"the blank result must not survive, got {out}"
+    assert "SUM" in (out.get("reason") or ""), f"the reason must name the aggregate, got {out}"
+
+
+def test_real_aggregates_and_plain_selects_are_untouched():
+    """The gate must be narrow: only an ALL-empty single row whose every output is typed as an
+    aggregate. A real total, a genuine zero COUNT, a plain SELECT, and a multi-row result all pass."""
+    unchanged = {
+        "a real total": (_agg_result([[113000]]), "total budget"),
+        "a genuine zero count": (_agg_result([[0]], functions=("COUNT",), columns=("count",)),
+                                 "how many leads in Africa"),
+        "a multi-row aggregate": (_agg_result([[1], [2]]), "budget by country"),
+        # No aggregate evidence -> never second-guessed, even though the single cell is empty.
+        "a plain select of an empty cell": ({"question": "q", "result": {"columns": ["remark"], "rows": [[""]]},
+                                             "computation": {"branches": [{"outputs": [{"aggregate_functions": []}]}]}},
+                                            "the remark for Bo"),
+        "a payload with no computation": ({"question": "q", "result": {"columns": ["x"], "rows": [[""]]}}, "x"),
+    }
+    for label, (payload, question) in unchanged.items():
+        out = verify_nonempty(payload, question)
+        assert out is payload, f"{label} must pass through the gate untouched, got {out}"
+
+
 TESTS = [
+    test_aggregate_over_zero_rows_is_not_presented_as_an_answer,
+    test_real_aggregates_and_plain_selects_are_untouched,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,
     test_regression_the_named_filter_is_not_dropped,

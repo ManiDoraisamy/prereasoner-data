@@ -31,6 +31,7 @@ import numpy as np
 from engine.config import DATA_DIR, kb_model_route_enabled
 from engine.tables import qlit
 from engine.entities import EntityQuery, WORLD_TABLE_TYPE
+from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
 from engine.encoder_overlay import EncoderQuery, load_encoder
 from engine.knowledge_bridges import KnowledgeBridgeMixin
@@ -53,6 +54,41 @@ def _is_num(v):
         parse_decimal(v); return True
     except (ValueError, TypeError):
         return False
+
+
+def verify_nonempty(res, question):
+    """An aggregate over ZERO matching rows is not an answer.
+
+    SQL returns a single all-NULL row for SUM/AVG/MIN/MAX over an empty relation, which rendered as
+    [['']] and was returned with no clarify -- 'total budget in Africa' on a dataset with no African
+    row looked exactly like a real answer. That blank is also what let a mis-routed world join fail
+    SILENTLY rather than visibly (2026-09-08); an own-data filter matching nothing already clarifies,
+    and this makes the aggregate path agree.
+
+    It lives on KnowledgeQuery.serve because that is the ONE terminal every caller shares: evaluators
+    call it directly, and compose keeps this delegate authoritative -- a composed re-expression only
+    stands when it reproduces the delegate's answer, so a delegate clarify propagates.
+
+    The aggregate test uses the TYPED evidence the planner already publishes (each output expression
+    carries `aggregate_functions`), never the SQL text, and never `column_provenance` -- provenance is
+    attached by provenance.decorate_response AFTER serve returns, so keying on it silently never fires.
+    Narrow by construction: every output must be an aggregate and every cell empty, so a plain SELECT
+    is untouched and COUNT -- which yields 0, never NULL -- stays a real answer.
+    """
+    if not isinstance(res, dict) or res.get("clarify") or res.get("error"):
+        return res
+    rows = (res.get("result") or {}).get("rows")
+    if not rows or len(rows) != 1 or any(cell not in (None, "") for cell in rows[0]):
+        return res
+    outputs = [out for branch in ((res.get("computation") or {}).get("branches") or ())
+               for out in (branch.get("outputs") or ())]
+    if not outputs or not all(out.get("aggregate_functions") for out in outputs):
+        return res                      # no typed proof this is an aggregate -> never second-guess it
+    ops = " / ".join(sorted({str(fn) for out in outputs for fn in out["aggregate_functions"]}))
+    return {"question": question, "as_of": res.get("as_of"), "clarify": True,
+            "result": None, "error": None, "original_sql": res.get("sql"),
+            "reason": f"no rows matched, so there is nothing to {ops}",
+            "model": "engine - clarify (the query matched no rows)"}
 
 
 class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, EntityQuery):
@@ -95,8 +131,13 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             return dict(routes)
         routes, typing = {}, []
         model_routes, model_typing = self._schema_model_routes(table)
-        routes.update(model_routes)
-        typing.extend(model_typing)
+        # The learned router types columns too, so it is the OTHER source that could propose a world
+        # join for an engine-internal column. Both sources are filtered by the same predicate; a
+        # synthesized measure-currency column carries an ISO code, never a world entity.
+        routes.update({key: value for key, value in model_routes.items()
+                       if not is_synthetic_currency_column(key[1])})
+        typing.extend(item for item in model_typing
+                      if not is_synthetic_currency_column(item.get("column")))
         # This is deliberately the exact source-key helper, not ``super().route``:
         # the latter invokes the historical anchored family path. Production has one
         # learned class router; its abstentions fall back directly to source evidence.
@@ -563,7 +604,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             try:
                 ngp = self._nongeo_plan(norm, question)
                 if ngp:
-                    return self._serve_world_type(norm, question, sch, ngp, schema)
+                    return verify_nonempty(
+                        self._serve_world_type(norm, question, sch, ngp, schema), question)
             except Exception as e:                                    # noqa: BLE001 — fall through to the geo/delegate path
                 print(f"[knowledge_query] non-geo serving failed: {type(e).__name__}", flush=True)
         cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
@@ -586,8 +628,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # 2-arg TableQuery.serve. EntityQuery.serve's own super() is relative to EntityQuery and correctly chains
         # RoutedQuery->PgQuery->KnowledgeTableQuery (skipping TableQuery). read_op_all inside that chain still resolves
         # to EncoderQuery's metric-space operator via MRO.
-        res = EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
-                                explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+        res = verify_nonempty(
+            EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
+                              explicit_fks=explicit_fks, dataset_semantics=dataset_semantics), question)
         if isinstance(res, dict) and res.get("clarify"):
             return res
         calculations = tuple((res or {}).get("calculations") or ()) if isinstance(res, dict) else ()

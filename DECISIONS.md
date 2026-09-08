@@ -262,11 +262,36 @@ Two process lessons are worth more than the fix:
   frames (positions only, never the message), and that pinned the caller on the first production
   request after deploy.
 
-**Open defect, deliberately left failing in `formfacade-leads/eval.txt`.** With a conversation-supplied
-EUR claim, "total budget in Europe in US dollars" converts correctly (72056.4), but the same claim
-followed by a country-scoped turn — engine question "total budget in Germany in US dollars" —
-returns status `answered` with an EMPTY value rather than a number or a clarify. The orchestrator is
-correct in both cases; this is an engine gap in dataset-semantics v1. It could not be reproduced
-outside production within the release window (local runs clarify for BOTH scopes, so the harness does
-not reproduce production conversation state). The eval case stays ACTIVE and failing so the gate
-keeps reporting it; an "answered" status with no value is the part to fix first.
+**Resolved (2026-09-08): the empty-value answer had two independent causes, both fixed.**
+With a conversation-supplied EUR claim, "total budget in Germany in US dollars" returned status
+`answered` with an EMPTY value. Reproduced locally only after driving the HTTP entry point with a
+signed attestation header (the earlier harness never built production conversation state, which is
+why "it could not be reproduced" — the harness was wrong, not the report).
+
+* **Cause 1 — a synthesized column was routed as a world entity.** Dataset semantics materializes
+  the claimed currency as a private constant column, every cell `'EUR'`. Value-membership routing
+  resolved `'EUR'` to a CITY qid (Q3734597, in Italy) and built a world join on it, so the query
+  filtered `city.country = Germany` against a city in Italy and matched nothing. Engine-internal
+  columns are not user data: both route sources — `engine/entities.py:_value_membership_routes` and
+  the learned map merged in `engine/knowledge_query.py:route` — now skip them via the one predicate
+  `dataset_semantics.is_synthetic_currency_column`.
+* **Cause 2 — an aggregate over zero rows was presented as an answer.** SQL returns a single
+  all-NULL row for SUM/AVG/MIN/MAX over an empty relation, which rendered as `[['']]` with no
+  clarify. That is what made cause 1 SILENT rather than visible, and it was reachable on its own:
+  "total budget in Africa" on a dataset with no African row answered `''`. The gate is
+  `knowledge_query.verify_nonempty`, applied on `KnowledgeQuery.serve` -- the ONE terminal every
+  caller shares, since evaluators call it directly and compose keeps this delegate authoritative
+  (a composed re-expression only stands when it reproduces the delegate's answer, so a delegate
+  clarify propagates). It decides on the TYPED aggregate evidence the planner already publishes
+  (`computation.branches[].outputs[].aggregate_functions`), not on SQL text. It fires only when every output is an aggregate and every cell is empty, so
+  plain SELECTs are untouched and COUNT — which yields 0, never NULL — stays a real answer.
+
+Two placement mistakes are worth recording, because both were caught by evidence rather than review:
+
+* The gate first keyed on `column_provenance`, which `provenance.decorate_response` attaches AFTER
+  `serve` returns — so it silently never fired. Dumping the actual pre-decoration payload, instead of
+  reasoning about its shape, is what found it.
+* It was then placed on `KnowledgeReasoner.serve`, which the HTTP path uses but evaluators bypass.
+  `tests/test_datasets.py` calls `KnowledgeQuery.serve` directly and kept failing, which located the
+  correct owner. `eval.txt` gained one non-numeric expectation, `=> clarify`, so the release gate can
+  express "this must NOT be answered" — a numeric-only gate cannot catch a wrong blank.

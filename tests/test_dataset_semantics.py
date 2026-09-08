@@ -247,7 +247,43 @@ def test_orchestrator_attests_only_current_user_quotes():
         assert not dataset_attestation.verify("user-a", tampered, signature)
 
 
+def test_synthesized_currency_column_is_never_world_routed():
+    """Regression for an OBSERVED wrong answer (2026-09-08). The synthesized measure-currency column
+    holds one ISO code per row; value-membership resolution matched 'EUR' to a CITY qid and built a
+    world join on it, so "total budget in Germany in US dollars" filtered city.country = Germany
+    against a city in Italy, matched no rows, and returned an empty SUM presented as an answer.
+    Engine-internal columns are never world entities — for EITHER routing source."""
+    from engine.entities import EntityQuery
+
+    synth = synthetic_currency_column("budget")
+    table = {"name": "responses",
+             "columns": ["country", synth],
+             "rows": [["Germany", "EUR"], ["France", "EUR"], ["Italy", "EUR"], ["Austria", "EUR"]]}
+
+    query = EntityQuery.__new__(EntityQuery)          # no model load, no database
+    query.words = {"country": {"key": "qid", "columns": ["qid", "name"]},
+                   "city": {"key": "qid", "columns": ["qid", "name", "country"]}}
+    looked_up = []
+
+    def fake_kb_rows(sql, params=()):
+        # Faithful to the world index that produced the bad answer: 'EUR' really does resolve to a
+        # city (Q3734597, in Italy), and the country names resolve to countries.
+        looked_up.extend(params[0])
+        return [(norm, "city" if norm == "eur" else "country") for norm in params[0]]
+    query._kb_rows = fake_kb_rows
+
+    routes = query._value_membership_routes(table)
+    assert (("responses", synth)) not in routes, (
+        f"the synthesized currency column must never be world-routed, got {routes}")
+    assert "eur" not in looked_up, (
+        f"the synthesized column's cells must not even be resolved against the world index: {looked_up}")
+    # A genuine column in the SAME table still routes, so the guard is narrow, not a blanket skip.
+    assert routes.get(("responses", "country")) == "country", (
+        f"real columns must still route, got {routes}")
+
+
 TESTS = [
+    test_synthesized_currency_column_is_never_world_routed,
     test_valid_set_normalizes_and_binds,
     test_unknown_op_table_column_and_code_are_rejected,
     test_src_data_outranks_conversation,
