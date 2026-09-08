@@ -104,6 +104,8 @@ def _calculation_coverage_words(calculations):
         if calculation.get("status") != "satisfied":
             continue
         operation = calculation.get("operation")
+        if operation in {"subtract_rate", "add_rate", "apply_rate"}:
+            claimed.update({"based", "basis"})
         if operation == "subtract_rate":
             claimed.update({
                 "after", "subtract", "subtracting", "subtracted", "deduct", "deducting",
@@ -687,6 +689,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     return {"question": question, "as_of": as_of, "clarify": True,
                             "original_sql": (res or {}).get("sql"), "proposed": c["proposed"],
                             "bindings": c["bindings"], "dropped": dropped,
+                            "calculations": calculations,
+                            "computation": (res or {}).get("computation"),
+                            "currency": currency,
                             "model": "engine - clarify (the query dropped part of the question)"}
         return res
 
