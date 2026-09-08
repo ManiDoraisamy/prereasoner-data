@@ -107,7 +107,7 @@ def _calculation_coverage_words(calculations):
         if operation == "subtract_rate":
             claimed.update({
                 "after", "subtract", "subtracting", "subtracted", "deduct", "deducting",
-                "deducted", "reduce", "reducing", "reduced", "net",
+                "deducted", "reduce", "reducing", "reduced", "apply", "applying", "applied", "net",
             })
         elif operation == "add_rate":
             claimed.update({

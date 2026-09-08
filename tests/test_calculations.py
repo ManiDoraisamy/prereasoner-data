@@ -568,8 +568,15 @@ def test_joined_discount_and_currency_compose_as_one_typed_calculation():
 
     from engine.knowledge_query import _calculation_coverage_words
     claimed = _calculation_coverage_words(assessments)
-    ok("after" in claimed and "reduce" in claimed,
-       "a verified subtraction claims its structural direction words in coverage checking")
+    ok({"after", "reduce", "applying"} <= claimed,
+       "a verified subtraction claims its structural direction and application words in coverage checking")
+    rewritten = detect_calculations(
+        "total amount in France in US dollars after applying the discount based on customer's tier"
+    )
+    ok({intent.operation for intent in rewritten} == {"convert", "subtract_rate"}
+       and "applying" in _calculation_coverage_words(({
+           "status": "satisfied", "operation": "subtract_rate",
+       },)), "the orchestrator's complete follow-up rewrite remains a covered subtraction")
     ok("after" not in _calculation_coverage_words(({
         "status": "satisfied", "operation": "apply_rate",
     },)), "ordinary rate application cannot swallow a temporal after-filter")
