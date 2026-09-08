@@ -23,6 +23,7 @@ from engine.currency_intent import (
 )
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
+from engine.sql_ast import Aggregate, render_scalar_expression
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
     csv_table,
@@ -103,6 +104,10 @@ class KnowledgeTableQuery:
     @staticmethod
     def _numeric_multiply(left, right):
         return f"decimal_mul({left}, {right})"
+
+    @staticmethod
+    def _calculation_dialect():
+        return "sqlite_decimal"
 
     def __init__(self, deploy_dir=DATA_DIR):
         self.q11 = TableQuery(deploy_dir)         # the anchored readout planner (encoder overlaid by the world layer)
@@ -344,6 +349,50 @@ class KnowledgeTableQuery:
                 if column.get("affinity") in ("INTEGER", "REAL")
             ),
         )
+
+    @staticmethod
+    def _row_calculation_context(question, agg, sch, fks, world_rate=None):
+        """Bind the shared registered row calculation to the world-route schema.
+
+        The world route owns request-local entity bridges and therefore cannot hand its whole query
+        to ordinary tenant-table AST search. It can and must still consume the same typed calculation
+        plan. This adapter adds the selected knowledgebase rate edge to the schema graph, then chooses
+        only a plan whose base measure is the aggregate operand already selected by the route.
+        """
+        from engine.calculations import composed_plans_for
+        from engine.sql_schema import SchemaGraph
+
+        graph_schema = list(sch)
+        graph_fks = list(fks)
+        world_fk = None
+        if world_rate:
+            graph_schema += [
+                {"table": "exchange_rate", "name": "currency_code", "affinity": "TEXT", "values": []},
+                {"table": "exchange_rate", "name": world_rate["rate_col"], "affinity": "REAL", "values": []},
+            ] + ([{
+                "table": "exchange_rate", "name": "date", "affinity": "TEXT",
+                "is_date": True, "values": [],
+            }] if world_rate["date_col"] else [])
+            pair_from = [world_rate["ccy_col"]] + (
+                [world_rate["date_col"]] if world_rate["date_col"] else []
+            )
+            pair_to = ["currency_code"] + (["date"] if world_rate["date_col"] else [])
+            world_fk = {
+                "from_table": world_rate["fact"], "to_table": "exchange_rate",
+                "from_col": world_rate["ccy_col"], "to_col": "currency_code",
+                "from_cols": pair_from, "to_cols": pair_to, "conf": 1.0,
+            }
+            graph_fks.append(world_fk)
+        graph = SchemaGraph.from_planner(graph_schema, graph_fks)
+        if not agg or agg[0] != "SUM" or not agg[1] or not agg[2]:
+            return None, graph, world_fk
+        measure_entry = graph.column_map.get((agg[1], agg[2]))
+        if measure_entry is None:
+            return None, graph, world_fk
+        plans = composed_plans_for(question, graph)
+        plan = next((candidate for candidate in plans
+                     if candidate.measure == measure_entry.ref and candidate.factor is not None), None)
+        return plan, graph, world_fk
 
     def read_op_all(self, question, sch):
         """an aggregate (cue + a numeric MEASURE searched across ALL uploaded sheets, excluding key/id cols).
@@ -612,10 +661,36 @@ class KnowledgeTableQuery:
                     joins.append(j)
         own_filters = [(t, c, v) for (t, c, v) in own if not mf or v.lower() != mf["value"].lower()]
         conversion = self._currency_conversion_binding(question, agg, sch, fks)
+        calculation_plan, calculation_graph, world_fk = self._row_calculation_context(
+            question, agg, sch, fks, world_rate,
+        )
+        # A requested world projection/grouping needs a typed world-column AST before row-factor
+        # calculations can preserve its grain. Keep the existing fail-closed path for that shape;
+        # this adapter currently owns scalar calculations with an optional world filter.
+        if wtarget is not None:
+            calculation_plan = None
         selected_measure = None
         selected_conversion = False
         query_tail = ""
-        if wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
+        if calculation_plan is not None:
+            proj = (
+                render_scalar_expression(
+                    calculation_plan.expression, dialect=self._calculation_dialect(),
+                )
+                + f" AS {qident(calculation_plan.alias)}"
+            )
+            pdesc = (
+                "aggregate", calculation_plan.alias,
+                f"registered calculation: {calculation_plan.rule}",
+            )
+            involved = list(dict.fromkeys(
+                [mtab]
+                + [column.table for column in calculation_plan.required_columns
+                   if column.table != "exchange_rate"]
+            ))
+            selected_measure = (calculation_plan.measure.table, calculation_plan.measure.name)
+            selected_conversion = "currency" in calculation_plan.specification.split("+")
+        elif wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
             involved = [mtab]
@@ -842,12 +917,20 @@ class KnowledgeTableQuery:
                                 "columns": [d[0] for d in fc.description],
                                 "rows": _wire_rows(fc),
                             })
-                        # The CALCULATED view: the one non-obvious arithmetic, made a visible
-                        # per-row column — each amount beside the exact rate it was multiplied by
-                        # and that rate's true publication date, so Result is this column summed.
-                        product_sql = self._numeric_multiply(
-                            f'{fact_q}.{qident(agg[2])}',
-                            f'{er_q}.{qident(world_rate["rate_col"])}',
+                        # The CALCULATED view: row-level arithmetic made visible beside the ECB rate
+                        # and its true publication date. Other joined factors (for example a tier
+                        # discount) are visible in the preceding combined view and in this SQL.
+                        product_sql = (
+                            render_scalar_expression(
+                                calculation_plan.expression.operand,
+                                dialect=self._calculation_dialect(),
+                            )
+                            if calculation_plan is not None
+                            and isinstance(calculation_plan.expression, Aggregate)
+                            else self._numeric_multiply(
+                                f'{fact_q}.{qident(agg[2])}',
+                                f'{er_q}.{qident(world_rate["rate_col"])}',
+                            )
                         )
                         calc_sql = (
                             f'SELECT {fact_q}.*, {er_q}.{qident(world_rate["rate_col"])}, '
@@ -894,29 +977,14 @@ class KnowledgeTableQuery:
         )
         from engine.calculations.core import aggregate_functions, expression_columns
         from engine.calculations.registry import attach_calculation_evidence
-        from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SQLType
-        from engine.sql_schema import SchemaGraph
+        from engine.sql_ast import BinaryExpr, ColumnRef, SQLType
         predicates = frozenset(
             PredicateFact(table, column, "=", value)
             for table, column, value in own_filters
         )
-        if world_rate:
-            # The graph mirrors how the SQL uses the table: the date column appears only when the fact
-            # is dated (composite join). For an undated fact the as_of pin is a constant predicate, so
-            # the verifier sees the same plain (code -> rate) shape an uploaded rate sheet has.
-            sch = list(sch) + [
-                {"table": "exchange_rate", "name": "currency_code", "affinity": "TEXT", "values": []},
-                {"table": "exchange_rate", "name": world_rate["rate_col"], "affinity": "REAL", "values": []},
-            ] + ([{"table": "exchange_rate", "name": "date", "affinity": "TEXT", "is_date": True,
-                   "values": []}] if world_rate["date_col"] else [])
-            pair_from = [world_rate["ccy_col"]] + ([world_rate["date_col"]] if world_rate["date_col"] else [])
-            pair_to = ["currency_code"] + (["date"] if world_rate["date_col"] else [])
-            world_fk = {"from_table": world_rate["fact"], "to_table": "exchange_rate",
-                        "from_col": world_rate["ccy_col"], "to_col": "currency_code",
-                        "from_cols": pair_from, "to_cols": pair_to, "conf": 1.0}
-            fks = list(fks) + [world_fk]
+        if world_fk:
             selected_fks = list(selected_fks) + [world_fk]
-        graph = SchemaGraph.from_planner(sch, fks)
+        graph = calculation_graph
 
         def _typed(table, column):
             """The column as the SCHEMA declares it.
@@ -932,10 +1000,13 @@ class KnowledgeTableQuery:
         outputs = ()
         if selected_measure:
             measure = _typed(*selected_measure)
-            expression = Aggregate(agg[0], measure)
-            rate_binding = conversion or (world_rate and ("exchange_rate", world_rate["rate_col"]))
-            if selected_conversion and rate_binding:
-                expression = Aggregate("SUM", BinaryExpr(measure, "*", _typed(*rate_binding)))
+            if calculation_plan is not None:
+                expression = calculation_plan.expression
+            else:
+                expression = Aggregate(agg[0], measure)
+                rate_binding = conversion or (world_rate and ("exchange_rate", world_rate["rate_col"]))
+                if selected_conversion and rate_binding:
+                    expression = Aggregate("SUM", BinaryExpr(measure, "*", _typed(*rate_binding)))
             outputs = (OutputEvidence(
                 expression, True, aggregate_functions(expression), expression_columns(expression),
             ),)

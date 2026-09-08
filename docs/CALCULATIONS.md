@@ -43,6 +43,12 @@ composition of every detected specification; proving either factor alone is insu
 that merely asks for a tax, commission, or discount *rate* is an ordinary projection, not a request to
 apply that rate.
 
+Own-data AST search and scalar world-filter queries consume the same registered calculation plan.
+The world adapter owns its request-local entity bridge, but it renders the registry's typed scalar
+expression and returns that same expression as verification evidence; it does not maintain a separate
+currency-only formula. Calculated world projections/groupings remain fail-closed until their grouping
+columns are represented in that typed bridge.
+
 ECB conversion does not weaken that rule. Its offline projection expands the active source release
 to exact calendar-date rows and preserves both the true source business date and release ID. Serving
 therefore performs a normal composite equality join and verifies the same typed currency expression;

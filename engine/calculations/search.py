@@ -1,14 +1,10 @@
 """Typed AST expansion from registered calculation plans."""
 from __future__ import annotations
 
-from itertools import product
-
 from engine.calculations.registry import (
-    calculation_operand_scores,
+    composed_plans_for,
     detect_calculations,
-    specifications,
 )
-from engine.calculations.core import compose_row_plans
 from engine.sql_ast import (
     SelectItem,
     SelectQuery,
@@ -31,25 +27,9 @@ class CalculationQueryExpander:
         intents = detect_calculations(question)
         if not intents:
             return []
-        by_name = {specification.name: specification for specification in specifications()}
         learned = getattr(self.semantic_signals, "calculation_intents", {}) or {}
         generated = {}
-        plan_groups = [
-            by_name[intent.specification].plans(
-                intent, self.schema, calculation_operand_scores(intent, self.semantic_signals)
-            )
-            for intent in intents
-        ]
-        if any(not plans for plans in plan_groups):
-            return []
-        if len(plan_groups) == 1:
-            plans = plan_groups[0]
-        else:
-            plans = tuple(
-                composed
-                for combination in product(*plan_groups)
-                if (composed := compose_row_plans(tuple(combination))) is not None
-            )
+        plans = composed_plans_for(question, self.schema, self.semantic_signals)
         learned_score = sum(float(learned.get(intent.specification, 0.0)) for intent in intents)
         roles = analyze_question(question, self.schema)
         for plan in plans:

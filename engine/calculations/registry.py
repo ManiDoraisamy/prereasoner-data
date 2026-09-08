@@ -65,6 +65,32 @@ def plans_for(question: str, graph: SchemaGraph, semantic_signals=None):
     )
 
 
+def composed_plans_for(question: str, graph: SchemaGraph, semantic_signals=None):
+    """Return plans that realize every detected intent in one typed expression.
+
+    One intent retains its registered plans. Multiple intents are admissible only when their
+    row-level factors share one measure and can be composed without parsing or rewriting SQL.
+    """
+    intents = detect_calculations(question)
+    if not intents:
+        return ()
+    groups = tuple(
+        _BY_NAME[intent.specification].plans(
+            intent, graph, calculation_operand_scores(intent, semantic_signals)
+        )
+        for intent in intents
+    )
+    if any(not group for group in groups):
+        return ()
+    if len(groups) == 1:
+        return groups[0]
+    return tuple(
+        plan
+        for combination in product(*groups)
+        if (plan := compose_row_plans(tuple(combination))) is not None
+    )
+
+
 def _unrealized_grain(question: str, graph: SchemaGraph, evidence: ComputationEvidence):
     """Group-by columns the question asked for that a branch does not compute at.
 
@@ -151,14 +177,7 @@ def assess_calculations(
                                            for c in missing_grain]}
         rows.append(row)
     if len(intents) > 1 and rows and all(row.get("status") == "satisfied" for row in rows):
-        combinations = product(*(
-            _BY_NAME[intent.specification].plans(intent, graph) for intent in intents
-        ))
-        allowed = {
-            plan.expression
-            for combination in combinations
-            if (plan := compose_row_plans(tuple(combination))) is not None
-        }
+        allowed = {plan.expression for plan in composed_plans_for(question, graph)}
         jointly_realized = bool(allowed) and bool(evidence.branches) and all(any(
             output.expression in allowed for output in branch.outputs
         ) for branch in evidence.branches)

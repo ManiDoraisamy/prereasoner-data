@@ -196,6 +196,10 @@ class PgQuery(KnowledgeTableQuery):
     def _numeric_multiply(left, right):
         return f"({left} * {right})"
 
+    @staticmethod
+    def _calculation_dialect():
+        return "postgres_numeric"
+
     def __init__(self, deploy_dir):
         super().__init__(deploy_dir)
         self.q11.__class__ = _TableQueryPg       # rebless the shared TableQuery (same loaded model) -> PG own-data path

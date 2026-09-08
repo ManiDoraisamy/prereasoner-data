@@ -341,6 +341,20 @@ def render_query(query: Query, *, dialect: str = "standard") -> str:
     return _render_query(query, dialect)
 
 
+def render_scalar_expression(expression: ScalarExpr, *, dialect: str = "standard") -> str:
+    """Render one typed scalar expression for a larger, externally-owned SELECT.
+
+    Some serving adapters own joins that are not ordinary tenant-table AST nodes, such as the
+    request-local world bridge. They may still consume a registered calculation expression without
+    translating it back into ad hoc SQL. Validation uses exactly the qualifiers referenced by the
+    expression; the owning query remains responsible for making those tables visible.
+    """
+    if dialect not in {"standard", "sqlite_decimal", "postgres_numeric"}:
+        raise ValueError(f"unsupported SQL dialect: {dialect}")
+    _validate_expr(expression, frozenset(_expr_tables(expression)))
+    return _render_expr(expression, dialect)
+
+
 def _render_query(query: Query, dialect: str = "standard") -> str:
     if isinstance(query, SetQuery):
         return f"{_render_query(query.left, dialect)} {query.operator} {_render_query(query.right, dialect)}"

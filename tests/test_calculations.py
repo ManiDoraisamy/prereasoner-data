@@ -541,6 +541,31 @@ def test_joined_discount_and_currency_compose_as_one_typed_calculation():
        and "GROUP BY" not in net_candidate.sql,
        "a tier names the rate lookup dimension; it does not force grouped output")
 
+    planner_schema = [
+        {
+            "table": column.ref.table,
+            "name": column.ref.name,
+            "affinity": ("INTEGER" if column.ref.type == SQLType.INTEGER else
+                         "REAL" if column.ref.type == SQLType.REAL else "TEXT"),
+            "values": list(column.values),
+        }
+        for column in graph.columns
+        if column.ref.table != "exchange_rate"
+    ]
+    world_plan, _, world_fk = KnowledgeTableQuery._row_calculation_context(
+        question,
+        ("SUM", "orders", "amount"),
+        planner_schema,
+        fks[:1],
+        {
+            "fact": "orders", "ccy_col": "currency", "date_col": None,
+            "rate_col": "rate_to_usd", "target": "USD",
+        },
+    )
+    ok(world_plan is not None and world_fk is not None
+       and world_plan.expression == candidate.query.select[0].expression,
+       "the world bridge consumes the same composed calculation plan as own-data AST search")
+
 
 def test_temporal_rate_requires_and_accepts_composite_alignment():
     sales = {"name": "sales", "columns": ["country", "effective_date", "amount"],
