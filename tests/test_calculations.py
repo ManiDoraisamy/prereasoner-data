@@ -566,6 +566,14 @@ def test_joined_discount_and_currency_compose_as_one_typed_calculation():
        and world_plan.expression == candidate.query.select[0].expression,
        "the world bridge consumes the same composed calculation plan as own-data AST search")
 
+    from engine.knowledge_query import _calculation_coverage_words
+    claimed = _calculation_coverage_words(assessments)
+    ok("after" in claimed and "reduce" in claimed,
+       "a verified subtraction claims its structural direction words in coverage checking")
+    ok("after" not in _calculation_coverage_words(({
+        "status": "satisfied", "operation": "apply_rate",
+    },)), "ordinary rate application cannot swallow a temporal after-filter")
+
 
 def test_temporal_rate_requires_and_accepts_composite_alignment():
     sales = {"name": "sales", "columns": ["country", "effective_date", "amount"],

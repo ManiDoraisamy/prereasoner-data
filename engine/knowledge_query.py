@@ -91,6 +91,33 @@ def verify_nonempty(res, question):
             "model": "engine - clarify (the query matched no rows)"}
 
 
+def _calculation_coverage_words(calculations):
+    """Words realized structurally by a satisfied typed calculation.
+
+    Coverage normally checks that content words appear in SQL as identifiers, literals, or resolved
+    entities. Direction words instead become AST operators: "after discount" becomes ``1 - rate``.
+    Claim them only after the calculation verifier succeeds, and only for that operation, so a time
+    predicate such as "after 2024" cannot disappear under a global stop-word rule.
+    """
+    claimed = set()
+    for calculation in calculations or ():
+        if calculation.get("status") != "satisfied":
+            continue
+        operation = calculation.get("operation")
+        if operation == "subtract_rate":
+            claimed.update({
+                "after", "subtract", "subtracting", "subtracted", "deduct", "deducting",
+                "deducted", "reduce", "reducing", "reduced", "net",
+            })
+        elif operation == "add_rate":
+            claimed.update({
+                "add", "adding", "added", "plus", "including", "inclusive", "with", "gross",
+            })
+        elif operation == "apply_rate":
+            claimed.update({"apply", "applying", "calculate", "calculating", "compute", "computing"})
+    return claimed
+
+
 class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, EntityQuery):
     """Live /api/knowledge served by the unified encoder: bge for connected entity resolution, the unified encoder
     for the anchored readout + operator + the unconnected free-text bridge. Persists the two bridge tables per
@@ -647,6 +674,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 if currency and currency.get("status") == "satisfied":
                     realized = currency_conversion_words(currency["target"])
                     dropped = [word for word in dropped if word not in realized]
+                claimed = _calculation_coverage_words(calculations)
+                dropped = [word for word in dropped if word not in claimed]
             except Exception as e:                           # noqa: BLE001 — the gate must never break the world path
                 print(f"coverage check failed: {type(e).__name__}", flush=True); dropped = []
             if dropped:
