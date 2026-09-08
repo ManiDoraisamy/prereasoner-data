@@ -21,6 +21,7 @@ These need no PostgreSQL, model weights, or network. Install `requirements-ci.tx
 | `python -m tests.test_source_sync` | Source parser, release, rights, and rejection invariants |
 | `python -m tests.test_app_migrations` | Application migrations and least-privilege database grants |
 | `python -m tests.test_mcp` | MCP adapter contract |
+| `python -m tests.test_orchestrator_unit` | Terminal tool-loop control and engine-outcome fallbacks with mocked services |
 
 The frontend state regression is separate because it runs under Node:
 
@@ -47,8 +48,9 @@ These require the manifest-pinned runtime artifacts and a seeded PostgreSQL know
 | `python -m tests.test_datasets` | Every public demo workbook and its shipped prompt |
 
 `test_datasets` discovers the workbooks under `web/public/dataset/` and requires one verified
-expectation for each directory. It covers the current 11 demos across own-data aggregates,
-Wikidata-backed hospital/restaurant/bank joins, country/continent joins, and ECB conversion.
+expectation for each directory. It covers the current 12 demos across own-data aggregates,
+joined discount and commission calculations, Wikidata-backed hospital/restaurant/bank joins,
+country/continent joins, and ECB conversion.
 Do not add a public demo until its source rows, routing path, expected result, and live regression
 are all recorded in that test.
 

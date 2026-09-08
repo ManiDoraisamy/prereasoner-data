@@ -1,0 +1,4 @@
+payment_instrument,commission_percent
+card,2.9
+bank transfer,0.8
+digital wallet,1.7

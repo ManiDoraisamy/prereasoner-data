@@ -484,6 +484,64 @@ def test_rate_application_supports_percent_and_fraction_units():
        "explicit yearly simple-financing terminology maps to the interest rule")
 
 
+def test_joined_discount_and_currency_compose_as_one_typed_calculation():
+    orders = {
+        "name": "orders",
+        "columns": ["order_id", "tier", "currency", "amount"],
+        "rows": [[1, "Bronze", "EUR", 100], [2, "Silver", "GBP", 200],
+                 [3, "Gold", "USD", 300]],
+    }
+    tiers = {
+        "name": "tier",
+        "columns": ["tier", "discount_percent"],
+        "rows": [["Bronze", 5], ["Silver", 10], ["Gold", 15]],
+    }
+    rates = {
+        "name": "exchange_rate",
+        "columns": ["currency_code", "rate_to_usd"],
+        "rows": [["EUR", 1.1], ["GBP", 1.25], ["USD", 1]],
+    }
+    fks = (
+        {"from_table": "orders", "from_col": "tier",
+         "to_table": "tier", "to_col": "tier"},
+        {"from_table": "orders", "from_col": "currency",
+         "to_table": "exchange_rate", "to_col": "currency_code"},
+    )
+    question = "total amount in US dollars after customer tier discount"
+    graph, candidate, assessments, index = _run_calculation(
+        question, (orders, tiers, rates), fks,
+    )
+    ok(index == 0 and len(assessments) == 2
+       and all(row["status"] == "satisfied" for row in assessments),
+       "currency conversion and a joined tier discount are certified together")
+    ok("rate_to_usd" in candidate.sql and "discount_percent" in candidate.sql
+       and "1 -" in candidate.sql and "GROUP BY" not in candidate.sql,
+       "the planner emits one scalar SUM with both row factors and no incidental tier grouping")
+
+    schema = [{
+        "table": column.ref.table,
+        "name": column.ref.name,
+        "affinity": ("INTEGER" if column.ref.type == SQLType.INTEGER else
+                     "REAL" if column.ref.type == SQLType.REAL else "TEXT"),
+    } for column in graph.columns]
+    columns, rows = TableQuery().execute(
+        {table["name"]: table for table in (orders, tiers, rates)},
+        schema,
+        candidate.sql,
+        query=candidate.query,
+    )
+    ok(columns == ["total_usd_and_net_amount"] and rows == [(584.5,)],
+       "the composed calculation executes with exact typed arithmetic")
+
+    discount_only = "reduce the discount from total amount based on customer's tier"
+    _, net_candidate, net_assessments, _ = _run_calculation(
+        discount_only, (orders, tiers), fks[:1],
+    )
+    ok(net_assessments[0]["realization"] == "rate_subtraction"
+       and "GROUP BY" not in net_candidate.sql,
+       "a tier names the rate lookup dimension; it does not force grouped output")
+
+
 def test_temporal_rate_requires_and_accepts_composite_alignment():
     sales = {"name": "sales", "columns": ["country", "effective_date", "amount"],
              "rows": [["FR", "2024-01-01", 100], ["FR", "2025-01-01", 200]]}
@@ -690,8 +748,19 @@ def test_complex_and_temporally_unbound_rates_abstain():
     ok(not detect_calculations("show the total tax rate by country"),
        "projecting or aggregating a rate does not request rate application")
     gross_intent = detect_calculations("calculate the total amount including tax")
-    ok(bool(gross_intent) and bool(gross_intent[0].attributes.get("unsupported")),
-       "gross and net totals abstain instead of returning only the rate component")
+    ok(bool(gross_intent) and gross_intent[0].operation == "add_rate"
+       and not gross_intent[0].attributes.get("unsupported"),
+       "an explicit inclusive total is represented as typed rate addition")
+    timed_tax = detect_calculations("total tax amount after 2024")
+    ok(bool(timed_tax) and timed_tax[0].operation == "apply_rate",
+       "a time filter does not become rate subtraction merely because it says after")
+    with_discount = detect_calculations("total amount with the customer tier discount")
+    ok(bool(with_discount) and with_discount[0].operation == "subtract_rate"
+       and not with_discount[0].attributes.get("unsupported"),
+       "with a discount has its ordinary net-total meaning rather than ambiguous rate addition")
+    net_without_direction = detect_calculations("net tax amount")
+    ok(bool(net_without_direction) and net_without_direction[0].attributes.get("unsupported"),
+       "gross or net wording without a direction remains fail-closed")
 
 
 def test_unverified_non_currency_calculation_fails_closed():
@@ -902,6 +971,7 @@ TESTS = [
     test_ratio_uses_composite_keys_and_derives_units,
     test_learned_operand_signal_orders_only_typed_eligible_plans,
     test_rate_application_supports_percent_and_fraction_units,
+    test_joined_discount_and_currency_compose_as_one_typed_calculation,
     test_temporal_rate_requires_and_accepts_composite_alignment,
     test_a_calculation_at_the_wrong_grain_is_not_satisfied,
     test_grain_check_accepts_a_dimension_grouped_by_its_display_column,

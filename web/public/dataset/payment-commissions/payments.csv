@@ -1,0 +1,7 @@
+transaction_id,payment_instrument,currency,amount
+1,card,USD,120.00
+2,bank transfer,USD,300.00
+3,digital wallet,USD,80.00
+4,card,USD,200.00
+5,digital wallet,USD,150.00
+6,bank transfer,USD,250.00

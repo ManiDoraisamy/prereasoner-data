@@ -160,24 +160,26 @@ def _available_currency_targets(
     return tuple(sorted(available))
 
 
+def _multiplication_terms(expression):
+    if isinstance(expression, BinaryExpr) and expression.operator == "*":
+        return _multiplication_terms(expression.left) + _multiplication_terms(expression.right)
+    return [expression]
+
+
 def _currency_expression(expression) -> tuple[ColumnRef, str] | None:
     if (
         not isinstance(expression, Aggregate)
         or expression.function != "SUM"
-        or not isinstance(expression.operand, BinaryExpr)
-        or expression.operand.operator != "*"
     ):
         return None
-    left, right = expression.operand.left, expression.operand.right
-    if not isinstance(left, ColumnRef) or not isinstance(right, ColumnRef):
+    columns = [term for term in _multiplication_terms(expression.operand)
+               if isinstance(term, ColumnRef)]
+    rates = [(column, currency_rate_target(column.name)) for column in columns
+             if currency_rate_target(column.name) is not None]
+    measures = [column for column in columns if is_currency_measure_column(column.name)]
+    if len(rates) != 1 or len(measures) != 1:
         return None
-    left_target, right_target = currency_rate_target(left.name), currency_rate_target(right.name)
-    if (left_target is None) == (right_target is None):
-        return None
-    measure, target = (right, left_target) if left_target is not None else (left, right_target)
-    if target is None or not is_currency_measure_column(measure.name):
-        return None
-    return measure, target
+    return measures[0], rates[0][1]
 
 
 @dataclass(frozen=True)
@@ -253,6 +255,8 @@ class CurrencySpecification:
                 (("measure", measure), ("source_currency", source_currency), ("rate", rate)),
                 measure.table,
                 2.0 + _role_score(operand_scores, "measure", measure),
+                measure,
+                rate,
             ))
         return tuple(sorted(
             out,
@@ -305,12 +309,19 @@ class CurrencySpecification:
             }
 
         converted = [_currency_expression(output.expression) for output in numeric_outputs]
-        measure_columns = tuple(sorted({
-            (column.table, column.name)
-            for output in numeric_outputs
-            for column in output.columns
-            if currency_rate_target(column.name) is None
-        }))
+        converted_measures = {match[0] for match in converted if match is not None}
+        # A composed output can also contain another numeric factor such as discount_percent.
+        # Once the typed FX factor identifies its monetary measure, do not misclassify every
+        # non-FX factor as a second measure.
+        measure_columns = tuple(sorted(
+            {(column.table, column.name) for column in converted_measures}
+            or {
+                (column.table, column.name)
+                for output in numeric_outputs
+                for column in output.columns
+                if currency_rate_target(column.name) is None
+            }
+        ))
         source = _source_profile(tables, measure_columns)
         available = _available_currency_targets(graph, measure_columns)
         proposal_target = next((code for code in available if code != target), "")
@@ -580,7 +591,8 @@ class RateApplicationSpecification:
         low = text.lower()
         kind = "tax" if re.search(r"\b(?:tax|vat|levy)\b|\bfiscal\s+charge\b", low) else (
             "commission" if re.search(r"\bcommission\b|\b(?:merchant|processing)\s+fee\b", low) else
-            "interest" if re.search(r"\binterest\b|\bfinancing\s+charge\b", low) else None
+            "interest" if re.search(r"\binterest\b|\bfinancing\s+charge\b", low) else
+            "discount" if re.search(r"\bdiscount\b", low) else None
         )
         if kind is None:
             return None
@@ -588,7 +600,7 @@ class RateApplicationSpecification:
         aggregate_output = bool(re.search(r"\b(?:total|sum)\b", low))
         action = bool(re.search(r"\b(?:apply|calculate|compute)\b", low))
         names_rate = bool(re.search(
-            rf"\b(?:{kind}|tax|vat|levy|commission|interest|merchant fee|processing fee)\s+"
+            rf"\b(?:{kind}|tax|vat|levy|commission|interest|discount|merchant fee|processing fee)\s+"
             r"(?:percent(?:age)?|pct|fraction|rate)\b",
             low,
         ))
@@ -598,21 +610,42 @@ class RateApplicationSpecification:
         if not asks_amount:
             return None
         unsupported = ""
-        if re.search(r"\b(?:bracket|marginal|progressive|tier|tiered)\b", low):
+        if re.search(r"\b(?:bracket|marginal|progressive|tiered)\b", low):
             unsupported = "piecewise rate schedules are not represented"
         if kind == "interest" and not (
             re.search(r"\b(?:annual|yearly|one[ -]year)\b", low)
             and re.search(r"\bsimple\b", low)
         ):
             unsupported = "interest requires an explicit annual one-year simple-interest policy"
-        if (
-            re.search(r"\b(?:gross|net)\b", low)
-            or re.search(r"\b(?:including|after|with)\s+(?:tax|vat|commission|interest)\b", low)
-        ):
-            unsupported = "gross and net totals require an explicit add-or-subtract calculation specification"
+        kind_pattern = re.escape(kind)
+        subtract = bool(re.search(
+            rf"\b(?:subtract(?:ing)?|deduct(?:ing|ed)?|reduce(?:d|s|ing)?)\b[^.;,]*\b{kind_pattern}\b"
+            rf"|\b(?:net of|after)\b(?:\s+\w+){{0,3}}\s+\b{kind_pattern}\b"
+            rf"|\b{kind_pattern}\b(?:\s+\w+){{0,3}}\s+\b(?:deducted|subtracted)\b",
+            low,
+        ))
+        add_words = r"add(?:ing|ed)?|plus|including" + (r"|with" if kind != "discount" else "")
+        add = bool(re.search(
+            rf"\b(?:{add_words})\b(?:\s+\w+){{0,2}}\s+\b{kind_pattern}\b"
+            rf"|\binclusive of\b(?:\s+\w+){{0,2}}\s+\b{kind_pattern}\b",
+            low,
+        ))
+        asks_rate_amount = bool(re.search(
+            rf"\b(?:total|sum|calculate|compute)\s+(?:the\s+)?{kind}\s+(?:amount|charge|cost|due)\b",
+            low,
+        ))
+        if kind == "discount" and not asks_rate_amount:
+            subtract = True
+        if subtract and add:
+            unsupported = "the requested add-or-subtract direction is ambiguous"
+        if re.search(r"\b(?:gross|net)\b", low) and not (subtract or add):
+            unsupported = "gross or net requests require an explicit add-or-subtract direction"
+        operation = "subtract_rate" if subtract and not add else (
+            "add_rate" if add and not subtract else "apply_rate"
+        )
         return CalculationIntent(
             specification=self.name,
-            operation="apply_rate",
+            operation=operation,
             phrase=kind,
             target=kind,
             attributes={"rate_kind": kind, "unsupported": unsupported},
@@ -632,6 +665,7 @@ class RateApplicationSpecification:
             "tax": {"tax", "vat", "levy"},
             "commission": {"commission", "merchant", "processing", "fee"},
             "interest": {"interest", "financing"},
+            "discount": {"discount"},
         }.get(kind, {kind})
         rates = []
         for schema_column in graph.columns:
@@ -654,18 +688,33 @@ class RateApplicationSpecification:
             for rate, (divisor, scale_rule) in rates:
                 if not _has_temporal_alignment(graph, measure, rate):
                     continue
-                factor = rate if divisor == 1.0 else BinaryExpr(rate, "/", Literal(divisor, SQLType.REAL))
+                normalized_rate = (rate if divisor == 1.0 else
+                                   BinaryExpr(rate, "/", Literal(divisor, SQLType.REAL)))
+                if intent.operation == "subtract_rate":
+                    factor = BinaryExpr(Literal(1, SQLType.INTEGER), "-", normalized_rate)
+                    alias = "net_amount"
+                    mode = "subtract"
+                elif intent.operation == "add_rate":
+                    factor = BinaryExpr(Literal(1, SQLType.INTEGER), "+", normalized_rate)
+                    alias = "gross_amount"
+                    mode = "add"
+                else:
+                    factor = normalized_rate
+                    alias = f"{kind}_amount"
+                    mode = "amount"
                 out.append(CalculationPlan(
                     self.name,
                     Aggregate("SUM", BinaryExpr(measure, "*", factor)),
-                    f"{kind}_amount",
+                    alias,
                     "currency",
-                    f"{kind}_{scale_rule}",
+                    f"{kind}_{mode}_{scale_rule}" if mode != "amount" else f"{kind}_{scale_rule}",
                     (("measure", measure), ("rate", rate)),
                     measure.table,
                     2.0
                     + _role_score(operand_scores, "measure", measure)
                     + _role_score(operand_scores, "rate", rate),
+                    measure,
+                    factor,
                 ))
         return tuple(sorted(
             out,
@@ -701,11 +750,15 @@ class RateApplicationSpecification:
             return {**base, "reason": "set-operation branches disagree on rate bindings",
                     "available": [plan.record() for plan in plans]}
         plan = matched[0]
+        realization = {
+            "subtract_rate": "rate_subtraction",
+            "add_rate": "rate_addition",
+        }.get(intent.operation, "rate_application")
         return {
             **base,
             "status": "satisfied",
-            "realization": "rate_application",
-            "reason": "every query branch applies the typed dimensionless rate to the bound monetary measure",
+            "realization": realization,
+            "reason": "every query branch applies the requested typed rate expression to the bound monetary measure",
             "output_unit": plan.output_unit,
             "bindings": plan.record()["bindings"],
             "rule": plan.rule,

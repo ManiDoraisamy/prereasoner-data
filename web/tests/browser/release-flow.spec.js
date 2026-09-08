@@ -39,7 +39,8 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
     name:'orders.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer:Buffer.from(XLSX.write(workbook,{type:'buffer',bookType:'xlsx'})),
   });
-  await expect(page.locator('.chip .nm')).toHaveText('orders');
+  await expect(page.locator('.chip .nm')).toHaveCount(1);
+  await expect(page.locator('.chip .nm').first()).toHaveText('orders');
   await page.locator('#q').fill('total amount in US dollars');
   await page.getByRole('button',{name:'Ask'}).click();
 

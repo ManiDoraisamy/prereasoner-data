@@ -9,12 +9,34 @@ to the full-JSON HTTP response.
 """
 from __future__ import annotations
 
+import datetime
+import json
 import time
+from decimal import Decimal
 
 from engine import request_timing
 from engine.config import RTDB_URL, rtdb_trace_retention_days
+from engine.numeric import wire_value
 
 _NOOP = lambda *a, **k: None
+
+
+def _rtdb_scalar(value):
+    if isinstance(value, Decimal):
+        return wire_value(value)
+    if isinstance(value, (datetime.date, datetime.datetime)):
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not RTDB serializable")
+
+
+def rtdb_safe(value):
+    """Normalize a trace through the same exact-scalar contract as the HTTP response.
+
+    Firebase Admin serializes values independently of ``engine.server``. Saved reference and
+    calculation rows can contain ``Decimal`` values, so a response could succeed while its live
+    result write failed with ``TypeError`` and left the browser with a partial trace.
+    """
+    return json.loads(json.dumps(value, default=_rtdb_scalar, allow_nan=False))
 
 
 def ensure_app():
@@ -59,7 +81,7 @@ def emitter(uid, job_id):
         try:
             with request_timing.span("rtdb"):            # the span publishes its own rtdb_n
                 ref = db.reference(f"{base}/{node}" if node else base)
-                (ref.update if merge else ref.set)(value)
+                (ref.update if merge else ref.set)(rtdb_safe(value))
         except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
             print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
     return emit

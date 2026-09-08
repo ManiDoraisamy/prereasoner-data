@@ -153,8 +153,29 @@ def test_saved_reference_decimals_do_not_break_the_response():
         pass
 
 
+def test_saved_reference_decimals_do_not_break_the_live_trace():
+    import datetime
+    from decimal import Decimal
+    from engine.trace import rtdb_safe
+
+    encoded = rtdb_safe({
+        "rows": [[Decimal("1.1622")], [Decimal("4")]],
+        "effective_date": datetime.date(2026, 9, 8),
+    })
+    assert encoded == {
+        "rows": [["1.1622"], [4]],
+        "effective_date": "2026-09-08",
+    }
+    try:
+        rtdb_safe({"x": object()})
+        raise AssertionError("an unknown trace value must still raise")
+    except TypeError:
+        pass
+
+
 TESTS = [
     test_saved_reference_decimals_do_not_break_the_response,
+    test_saved_reference_decimals_do_not_break_the_live_trace,
     test_provenance_uses_request_roles_not_column_name_guesses,
     test_calculation_and_ecb_columns_keep_distinct_lineage,
     test_http_and_stream_paths_emit_the_same_provenance_shape,

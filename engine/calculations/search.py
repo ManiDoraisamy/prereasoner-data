@@ -1,11 +1,14 @@
 """Typed AST expansion from registered calculation plans."""
 from __future__ import annotations
 
+from itertools import product
+
 from engine.calculations.registry import (
     calculation_operand_scores,
     detect_calculations,
     specifications,
 )
+from engine.calculations.core import compose_row_plans
 from engine.sql_ast import (
     SelectItem,
     SelectQuery,
@@ -14,6 +17,7 @@ from engine.sql_ast import (
     validate_query,
 )
 from engine.sql_candidate import ScoredQuery
+from engine.sql_rank import analyze_question
 from engine.sql_schema import SchemaGraph
 
 
@@ -30,63 +34,84 @@ class CalculationQueryExpander:
         by_name = {specification.name: specification for specification in specifications()}
         learned = getattr(self.semantic_signals, "calculation_intents", {}) or {}
         generated = {}
-        for intent in intents:
-            plans = by_name[intent.specification].plans(
+        plan_groups = [
+            by_name[intent.specification].plans(
                 intent, self.schema, calculation_operand_scores(intent, self.semantic_signals)
             )
-            for plan in plans:
-                for candidate in candidates[:12]:
-                    base = candidate.query
-                    if not isinstance(base, SelectQuery) or isinstance(base.from_table, SubquerySource):
+            for intent in intents
+        ]
+        if any(not plans for plans in plan_groups):
+            return []
+        if len(plan_groups) == 1:
+            plans = plan_groups[0]
+        else:
+            plans = tuple(
+                composed
+                for combination in product(*plan_groups)
+                if (composed := compose_row_plans(tuple(combination))) is not None
+            )
+        learned_score = sum(float(learned.get(intent.specification, 0.0)) for intent in intents)
+        roles = analyze_question(question, self.schema)
+        for plan in plans:
+            for candidate in candidates[:12]:
+                base = candidate.query
+                if not isinstance(base, SelectQuery) or isinstance(base.from_table, SubquerySource):
+                    continue
+                # Base search may project a rate dimension merely because the question names it
+                # ("based on customer tier"). A calculation consumes that dimension; it is not a
+                # requested output grain. Preserve only grouping explicitly requested by the
+                # question roles.
+                group_by = tuple(
+                    column for column in base.group_by
+                    if column not in plan.required_columns
+                    and (column in roles.group_columns or column.table in roles.group_tables)
+                )
+                select = tuple(SelectItem(column) for column in group_by) + (
+                    SelectItem(plan.expression, alias=plan.alias),
+                )
+                required = {column.table for column in plan.required_columns + group_by}
+                if base.where is not None:
+                    probe = SelectQuery((SelectItem(plan.expression),), plan.root_table, where=base.where)
+                    required.update(probe.referenced_tables())
+                if not required:
+                    required.add(plan.root_table)
+                for tree in self.schema.join_trees(required, plan.root_table):
+                    join_key_columns = {
+                        column
+                        for edge_index in tree.edge_indexes
+                        for pair in self.schema.foreign_keys[edge_index].column_pairs
+                        for column in pair
+                    }
+                    if any(column not in join_key_columns for role, column in plan.bindings
+                           if role == "source_currency"):
                         continue
-                    group_by = tuple(column for column in base.group_by if column not in plan.required_columns)
-                    select = tuple(SelectItem(column) for column in group_by) + (
-                        SelectItem(plan.expression, alias=plan.alias),
+                    query = SelectQuery(
+                        select,
+                        tree.root,
+                        joins=tree.joins,
+                        where=base.where,
+                        group_by=group_by,
+                        limit=base.limit if group_by else None,
                     )
-                    required = {column.table for column in plan.required_columns + group_by}
-                    if base.where is not None:
-                        probe = SelectQuery((SelectItem(plan.expression),), plan.root_table, where=base.where)
-                        required.update(probe.referenced_tables())
-                    if not required:
-                        required.add(plan.root_table)
-                    for tree in self.schema.join_trees(required, plan.root_table):
-                        join_key_columns = {
-                            column
-                            for edge_index in tree.edge_indexes
-                            for pair in self.schema.foreign_keys[edge_index].column_pairs
-                            for column in pair
-                        }
-                        if any(column not in join_key_columns for role, column in plan.bindings
-                               if role == "source_currency"):
-                            continue
-                        query = SelectQuery(
-                            select,
-                            tree.root,
-                            joins=tree.joins,
-                            where=base.where,
-                            group_by=group_by,
-                            limit=base.limit if group_by else None,
-                        )
-                        try:
-                            validate_query(query)
-                            sql = render_query(query)
-                        except (TypeError, ValueError):
-                            continue
-                        learned_score = float(learned.get(intent.specification, 0.0))
-                        score = candidate.score + plan.score + min(max(learned_score, -1.0), 1.0)
-                        result = ScoredQuery(
-                            query,
-                            sql,
-                            score,
-                            candidate.evidence + (
-                                f"calculation:{plan.specification}:{plan.rule}",
-                                *(f"calculation-bind:{role}={column.table}.{column.name}"
-                                  for role, column in plan.bindings),
-                            ),
-                        )
-                        previous = generated.get(sql)
-                        if previous is None or result.score > previous.score:
-                            generated[sql] = result
+                    try:
+                        validate_query(query)
+                        sql = render_query(query)
+                    except (TypeError, ValueError):
+                        continue
+                    score = candidate.score + plan.score + min(max(learned_score, -1.0), 1.0)
+                    result = ScoredQuery(
+                        query,
+                        sql,
+                        score,
+                        candidate.evidence + (
+                            f"calculation:{plan.specification}:{plan.rule}",
+                            *(f"calculation-bind:{role}={column.table}.{column.name}"
+                              for role, column in plan.bindings),
+                        ),
+                    )
+                    previous = generated.get(sql)
+                    if previous is None or result.score > previous.score:
+                        generated[sql] = result
         return sorted(generated.values(), key=lambda candidate: (-candidate.score, candidate.sql))[
             :self.max_candidates
         ]

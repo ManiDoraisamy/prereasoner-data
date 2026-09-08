@@ -34,6 +34,7 @@ EXPECTED = {
     "formesign-hospital-transfers": ("world", 46),  # hospital entity join, filtered to US hospitals
     "neartail-catering": ("world", 9600),         # restaurant entity join, filtered to US restaurants
     "formfacade-bank-deposits": ("world", 1550),  # bank entity join, filtered to Swiss banks
+    "payment-commissions": ("own", 1082.41),  # joined instrument rate, subtracted row by row
 }
 FX_TOLERANCE = 0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
 

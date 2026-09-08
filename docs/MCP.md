@@ -49,8 +49,11 @@ the browser fallback; adapters must not reduce it to a generic rephrase message.
 ## Routing Discipline
 
 The orchestrator calls the query tool when a response needs a fact derived from user data. It can answer greetings or
-explain the interface without a tool call. A question that needs multiple engine calls is executed sequentially
-because one engine instance protects its shared model context with `WORLD_LOCK`.
+explain the interface without a tool call. One user data question is sent as one complete engine query; joins,
+reference lookups, filters, grouping, conversion, and arithmetic are steps inside that query, not separate tool calls.
+After the engine returns `answered`, `clarify`, or `error`, the orchestrator performs one tool-disabled presentation
+round. This keeps natural phrasing in the language model while making a terminal engine outcome structurally unable
+to start a reformulation loop.
 
 This conversational routing does not replace the engine's deterministic `engine.routing.route()` decision between
 own-data AST and world-aware execution. Serving and Spider evaluation continue to share that one engine route.
@@ -62,6 +65,7 @@ Start the engine, then provide `ANTHROPIC_API_KEY` and run the orchestrator serv
 
 ```powershell
 python -m tests.test_mcp
+python -m tests.test_orchestrator_unit
 python -m tests.test_orchestrator
 ```
 

@@ -26,18 +26,22 @@ released only when a registered specification proves that the selected query mat
 |---|---|---|
 | Currency | filter, identity/unit annotation, or `SUM(amount * rate_to_target)` | ISO target, monetary measure, exact typed rate edge in the selected AST, complete branch coverage |
 | Ratio | `SUM(numerator) / SUM(denominator)` | two eligible numeric roles, selected complete registered-key path, same operands on every branch |
-| Rate application | `SUM(amount * rate)` or `SUM(amount * (percent / 100))` | monetary measure, dimensionless flat rate, selected complete registered-key path, temporal coordinate when the rate is dated |
+| Rate application | rate amount, `SUM(amount * rate)`; inclusive total, `SUM(amount * (1 + rate))`; deducted total, `SUM(amount * (1 - rate))` | monetary measure, dimensionless flat rate, unambiguous direction, selected complete registered-key path, temporal coordinate when the rate is dated |
 
-Rate application currently recognizes flat tax/VAT, commission, and explicit annual one-year simple
-interest. Per-capita is a named ratio whose denominator must bind to a population/person measure.
-Division renders with real-valued semantics and a `NULLIF(denominator, 0)` guard.
+Rate application recognizes flat tax/VAT, commission, discount, and explicit annual one-year simple
+interest. A named category such as customer tier or payment instrument can select one flat rate per
+row through an ordinary typed key join. Per-capita is a named ratio whose denominator must bind to a
+population/person measure. Division renders with real-valued semantics and a
+`NULLIF(denominator, 0)` guard.
 
 The generic calculation planner deliberately abstains on tiered or progressive schedules,
-compound or variable-period interest, gross/net totals, latest-prior/as-of joins, missing temporal alignment, unknown rate units,
-ambiguous operand bindings, and requests that require composing two calculation specifications.
-Supporting one of these requires a new typed AST/verification rule and tests; adding phrases to the
-training corpus alone is insufficient. A question that merely asks for a tax or commission *rate* is
-an ordinary projection, not a request to apply that rate.
+compound or variable-period interest, latest-prior/as-of joins, missing temporal alignment, unknown
+rate units, and ambiguous add/subtract direction or operand bindings. Compatible row factors compose
+inside one aggregate: for example, currency conversion plus a customer-tier discount becomes one
+`SUM(amount * exchange_rate * (1 - discount_rate))`. The verifier requires the final AST to equal a
+composition of every detected specification; proving either factor alone is insufficient. A question
+that merely asks for a tax, commission, or discount *rate* is an ordinary projection, not a request to
+apply that rate.
 
 ECB conversion does not weaken that rule. Its offline projection expands the active source release
 to exact calendar-date rows and preserves both the true source business date and release ID. Serving

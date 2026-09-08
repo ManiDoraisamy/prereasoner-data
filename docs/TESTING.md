@@ -95,6 +95,7 @@ The runner executes the canonical suites in this order:
 | `tests.test_provenance` | Typed output lineage, source/release identity, and HTTP/stream parity |
 | `tests.test_release` | Public-tree invariants: artifact boundary, secure model pins, privacy route, and canonical owners |
 | `tests.test_mcp` | MCP response shape and engine adapter |
+| `tests.test_orchestrator_unit` | Terminal query control, tool-disabled presentation, and fallback preservation with contract fakes |
 | `tests.test_orchestrator` | External Anthropic tool-use integration and HTTP envelope; requires a key |
 | `tests.test_world` | Grounding, geo basics, and aggregate delegation |
 | `tests.test_nongeo` | Non-geographic world resolution from pre-synchronized projections |
@@ -102,11 +103,14 @@ The runner executes the canonical suites in this order:
 | `tests.test_route_wired` | Model-driven route to SQL end to end |
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 | `tests.test_schema_probes` | Live property/class generalization and cross-process determinism |
+| `tests.test_datasets` | Every public workbook prompt and direct follow-up against the seeded serving path |
 
 For a hosted release, set `REQUIRE_ORCHESTRATOR_TESTS=1` before running
 `python -m tests.test_orchestrator`. With that flag, a missing `ANTHROPIC_API_KEY` is a failure rather
-than a skip. The suite checks standalone pass-through and follow-up qualifier carry-over at the exact
-question received by the engine; public pull-request CI keeps this paid external test disabled.
+than a skip. The suite checks standalone pass-through, follow-up qualifier carry-over, and the joined
+tier-discount regression at the exact question received by the engine; public pull-request CI keeps
+this paid external test disabled. `customer-orders` and `payment-commissions` provide independent
+joined-rate fixtures so the calculation gate covers both discount and commission semantics.
 
 The live suites need runtime weights and a seeded PostgreSQL knowledgebase with pre-synchronized source
 projections. The orchestrator suite is also external and can be excluded with `RUN_ORCHESTRATOR_TESTS=0`.

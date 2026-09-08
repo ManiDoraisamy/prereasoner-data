@@ -45,8 +45,10 @@ CLAUDE_TOOLS = [
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "One single-hop data question (one aggregate/filter/join) over the "
-                                   "user's uploaded tables, e.g. 'total amount in France'.",
+                    "description": "One complete data question over the user's uploaded tables. Include "
+                                   "all requested joins, filters, grouping, conversions, and calculations "
+                                   "in this single call, e.g. 'total amount in France in US dollars after "
+                                   "the customer tier discount'.",
                 },
                 "dataset_ops": {
                     "type": "array",
@@ -110,6 +112,24 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     if shaped.get("error") is not None:
         out["error"] = shaped["error"]
     return out
+
+
+def _terminal_fallback(shaped: dict[str, Any]) -> str:
+    """Last-resort text when the presentation model returns no prose.
+
+    The normal path is a tool-disabled model round. This fallback preserves the engine's terminal
+    outcome instead of replacing a useful answer or clarification with a tool-budget error.
+    """
+    if shaped.get("status") == "clarify":
+        clarify = shaped.get("clarify") or {}
+        return str(clarify.get("reason") or "I need one more detail before I can answer that.")
+    if shaped.get("status") == "error":
+        return str(shaped.get("error") or "I couldn't complete that data question.")
+    answer = shaped.get("answer") or {}
+    rows = answer.get("rows") or []
+    if len(rows) == 1 and len(rows[0]) == 1:
+        return str(rows[0][0])
+    return "I completed the calculation; the result and its reasoning are shown in the workbook."
 
 
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:
@@ -214,6 +234,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     stream_buffer.update("")             # tool-round preamble is not the answer
 
                 tool_results = []
+                terminal_query = None
                 for block in resp.content:
                     if block.type != "tool_use":
                         continue
@@ -255,6 +276,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                                               # turn node on 'status:done' (workbook settle()), so the
                                                               # post-'done' emit below would be MISSED: no URL, no snapshot save
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                        if shaped.get("status") in {"answered", "clarify", "error"}:
+                            terminal_query = shaped
                         tool_results.append({
                             "type": "tool_result", "tool_use_id": block.id,
                             "content": json.dumps(_trim_for_model(shaped)),
@@ -275,6 +298,35 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             "content": f"unknown tool {block.name}", "is_error": True,
                         })
                 messages.append({"role": "user", "content": tool_results})
+                if terminal_query is not None:
+                    # The engine's stable contract has no non-terminal query status. Once it has
+                    # answered, clarified, or failed, another tool-enabled round can only ask a
+                    # different question. That was the production loop behind the misleading
+                    # "step budget" response: five progressively weaker rewrites replaced a useful
+                    # terminal result. Let Sonnet present the result, but remove tools for this one
+                    # final round so the computation remains the engine's.
+                    final_text = _terminal_fallback(terminal_query)
+                    presentation_text = ""
+                    try:
+                        with request_timing.span("llm"):
+                            async with client.messages.stream(
+                                model=model,
+                                max_tokens=MAX_MODEL_TOKENS,
+                                system=SYSTEM_PROMPT,
+                                thinking={"type": "adaptive"},
+                                messages=messages,
+                            ) as presentation_stream:
+                                async for delta in presentation_stream.text_stream:
+                                    presentation_text += delta
+                                    if stream_buffer is not None and presentation_text:
+                                        stream_buffer.update(presentation_text)
+                                presentation = await presentation_stream.get_final_message()
+                        final_text = "".join(
+                            block.text for block in presentation.content if block.type == "text"
+                        ).strip() or final_text
+                    except Exception as exc:  # noqa: BLE001 - presentation is optional after terminal data
+                        print(f"[chat] presentation_failed error={type(exc).__name__}", flush=True)
+                    break
             else:
                 final_text = final_text or "I wasn't able to complete that within the step budget."
         finally:

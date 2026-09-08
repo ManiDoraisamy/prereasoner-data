@@ -59,7 +59,7 @@ def _answer(question: str) -> dict:
     q = (question or "").lower()
     if "region" in q:  # an intentionally ambiguous term -> the clarify gate
         return dict(_CLARIFY, question=question)
-    if "france" in q:
+    if "france" in q or "french" in q:
         return dict(_FRANCE, question=question)
     # generic answer for anything else
     return {

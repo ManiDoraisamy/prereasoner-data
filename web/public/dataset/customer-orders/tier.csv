@@ -1,0 +1,4 @@
+tier,rank,min_order_amount,discount_percent,benefits
+Bronze,3,0,5,"Standard shipping, basic support"
+Gold,1,10000,15,"Free shipping, priority support, exclusive offers"
+Silver,2,5000,10,"Free shipping, standard support"

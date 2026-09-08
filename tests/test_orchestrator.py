@@ -77,8 +77,8 @@ def main():
     model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
     key = os.environ["ANTHROPIC_API_KEY"]
 
-    async def chat(msg, history=None):
-        return await run_chat(msg, TABLES, history or [], engine_base_url=base,
+    async def chat(msg, history=None, tables=None):
+        return await run_chat(msg, tables or TABLES, history or [], engine_base_url=base,
                               bearer_token=None, api_key=key, model=model)
 
     try:
@@ -87,7 +87,8 @@ def main():
         r1 = asyncio.run(chat("Does our French revenue justify hiring in Europe? Give me the French total."))
         answered = [t for t in r1["traces"] if (t["engine"] or {}).get("status") == "answered"]
         ok(len(answered) >= 1, "at least one prereasoner_query call was made")
-        ok("270" in r1["reply"], "the French total (270) from the tool appears in the reply")
+        ok("270" in r1["reply"],
+           f"the French total (270) from the tool appears in the reply (got {r1['reply']!r})")
 
         # Rule 1b — a standalone question reaches the engine in the user's words (prompt rule 3).
         # A rewrite that dropped "in US dollars" shipped an unconverted total on 2026-09-06. The
@@ -127,6 +128,33 @@ def main():
         ok(any(all(term in q.lower() for term in ("top 3", "customer", "total", "month", "2024"))
                and "2025" not in q for q in sent_d),
            f"the rewritten follow-up changes the year and keeps grouping/limit qualifiers (got {sent_d})")
+
+        # Production regression (2026-09-08): this follow-up was decomposed into five progressively
+        # weaker queries, ended on a grouped COUNT, and discarded all useful terminal results with
+        # "step budget". The shipped workbook now includes the exact tier schedule as a fixture.
+        print("[1d] joined discount follow-up is one complete terminal query")
+        dataset = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "customer-orders"
+        discount_tables = [
+            {"name": name, "data": (dataset / f"{name}.csv").read_text(encoding="utf-8")}
+            for name in ("orders", "tier")
+        ]
+        discount = asyncio.run(chat(
+            "reduce the discount from total amount based on customer's tier",
+            history=[
+                {"role": "user", "content": "total amount in France in US dollars"},
+                {"role": "assistant", "content":
+                 "Your total sales in France comes to about $1,126.56 US dollars."},
+            ],
+            tables=discount_tables,
+        ))
+        sent_discount = [trace.get("question", "") for trace in discount["traces"]]
+        ok(len(sent_discount) == 1,
+           f"the completed engine result terminates the tool loop (got {sent_discount})")
+        ok(bool(sent_discount) and all(term in sent_discount[0].lower() for term in (
+            "discount", "tier", "france", "us dollar",
+        )), f"the one query carries calculation and prior qualifiers (got {sent_discount})")
+        ok("step budget" not in discount["reply"].lower(),
+           "the workflow cannot replace a terminal result with a step-budget error")
 
         # Rule 4 — a clarify must pass through, never be smoothed into a fabricated answer.
         print("[4] clarify passes through, not smoothed over")

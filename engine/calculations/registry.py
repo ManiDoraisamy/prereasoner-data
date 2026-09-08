@@ -1,11 +1,13 @@
 """Single registry and serving policy for deterministic calculations."""
 from __future__ import annotations
 
+from itertools import product
 from typing import Any, Sequence
 
 from engine.calculations.core import (
     ComputationEvidence,
     branch_realizes_plan,
+    compose_row_plans,
     describe_computation,
 )
 from engine.calculations.specifications import SPECIFICATIONS
@@ -130,8 +132,9 @@ def assess_calculations(
     evidence: ComputationEvidence,
 ) -> tuple[dict[str, Any], ...]:
     missing_grain = _unrealized_grain(question, graph, evidence)
+    intents = detect_calculations(question)
     rows = []
-    for intent in detect_calculations(question):
+    for intent in intents:
         row = _BY_NAME[intent.specification].assess(intent, evidence, tables, graph)
         if missing_grain and row.get("status") == "satisfied":
             ungrouped = any(not branch.grouping for branch in evidence.branches)
@@ -147,6 +150,25 @@ def assess_calculations(
                    "unrealized_grouping": [{"table": c.table, "column": c.name}
                                            for c in missing_grain]}
         rows.append(row)
+    if len(intents) > 1 and rows and all(row.get("status") == "satisfied" for row in rows):
+        combinations = product(*(
+            _BY_NAME[intent.specification].plans(intent, graph) for intent in intents
+        ))
+        allowed = {
+            plan.expression
+            for combination in combinations
+            if (plan := compose_row_plans(tuple(combination))) is not None
+        }
+        jointly_realized = bool(allowed) and bool(evidence.branches) and all(any(
+            output.expression in allowed for output in branch.outputs
+        ) for branch in evidence.branches)
+        if not jointly_realized:
+            rows = [{
+                **row,
+                "status": "unmet",
+                "realization": None,
+                "reason": "the selected query does not exactly compose every requested calculation",
+            } for row in rows]
     return tuple(rows)
 
 

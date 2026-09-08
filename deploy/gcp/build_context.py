@@ -40,6 +40,7 @@ SOURCE_CHAT_ALLOWLIST = (
     "engine/config.py",
     "engine/dataset_attestation.py",
     "engine/model_revisions.py",
+    "engine/numeric.py",
     "engine/request_limits.py",
     "engine/request_timing.py",
     "engine/request_validation.py",

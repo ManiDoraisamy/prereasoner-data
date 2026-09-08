@@ -50,7 +50,10 @@ assert.deepStrictEqual(denorm.slice(1), expected,
   'customer-orders.csv must equal customers ⋈ orders exactly');
 
 // The page selects a dataset by ?dataset= with the denormalized single sheet as the default.
-assert(/'customer-orders':\['orders'\]/.test(html), 'customer-orders must be a registered dataset');
+assert(/'customer-orders':\['orders','tier'\]/.test(html),
+  'customer-orders must load its orders and tier schedule together');
+assert(/'payment-commissions':\['payments','commission_rates'\]/.test(html),
+  'the independent commission calculation dataset must be registered');
 assert(/'customers-orders':\['customers','orders'\]/.test(html), 'customers-orders must load both CSVs');
 assert(/\?p:'customer-orders'/.test(html), 'the default dataset must be the denormalized customer-orders');
 assert(html.includes("fetch('/dataset/'+DATASET+'/'+n+'.csv')"), 'the demo must load from /dataset/<name>/');
@@ -107,8 +110,9 @@ assert.strictEqual(
 // demo sheet: an illustrative rate table on the page would SHADOW the real rates, because an
 // uploaded rate sheet deliberately wins over the knowledge join (own data first).
 assert(!/const FX=/.test(html), 'no illustrative rate sheet may ship on the page');
-assert(!fs.readdirSync(dsDir, { recursive: true }).some(f => /fx|rate/i.test(String(f))),
-  'no dataset directory may contain a rate sheet');
+assert(!fs.readdirSync(dsDir, { recursive: true }).some(f =>
+  /(^|[\\/])(?:fx|exchange[_ -]?rates?)\.csv$/i.test(String(f))),
+  'no dataset directory may contain an FX sheet that shadows the ECB source');
 assert(html.includes('>total amount in France in US dollars</textarea>'),
   'the default question must exercise world filtering and currency conversion');
 

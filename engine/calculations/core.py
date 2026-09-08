@@ -64,6 +64,11 @@ class CalculationPlan:
     bindings: tuple[tuple[str, ColumnRef], ...]
     root_table: str
     score: float = 0.0
+    # Row-level multiplicative calculations expose their base measure and factor so independent
+    # specifications can compose without parsing SQL or duplicating the measure. Examples:
+    # currency => amount * fx_rate; net discount => amount * (1 - discount_rate).
+    measure: ColumnRef | None = None
+    factor: ScalarExpr | None = None
 
     @property
     def required_columns(self) -> tuple[ColumnRef, ...]:
@@ -288,7 +293,7 @@ def branch_realizes_plan(
     graph: SchemaGraph,
 ) -> bool:
     """Prove both the planned output and a complete registered-key path to its operands."""
-    if not any(output.expression == plan.expression for output in branch.outputs):
+    if not any(_output_realizes_plan(output.expression, plan) for output in branch.outputs):
         return False
     joined_columns = {
         column for fact in branch.joins for pair in fact.column_pairs for column in pair
@@ -321,6 +326,67 @@ def branch_realizes_plan(
                 reached.add(neighbor)
                 pending.append(neighbor)
     return required <= reached
+
+
+def _multiplication_terms(expression: ScalarExpr) -> list[ScalarExpr]:
+    if isinstance(expression, BinaryExpr) and expression.operator == "*":
+        return _multiplication_terms(expression.left) + _multiplication_terms(expression.right)
+    return [expression]
+
+
+def _output_realizes_plan(expression: ScalarExpr, plan: CalculationPlan) -> bool:
+    """Match one registered row factor inside an exactly typed aggregate expression."""
+    if expression == plan.expression:
+        return True
+    if (
+        plan.measure is None
+        or plan.factor is None
+        or not isinstance(expression, Aggregate)
+        or expression.function != "SUM"
+    ):
+        return False
+    available = _multiplication_terms(expression.operand)
+    required = [plan.measure, *_multiplication_terms(plan.factor)]
+    for term in required:
+        try:
+            available.remove(term)
+        except ValueError:
+            return False
+    return True
+
+
+def compose_row_plans(plans: tuple[CalculationPlan, ...]) -> CalculationPlan | None:
+    """Compose compatible row factors into one exact ``SUM(measure * factors...)`` plan."""
+    if not plans:
+        return None
+    if len(plans) == 1:
+        return plans[0]
+    measure = plans[0].measure
+    if (
+        measure is None
+        or any(plan.measure != measure or plan.factor is None for plan in plans)
+        or len({plan.root_table for plan in plans}) != 1
+    ):
+        return None
+    operand: ScalarExpr = measure
+    combined_factor: ScalarExpr | None = None
+    for plan in plans:
+        operand = BinaryExpr(operand, "*", plan.factor)  # type: ignore[arg-type]
+        combined_factor = (plan.factor if combined_factor is None else
+                           BinaryExpr(combined_factor, "*", plan.factor))  # type: ignore[arg-type]
+    bindings = tuple(dict.fromkeys(binding for plan in plans for binding in plan.bindings))
+    return CalculationPlan(
+        "+".join(plan.specification for plan in plans),
+        Aggregate("SUM", operand),
+        "_and_".join(plan.alias for plan in plans),
+        plans[-1].output_unit,
+        "+".join(plan.rule for plan in plans),
+        bindings,
+        plans[0].root_table,
+        sum(plan.score for plan in plans),
+        measure,
+        combined_factor,
+    )
 
 
 def describe_computation(query: Query) -> ComputationEvidence:

@@ -92,13 +92,14 @@
 <script>
 // Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
 // question, selected by ?dataset=. The default is the single denormalized sheet (orders with each
-// customer's city and tier); customers-orders is the two-sheet FK-join variant; the three product
-// demos mix prompts that do and do not need a knowledgebase join. FX comes from the knowledgebase
-// (ECB), never from a demo sheet.
-const DATASETS={'customer-orders':['orders'],'customers-orders':['customers','orders'],
+// customer's city and tier); its tier sheet exercises a joined discount schedule. customers-orders
+// is the two-sheet FK-join variant; payment-commissions exercises a separate joined rate calculation.
+// FX comes from the knowledgebase (ECB), never from a demo sheet.
+const DATASETS={'customer-orders':['orders','tier'],'customers-orders':['customers','orders'],
   'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake'],
   'formfacade-workshops':['feedback'],'neartail-shipping':['deliveries'],'formesign-contracts':['contracts'],
-  'formesign-hospital-transfers':['transfers'],'neartail-catering':['catering'],'formfacade-bank-deposits':['deposits']};
+  'formesign-hospital-transfers':['transfers'],'neartail-catering':['catering'],'formfacade-bank-deposits':['deposits'],
+  'payment-commissions':['payments','commission_rates']};
 const DATASET=(p=>Object.prototype.hasOwnProperty.call(DATASETS,p)?p:'customer-orders')(
   new URLSearchParams(location.search).get('load'));
 const $=id=>document.getElementById(id);

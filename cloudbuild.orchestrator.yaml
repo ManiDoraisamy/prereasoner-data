@@ -4,8 +4,8 @@
 #   gcloud builds submit /tmp/prereasoner-chat-build --config /tmp/prereasoner-chat-build/cloudbuild.orchestrator.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=latest
 #
-# The `test` step runs the two suites compatible with this lean image before building. `test_mcp`
-# always runs; `test_orchestrator` self-skips unless ANTHROPIC_API_KEY is provided. Repository CI owns
+# The `test` step runs the suites compatible with this lean image before building. `test_mcp` and
+# `test_orchestrator_unit` always run; `test_orchestrator` self-skips unless ANTHROPIC_API_KEY is provided. Repository CI owns
 # the full hermetic suite, and the release-database regression remains a separate deployment gate.
 # A focused failure here still stops the chat image from being pushed.
 
@@ -23,6 +23,7 @@ steps:
         # (test_sql_ast / test_world / ...) need torch/numpy/psycopg — absent here by design — and gate the
         # engine build (cloudbuild.yaml) instead. A failing suite here still fails the build.
         python -m tests.test_mcp
+        python -m tests.test_orchestrator_unit
         python -m tests.test_orchestrator
 
   - id: build

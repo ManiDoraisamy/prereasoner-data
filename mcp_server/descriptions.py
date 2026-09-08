@@ -12,13 +12,14 @@ WHEN TO CALL THIS (routing discipline — you are the unreliable component, so d
    memory. This holds even when the number is buried inside a conversational or strategic question.
 2. If the data is already visible in the conversation, you STILL call this tool instead of computing
    in-head. In-head arithmetic is exactly the unreliable thing this tool replaces.
-3. Follow-on math on a result (e.g. "the 270 you got, times 1.15") is ANOTHER call to this tool, not
-   in-head work.
+3. Follow-on math on a result (e.g. "the 270 you got, times 1.15") is ONE new call to this tool, not
+   in-head work. Express the complete calculation in that call.
 4. If the result has status "clarify", surface it to the user verbatim — do NOT fill the gap with a
    plausible answer. The clarification is the product.
 
-INPUT: a single-hop, directly-expressible question (one aggregate/filter/join). For a multi-hop question,
-call this tool once per hop and pass intermediate values forward.
+INPUT: one complete data question. The engine performs the necessary joins, reference lookups, filters,
+grouping, unit conversion, and typed arithmetic as one inspectable computation. Do not decompose it into
+intermediate tool calls. Any returned status is terminal for that question.
 OUTPUT: {status: "answered"|"clarify"|"error", answer:{columns,rows}, sql, clarify}."""
 
 DESCRIBE_DESC = """\
