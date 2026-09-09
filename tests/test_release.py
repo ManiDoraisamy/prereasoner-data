@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import call, patch
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -422,17 +422,21 @@ def test_live_database_tests_allocate_production_shaped_schemas():
 
     with patch.dict("os.environ", {}, clear=True), patch(
         "regress.live_schema.atexit.register"
-    ) as register:
+    ) as register, patch("regress.live_schema._register_lease") as register_lease:
         first = live_schema()
         second = live_schema()
     assert re.fullmatch(r"c_[0-9a-f]{32}", first.name)
     assert re.fullmatch(r"c_[0-9a-f]{32}", second.name)
     assert first.name != second.name and first.managed and second.managed
     assert register.call_count == 2
+    assert register_lease.call_args_list == [call(first), call(second)]
 
-    with patch.dict("os.environ", {"AUTH_TEST_SUB": "explicit_test_schema"}, clear=True):
+    with patch.dict("os.environ", {"AUTH_TEST_SUB": "explicit_test_schema"}, clear=True), patch(
+        "regress.live_schema._register_lease"
+    ) as register_lease:
         explicit = live_schema()
     assert explicit.name == "explicit_test_schema" and not explicit.managed
+    register_lease.assert_not_called()
 
 
 def test_release_installs_only_hash_locked_dependencies():
