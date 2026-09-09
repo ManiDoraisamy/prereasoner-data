@@ -177,6 +177,13 @@ def test_named_workbook_tool_contract_and_catalog_boundary():
     assert '"analysis_id":"a_' in catalog_prompt
 
 
+def test_followup_prompt_treats_tier_calculation_as_a_data_question():
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "reduce the discount from total amount based on customer's tier" in prompt
+    assert "do not ask whether the user wants a tier breakdown" in prompt
+    assert "retains the latest country, currency, and measure" in prompt
+
+
 def test_tool_exhaustion_never_exposes_an_internal_budget():
     calls = []
 
@@ -218,6 +225,7 @@ TESTS = [
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_named_workbook_tool_contract_and_catalog_boundary,
+    test_followup_prompt_treats_tier_calculation_as_a_data_question,
     test_tool_exhaustion_never_exposes_an_internal_budget,
 ]
 
