@@ -89,7 +89,7 @@ class _HTTP:
         return False
 
 
-async def _run(status: str, *, fail_presentation=False):
+async def _run(status: str, *, fail_presentation=False, use=None):
     model_calls, engine_calls = [], []
     shaped = {"status": status}
     if status == "answered":
@@ -118,6 +118,7 @@ async def _run(status: str, *, fail_presentation=False):
             bearer_token=None,
             api_key="test",
             model="test-model",
+            use=use,
         )
     finally:
         orchestrator.AsyncAnthropic = original_client
@@ -136,6 +137,12 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         assert result["reply"] == "The verified result is ready."
         assert "step budget" not in result["reply"]
         assert len(result["traces"]) == 1
+
+
+def test_request_execution_mode_reaches_each_orchestrated_engine_call():
+    result, _model_calls, engine_calls = asyncio.run(_run("answered", use="verify"))
+    assert result["traces"]
+    assert engine_calls[0][1]["use"] == "verify"
 
 
 def test_terminal_fallback_preserves_the_engine_outcome():

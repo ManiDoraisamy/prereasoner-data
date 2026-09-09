@@ -188,7 +188,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     engine_base_url: str, bearer_token: str | None,
                     api_key: str, model: str, turn_id: str | None = None,
                     emit=None, conversation_id: str | None = None,
-                    principal: str | None = None) -> dict[str, Any]:
+                    principal: str | None = None,
+                    use: str | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs. Returns {reply, traces, history, conversation_id}.
 
@@ -328,6 +329,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 request_id=job_id, client=http, dataset_ops=dataset_ops,
                                 dataset_attestation=attestation,
                                 analysis=analysis_spec,
+                                use=use,
                             )
                         if not conv and shaped.get("conversation_id"):
                             conv = shaped["conversation_id"]  # first call minted it -> reuse for the rest of the session

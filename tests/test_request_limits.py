@@ -118,9 +118,11 @@ def test_chat_validation_normalizes_and_bounds_inputs():
         "tables": [{"name": " orders ", "data": "id,amount\n1,2\n"}],
         "history": [{"role": "user", "content": "hello"}],
         "turnId": " t1 ",
+        "use": "both",
     })
     assert out[:3] == ("total amount", [{"name": "orders", "data": "id,amount\n1,2\n"}],
                        [{"role": "user", "content": "hello"}])
+    assert out[4] is None and out[5] == "verify"
     for bad in ({"message": "x" * 20_001}, {"message": "x", "tables": [{}] * 9}):
         try:
             validate_chat_request(bad)
@@ -164,6 +166,9 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
     assert valid["question"] == "total amount"
     assert valid["tables"] == [{"name": "revenue_report", "data": "amount\n1"}]
     assert valid["jobId"] == "job_1"
+    assert validate_reason_request({
+        "question": "total amount", "tables": [], "use": "py",
+    })["use"] == "python"
     named = validate_reason_request({
         "question": "total amount", "tables": {"name": "orders", "data": "amount\n1"},
         "analysis": {"action": "create", "slug": "Total Sales"},
@@ -181,6 +186,8 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
         {"question": "x", "tables": [], "analysis": {"action": "modify", "slug": "sales"}},
         {"question": "x", "tables": [], "analysis": {"action": "create", "slug": "sales",
                                                            "analysis_id": "a_" + "1" * 32}},
+        {"question": "x", "tables": [], "use": "javascript"},
+        {"question": "x", "tables": [], "use": 1},
     ):
         try:
             validate_reason_request(body)

@@ -9,4 +9,5 @@ formfacade-workshops: https://chat.prereasoner.com/?load=formfacade-workshops
 neartail-catering: https://chat.prereasoner.com/?load=neartail-catering
 neartail-orders: https://chat.prereasoner.com/?load=neartail-orders
 neartail-shipping: https://chat.prereasoner.com/?load=neartail-shipping
+orders-tiers: https://chat.prereasoner.com/?load=orders-tiers
 payment-commissions: https://chat.prereasoner.com/?load=payment-commissions

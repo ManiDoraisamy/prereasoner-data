@@ -58,7 +58,9 @@ applies—the generated Python source and hashes that produced that answer.
 
 The answer is computed by a deterministic emitted program, not written by a decoder. The supported
 named own-data subset runs readable Python for bounded small inputs and SQL for larger inputs; a
-verification mode executes and compares both at every named stage. Other query shapes continue on
+verification mode executes and compares both at every named stage. The workbook URL can select a
+request-local backend for named analyses with `?use=sql`, `?use=py`, or `?use=both` (`both` is
+stage-by-stage verification). Other query shapes continue on
 the existing SQL path. The frozen Qwen model is used as an encoder for intent and schema signals; it
 does not call `generate()` to write a query or a number.
 

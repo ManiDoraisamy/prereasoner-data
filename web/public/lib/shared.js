@@ -14,6 +14,20 @@
 const API_BASE = ((location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   && localStorage.getItem('pr_api_base')) || '';
 
+// A URL-selected deterministic backend is a request preference, never a mutable global setting.
+// The short browser names are intentionally the public contract: sql, py, and both.
+const EXECUTION_USE = (()=>{
+  const raw=(new URLSearchParams(location.search).get('use')||'').trim().toLowerCase();
+  if(raw==='sql')return 'sql';
+  if(raw==='py'||raw==='python')return 'py';
+  if(raw==='both'||raw==='verify')return 'both';
+  return null;
+})();
+function executionQuery(){
+  return EXECUTION_USE ? '?use='+encodeURIComponent(EXECUTION_USE) : '';
+}
+function executionRequestFields(){ return EXECUTION_USE ? {use:EXECUTION_USE} : {}; }
+
 // sessionStorage keys — the only state handed between pages (tables, question, clarify payload).
 const SS = {
   TABLES: 'pr_world_tables',          // JSON [{name,data}] — every attached sheet, CSV text

@@ -161,7 +161,7 @@ def main():
         # weaker queries, ended on a grouped COUNT, and discarded all useful terminal results with
         # "step budget". The shipped workbook now includes the exact tier schedule as a fixture.
         print("[1d] joined discount follow-up is one complete terminal query")
-        dataset = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "customer-orders"
+        dataset = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "orders-tiers"
         discount_tables = [
             {"name": name, "data": (dataset / f"{name}.csv").read_text(encoding="utf-8")}
             for name in ("orders", "tier")

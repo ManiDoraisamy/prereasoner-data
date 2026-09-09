@@ -29,6 +29,14 @@ MAX_TABLE_IDENTIFIER_BYTES = 34
 _KNOWN_TABLE_EXTENSIONS = re.compile(r"\.(csv|tsv|txt|xlsx|xlsm|xls)$", re.IGNORECASE)
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _CONVERSATION_ID = re.compile(r"^c_[0-9a-f]{32}$")
+_EXECUTION_USE = {
+    "auto": "auto",
+    "sql": "sql",
+    "py": "python",
+    "python": "python",
+    "both": "verify",
+    "verify": "verify",
+}
 
 
 @dataclass(frozen=True)
@@ -130,6 +138,24 @@ def validate_as_of(value) -> str | None:
         raise RequestValidationError("as_of must be an ISO date") from exc
 
 
+def validate_execution_use(value) -> str | None:
+    """Normalize the user-facing deterministic backend selector.
+
+    ``use`` is deliberately request-local.  The deployment environment still supplies the
+    default mode, while a signed-in browser may explicitly request SQL, Python, or parity
+    verification for one named analysis without mutating process-wide configuration.
+    """
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise RequestValidationError("use must be sql, py, or both")
+    normalized = value.strip().lower()
+    try:
+        return _EXECUTION_USE[normalized]
+    except KeyError as exc:
+        raise RequestValidationError("use must be sql, py, or both") from exc
+
+
 def validate_reason_request(req: object) -> dict:
     """Validate the authenticated /api/reason and /api/knowledge body."""
     if not isinstance(req, dict):
@@ -153,6 +179,7 @@ def validate_reason_request(req: object) -> dict:
     normalized["jobId"] = _optional_id(req, "jobId")
     normalized["conversation_id"] = _optional_id(req, "conversation_id", conversation=True)
     normalized["as_of"] = validate_as_of(req.get("as_of"))
+    normalized["use"] = validate_execution_use(req.get("use"))
     normalized["dataset_ops"] = _validate_dataset_ops_shape(req.get("dataset_ops"))
     try:
         normalized["analysis"] = validate_analysis_spec(req.get("analysis"))
@@ -214,4 +241,5 @@ def validate_chat_request(req: object):
         normalized_history.append({"role": item["role"], "content": content})
 
     return (message, tables, normalized_history, _optional_id(req, "turnId"),
-            _optional_id(req, "conversation_id", conversation=True))
+            _optional_id(req, "conversation_id", conversation=True),
+            validate_execution_use(req.get("use")))

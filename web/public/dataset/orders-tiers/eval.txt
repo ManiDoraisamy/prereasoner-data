@@ -6,5 +6,5 @@
 # `chat:` = conversational SHORTHAND that only the orchestrated path can resolve. The direct
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
-total amount in Belgium in US dollars => ~374.23
-chat: how about Belgium? => ~374.23
+total amount in France in US dollars after customer tier discount => ~1018.08
+chat: reduce the discount from total amount based on customer's tier => ~1018.08

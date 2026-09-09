@@ -113,7 +113,7 @@ For a hosted release, set `REQUIRE_ORCHESTRATOR_TESTS=1` before running
 `python -m tests.test_orchestrator`. With that flag, a missing `ANTHROPIC_API_KEY` is a failure rather
 than a skip. The suite checks standalone pass-through, follow-up qualifier carry-over, and the joined
 tier-discount regression at the exact question received by the engine; public pull-request CI keeps
-this paid external test disabled. `customer-orders` and `payment-commissions` provide independent
+this paid external test disabled. `orders-tiers` and `payment-commissions` provide independent
 joined-rate fixtures so the calculation gate covers both discount and commission semantics.
 
 The live suites need runtime weights and a seeded PostgreSQL knowledgebase with pre-synchronized source
@@ -125,7 +125,7 @@ Every directory under `web/public/dataset/` must contain a `prompt.txt` and an `
 `web/public/dataset/dataset.txt` is generated from those directories and is checked by the web gate. Numeric and
 clarification cases in `eval.txt` are run by `tests.test_datasets` against the direct engine. Lines prefixed with
 `chat:` are conversational shorthand; they are intentionally excluded from that direct gate and belong to the
-orchestrator/browser path. The `customer-orders` fixture includes the joined `tier.csv` discount schedule and its
+orchestrator/browser path. The `orders-tiers` fixture includes the joined `tier.csv` discount schedule and its
 exact tier follow-up is covered by `tests.test_orchestrator`.
 
 Run live suites sequentially. They create and replace shared test fixtures; concurrently launching two aggregate

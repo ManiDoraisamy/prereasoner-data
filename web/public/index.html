@@ -91,11 +91,11 @@
 <script src="lib/xlsx-reader.js"></script>
 <script>
 // Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
-// question, selected by ?dataset=. The default is the single denormalized sheet (orders with each
-// customer's city and tier); its tier sheet exercises a joined discount schedule. customers-orders
-// is the two-sheet FK-join variant; payment-commissions exercises a separate joined rate calculation.
+// question, selected by ?load=. The default is the single denormalized orders sheet (with each
+// customer's city and tier). orders-tiers is the separate joined discount-schedule fixture.
+// customers-orders is the two-sheet FK-join variant; payment-commissions exercises a separate joined rate calculation.
 // FX comes from the knowledgebase (ECB), never from a demo sheet.
-const DATASETS={'customer-orders':['orders','tier'],'customers-orders':['customers','orders'],
+const DATASETS={'customer-orders':['orders'],'orders-tiers':['orders','tier'],'customers-orders':['customers','orders'],
   'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake'],
   'formfacade-workshops':['feedback'],'neartail-shipping':['deliveries'],'formesign-contracts':['contracts'],
   'formesign-hospital-transfers':['transfers'],'neartail-catering':['catering'],'formfacade-bank-deposits':['deposits'],
@@ -193,7 +193,7 @@ $('f').addEventListener('submit',async function(e){
     // into the new one's /chat body until it crossed the server's history cap -> 413 on every submit.
     ['pr_conversation_id','pr_orch_history','pr_conv_state'].forEach(k=>sessionStorage.removeItem(k));
   }catch(_){}
-  location.href='reason';                                                         // auth happens ON /reason (redirect there) — no home bounce
+  location.href='reason'+executionQuery();                                         // auth happens ON /reason (redirect there) — no home bounce
 });
 // Data-source entry: the button is a bare "+" everywhere. On "/" it opens the source menu
 // (Google Sheets / Excel / CSV); on the /sheets, /excel and /csv single-source landings it

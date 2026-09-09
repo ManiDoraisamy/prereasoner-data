@@ -278,7 +278,7 @@ class _TableQueryPg(TableQuery):
                 dataset_version=context.dataset_version,
             ).run(
                 engine,
-                mode=deterministic_execution_mode(),
+                mode=context.execution_mode or deterministic_execution_mode(),
                 estimated_rows=sum(
                     len(tablemap[name].get("rows") or ())
                     for name in plan.views[0].tables

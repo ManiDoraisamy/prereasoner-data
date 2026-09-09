@@ -78,6 +78,7 @@ def _answer(question: str) -> dict:
 # engine was actually called with — the thing that matters once the caller is in-process and serving
 # concurrent users, where a process-wide token would silently cross requests.
 AUTH_SEEN: list[str | None] = []
+REQUESTS: list[dict] = []
 
 
 class H(BaseHTTPRequestHandler):
@@ -105,6 +106,7 @@ class H(BaseHTTPRequestHandler):
             req = json.loads(self.rfile.read(n) or b"{}")
         except ValueError:
             self._send(200, {"error": "bad json"}); return
+        REQUESTS.append(req)
         path = self.path.rstrip("/")
         if path in ("/api/reason", "/api/knowledge"):
             self._send(200, _answer(req.get("question", "")))

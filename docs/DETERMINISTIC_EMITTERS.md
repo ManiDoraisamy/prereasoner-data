@@ -136,6 +136,21 @@ emitter versions.
 | `sql` | Execute the generated SQL view stack |
 | `verify` | Execute both and fail at the first named stage whose normalized rows differ |
 
+The `/reason` browser accepts a request-local override for a named analysis:
+
+```text
+/reason?use=sql
+/reason?use=py
+/reason?use=both
+/reason/c_<conversation-id>?use=both
+```
+
+`sql` selects SQL, `py` selects generated Python, and `both` maps to `verify`. The browser carries
+the preference in every direct `/api/reason` request and every orchestrated `/chat` engine call,
+including follow-ups and the conversation URL rewrite. An omitted value uses the deployment setting.
+The override is request-local and never changes `DETERMINISTIC_EXECUTION_MODE` for another concurrent
+user.
+
 `auto` is the default and the row limit defaults to `10000`. The estimate is the total number of
 input rows selected for the plan. Verification compares every materialized view through exact
 decimal normalization and ignores unspecified row order. A mismatch names the failing stage, so the

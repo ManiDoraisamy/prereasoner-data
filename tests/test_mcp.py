@@ -21,7 +21,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from mcp_server import engine_client
-from tests.stub_engine import AUTH_SEEN, H
+from tests.stub_engine import AUTH_SEEN, H, REQUESTS
 
 P = 0
 F = 0
@@ -106,6 +106,10 @@ def test_integration(base):
 
     r3 = asyncio.run(engine_client.call_query("how much did we sell overall", tables, "jobC", base_url=base))
     ok(r3["status"] == "answered", "generic query -> answered")
+
+    asyncio.run(engine_client.call_query("how much did we sell overall", tables, "jobMode",
+                                         base_url=base, use="both"))
+    ok(REQUESTS[-1].get("use") == "both", "URL-selected execution mode reaches the engine client")
 
     d = asyncio.run(engine_client.call_describe([{"name": "customers", "data": "city\nParis\nLyon\n"}],
                                                 base_url=base))

@@ -14,6 +14,7 @@ class AnalysisExecutionContext:
     slug: str
     revision: int
     dataset_version: str | None
+    execution_mode: str | None
 
 
 _CURRENT: ContextVar[AnalysisExecutionContext | None] = ContextVar(
@@ -40,7 +41,10 @@ def set_execution_record(record: dict[str, object]) -> None:
 
 @contextmanager
 def analysis_execution_context(
-    descriptor: dict[str, object] | None, conversation_id: str
+    descriptor: dict[str, object] | None,
+    conversation_id: str,
+    *,
+    execution_mode: str | None = None,
 ) -> Iterator[AnalysisExecutionContext | None]:
     if descriptor is None:
         yield None
@@ -54,6 +58,7 @@ def analysis_execution_context(
             if descriptor.get("dataset_version") is not None
             else None
         ),
+        execution_mode=execution_mode,
     )
     token = _CURRENT.set(context)
     record_token = _EXECUTION_RECORD.set(None)

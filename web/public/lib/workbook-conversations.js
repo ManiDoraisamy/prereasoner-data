@@ -8,7 +8,7 @@ function urlConvId(){ const m=(location.pathname||'').match(/\/reason\/(c_[0-9a-
 function setConversation(cid){
   if(!cid||typeof cid!=='string') return;
   try{ sessionStorage.setItem('pr_conversation_id', cid); }catch(_){}
-  if(urlConvId()!==cid){ try{ history.replaceState({}, '', '/reason/'+cid); }catch(_){} }
+  if(urlConvId()!==cid){ try{ history.replaceState({}, '', '/reason/'+cid+executionQuery()); }catch(_){} }
   const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&convId())||FAILMSG);   // now that the id landed, a follow-up can safely attach to this conversation
 }
 function prettyTs(iso){ if(!iso)return ''; try{ return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } }
@@ -31,10 +31,10 @@ async function openConversation(id){                          // re-hydrate a pa
     sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
     sessionStorage.setItem(SS.Q, j.question||'');
     try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}   // restore the snapshot (else run() re-runs)
-    location.href='/reason/'+j.conversation_id;              // deep-linkable per-conversation URL
+    location.href='/reason/'+j.conversation_id+executionQuery(); // deep-linkable per-conversation URL
   }catch(_){ if(it){ it.classList.remove('loading'); it.classList.add('err'); } }
 }
-function newConversation(){ try{ ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'; }
+function newConversation(){ try{ ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'+executionQuery(); }
 function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
 function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
 async function renderDrawer(){

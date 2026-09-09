@@ -24,6 +24,7 @@ DATASET_DIR = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset"
 # entry here fails the suite: a public demo must not ship with an unverified answer.
 EXPECTED = {
     "customer-orders": ("world+fx", 1126.66),     # city -> country join + ECB conversion (as-of drift tolerated)
+    "orders-tiers": ("world+fx", 1126.66),        # separate orders + tier joined discount fixture
     "customers-orders": ("world+fx", 1126.66),    # same question through the two-sheet FK join
     "formfacade-leads": ("world", 62000),         # country column -> continent grounding (Europe)
     "formfacade-workshops": ("own", 4),           # AVG with a value filter; no knowledge join

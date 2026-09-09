@@ -130,7 +130,7 @@ class H(BaseHTTPRequestHandler):
             if req is None:
                 return
             try:
-                message, tables, history, turn_id, conversation_id = validate_chat_request(req)
+                message, tables, history, turn_id, conversation_id, use = validate_chat_request(req)
             except RequestValidationError as exc:
                 self._send(exc.status_code, json.dumps({"error": str(exc)})); return
             token = self._bearer()
@@ -170,7 +170,7 @@ class H(BaseHTTPRequestHandler):
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,
                          api_key=config.anthropic_api_key(), model=config.ANTHROPIC_MODEL,
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id,
-                         principal=sub),
+                         principal=sub, use=use),
                 _LOOP,
             )
             res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)

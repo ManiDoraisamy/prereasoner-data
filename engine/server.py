@@ -14,7 +14,7 @@
   GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
 
 Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?, conversation_id?,
-analysis?:{action,slug,analysis_id?,revision?}} +
+use?:sql|py|both, analysis?:{action,slug,analysis_id?,revision?}} +
 header Authorization: Bearer <Firebase ID token>. The response echoes conversation_id. For dimension:
 {data, mode:'analyze'}. Non-prod bypass: AUTH_TEST_SUB -> fixed user, skips token verification (test-only).
 
@@ -698,7 +698,9 @@ class H(BaseHTTPRequestHandler):
                     if enrichment is not None and enrichment.used:
                         serve_kwargs["explicit_fks"] = enrichment.explicit_fks
                     from engine.deterministic.context import analysis_execution_context
-                    with analysis_execution_context(analysis, conv), request_timing.span("serve"):
+                    with analysis_execution_context(
+                        analysis, conv, execution_mode=req.get("use")
+                    ), request_timing.span("serve"):
                         res = MODEL.serve(
                             tabs, req.get("question", ""), conv, req.get("as_of"),
                             dataset_semantics=semantics, **serve_kwargs

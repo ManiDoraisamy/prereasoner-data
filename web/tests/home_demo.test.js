@@ -50,8 +50,10 @@ assert.deepStrictEqual(denorm.slice(1), expected,
   'customer-orders.csv must equal customers ⋈ orders exactly');
 
 // The page selects a dataset by ?dataset= with the denormalized single sheet as the default.
-assert(/'customer-orders':\['orders','tier'\]/.test(html),
-  'customer-orders must load its orders and tier schedule together');
+assert(/'customer-orders':\['orders'\]/.test(html),
+  'customer-orders must load only its denormalized orders sheet');
+assert(/'orders-tiers':\['orders','tier'\]/.test(html),
+  'orders-tiers must load its orders and tier schedule together');
 assert(/'payment-commissions':\['payments','commission_rates'\]/.test(html),
   'the independent commission calculation dataset must be registered');
 assert(/'customers-orders':\['customers','orders'\]/.test(html), 'customers-orders must load both CSVs');
@@ -95,6 +97,19 @@ assert(!html.includes('<div class=xd>\'+esc(e.dir)+\'</div>'), 'the row subtitle
 assert(/name:n,/.test(html), 'the chip name must be the same DATASETS value the picker prints');
 assert(html.includes("location.href='/?load='+encodeURIComponent(b.dataset.load)"),
   'picking an example must navigate to its ?load= URL');
+assert(html.includes("location.href='reason'+executionQuery()"),
+  'submitting a dataset must carry the URL-selected execution mode to /reason');
+const shared = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'shared.js'), 'utf8');
+assert(shared.includes("raw==='sql'") && shared.includes("raw==='py'") && shared.includes("raw==='both'"),
+  'the browser URL contract must accept sql, py, and both');
+assert(shared.includes('function executionRequestFields()'),
+  'the browser must expose the selected execution mode to request builders');
+const conversations = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook-conversations.js'), 'utf8');
+assert(conversations.includes("'/reason/'+cid+executionQuery()"),
+  'conversation URLs must preserve the selected execution mode');
+const workbook = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
+assert((workbook.match(/executionRequestFields\(\)/g) || []).length >= 3,
+  'direct and orchestrated retries must carry the selected execution mode');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
 assert(/min-width:1000px[^}]*\{[^}]*\.hero-left \.h1\{white-space:nowrap/.test(css.replace(/\s+/g, '')) ||
   css.includes('.hero-left .h1{white-space:nowrap;max-width:none}'),
