@@ -27,6 +27,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const statusRef = at('status');
   const resolveRef = at('resolve');
   const viewsRef = at('views');
+  const analysisRef = at('analysis');
   const resultRef = at('result');
   const datasetSemanticsRef = at('dataset_semantics');
   const clarifyRef = at('clarify');
@@ -40,6 +41,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uStatus = onValue(statusRef, s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
   const uResolve = onChildAdded(resolveRef, s => { if (cb.onResolve) cb.onResolve(s.key, s.val()); });
   const uView = onChildAdded(viewsRef, s => { if (cb.onView) cb.onView(s.key, s.val()); });
+  const uAnalysis = onValue(analysisRef, s => { const v = s.val(); if (v && cb.onAnalysis) cb.onAnalysis(v); });
   const uResult = onValue(resultRef, s => { const v = s.val(); if (v && cb.onResult) cb.onResult(v); });
   const uDatasetSemantics = onValue(datasetSemanticsRef, s => {
     const v = s.val(); if (cb.onDatasetSemantics) cb.onDatasetSemantics(Array.isArray(v) ? v : []);
@@ -51,7 +53,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uError = onValue(errorRef, s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
   const uMcols = onValue(mcolsRef, s => { const v = s.val(); if (v && cb.onMasterCols) cb.onMasterCols(v); });
   const uMrow = onChildAdded(mrowsRef, s => { if (cb.onMasterRow) cb.onMasterRow(s.key, s.val()); });
-  return () => { try { uConv(); uStatus(); uResolve(); uView(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uMcols(); uMrow(); off(base); } catch(_){} };
+  return () => { try { uConv(); uStatus(); uResolve(); uView(); uAnalysis(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uMcols(); uMrow(); off(base); } catch(_){} };
 };
 
 // Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Sonnet front-door announces each engine

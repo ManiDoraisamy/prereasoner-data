@@ -24,7 +24,7 @@ from engine import request_timing
 from engine.config import DATA_DIR, BASE_MODEL_ID as MODEL_ID  # noqa: F401 - public compatibility export
 from engine.fk_edges import edges
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
-from engine.relations import relate
+from engine.relations import dedup, relate
 from engine.request_validation import canonical_table_name
 
 MAX_ROWS, MAX_LEN = 12, 48
@@ -59,6 +59,23 @@ def qual(t, c):
 def normalize_table_name(name):
     """Return the canonical table identifier used throughout planner ingestion."""
     return re.sub(r"\W+", "_", str(name)).strip("_") or "t"
+
+
+def normalize_tables(tables):
+    """Return the canonical table/row representation used by planning and execution."""
+    normalized = []
+    for table in tables:
+        columns = list(table["columns"])
+        rows = [row if isinstance(row, list) else [row.get(column) for column in columns]
+                for row in table["rows"]]
+        normalized.append({
+            "name": normalize_table_name(table["name"]),
+            "columns": columns,
+            "rows": rows,
+        })
+    for table in normalized:
+        dedup(table)
+    return normalized
 
 
 def _fk_columns(fk, side):
@@ -291,12 +308,8 @@ class TableQuery:
     # ---------- ingest + schema ----------
     def ingest(self, tables, explicit_fks=()):
         """Normalize tables, deduplicate rows, and merge trusted internal edges with discovered FKs."""
-        norm = []
-        for t in tables:
-            cols = list(t["columns"])
-            rows = [r if isinstance(r, list) else [r.get(c) for c in cols] for r in t["rows"]]
-            norm.append({"name": normalize_table_name(t["name"]), "columns": cols, "rows": rows})
-        g = relate(norm, explicit_fks=explicit_fks)                # dedup + trusted/discovered FK graph
+        norm = normalize_tables(tables)
+        g = relate(norm, explicit_fks=explicit_fks, deduplicated=True)
         return g["tables"], g["fks"]
 
     def _schema_name_units(self, tables, fks):

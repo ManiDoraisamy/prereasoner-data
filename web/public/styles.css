@@ -281,11 +281,21 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .convrun button:hover{background:#eee9fc;border-color:var(--brand)}
 /* orchestrated (Sonnet assist): the collapsible chain of thought + the mode badge */
 .cot{margin-top:7px}
-.cotbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:3px 4px;color:#9a93ad;font:12px var(--disp)}
+.cotbar{display:flex;align-items:center;gap:4px;min-width:0;color:#9a93ad;font:12px var(--disp)}
+.cotbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:#9a93ad;font:12px var(--disp);flex:0 0 auto}
 .cotbtn:hover{color:var(--brand)}
 .cotchev{display:inline-block;transition:transform .15s;font:600 13px var(--disp)}
 .cot.open .cotchev{transform:rotate(90deg)}
 .cotbody{margin-top:6px}
+.analysisprefix{white-space:nowrap}
+.analysislink{all:unset;cursor:pointer;color:var(--brand);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid transparent}
+.analysislink:hover,.analysislink:focus-visible{border-color:currentColor}
+.analysislink.on{color:#4c35cb}
+.analysisname{font-weight:600;color:var(--card-ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.analysisverb{margin-left:auto;padding-left:6px;color:#777087;font:600 9.5px var(--mono);text-transform:uppercase;white-space:nowrap}
+.analysiserror{margin:0 0 10px;padding:9px 11px;border-left:3px solid #b04a3c;background:#fff4f1;color:#713127;font:12px/1.45 var(--disp)}
+.analysisstale{margin:0 0 10px;padding:9px 11px;border-left:3px solid #b78022;background:#fff9e9;color:#694b14;font:12px/1.45 var(--disp)}
+.cot.archived .cotbar{padding:3px 4px}
 .cotask{padding:5px 10px;margin-bottom:6px;border-radius:8px;background:#f6f4ff;border:1px dashed #d8cdf5;color:#5b5273;font:12.5px/1.5 var(--disp)}
 .modebadge{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;margin:0 0 10px;padding:3px 10px;border-radius:9999px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);font:600 11px var(--disp);cursor:default}
 /* editable input sheets (what-if) + the Recalculate bar */

@@ -79,8 +79,8 @@ async function clearAllConvs(){
    history) so a reload RESTORES what the user saw instead of re-running the model from scratch. Input sheets come
    from the stored `tables`; master (per-user) reloads via loadMaster; only the derivation + rail are snapshotted. */
 function convSnapshot(){
-  const turns=CHAT.map(t=>({q:t.q, reply:t.reply||''}));
-  if(SETTLED && turnReply()) turns.push({q:question, reply:turnReply()});   // the live (settled) turn isn't archived yet
+  const turns=CHAT.map(t=>({q:t.q, reply:t.reply||'', analysis:t.analysis||null}));
+  if(SETTLED && turnReply()) turns.push({q:question, reply:turnReply(), analysis:TURN_ANALYSIS||null});   // the live (settled) turn isn't archived yet
   if(!turns.length) return null;
   const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||(s.cls==='master'&&(!s.saved||s.dirty))).map(s=>({
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
@@ -91,8 +91,8 @@ function convSnapshot(){
     cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
     rows:(c.cols&&c.cols.length>1&&c.rows)?((!c.saved||c.dirty)?c.rows.map(r=>r.slice()):c.rows.slice(0,MAX_RENDER_ROWS)):undefined,
     saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
-  return {v:1, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
-    datasetSemantics:DS_META};
+  return {v:2, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
+    datasetSemantics:DS_META, viewedAnalysis:VIEWED_ANALYSIS||null};
 }
 let _saveStateT=null;
 function saveConvState(){                                     // persist the snapshot after a turn settles
@@ -110,7 +110,7 @@ function saveConvState(){                                     // persist the sna
   }, 700);
 }
 function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
-  if(!st||st.v!==1||!Array.isArray(st.turns)||!st.turns.length) return false;
+  if(!st||![1,2].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
       rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
@@ -123,8 +123,12 @@ function restoreConvState(st){                               // render a stored 
     REFCANDS.forEach(c=>MSEEN.add(c.key));                   // keep loadMaster from auto-promoting a removed reference back to a sheet
   }
   const turns=st.turns.slice(), last=turns.pop();
-  CHAT=turns.map(t=>({q:t.q, reply:t.reply||'', html:'<div class=convmsg>'+conv2html(t.reply||'')+'</div>'}));
-  if(last){ question=last.q; try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
+  VIEWED_ANALYSIS=st.viewedAnalysis||((last&&last.analysis)||null); ANALYSIS_ERROR=null;
+  CHAT=turns.map(t=>({q:t.q, reply:t.reply||'', analysis:t.analysis||null,
+    html:(t.analysis?'<div class="cot archived"><div class=cotbar>'+analysisHeading(t.analysis)+'</div></div>':'')
+      +'<div class=convmsg>'+conv2html(t.reply||'')+'</div>'}));
+  if(last){ question=last.q; TURN_ANALYSIS=last.analysis||null;
+    try{ sessionStorage.setItem(SS.Q, last.q); }catch(_){}; CONV=last.reply||''; }
   if(Array.isArray(st.history)) HISTORY=st.history;
   if(Array.isArray(st.datasetSemantics)) DS_META=st.datasetSemantics;
   SETTLED=true; DONE=true; STATUS='';

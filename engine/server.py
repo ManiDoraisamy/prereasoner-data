@@ -9,51 +9,81 @@
   POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, auth required).
   GET  /api/conversations       — the signed-in user's conversations (drawer list; ownership-scoped).
   GET  /api/conversation?id=…   — one conversation's opening prompt + stored tables (re-open).
+  GET  /api/analyses?conversation_id=… — the conversation's engine-owned analysis catalog.
+  GET  /api/analysis?conversation_id=…&analysis_id=…&revision=… — one immutable workbook revision.
   GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
 
-Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?, conversation_id?} +
+Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?, conversation_id?,
+analysis?:{action,slug,analysis_id?,revision?}} +
 header Authorization: Bearer <Firebase ID token>. The response echoes conversation_id. For dimension:
 {data, mode:'analyze'}. Non-prod bypass: AUTH_TEST_SUB -> fixed user, skips token verification (test-only).
 
 Run: python -m engine.server
 """
 from __future__ import annotations
+
+import datetime
 import json
 import os
-import datetime
 import threading
 import traceback
 import uuid
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-from urllib.parse import urlparse, parse_qs
-
-from engine import config
-from engine.config import HOST, PORT, external_llm_enabled
-from engine.auth import _verify_principal, _bearer
-from engine.tables import csv_table, table_name
-from engine.trace import emitter, stream_final, set_ctx
-from engine import dataset_semantics
-from engine import dataset_attestation
-from engine.dataset_semantics import DatasetOpError
-from engine.conversations import (resolve_conversation, conversation_page, get_conversation,
-                                  load_dataset_ops, append_dataset_ops,
-                                   delete_conversation, delete_all_conversations, save_state, NotOwned,
-                                   QuotaExceeded, DatasetOpsLimitError)
-from engine import master
-from engine import admin
 from decimal import Decimal
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
-from engine import request_timing
+from engine import (
+    admin,
+    config,
+    dataset_attestation,
+    dataset_semantics,
+    master,
+    request_timing,
+)
+from engine.analysis import (
+    AnalysisConflict,
+    AnalysisError,
+    analysis_emitter,
+    analysis_input_hash,
+    decorate_analysis_response,
+)
+from engine.auth import _bearer, _verify_principal
+from engine.config import HOST, PORT, external_llm_enabled
+from engine.conversations import (
+    DatasetOpsLimitError,
+    NotOwned,
+    QuotaExceeded,
+    append_dataset_ops,
+    begin_analysis,
+    complete_analysis,
+    conversation_page,
+    delete_all_conversations,
+    delete_conversation,
+    fail_analysis,
+    get_analysis_revision,
+    get_conversation,
+    list_analyses,
+    load_dataset_ops,
+    resolve_conversation,
+    save_state,
+    source_snapshot_hash,
+)
+from engine.dataset_semantics import DatasetOpError
 from engine.numeric import wire_value
 from engine.pg import _pg
+from engine.provenance import ProvenanceContext
 from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from engine.request_limits import (
-    JSONBodyError, RequestGate, RequestLease, SlidingWindowLimiter, allowed_origin, read_json_object,
+    JSONBodyError,
+    RequestGate,
+    RequestLease,
+    SlidingWindowLimiter,
+    allowed_origin,
+    read_json_object,
 )
 from engine.request_validation import RequestValidationError, validate_reason_request
-from engine.provenance import ProvenanceContext
-
+from engine.tables import csv_table, normalize_tables, table_name
+from engine.trace import emitter, set_ctx, stream_final
 
 MODEL = None                       # the ONE KnowledgeReasoner, shared by /api/reason and /api/knowledge
 DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
@@ -175,6 +205,8 @@ class H(BaseHTTPRequestHandler):
                                         "dimension": DIM_MODEL is not None}))
         elif path in ("/api/conversations", "/api/conversation"):
             self._get_conversations(path, parse_qs(u.query))
+        elif path in ("/api/analyses", "/api/analysis"):
+            self._get_analyses(path, parse_qs(u.query))
         elif path == "/api/master":
             self._get_master(parse_qs(u.query))
         elif path.startswith("/api/admin/"):
@@ -208,6 +240,37 @@ class H(BaseHTTPRequestHandler):
                 self._send(404, json.dumps({"error": "conversation not found"}))   # not yours OR absent
         except Exception as e:                               # noqa: BLE001
             print(f"conversation lookup failed: {type(e).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
+
+    def _get_analyses(self, path, qs):
+        """List named workbooks or load one exact, ownership-scoped revision."""
+        try:
+            sub, _uid = _verify_principal(_bearer(self.headers, None))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            conversation_id = (qs.get("conversation_id") or [""])[0]
+            if path == "/api/analyses":
+                self._send(200, json.dumps({
+                    "analyses": list_analyses(sub, conversation_id),
+                }, default=_json_safe)); return
+            analysis_id = (qs.get("analysis_id") or [""])[0]
+            raw_revision = (qs.get("revision") or [None])[0]
+            try:
+                revision = int(raw_revision) if raw_revision is not None else None
+            except (TypeError, ValueError):
+                self._send(400, json.dumps({"error": "analysis revision is invalid"})); return
+            if revision is not None and not 1 <= revision <= 1_000_000:
+                self._send(400, json.dumps({"error": "analysis revision is invalid"})); return
+            loaded = get_analysis_revision(
+                sub, conversation_id, analysis_id, revision=revision,
+            )
+            self._send(200, json.dumps(loaded, default=_json_safe))
+        except NotOwned:
+            self._send(404, json.dumps({"error": "analysis not found"}))
+        except AnalysisError as exc:
+            self._send(404, json.dumps({"error": str(exc)}))
+        except Exception as exc:  # noqa: BLE001
+            print(f"analysis lookup failed: {type(exc).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
 
     # ---------------- master data (per-user reference tables; auth required, uid-scoped) ----------------
@@ -458,6 +521,20 @@ class H(BaseHTTPRequestHandler):
     # ---------------- /api/reason + /api/knowledge (Firebase auth + RTDB trace stream) ----------------
     def _post_world(self):
         emit = None                                          # so the except can stream a terminal error to RTDB
+        analysis = None
+        analysis_user = None
+        analysis_conversation = None
+
+        def discard_analysis():
+            nonlocal analysis
+            if analysis is None or not analysis_user or not analysis_conversation:
+                return
+            pending = analysis
+            analysis = None
+            try:
+                fail_analysis(analysis_user, analysis_conversation, pending)
+            except Exception as cleanup_error:               # noqa: BLE001 - preserve the original outcome
+                print(f"analysis cleanup failed: {type(cleanup_error).__name__}", flush=True)
         # ONE timing scope per request, closed in the finally so a 4xx/5xx is measured like a 200.
         # The id comes from the caller when the orchestrator supplies one, so a chat turn's engine
         # calls can be correlated with the turn that issued them across the two services.
@@ -482,12 +559,14 @@ class H(BaseHTTPRequestHandler):
                 return
             sheets = req["tables"]
             if sheets:
+                source_sheets = sheets
                 tabs = [csv_table(s["data"], s["name"])
                         for i, s in enumerate(sheets[:MAX_SHEETS]) if isinstance(s, dict) and (s.get("data") or "").strip()]
             else:
                 data = req["data"]
                 if not data.strip():
                     self._send(200, json.dumps({"error": "no CSV (need {tables:[…], question})"})); return
+                source_sheets = [{"name": req["table"], "data": data}]
                 tabs = [csv_table(data, req["table"])]
             if not tabs:
                 self._send(200, json.dumps({"error": "no CSV rows"})); return
@@ -497,6 +576,36 @@ class H(BaseHTTPRequestHandler):
                     truncated.append(f"{t['name']}: only the first {MAX_ROWS} rows were used ({len(t['rows'])} uploaded)")
                     t["rows"] = t["rows"][:MAX_ROWS]
             uploaded_count = len(tabs)
+            # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
+            # conversation id is honored ONLY after the ownership check (chat.user_conversation);
+            # otherwise a new conversation is minted for the verified user. No conversation id
+            # ever reaches the schema without passing through this authorization (no IDOR).
+            try:
+                conv = resolve_conversation(
+                    sub, req.get("conversation_id"), req.get("question", ""), source_sheets,
+                )
+            except NotOwned:
+                # 404 (not 403) to match GET /api/conversation — "not yours" and "absent" look identical (no enumeration).
+                self._send(404, json.dumps({"error": "conversation not found"})); return
+            except QuotaExceeded as exc:
+                self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+            analysis_spec = req.get("analysis")
+            if analysis_spec and analysis_spec["action"] == "inspect":
+                try:
+                    loaded = get_analysis_revision(
+                        sub, conv, analysis_spec["analysis_id"], analysis_spec.get("revision"),
+                    )
+                except (NotOwned, AnalysisError):
+                    self._send(404, json.dumps({"error": "analysis not found"})); return
+                res = dict(loaded["response"])
+                res["conversation_id"] = conv
+                emit = emitter(uid, req.get("jobId"))
+                emit("conversation_id", conv)
+                emit("analysis", loaded["analysis"])
+                for index, view in enumerate(res.get("views") or ()):
+                    emit(f"views/{index}", view)
+                stream_final(emit, res)
+                self._send(200, json.dumps(res, default=_json_safe)); return
             references = master.relevant_tables(sub, tabs, MAX_SHEETS - len(tabs), MAX_ROWS)
             tabs.extend(references["tables"])
             reference_count = len(references["tables"])
@@ -510,17 +619,6 @@ class H(BaseHTTPRequestHandler):
                 )
                 if enrichment.used:
                     tabs = list(enrichment.tables)
-            # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
-            # conversation id is honored ONLY after the ownership check (chat.user_conversation);
-            # otherwise a new conversation is minted for the verified user. No conversation id
-            # ever reaches the schema without passing through this authorization (no IDOR).
-            try:
-                conv = resolve_conversation(sub, req.get("conversation_id"), req.get("question", ""), sheets)
-            except NotOwned:
-                # 404 (not 403) to match GET /api/conversation — "not yours" and "absent" look identical (no enumeration).
-                self._send(404, json.dumps({"error": "conversation not found"})); return
-            except QuotaExceeded as exc:
-                self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
             # DATASET SEMANTICS (engine/dataset_semantics.py): validate any incoming ops against the
             # UPLOADED tables, append them to the conversation's log, replay the full log into
             # effective metadata, and apply it (a currency claim synthesizes the code column the FX
@@ -562,6 +660,30 @@ class H(BaseHTTPRequestHandler):
                 enrichment=enrichment, dataset_semantics=semantics,
             )
             emit = provenance_context.wrap_emitter(emitter(uid, req.get("jobId")))
+            if analysis_spec:
+                try:
+                    analysis = begin_analysis(
+                        sub, conv, analysis_spec, req.get("question", ""),
+                        request_input_hash=analysis_input_hash(
+                            normalize_tables(tabs),
+                            explicit_fks=(enrichment.explicit_fks
+                                          if enrichment is not None and enrichment.used else ()),
+                            dataset_semantics=semantics,
+                        ),
+                        request_source_hash=source_snapshot_hash(source_sheets),
+                    )
+                except QuotaExceeded as exc:
+                    self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+                except AnalysisConflict as exc:
+                    self._send(409, json.dumps({"error": str(exc)})); return
+                except NotOwned:
+                    self._send(404, json.dumps({"error": "analysis not found"})); return
+                except AnalysisError as exc:
+                    self._send(400, json.dumps({"error": str(exc)})); return
+                analysis_user = sub
+                analysis_conversation = conv
+                emit = analysis_emitter(emit, analysis)
+                emit("analysis", analysis)
             emit("conversation_id", conv)                    # stream it EARLY so the browser gets it even if the HTTP body is lost to a proxy timeout
             emit("status", "running")
             # lock_wait is measured SEPARATELY from serve: the global lock serializes the engine, so
@@ -605,9 +727,32 @@ class H(BaseHTTPRequestHandler):
                     res["provenance"] = provenance
                 if enrichment.warnings:
                     res.setdefault("warnings", []).extend(enrichment.warnings)
+            if analysis is not None:
+                if isinstance(res, dict) and res.get("result") is not None \
+                        and not res.get("clarify") and not res.get("error"):
+                    res = decorate_analysis_response(res, analysis)
+                    try:
+                        snapshot = complete_analysis(sub, conv, analysis, req.get("question", ""), res)
+                    except QuotaExceeded as exc:
+                        discard_analysis()
+                        emit("error", str(exc)); emit("status", "error")
+                        self._send(429, json.dumps({"error": str(exc)}), retry_after=60); return
+                    except (AnalysisConflict, NotOwned):
+                        discard_analysis()
+                        emit("error", "analysis changed while the answer was running; please retry")
+                        emit("status", "error")
+                        self._send(409, json.dumps({
+                            "error": "analysis changed while the answer was running; please retry",
+                        })); return
+                    res["analysis"] = snapshot["analysis"]
+                    emit("analysis", snapshot["analysis"])
+                    analysis = None                         # committed; the exception path must not fail it
+                else:
+                    discard_analysis()
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(res, default=_json_safe))
         except Exception as e:                           # noqa: BLE001
+            discard_analysis()
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error
                 try:
                     emit("error", "internal server error"); emit("status", "error")
@@ -657,12 +802,16 @@ class H(BaseHTTPRequestHandler):
 
 def main():
     global MODEL, DIM_MODEL, ENRICHMENT
-    from engine.knowledge import KnowledgeReasoner
     from engine.dimension import DimensionModel
+    from engine.knowledge import KnowledgeReasoner
     print("loading world reasoner (composition engine + unified Qwen + bge resolver + spaCy; LIVE Postgres)...",
           flush=True)
     MODEL = KnowledgeReasoner()
-    from engine.enrichment import EnrichmentRuntime, SnapshotStore, deployment_dataset_allowlist
+    from engine.enrichment import (
+        EnrichmentRuntime,
+        SnapshotStore,
+        deployment_dataset_allowlist,
+    )
     from engine.pg import _pg
     ENRICHMENT = EnrichmentRuntime(
         SnapshotStore(_pg),

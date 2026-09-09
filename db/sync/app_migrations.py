@@ -97,6 +97,68 @@ CHAT_MIGRATIONS = (
             'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS dataset_ops jsonb',
         ),
     ),
+    ApplicationMigration(
+        5,
+        "named_analysis_workbooks",
+        (
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS source_hash text',
+            'ALTER TABLE "chat"."conversation" DROP CONSTRAINT IF EXISTS chat_conversation_source_hash_shape',
+            'ALTER TABLE "chat"."conversation" ADD CONSTRAINT chat_conversation_source_hash_shape '
+            "CHECK (source_hash IS NULL OR source_hash ~ '^[0-9a-f]{64}$')",
+            'ALTER TABLE "chat"."conversation" ADD COLUMN IF NOT EXISTS dataset_version bigint NOT NULL DEFAULT 1',
+            'ALTER TABLE "chat"."conversation" DROP CONSTRAINT IF EXISTS chat_conversation_dataset_version_positive',
+            'ALTER TABLE "chat"."conversation" ADD CONSTRAINT chat_conversation_dataset_version_positive '
+            'CHECK (dataset_version > 0)',
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."analysis" (
+              analysis_id text PRIMARY KEY
+                CONSTRAINT chat_analysis_id_shape CHECK (analysis_id ~ '^a_[0-9a-f]{32}$'),
+              conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id)
+                ON DELETE CASCADE,
+              slug text NOT NULL
+                CONSTRAINT chat_analysis_slug_shape CHECK (slug ~ '^[a-z][a-z0-9_]{0,39}$'),
+              latest_question text NOT NULL DEFAULT '',
+              latest_revision integer NOT NULL DEFAULT 0
+                CONSTRAINT chat_analysis_revision_nonnegative CHECK (latest_revision >= 0),
+              stale boolean NOT NULL DEFAULT false,
+              created_at timestamptz NOT NULL DEFAULT now(),
+              updated_at timestamptz NOT NULL DEFAULT now(),
+              UNIQUE (conversation_id, slug)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."analysis_revision" (
+              analysis_id text NOT NULL REFERENCES "chat"."analysis"(analysis_id) ON DELETE CASCADE,
+              revision integer NOT NULL CHECK (revision > 0),
+              action text NOT NULL CHECK (action IN ('create', 'modify')),
+              question text NOT NULL,
+              status text NOT NULL CHECK (status IN ('pending', 'complete', 'failed')),
+              input_hash text NOT NULL
+                CONSTRAINT chat_analysis_revision_input_hash_shape
+                CHECK (input_hash ~ '^[0-9a-f]{64}$'),
+              dataset_version bigint NOT NULL CHECK (dataset_version > 0),
+              response jsonb,
+              response_bytes bigint NOT NULL DEFAULT 0 CHECK (response_bytes >= 0),
+              created_at timestamptz NOT NULL DEFAULT now(),
+              completed_at timestamptz,
+              PRIMARY KEY (analysis_id, revision)
+            )
+            """,
+            'CREATE INDEX IF NOT EXISTS ix_chat_analysis_conversation '
+            'ON "chat"."analysis" (conversation_id, updated_at DESC)',
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."working_table" (
+              conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id)
+                ON DELETE CASCADE,
+              table_name text NOT NULL,
+              content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+              row_count integer NOT NULL CHECK (row_count >= 0),
+              updated_at timestamptz NOT NULL DEFAULT now(),
+              PRIMARY KEY (conversation_id, table_name)
+            )
+            """,
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

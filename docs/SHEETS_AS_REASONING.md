@@ -7,6 +7,12 @@ no hidden inputs. Every emitter of views (`engine/compose.py`, the conversion tr
 `engine/knowledge_tables.py`, any future path) and the renderer (`web/public/lib/workbook.js`)
 follow this contract. Do not restate these rules elsewhere; change them here.
 
+An uploaded table belongs to the conversation and keeps its canonical CSV stem (`orders`, `customers`). A
+conversation may contain several named analyses over those shared inputs. Each completed analysis revision stores
+the exact returned SQL, rows, and provenance. The UI shows short logical tab labels, while the wire-level derived
+view names are prefixed by the analysis slug: `total_sales_combined`, `total_sales_filtered`, and
+`total_sales_total`. This makes traces unambiguous without turning the tabs into long machine names.
+
 ## The step grammar
 
 A trail is a subset of these steps, always in this order, each one a real sheet:
@@ -47,6 +53,11 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
 8. **One grammar for every path.** The compose engine, the world-grounded conversion trail, and
    any future emitter produce the same ops, names, and ordering above. If a path cannot express
    its work in this grammar, fix the path, not the grammar.
+9. **Named revisions are immutable.** `modify` creates the next revision under the same analysis id; it does not
+   overwrite the prior response. `create` receives a distinct engine-owned id and a collision-free slug.
+10. **A workbook link is exact.** “Reasoning steps for total sales” links to both the analysis id and revision.
+    Selecting it retains the source and private-reference tabs and replaces only the derived stack. Stale analyses
+    are marked when a source table changes and must be recomputed before their old values are treated as current.
 
 ## Verification checklist (run against a live conversation)
 
@@ -59,6 +70,8 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
 - [ ] The Result equals the last sheet's aggregate; for conversions, the `calculated` column
       recomputes by eye (amount × rate).
 - [ ] Provenance badges name the true source (SRC/KB/FX), not a generic AI.
+- [ ] A modify follow-up keeps the analysis id and increments its revision; a distinct question creates a new id.
+- [ ] Each historical rail link restores its exact result while the input-table tabs remain present.
 
 Registered in `CLAUDE.md`'s ownership map. Demo datasets under `web/public/dataset/` are the
 standing fixtures for this checklist.

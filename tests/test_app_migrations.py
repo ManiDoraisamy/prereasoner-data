@@ -5,7 +5,6 @@ import pathlib
 import re
 import sys
 
-import engine.conversations as conversations
 from db.reference_grants import (
     _LEGACY_LAZY_FILL_FUNCTIONS,
     apply_shared_read_boundary,
@@ -17,6 +16,7 @@ from db.sync.app_migrations import (
     migrate_chat,
     migrate_knowledgebase,
 )
+from engine import conversations
 
 
 class _Cursor:
@@ -69,10 +69,10 @@ class _Connection:
 
 
 def test_chat_migration_is_admin_run_and_idempotent():
-    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4]
+    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5]
     assert CHAT_MIGRATIONS[0].name == "conversation_state"
     connection = _Connection()
-    assert migrate_chat(connection) == (1, 2, 3, 4)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5)
     assert migrate_chat(connection) == ()
     assert connection.commits == 2 and connection.rollbacks == 0
     assert any("ALTER TABLE \"chat\".\"conversation\"" in statement
@@ -85,6 +85,16 @@ def test_chat_migration_is_admin_run_and_idempotent():
     assert "ix_chat_conversation_expiry" in joined
     assert "chat_conversation_id_shape" in joined
     assert "SET DEFAULT" in joined
+    analyses = CHAT_MIGRATIONS[4]
+    assert analyses.name == "named_analysis_workbooks"
+    analysis_ddl = "\n".join(analyses.statements)
+    for table in ('"chat"."analysis"', '"chat"."analysis_revision"',
+                  '"chat"."working_table"'):
+        assert table in analysis_ddl
+        assert table in pathlib.Path("db/init.sql").read_text(encoding="utf-8")
+    init = pathlib.Path("db/init.sql").read_text(encoding="utf-8")
+    for column in ("source_hash", "dataset_version", "input_hash"):
+        assert column in analysis_ddl and column in init
 
 
 def test_knowledgebase_migration_installs_definer_functions():
@@ -106,7 +116,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert migrate_knowledgebase(connection) == (1, 2, 3)
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
-    assert migrate_chat(connection) == (1, 2, 3, 4)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5)
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():
@@ -278,8 +288,9 @@ def test_schedule_catalog_is_honest_about_what_it_claims():
 def test_schedule_migration_and_base_schema_agree():
     """A fresh database (init.sql) and a migrated one must end up with the SAME table, or the two
     deployment paths quietly diverge."""
-    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
     import pathlib
+
+    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
     v2 = [m for m in KNOWLEDGEBASE_MIGRATIONS if m.version == 2]
     assert v2 and v2[0].name == "maintenance_schedule", "the schedule migration must be v2"
     ddl = v2[0].statements[0]
@@ -298,8 +309,9 @@ def test_words_index_migration_and_base_schema_agree():
     from v3; this test fails if either declaration is dropped or the two stop matching. The index is
     norm-LEADING: the serving shapes constrain type positively, negatively, or not at all, and on
     PostgreSQL 16 only a norm-leading index can seek for all of them."""
-    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
     import pathlib
+
+    from db.sync.app_migrations import KNOWLEDGEBASE_MIGRATIONS
     v3 = [m for m in KNOWLEDGEBASE_MIGRATIONS if m.version == 3]
     assert v3 and v3[0].name == "words_norm_type_index", "the words index migration must be v3"
     ddl = v3[0].statements[0]

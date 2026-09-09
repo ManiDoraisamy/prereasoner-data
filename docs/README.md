@@ -81,6 +81,7 @@ candidates, schema-linking mistakes, ranking mistakes, source gaps, or entity-re
 | Typed own-data SQL planning and calculation verification | **Current** | Main planner path |
 | Conversation-scoped uploads and user-scoped private references | **Current** | Organization-wide tenancy is not implemented |
 | Bounded conversation storage and inactivity expiry | **Current** | Daily cleanup; defaults and limits are in `ARCHITECTURE.md` |
+| Multiple named analysis workbooks per conversation | **Current** | Immutable revisions; historical rail links retain shared input tables |
 | Browser XLSX upload | **Current** | Version-pinned parser in a bounded Web Worker; release-journey tested |
 | Wikidata-backed entity grounding | **Current** | Uses legacy `public` and `knowledgebase` storage names pending migration |
 | ECB dated currency conversion | **Current** | Uses a release-labelled daily projection |

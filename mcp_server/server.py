@@ -14,20 +14,28 @@ import json
 from mcp.server.fastmcp import FastMCP
 
 from mcp_server import engine_client
-from mcp_server.descriptions import QUERY_DESC, DESCRIBE_DESC
+from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 
 mcp = FastMCP("prereasoner")
 
 
 @mcp.tool(description=QUERY_DESC)
 async def prereasoner_query(question: str, tables: list, job_id: str | None = None,
-                            conversation_id: str | None = None) -> str:
+                            conversation_id: str | None = None,
+                            action: str | None = None, slug: str | None = None,
+                            analysis_id: str | None = None, revision: int | None = None) -> str:
     """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id).
 
     Dataset claims are emitted only by the authenticated chat orchestrator because the engine
     requires a principal-bound transport attestation; arbitrary MCP clients cannot mint them.
     """
-    return json.dumps(await engine_client.call_query(question, tables or [], job_id, conversation_id))
+    analysis = ({"action": action, "slug": slug, "analysis_id": analysis_id,
+                 "revision": revision} if action and slug else None)
+    if analysis:
+        analysis = {key: value for key, value in analysis.items() if value is not None}
+    return json.dumps(await engine_client.call_query(
+        question, tables or [], job_id, conversation_id, analysis=analysis,
+    ))
 
 
 @mcp.tool(description=DESCRIBE_DESC)

@@ -12,6 +12,7 @@ import re
 from dataclasses import dataclass
 from datetime import date
 
+from engine.analysis import AnalysisError, validate_analysis_spec
 
 MAX_QUESTION_CHARS = 20_000
 MAX_HISTORY_ITEMS = 24
@@ -25,7 +26,7 @@ MAX_TABLE_TOTAL_CHARS = 6_000_000
 # " unconnected to knowledgebase" (29 characters), so uploaded identifiers use
 # at most 34 ASCII bytes and can never be silently truncated into a collision.
 MAX_TABLE_IDENTIFIER_BYTES = 34
-_KNOWN_TABLE_EXTENSIONS = re.compile(r"\.(csv|tsv|txt|xlsx|xlsm|xls)$", re.I)
+_KNOWN_TABLE_EXTENSIONS = re.compile(r"\.(csv|tsv|txt|xlsx|xlsm|xls)$", re.IGNORECASE)
 _SAFE_REQUEST_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _CONVERSATION_ID = re.compile(r"^c_[0-9a-f]{32}$")
 
@@ -153,6 +154,10 @@ def validate_reason_request(req: object) -> dict:
     normalized["conversation_id"] = _optional_id(req, "conversation_id", conversation=True)
     normalized["as_of"] = validate_as_of(req.get("as_of"))
     normalized["dataset_ops"] = _validate_dataset_ops_shape(req.get("dataset_ops"))
+    try:
+        normalized["analysis"] = validate_analysis_spec(req.get("analysis"))
+    except AnalysisError as exc:
+        raise RequestValidationError(str(exc)) from exc
     return normalized
 
 

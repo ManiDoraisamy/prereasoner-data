@@ -17,11 +17,11 @@ import threading
 from http.server import ThreadingHTTPServer
 
 import httpx
-
-from tests.stub_engine import H, AUTH_SEEN
-from mcp_server import engine_client
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+from mcp_server import engine_client
+from tests.stub_engine import AUTH_SEEN, H
 
 P = 0
 F = 0
@@ -77,9 +77,12 @@ def test_shape():
     # shaping whitelist omitted it, so the browser badge never received its data on the chat path.
     ds = engine_client.shape_reason_response(
         {"question": "q", "result": {"columns": ["sum"], "rows": [[71573.9]]},
-         "dataset_semantics": [{"table": "responses", "column": "budget", "currency": "EUR"}]}, "j")
+         "dataset_semantics": [{"table": "responses", "column": "budget", "currency": "EUR"}],
+         "analysis": {"analysis_id": "a_" + "1" * 32, "slug": "total_sales", "revision": 1}}, "j")
     ok(ds.get("dataset_semantics") == [{"table": "responses", "column": "budget", "currency": "EUR"}],
        "dataset_semantics survives the shaping (the UI badge rides the trace payload)")
+    ok(ds.get("analysis", {}).get("slug") == "total_sales",
+       "analysis identity survives shaping for workbook selection")
     headers = engine_client._headers("token", "request", "v1=signature")
     ok(headers.get("X-Prereasoner-Dataset-Attestation") == "v1=signature",
        "the shared HTTP client carries the orchestrator's dataset attestation")

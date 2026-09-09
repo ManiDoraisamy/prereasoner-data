@@ -24,7 +24,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.route('https://www.gstatic.com/firebasejs/**/firebase-database.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseDatabase}));
   await page.addInitScript(()=>{
     sessionStorage.setItem('pr_test_auth','1');
-    localStorage.setItem('pr_chat','0');
+    localStorage.setItem('pr_chat','1');
   });
 
   await page.goto('/');
@@ -48,6 +48,8 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('.sheetband .snm')).toHaveText('Result');
   await expect(page.locator('.sheetband .skind')).toHaveText('total');
   await expect(page.locator('.wb.result tbody')).toContainText('180');
+  await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for total sales');
+  await expect(page.locator('.cotbar').last()).toContainText('Created');
   await page.locator('.wtab').filter({hasText:'orders'}).click();
   const amountHeader=page.locator('th').filter({hasText:'amount'}).first();
   await expect(amountHeader).toContainText('EUR');
@@ -68,11 +70,30 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.locator('#chatq').fill('only Paris');
   await page.getByRole('button',{name:'Send'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('120');
+  await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for total sales');
+  await expect(page.locator('.cotbar').last()).toContainText('Updated');
   await page.locator('.wtab').filter({hasText:'orders'}).click();
   await expect(page.locator('th').filter({hasText:'amount'}).first()).not.toContainText('EUR');
   await page.reload();
   await page.locator('.wtab').filter({hasText:'orders'}).click();
   await expect(page.locator('th').filter({hasText:'amount'}).first()).not.toContainText('EUR');
+
+  await page.locator('#chatq').fill('top selling products');
+  await page.getByRole('button',{name:'Send'}).click();
+  await expect(page.locator('.wb.result tbody')).toContainText('Coat');
+  await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for top selling products');
+  await expect(page.locator('.cotbar').last()).toContainText('Created');
+
+  const totalSalesLinks=page.locator('.analysislink',{hasText:'total sales'});
+  await expect(totalSalesLinks).toHaveCount(2);
+  await totalSalesLinks.first().click();
+  await expect(page.locator('.wb.result tbody')).toContainText('180');
+  await expect(page.locator('.wtab').filter({hasText:'orders'})).toHaveCount(1);
+  await totalSalesLinks.nth(1).click();
+  await expect(page.locator('.wb.result tbody')).toContainText('120');
+  await page.reload();
+  await expect(page.locator('.wb.result tbody')).toContainText('120');
+  await expect(page.locator('.wtab').filter({hasText:'orders'})).toHaveCount(1);
 
   await page.getByRole('button',{name:'Conversations'}).click();
   const deletion=page.waitForRequest(req=>req.url().endsWith('/api/conversation/delete')&&req.method()==='POST');

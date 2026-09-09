@@ -20,6 +20,8 @@ external MCP: MCP client -> mcp_server/server.py (stdio)
   a measured 0.86s of interpreter startup to relay an HTTP call the orchestrator can make itself.
 - `orchestrator` runs an optional Anthropic tool loop. It decides when to call a tool and how to present the result.
 - Numbers and tables must come from the engine tool response. The orchestrator may not calculate or invent them.
+- Before a follow-up, the orchestrator reads the ownership-scoped `/api/analyses` catalog. The catalog contains
+  only ids, slugs, latest questions, revision numbers, and stale flags; it does not duplicate workbook rows.
 
 ## Identity
 
@@ -42,6 +44,10 @@ Production defaults to fail-closed. `/api/dimension` is authenticated too.
 - `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.
 
+Every orchestrated query also carries `action` and `slug`. `modify` and `inspect` carry the exact `analysis_id` from the catalog;
+`inspect` may name a revision. These are conversational intent fields, not authority. The engine canonicalizes the
+slug, verifies conversation ownership, allocates IDs/revisions, and returns the authoritative `analysis` object.
+
 An empty or unknown response shape is an error, never a fabricated answer. Clarification is passed through rather
 than smoothed into a guess. Its `reason`, `unmet`, and typed evidence fields survive HTTP, MCP, RTDB streaming, and
 the browser fallback; adapters must not reduce it to a generic rephrase message.
@@ -57,6 +63,11 @@ not replace a numeric answer with a conversational confirmation.
 After the engine returns `answered`, `clarify`, or `error`, the orchestrator performs one tool-disabled presentation
 round. This keeps natural phrasing in the language model while making a terminal engine outcome structurally unable
 to start a reformulation loop.
+
+Workbook routing is separate from SQL routing. A qualifier change such as `in US dollars` modifies the existing
+analysis; a new output grain such as `top selling products` creates another analysis. Sonnet proposes that choice
+from conversation context and the catalog. The deterministic engine still owns SQL, calculations, authorization,
+view naming, and revision persistence.
 
 This conversational routing does not replace the engine's deterministic `engine.routing.route()` decision between
 own-data AST and world-aware execution. Serving and Spider evaluation continue to share that one engine route.
@@ -76,4 +87,5 @@ The exact chat image also runs `python -m mcp_server.healthcheck` during its Doc
 spawns the real stdio server, completes MCP `initialize`, and verifies both published tools; an import-only
 test is insufficient because the server is a child process in production.
 
-The MCP adapter adds no model artifacts, training pipeline, database schema, or persistent state.
+The MCP adapter adds no model artifacts, training pipeline, or persistent state of its own. Named workbook state is
+owned by the engine's `chat.analysis` and `chat.analysis_revision` tables.

@@ -5,12 +5,19 @@ from io import BytesIO
 from unittest.mock import patch
 
 from engine import config
-from engine.request_limits import (
-    JSONBodyError, RequestGate, SlidingWindowLimiter, allowed_origin, parse_content_length, read_json_object,
-)
 from engine.request_budget import BudgetPolicy, PostgresRequestBudget
+from engine.request_limits import (
+    JSONBodyError,
+    RequestGate,
+    SlidingWindowLimiter,
+    allowed_origin,
+    parse_content_length,
+    read_json_object,
+)
 from engine.request_validation import (
-    MAX_TABLE_IDENTIFIER_BYTES, RequestValidationError, canonical_table_name,
+    MAX_TABLE_IDENTIFIER_BYTES,
+    RequestValidationError,
+    canonical_table_name,
     validate_reason_request,
 )
 from orchestrator.validation import validate_chat_request
@@ -80,6 +87,7 @@ def test_admin_access_fails_closed_without_an_explicit_allowlist():
 
 def test_postgres_connect_retries_transport_errors_but_not_authentication():
     import psycopg2
+
     from engine import pg
 
     connection = object()
@@ -156,6 +164,13 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
     assert valid["question"] == "total amount"
     assert valid["tables"] == [{"name": "revenue_report", "data": "amount\n1"}]
     assert valid["jobId"] == "job_1"
+    named = validate_reason_request({
+        "question": "total amount", "tables": {"name": "orders", "data": "amount\n1"},
+        "analysis": {"action": "create", "slug": "Total Sales"},
+    })
+    assert named["analysis"] == {
+        "action": "create", "analysis_id": None, "slug": "total_sales", "revision": None,
+    }
     for body in (
         {"question": 1, "tables": []},
         {"question": "x", "tables": [], "jobId": "bad/path"},
@@ -163,6 +178,9 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
         {"question": "x", "tables": [], "conversation_id": "c_not-an-id"},
         {"question": "x", "tables": [{"name": 0, "data": "a\n1"}]},
         {"question": "x", "tables": [{"name": "data", "data": 0}]},
+        {"question": "x", "tables": [], "analysis": {"action": "modify", "slug": "sales"}},
+        {"question": "x", "tables": [], "analysis": {"action": "create", "slug": "sales",
+                                                           "analysis_id": "a_" + "1" * 32}},
     ):
         try:
             validate_reason_request(body)

@@ -8,19 +8,27 @@ verified identity, never from request data.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 import time
 
 import psycopg2
 from psycopg2.extras import execute_values
 
-from engine.config import (KB_PG_DB, KB_PG_HOST, KB_PG_PORT, KB_PG_SSLMODE, KB_PG_USER,
-                           kb_pg_password)
-from engine.numeric import parse_decimal, wire_decimal
 from engine import request_timing
+from engine.config import (
+    KB_PG_DB,
+    KB_PG_HOST,
+    KB_PG_PORT,
+    KB_PG_SSLMODE,
+    KB_PG_USER,
+    kb_pg_password,
+)
+from engine.knowledge_tables import KnowledgeTableQuery
+from engine.numeric import parse_decimal, wire_decimal
 from engine.sql_ast import render_query
 from engine.tables import TableQuery, qident
-from engine.knowledge_tables import KnowledgeTableQuery
 
 # Uploaded fractional values are financial/reference data surprisingly often. PostgreSQL NUMERIC preserves
 # their decimal representation and arithmetic exactly; binary DOUBLE PRECISION does not.
@@ -35,7 +43,7 @@ _NON_RETRYABLE_CONNECT_ERRORS = (
 
 # Keep NUMERIC exact. JSON-safe integral values remain integers; a fractional decimal crosses the wire as a
 # canonical string only when no binary float can represent it exactly.
-import psycopg2.extensions  # noqa: E402
+import psycopg2.extensions
 
 
 def _numeric_to_py(v, cur):
@@ -73,7 +81,7 @@ class _TimedCursor(psycopg2.extensions.cursor):
     without attaching a profiler.
     """
 
-    def execute(self, query, vars=None):                 # noqa: A002 — psycopg2's parameter name
+    def execute(self, query, vars=None):
         started = time.perf_counter()
         with request_timing.span("sql"):                 # the span publishes its own sql_n
             result = super().execute(query, vars)
@@ -83,7 +91,7 @@ class _TimedCursor(psycopg2.extensions.cursor):
                   f"sql={_sql_fingerprint(query)}", flush=True)
         return result
 
-    def executemany(self, query, vars_list):             # noqa: A002 — psycopg2's parameter name
+    def executemany(self, query, vars_list):
         # One CALL, but psycopg2 sends one statement per parameter set. Counting the call would
         # under-report the round trips by exactly the factor that makes executemany slow, so the
         # extra statements are counted explicitly.
@@ -120,8 +128,20 @@ def _pg():
 
 
 def _load_user_schema(cur, schema, sch, tablemap):
-    """Create the per-user schema, (re)load the uploaded sheets as tables, set search_path = "<schema>", knowledgebase.
-    `schema` MUST be a server-verified identifier (the Google sub); it is only ever quoted, never executed."""
+    """Create the conversation schema and load only changed source tables.
+
+    A source table keeps the canonical CSV stem (``orders.csv`` -> ``orders``) for the
+    lifetime of the conversation.  ``chat.working_table`` holds a deterministic content
+    hash, so an unchanged follow-up reuses the existing table instead of dropping and
+    rebuilding it. Workbook freshness is owned by the conversation's dataset version;
+    this request-local working-table manifest must not invalidate unrelated analyses
+    merely because two questions select different reference or enrichment tables.
+
+    `schema` MUST be a server-authorized conversation id; it is only ever quoted, never executed."""
+    # Cloud Run instances can serve the same conversation concurrently. Serialize schema replacement
+    # across instances so one request cannot drop a table while another is planning against it.
+    cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                (f"prereasoner-conversation:{schema}",))
     cur.execute(f'CREATE SCHEMA IF NOT EXISTS {qident(schema)}')
     # user schema + knowledgebase FIRST (they own every table the planner names); `public` LAST so the pgvector `vector`
     # type and its `<=>` operator (installed in public) resolve for the embedding bridge. No shadowing:
@@ -130,12 +150,33 @@ def _load_user_schema(cur, schema, sch, tablemap):
     by_t = {}
     for c in sch:
         by_t.setdefault(c["table"], []).append(c)
+    cur.execute('SELECT table_name FROM "chat"."working_table" WHERE conversation_id = %s',
+                (schema,))
+    removed = sorted(str(row[0]) for row in cur.fetchall() if str(row[0]) not in by_t)
+    if removed:
+        for table_name in removed:
+            cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(table_name)} CASCADE')
+        cur.execute('DELETE FROM "chat"."working_table" '
+                    'WHERE conversation_id = %s AND table_name = ANY(%s)', (schema, removed))
     with request_timing.span("upload"):
         for tname, cols in by_t.items():
-            cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(tname)}')   # replace on re-upload
+            t = tablemap[tname]
+            fingerprint = hashlib.sha256(json.dumps(
+                {"columns": [(c["name"], c["affinity"]) for c in cols], "rows": t["rows"]},
+                ensure_ascii=False, separators=(",", ":"), default=str,
+            ).encode("utf-8")).hexdigest()
+            cur.execute('SELECT content_hash FROM "chat"."working_table" '
+                        'WHERE conversation_id = %s AND table_name = %s', (schema, tname))
+            previous = cur.fetchone()
+            cur.execute('SELECT to_regclass(%s)', (f'{qident(schema)}.{qident(tname)}',))
+            relation_exists = cur.fetchone()[0] is not None
+            if previous and previous[0] == fingerprint and relation_exists:
+                continue
+            # Persistent analysis snapshots are metadata, not database dependencies. CASCADE is
+            # still deliberate: conversation-local bridge relations may depend on an edited input.
+            cur.execute(f'DROP TABLE IF EXISTS {qident(schema)}.{qident(tname)} CASCADE')
             cur.execute(f'CREATE TABLE {qident(schema)}.{qident(tname)} (' +
                         ", ".join(f'{qident(c["name"])} {_PGTYPE.get(c["affinity"], "TEXT")}' for c in cols) + ')')
-            t = tablemap[tname]
             # ONE multi-row INSERT per page instead of one statement per row. Each row is still built by
             # the same `_coerce`, so the values handed to psycopg2 — and therefore NUMERIC exactness and
             # every adapter — are byte-for-byte what the per-row loop passed. Only the statement count
@@ -149,6 +190,13 @@ def _load_user_schema(cur, schema, sch, tablemap):
             if rows:
                 execute_values(cur, f'INSERT INTO {qident(schema)}.{qident(tname)} VALUES %s',
                                rows, page_size=_UPLOAD_PAGE_SIZE)
+            cur.execute(
+                'INSERT INTO "chat"."working_table" '
+                '(conversation_id, table_name, content_hash, row_count) VALUES (%s, %s, %s, %s) '
+                'ON CONFLICT (conversation_id, table_name) DO UPDATE SET '
+                'content_hash = EXCLUDED.content_hash, row_count = EXCLUDED.row_count, updated_at = now()',
+                (schema, tname, fingerprint, len(t["rows"])),
+            )
             request_timing.count("upload_rows", len(t["rows"]))
 
 
@@ -165,9 +213,14 @@ class _PgCon:
 
     def close(self):
         try:
+            # _connect keeps the working-table advisory lock for the full world query. Persist the
+            # validated source replacement and release that lock only after the reasoning path ends.
+            if self.conn.get_transaction_status() == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+                self.conn.rollback()
+            else:
+                self.conn.commit()
+        finally:
             self.conn.close()
-        except Exception:
-            pass
 
 
 class _TableQueryPg(TableQuery):
@@ -177,10 +230,15 @@ class _TableQueryPg(TableQuery):
     def execute(self, tablemap, sch, sql, query=None):
         conn = _pg(); cur = conn.cursor()
         try:
-            _load_user_schema(cur, self._pg_schema, sch, tablemap); conn.commit()
+            _load_user_schema(cur, self._pg_schema, sch, tablemap)
             execution_sql = render_query(query, dialect="postgres_numeric") if query is not None else sql
             cur.execute(execution_sql)
-            return [d[0] for d in cur.description], cur.fetchall()
+            columns, rows = [d[0] for d in cur.description], cur.fetchall()
+            conn.commit()
+            return columns, rows
+        except Exception:
+            conn.rollback()
+            raise
         finally:
             conn.close()
 
@@ -253,7 +311,12 @@ class PgQuery(KnowledgeTableQuery):
     def _connect(self, tablemap, sch, attach_world):
         """World path executor → Postgres. The world tables are visible via search_path (no ATTACH)."""
         conn = _pg(); cur = conn.cursor()
-        _load_user_schema(cur, self._pg_schema, sch, tablemap); conn.commit()
+        try:
+            _load_user_schema(cur, self._pg_schema, sch, tablemap)
+        except Exception:
+            conn.rollback()
+            conn.close()
+            raise
         self._con = _PgCon(conn)
         return self._con
 

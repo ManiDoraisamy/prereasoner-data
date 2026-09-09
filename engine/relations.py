@@ -161,10 +161,11 @@ def _fk_signature(edge):
     return edge["from_table"], from_cols, edge["to_table"], to_cols
 
 
-def relate(tables, explicit_fks=()):
+def relate(tables, explicit_fks=(), *, deduplicated=False):
     """Deduplicate tables and merge validated trusted edges with discovered scalar FKs."""
-    for t in tables:
-        dedup(t)
+    if not deduplicated:
+        for t in tables:
+            dedup(t)
     explicit = [_explicit_fk(edge, tables) for edge in explicit_fks]
     merged = list(explicit)
     signatures = {_fk_signature(edge) for edge in explicit}

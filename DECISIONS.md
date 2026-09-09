@@ -295,3 +295,24 @@ Two placement mistakes are worth recording, because both were caught by evidence
   `tests/test_datasets.py` calls `KnowledgeQuery.serve` directly and kept failing, which located the
   correct owner. `eval.txt` gained one non-numeric expectation, `=> clarify`, so the release gate can
   express "this must NOT be answered" — a numeric-only gate cannot catch a wrong blank.
+
+## Named analyses share source tables and keep immutable revisions (2026-09-09)
+
+A conversation has one set of uploaded source tables under their canonical CSV stems. `chat.working_table`
+records deterministic hashes for the uploaded, private-reference, and enrichment tables currently materialized
+in its PostgreSQL working schema, so unchanged tables are reused. Uploaded data and declared dataset semantics
+advance the conversation's monotonic `dataset_version`; analysis revisions record that version, making
+freshness independent of which question-local reference tables another analysis happens to select.
+
+Each distinct result is an engine-owned `chat.analysis`; each successful create or modify is an immutable
+`chat.analysis_revision` containing the exact SQL, rows, views, and provenance returned to the client.
+The conversational model proposes `create`, `modify`, or `inspect` plus a slug, using the compact catalog
+provided by the engine. It never assigns IDs, writes view names, authorizes access, or changes SQL semantics.
+Derived wire names use `<analysis_slug>_<logical_step>`, while the browser continues to show concise logical
+tab labels. A rail link includes the analysis id and revision and restores only that derived stack, preserving
+the conversation's input and private-reference tabs.
+
+This supersedes the browser-only policy where every follow-up marked one anonymous derived stack stale and
+discarded it on the next result. Snapshot v1 remains readable for existing conversations; new snapshots are
+v2 and include analysis identities. Remove v1 reading after the configured 90-day conversation retention
+window has elapsed from the first release containing this migration.

@@ -14,6 +14,7 @@ python -m deploy.dependency_locks
 python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll
 python -m tests.test_sql_ast
 python -m tests.test_calculations
+python -m tests.test_analysis
 python -m tests.test_master_ingest
 python -m tests.test_routing
 python -m tests.test_router_evidence
@@ -91,7 +92,8 @@ The runner executes the canonical suites in this order:
 | `tests.test_source_sync` | Hermetic fixtures for every public and credential-gated source parser, including hierarchy, composite-key, rights, and rejection invariants |
 | `tests.test_app_migrations` | Application schema migrations, the world-table maintenance catalog, and least-privilege grants |
 | `tests.test_request_limits` | Canonical request validation, resource bounds, auth bypass isolation, and paid-request budgets |
-| `tests.test_conversations` | Stable pagination, atomic storage accounting, snapshot limits, and owned deletion |
+| `tests.test_analysis` | Slug/identity validation, effective table/relationship/semantic hashing, bounded unique view names, executed-SQL preservation, and HTTP/live-stream parity |
+| `tests.test_conversations` | Stable pagination, atomic storage accounting including analysis revisions, snapshot limits, and owned deletion |
 | `tests.test_provenance` | Typed output lineage, source/release identity, and HTTP/stream parity |
 | `tests.test_release` | Public-tree invariants: artifact boundary, secure model pins, privacy route, and canonical owners |
 | `tests.test_mcp` | MCP response shape and engine adapter |
@@ -152,7 +154,8 @@ The remaining locks target Linux containers. The `python-hermetic` GitHub Action
 on Linux; auditing them from Windows asks pip to resolve Windows-only transitive dependencies and is
 not a valid check of the release image.
 
-They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, and snapshot restoration. Run
+They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, named-analysis identity, and
+snapshot restoration. Run
 `node --check` on every changed JavaScript file as well.
 
 The release journey uses Playwright and a local deterministic API fixture:
@@ -165,8 +168,10 @@ npm run test:browser
 
 `web/tests/browser/release-flow.spec.js` signs in through the local client contract, creates and uploads a real
 XLSX workbook through the production Web Worker parser, waits for an answer, checks source and calculation
-provenance, opens the SQL trace, asks a follow-up, and deletes the conversation. The API response is a fixture so
-the browser test is deterministic; Python integration suites separately cover the real engine and database.
+provenance, opens the SQL trace, modifies one named workbook, creates a second workbook, restores two historical
+revisions from rail links while retaining the input tab, and deletes the conversation. The API response is a
+fixture so the browser test is deterministic; Python integration suites separately cover the real engine and
+database.
 
 For a manual browser pass, start Firebase Hosting from `web/`:
 

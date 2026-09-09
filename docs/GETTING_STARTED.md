@@ -150,6 +150,12 @@ it also carries the conversation id and can include route evidence, typing, inte
 calculation evidence, provenance, or warnings when those mechanisms participated. Treat absent
 optional evidence as path-specific, not as a different API version.
 
+The optional chat orchestrator adds named workbook intent to data calls. `create` allocates a distinct analysis;
+`modify` appends an immutable revision to an existing analysis; and `inspect` reopens one exact revision without
+running the planner. Uploaded tables keep their canonical file stems throughout the conversation (`orders.csv`
+becomes `orders`). Derived wire names use `<slug>_<step>`, while their `logical_name` and SQL preserve the actual
+relations and statement that ran. See `docs/SHEETS_AS_REASONING.md` for the workbook contract.
+
 ## 6. Understand private references
 
 A reference table is a user-owned dimension whose first column is its unique join key. For example:
@@ -217,6 +223,7 @@ release browser test.
 | Canonical request names and limits | `engine/request_validation.py` | `tests.test_request_limits` |
 | Result and trace provenance | `engine/provenance.py` | `tests.test_provenance` |
 | Conversation retention and quotas | `engine/conversations.py`, `engine/retention_cleanup.py` | `tests.test_app_migrations`, live database suite |
+| Named analysis identity and view naming | `engine/analysis.py`, `engine/conversations.py` | `tests.test_analysis`, `tests.test_conversations`, `npm run test:browser` |
 | Workbook lifecycle | `web/public/lib/workbook.js` | `web/tests/workbook_reference.test.js` |
 | XLSX ingestion | `web/public/lib/xlsx-reader.js`, `web/public/lib/xlsx-worker.js` | `npm run test:browser` |
 

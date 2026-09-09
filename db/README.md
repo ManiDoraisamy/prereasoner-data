@@ -29,7 +29,7 @@ The database holds source, application, and tenant schema families:
 | `nager_date` | Bounded community public-holiday snapshots | `python -m db.sync.sources.nager_date.sync` |
 | `cdc` | Effective CDC/NCHS ICD-10-CM tabular hierarchy | `python -m db.sync.sources.cdc.sync` |
 | `nlm_cde` | Public NIH/NLM CDEs, forms, assessment structure, and rights flags | `python -m db.sync.sources.nlm_cde.sync` |
-| `chat` | Conversation metadata and verified user-to-conversation ownership | `init.sql` and `engine/conversations.py` |
+| `chat` | Conversation metadata, verified ownership, working-table manifests, named analyses, and immutable workbook revisions | `init.sql`, application migrations, and `engine/conversations.py` |
 | `c_<32hex>` | One authorized conversation's uploads, selected private-reference copies, and world bridges | engine request path |
 | `m_<md5(sub)>` | One verified user's persistent private reference dimensions | `engine/master.py` |
 
@@ -89,7 +89,8 @@ Cloud SQL (it is granted `cloudsqlsuperuser`).
 
 **Created by the serving engine:**
 
-- conversation schemas, upload/selected-reference tables, and bridge tables — created per request;
+- conversation schemas, upload/selected-reference tables, and bridge tables — created on first use and replaced
+  only when their content hash changes;
 - per-user master schemas and tables — created when authenticated users save references.
 
 Serving is deliberately read-only and network-free for shared facts. It never creates a

@@ -367,6 +367,10 @@ CREATE TABLE IF NOT EXISTS "chat"."conversation" (
                                                     -- also the name of this conversation's data schema (c_<32 hex>)
   initial_prompt  text,                            -- the opening question (drawer label)
   tables          jsonb,                           -- the uploaded CSVs [{name,data}] so a conversation re-opens self-contained
+  source_hash     text CONSTRAINT chat_conversation_source_hash_shape
+                    CHECK (source_hash IS NULL OR source_hash ~ '^[0-9a-f]{64}$'),
+  dataset_version bigint NOT NULL DEFAULT 1
+                    CONSTRAINT chat_conversation_dataset_version_positive CHECK (dataset_version > 0),
   state           jsonb,                           -- renderable client snapshot
   source_bytes    bigint NOT NULL DEFAULT 0 CONSTRAINT chat_conversation_source_bytes_nonnegative CHECK (source_bytes >= 0),
   state_bytes     bigint NOT NULL DEFAULT 0 CONSTRAINT chat_conversation_state_bytes_nonnegative CHECK (state_bytes >= 0),
@@ -383,6 +387,52 @@ CREATE TABLE IF NOT EXISTS "chat"."user_conversation" (
   PRIMARY KEY (user_id, conversation_id)
 );
 CREATE INDEX IF NOT EXISTS ix_user_conv ON "chat"."user_conversation" (user_id, created_at DESC);
+
+-- Named analysis workbooks. The orchestrator proposes create/modify/inspect, while
+-- the engine owns IDs, unique slugs, revisions, and the stored derivation response.
+CREATE TABLE IF NOT EXISTS "chat"."analysis" (
+  analysis_id text PRIMARY KEY
+    CONSTRAINT chat_analysis_id_shape CHECK (analysis_id ~ '^a_[0-9a-f]{32}$'),
+  conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id) ON DELETE CASCADE,
+  slug text NOT NULL
+    CONSTRAINT chat_analysis_slug_shape CHECK (slug ~ '^[a-z][a-z0-9_]{0,39}$'),
+  latest_question text NOT NULL DEFAULT '',
+  latest_revision integer NOT NULL DEFAULT 0
+    CONSTRAINT chat_analysis_revision_nonnegative CHECK (latest_revision >= 0),
+  stale boolean NOT NULL DEFAULT false,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (conversation_id, slug)
+);
+CREATE INDEX IF NOT EXISTS ix_chat_analysis_conversation
+  ON "chat"."analysis" (conversation_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS "chat"."analysis_revision" (
+  analysis_id text NOT NULL REFERENCES "chat"."analysis"(analysis_id) ON DELETE CASCADE,
+  revision integer NOT NULL CHECK (revision > 0),
+  action text NOT NULL CHECK (action IN ('create', 'modify')),
+  question text NOT NULL,
+  status text NOT NULL CHECK (status IN ('pending', 'complete', 'failed')),
+  input_hash text NOT NULL CONSTRAINT chat_analysis_revision_input_hash_shape
+    CHECK (input_hash ~ '^[0-9a-f]{64}$'),
+  dataset_version bigint NOT NULL CHECK (dataset_version > 0),
+  response jsonb,
+  response_bytes bigint NOT NULL DEFAULT 0 CHECK (response_bytes >= 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  completed_at timestamptz,
+  PRIMARY KEY (analysis_id, revision)
+);
+
+-- The request loader uses this manifest to reuse unchanged uploaded, private-reference,
+-- and request-local enrichment tables in the conversation's working schema.
+CREATE TABLE IF NOT EXISTS "chat"."working_table" (
+  conversation_id text NOT NULL REFERENCES "chat"."conversation"(conversation_id) ON DELETE CASCADE,
+  table_name text NOT NULL,
+  content_hash text NOT NULL CHECK (content_hash ~ '^[0-9a-f]{64}$'),
+  row_count integer NOT NULL CHECK (row_count >= 0),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (conversation_id, table_name)
+);
 
 CREATE TABLE IF NOT EXISTS "chat"."request_usage" (
   period text NOT NULL CHECK (period IN ('minute', 'day')),

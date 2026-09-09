@@ -19,11 +19,11 @@ publisher-owned references, and [../db/README.md](../db/README.md) for the datab
 ```text
 browser or MCP client
         |
-        | authenticated request: tables, question, optional conversation id
+        | authenticated request: tables, question, optional conversation and analysis intent
         v
 engine/server.py
         |  bounded JSON parsing, canonical request validation, auth
-        |  conversation ownership and private-reference selection
+        |  conversation/analysis ownership and private-reference selection
         |  private-reference adapter
         v
 engine/knowledge.py
@@ -53,8 +53,8 @@ The PostgreSQL deployment uses five distinct scopes:
 |---|---|---|
 | Wikidata shared data (legacy names) | `knowledgebase`, `public` | Current resolution index, taxonomy, Wikidata-backed entity tables, and staging/geo data; target migration is described below |
 | Synchronized reference sources | See `SOURCE_DATA.md` | Nine publisher-owned schemas with active physical releases; logical datasets remain separately deployment-gated |
-| Application metadata | `chat` | Admin-migrated conversation, user-profile, ownership, quota, activity, and expiry tables; serving receives DML only |
-| Conversation | `c_<32hex>` | Uploaded tables and persisted world-resolution bridges |
+| Application metadata | `chat` | Admin-migrated conversations, named analyses and immutable revisions, source manifests, ownership, quota, activity, and expiry tables; serving receives DML only |
+| Conversation | `c_<32hex>` | Uploaded tables under their canonical CSV stems and persisted world-resolution bridges |
 | User | `m_<md5(subject)>` | Reusable private reference tables |
 
 The verified Firebase subject determines the user scope. A client-supplied conversation id is accepted only after
@@ -137,18 +137,26 @@ replay. The legacy Wikidata schema migration is still pending.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning.
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
-6. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question.
-7. `engine.routing.route()` makes the single serving route decision. Composition owns only a grounded world
+   Uploaded data changes advance a monotonic dataset version and mark prior analyses stale. `engine.pg` hashes
+   each materialized working table and leaves unchanged uploaded, private-reference, and enrichment tables in place.
+6. For named requests, `engine.analysis` validates the create/modify/inspect intent and
+   `engine.conversations` reserves the engine-owned analysis id and revision. An inspect request loads an exact
+   completed revision without invoking the planner.
+7. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question.
+8. `engine.routing.route()` makes the single serving route decision. Composition owns only a grounded world
    dependency that needs multi-step operations. Self-contained uploaded/reference data stays on the AST path.
-8. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
+9. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
    the explicitly reachable shared knowledge tables.
-9. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
+10. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
    scores, the shared registry selects the highest-ranked candidate that realizes every detected calculation. An
    unmet or ambiguous calculation replaces the numeric result with a structured clarification.
-10. `engine.provenance` maps typed output expressions to their exact table/column operands and propagates source
+11. `engine.provenance` maps typed output expressions to their exact table/column operands and propagates source
     identity through emitted views. Publisher adapters provide release IDs. The browser renders this contract and
     never classifies a column by its name.
-11. The engine returns rows, SQL, route evidence, intermediate views, and provenance. Trace writes are best effort
+12. A successful named request prefixes every derived view with the canonical analysis slug, stores the exact
+    response in an immutable revision, and returns the engine-owned descriptor. A failed or clarified request does
+    not replace the last completed revision.
+13. The engine returns rows, SQL, route evidence, intermediate views, and provenance. Trace writes are best effort
     and do not determine the answer. Every emitted view stack follows the one derivation-trail contract in
     `docs/SHEETS_AS_REASONING.md` (step grammar, no forward references, executed SQL only); emitters extend that
     grammar in place rather than inventing per-path sheet shapes.
@@ -320,10 +328,30 @@ requests and responses.
 a PostgreSQL constraint before an identifier can name a schema. Conversation lists use a stable
 `(created_at, conversation_id)` cursor so equal timestamps do not skip rows.
 
+The source tables in a conversation retain their canonical upload names (`orders.csv` becomes `orders`). A
+content manifest prevents follow-up turns from dropping and reloading unchanged data. Replacement is serialized
+with a conversation advisory lock across service instances. Derived sheets are not PostgreSQL views: they are the
+executed SQL, rows, and provenance returned by the one planner and stored as an immutable analysis revision. Their
+workbook identities use the analysis-prefixed name; `logical_name` and `sql` retain the exact ephemeral relation
+names and statement that were executed, so naming a workbook never rewrites its evidence.
+
+Each revision records both the conversation's monotonic dataset version and a hash of every effective planning
+table, trusted relationship, and dataset-semantic declaration used for that request. Uploaded data or a new declaration advances the dataset
+version and marks older revisions stale. The effective-input hash is immutable audit/replay evidence; it is not a
+conversation-global freshness flag, because two valid workbooks may select different publisher datasets.
+
+The orchestrator sees a compact, engine-owned catalog and proposes one action: `create` for a distinct result,
+`modify` for a refinement of an existing result, or `inspect` to reopen it. It cannot assign IDs, claim another
+conversation's analysis, or overwrite a revision. The browser link includes both analysis id and revision, so a
+historical turn always restores the workbook that produced that answer. Shared input and private-reference tabs
+remain visible while only the derived stack is switched.
+
 Defaults are 100 durable conversations per user, 256 MiB of serialized source and workbook state per user, 1 MiB
-per workbook snapshot, and deletion after 90 days of inactivity. Configuration is bounded in `engine.config`.
-Creation and state replacement share a per-user PostgreSQL advisory transaction lock, making quota checks atomic
-across service instances. Reopening, querying, or saving refreshes the expiry.
+per browser snapshot, 1 MiB per analysis revision, at most 50 analyses and 100 revisions per analysis, and deletion
+after 90 days of inactivity. Configuration is bounded in `engine.config`; the per-analysis limits are constants in
+`engine.conversations`. Creation, revision reservation, and source replacement use PostgreSQL advisory transaction
+locks. Failed revisions are retained as zero-payload tombstones so a revision number is never reused; an abandoned
+pending revision becomes a tombstone after one hour. Reopening, querying, or saving refreshes the conversation expiry.
 
 `python -m engine.retention_cleanup` is the single scheduled cleanup owner. It deletes expired conversation
 metadata and the corresponding schemas in bounded batches, then removes expired RTDB traces when RTDB is enabled.
@@ -353,6 +381,7 @@ planner implementation modules.
 - World-sensitive operations are serialized where shared mutable database state requires it.
 - Database operations use bounded inputs and explicit transaction ownership.
 - Cross-instance conversation quotas use a per-user PostgreSQL advisory transaction lock.
+- Cross-instance source replacement and analysis revision assignment use conversation-scoped advisory locks.
 - SQL is read-only, identifiers are quoted, and conversation schemas are ownership checked.
 - Reference writes are atomic and failures are visible to callers.
 - Optional trace or presentation failures do not fabricate a successful answer.

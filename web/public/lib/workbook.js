@@ -68,12 +68,32 @@ let HISTORY=[];                                  // lean cross-turn transcript f
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
+let TURN_ANALYSIS=null,VIEWED_ANALYSIS=null;      // current rail identity; analysis revision displayed at left
+let ANALYSIS_ERROR=null;                         // non-modal failure while opening a stored workbook revision
 let SEL=null,ANCH=null,INEDIT=false;              // spreadsheet: the ACTIVE cell {sid,r,c}, the selection ANCHor {sid,r,c}, edit mode
 let UNDO=[],REDO=[],DRAG=false;                   // per-sheet undo/redo snapshots; mouse drag-select in progress
 const UNDOCAP=120;
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='master'); if(!passive&&AUTO) ACTIVE=m.id; if(passive&&!ACTIVE) ACTIVE=m.id; paint(); }
+function noteAnalysis(value){
+  if(!value||!value.slug)return;
+  TURN_ANALYSIS=Object.assign({},value);
+  VIEWED_ANALYSIS=Object.assign({},value);
+  renderRail();
+}
+function analysisName(value){ return String((value&&value.display_name)||(value&&value.slug)||'analysis').replace(/_/g,' '); }
+function analysisHeading(value){
+  if(!value||!value.slug)return '';
+  const id=String(value.analysis_id||''), rev=Number(value.revision)||0;
+  const current=VIEWED_ANALYSIS&&VIEWED_ANALYSIS.analysis_id===id&&Number(VIEWED_ANALYSIS.revision)===rev;
+  const linkable=/^a_[0-9a-f]{32}$/.test(id)&&Number.isInteger(rev)&&rev>=1&&rev<=1000000;
+  const link=linkable
+    ? '<button class="analysislink'+(current?' on':'')+'" onclick="loadAnalysis(\''+id+'\','+rev+')">'+esc(analysisName(value))+'</button>'
+    : '<span class=analysisname>'+esc(analysisName(value))+'</span>';
+  const verb=value.action==='modify'?'Updated':value.action==='create'?'Created':'';
+  return '<span class=analysisprefix>Reasoning steps for</span> '+link+(verb?'<span class=analysisverb>'+verb+'</span>':'');
+}
 
 /* ---------------- rendering: the sheet ---------------- */
 function isNum(v){return v!==''&&v!=null&&/^-?\$?[\d,]*\.?\d+%?$/.test(String(v).trim());}
@@ -235,13 +255,17 @@ let COTOPEN=false;
 function cotHtml(){
   if(!ORCH) return '';
   const body=asksLine()+derivLinks();
-  if(!body) return '';
-  return '<div class="cot'+(COTOPEN?' open':'')+'"><button class=cotbtn onclick="toggleCot()"><span class=cotchev>&#8250;</span>Reasoning steps</button><div class=cotbody'+(COTOPEN?'':' hidden')+'>'+body+'</div></div>';
+  if(!body&&!TURN_ANALYSIS) return '';
+  const heading=TURN_ANALYSIS?analysisHeading(TURN_ANALYSIS):'<span class=analysisprefix>Reasoning steps</span>';
+  return '<div class="cot'+(COTOPEN?' open':'')+'"><div class=cotbar><button class=cotbtn aria-label="Toggle reasoning steps" onclick="toggleCot()"><span class=cotchev>&#8250;</span></button>'+heading+'</div><div class=cotbody'+(COTOPEN?'':' hidden')+'>'+body+'</div></div>';
 }
 function toggleCot(){ COTOPEN=!COTOPEN; renderRail(); }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
-  if(FAILMSG) return '<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
-  return turnHtmlBody();
+  let notice=ANALYSIS_ERROR?'<div class=analysiserror>'+esc(ANALYSIS_ERROR)+'</div>':'';
+  if(VIEWED_ANALYSIS&&VIEWED_ANALYSIS.stale)
+    notice+='<div class=analysisstale>This workbook uses an earlier version of the input data.</div>';
+  if(FAILMSG) return notice+'<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
+  return notice+turnHtmlBody();
 }
 function turnHtmlBody(){
   if(CONV){ let h='';
@@ -276,13 +300,58 @@ function turnReply(){                                         // the current tur
   if(CONV) return CONV;
   const rs=resultSummary(); return rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):'';
 }
-function archiveTurn(){                                       // freeze the finished turn to a MINIMAL line (no dead links)
-  let h; const reply=turnReply();
+function archiveTurn(){                                       // freeze the turn; its immutable workbook link remains usable
+  let h; const reply=turnReply(), archivedHeading=analysisHeading(TURN_ANALYSIS), archivedAsks=asksLine();
+  const archivedMeta=(archivedHeading||archivedAsks)
+    ? '<div class="cot archived">'+(archivedHeading?'<div class=cotbar>'+archivedHeading+'</div>':'')+archivedAsks+'</div>' : '';
   if(FAILMSG) h='<div class=statusline>&#9888; '+esc(FAILMSG)+'</div>';
-  else if(CONV) h=(ORCH?('<div class=cot>'+asksLine()+'</div>'):'')+'<div class=convmsg>'+conv2html(CONV)+'</div>';   // frozen: the "read as" ABOVE the reply (steps are gone)
+  else if(CONV) h=(ORCH?archivedMeta:'')+'<div class=convmsg>'+conv2html(CONV)+'</div>';
   else{ const rs=resultSummary(); const n=BOOK.filter(s=>s.cls==='deriv').length;
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
-  CHAT.push({q:question, html:h, reply:reply});
+  CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null});
+}
+async function loadAnalysis(analysisId,revision){
+  if(!SETTLED||!convId()||!/^a_[0-9a-f]{32}$/.test(String(analysisId))
+      ||!Number.isInteger(Number(revision))||Number(revision)<1||Number(revision)>1000000)return;
+  const oldStatus=STATUS;
+  const known=[TURN_ANALYSIS].concat(CHAT.map(turn=>turn.analysis)).find(item=>item&&item.analysis_id===analysisId);
+  ANALYSIS_ERROR=null; STATUS='Opening '+analysisName(known)+'…'; renderRail();
+  try{
+    const token=await window.ensureToken();
+    const params='conversation_id='+encodeURIComponent(convId())+'&analysis_id='+encodeURIComponent(analysisId)
+      +'&revision='+encodeURIComponent(revision);
+    const response=await fetch(API_BASE+'/api/analysis?'+params,{headers:{Authorization:'Bearer '+token}});
+    const payload=await response.json().catch(()=>null);
+    if(!response.ok||!payload||!payload.response)throw new Error((payload&&payload.error)||'analysis unavailable');
+    const answer=payload.response, descriptor=payload.analysis||answer.analysis;
+    BOOK=BOOK.filter(s=>s.cls==='input'||s.cls==='master');
+    VIEWS=[]; RESOLVES=[]; J=answer;
+    (answer.views||[]).forEach((view,index)=>{
+      VIEWS.push(view);
+      BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_'+index, cls:'deriv',
+        name:stepLabel(view), desc:stepDesc(view), cols:view.columns||[], rows:view.rows||[],
+        sql:view.sql||'', columnProvenance:view.column_provenance||[]});
+    });
+    if(!VIEWS.length&&answer.sql&&answer.result){
+      const result=answer.result;
+      const view={name:'result',op:/\b(sum|count|avg|min|max)\s*\(/i.test(answer.sql)?'group_agg':'select',
+        columns:result.columns||[],rows:result.rows||[],sql:answer.sql,column_provenance:result.column_provenance||[]};
+      VIEWS.push(view);
+      BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_0',cls:'deriv',name:stepLabel(view),
+        desc:stepDesc(view),cols:view.columns,rows:view.rows,sql:view.sql,columnProvenance:view.column_provenance});
+    }
+    const last=BOOK.filter(s=>s.cls==='deriv').pop();
+    if(last){
+      if(answer.result){ last.cols=answer.result.columns||last.cols; last.rows=answer.result.rows||last.rows;
+        last.columnProvenance=answer.result.column_provenance||last.columnProvenance||[]; }
+      last.result=true; ACTIVE=last.id;
+    } else ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
+    VIEWED_ANALYSIS=descriptor?Object.assign({},descriptor):null; ANALYSIS_ERROR=null;
+    AUTO=false; STATUS=oldStatus; paint(); saveConvState();
+  }catch(error){
+    STATUS=oldStatus; ANALYSIS_ERROR='Could not open that workbook. Please try again.'; renderRail();
+    console.error('analysis load failed',error&&error.name||'Error');
+  }
 }
 function renderRail(){
   let h='';
@@ -620,7 +689,7 @@ function renderFromJSON(j){
   if(SETTLED)return;
   if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
-  J=j; noteDatasetSemantics(j.dataset_semantics); (j.views||[]).forEach(v=>appendView(v));
+  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis); (j.views||[]).forEach(v=>appendView(v));
   if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
 }
@@ -717,7 +786,8 @@ async function startTurn(){
     if(j&&j.conversation_id) setConversation(j.conversation_id);
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
-    if(Array.isArray(j.traces)) j.traces.forEach(t=>noteDatasetSemantics((t.engine||{}).dataset_semantics));   // badge even when views streamed live
+    if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
+      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis); });   // metadata even when views streamed live
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // no live stream -> render from the body
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
@@ -733,6 +803,7 @@ function addCall(uid,c){                                      // an engine call 
   if(!uid||!window.subscribeRun)return;
   const sub=window.subscribeRun(uid,c.jobId,{
     onDatasetSemantics:noteDatasetSemantics,
+    onAnalysis:noteAnalysis,
     onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; SEEN.add(id); appendView(v); },
     onResolve:(k,r)=>{ if(!r||typeof r!=='object'||!r.column)return; const id=c.jobId+'/'+k; if(SEEN_R.has(id))return; SEEN_R.add(id); appendResolve(r); },
     // reconcile this call's last view with its authoritative result rows (calls stream sequentially, so the
@@ -749,13 +820,21 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
   let rendered=false;
   (j.traces||[]).forEach(t=>{ noteDatasetSemantics((t.engine||{}).dataset_semantics); });
   (j.traces||[]).forEach(t=>{ const eng=t.engine||{};
+    noteAnalysis(eng.analysis);
     if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v); rendered=true; }); }   // composed query: the full view stack
     else if(eng.sql&&eng.answer&&Array.isArray(eng.answer.rows)){                                                  // typed-AST own-data path returns one SQL + answer, no view stack -> surface it as a single step so the SQL + result are visible
       const agg=/\b(sum|count|avg|min|max)\s*\(/i.test(eng.sql);
       appendView({op:agg?'group_agg':'select', label:'result', columns:eng.answer.columns||[], rows:eng.answer.rows, sql:eng.sql,
         column_provenance:eng.answer.column_provenance||[]}); rendered=true; }
+    if(eng.answer&&Array.isArray(eng.answer.rows)){
+      J=J||{}; J.result=eng.answer; if(eng.sql)J.sql=eng.sql;
+      const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale).pop();
+      if(last){ last.cols=eng.answer.columns||last.cols; last.rows=eng.answer.rows;
+        last.columnProvenance=eng.answer.column_provenance||last.columnProvenance||[]; last.result=true; }
+    }
   });
   if(!rendered && (j.traces||[]).some(t=>Array.isArray(((t.engine||{}).result||{}).rows))) dropStale();   // a data answer with no derivation at all -> don't leave the prior turn's stale steps showing as this answer's
+  if(rendered)paint();                                       // result promotion happens after appendView's last paint
 }
 function markTurnDone(){                                      // the turn finished: settle, show Sonnet's reply in the rail
   if(SETTLED)return;
@@ -795,11 +874,12 @@ async function startRun(){
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
-  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; if(j.present) PRESENT=true; tryPresent(); });
+  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); if(j.present) PRESENT=true; tryPresent(); });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
       onDatasetSemantics:noteDatasetSemantics,
+      onAnalysis:noteAnalysis,
       onConversation:c=>{ if(RUN!==myRun||!c)return; setConversation(c); renderRail(); },   // arrives early via the stream — persist + reflect in the URL (mirrors the orchestrated path), reliable even if the HTTP body is lost
       onStatus:st=>{ if(!live())return;
         if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Resolving to the world…'; renderRail(); }
@@ -849,6 +929,7 @@ function resetRun(){
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
+  TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
   SEEN=new Set(); SEEN_R=new Set(); AUTO=true;
   STATUS='Analyzing input…'; if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;

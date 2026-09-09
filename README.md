@@ -48,6 +48,10 @@ One request can use:
 - shared public facts from source-owned releases, with Wikidata used for public entity identity and
   publisher datasets used for source-specific facts.
 
+A conversation can keep several named analysis workbooks over those same inputs. A refinement such as “in US
+dollars” creates a new revision of the existing workbook; a different result such as “top selling products” creates
+another workbook. Each rail link restores the exact SQL, rows, and provenance that produced that answer.
+
 ## What Is Deterministic
 
 The answer is computed by SQL, not written by a decoder. The frozen Qwen model is used as an
@@ -134,7 +138,8 @@ One PostgreSQL database contains:
 |---|---|---|
 | Curated shared serving projections | `knowledgebase`; `public.settlement` | Internal resolver index, taxonomy, Wikidata-derived QID/geo projections, and the release-labelled ECB daily exchange-rate projection. These are legacy derived runtime schemas, not source owners; the coordinated Wikidata target is `wikidata` |
 | Synchronized reference sources | `iana`, `cldr`, `google_libphonenumber`, `geonames`, `ecb`, `ec_tedb`, `nager_date`, `cdc`, `nlm_cde` | Immutable or bounded source snapshots. IANA country-name lookup is code-approved; raw Terraform is empty by default and the guided Community deploy enables it. See `docs/SOURCE_DATA.md` |
-| Conversation | `c_<32hex>` | Uploaded tables and world-resolution bridges for one authorized conversation |
+| Conversation | `c_<32hex>` | Stable uploaded tables and world-resolution bridges for one authorized conversation |
+| Application | `chat` | Conversation ownership, working-table manifests, named analyses, and immutable workbook revisions |
 | User | `m_<md5(sub)>` | Private reference dimensions such as product-to-category or SKU-to-region |
 
 The authenticated Google subject is verified server-side. Conversation ids are ownership-checked before they can
@@ -147,7 +152,7 @@ attributes. The browser auto-saves changed references before a query. If that sa
 instead of silently running against an older copy.
 
 Conversation storage is bounded and expires by inactivity. The defaults are 100 conversations and 256 MiB of
-serialized source/workbook state per user, a 1 MiB workbook snapshot, and 90 days of inactivity. One daily
+serialized source/workbook state per user, 1 MiB for each browser or analysis snapshot, and 90 days of inactivity. One daily
 retention job removes expired conversation schemas and RTDB traces. Requests and state saves serialize quota
 checks per user in PostgreSQL, so multiple service instances cannot race the limits.
 
@@ -225,6 +230,7 @@ Fast checks that need neither weights nor Postgres:
 ```powershell
 python -m tests.test_sql_ast
 python -m tests.test_calculations
+python -m tests.test_analysis
 python -m tests.test_master_ingest
 python -m tests.test_routing
 python -m tests.test_router_evidence

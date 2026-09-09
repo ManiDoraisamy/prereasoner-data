@@ -4,9 +4,9 @@ The base schema is created by ``db/init.sql`` and upgraded by the privileged
 ``python -m db.sync.app_migrations`` command. Request handling only performs the
 authorized DML below; it never creates or alters shared application tables.
 
-The Postgres WORKING schema for a run is the CONVERSATION id (not the user), so a conversation's
-uploaded tables and derived data are self-contained in one schema — inspectable, and archivable
-to GCS as a unit (see db/sync/archive_conversation.py).
+The Postgres WORKING schema for a run is the CONVERSATION id (not the user), so its uploaded tables
+and world bridges are isolated and archivable. Named derivation responses live in `chat.analysis_revision`
+because they are immutable application metadata, not executable database views.
 
 Security (the load-bearing part): the working schema is NEVER taken from the client on trust.
 The user id comes from the verified Firebase token (engine.auth); a conversation id from the
@@ -16,17 +16,27 @@ conversation id is minted server-side.
 
 The `chat` schema (in the same `world` database):
   user_profile(user_id PK, created_at, last_seen)          -- the Google identity (verified sub)
-  conversation(conversation_id PK, source/state bytes, activity/expiry timestamps)
+  conversation(conversation_id PK, source/state bytes, dataset version, activity/expiry timestamps)
   user_conversation(user_id, conversation_id, created_at)  -- ownership link (PK both)
 conversation_id doubles as the name of that conversation's data schema (validated `c_<32 hex>`).
 """
 from __future__ import annotations
+
+import hashlib
 import json
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from engine import config
+from engine.analysis import (
+    MAX_ANALYSIS_SNAPSHOT_BYTES,
+    AnalysisConflict,
+    AnalysisError,
+    canonical_analysis_slug,
+)
+from engine.numeric import wire_value
 from engine.pg import _pg
 
 # conversation_id is also a Postgres schema name — keep it a safe, fixed-shape identifier.
@@ -35,6 +45,14 @@ MAX_STATE_BYTES = 1 * 1024 * 1024
 MAX_PAGE_SIZE = 100
 MAX_DATASET_OPS = 200
 MAX_DATASET_OP_BYTES = 64 * 1024
+MAX_ANALYSES_PER_CONVERSATION = 50
+MAX_ANALYSIS_REVISIONS = 100
+_ANALYSIS_ID_RE = re.compile(r"^a_[0-9a-f]{32}$")
+_ANALYSIS_RESPONSE_FIELDS = (
+    "question", "as_of", "sql", "result", "views", "model", "meaning_join",
+    "provenance", "warnings", "calculations", "computation", "currency", "analysis",
+    "dataset_semantics", "reference", "present",
+)
 
 
 class DatasetOpsLimitError(ValueError):
@@ -53,6 +71,10 @@ def _new_id():
     return "c_" + uuid.uuid4().hex
 
 
+def _new_analysis_id():
+    return "a_" + uuid.uuid4().hex
+
+
 def _store_tables(sheets):
     """The uploaded CSVs (name+data) kept so a conversation re-opens with its source in a fresh
     browser session, and so a GCS-archived schema can be re-hydrated end-to-end."""
@@ -67,6 +89,15 @@ def _encoded_size(value) -> int:
     return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
 
 
+def source_snapshot_hash(sheets) -> str:
+    """Hash the uploaded source snapshot independently of question-local enrichments."""
+    stored_tables = sorted(
+        _store_tables(sheets), key=lambda table: (str(table["name"]), str(table["data"])),
+    )
+    encoded = json.dumps(stored_tables, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
 def _expiry(now=None):
     current = now or datetime.now(timezone.utc)
     return current + timedelta(days=config.conversation_retention_days())
@@ -77,7 +108,13 @@ def _user_metadata_bytes(cur, user_id) -> int:
                 'FROM "chat"."conversation" c '
                 'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                 'WHERE uc.user_id = %s', (user_id,))
-    return int(cur.fetchone()[0] or 0)
+    conversation_bytes = int(cur.fetchone()[0] or 0)
+    cur.execute('SELECT COALESCE(SUM(ar.response_bytes), 0) '
+                'FROM "chat"."analysis_revision" ar '
+                'JOIN "chat"."analysis" a ON a.analysis_id = ar.analysis_id '
+                'JOIN "chat"."user_conversation" uc ON uc.conversation_id = a.conversation_id '
+                'WHERE uc.user_id = %s', (user_id,))
+    return conversation_bytes + int(cur.fetchone()[0] or 0)
 
 
 def _check_storage(cur, user_id, *, previous=0, replacement=0):
@@ -101,6 +138,7 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                         (f"prereasoner-conversation-quota:{user_id}",))
             stored_tables = _store_tables(sheets)
             source_bytes = _encoded_size(stored_tables)
+            source_hash = source_snapshot_hash(stored_tables)
             if conversation_id:
                 if not _ID_RE.match(conversation_id):
                     raise NotOwned("bad conversation id")
@@ -111,13 +149,21 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
                 # Keep the stored source tables in step with the schema this run rebuilds, so a later
                 # re-open (get_conversation) — and a GCS archive — never diverges from the live data.
                 if sheets:
-                    cur.execute('SELECT source_bytes FROM "chat"."conversation" WHERE conversation_id = %s',
+                    cur.execute('SELECT source_bytes, source_hash FROM "chat"."conversation" '
+                                'WHERE conversation_id = %s',
                                 (conversation_id,))
-                    previous = int(cur.fetchone()[0] or 0)
+                    previous_row = cur.fetchone()
+                    previous = int(previous_row[0] or 0)
                     _check_storage(cur, user_id, previous=previous, replacement=source_bytes)
-                    cur.execute('UPDATE "chat"."conversation" SET tables = %s, source_bytes = %s, '
-                                'last_active_at = now(), expires_at = %s WHERE conversation_id = %s',
-                                (json.dumps(stored_tables), source_bytes, _expiry(), conversation_id))
+                    source_changed = bool(previous_row[1] and previous_row[1] != source_hash)
+                    if source_changed:
+                        cur.execute('UPDATE "chat"."analysis" SET stale = true, updated_at = now() '
+                                    'WHERE conversation_id = %s', (conversation_id,))
+                    cur.execute('UPDATE "chat"."conversation" SET tables = %s, source_hash = %s, source_bytes = %s, '
+                                'dataset_version = dataset_version + %s, last_active_at = now(), expires_at = %s '
+                                'WHERE conversation_id = %s',
+                                (json.dumps(stored_tables), source_hash, source_bytes, int(source_changed),
+                                 _expiry(), conversation_id))
                 else:
                     cur.execute('UPDATE "chat"."conversation" SET last_active_at = now(), expires_at = %s '
                                 'WHERE conversation_id = %s', (_expiry(), conversation_id))
@@ -129,9 +175,10 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
             _check_storage(cur, user_id, replacement=source_bytes)
             cid = _new_id()
             cur.execute('INSERT INTO "chat"."conversation" '
-                        '(conversation_id, initial_prompt, tables, source_bytes, expires_at) '
-                        'VALUES (%s, %s, %s, %s, %s)',
-                        (cid, (initial_prompt or "")[:2000], json.dumps(stored_tables), source_bytes, _expiry()))
+                        '(conversation_id, initial_prompt, tables, source_hash, source_bytes, expires_at) '
+                        'VALUES (%s, %s, %s, %s, %s, %s)',
+                        (cid, (initial_prompt or "")[:2000], json.dumps(stored_tables), source_hash,
+                         source_bytes, _expiry()))
             cur.execute('INSERT INTO "chat"."user_conversation" (user_id, conversation_id) VALUES (%s, %s)',
                         (user_id, cid))
             conn.commit()
@@ -200,8 +247,11 @@ def append_dataset_ops(conversation_id, new_ops, *, validate=None):
             # transaction would let two concurrent turns each accept a stale log and persist a
             # combination that neither request validated.
             validate(combined)
+        cur.execute('UPDATE "chat"."analysis" SET stale = true, updated_at = now() '
+                    'WHERE conversation_id = %s', (conversation_id,))
         cur.execute(
-            'UPDATE "chat"."conversation" SET dataset_ops = %s::jsonb '
+            'UPDATE "chat"."conversation" SET dataset_ops = %s::jsonb, '
+            'dataset_version = dataset_version + 1 '
             'WHERE conversation_id = %s RETURNING dataset_ops',
             (encoded, conversation_id))
         row = cur.fetchone()
@@ -213,6 +263,258 @@ def append_dataset_ops(conversation_id, new_ops, *, validate=None):
         except Exception:                                    # noqa: BLE001
             pass
         raise
+    finally:
+        conn.close()
+
+
+def _owned_analysis(cur, user_id, conversation_id, analysis_id, *, lock=False):
+    if not _ID_RE.fullmatch(conversation_id or "") or not _ANALYSIS_ID_RE.fullmatch(analysis_id or ""):
+        raise NotOwned("analysis not found")
+    cur.execute(
+        'SELECT a.slug, a.latest_question, a.latest_revision, a.stale '
+        'FROM "chat"."analysis" a '
+        'JOIN "chat"."user_conversation" uc ON uc.conversation_id = a.conversation_id '
+        'WHERE a.analysis_id = %s AND a.conversation_id = %s AND uc.user_id = %s'
+        + (' FOR UPDATE' if lock else ''),
+        (analysis_id, conversation_id, user_id),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise NotOwned("analysis not found")
+    return row
+
+
+def begin_analysis(user_id, conversation_id, spec, question, *, request_input_hash,
+                   request_source_hash):
+    """Reserve one create/modify revision and return its server-owned descriptor."""
+    action = spec["action"]
+    if action not in {"create", "modify"}:
+        raise AnalysisError("only create or modify starts an analysis revision")
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                    (f"prereasoner-conversation:{conversation_id}",))
+        cur.execute('SELECT c.source_hash, c.dataset_version FROM "chat"."conversation" c '
+                    'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+                    'WHERE c.conversation_id = %s AND uc.user_id = %s', (conversation_id, user_id))
+        conversation_row = cur.fetchone()
+        if conversation_row is None:
+            raise NotOwned("conversation not found")
+        if not re.fullmatch(r"[0-9a-f]{64}", str(request_source_hash)):
+            raise AnalysisError("analysis source hash is invalid")
+        if conversation_row[0] != request_source_hash:
+            raise AnalysisConflict("source tables changed while the analysis was starting; retry")
+        dataset_version = int(conversation_row[1] or 1)
+        cur.execute(
+            'DELETE FROM "chat"."analysis" a WHERE a.conversation_id = %s '
+            'AND a.latest_revision = 0 AND a.created_at < now() - interval \'1 hour\' '
+            'AND NOT EXISTS (SELECT 1 FROM "chat"."analysis_revision" ar '
+            'WHERE ar.analysis_id = a.analysis_id AND ar.status = \'complete\')',
+            (conversation_id,),
+        )
+        input_hash = request_input_hash
+        if not re.fullmatch(r"[0-9a-f]{64}", str(input_hash)):
+            raise AnalysisError("analysis input hash is invalid")
+        if action == "create":
+            cur.execute('SELECT COUNT(*) FROM "chat"."analysis" WHERE conversation_id = %s',
+                        (conversation_id,))
+            if int(cur.fetchone()[0] or 0) >= MAX_ANALYSES_PER_CONVERSATION:
+                raise QuotaExceeded("conversation has too many analyses")
+            requested = canonical_analysis_slug(spec["slug"])
+            cur.execute('SELECT slug FROM "chat"."analysis" WHERE conversation_id = %s',
+                        (conversation_id,))
+            used = {str(row[0]) for row in cur.fetchall()}
+            slug = requested
+            suffix = 2
+            while slug in used:
+                tail = f"_{suffix}"
+                slug = requested[:40 - len(tail)].rstrip("_") + tail
+                suffix += 1
+            analysis_id = _new_analysis_id()
+            cur.execute(
+                'INSERT INTO "chat"."analysis" '
+                '(analysis_id, conversation_id, slug) VALUES (%s, %s, %s)',
+                (analysis_id, conversation_id, slug),
+            )
+            revision = 1
+        else:
+            analysis_id = spec.get("analysis_id")
+            row = _owned_analysis(cur, user_id, conversation_id, analysis_id, lock=True)
+            slug = str(row[0])
+            if canonical_analysis_slug(spec["slug"]) != slug:
+                raise AnalysisError("analysis slug does not match analysis_id")
+            cur.execute('UPDATE "chat"."analysis_revision" SET status = %s, completed_at = now() '
+                        'WHERE analysis_id = %s AND status = %s '
+                        'AND created_at < now() - interval \'1 hour\'',
+                        ("failed", analysis_id, "pending"))
+            cur.execute('SELECT COUNT(*), COALESCE(MAX(revision), 0) '
+                        'FROM "chat"."analysis_revision" WHERE analysis_id = %s', (analysis_id,))
+            revision_count, max_revision = cur.fetchone()
+            if int(revision_count or 0) >= MAX_ANALYSIS_REVISIONS:
+                raise QuotaExceeded("analysis has too many revisions")
+            revision = int(max_revision or 0) + 1
+        cur.execute(
+            'INSERT INTO "chat"."analysis_revision" '
+            '(analysis_id, revision, action, question, status, input_hash, dataset_version) '
+            'VALUES (%s, %s, %s, %s, %s, %s, %s)',
+            (analysis_id, revision, action, question, "pending", input_hash, dataset_version),
+        )
+        conn.commit()
+        return {"analysis_id": analysis_id, "slug": slug, "revision": revision,
+                "action": action, "stale": False}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _snapshot_value(value):
+    if isinstance(value, Decimal):
+        return wire_value(value)
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    raise TypeError(f"{type(value).__name__} is not JSON serializable")
+
+
+def complete_analysis(user_id, conversation_id, descriptor, question, response):
+    """Commit the exact answered response for one reserved analysis revision."""
+    analysis_id = descriptor["analysis_id"]
+    revision = int(descriptor["revision"])
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                    (f"prereasoner-conversation-quota:{user_id}",))
+        cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                    (f"prereasoner-conversation:{conversation_id}",))
+        _owned_analysis(cur, user_id, conversation_id, analysis_id, lock=True)
+        cur.execute('SELECT ar.status, ar.dataset_version, c.dataset_version '
+                    'FROM "chat"."analysis_revision" ar '
+                    'JOIN "chat"."analysis" a ON a.analysis_id = ar.analysis_id '
+                    'JOIN "chat"."conversation" c ON c.conversation_id = a.conversation_id '
+                    'WHERE ar.analysis_id = %s AND ar.revision = %s FOR UPDATE',
+                    (analysis_id, revision))
+        row = cur.fetchone()
+        if row is None or row[0] != "pending":
+            raise AnalysisConflict("analysis revision is no longer pending")
+        stale = row[1] != row[2]
+        snapshot = {key: response[key] for key in _ANALYSIS_RESPONSE_FIELDS if key in response}
+        snapshot_analysis = dict(snapshot.get("analysis") or descriptor)
+        snapshot_analysis["stale"] = stale
+        snapshot["analysis"] = snapshot_analysis
+        encoded = json.dumps(
+            snapshot, default=_snapshot_value, ensure_ascii=False, separators=(",", ":"),
+        )
+        response_bytes = len(encoded.encode("utf-8"))
+        if response_bytes > MAX_ANALYSIS_SNAPSHOT_BYTES:
+            raise QuotaExceeded("analysis workbook is too large")
+        _check_storage(cur, user_id, replacement=response_bytes)
+        cur.execute(
+            'UPDATE "chat"."analysis_revision" SET status = %s, response = %s::jsonb, '
+            'response_bytes = %s, completed_at = now() '
+            'WHERE analysis_id = %s AND revision = %s',
+            ("complete", encoded, response_bytes, analysis_id, revision),
+        )
+        cur.execute(
+            'UPDATE "chat"."analysis" SET latest_question = %s, latest_revision = %s, '
+            'stale = %s, updated_at = now() WHERE analysis_id = %s AND latest_revision < %s',
+            (question, revision, stale, analysis_id, revision),
+        )
+        conn.commit()
+        return snapshot
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def fail_analysis(user_id, conversation_id, descriptor):
+    """Tombstone a failed revision without disturbing the last completed workbook."""
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        analysis_id = descriptor["analysis_id"]
+        cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                    (f"prereasoner-conversation:{conversation_id}",))
+        _owned_analysis(cur, user_id, conversation_id, analysis_id, lock=True)
+        cur.execute('UPDATE "chat"."analysis_revision" SET status = %s, completed_at = now() '
+                    'WHERE analysis_id = %s AND revision = %s AND status = %s',
+                    ("failed", analysis_id, descriptor["revision"], "pending"))
+        cur.execute('SELECT latest_revision FROM "chat"."analysis" WHERE analysis_id = %s',
+                    (analysis_id,))
+        row = cur.fetchone()
+        if descriptor.get("action") == "create" and row and int(row[0] or 0) == 0:
+            cur.execute('DELETE FROM "chat"."analysis" WHERE analysis_id = %s', (analysis_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def list_analyses(user_id, conversation_id):
+    """Return the compact, authoritative catalog supplied to the orchestrator."""
+    if not _ID_RE.fullmatch(conversation_id or ""):
+        raise NotOwned("conversation not found")
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT a.analysis_id, a.slug, a.latest_question, a.latest_revision, a.stale '
+            'FROM "chat"."analysis" a '
+            'JOIN "chat"."user_conversation" uc ON uc.conversation_id = a.conversation_id '
+            'WHERE a.conversation_id = %s AND uc.user_id = %s AND a.latest_revision > 0 '
+            'ORDER BY a.updated_at, a.analysis_id',
+            (conversation_id, user_id),
+        )
+        rows = cur.fetchall()
+        if not rows:
+            cur.execute('SELECT 1 FROM "chat"."user_conversation" '
+                        'WHERE conversation_id = %s AND user_id = %s', (conversation_id, user_id))
+            if cur.fetchone() is None:
+                raise NotOwned("conversation not found")
+        return [{"analysis_id": row[0], "slug": row[1], "latest_question": str(row[2])[:240],
+                 "revision": int(row[3]), "stale": bool(row[4])} for row in rows]
+    finally:
+        conn.close()
+
+
+def get_analysis_revision(user_id, conversation_id, analysis_id, revision=None):
+    """Load one exact completed workbook revision for a rail hyperlink."""
+    if revision is not None and (
+        not isinstance(revision, int) or isinstance(revision, bool)
+        or revision < 1 or revision > 1_000_000
+    ):
+        raise AnalysisError("analysis revision is invalid")
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        row = _owned_analysis(cur, user_id, conversation_id, analysis_id)
+        slug, latest_question, latest_revision, _latest_stale = row
+        selected = int(revision if revision is not None else (latest_revision or 0))
+        if selected < 1:
+            raise AnalysisError("analysis has no completed revision")
+        cur.execute('SELECT ar.question, ar.action, ar.response, ar.input_hash, '
+                    'ar.dataset_version, c.dataset_version '
+                    'FROM "chat"."analysis_revision" ar '
+                    'JOIN "chat"."analysis" a ON a.analysis_id = ar.analysis_id '
+                    'JOIN "chat"."conversation" c ON c.conversation_id = a.conversation_id '
+                    'WHERE ar.analysis_id = %s AND ar.revision = %s AND ar.status = %s',
+                    (analysis_id, selected, "complete"))
+        revision_row = cur.fetchone()
+        if revision_row is None or not isinstance(revision_row[2], dict):
+            raise AnalysisError("analysis revision not found")
+        descriptor = {"analysis_id": analysis_id, "slug": slug, "revision": selected,
+                      "action": revision_row[1],
+                      "stale": bool(_latest_stale or revision_row[4] != revision_row[5])}
+        response = dict(revision_row[2])
+        response["analysis"] = descriptor
+        return {"analysis": descriptor, "question": revision_row[0] or latest_question,
+                "response": response}
     finally:
         conn.close()
 

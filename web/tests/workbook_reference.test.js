@@ -20,11 +20,14 @@ assert(source.includes("world_join:'reference lookup'"),
   'shared-data joins must use source-neutral provenance language');
 assert(firebaseSource.includes("at('dataset_semantics')") && firebaseSource.includes('onDatasetSemantics'),
   'live engine traces must carry dataset-semantics set and clear state');
+assert(firebaseSource.includes("at('analysis')") && firebaseSource.includes('onAnalysis'),
+  'live engine traces must carry the server-owned analysis identity');
 let finish;
 const done = new Promise((resolve, reject) => { finish = error => error ? reject(error) : resolve(); });
 const storage = new Map();
 const context = {
   console,
+  esc: value => String(value),
   setTimeout,
   clearTimeout,
   crypto: {randomUUID: () => 'job'},
@@ -56,11 +59,19 @@ const checks = `
     CHAT = [{q:'prior', reply:'answer'}]; SETTLED=false;
     DS_META = [{table:'orders', column:'amount', currency:'EUR'}];
     const snapshot = convSnapshot();
+    if (snapshot.v !== 2) throw new Error('named workbook identity requires snapshot v2');
     const saved = snapshot.sheets[0];
     if (!saved.dirty) throw new Error('dirty state was serialized as clean');
     if (!saved.cellAI || saved.cellAI[0] !== '0,1') throw new Error('cell provenance was not serialized');
     if (!snapshot.datasetSemantics || snapshot.datasetSemantics[0].currency !== 'EUR')
       throw new Error('dataset semantics were omitted from the restorable snapshot');
+
+    const safeAnalysis = {analysis_id:'a_'+'1'.repeat(32), slug:'total_sales', revision:2};
+    if (!analysisHeading(safeAnalysis).includes('loadAnalysis'))
+      throw new Error('a valid analysis revision did not produce a workbook link');
+    const unsafeHeading = analysisHeading({analysis_id:"x');alert(1)//", slug:'total_sales', revision:2});
+    if (unsafeHeading.includes('loadAnalysis') || unsafeHeading.includes('alert(1)'))
+      throw new Error('an invalid stored analysis id reached an inline workbook handler');
 
     paint = () => {}; saveConvState = () => {};
     let posted = null;

@@ -58,7 +58,7 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
         if j.get("views") is not None:
             out["views"] = j.get("views")           # the reasoning stack the player renders
         for k in ("meaning_join", "provenance", "warnings", "as_of", "reference",
-                  "dataset_semantics"):                  # the UI badge rides the trace payload
+                  "dataset_semantics", "analysis"):     # the UI badge/workbook identity rides the trace payload
             if j.get(k) is not None:
                 out[k] = j.get(k)
         # trace coordinates: the browser knows its own uid; we return the jobId the engine streamed under.
@@ -112,7 +112,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      timeout: float | None = None, request_id: str | None = None,
                      client: httpx.AsyncClient | None = None,
                      dataset_ops: list[dict] | None = None,
-                     dataset_attestation: str | None = None) -> dict[str, Any]:
+                     dataset_attestation: str | None = None,
+                     analysis: dict[str, Any] | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
     `tables` is [{name, data}] where data is raw CSV text — exactly the engine's inline shape (no dataset_id).
@@ -130,6 +131,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         body["conversation_id"] = conversation_id
     if dataset_ops:
         body["dataset_ops"] = dataset_ops        # conversation-stated measure metadata (docs/DATASET_FORMATTER.md)
+    if analysis:
+        body["analysis"] = analysis
     try:
         async with _http(client, timeout) as http:
             r = await http.post(f"{base}/api/reason", json=body,
@@ -144,6 +147,29 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         return {"status": "error",
                 "error": f"engine returned non-JSON (HTTP {r.status_code}): {r.text[:200]}"}
     return shape_reason_response(j, job_id)
+
+
+async def call_analysis_catalog(conversation_id: str, *, base_url: str | None = None,
+                                token: str | None = None, timeout: float | None = None,
+                                request_id: str | None = None,
+                                client: httpx.AsyncClient | None = None) -> list[dict[str, Any]] | None:
+    """Load the engine-owned analysis catalog used to constrain create/modify selection."""
+    base = (base_url or _engine_base_url()).rstrip("/")
+    try:
+        async with _http(client, timeout) as http:
+            response = await http.get(
+                f"{base}/api/analyses",
+                params={"conversation_id": conversation_id},
+                headers=_headers(token, request_id),
+                timeout=timeout or DEFAULT_TIMEOUT,
+            )
+            payload = response.json()
+    except (httpx.HTTPError, ValueError):
+        return None
+    if response.status_code != 200 or not isinstance(payload, dict):
+        return None
+    analyses = payload.get("analyses")
+    return analyses if isinstance(analyses, list) else []
 
 
 async def call_describe(tables: list[dict], *, base_url: str | None = None,

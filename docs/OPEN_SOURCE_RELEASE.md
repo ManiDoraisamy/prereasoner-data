@@ -101,7 +101,8 @@ source-key grounding remains mandatory.
 5. For planner changes, run a fresh provenance-bearing Spider `whole_db` evaluation and compare per-example losses.
 6. Run `terraform -chdir=infra fmt -check`, `terraform -chdir=infra init -backend=false`, and `terraform -chdir=infra validate`.
 7. Run `npm ci`, install the pinned Playwright Chromium build, and run `npm run test:browser`. The journey must
-   exercise the real XLSX worker path, sign-in contract, answer, provenance, SQL trace, follow-up, and deletion.
+   exercise the real XLSX worker path, sign-in contract, answer, provenance, SQL trace, analysis create/modify,
+   exact revision restore with source tabs retained, and deletion.
 8. Build the engine, source-sync, and optional chat containers. The chat image must pass the real MCP stdio
    handshake when it is included.
 9. Run `gitleaks git --redact --log-opts='--all'` and scan tracked files/history for customer

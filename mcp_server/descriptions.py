@@ -17,10 +17,14 @@ WHEN TO CALL THIS (routing discipline — you are the unreliable component, so d
 4. If the result has status "clarify", surface it to the user verbatim — do NOT fill the gap with a
    plausible answer. The clarification is the product.
 
-INPUT: one complete data question. The engine performs the necessary joins, reference lookups, filters,
-grouping, unit conversion, and typed arithmetic as one inspectable computation. Do not decompose it into
-intermediate tool calls. Any returned status is terminal for that question.
-OUTPUT: {status: "answered"|"clarify"|"error", answer:{columns,rows}, sql, clarify}."""
+INPUT: one complete data question plus a named-workbook decision. Use `create` with a concise snake-case
+slug for a distinct analysis; use `modify` with the exact existing analysis_id and slug when the user is
+changing or extending that analysis; use `inspect` only to reopen an existing revision. The engine owns
+IDs, validates ownership, and performs the necessary joins, reference lookups, filters, grouping, unit
+conversion, and typed arithmetic as one inspectable computation. Do not decompose it into intermediate
+tool calls. Any returned status is terminal for that question.
+OUTPUT: {status: "answered"|"clarify"|"error", answer:{columns,rows}, sql, clarify,
+analysis:{analysis_id,slug,revision,action}}."""
 
 DESCRIBE_DESC = """\
 Report what Prereasoner believes each column of the user's tables IS (city / hospital / free-text /
