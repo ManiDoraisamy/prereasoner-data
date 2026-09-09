@@ -202,7 +202,8 @@ release browser test.
 
 | Change | Start here | Primary test |
 |---|---|---|
-| AST nodes/rendering | `engine/sql_ast.py` | `tests.test_sql_ast` |
+| AST nodes/validation | `engine/sql_ast.py` | `tests.test_sql_ast` |
+| SQL rendering | `deterministic/emitter/sql/render.py` | `tests.test_sql_ast` |
 | Candidate expansion/search | `engine/sql_search.py` | `tests.test_sql_ast` |
 | Candidate scoring | `engine/sql_rank.py` | `tests.test_sql_ast` |
 | FK inference | `engine/relations.py` | `tests.test_sql_ast`, `tests.test_master_ingest` |

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 import re
 from typing import Iterable, Sequence
 
+from deterministic.emitter.sql import render_query
 from engine.sql_ast import (
     Aggregate,
     BooleanExpr,
@@ -24,7 +25,6 @@ from engine.sql_ast import (
     SelectQuery,
     Star,
     and_predicates,
-    render_query,
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery

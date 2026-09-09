@@ -510,7 +510,8 @@ class TableQuery:
         return True, "ok"
 
     def execute(self, tablemap, sch, sql, query=None):
-        from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
+        from deterministic.emitter.sql import render_query
+        from engine.sql_ast import SetQuery, SQLType, expression_type
 
         con = sqlite3.connect(":memory:")
         register_sqlite_decimal(con)

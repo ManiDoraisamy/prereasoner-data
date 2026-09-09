@@ -5,11 +5,11 @@ from engine.calculations.registry import (
     composed_plans_for,
     detect_calculations,
 )
+from deterministic.emitter.sql import render_query
 from engine.sql_ast import (
     SelectItem,
     SelectQuery,
     SubquerySource,
-    render_query,
     validate_query,
 )
 from engine.sql_candidate import ScoredQuery

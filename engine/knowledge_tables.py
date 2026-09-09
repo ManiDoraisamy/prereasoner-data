@@ -23,7 +23,8 @@ from engine.currency_intent import (
 )
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
-from engine.sql_ast import Aggregate, render_scalar_expression
+from deterministic.emitter.sql import render_scalar_expression
+from engine.sql_ast import Aggregate
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
     csv_table,

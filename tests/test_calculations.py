@@ -23,9 +23,10 @@ from engine.calculations import (
     detect_calculations,
     select_calculation_candidate,
 )
+from deterministic.emitter.sql import render_query
 from engine.sql_ast import (
     Aggregate, BinaryExpr, BooleanExpr, ColumnRef, Comparison, Join, Literal, SQLType,
-    SelectItem, SelectQuery, SetQuery, render_query,
+    SelectItem, SelectQuery, SetQuery,
 )
 from engine.sql_schema import SchemaGraph
 from engine.sql_rank import SemanticSignals

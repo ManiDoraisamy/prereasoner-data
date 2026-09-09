@@ -316,3 +316,22 @@ This supersedes the browser-only policy where every follow-up marked one anonymo
 discarded it on the next result. Snapshot v1 remains readable for existing conversations; new snapshots are
 v2 and include analysis identities. Remove v1 reading after the configured 90-day conversation retention
 window has elapsed from the first release containing this migration.
+
+## The IR and its emitters are separate owners (2026-09-09)
+
+`engine/sql_ast.py` had two jobs: define and validate the typed tree, and render it to SQL text.
+Those are different responsibilities, and the file's own `dialect` parameter already proved it —
+`standard`, `sqlite_decimal`, and `postgres_numeric` are three lowerings of one tree. Rendering now
+lives in `deterministic/emitter/sql/render.py`, and the composition view builders (formerly
+`engine/primitives.py`, the second SQL producer) in `deterministic/emitter/sql/views.py`.
+`engine/sql_ast.py` keeps the node grammar, typing, and validation, and must never import
+`deterministic` — the IR stays the single definition of meaning that every target renders.
+`_validate_expr` and `_expr_tables` were promoted to `validate_expression` and `expression_tables`
+so validation could stay with the IR while only rendering moved.
+
+The move was pure relocation, gated on byte-identical output: the same 44 planner candidates over a
+fixed corpus hashed to `d6b85dab…` before and after, and `tests/test_routing.py`'s cross-process
+repeatability test still passes. Two packaging facts had to follow the code — `Dockerfile` COPYs
+`deterministic/` (the engine image previously shipped only `engine/`, `regress/`, `db/`, so serving
+would have failed at import), and `spider/probe/full_eval.py` fingerprints the emitter, or a
+rendering change would no longer invalidate a `--resume` checkpoint.

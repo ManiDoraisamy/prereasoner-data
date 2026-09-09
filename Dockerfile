@@ -71,6 +71,11 @@ COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hf /opt/hf
 COPY LICENSE THIRD_PARTY.md /licenses/
 
+# deterministic/ = the SQL emitter (engine.sql_search and friends import render_query from it).
+# Small and rarely changed, so it precedes engine/ and keeps that layer's cache intact. The
+# emitter/py/ oracle ships with it: it is import-free from serving code and costs a few KB.
+COPY deterministic/ /app/deterministic/
+
 # engine/ includes engine/data/* when the weights exist locally; in a fresh clone only
 # the small committed artifacts (alloc.json, taxonomy.csv, thresholds, word_*.json) come along.
 COPY engine/ /app/engine/

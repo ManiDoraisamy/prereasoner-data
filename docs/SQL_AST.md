@@ -189,7 +189,10 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 
 | Module | Responsibility |
 |---|---|
-| `engine/sql_ast.py` | Immutable AST, validation, and rendering. |
+| `engine/sql_ast.py` | Immutable AST and validation — the IR every emitter lowers. |
+| `deterministic/emitter/sql/render.py` | The one production lowering: validated AST to SQL text. |
+| `deterministic/emitter/sql/views.py` | Composition view builders (one SQL view per analytical step). |
+| `deterministic/emitter/py/` | Test-only lowering to Python objects; the differential oracle. |
 | `engine/sql_schema.py` | Typed schema and join-path search. |
 | `engine/sql_search.py` | `SQLSearcher`: base beam, capability ordering, and candidate assembly. |
 | `engine/sql_candidate.py` | Scored-candidate container and evidence. |

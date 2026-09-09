@@ -13,6 +13,7 @@ import threading
 
 import numpy as np
 
+from deterministic.emitter.sql import render_query
 from engine.sql_ast import (
     ASTValidationError,
     Aggregate,
@@ -30,7 +31,6 @@ from engine.sql_ast import (
     SetQuery,
     Star,
     SubquerySource,
-    render_query,
     validate_query,
 )
 from engine.artifact_provenance import sha256_file, validate_weight_bundle

@@ -27,7 +27,7 @@ from engine.config import (
 )
 from engine.knowledge_tables import KnowledgeTableQuery
 from engine.numeric import parse_decimal, wire_decimal
-from engine.sql_ast import render_query
+from deterministic.emitter.sql import render_query
 from engine.tables import TableQuery, qident
 
 # Uploaded fractional values are financial/reference data surprisingly often. PostgreSQL NUMERIC preserves

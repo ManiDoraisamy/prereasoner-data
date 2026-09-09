@@ -5,6 +5,7 @@ import json
 import uuid
 
 from engine.pg import _pg, _TableQueryPg
+from deterministic.emitter.sql import render_query
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -12,7 +13,6 @@ from engine.sql_ast import (
     SelectItem,
     SelectQuery,
     SQLType,
-    render_query,
 )
 from engine.tables import table_from_rows
 

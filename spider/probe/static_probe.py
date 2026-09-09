@@ -5,7 +5,7 @@ Neither needs the model or Postgres: they read the gold SQL (dev.json, with the 
 Prereasoner engine's structural reach — the ceiling any amount of linking work could hit.
 
 Envelope is grounded in what the engine's planners actually emit (verified against engine/compose.py,
-engine/primitives.py, engine/tables.py):
+deterministic/emitter/sql/views.py, engine/tables.py):
   * ONE flattened base relation: a single table, or an FK star-join of the DB's tables, optionally a
     world-meaning join. Analytical primitives (filter / group_agg / having / topn / sort / yoy /
     running / share / divide, agg in COUNT/SUM/AVG/MIN/MAX) then stack on that one base.

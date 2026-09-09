@@ -281,6 +281,9 @@ def main():
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
                    "calculations/core.py", "calculations/registry.py",
                    "calculations/search.py", "calculations/specifications.py")
+    # The SQL emitter is part of the serving path but no longer lives under engine/ — a rendering
+    # change must invalidate a --resume checkpoint exactly as an engine/sql_ast.py change does.
+    emitter_code = ("emitter/sql/render.py", "emitter/sql/views.py")
     checkpoint_contract["artifacts"] = {
         **fingerprint_paths({
             "dev": os.path.join(args.data, "dev.json"),
@@ -289,6 +292,8 @@ def main():
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
+            **{f"deterministic/{name}": os.path.join(ROOT, "deterministic", *name.split("/"))
+               for name in emitter_code},
         }),
         "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty

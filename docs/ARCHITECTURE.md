@@ -181,7 +181,8 @@ The own-data path is one bounded search over a typed SQL AST:
 
 | Owner | Responsibility |
 |---|---|
-| `engine/sql_ast.py` | Immutable query nodes, type/visibility validation, rendering |
+| `engine/sql_ast.py` | Immutable query nodes and type/visibility validation — the IR |
+| `deterministic/emitter/sql/render.py` | Lowering a validated AST to SQL text (`standard`, `sqlite_decimal`, `postgres_numeric`) |
 | `engine/sql_schema.py` | Typed schema graph and deterministic join-tree enumeration |
 | `engine/sql_search.py` | Projection, filter, aggregate, grouping, order, limit, and base candidate expansion |
 | `engine/sql_recursive.py` | Subqueries, `EXISTS`/`IN`, set operations, and self-join shapes |
@@ -290,8 +291,8 @@ offline; VAT rules, holidays, and other temporal source definitions remain disab
 own semantics and evaluation gates are complete.
 
 Trusted composite edges pass separately to `TableQuery.ingest`; they are not accepted from a client table payload.
-`SchemaGraph` stores their ordered column pairs as one foreign key, and `sql_ast.Join` validates and renders them as one
-atomic `ON a.x = b.x AND a.y = b.y` clause. Legacy scalar fields remain available to existing planner components.
+`SchemaGraph` stores their ordered column pairs as one foreign key; `sql_ast.Join` validates them and the SQL emitter
+renders them as one atomic `ON a.x = b.x AND a.y = b.y` clause. Legacy scalar fields remain available to existing planner components.
 Source activation has two keys: the registry definition must be code-approved and the deployment allowlist must
 name it. `db/reference_grants.py` derives read-only relation grants from that same registry; a deployment must use
 a non-superuser serving role. Snapshot rollback uses `db/sync/releases.py` and accepts only a previously validated

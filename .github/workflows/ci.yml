@@ -34,9 +34,9 @@ jobs:
       - name: Verify dependency lock provenance
         run: python -m deploy.dependency_locks
       - name: Ruff fatal checks
-        run: python -m ruff check engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
+        run: python -m ruff check deterministic engine db deploy training tests orchestrator mcp_server regress spider world_eval --select F,E9
       - name: High-severity Python security checks
-        run: python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll
+        run: python -m bandit -q -r deterministic engine db deploy training orchestrator mcp_server -x tests -lll
       - name: Audit Python dependency sets
         run: |
           python -m pip_audit -r requirements-ci.lock.txt
@@ -47,7 +47,7 @@ jobs:
           python -m pip_audit -r db/sync/requirements.lock.txt
           python -m pip_audit -r deploy/gcp/requirements.lock.txt
       - name: py_compile all python sources
-        run: python -m compileall -q engine db deploy training tests orchestrator mcp_server regress spider world_eval
+        run: python -m compileall -q deterministic engine db deploy training tests orchestrator mcp_server regress spider world_eval
       - name: Run hermetic Python suites
         env:
           RUN_ENGINE_TESTS: "0"

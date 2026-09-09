@@ -124,6 +124,7 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 | Per-column typing (the anchor readout) | `engine/dimension.py` · `analyze` (the `/api/dimension` view) |
 | Role phrases → per-column role signals | `engine/tables.py` · `ast_semantic_signals`; `engine/sql_rank.py` · `SemanticSignals`, `semantic_role_phrases` |
 | The typed AST node grammar | `engine/sql_ast.py` · `SelectQuery`, `SelectItem`, `Aggregate`, `Comparison`, … |
+| Rendering the winning tree to SQL | `deterministic/emitter/sql/render.py` · `render_query` |
 | The search that assembles the tree | `engine/sql_search.py` · `SQLSearcher.search` |
 | One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
 | Serving entry point (top-1, render, execute) | `engine/tables.py` · `search_ast`, `_serve_ast` |

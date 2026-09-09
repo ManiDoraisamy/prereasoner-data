@@ -41,7 +41,9 @@ Extend these owners. Do not build parallel replacements.
 
 | Responsibility | Production owner |
 |---|---|
-| Own-data typed SQL AST and rendering | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
+| Own-data typed SQL AST (the IR: node grammar, typing, validation) | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
+| Lowering a validated AST to SQL text (the ONE production emitter) | `deterministic/emitter/sql/render.py`; the composition view builders in `deterministic/emitter/sql/views.py` |
+| Lowering the same IR to Python objects (TEST-ONLY differential oracle; never imported by serving) | `deterministic/emitter/py/` |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery._serve_ast` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |

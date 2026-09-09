@@ -22,8 +22,8 @@ import sqlite3
 
 import numpy as np
 
-from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_view, share_view,
-                               divide_view, running_view, join_view, world_join_view)
+from deterministic.emitter.sql.views import (q, filter_view, group_agg_view, yoy_view, topn_view, share_view,
+                                             divide_view, running_view, join_view, world_join_view)
 from engine.joins import discover_fks, join_plan
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
 

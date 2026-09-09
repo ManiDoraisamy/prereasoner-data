@@ -48,7 +48,7 @@ There are **two SQL routes** and a router between them (`engine/knowledge_compos
 
 | Path | File | Emits | Executes on |
 |---|---|---|---|
-| **Compose** (view-stacking) | `engine/compose.py` + `engine/primitives.py` | one flattened base (single table / FK star-join / world join) → `filter · time_filter · group_agg · having · topn · sort · yoy · running · share · divide`, agg ∈ COUNT/SUM/AVG/MIN/MAX | in-memory **SQLite** |
+| **Compose** (view-stacking) | `engine/compose.py` + `deterministic/emitter/sql/views.py` | one flattened base (single table / FK star-join / world join) → `filter · time_filter · group_agg · having · topn · sort · yoy · running · share · divide`, agg ∈ COUNT/SUM/AVG/MIN/MAX | in-memory **SQLite** |
 | **Typed-AST planner** (own-data) | `engine/tables.py :: TableQuery.search_ast` → `engine/sql_search.py` | a bounded search over valid SQL ASTs: projections + `DISTINCT`, `WHERE`, aggregates, `GROUP BY`/`HAVING`, `ORDER BY`/`LIMIT`, multi-hop and self-joins, scalar subqueries, `IN`/`EXISTS`, derived tables, and `UNION`/`INTERSECT`/`EXCEPT` — ranked by hand-written deterministic features | in-memory **SQLite** (offline) / **Postgres** (live) |
 
 Routing: a question whose **learned primitive head** fires a *depth* primitive

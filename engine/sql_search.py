@@ -14,6 +14,7 @@ import re
 from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
+from deterministic.emitter.sql import render_query
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -26,7 +27,6 @@ from engine.sql_ast import (
     SQLType,
     Star,
     and_predicates,
-    render_query,
     validate_query,
 )
 from engine.numeric import parse_decimal
