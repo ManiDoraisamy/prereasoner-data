@@ -38,6 +38,13 @@ EXPECTED = {
 }
 FX_TOLERANCE = 0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
 
+# Conversational models sometimes add a harmless copula to a standalone prompt. These are still
+# serving-contract cases: the typed planner must answer them instead of treating the connector as a
+# dropped user constraint.
+REWRITE_EXPECTATIONS = {
+    "formesign-intake": [("How many Intake Consent documents are there?", 6)],
+}
+
 
 def _tables(ds: Path) -> list[dict]:
     tables = []
@@ -129,6 +136,13 @@ def main() -> int:
                 fails.append(f"{name}: {got} outside ±{FX_TOLERANCE:.0%} of {want}")
         elif got != want:
             fails.append(f"{name}: {got} != {want}")
+
+        for question, expected in REWRITE_EXPECTATIONS.get(name, []):
+            rewritten = Q.serve(_tables(ds), question, schema=schema)
+            rewritten_value = _scalar(rewritten)
+            print(f"{name}: rewrite {question!r} -> {rewritten_value} (exp {expected})")
+            if rewritten.get("clarify") or rewritten_value != expected:
+                fails.append(f"{name} rewrite {question!r}: expected {expected}, got {rewritten!r}")
 
         # FOLLOW-UPS (eval.txt) — direct engine cases in file order. Conversational shorthand is
         # explicitly skipped here and belongs to the orchestrator/browser release path below.

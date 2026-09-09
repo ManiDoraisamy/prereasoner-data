@@ -497,7 +497,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                "where", "when", "average", "avg", "mean", "total", "sum", "count", "per", "each", "are", "were",
                "city", "cities", "country", "countries", "state", "states", "town", "towns", "place", "places",
                "nation", "nations", "element", "elements", "atomic", "has", "highest", "lowest", "largest",
-               "smallest", "most", "least", "maximum", "minimum", "max", "min", "top", "bottom", "named"}
+               "smallest", "most", "least", "maximum", "minimum", "max", "min", "top", "bottom",
+               "named", "there"}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]
