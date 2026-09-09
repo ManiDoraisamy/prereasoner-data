@@ -51,6 +51,9 @@ the browser fallback; adapters must not reduce it to a generic rephrase message.
 The orchestrator calls the query tool when a response needs a fact derived from user data. It can answer greetings or
 explain the interface without a tool call. One user data question is sent as one complete engine query; joins,
 reference lookups, filters, grouping, conversion, and arithmetic are steps inside that query, not separate tool calls.
+Short follow-ups that name a data value, such as `how about Belgium?`, are still data questions even when they
+repeat the current value: the orchestrator rewrites them into a complete query and calls the engine again. It must
+not replace a numeric answer with a conversational confirmation.
 After the engine returns `answered`, `clarify`, or `error`, the orchestrator performs one tool-disabled presentation
 round. This keeps natural phrasing in the language model while making a terminal engine outcome structurally unable
 to start a reformulation loop.

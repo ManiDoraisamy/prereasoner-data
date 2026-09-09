@@ -58,11 +58,15 @@ def _scalar(res):
 
 
 def _eval_cases(ds: Path):
-    """Parse eval.txt: ordered follow-ups for the SAME conversation, `question => expected`.
+    """Parse eval.txt: ordered follow-ups, `question => expected`.
 
     A `~` prefix marks an FX-derived expectation, checked within FX_TOLERANCE because the ECB rate
     moves daily. Expected values are derived from the shipped CSVs independently of the engine, so a
     passing case means the answer is right, not merely reproducible.
+
+    The direct engine gate sends non-`chat:` cases as individual calls with the same tables. It
+    deliberately does not pretend to carry conversational history. ``chat:`` cases are shorthand
+    cases and are verified by the orchestrator/browser release path instead.
 
     The literal `clarify` is the one non-numeric expectation: the question is well formed but matches
     no rows, and the engine must say so rather than present a blank as the answer. It is expressed
@@ -126,8 +130,8 @@ def main() -> int:
         elif got != want:
             fails.append(f"{name}: {got} != {want}")
 
-        # FOLLOW-UPS (eval.txt) — the same conversation, in order. The prompt alone never exercises
-        # qualifier carry-over or conversation-supplied semantics; these do.
+        # FOLLOW-UPS (eval.txt) — direct engine cases in file order. Conversational shorthand is
+        # explicitly skipped here and belongs to the orchestrator/browser release path below.
         for question, expected, fx, chat_only in (_eval_cases(ds) or []):
             if chat_only:
                 print(f"{name}: follow-up {question!r} SKIPPED here — orchestrated path only "

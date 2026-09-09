@@ -120,6 +120,20 @@ def main():
                for q in sent_c),
            f"the rewritten follow-up changes the country and keeps the USD qualifier (got {sent_c})")
 
+        # A repeated short value is still a data question. This exact shape regressed in the live
+        # customer-orders demo: Sonnet treated "how about Belgium?" as conversational confirmation
+        # after already answering Belgium, so no new numeric engine result was produced.
+        print("[1c] repeated short follow-up still calls the engine")
+        r1e = asyncio.run(chat("how about Belgium?", history=[
+            {"role": "user", "content": "total amount in Belgium in US dollars"},
+            {"role": "assistant", "content": "Your total for Belgium comes to about $374 in US dollars."},
+        ]))
+        sent_e = [t.get("question", "") for t in r1e["traces"]]
+        ok(len(sent_e) == 1 and "belgium" in sent_e[0].lower() and "us dollar" in sent_e[0].lower(),
+           f"the repeated short follow-up reaches the engine with its inherited query (got {sent_e})")
+        ok("did you mean a different country" not in r1e["reply"].lower(),
+           "a repeated short follow-up cannot be downgraded to a meta clarification")
+
         print("[1c] follow-up rewrite carries grouping and limit qualifiers")
         r1d = asyncio.run(chat("what about 2024?", history=[
             {"role": "user", "content": "top 3 customers by total amount per month in 2025"},

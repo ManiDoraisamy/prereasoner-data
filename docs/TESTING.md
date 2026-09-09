@@ -117,6 +117,13 @@ projections. The orchestrator suite is also external and can be excluded with `R
 Request tests do not fetch Wikidata. The runner reports unavailable suites as skipped so local development can
 continue, but a skip is not a passing integration test. Record exact skips and prerequisites in a pull request.
 
+Every directory under `web/public/dataset/` must contain a `prompt.txt` and an `eval.txt`. The URL manifest in
+`web/public/dataset/dataset.txt` is generated from those directories and is checked by the web gate. Numeric and
+clarification cases in `eval.txt` are run by `tests.test_datasets` against the direct engine. Lines prefixed with
+`chat:` are conversational shorthand; they are intentionally excluded from that direct gate and belong to the
+orchestrator/browser path. The `customer-orders` fixture includes the joined `tier.csv` discount schedule and its
+exact tier follow-up is covered by `tests.test_orchestrator`.
+
 Run live suites sequentially. They create and replace shared test fixtures; concurrently launching two aggregate
 runs against one database can make one suite observe the other's fixture state.
 

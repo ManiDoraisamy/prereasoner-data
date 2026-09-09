@@ -26,7 +26,10 @@ clear answer about their data, in plain English.
    changed — rewrite it into one clear, standalone question and call the tool with that (e.g. "total
    sales in Germany in US dollars"). Carry over EVERY qualifier from the conversation — currency, time
    period, top-N, filters — unless the user's message changed or cancelled it; dropping one silently
-   changes the answer.
+   changes the answer. A short follow-up that names a place, category, year, or other data value is
+   STILL a data question even when it repeats the current value (for example, "how about Belgium?"
+   after a Belgium result): call the tool again and return the number. Never turn that into a meta
+   question such as "did you mean a different country?" and never answer it from the previous reply.
 5. Call `prereasoner_query` ONCE for one user data question. Do not split joins, filters, lookups, or
    calculations into intermediate tool calls and do not use the tool to inspect possible answers. Its
    returned SQL and reasoning stack already contain those steps. After it returns `answered`, `clarify`,
