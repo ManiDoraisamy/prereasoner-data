@@ -22,6 +22,9 @@ Env contract:
   MAX_CONVERSATION_STORAGE_BYTES per-user stored source/state byte cap (default 256 MiB).
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
   APP_ENV              environment name; test bypasses are honored only in development/test.
+  DETERMINISTIC_EXECUTION_MODE auto, python, sql, or verify for supported named analyses.
+  DETERMINISTIC_PYTHON_ROW_LIMIT maximum estimated input rows selected for Python in auto mode.
+  DETERMINISTIC_PERSIST_GENERATED write generated Python outside development when explicitly true.
   DATASET_ATTESTATION_KEY shared engine/orchestrator HMAC key for authenticated dataset claims.
   CORS_ORIGINS         comma-separated exact browser origins; empty disables cross-origin responses.
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
@@ -141,6 +144,34 @@ def auth_test_sub():
               "verification stays enforced.", flush=True)
         return None
     return sub
+
+
+# ---------- deterministic dual emission ----------
+def deterministic_execution_mode() -> str:
+    mode = os.environ.get("DETERMINISTIC_EXECUTION_MODE", "auto").strip().lower()
+    if mode not in {"auto", "python", "sql", "verify"}:
+        raise ValueError(
+            "DETERMINISTIC_EXECUTION_MODE must be auto, python, sql, or verify"
+        )
+    return mode
+
+
+def deterministic_python_row_limit() -> int:
+    try:
+        limit = int(os.environ.get("DETERMINISTIC_PYTHON_ROW_LIMIT", "10000"))
+    except ValueError as exc:
+        raise ValueError("DETERMINISTIC_PYTHON_ROW_LIMIT must be an integer") from exc
+    if limit < 0:
+        raise ValueError("DETERMINISTIC_PYTHON_ROW_LIMIT must be non-negative")
+    return limit
+
+
+def deterministic_persist_generated() -> bool:
+    return os.environ.get("DETERMINISTIC_PERSIST_GENERATED", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
 
 # ---------- model / data ----------

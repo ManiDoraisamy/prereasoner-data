@@ -132,8 +132,15 @@ def _unique_view_name(slug: str, logical: str, used: set[str]) -> str:
 def _decorate_view(view: dict[str, Any], slug: str, used: set[str]) -> dict[str, Any]:
     item = dict(view)
     logical = str(item.get("name") or item.get("op") or "step")
-    prefixed = _unique_view_name(slug, logical, used)
-    item["logical_name"] = logical
+    prefix = canonical_analysis_slug(slug) + "_"
+    if logical.startswith(prefix) and logical not in used:
+        prefixed = logical
+        used.add(prefixed)
+        logical_name = str(item.get("logical_name") or logical[len(prefix):])
+    else:
+        prefixed = _unique_view_name(slug, logical, used)
+        logical_name = logical
+    item["logical_name"] = logical_name
     item["name"] = prefixed
     return item
 

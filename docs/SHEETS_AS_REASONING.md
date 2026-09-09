@@ -12,6 +12,8 @@ conversation may contain several named analyses over those shared inputs. Each c
 the exact returned SQL, rows, and provenance. The UI shows short logical tab labels, while the wire-level derived
 view names are prefixed by the analysis slug: `total_sales_combined`, `total_sales_filtered`, and
 `total_sales_total`. This makes traces unambiguous without turning the tabs into long machine names.
+Supported named own-data analyses also expose the same feed-forward stages as readable Python; the
+dual-source contract is defined in [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
 ## The step grammar
 
@@ -58,6 +60,10 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
 10. **A workbook link is exact.** “Reasoning steps for total sales” links to both the analysis id and revision.
     Selecting it retains the source and private-reference tabs and replaces only the derived stack. Stale analyses
     are marked when a source table changes and must be recomputed before their old values are treated as current.
+11. **Dual emitters stay stage-aligned.** When an analysis is in the dual-emitter subset, every
+    SQL view and Python `View` has the same slug-prefixed name and consumes the immediately prior
+    stage. Operators are visible in the generated function at that transition. Grouping is one
+    named `group_reduce` stage even though its implementation maintains an in-memory group map.
 
 ## Verification checklist (run against a live conversation)
 

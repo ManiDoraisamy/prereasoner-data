@@ -42,6 +42,7 @@ Extend these owners. Do not build parallel replacements.
 | Responsibility | Production owner |
 |---|---|
 | Own-data typed SQL AST and rendering | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
+| Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery._serve_ast` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
@@ -135,6 +136,10 @@ Consolidation is part of each phase, not a future cleanup phase.
 - The typed AST is the only own-data SQL representation. New SQL behavior must
   be expressed as typed AST nodes, constraints, expansions, and renderer
   support, with focused tests.
+- A dual-emitter operation must be represented once in `AnalysisPlan`, implemented by both
+  deterministic emitters, and covered by an execution parity test. Generated Python must expose
+  named feed-forward stages and operator calls; it may not hide the computation behind reflection
+  or model-authored runtime behavior.
 - Compose is a composition/view system, not a second general own-data SQL
   solver. Do not broaden its ownership merely to fix an AST accuracy miss.
 - Routing must have one production predicate shared by serving and evaluation.

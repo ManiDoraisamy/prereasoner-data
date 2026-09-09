@@ -13,6 +13,7 @@ python -m pip_audit -r requirements-ci-windows.lock.txt
 python -m deploy.dependency_locks
 python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll
 python -m tests.test_sql_ast
+python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
 python -m tests.test_analysis
 python -m tests.test_master_ingest
@@ -80,6 +81,7 @@ The runner executes the canonical suites in this order:
 | Suite | Primary boundary |
 |---|---|
 | `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
+| `tests.test_deterministic_emitters` | Plan validation, byte-stable source, ORM object relationships, stage alignment, execution policy, and SQL/Python parity |
 | `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
 | `tests.test_routing` | Shared route authority and cross-process determinism |
 | `tests.test_router_evidence` | Property-family consensus and surfaced routing evidence |

@@ -51,7 +51,7 @@ _ANALYSIS_ID_RE = re.compile(r"^a_[0-9a-f]{32}$")
 _ANALYSIS_RESPONSE_FIELDS = (
     "question", "as_of", "sql", "result", "views", "model", "meaning_join",
     "provenance", "warnings", "calculations", "computation", "currency", "analysis",
-    "dataset_semantics", "reference", "present",
+    "dataset_semantics", "reference", "present", "deterministic",
 )
 
 
@@ -362,7 +362,7 @@ def begin_analysis(user_id, conversation_id, spec, question, *, request_input_ha
         )
         conn.commit()
         return {"analysis_id": analysis_id, "slug": slug, "revision": revision,
-                "action": action, "stale": False}
+                "dataset_version": dataset_version, "action": action, "stale": False}
     except Exception:
         conn.rollback()
         raise

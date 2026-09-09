@@ -488,8 +488,28 @@ class TableQuery:
         ok, why = self.guard(candidate.sql)
         if not ok:
             return candidate, None, "guard: " + why, candidates
+        deterministic_plan = None
+        from engine.deterministic.context import current_analysis_context
+        analysis_context = current_analysis_context()
+        if analysis_context is not None:
+            from engine.deterministic.lower import (
+                UnsupportedDeterministicPlan,
+                lower_select_query,
+            )
+            from engine.sql_ast import SelectQuery
+
+            if isinstance(candidate.query, SelectQuery):
+                try:
+                    deterministic_plan = lower_select_query(
+                        analysis_context.slug, candidate.query, sch, fks,
+                    )
+                except UnsupportedDeterministicPlan:
+                    deterministic_plan = None
         try:
-            cols, rows = self.execute(tablemap, sch, candidate.sql, query=candidate.query)
+            cols, rows = self.execute(
+                tablemap, sch, candidate.sql, query=candidate.query,
+                deterministic_plan=deterministic_plan,
+            )
             result = {
                 "columns": cols,
                 "rows": [["" if value is None else value for value in row] for row in rows[:50]],
@@ -509,7 +529,7 @@ class TableQuery:
             return False, "forbidden keyword"
         return True, "ok"
 
-    def execute(self, tablemap, sch, sql, query=None):
+    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
         from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
 
         con = sqlite3.connect(":memory:")
@@ -663,6 +683,15 @@ class TableQuery:
                 computation,
             )
             attach_calculation_evidence(response, assessments)
+        from engine.deterministic.context import current_execution_record
+        deterministic = current_execution_record()
+        if deterministic is not None:
+            response["sql"] = deterministic["final_sql"]
+            response["views"] = deterministic["views"]
+            response["deterministic"] = {
+                key: value for key, value in deterministic.items()
+                if key not in {"views", "final_sql"}
+            }
         return response
 
 

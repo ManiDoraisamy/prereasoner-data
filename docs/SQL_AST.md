@@ -16,6 +16,11 @@ Given a question, tables, and foreign keys, the planner:
 5. Ranks candidates with named deterministic features.
 6. Renders only validated ASTs to SQL.
 
+For a named analysis in the supported dual subset, the validated winner also lowers directly into
+one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted independently from that
+plan; neither source is parsed to create the other. See
+[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
+
 Foreign keys may contain one or several ordered column pairs. A composite key remains one
 logical graph edge and one `Join`; rendering produces an atomic conjunction such as
 `ON child.country = parent.country AND child.postal = parent.postal`. The validator rejects
@@ -205,6 +210,10 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/currency_intent.py` | Currency syntax and canonical rate-column rules used by the currency specification. |
 | `engine/sql_profile.py` | Structural AST profiles. |
 | `engine/sql_profile_expansion.py` | Deterministic exact-profile candidate expansion (`ProfileSearchConfig`). |
+| `engine/deterministic/plan.py` | Immutable feed-forward plan shared by both source emitters. |
+| `engine/deterministic/lower.py` | Strict lowering from the supported typed-AST subset; unsupported shapes remain on SQL. |
+| `engine/deterministic/emitter/` | Deterministic SQL view-stack and readable SQLAlchemy/Python source emitters. |
+| `engine/deterministic/runtime.py` | In-memory Python loading, execution policy, and SQL/Python parity checking. |
 
 `SQLSearcher.search` remains the low-level ablation boundary. The capability modules do
 not depend on one another's private internals.

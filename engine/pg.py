@@ -18,11 +18,15 @@ from psycopg2.extras import execute_values
 
 from engine import request_timing
 from engine.config import (
+    APP_ENV,
     KB_PG_DB,
     KB_PG_HOST,
     KB_PG_PORT,
     KB_PG_SSLMODE,
     KB_PG_USER,
+    deterministic_execution_mode,
+    deterministic_persist_generated,
+    deterministic_python_row_limit,
     kb_pg_password,
 )
 from engine.knowledge_tables import KnowledgeTableQuery
@@ -227,20 +231,77 @@ class _TableQueryPg(TableQuery):
     """Own-data path executor → Postgres (so uploads persist in the user schema and answers are consistent)."""
     _pg_schema = None
 
-    def execute(self, tablemap, sch, sql, query=None):
+    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
         conn = _pg(); cur = conn.cursor()
         try:
             _load_user_schema(cur, self._pg_schema, sch, tablemap)
+            if deterministic_plan is not None:
+                conn.commit()
+                conn.close()
+                conn = None
+                return self._execute_deterministic(tablemap, deterministic_plan)
             execution_sql = render_query(query, dialect="postgres_numeric") if query is not None else sql
             cur.execute(execution_sql)
             columns, rows = [d[0] for d in cur.description], cur.fetchall()
             conn.commit()
             return columns, rows
         except Exception:
-            conn.rollback()
+            if conn is not None:
+                conn.rollback()
             raise
         finally:
-            conn.close()
+            if conn is not None:
+                conn.close()
+
+    def _execute_deterministic(self, tablemap, plan):
+        from sqlalchemy import create_engine
+        from sqlalchemy.pool import NullPool
+
+        from engine.deterministic.context import (
+            current_analysis_context,
+            set_execution_record,
+        )
+        from engine.deterministic.service import DeterministicAnalysis
+
+        context = current_analysis_context()
+        if context is None:
+            raise RuntimeError("deterministic execution requires a named-analysis context")
+        engine = create_engine(
+            "postgresql+psycopg2://",
+            creator=_pg,
+            poolclass=NullPool,
+        )
+        try:
+            result = DeterministicAnalysis(
+                plan,
+                conversation_schema=self._pg_schema,
+                dataset_version=context.dataset_version,
+            ).run(
+                engine,
+                mode=deterministic_execution_mode(),
+                estimated_rows=sum(
+                    len(tablemap[name].get("rows") or ())
+                    for name in plan.views[0].tables
+                    if name in tablemap
+                ),
+                python_row_limit=deterministic_python_row_limit(),
+                app_env=APP_ENV,
+                persist_generated=deterministic_persist_generated(),
+                conversation_id=context.conversation_id,
+                revision=context.revision,
+            )
+            set_execution_record(result.record())
+            final_view = plan.views[-1]
+            if result.rows:
+                columns = list(result.rows[0])
+            elif hasattr(final_view, "aggregates"):
+                columns = [value.name for value in final_view.group_by + final_view.aggregates]
+            else:
+                columns = [value.name for value in final_view.values]
+            rows = [tuple(row.get(column) for column in columns) for row in result.rows]
+            return columns, rows
+        finally:
+            engine.dispose()
 
 
 class PgQuery(KnowledgeTableQuery):

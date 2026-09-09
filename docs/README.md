@@ -47,7 +47,9 @@ canonical request validation and conversation ownership
 route ownership and typed SQL candidate search
         |
         v
-guarded SQL execution over uploaded and approved reference rows
+guarded execution over uploaded and approved reference rows
+        |  supported named subset: emitted Python/SQL, optional parity
+        |  other shapes: existing SQL path
         |
         v
 rows, SQL, evidence, provenance, and optional trace events
@@ -66,8 +68,9 @@ database releases.
 |---|---|---|
 | Column, intent, profile, and similarity signals | Frozen Qwen encoder plus calibrated heads | Learned evidence; it scores or types candidates |
 | SQL representation and expansion | Typed AST and schema graph | Deterministic |
+| Named-analysis SQL/Python emission | One immutable feed-forward plan and two source emitters | Deterministic for the supported subset |
 | Candidate ordering | Named structural and encoder-derived features with stable tie-breaking | Deterministic for fixed artifacts and inputs |
-| Joins, calculations, validation, and execution | Typed rules, calculation specifications, SQL guard, and PostgreSQL | Deterministic |
+| Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
 | Conversational presentation | Optional external orchestrator | Cannot author SQL facts or numeric answers |
 
@@ -79,6 +82,7 @@ candidates, schema-linking mistakes, ranking mistakes, source gaps, or entity-re
 | Capability | Status | Notes |
 |---|---|---|
 | Typed own-data SQL planning and calculation verification | **Current** | Main planner path |
+| Deterministic SQL and readable Python emission | **Current, bounded** | Named own-data subset; unsupported AST and specialized world/compose shapes remain SQL-only |
 | Conversation-scoped uploads and user-scoped private references | **Current** | Organization-wide tenancy is not implemented |
 | Bounded conversation storage and inactivity expiry | **Current** | Daily cleanup; defaults and limits are in `ARCHITECTURE.md` |
 | Multiple named analysis workbooks per conversation | **Current** | Immutable revisions; historical rail links retain shared input tables |
@@ -101,6 +105,7 @@ candidates, schema-linking mistakes, ranking mistakes, source gaps, or entity-re
 | How do I install, test, and make a first request? | [GETTING_STARTED.md](GETTING_STARTED.md) |
 | What runs for a request, and which module owns each decision? | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | How does typed SQL search work? | [SQL_AST.md](SQL_AST.md) |
+| How do the matching SQL and Python emitters work? | [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md) |
 | How are arithmetic semantics represented and checked? | [CALCULATIONS.md](CALCULATIONS.md) |
 | Which source schemas and releases exist? | [SOURCE_DATA.md](SOURCE_DATA.md) |
 | How is PostgreSQL bootstrapped and seeded? | [../db/README.md](../db/README.md) |

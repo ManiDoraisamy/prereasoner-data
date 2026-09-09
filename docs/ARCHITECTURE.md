@@ -5,10 +5,13 @@ they are not shipped features. See the [documentation map](README.md) for the di
 current, opt-in, external, and planned behavior.
 
 Prereasoner represents a question, its data, and its source evidence as named dimensions. The current
-runtime composes those dimensions into a checked SQL query, runs it, and returns the result with its
-rows and trace. A frozen Qwen model supplies signals about intent and schema. It does not generate
-SQL or numeric answers. AST construction, routing, joins, validation, ranking, and execution are
-deterministic for fixed inputs, configuration, database state, and model files.
+runtime composes those dimensions into a checked query plan, runs it, and returns the result with its
+rows and trace. For the supported named own-data subset, one immutable plan emits both a SQL view
+stack and readable SQLAlchemy/Python source; see
+[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). A frozen Qwen model supplies signals about
+intent and schema. It does not generate SQL, Python, or numeric answers. AST construction, routing,
+joins, validation, ranking, emission, and execution are deterministic for fixed inputs,
+configuration, database state, and model files.
 
 Read [GETTING_STARTED.md](GETTING_STARTED.md) first when setting up the repository. Read
 [SQL_AST.md](SQL_AST.md) for planner internals, [SOURCE_DATA.md](SOURCE_DATA.md) for
@@ -35,7 +38,9 @@ engine/routing.py
         |
         +-- COMPOSE  --> world-dependent multi-step view composition
         v
-guarded SQL execution in the conversation schema
+guarded execution in the conversation schema
+        |  supported named analysis: auto Python/SQL, or both for parity
+        |  other plans: existing SQL executor
         |
         +-- engine/provenance.py: typed expression and source lineage
         +-- response: rows, SQL, evidence, provenance, and source releases
@@ -406,6 +411,7 @@ The repository has one owner per decision:
 - routing: `engine.routing.route()`;
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
+- dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - private-reference behavior: `engine.master`;
 - runtime configuration: `engine.config`;
 - request validation and canonical table names: `engine.request_validation`;

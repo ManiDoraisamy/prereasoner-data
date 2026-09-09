@@ -118,6 +118,16 @@ def test_single_sql_answer_gets_a_named_result_view():
     }]
 
 
+
+def test_already_prefixed_deterministic_views_are_not_prefixed_twice():
+    response = decorate_analysis_response({"views": [{
+        "name": "total_sales_combined", "logical_name": "combined",
+        "sql": 'SELECT * FROM "orders"',
+    }]}, _descriptor())
+    assert response["views"][0]["name"] == "total_sales_combined"
+    assert response["views"][0]["logical_name"] == "combined"
+
+
 TESTS = [
     test_slugs_are_canonical_bounded_and_deterministic,
     test_effective_input_hash_covers_values_references_and_table_order,
@@ -126,6 +136,7 @@ TESTS = [
     test_live_and_http_view_names_are_identical,
     test_repeated_logical_steps_get_unique_names_without_changing_sql,
     test_single_sql_answer_gets_a_named_result_view,
+    test_already_prefixed_deterministic_views_are_not_prefixed_twice,
 ]
 
 

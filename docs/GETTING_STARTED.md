@@ -66,6 +66,7 @@ file hash before installation. `HF_TOKEN` is only needed for an explicitly confi
 
 ```powershell
 python -m tests.test_sql_ast
+python -m tests.test_deterministic_emitters
 python -m tests.test_calculations
 python -m tests.test_master_ingest
 python -m tests.test_routing
@@ -203,6 +204,7 @@ release browser test.
 | Change | Start here | Primary test |
 |---|---|---|
 | AST nodes/rendering | `engine/sql_ast.py` | `tests.test_sql_ast` |
+| Dual SQL/Python analysis emission | `engine/deterministic/` | `tests.test_deterministic_emitters` |
 | Candidate expansion/search | `engine/sql_search.py` | `tests.test_sql_ast` |
 | Candidate scoring | `engine/sql_rank.py` | `tests.test_sql_ast` |
 | FK inference | `engine/relations.py` | `tests.test_sql_ast`, `tests.test_master_ingest` |

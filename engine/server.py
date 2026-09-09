@@ -697,11 +697,15 @@ class H(BaseHTTPRequestHandler):
                     serve_kwargs = {"emit": emit}
                     if enrichment is not None and enrichment.used:
                         serve_kwargs["explicit_fks"] = enrichment.explicit_fks
-                    with request_timing.span("serve"):
+                    from engine.deterministic.context import analysis_execution_context
+                    with analysis_execution_context(analysis, conv), request_timing.span("serve"):
                         res = MODEL.serve(
                             tabs, req.get("question", ""), conv, req.get("as_of"),
                             dataset_semantics=semantics, **serve_kwargs
                         )
+                    if isinstance(res, dict) and res.get("deterministic"):
+                        for index, view in enumerate(res.get("views") or ()):
+                            emit(f"views/{index}", view)
                 finally:
                     set_ctx(None)
             finally:

@@ -316,3 +316,23 @@ This supersedes the browser-only policy where every follow-up marked one anonymo
 discarded it on the next result. Snapshot v1 remains readable for existing conversations; new snapshots are
 v2 and include analysis identities. Remove v1 reading after the configured 90-day conversation retention
 window has elapsed from the first release containing this migration.
+
+## One named-analysis plan emits both SQL and readable Python (2026-09-09)
+
+The typed SQL AST remains the only own-data planner. For the supported named-analysis subset, its
+validated winner lowers into one immutable `AnalysisPlan`. Two deterministic emitters consume that
+plan: one creates the named SQL view stack and one creates SQLAlchemy table classes plus a wrapper
+whose method name is the analysis slug. This prevents either source language from becoming a
+separate planner or a model-authored black box.
+
+ORM foreign-key attributes are related objects. Their physical scalar columns remain private mapped
+attributes, so `Order.customer_id` is a `Customer` while SQLAlchemy can still join through the stored
+key. The ORM binds directly to the authorized PostgreSQL conversation schema and shared
+knowledgebase schemas; production does not create a parallel SQLite schema.
+
+`auto` execution uses Python for bounded small inputs and SQL above the configured row threshold;
+`verify` executes both and rejects unequal normalized rows at the first mismatching named stage.
+Production compiles generated Python as an ephemeral in-memory package. Development also replaces the exact
+`engine/deterministic/_gen/py/<conversation>/<slug>` tree for inspection; production writes that tree
+only when explicitly configured. Advanced AST and specialized world/compose shapes remain on their
+existing SQL paths until both emitters gain typed support; no approximate translation is allowed.

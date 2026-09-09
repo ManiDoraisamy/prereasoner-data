@@ -6,10 +6,11 @@ inspectable derivation.
 
 [Website](https://prereasoner.com/) | [Try it](https://chat.prereasoner.com/)
 
-Today, Prereasoner compiles those dimensions into typed SQL over tables. SQL gives each derivation a
-precise execution path: the dimensions can be combined, checked against real rows, and rerun by a
-reviewer. The same semantic model extends to public knowledge, source-grounded enrichment,
-structured retrieval, and domain-specific calculations without hiding the decision in generated text.
+Today, Prereasoner compiles those dimensions into a typed table plan. SQL gives every derivation a
+precise execution path. Supported named own-data analyses also emit readable SQLAlchemy/Python from
+the same immutable plan, using explicit feed-forward `View` stages and operator calls. The same
+semantic model extends to public knowledge, source-grounded enrichment, structured retrieval, and
+domain-specific calculations without hiding the decision in generated text.
 
 The long-term objective is an interpretable AI substrate: a shared representation of objects,
 attributes, relationships, and calculations that can be grounded in different sources and applied
@@ -20,7 +21,7 @@ For a table question, Prereasoner identifies the columns and relationships it ne
 bounded set of valid SQL queries, and returns the result with the query and supporting rows.
 
 The learned model helps identify intent, column roles, and schema relationships. It does not generate
-SQL text or numeric answers. A typed planner composes the named dimensions, checks the resulting
+SQL, Python, or numeric answers. A typed planner composes the named dimensions, checks the resulting
 query, and executes it against the database. For fixed input data, configuration, database state,
 and model files, the same request produces the same plan and result.
 
@@ -50,12 +51,16 @@ One request can use:
 
 A conversation can keep several named analysis workbooks over those same inputs. A refinement such as “in US
 dollars” creates a new revision of the existing workbook; a different result such as “top selling products” creates
-another workbook. Each rail link restores the exact SQL, rows, and provenance that produced that answer.
+another workbook. Each rail link restores the exact SQL, rows, provenance, and—when dual emission
+applies—the generated Python source and hashes that produced that answer.
 
 ## What Is Deterministic
 
-The answer is computed by SQL, not written by a decoder. The frozen Qwen model is used as an
-encoder for intent and schema signals; it does not call `generate()` to write a query or a number.
+The answer is computed by a deterministic emitted program, not written by a decoder. The supported
+named own-data subset runs readable Python for bounded small inputs and SQL for larger inputs; a
+verification mode executes and compares both at every named stage. Other query shapes continue on
+the existing SQL path. The frozen Qwen model is used as an encoder for intent and schema signals; it
+does not call `generate()` to write a query or a number.
 
 Schema.org supplies the semantic vocabulary: classes, properties, domains, ranges, and inheritance.
 It is not the source of mutable facts. Wikidata provides public entity identity and mapped
@@ -79,8 +84,9 @@ The core path for a new contributor is:
 1. [docs/GETTING_STARTED.md](docs/GETTING_STARTED.md) - install, run the public-checkout tests, and find the code.
 2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - follow a request from upload to result.
 3. [docs/PROMPT_TO_SQL.md](docs/PROMPT_TO_SQL.md) - walk through one question and its typed query.
-4. [docs/TESTING.md](docs/TESTING.md) - choose the right test for the change.
-5. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request evidence.
+4. [docs/DETERMINISTIC_EMITTERS.md](docs/DETERMINISTIC_EMITTERS.md) - inspect the matching SQL/Python contract.
+5. [docs/TESTING.md](docs/TESTING.md) - choose the right test for the change.
+6. [CONTRIBUTING.md](CONTRIBUTING.md) - change discipline and pull-request evidence.
 
 The planner, source-data, training, deployment, release, privacy, and roadmap paths are indexed in
 [docs/README.md](docs/README.md). The enrichment roadmap is not required reading for a planner
@@ -122,7 +128,11 @@ engine/knowledge.py              one serving entry point
                 engine/knowledge_query.py, engine/knowledge_compose.py
         |
         v
-Postgres execution + engine/provenance.py + inspectable trace
+supported named subset: deterministic Python/SQL execution and optional parity
+other shapes: existing SQL execution
+        |
+        v
+engine/provenance.py + inspectable trace
 ```
 
 The AST planner receives uploaded tables and any selected reference tables in the same typed table format.
