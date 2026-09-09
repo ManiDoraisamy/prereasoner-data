@@ -93,6 +93,24 @@ def main():
         exact_ok = False
     if not exact_ok or not isinstance(exact_value, str):
         fails.append(f"exact non-geo SUM rounded or used unsafe wire type (got {exact_value!r})")
+
+    # Natural-language follow-up rewrites may add a predicate connective such as "named". The
+    # typed planner already binds the exact uploaded value; coverage must not discard that valid
+    # result merely because the connective is not represented in SQL.
+    named_table = {"name": "transfers", "columns": ["hospital", "transfers"], "rows": [
+        ["Mayo Clinic", 14], ["Massachusetts General Hospital", 11],
+    ]}
+    named_result = Q.serve(
+        [named_table], "total transfers for hospitals named Mayo Clinic", schema=schema,
+    )
+    named_rows = (named_result or {}).get("result", {}).get("rows") or []
+    named_value = named_rows[0][-1] if named_rows and named_rows[0] else None
+    try:
+        named_ok = Decimal(str(named_value)) == Decimal("14")
+    except Exception:  # noqa: BLE001
+        named_ok = False
+    if named_result.get("clarify") or not named_ok:
+        fails.append(f"named entity predicate was incorrectly clarified (got {named_result!r})")
     print("\n" + ("PASS — non-geo world join over pre-synchronized facts works" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0
