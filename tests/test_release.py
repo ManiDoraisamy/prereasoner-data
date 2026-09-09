@@ -387,10 +387,13 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert {
         "Dockerfile.orchestrator",
         "cloudbuild.orchestrator.yaml",
+        "engine/analysis.py",
         "mcp_server",
         "orchestrator",
         "tests",
     } <= set(SOURCE_CHAT_ALLOWLIST)
+    chat_dockerfile = _text("Dockerfile.orchestrator")
+    assert "engine/analysis.py" in chat_dockerfile
     assert not {"training", "spider", "world_eval", "infra", "db"} & set(
         SOURCE_CHAT_ALLOWLIST
     )

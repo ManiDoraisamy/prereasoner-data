@@ -36,6 +36,7 @@ SOURCE_CHAT_ALLOWLIST = (
     "THIRD_PARTY.md",
     "cloudbuild.orchestrator.yaml",
     "engine/__init__.py",
+    "engine/analysis.py",
     "engine/auth.py",
     "engine/config.py",
     "engine/dataset_attestation.py",
