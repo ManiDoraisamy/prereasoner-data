@@ -5,6 +5,12 @@ point are normally coerced to binary ``REAL`` during arithmetic. The typed AST
 therefore has a SQLite decimal dialect whose functions are registered here.
 Fractional results that cannot be represented exactly as a JSON float cross the
 wire as canonical decimal strings; integral results remain JSON integers.
+
+``decimal_binary``, ``decimal_compare`` and the ``DecimalAggregate`` family are the arithmetic
+kernel itself, public because two callers need exactly these semantics: SQLite (via
+:func:`register_sqlite_decimal`, which installs them as custom functions) and the Python emitter
+in ``deterministic/emitter/py``. Sharing the kernel is what makes the two emitters agree on
+arithmetic by construction, leaving their differential test to check relational algebra.
 """
 from __future__ import annotations
 
@@ -115,7 +121,7 @@ def wire_rows(rows: Iterable[Iterable[Any]]) -> list[list[Any]]:
     return [["" if value is None else wire_value(value) for value in row] for row in rows]
 
 
-def _decimal_arg(value: Any) -> Decimal | None:
+def decimal_arg(value: Any) -> Decimal | None:
     if value is None:
         return None
     try:
@@ -124,8 +130,8 @@ def _decimal_arg(value: Any) -> Decimal | None:
         return None
 
 
-def _binary(operator: str, left: Any, right: Any) -> str | None:
-    a, b = _decimal_arg(left), _decimal_arg(right)
+def decimal_binary(operator: str, left: Any, right: Any) -> str | None:
+    a, b = decimal_arg(left), decimal_arg(right)
     if a is None or b is None:
         return None
     try:
@@ -144,21 +150,21 @@ def _binary(operator: str, left: Any, right: Any) -> str | None:
     return canonical_decimal(result)
 
 
-def _compare(left: Any, right: Any) -> int | None:
-    a, b = _decimal_arg(left), _decimal_arg(right)
+def decimal_compare(left: Any, right: Any) -> int | None:
+    a, b = decimal_arg(left), decimal_arg(right)
     if a is None or b is None:
         return None
     return (a > b) - (a < b)
 
 
-class _DecimalAggregate:
+class DecimalAggregate:
     mode = "sum"
 
     def __init__(self) -> None:
         self.values: list[Decimal] = []
 
     def step(self, value: Any) -> None:
-        parsed = _decimal_arg(value)
+        parsed = decimal_arg(value)
         if parsed is not None:
             self.values.append(parsed)
 
@@ -178,31 +184,31 @@ class _DecimalAggregate:
         return canonical_decimal(result)
 
 
-class _DecimalAverage(_DecimalAggregate):
+class DecimalAverage(DecimalAggregate):
     mode = "avg"
 
 
-class _DecimalMinimum(_DecimalAggregate):
+class DecimalMinimum(DecimalAggregate):
     mode = "min"
 
 
-class _DecimalMaximum(_DecimalAggregate):
+class DecimalMaximum(DecimalAggregate):
     mode = "max"
 
 
 def register_sqlite_decimal(connection: sqlite3.Connection) -> None:
-    connection.create_function("decimal_add", 2, lambda a, b: _binary("+", a, b), deterministic=True)
-    connection.create_function("decimal_sub", 2, lambda a, b: _binary("-", a, b), deterministic=True)
-    connection.create_function("decimal_mul", 2, lambda a, b: _binary("*", a, b), deterministic=True)
-    connection.create_function("decimal_div", 2, lambda a, b: _binary("/", a, b), deterministic=True)
-    connection.create_function("decimal_cmp", 2, _compare, deterministic=True)
-    connection.create_aggregate("decimal_sum", 1, _DecimalAggregate)
-    connection.create_aggregate("decimal_avg", 1, _DecimalAverage)
-    connection.create_aggregate("decimal_min", 1, _DecimalMinimum)
-    connection.create_aggregate("decimal_max", 1, _DecimalMaximum)
+    connection.create_function("decimal_add", 2, lambda a, b: decimal_binary("+", a, b), deterministic=True)
+    connection.create_function("decimal_sub", 2, lambda a, b: decimal_binary("-", a, b), deterministic=True)
+    connection.create_function("decimal_mul", 2, lambda a, b: decimal_binary("*", a, b), deterministic=True)
+    connection.create_function("decimal_div", 2, lambda a, b: decimal_binary("/", a, b), deterministic=True)
+    connection.create_function("decimal_cmp", 2, decimal_compare, deterministic=True)
+    connection.create_aggregate("decimal_sum", 1, DecimalAggregate)
+    connection.create_aggregate("decimal_avg", 1, DecimalAverage)
+    connection.create_aggregate("decimal_min", 1, DecimalMinimum)
+    connection.create_aggregate("decimal_max", 1, DecimalMaximum)
 
     def collate(left: str, right: str) -> int:
-        result = _compare(left, right)
+        result = decimal_compare(left, right)
         return result if result is not None else (left > right) - (left < right)
 
     connection.create_collation("decimal", collate)

@@ -31,6 +31,10 @@ training/schema_org/data/*
 training/data/pod_id.txt
 !training/schema_org/data/semantic_manifest.json
 
+# Emitted Python from the parity oracle's debug dump (PR_EMIT_PY_DEBUG=1). Regenerable, and
+# it embeds question literals and uploaded column names, so it is never committed.
+deterministic/_gen/
+
 # Logs & local state
 *.log
 .firebase/

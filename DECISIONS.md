@@ -335,3 +335,35 @@ repeatability test still passes. Two packaging facts had to follow the code — 
 `deterministic/` (the engine image previously shipped only `engine/`, `regress/`, `db/`, so serving
 would have failed at import), and `spider/probe/full_eval.py` fingerprints the emitter, or a
 rendering change would no longer invalidate a `--resume` checkpoint.
+
+## A Python emitter as a differential oracle, CI-only (2026-09-09)
+
+Determinism guarantees the same question yields the same SQL. It does not guarantee that SQL is
+correct, and nothing in the suite recomputed the relational algebra independently — the hermetic
+tests assert pinned SQL strings and hand-written expected rows, both authored alongside the planner
+they check. `deterministic/emitter/py/` is a second lowering of the same IR: it hydrates uploaded
+rows into objects and evaluates the tree over them, and CI requires it to agree with SQL row for row.
+
+Three constraints keep it honest:
+
+- **It never serves.** No serving module imports it, so `docs/SHEETS_AS_REASONING.md` rules 1 and 8
+  are untouched: the workbook still shows executed SQL. This also means there is no dev/production
+  path split to diverge — the emitted `.py` under `deterministic/_gen/` is a debug artifact written
+  only under `PR_EMIT_PY_DEBUG=1`, never in an environment holding real tenant data (it embeds
+  question literals and uploaded column names).
+- **It must not re-ask the database.** SQLAlchemy may issue only `SELECT * FROM "<table>"`, once per
+  table; joins, filters, grouping and ordering happen in Python over materialized rows, with
+  `lazy="raise"` on every relationship. A statement listener fails the suite on any other statement.
+  Without this the oracle would be SQL checking SQL.
+- **It must be written from AST semantics, not transliterated** from `render.py`, or it reproduces
+  the renderer's bugs and proves nothing.
+
+SQLAlchemy is therefore a *test* dependency (`requirements-ci.txt` only, never `requirements.txt`);
+the serving image is unchanged. Arithmetic is not re-implemented: the evaluator reuses
+`engine/numeric.py`, the same exact-decimal code `register_sqlite_decimal` installs into SQLite, so
+the two emitters agree on arithmetic by construction and the oracle tests relational algebra.
+
+**Removal condition.** The differential suite is permanent test infrastructure. The generated-class
+layer (`emitter/py/classes.py`, and with it the SQLAlchemy dependency) is the speculative part: if it
+has surfaced no defect the evaluator alone would have missed by 2026-12-31, delete the class layer
+and hydrate into plain dataclasses instead.

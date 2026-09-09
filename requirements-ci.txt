@@ -5,6 +5,9 @@ mcp==1.29.1
 numpy==1.26.4
 scikit-learn==1.9.0
 psycopg2-binary>=2.9,<3
+sqlalchemy>=2.0,<3                # TEST ONLY: hydrates the emitter-parity oracle's object
+                                  # graph. Never add to requirements.txt — the Python
+                                  # emitter must never be importable from serving.
 requests>=2.31,<3
 defusedxml>=0.7,<1
 bandit==1.9.4
