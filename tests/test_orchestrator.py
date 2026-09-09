@@ -134,6 +134,20 @@ def main():
         ok("did you mean a different country" not in r1e["reply"].lower(),
            "a repeated short follow-up cannot be downgraded to a meta clarification")
 
+        # The same inheritance rule applies when the follow-up restates the metric in natural
+        # language. The payment-commissions demo regressed by asking whether "how much commission"
+        # meant a total or a rate, even though the preceding turn had already selected total amount.
+        print("[1c] metric follow-up inherits the prior measure")
+        r1f = asyncio.run(chat("how much commission came from cards?", history=[
+            {"role": "user", "content": "total commission amount for card payments"},
+            {"role": "assistant", "content": "The commission on card payments adds up to 9.28."},
+        ]))
+        sent_f = [t.get("question", "") for t in r1f["traces"]]
+        ok(len(sent_f) == 1 and "commission" in sent_f[0].lower() and "card" in sent_f[0].lower(),
+           f"the metric follow-up reaches the engine with its prior subject (got {sent_f})")
+        ok("total or a rate" not in r1f["reply"].lower(),
+           "an established metric cannot be reopened as a metric-choice clarification")
+
         print("[1c] follow-up rewrite carries grouping and limit qualifiers")
         r1d = asyncio.run(chat("what about 2024?", history=[
             {"role": "user", "content": "top 3 customers by total amount per month in 2025"},
