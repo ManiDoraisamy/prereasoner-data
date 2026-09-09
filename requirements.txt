@@ -6,7 +6,7 @@
 torch==2.13.0
 transformers==5.10.4
 tokenizers==0.22.2
-safetensors==0.7.0
+safetensors==0.8.0
 accelerate==1.14.0
 peft==0.19.1                    # loads the qwen_lora adapter onto the base Qwen encoder
 numpy==1.26.4

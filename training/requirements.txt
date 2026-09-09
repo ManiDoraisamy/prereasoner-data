@@ -10,7 +10,7 @@ torch==2.13.0
 # set HF_TOKEN in the environment (never hardcode it).
 transformers==5.10.4
 tokenizers==0.22.2
-safetensors==0.7.0
+safetensors==0.8.0
 accelerate==1.14.0
 peft==0.19.1                    # loads / trains the qwen_lora adapter (lib/encoder.LiveQwen)
 huggingface_hub==1.29.0
