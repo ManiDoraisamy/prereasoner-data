@@ -20,10 +20,14 @@ from engine.deterministic.plan import (
     CombinedView,
     EnrichedView,
     FilteredView,
+    FunctionValue,
+    JunctionValue,
     LiteralValue,
     PredicateValue,
     ProjectedView,
     ReducedView,
+    SortedView,
+    WindowView,
     Value,
     ViewValue,
 )
@@ -62,7 +66,7 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
@@ -110,6 +114,17 @@ class SQLEmitter:
                 available_values = {item.name for item in view.group_by} | {
                     item.name for item in view.aggregates
                 }
+            elif isinstance(view, SortedView):
+                order = ", ".join(
+                    f"{self._value(item.value, available_tables, available_values)} {'DESC' if item.descending else 'ASC'} NULLS LAST"
+                    for item in view.order
+                )
+                sql = f"SELECT * FROM {_q(view.source)} ORDER BY {order}"
+                if view.limit is not None:
+                    sql += f" LIMIT {view.limit}"
+            elif isinstance(view, WindowView):
+                sql = self._window(view, available_tables, available_values)
+                available_values.add(view.output)
             else:
                 raise TypeError(f"unsupported SQL view: {type(view).__name__}")
             statements.append(f"CREATE TEMP VIEW {_q(view.name)} AS {sql}")
@@ -142,6 +157,26 @@ class SQLEmitter:
         for table in tables[1:]:
             source, relationship = plan.connecting_relationship(joined, table.name)
             target = plan.table(relationship.target_table)
+            if relationship.condition is not None:
+                join_kind = "LEFT JOIN" if view.outer else "JOIN"
+                resolve = lambda value: self._qualified(
+                    plan.table(value.table).schema, value.table, value.column
+                )
+                if relationship.secondary:
+                    bridge = plan.table(relationship.secondary)
+                    sql += (
+                        f" {join_kind} {self._table(bridge.schema, bridge.name)} ON "
+                        + self._join_predicate(relationship.condition, resolve)
+                    )
+                    condition = relationship.secondary_condition
+                else:
+                    condition = relationship.condition
+                sql += (
+                    f" {join_kind} {self._table(table.schema, table.name)} ON "
+                    + self._join_predicate(condition, resolve)
+                )
+                joined.add(table.name)
+                continue
             comparisons = [
                 f"{self._qualified(source.schema, source.name, local)} = "
                 f"{self._qualified(target.schema, target.name, remote)}"
@@ -149,8 +184,9 @@ class SQLEmitter:
                     relationship.local_columns, relationship.remote_columns
                 )
             ]
-            sql += f" JOIN {self._table(table.schema, table.name)} ON " + " AND ".join(
-                comparisons
+            sql += (
+                f" {'LEFT JOIN' if view.outer else 'JOIN'} {self._table(table.schema, table.name)} ON "
+                + " AND ".join(comparisons)
             )
             joined.add(table.name)
         return sql, set(view.tables)
@@ -168,6 +204,7 @@ class SQLEmitter:
             dict.fromkeys(enrichment.target_table for enrichment in view.enrichments)
         )
         for enrichment in view.enrichments:
+            join_kind = "JOIN" if enrichment.required else "LEFT JOIN"
             current = plan.table(enrichment.source_table)
             if current.name not in available_tables:
                 raise ValueError(f"enrichment source {current.name!r} is unavailable")
@@ -178,6 +215,34 @@ class SQLEmitter:
                     target.name not in joined_here
                     and target.name not in available_tables
                 ):
+                    if relationship.condition is not None:
+
+                        def resolve(value):
+                            owner = plan.table(value.table)
+                            return (
+                                f"{_q(view.source)}.{_q(_flat(owner.name, value.column))}"
+                                if owner.name in available_tables
+                                else self._qualified(
+                                    owner.schema, owner.name, value.column
+                                )
+                            )
+
+                        if relationship.secondary:
+                            bridge = plan.table(relationship.secondary)
+                            joins.append(
+                                f"{join_kind} {self._table(bridge.schema, bridge.name)} ON "
+                                + self._join_predicate(relationship.condition, resolve)
+                            )
+                            condition = relationship.secondary_condition
+                        else:
+                            condition = relationship.condition
+                        joins.append(
+                            f"{join_kind} {self._table(target.schema, target.name)} ON "
+                            + self._join_predicate(condition, resolve)
+                        )
+                        joined_here.add(target.name)
+                        current = target
+                        continue
                     comparisons = []
                     for local, remote in zip(
                         relationship.local_columns, relationship.remote_columns
@@ -191,7 +256,7 @@ class SQLEmitter:
                             f"{left} = {self._qualified(target.schema, target.name, remote)}"
                         )
                     joins.append(
-                        f"JOIN {self._table(target.schema, target.name)} ON "
+                        f"{join_kind} {self._table(target.schema, target.name)} ON "
                         + " AND ".join(comparisons)
                     )
                     joined_here.add(target.name)
@@ -233,11 +298,57 @@ class SQLEmitter:
             else self._value(aggregate.operand, tables, values)
         )
         sql = f"{aggregate.function}({operand})"
-        return f"ROUND({sql}, {DIVISION_SCALE})" if aggregate.function == "AVG" else sql
+        # ROUND cannot recover digits PostgreSQL's AVG(bigint) already discarded.
+        # Give the operand the contract's decimal scale BEFORE division occurs.
+        return (
+            f"ROUND(AVG(CAST({operand} AS NUMERIC) * 1.{'0' * DIVISION_SCALE}), {DIVISION_SCALE})"
+            if aggregate.function == "AVG"
+            else sql
+        )
+
+    def _window(self, view, tables, values):
+        def scoped(value, alias):
+            if isinstance(value, (ViewValue, ColumnValue)):
+                return f"{alias}." + self._value(value, tables, values)
+            raise TypeError("correlated operators require bound columns")
+
+        current, previous = scoped(view.measure, "t"), scoped(view.measure, "p")
+        conditions = [
+            f"{scoped(key, 'p')} = {scoped(key, 't')}" for key in view.partition
+        ]
+        source = _q(view.source)
+        if view.function == "yoy":
+            conditions.append(
+                f"{scoped(view.time, 't')} = {scoped(view.time, 'p')} + 1"
+            )
+            expression = f"ROUND((CAST(({current} - {previous}) AS NUMERIC) * 1.{'0' * DIVISION_SCALE} / NULLIF({previous}, 0)), {DIVISION_SCALE})"
+            return (
+                f"SELECT t.*, {expression} AS {_q(view.output)} FROM {source} t JOIN {source} p ON "
+                + " AND ".join(conditions)
+            )
+        if view.function == "running":
+            conditions.append(f"{scoped(view.time, 'p')} <= {scoped(view.time, 't')}")
+        where = " WHERE " + " AND ".join(conditions) if conditions else ""
+        total = f"(SELECT SUM({previous}) FROM {source} p{where})"
+        expression = (
+            total
+            if view.function == "running"
+            else f"ROUND((CAST({current} AS NUMERIC) * 1.{'0' * DIVISION_SCALE} / NULLIF({total}, 0)), {DIVISION_SCALE})"
+        )
+        return f"SELECT t.*, {expression} AS {_q(view.output)} FROM {source} t"
 
     def _predicate(
         self, predicate: PredicateValue, tables: set[str], values: set[str]
     ) -> str:
+        if isinstance(predicate, JunctionValue):
+            return (
+                "("
+                + f" {predicate.operator} ".join(
+                    self._predicate(child, tables, values)
+                    for child in predicate.predicates
+                )
+                + ")"
+            )
         if predicate.operator in {"IS", "IS NOT"} and isinstance(
             predicate.right, LiteralValue
         ):
@@ -257,6 +368,13 @@ class SQLEmitter:
         )
 
     def _value(self, value: Value, tables: set[str], values: set[str]) -> str:
+        if isinstance(value, FunctionValue):
+            operand = self._value(value.operand, tables, values)
+            return (
+                f"CAST({operand} AS TEXT)"
+                if value.function == "TEXT"
+                else f"LOWER({operand})"
+            )
         if isinstance(value, LiteralValue):
             return _literal(value.value)
         if isinstance(value, ViewValue):
@@ -271,12 +389,38 @@ class SQLEmitter:
             if value.operator == "/":
                 left = self._value(value.left, tables, values)
                 right = self._value(value.right, tables, values)
-                return f"ROUND((CAST({left} AS NUMERIC) * 1.0 / NULLIF({right}, 0)), {DIVISION_SCALE})"
+                return f"ROUND((CAST({left} AS NUMERIC) * 1.{'0' * DIVISION_SCALE} / NULLIF({right}, 0)), {DIVISION_SCALE})"
             return (
                 f"({self._value(value.left, tables, values)} {_BINARY[value.operator]} "
                 f"{self._value(value.right, tables, values)})"
             )
         raise TypeError(f"unsupported SQL value: {type(value).__name__}")
+
+    def _join_predicate(self, predicate, resolve):
+        """Render typed ORM join conditions; never accept a raw SQL fragment."""
+
+        def value(item):
+            if isinstance(item, ColumnValue):
+                return resolve(item)
+            if isinstance(item, FunctionValue):
+                operand = value(item.operand)
+                return (
+                    f"CAST({operand} AS TEXT)"
+                    if item.function == "TEXT"
+                    else f"LOWER({operand})"
+                )
+            return self._value(item, set(), set())
+
+        if isinstance(predicate, JunctionValue):
+            return (
+                "("
+                + f" {predicate.operator} ".join(
+                    self._join_predicate(child, resolve)
+                    for child in predicate.predicates
+                )
+                + ")"
+            )
+        return f"{value(predicate.left)} {predicate.operator} {value(predicate.right)}"
 
     def _table(self, schema: str, table: str) -> str:
         return _table(self.schema_map.get(schema, schema), table)

@@ -7,7 +7,7 @@ inspectable derivation.
 [Website](https://prereasoner.com/) | [Try it](https://chat.prereasoner.com/)
 
 Today, Prereasoner compiles those dimensions into a typed table plan. SQL gives every derivation a
-precise execution path. Supported own-data analyses also emit readable SQLAlchemy/Python from
+precise execution path. Supported own-data, world, and composed analyses also emit readable SQLAlchemy/Python from
 the same immutable plan, using explicit feed-forward `View` stages and operator calls. The same
 semantic model extends to public knowledge, source-grounded enrichment, structured retrieval, and
 domain-specific calculations without hiding the decision in generated text.
@@ -57,7 +57,7 @@ applies—the generated Python source and hashes that produced that answer.
 ## What Is Deterministic
 
 The answer is computed by a deterministic emitted program, not written by a decoder. The supported
-own-data subset can run readable Python for bounded small inputs and SQL for larger inputs; a
+shared-plan subset can run readable Python for bounded small inputs and SQL for larger inputs; a
 verification mode executes and compares both at every named stage. The workbook URL can select a
 request-local backend with `?use=sql`, `?use=py`, or `?use=both` (`both` is stage-by-stage verification).
 Direct requests with an explicit mode use a transient analysis plan; named workbook revisions retain

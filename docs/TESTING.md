@@ -17,8 +17,10 @@ orchestrated navigation and follow-up payloads. Its API and authentication are l
 proves browser transport behavior, not actual backend execution or live authentication.
 
 `tests.test_datasets` evaluates the public prompts and `eval.txt` expectations against the seeded
-engine. It currently does **not** run a mode matrix or require a shared-plan execution record. A
-passing dataset evaluation therefore cannot be reported as SQL/Python parity for all datasets.
+production `ComposedKnowledgeQuery` entry point. It runs `sql,python,verify` by default and checks
+actual mode, exact stage parity in verify, cross-request answer agreement, and independent expectations.
+`EVAL_EXECUTION_MODES` selects modes; `EVAL_DATASETS` narrows datasets for diagnosis, not a full release
+claim. `EVAL_REPORT` saves per-case timings, source manifests, answers, and failures as JSON.
 `customer-orders` and `orders-tiers` are separate fixtures; `chat:` evaluation lines require the
 orchestrator's conversational context.
 
@@ -26,7 +28,7 @@ Before releasing a parity claim, run authenticated requests against a test Postg
 with the same input data and pinned references in each supported mode. Assert `execution.actual`,
 `execution.verified`, every stage, and the independent expected answer. Include fractional money,
 repeating division, averages, empty/null groups, duplicate facts, composite joins, and unsupported
-world/compose cases. An HTTP 200 page, a health response, or a 401 API rejection does not prove that
+world/compose cases. Run with the non-superuser serving role. An HTTP 200 page, a health response, or a 401 API rejection does not prove that
 Python ran. Record unavailable prerequisites as untested, never as passed.
 
 ## Quick Local Checks

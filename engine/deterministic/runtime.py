@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import sys
 import threading
+import warnings
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, is_dataclass
@@ -15,6 +16,7 @@ from types import MappingProxyType, ModuleType
 
 from sqlalchemy import Connection, Engine, text
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SAWarning
 
 from engine.deterministic.emitter.py import GeneratedPackage
 from engine.deterministic.emitter.sql import GeneratedSQL
@@ -104,10 +106,16 @@ def execute_python(
     """Execute the emitted wrapper against a SQLAlchemy bind and return AnalysisResult."""
     translated = bind.execution_options(schema_translate_map=dict(schema_map or {}))
     with (
+        warnings.catch_warnings(),
         localcontext() as context,
         load_generated_package(package) as loaded,
         Session(bind=translated) as session,
     ):
+        warnings.filterwarnings(
+            "error",
+            message="Multiple rows returned with uselist=False.*",
+            category=SAWarning,
+        )
         context.prec = DECIMAL_PRECISION
         wrapper = loaded.analysis_class()(session)
         return getattr(wrapper, str(package.manifest["slug"]))()
@@ -197,9 +205,11 @@ def materialized_python_views(
 def assert_equivalent(
     python_rows: tuple[dict[str, object], ...],
     sql_rows: tuple[dict[str, object], ...],
+    *,
+    ordered: bool = False,
 ) -> None:
-    left = _canonical_rows(python_rows)
-    right = _canonical_rows(sql_rows)
+    left = _canonical_rows(python_rows, ordered=ordered)
+    right = _canonical_rows(sql_rows, ordered=ordered)
     if left != right:
         raise VerificationMismatch(
             f"Python and SQL results differ: python={left!r}, sql={right!r}"
@@ -229,7 +239,7 @@ def debug_generation_enabled(app_env: str, *, explicit: bool = False) -> bool:
     return app_env.strip().lower() == "development" or explicit
 
 
-def _canonical_rows(rows: tuple[dict[str, object], ...]):
+def _canonical_rows(rows: tuple[dict[str, object], ...], *, ordered=False):
     def scalar(value: object):
         if isinstance(value, Decimal):
             return ("number", canonical_decimal(value))
@@ -243,15 +253,11 @@ def _canonical_rows(rows: tuple[dict[str, object], ...]):
             return tuple(scalar(item) for item in value)
         return value
 
-    return tuple(
-        sorted(
-            (
-                tuple(sorted((key, scalar(value)) for key, value in row.items()))
-                for row in rows
-            ),
-            key=repr,
-        )
+    normalized = tuple(
+        tuple(sorted((key, scalar(value)) for key, value in row.items()))
+        for row in rows
     )
+    return normalized if ordered else tuple(sorted(normalized, key=repr))
 
 
 def _quote_identifier(value: str) -> str:

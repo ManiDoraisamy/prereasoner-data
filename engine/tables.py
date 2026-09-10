@@ -502,6 +502,7 @@ class TableQuery:
                 try:
                     deterministic_plan = lower_select_query(
                         analysis_context.slug, candidate.query, sch, fks,
+                        postgres_row_identity=getattr(self, "postgres_row_identity", False),
                     )
                 except UnsupportedDeterministicPlan:
                     deterministic_plan = None

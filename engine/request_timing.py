@@ -16,6 +16,7 @@ row — this line goes to ordinary container logs, which are not a place for use
 Thread-safe via contextvars: each serving thread gets its own collector, so the line stays correct
 if the engine's request lock is ever narrowed.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -29,9 +30,11 @@ class _Timing:
     def __init__(self, request_id):
         self.request_id = request_id
         self.started = time.perf_counter()
-        self.spans: dict[str, list] = {}      # name -> [count, total_s, self_s]
+        self.spans: dict[str, list] = {}  # name -> [count, total_s, self_s]
         self.counters: dict[str, int] = {}
-        self._child_stack: list[float] = []   # time consumed by spans nested in the open span
+        self._child_stack: list[
+            float
+        ] = []  # time consumed by spans nested in the open span
 
     def record(self, name, elapsed, child_elapsed):
         slot = self.spans.setdefault(name, [0, 0.0, 0.0])
@@ -52,7 +55,7 @@ def end(token):
     """Close the collector. Always pair with `begin` in a finally."""
     try:
         _CTX.reset(token)
-    except ValueError:                       # noqa: BLE001 — reset from a different context; nothing to unwind
+    except ValueError:  # noqa: BLE001 — reset from a different context; nothing to unwind
         pass
 
 
@@ -71,7 +74,7 @@ def span(name):
         elapsed = time.perf_counter() - started
         child_elapsed = timing._child_stack.pop()
         timing.record(name, elapsed, child_elapsed)
-        if timing._child_stack:              # bill the FULL span to the enclosing span's children
+        if timing._child_stack:  # bill the FULL span to the enclosing span's children
             timing._child_stack[-1] += elapsed
 
 
@@ -96,6 +99,14 @@ def request_id():
     return timing.request_id if timing is not None else None
 
 
+def snapshot():
+    """Machine-readable durations from the same request collector used by logs."""
+    timing = _CTX.get()
+    if timing is None:
+        return {}
+    return {f"{name}_ms": total * 1000 for name, (_, total, _) in timing.spans.items()}
+
+
 def set_request_id(rid):
     """Adopt a correlation id that only became known after the body was parsed (the jobId), so the
     engine line joins to the chat turn even when the caller sent no `X-Request-Id` header."""
@@ -115,19 +126,24 @@ def emit(tag, **extra):
         # at all. Publishing the remainder keeps the line an honest partition: without it, reading
         # the largest span as "the cost" silently ignores everything uninstrumented.
         attributed_ms = sum(slot[2] for slot in timing.spans.values()) * 1000.0
-        parts = [f"rid={timing.request_id}", f"total_ms={total_ms:.0f}",
-                 f"unattributed_ms={max(0.0, total_ms - attributed_ms):.0f}"]
+        parts = [
+            f"rid={timing.request_id}",
+            f"total_ms={total_ms:.0f}",
+            f"unattributed_ms={max(0.0, total_ms - attributed_ms):.0f}",
+        ]
         for key, value in extra.items():
             if value is not None:
                 parts.append(f"{key}={value}")
         for name in sorted(timing.spans):
             _, total_s, self_s = timing.spans[name]
             parts.append(f"{name}_ms={total_s * 1000:.0f}")
-            if abs(total_s - self_s) > 1e-4:           # nested: publish the non-overlapping share too
+            if (
+                abs(total_s - self_s) > 1e-4
+            ):  # nested: publish the non-overlapping share too
                 parts.append(f"{name}_self_ms={self_s * 1000:.0f}")
         for name in sorted(timing.counters):
-            if timing.counters[name] != 1:             # a once-only phase needs no count
+            if timing.counters[name] != 1:  # a once-only phase needs no count
                 parts.append(f"{name}={timing.counters[name]}")
         print(f"[timing] {tag} " + " ".join(parts), flush=True)
-    except Exception as e:                             # noqa: BLE001 — a timing bug must not fail the request
+    except Exception as e:  # noqa: BLE001 — a timing bug must not fail the request
         print(f"[timing] emit_failed error={type(e).__name__}", flush=True)

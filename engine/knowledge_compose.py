@@ -177,6 +177,23 @@ class ComposedKnowledgeQuery:
         "place":   ("Places",    "name", [("kind", "kind"), ("hemisphere", "hemisphere"), ("population", "population")]),
     }
 
+    def _emit_existing_resolutions(self, norm, sub):
+        """Show the executed bridge without re-resolving or overwriting its context."""
+        cursor = self.qw._rconn().cursor()
+        index = [0]
+        for table in norm:
+            bridge = f'{qident(sub)}.{qident(self.qw._conn_bridge_name(table["name"]))}'
+            cursor.execute("SELECT to_regclass(%s)", (bridge,))
+            if cursor.fetchone()[0] is None:
+                continue
+            cursor.execute(f'SELECT "column", "value", "world_type", "world_key", "country" FROM {bridge}')
+            by_column = {}
+            for column, *row in cursor.fetchall():
+                by_column.setdefault(column, []).append(row)
+            for column, rows in by_column.items():
+                self._emit_resolve_slide(cursor, table["name"], column, rows, index)
+        cursor.close()
+
     def _world_lookup(self, norm, sub):
         """An in-memory world table whose first column is the upload's geo value and whose remaining columns are the
         FULL resolved-entity row (same resolution the delegate path uses: route() finds the geo column, the connected-
@@ -231,6 +248,19 @@ class ComposedKnowledgeQuery:
                 # name, and the displayed SQL then reads as a namespace that does not exist as a table.
                 result = {"name": "knowledgebase facts", "columns": [geocol] + attrs,
                           "rows": [[v] + [d.get(a) for a in attrs] for v, d in ent.items()]}
+                types = {d.get("_wt") for d in ent.values()}
+                if len(types) == 1 and next(iter(types)) in self.ENTITY_ATTRS:
+                    world_type = next(iter(types))
+                    source, key, fields = self.ENTITY_ATTRS[world_type]
+                    bindings = {name: (source, column) for column, name in fields}
+                    edges = [{"left_table": t["name"], "left_col": geocol, "right_table": source, "right_col": key}]
+                    keys = {source: (key,)}
+                    if world_type != "country" and "country" in bindings:
+                        edges.append({"left_table": source, "left_col": "country", "right_table": "Countries", "right_col": "name"})
+                        keys["Countries"] = ("name",)
+                        bindings.update(continent=("Countries", "continent"), currency=("Countries", "currency"))
+                    result["graph"] = {"edges": edges, "keys": keys, "columns": bindings,
+                                       "bridge": self.qw._conn_bridge_name(t["name"])}
         return result
 
     def _emit_resolve_slide(self, cur, table, column, col_rows, ridx):
@@ -341,6 +371,32 @@ class ComposedKnowledgeQuery:
             norm, _ = self.qw.ingest(tables)
             world = self._world_lookup(norm, sub)
         res = self.reason.run(tables, question, world=world)
+        from engine.deterministic.context import current_analysis_context, current_execution_record
+        context = current_analysis_context()
+        if context is not None and compose_owns(res.get("views"), res.get("world_dependency"),
+                                               (res.get("answer") or {}).get("rows"), required_ops(question)):
+            from engine.deterministic.compose import lower_composition
+            from engine.numeric import wire_rows
+            norm, fks = self.qw.ingest(tables)
+            schema, _, _ = self.qw.schema(norm, fks)
+            self.qw._pg_schema = sub
+            self.qw.q11._pg_schema = sub
+            tablemap = {table["name"]: table for table in norm}
+            connection = self.qw._connect(tablemap, schema, attach_world=True)
+            try:
+                shared_plan = lower_composition(context.slug, norm, schema, res["bindings"], world, connection)
+                release = self.qw._bridge_world_version()
+                connection.conn.commit()
+                columns, rows = self.qw.q11._execute_deterministic(tablemap, shared_plan, release)
+                record = current_execution_record()
+                return {"question": question, "as_of": as_of, "error": None,
+                        "model": "engine - composed view stack", "plan": res["plan"],
+                        "primitives": res["primitives"], "world_dependency": res["world_dependency"],
+                        "deterministic": record, "views": record["views"], "sql": record["final_sql"],
+                        "result": {"columns": columns, "rows": wire_rows(rows[:50])}}
+            finally:
+                connection.close()
+                self.qw._con = None
         views = []
         for view in res["views"]:
             item = {"name": view["name"], **_trace_view(view)}
@@ -452,10 +508,14 @@ class ComposedKnowledgeQuery:
         # stream like compose's would. The resolution slides stream the same way as on the compose
         # path: _world_lookup re-walks the bridges the delegate's serve just built (cached Postgres
         # reads) and ctx_emits one knowledgebase slide per connected column. Best-effort.
-        if (deleg.get("currency") or {}).get("realization") == "converted" and deleg.get("views"):
+        if (deleg.get("deterministic") or (deleg.get("currency") or {}).get("realization") == "converted") and deleg.get("views"):
             try:
                 norm, _ = self.qw.ingest(tables)
-                self._world_lookup(norm, sub)
+                if deleg.get("deterministic"):
+                    if emit:
+                        self._emit_existing_resolutions(norm, sub)
+                else:
+                    self._world_lookup(norm, sub)
             except Exception as e:                        # noqa: BLE001 — slides never break the answer
                 print(f"resolution slides skipped: {type(e).__name__}", flush=True)
             self._emit_response_views(emit, deleg)

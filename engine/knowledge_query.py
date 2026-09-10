@@ -371,6 +371,34 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # table = the EXACT Wikidata label
         disp = f'{op}({measure})' if measure else 'COUNT(*)'
         model = f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'
+        from engine.deterministic.context import current_analysis_context, current_execution_record
+        context = current_analysis_context()
+        if context is not None:
+            from engine.deterministic.world import lower_world_query, reference_schema
+            from engine.numeric import wire_rows
+            self._pg_schema = schema
+            self.q11._pg_schema = schema
+            self._persist_connected(t["name"], plan["col"], label,
+                                    [(str(row[ci]), qid) for row, qid in resolved])
+            con = self._connect({table["name"]: table for table in norm}, sch, attach_world=True)
+            try:
+                shared_plan = lower_world_query(
+                    slug=context.slug, schema=sch, uploaded=[t["name"]], foreign_keys=[],
+                    joins=[{"left_table": t["name"], "left_col": plan["col"], "right_table": wl, "right_col": "qid"}],
+                    bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"], route_column=plan["col"],
+                    meaning_filter={"filter_table": wl, "attr": "country", "value": country},
+                    own_filters=[], world_rate=None, as_of=None, aggregate=(op, t["name"], measure),
+                    calculation=None, conversion=None, reference_columns=reference_schema(con, {wl: {"country"}}))
+                release = self._bridge_world_version()
+                con.conn.commit()
+                columns, rows = self.q11._execute_deterministic({t["name"]: t}, shared_plan, release)
+                record = current_execution_record()
+                return {"question": question, "as_of": None, "sql": record["final_sql"],
+                        "result": {"columns": columns, "rows": wire_rows(rows[:50])},
+                        "views": record["views"], "deterministic": record, "model": model}
+            finally:
+                con.close()
+                self._con = None
         if not resolved:                                                  # nothing resolved -> empty aggregate, no trail
             val = 0
             return {"question": question, "as_of": None, "sql": None,
@@ -638,12 +666,16 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         sch, _, _ = self.schema(norm, fks)
         is_agg = self.read_op_all(question, sch) is not None
         if is_agg and schema:                                         # NON-GEO world join over synchronized facts
+            ngp = None
             try:
                 ngp = self._nongeo_plan(norm, question)
                 if ngp:
                     return verify_nonempty(
                         self._serve_world_type(norm, question, sch, ngp, schema), question)
             except Exception as e:                                    # noqa: BLE001 — fall through to the geo/delegate path
+                from engine.deterministic.context import current_analysis_context
+                if ngp is not None and current_analysis_context() is not None:
+                    return {"question": question, "error": f"{type(e).__name__}: {e}", "result": None}
                 print(f"[knowledge_query] non-geo serving failed: {type(e).__name__}", flush=True)
         cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
         pred = "" if is_agg else self._semantic_predicate(question, [cr[2]] if cr else [])

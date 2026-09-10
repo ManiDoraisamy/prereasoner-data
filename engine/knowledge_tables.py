@@ -817,12 +817,48 @@ class KnowledgeTableQuery:
         result, err = None, None
         coverage_gap = None
         response_views = None
+        deterministic_record = None
         if ok:
             try:
                 con = self._connect(tablemap, sch, attach_world=bool(joins) or bool(world_rate))
-                cur = con.execute(sql)
-                cols = [d[0] for d in cur.description]
-                result = {"columns": cols, "rows": wire_rows(cur.fetchall()[:50])}
+                from engine.deterministic.context import current_analysis_context, current_execution_record
+                context = current_analysis_context()
+                if context is not None and hasattr(self.q11, "_execute_deterministic"):
+                    from engine.deterministic.world import lower_world_query, reference_schema
+                    from engine.deterministic.lower import UnsupportedDeterministicPlan
+                    if wtarget:
+                        raise UnsupportedDeterministicPlan("world projection requires typed projection bindings")
+                    required = {}
+                    for join in joins:
+                        required.setdefault(join["right_table"], set()).add(join["right_col"])
+                        if join["left_table"] not in tablemap:
+                            required.setdefault(join["left_table"], set()).add(join["left_col"])
+                    if mf:
+                        required.setdefault(mf["filter_table"], set()).add(mf["attr"])
+                    if world_rate:
+                        required.setdefault("exchange_rate", set()).update(
+                            (world_rate["rate_col"], "updated_at", "source_release_id"))
+                    shared_plan = lower_world_query(
+                        slug=context.slug, schema=sch, uploaded=joined, foreign_keys=selected_fks,
+                        joins=joins, bridge_name=self._conn_bridge_name(mtab) if joins else None,
+                        route_table=mtab, route_column=route_col, meaning_filter=mf,
+                        own_filters=own_filters, world_rate=world_rate, as_of=as_of,
+                        aggregate=agg, calculation=calculation_plan, conversion=conversion,
+                        reference_columns=reference_schema(con, required), disambiguated=disamb[0] if disamb else None)
+                    release = self._bridge_world_version()
+                    if world_rate:
+                        release_row = con.execute('SELECT source_release_id FROM knowledgebase.exchange_rate LIMIT 1').fetchone()
+                        release += f"; ECB={release_row[0] if release_row else 'missing'}"
+                    # Publish the uploaded source transaction before acquiring the shared
+                    # repeatable-read SQLAlchemy snapshot used by BOTH programs.
+                    con.conn.commit()
+                    cols, rows = self.q11._execute_deterministic(tablemap, shared_plan, release)
+                    deterministic_record = current_execution_record()
+                    result = {"columns": cols, "rows": wire_rows(rows[:50])}
+                else:
+                    cur = con.execute(sql)
+                    cols = [d[0] for d in cur.description]
+                    result = {"columns": cols, "rows": wire_rows(cur.fetchall()[:50])}
                 if proj_world_col and result["rows"] and hasattr(self, "_labelize_qids"):
                     self._labelize_qids(result)   # a projected world entity-attr column holds QIDs -> show 'Asia', not 'Q48'
                 if mf:                            # FRESHNESS GUARD — trace the word rows that ACTUALLY contributed
@@ -847,7 +883,7 @@ class KnowledgeTableQuery:
                     base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}').fetchone()[0]
                     conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
                     coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None
-                    if coverage_gap is None:
+                    if coverage_gap is None and deterministic_record is None:
                         fact_q, er_q = qident(world_rate["fact"]), qident("exchange_rate")
 
                         def _wire_rows(c):
@@ -974,6 +1010,9 @@ class KnowledgeTableQuery:
                 "meaning_join": join_desc, "provenance": prov, "warnings": warnings,
                 "debug": self._debug_input(norm, question, world_sections, feats, plan, False),
                 "model": "engine - CSV -> knowledgebase join + bitemporal/freshness"}
+        if deterministic_record is not None:
+            response.update(deterministic=deterministic_record,
+                            views=deterministic_record["views"], sql=deterministic_record["final_sql"])
         from engine.calculations import (
             BranchEvidence, ComputationEvidence, JoinFact, OutputEvidence, PredicateFact,
             assess_calculations,

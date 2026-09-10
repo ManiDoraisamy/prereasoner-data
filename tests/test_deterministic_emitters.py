@@ -917,6 +917,245 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
     assert _coverage_sql({"sql": "SELECT 1"}) == "SELECT 1"
 
 
+def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
+    from engine.deterministic.plan import JunctionValue
+    from engine.deterministic.runtime import (
+        execute_python,
+        materialized_python_views,
+        execute_sql_views,
+        assert_equivalent,
+    )
+
+    plan = _plan()
+    bridge = TableSpec(
+        "resolved cities",
+        "ResolvedCity",
+        "resolved_city",
+        "conversation",
+        (
+            ColumnSpec("cell", "cell", SQLType.TEXT, True, False),
+            ColumnSpec("qid", "qid", SQLType.TEXT),
+            ColumnSpec("column", "column", SQLType.TEXT),
+        ),
+    )
+    eq = lambda a, b: PredicateValue(a, "=", b)
+    relationship = RelationshipSpec(
+        "city",
+        "city",
+        ("city",),
+        ("qid",),
+        condition=JunctionValue(
+            "AND",
+            (
+                eq(ColumnValue("orders", "city"), ColumnValue(bridge.name, "cell")),
+                eq(ColumnValue(bridge.name, "column"), LiteralValue("city")),
+            ),
+        ),
+        secondary=bridge.name,
+        secondary_condition=eq(
+            ColumnValue(bridge.name, "qid"), ColumnValue("city", "qid")
+        ),
+    )
+    orders = replace(
+        plan.table("orders"),
+        relationships=(plan.table("orders").relationships[0], relationship),
+    )
+    plan = replace(plan, tables=(orders, *plan.tables[1:], bridge))
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        for schema in ("conversation", "knowledgebase"):
+            connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
+        for sql in (
+            "CREATE TABLE conversation.orders(order_id INTEGER, customer_id INTEGER, amount NUMERIC, city TEXT)",
+            "CREATE TABLE conversation.customers(customer_id INTEGER, name TEXT)",
+            'CREATE TABLE conversation."resolved cities"(cell TEXT, qid TEXT, "column" TEXT)',
+            "CREATE TABLE knowledgebase.city(qid TEXT, name TEXT, country TEXT)",
+            "CREATE TABLE knowledgebase.country(qid TEXT, name TEXT)",
+            "INSERT INTO conversation.orders VALUES (1, 1, 10, 'Paris'), (2, 1, 20, 'missing')",
+            "INSERT INTO conversation.customers VALUES (1, 'Alice')",
+            """INSERT INTO conversation."resolved cities" VALUES ('Paris', 'Q90', 'city')""",
+            "INSERT INTO knowledgebase.city VALUES ('Q90', 'Paris', 'Q142')",
+            "INSERT INTO knowledgebase.country VALUES ('Q142', 'France')",
+        ):
+            connection.exec_driver_sql(sql)
+        package = PythonEmitter().emit(plan)
+        result = execute_python(
+            package, connection, schema_map={"conversation": "conversation"}
+        )
+        assert result.views[0].rows[0].orders.city.name == "Paris"
+        assert result.views[0].rows[0].orders.city.country.name == "France"
+        for python_rows, sql_rows in zip(
+            materialized_python_views(result, plan),
+            execute_sql_views(SQLEmitter().emit(plan), connection),
+            strict=True,
+        ):
+            assert_equivalent(python_rows, sql_rows)
+        assert "secondary=lambda: Base.metadata.tables" in package.files["orders.py"]
+
+
+def test_correlated_operators_sort_and_outer_join_are_readable_and_equivalent():
+    from engine.deterministic.plan import WindowView, SortedView, SortValue
+    from engine.deterministic.runtime import (
+        execute_python,
+        materialized_python_views,
+        execute_sql_views,
+        assert_equivalent,
+    )
+
+    observation = TableSpec(
+        "observation",
+        "Observation",
+        "observation",
+        "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, True, False),
+            ColumnSpec("year", "year", SQLType.INTEGER),
+            ColumnSpec("amount", "amount", SQLType.INTEGER),
+        ),
+    )
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
+        connection.exec_driver_sql(
+            "CREATE TABLE conversation.observation(id INTEGER, year INTEGER, amount INTEGER)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO conversation.observation VALUES (1,2022,10), (2,2023,20), (3,2025,10)"
+        )
+        for operation, expected in (
+            ("share", [0.5, 0.25, 0.25]),
+            ("running", [40, 30, 10]),
+            ("yoy", [1]),
+        ):
+            base = ProjectedView(
+                "metric_base",
+                "metric_combined",
+                (
+                    SelectedValue("year", ColumnValue("observation", "year")),
+                    SelectedValue("amount", ColumnValue("observation", "amount")),
+                ),
+            )
+            plan = AnalysisPlan(
+                "metric",
+                (observation,),
+                (
+                    CombinedView("metric_combined", ("observation",)),
+                    base,
+                    WindowView(
+                        "metric_window",
+                        base.name,
+                        operation,
+                        "metric",
+                        ViewValue("amount"),
+                        time=ViewValue("year") if operation != "share" else None,
+                    ),
+                    SortedView(
+                        "metric_sorted",
+                        "metric_window",
+                        (
+                            SortValue(ViewValue("metric"), True),
+                            SortValue(ViewValue("year")),
+                        ),
+                    ),
+                    ProjectedView(
+                        "metric_result",
+                        "metric_sorted",
+                        (SelectedValue("metric", ViewValue("metric")),),
+                    ),
+                ),
+            )
+            package = PythonEmitter().emit(plan)
+            result = execute_python(
+                package, connection, schema_map={"conversation": "conversation"}
+            )
+            python_views = materialized_python_views(result, plan)
+            sql_views = execute_sql_views(SQLEmitter().emit(plan), connection)
+            for python_rows, sql_rows in zip(python_views, sql_views, strict=True):
+                assert_equivalent(python_rows, sql_rows)
+            assert [float(row["metric"]) for row in python_views[-1]] == expected
+            assert [float(row["metric"]) for row in sql_views[-1]] == expected
+            assert (
+                "metric_window = metric_base.for_each("
+                in package.files[package.entrypoint]
+            )
+
+
+def test_composition_lowers_selected_bindings_and_executes_real_reference_relationships():
+    from unittest.mock import patch
+    from engine.compose import ComposeEngine
+    from engine.deterministic.compose import lower_composition
+
+    tables = [
+        {
+            "name": "orders",
+            "columns": ["id", "city", "amount"],
+            "rows": [[1, "Paris", 100], [2, "Lyon", 80], [3, "Chennai", 150]],
+        }
+    ]
+    world = {
+        "name": "knowledgebase facts",
+        "columns": ["city", "country"],
+        "rows": [["Paris", "France"], ["Lyon", "France"], ["Chennai", "India"]],
+        "graph": {
+            "edges": [
+                {
+                    "left_table": "orders",
+                    "left_col": "city",
+                    "right_table": "Cities",
+                    "right_col": "qid",
+                }
+            ],
+            "keys": {"Cities": ("qid",)},
+            "columns": {"country": ("Cities", "country")},
+            "bridge": "resolved cities",
+        },
+    }
+    schema = [
+        {
+            "table": "orders",
+            "name": column,
+            "affinity": "TEXT" if column == "city" else "INTEGER",
+            "values": [row[index] for row in tables[0]["rows"]],
+        }
+        for index, column in enumerate(tables[0]["columns"])
+    ]
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        for namespace in ("conversation", "knowledgebase"):
+            connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+        for statement in (
+            "CREATE TABLE conversation.orders(id INTEGER, city TEXT, amount INTEGER)",
+            "INSERT INTO conversation.orders VALUES(1,'Paris',100),(2,'Lyon',80),(3,'Chennai',150)",
+            'CREATE TABLE conversation."resolved cities"("column" TEXT, value TEXT, world_key TEXT)',
+            """INSERT INTO conversation."resolved cities" VALUES('city','Paris','Q90'),('city','Lyon','Q456'),('city','Chennai','Q1352')""",
+            'CREATE TABLE knowledgebase."Cities"(qid TEXT, country TEXT)',
+            """INSERT INTO knowledgebase."Cities" VALUES('Q90','France'),('Q456','France'),('Q1352','India')""",
+        ):
+            connection.exec_driver_sql(statement)
+        for question, expected in (
+            ("total amount by country", [["France", 180], ["India", 150]]),
+            ("top 1 country by total amount", [["France", 180]]),
+            ("total amount by country over 160", [["France", 180]]),
+        ):
+            candidate = ComposeEngine().run(tables, question, world=world)
+            with patch(
+                "engine.deterministic.compose.reference_schema",
+                return_value={
+                    "Cities": [("qid", SQLType.TEXT), ("country", SQLType.TEXT)]
+                },
+            ):
+                plan = lower_composition(
+                    "metric", tables, schema, candidate["bindings"], world, connection
+                )
+            result = DeterministicAnalysis(
+                plan, conversation_schema="conversation"
+            ).run(connection, mode="verify", estimated_rows=3)
+            assert sorted([list(row.values()) for row in result.rows]) == expected, (
+                question,
+                result.rows,
+            )
+
+
 # Discover the contract cases so new tests cannot be omitted from the module runner.
 TESTS = [
     value

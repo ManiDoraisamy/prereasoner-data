@@ -10,10 +10,12 @@ must stay on the own-data path because the column already answers them.
   Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_datasets
 """
+
 from __future__ import annotations
 
 import csv
 import io
+import json
 import os
 import sys
 from pathlib import Path
@@ -23,21 +25,53 @@ DATASET_DIR = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset"
 # dataset directory -> expected scalar for its prompt.txt. A new dataset directory without an
 # entry here fails the suite: a public demo must not ship with an unverified answer.
 EXPECTED = {
-    "customer-orders": ("world+fx", 1126.66),     # city -> country join + ECB conversion (as-of drift tolerated)
-    "orders-tiers": ("world+fx", 1126.66),        # separate orders + tier joined discount fixture
-    "customers-orders": ("world+fx", 1126.66),    # same question through the two-sheet FK join
-    "formfacade-leads": ("world", 62000),         # country column -> continent grounding (Europe)
-    "formfacade-workshops": ("own", 4),           # AVG with a value filter; no knowledge join
-    "neartail-orders": ("own", 5),                # city column answers directly; no knowledge join
-    "neartail-shipping": ("world", 46),           # city -> country -> continent two-hop grounding
-    "formesign-intake": ("own", 6),               # document-type value filter; no knowledge join
-    "formesign-contracts": ("world+fx", 23568),   # continent filter + four-currency ECB conversion to USD
-    "formesign-hospital-transfers": ("world", 46),  # hospital entity join, filtered to US hospitals
-    "neartail-catering": ("world", 9600),         # restaurant entity join, filtered to US restaurants
-    "formfacade-bank-deposits": ("world", 1550),  # bank entity join, filtered to Swiss banks
-    "payment-commissions": ("own", 1082.41),  # joined instrument rate, subtracted row by row
+    "customer-orders": (
+        "world+fx",
+        1126.66,
+    ),  # city -> country join + ECB conversion (as-of drift tolerated)
+    "orders-tiers": (
+        "world+fx",
+        1126.66,
+    ),  # separate orders + tier joined discount fixture
+    "customers-orders": (
+        "world+fx",
+        1126.66,
+    ),  # same question through the two-sheet FK join
+    "formfacade-leads": (
+        "world",
+        62000,
+    ),  # country column -> continent grounding (Europe)
+    "formfacade-workshops": ("own", 4),  # AVG with a value filter; no knowledge join
+    "neartail-orders": ("own", 5),  # city column answers directly; no knowledge join
+    "neartail-shipping": (
+        "world",
+        46,
+    ),  # city -> country -> continent two-hop grounding
+    "formesign-intake": ("own", 6),  # document-type value filter; no knowledge join
+    "formesign-contracts": (
+        "world+fx",
+        23568,
+    ),  # continent filter + four-currency ECB conversion to USD
+    "formesign-hospital-transfers": (
+        "world",
+        46,
+    ),  # hospital entity join, filtered to US hospitals
+    "neartail-catering": (
+        "world",
+        9600,
+    ),  # restaurant entity join, filtered to US restaurants
+    "formfacade-bank-deposits": (
+        "world",
+        1550,
+    ),  # bank entity join, filtered to Swiss banks
+    "payment-commissions": (
+        "own",
+        1082.41,
+    ),  # joined instrument rate, subtracted row by row
 }
-FX_TOLERANCE = 0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
+FX_TOLERANCE = (
+    0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
+)
 
 # Conversational models sometimes add a harmless copula to a standalone prompt. These are still
 # serving-contract cases: the typed planner must answer them instead of treating the connector as a
@@ -56,7 +90,9 @@ def _tables(ds: Path) -> list[dict]:
 
 
 def _scalar(res):
-    rows = ((res or {}).get("result") or {}).get("rows") or []   # a clarify carries result: None
+    rows = ((res or {}).get("result") or {}).get(
+        "rows"
+    ) or []  # a clarify carries result: None
     if rows and rows[0]:
         try:
             return float(str(rows[0][0]).replace(",", ""))
@@ -90,11 +126,13 @@ def _eval_cases(ds: Path):
             continue
         chat_only = line.startswith("chat:")
         if chat_only:
-            line = line[len("chat:"):]
+            line = line[len("chat:") :]
         question, _, expected = line.partition("=>")
         question, expected = question.strip(), expected.strip()
         if not question or not expected:
-            raise ValueError(f"{path}: each case must read '<question> => <expected>', got {line!r}")
+            raise ValueError(
+                f"{path}: each case must read '<question> => <expected>', got {line!r}"
+            )
         if expected.lower() == "clarify":
             cases.append((question, None, False, chat_only))
             continue
@@ -105,74 +143,167 @@ def _eval_cases(ds: Path):
 
 def main() -> int:
     if not os.environ.get("KB_PG_PASSWORD"):
-        print("set KB_PG_PASSWORD"); return 1
-    from engine.knowledge_query import KnowledgeQuery
+        print("set KB_PG_PASSWORD")
+        return 1
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine.deterministic.context import (
+        analysis_execution_context,
+        enforce_execution_response,
+    )
+    from engine import request_timing
     from regress.live_schema import live_schema
-    Q = KnowledgeQuery()
+
+    Q = ComposedKnowledgeQuery()
     schema = live_schema().name
     fails = []
+    records = []
+    modes = os.environ.get("EVAL_EXECUTION_MODES", "sql,python,verify").split(",")
+
+    def serve(tables, question, *, schema):
+        responses = []
+        for mode in modes:
+            token = request_timing.begin(f"dataset-{name}-{mode}")
+            try:
+                with analysis_execution_context(None, schema, execution_mode=mode):
+                    try:
+                        response = enforce_execution_response(
+                            Q.serve(tables, question, schema), mode
+                        )
+                    except Exception as exc:
+                        response = {"error": f"{type(exc).__name__}: {exc}"}
+                record = {
+                    "dataset": name,
+                    "question": question,
+                    "mode": mode,
+                    "answer": _scalar(response),
+                    "clarify": bool(response.get("clarify")),
+                    "error": response.get("error"),
+                    "execution": response.get("execution"),
+                    "timings": request_timing.snapshot(),
+                    "manifest": response.get("deterministic", {}).get("manifest"),
+                }
+                records.append(record)
+                print(
+                    json.dumps(
+                        {
+                            key: value
+                            for key, value in record.items()
+                            if key != "manifest"
+                        },
+                        default=str,
+                    ),
+                    flush=True,
+                )
+                if response.get("error"):
+                    fails.append(f"{name} [{mode}] {question!r}: {response['error']}")
+                responses.append(response)
+            finally:
+                request_timing.end(token)
+        if any(
+            response.get("result") != responses[0].get("result")
+            or bool(response.get("clarify")) != bool(responses[0].get("clarify"))
+            for response in responses[1:]
+        ):
+            fails.append(f"{name}: separate mode requests disagree for {question!r}")
+        return responses[0]
 
     on_disk = {d.name for d in DATASET_DIR.iterdir() if d.is_dir()}
     for missing in sorted(on_disk - set(EXPECTED)):
-        fails.append(f"dataset {missing!r} ships without a verified expectation in tests/test_datasets.py")
+        fails.append(
+            f"dataset {missing!r} ships without a verified expectation in tests/test_datasets.py"
+        )
     for ds_name in sorted(on_disk):
         if not (DATASET_DIR / ds_name / "eval.txt").exists():
-            fails.append(f"dataset {ds_name!r} ships without eval.txt (follow-up coverage is required)")
+            fails.append(
+                f"dataset {ds_name!r} ships without eval.txt (follow-up coverage is required)"
+            )
     for gone in sorted(set(EXPECTED) - on_disk):
-        fails.append(f"expectation for {gone!r} names a dataset directory that no longer exists")
+        fails.append(
+            f"expectation for {gone!r} names a dataset directory that no longer exists"
+        )
 
     for name in sorted(on_disk & set(EXPECTED)):
+        if os.environ.get("EVAL_DATASETS") and name not in os.environ[
+            "EVAL_DATASETS"
+        ].split(","):
+            continue
         ds = DATASET_DIR / name
         prompt = (ds / "prompt.txt").read_text(encoding="utf-8").strip()
         if not prompt:
-            fails.append(f"{name}: empty prompt.txt"); continue
+            fails.append(f"{name}: empty prompt.txt")
+            continue
         kind, want = EXPECTED[name]
-        res = Q.serve(_tables(ds), prompt, schema=schema)
+        res = serve(_tables(ds), prompt, schema=schema)
         got = _scalar(res)
         print(f"{name}: {prompt!r} -> {got} (exp ~{want}, {kind})")
         if not isinstance(got, float):
-            fails.append(f"{name}: no numeric answer (got {got!r})"); continue
-        if kind == "world+fx":
+            fails.append(f"{name}: no numeric answer (got {got!r})")
+        elif kind == "world+fx":
             if abs(got - want) > want * FX_TOLERANCE:
                 fails.append(f"{name}: {got} outside ±{FX_TOLERANCE:.0%} of {want}")
         elif got != want:
             fails.append(f"{name}: {got} != {want}")
 
         for question, expected in REWRITE_EXPECTATIONS.get(name, []):
-            rewritten = Q.serve(_tables(ds), question, schema=schema)
+            rewritten = serve(_tables(ds), question, schema=schema)
             rewritten_value = _scalar(rewritten)
             print(f"{name}: rewrite {question!r} -> {rewritten_value} (exp {expected})")
             if rewritten.get("clarify") or rewritten_value != expected:
-                fails.append(f"{name} rewrite {question!r}: expected {expected}, got {rewritten!r}")
+                fails.append(
+                    f"{name} rewrite {question!r}: expected {expected}, got {rewritten!r}"
+                )
 
         # FOLLOW-UPS (eval.txt) — direct engine cases in file order. Conversational shorthand is
         # explicitly skipped here and belongs to the orchestrator/browser release path below.
-        for question, expected, fx, chat_only in (_eval_cases(ds) or []):
+        for question, expected, fx, chat_only in _eval_cases(ds) or []:
             if chat_only:
-                print(f"{name}: follow-up {question!r} SKIPPED here — orchestrated path only "
-                      f"(verified by the Chrome release pass)")
+                print(
+                    f"{name}: follow-up {question!r} SKIPPED here — orchestrated path only "
+                    f"(verified by the Chrome release pass)"
+                )
                 continue
-            follow = Q.serve(_tables(ds), question, schema=schema)
+            follow = serve(_tables(ds), question, schema=schema)
             answer = _scalar(follow)
             if expected is None:
                 clarified = bool((follow or {}).get("clarify"))
-                print(f"{name}: follow-up {question!r} -> clarify={clarified} answer={answer!r} (exp clarify)")
+                print(
+                    f"{name}: follow-up {question!r} -> clarify={clarified} answer={answer!r} (exp clarify)"
+                )
                 if not clarified:
-                    fails.append(f"{name} follow-up {question!r}: matched no rows but was presented "
-                                 f"as the answer {answer!r} instead of a clarify")
+                    fails.append(
+                        f"{name} follow-up {question!r}: matched no rows but was presented "
+                        f"as the answer {answer!r} instead of a clarify"
+                    )
                 continue
-            print(f"{name}: follow-up {question!r} -> {answer} (exp {'~' if fx else ''}{expected})")
+            print(
+                f"{name}: follow-up {question!r} -> {answer} (exp {'~' if fx else ''}{expected})"
+            )
             if not isinstance(answer, float):
-                fails.append(f"{name} follow-up {question!r}: no numeric answer (got {answer!r})")
+                fails.append(
+                    f"{name} follow-up {question!r}: no numeric answer (got {answer!r})"
+                )
             elif fx:
                 if abs(answer - expected) > expected * FX_TOLERANCE:
-                    fails.append(f"{name} follow-up {question!r}: {answer} outside "
-                                 f"±{FX_TOLERANCE:.0%} of {expected}")
+                    fails.append(
+                        f"{name} follow-up {question!r}: {answer} outside "
+                        f"±{FX_TOLERANCE:.0%} of {expected}"
+                    )
             elif abs(answer - expected) > 0.01:
                 fails.append(f"{name} follow-up {question!r}: {answer} != {expected}")
 
-    print("\n" + ("PASS — every shipped demo dataset answers its prompt.txt and eval.txt follow-ups" if not fails
-                  else "FAIL:\n  " + "\n  ".join(fails)))
+    if os.environ.get("EVAL_REPORT"):
+        Path(os.environ["EVAL_REPORT"]).write_text(
+            json.dumps({"records": records, "failures": fails}, indent=2, default=str),
+            encoding="utf-8",
+        )
+    print(
+        "\n"
+        + (
+            "PASS — selected dataset prompts and standalone eval cases (chat cases excluded)"
+            if not fails
+            else "FAIL:\n  " + "\n  ".join(fails)
+        )
+    )
     return 1 if fails else 0
 
 

@@ -12,6 +12,7 @@ import hashlib
 import json
 import re
 import time
+from decimal import Decimal
 
 import psycopg2
 from psycopg2.extras import execute_values
@@ -131,6 +132,15 @@ def _pg():
     raise AssertionError("unreachable")
 
 
+def _orm_pg():
+    """SQLAlchemy must receive Decimals, not the legacy cursor's wire values."""
+    connection = _pg()
+    numeric = psycopg2.extensions.new_type(
+        (1700,), "ORM_NUMERIC", lambda value, cursor: None if value is None else Decimal(value))
+    psycopg2.extensions.register_type(numeric, connection)
+    return connection
+
+
 def _load_user_schema(cur, schema, sch, tablemap):
     """Create the conversation schema and load only changed source tables.
 
@@ -228,6 +238,7 @@ class _PgCon:
 
 
 class _TableQueryPg(TableQuery):
+    postgres_row_identity = True
     """Own-data path executor → Postgres (so uploads persist in the user schema and answers are consistent)."""
     _pg_schema = None
 
@@ -253,7 +264,7 @@ class _TableQueryPg(TableQuery):
             if conn is not None:
                 conn.close()
 
-    def _execute_deterministic(self, tablemap, plan):
+    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None):
         from sqlalchemy import create_engine
         from sqlalchemy.pool import NullPool
 
@@ -262,20 +273,22 @@ class _TableQueryPg(TableQuery):
             set_execution_record,
         )
         from engine.deterministic.service import DeterministicAnalysis
+        from engine.analysis import analysis_input_hash
 
         context = current_analysis_context()
         if context is None:
             raise RuntimeError("deterministic execution requires a named-analysis context")
         engine = create_engine(
             "postgresql+psycopg2://",
-            creator=_pg,
+            creator=_orm_pg,
             poolclass=NullPool,
         )
         try:
             result = DeterministicAnalysis(
                 plan,
                 conversation_schema=self._pg_schema,
-                dataset_version=context.dataset_version,
+                dataset_version=context.dataset_version or analysis_input_hash(list(tablemap.values())),
+                knowledgebase_release=knowledgebase_release,
             ).run(
                 engine,
                 mode=context.execution_mode or deterministic_execution_mode(),

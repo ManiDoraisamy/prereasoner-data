@@ -67,10 +67,12 @@ The knowledge-query adapter also preserves the own-data delegate's generated pro
 Its coverage check reads the complete emitted SQL program so a filter in an earlier stage is not
 mistaken for a condition missing from the final aggregate.
 
-The automatic lowering hook is in the own-data `TableQuery._serve_ast` path. Specialized world and
-compose planners have not been migrated to the shared plan. Manually constructing an ORM enrichment
-plan is not evidence that the serving world route uses Python. The default and explicit SQL paths
-retain those planners; explicit Python/verification reports unsupported results as errors.
+The own-data `TableQuery._serve_ast` winner, world planner's grounded slots, and selected
+ComposeEngine primitive records have separate lowering adapters under `engine/deterministic/`.
+They feed the same plan, emitters, and runtime; none is another planner. World ORM relationships
+use persisted cell-to-QID associations and actual knowledgebase tables. Composition retains its
+SQLite candidate-materialization step for operand binding/routing, then runs the selected typed
+program through the shared runtime. Unsupported shapes still fail closed for explicit Python/verification.
 
 Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace
 collection materializes every stage in either mode, so SQL mode is not a bounded-memory streaming

@@ -452,6 +452,8 @@ class ComposeEngine:
             if world is not None:
                 self._load(con, world)
             base = []; used = set(); cur = tables[0]
+            jp = None
+            wf = None
             if len(tables) > 1:                              # base A: FK join of the uploaded tables
                 jp = join_plan(tables, discover_fks(tables))
                 if jp:
@@ -522,4 +524,6 @@ class ComposeEngine:
         return {"question": question, "n_steps": len(views), "plan": [v["op"] for v in views],
                 "primitives": sorted(prims) if prims is not None else None,
                 "answer": ({"columns": final["columns"], "rows": final["rows"]} if final else None),
+                "bindings": {"uploaded_join": jp, "value_filter": vf, "world_join": wf,
+                             "base_table": table, "steps": steps},
                 "views": views, "world_dependency": world_dependency}

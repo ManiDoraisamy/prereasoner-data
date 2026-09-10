@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from typing import Generic, TypeVar
+from functools import cmp_to_key
 from engine.numeric import DECIMAL_PRECISION, DIVISION_SCALE
 
 T = TypeVar("T")
@@ -48,6 +49,23 @@ class View(Generic[T]):
             if where(row) is True:
                 materialized.append(row)
         return View(name, tuple(materialized))
+
+    def sort(self, name, keys, descending, limit=None):
+        """ORDER BY with explicit NULLS LAST; emitters supply deterministic tie keys."""
+
+        def compare(left, right):
+            for a, b, desc in zip(keys(left), keys(right), descending, strict=True):
+                if a is None or b is None:
+                    result = (a is None) - (b is None)
+                else:
+                    result = (a > b) - (a < b)
+                    if desc:
+                        result = -result
+                if result:
+                    return result
+            return 0
+
+        return View(name, tuple(sorted(self.rows, key=cmp_to_key(compare))[:limit]))
 
     def reduce(
         self,
@@ -154,6 +172,22 @@ def DIVIDE(left, right):
 
 def EQ(left, right):
     return None if left is None or right is None else left == right
+
+
+def LOWER(value):
+    return None if value is None else value.lower()
+
+
+def TEXT(value):
+    return None if value is None else str(value)
+
+
+def AND(*values):
+    return False if False in values else None if None in values else True
+
+
+def OR(*values):
+    return True if True in values else None if None in values else False
 
 
 def NE(left, right):

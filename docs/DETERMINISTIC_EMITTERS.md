@@ -1,8 +1,8 @@
 # Deterministic SQL and Python execution
 
-Status: implemented for a bounded own-data AST subset. Specialized world and compose planners
-still use SQL. This document describes the current source tree, not the last deployed revision.
-Local tests do not establish that every hosted dataset runs in both modes.
+The own-data AST, grounded world bindings, and selected composition primitives lower into one
+shared plan. Both emitters generate readable programs from that plan. This document describes
+the source tree; deployment and evaluation evidence must identify the tested revision separately.
 
 ## One planner, two readable programs
 
@@ -39,6 +39,8 @@ class OrdersCustomers:
 | Calculated | Retained columns plus expressions | `previous.for_each`, retaining objects and earlier values |
 | Projected | Selected outputs | `previous.for_each`, producing result rows |
 | Reduced | Aggregates and optional grouping | `previous.reduce` or `previous.group_reduce` |
+| Ordered | `ORDER BY ... NULLS LAST`, optional `LIMIT` | `previous.sort`, with explicit tie keys |
+| Correlated | Share, running total, or previous-period join | `previous.for_each`, with visible reduction/join expressions |
 
 The actual source includes the ORM query, row classes, transformation bodies, predicates, initial
 aggregate state, and operator calls. SQL `SUM(gross_amount)` corresponds to
@@ -58,8 +60,8 @@ and calculated values; they are not the table mappings. For example, a generated
 key is stored in a private `_customer_id_value` attribute used for joins and trace flattening.
 Composite relationships retain every key pair and have explicit ORM join conditions.
 
-Enrichment follows declared scalar paths such as `order.city.country`. An absent intermediate
-object drops the row, matching an inner join. Collection-valued enrichment is rejected until both
+Enrichment follows declared scalar paths such as `order.city.country`. Required references drop
+missing objects (inner joins); optional references preserve them (left joins). Collection-valued enrichment is rejected until both
 emitters implement its multiplicity. SQLAlchemy select-in loading may issue additional relationship
 queries after the combined query.
 
@@ -69,9 +71,16 @@ not eliminate conversation schemas or copy PostgreSQL data into in-memory SQLite
 
 Uploaded tables lack declared primary keys. Automatic lowering proves identity from actual column
 values after numeric upload coercion, preferring a unique reference key or identifier and then a
-non-null unique composite row. Missing evidence, identical duplicate facts, or joins without a unique
-scalar target prevent lowering. `"01"` and `1` cannot be distinct integer identities. Hand-authored
-plans must supply valid database keys.
+non-null unique composite row. When an uploaded PostgreSQL table has identical duplicate facts,
+its snapshot-local `ctid` supplies ORM identity without changing the upload. It is not a durable
+business key and must not be retained as identity across snapshots. `"01"` and `1` cannot be distinct
+integer identities. Joins still require a proven scalar target. Hand-authored plans must supply valid keys.
+
+World resolution persists an `entity_qid` beside each connected cell. Generated secondary
+relationships use that association to expose the actual `knowledgebase.city`, country, hospital,
+restaurant, or bank object directly on the input model. Same-name cities can include the uploaded
+country as a composite association key. Currency conversion uses the actual exchange-rate object
+joined on currency and date, not a precomputed converted amount.
 
 ## Request selection
 
@@ -140,7 +149,8 @@ return null for empty sums/averages/minima/maxima. Division by zero returns null
 uses a local 128-digit Decimal context; division and averages round to 20 decimal places with ties
 away from zero, matching the emitted PostgreSQL `ROUND(..., 20)` policy.
 
-Verification compares every stage as an unordered multiset, preserving duplicates and column names.
+Verification compares each ordinary stage as an unordered multiset, preserving duplicates and column names.
+Explicit sorted stages are also checked in order; top-N adds deterministic tie keys.
 Decimal values, integers, and decimal representations of floats normalize without rounding significant
 digits. A mismatch raises `VerificationMismatch` with the failing view in an exception note.
 Agreement does not prove that the shared planner correctly understood the question.
@@ -155,6 +165,8 @@ production parity needs PostgreSQL tests with representative values.
 engine/deterministic/
   plan.py                 shared stages, expressions, tables, and relationships
   lower.py                supported typed AST -> AnalysisPlan
+  world.py                resolved world slots -> AnalysisPlan
+  compose.py              selected composition primitives -> AnalysisPlan
   context.py              request context and final mode reporting
   operators.py            Python loops and SQL-semantic operators
   runtime.py              package loading, SQL execution, normalization
@@ -183,20 +195,29 @@ Responses and saved analysis snapshots can retain source: memory-only execution 
 is never persisted.
 
 Records include source and per-file hashes, emitter versions, relationship edges, stages, dataset
-version, and knowledgebase release when supplied. The automatic serving hook currently passes the
-named dataset version but does not supply a knowledgebase release to the dual manifest. A null release
-is not a pinned knowledgebase snapshot.
+version, and knowledgebase release when supplied. World and composition hooks supply the knowledgebase
+refresh/model version. Own-data programs have no knowledgebase dependency. A null release is not a
+pinned knowledgebase snapshot. Request timing exposes separate emission, Python, and SQL durations
+through the existing timing collector; backend durations include stage materialization and ORM loading.
 
 ## Coverage and extension
 
-Automatic lowering supports unaliased inner joins, one comparison filter, projections and arithmetic,
+Own-data AST lowering supports unaliased inner joins, Boolean comparison filters, projections and arithmetic,
 `COUNT/SUM/AVG/MIN/MAX`, and grouped aggregates whose projected group columns precede aggregates.
-Aliases, self-joins, DISTINCT, Boolean predicate trees, HAVING, ordering, limits, subqueries, set
-queries, and specialized world/compose plans remain outside this subset.
+Its aliases, self-joins, DISTINCT, HAVING, ordering, limits, subqueries, and set queries remain outside
+that AST adapter. This is distinct from the composition adapter's supported ordering and correlated operators.
 
-Hand-authored plans support scalar knowledgebase enrichment; the serving world planner has not been
-migrated to those plans. The default customer-orders geography/FX prompt is therefore not evidence
-of an automatically generated ORM world pipeline.
+The world adapter consumes the existing planner's grounded relationship chain, filters, selected
+measure, registered calculation, and currency binding. It does not parse rendered SQL. Geographic
+and non-geographic scalar world queries, including the default customer-orders FX question, use it.
+World-only DISTINCT projections and grouped world extrema still require additional typed bindings.
+
+The composition adapter consumes the existing ComposeEngine's selected primitive records. It supports
+filters, grouped reductions, HAVING thresholds, divide, share, running total, previous-year joins,
+sorting, and top-N. Its ORM reference graph points to the existing knowledgebase relations, not a
+model over the flattened `knowledgebase facts` preview. The current compose planner still materializes
+its candidate in SQLite to bind and route; the selected answer is executed by the shared plan.
+Candidate planning time is not part of the backend-only timing comparison.
 
 Extend coverage by adding typed plan semantics, implementing both emitters, adding stage parity
 fixtures, and connecting the relevant planner. Reusable Python and SQL functions are future extension

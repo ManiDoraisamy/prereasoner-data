@@ -44,6 +44,9 @@ class RelationshipSpec:
     local_columns: tuple[str, ...]
     remote_columns: tuple[str, ...]
     many: bool = False
+    condition: PredicateValue | JunctionValue | None = None
+    secondary: str | None = None
+    secondary_condition: PredicateValue | JunctionValue | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "local_columns", tuple(self.local_columns))
@@ -53,6 +56,10 @@ class RelationshipSpec:
             self.remote_columns
         ):
             raise ValueError("relationship columns must be equally sized and non-empty")
+        if bool(self.secondary) != bool(self.secondary_condition):
+            raise ValueError(
+                "secondary relationships require a table and join condition"
+            )
 
 
 @dataclass(frozen=True)
@@ -155,6 +162,27 @@ class BinaryValue:
 
 
 @dataclass(frozen=True)
+class FunctionValue:
+    function: str
+    operand: Value
+
+    def __post_init__(self) -> None:
+        if self.function not in {"LOWER", "TEXT"}:
+            raise ValueError(f"unsupported scalar function: {self.function}")
+
+
+@dataclass(frozen=True)
+class JunctionValue:
+    operator: str
+    predicates: tuple[PredicateValue | JunctionValue, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "predicates", tuple(self.predicates))
+        if self.operator not in {"AND", "OR"} or not self.predicates:
+            raise ValueError("a junction requires AND/OR and nonempty predicates")
+
+
+@dataclass(frozen=True)
 class PredicateValue:
     left: Value
     operator: str
@@ -167,7 +195,7 @@ class PredicateValue:
         object.__setattr__(self, "operator", operator)
 
 
-Value: TypeAlias = ColumnValue | LiteralValue | ViewValue | BinaryValue
+Value: TypeAlias = ColumnValue | LiteralValue | ViewValue | BinaryValue | FunctionValue
 
 
 @dataclass(frozen=True)
@@ -199,6 +227,7 @@ class AggregateValue:
 class CombinedView:
     name: str
     tables: tuple[str, ...]
+    outer: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tables", tuple(self.tables))
@@ -214,6 +243,7 @@ class Enrichment:
     target_table: str
     source_table: str
     relationship_path: tuple[str, ...]
+    required: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "relationship_path", tuple(self.relationship_path))
@@ -239,7 +269,7 @@ class EnrichedView:
 class FilteredView:
     name: str
     source: str
-    predicate: PredicateValue
+    predicate: PredicateValue | JunctionValue
 
     def __post_init__(self) -> None:
         _require_identifier(self.name, "view name")
@@ -292,6 +322,51 @@ class ReducedView:
             raise ValueError("reduced view requires at least one aggregate")
 
 
+@dataclass(frozen=True)
+class SortValue:
+    value: Value
+    descending: bool = False
+
+
+@dataclass(frozen=True)
+class SortedView:
+    name: str
+    source: str
+    order: tuple[SortValue, ...]
+    limit: int | None = None
+
+    def __post_init__(self):
+        _require_identifier(self.name, "view name")
+        _require_identifier(self.source, "source view name")
+        object.__setattr__(self, "order", tuple(self.order))
+        if not self.order or (
+            self.limit is not None and (type(self.limit) is not int or self.limit < 0)
+        ):
+            raise ValueError("sort requires keys and a nonnegative integer limit")
+
+
+@dataclass(frozen=True)
+class WindowView:
+    """A scalar correlated aggregate/previous-period join over the preceding view."""
+
+    name: str
+    source: str
+    function: str
+    output: str
+    measure: Value
+    partition: tuple[Value, ...] = ()
+    time: Value | None = None
+
+    def __post_init__(self):
+        for value in (self.name, self.source, self.output):
+            _require_identifier(value, "window identifier")
+        object.__setattr__(self, "partition", tuple(self.partition))
+        if self.function not in {"share", "running", "yoy"}:
+            raise ValueError("unsupported window operation")
+        if self.function in {"running", "yoy"} and self.time is None:
+            raise ValueError("a temporal operation requires an order column")
+
+
 ViewStep: TypeAlias = (
     CombinedView
     | EnrichedView
@@ -299,6 +374,8 @@ ViewStep: TypeAlias = (
     | CalculatedView
     | ProjectedView
     | ReducedView
+    | SortedView
+    | WindowView
 )
 
 
@@ -334,6 +411,17 @@ class AnalysisPlan:
             column_names = {column.name for column in table.columns}
             column_attributes = {column.attribute for column in table.columns}
             for relationship in table.relationships:
+                for condition in (
+                    relationship.condition,
+                    relationship.secondary_condition,
+                ):
+                    if condition is not None:
+                        self._validate_predicate(condition, set(table_by_name), set())
+                if (
+                    relationship.secondary
+                    and relationship.secondary not in table_by_name
+                ):
+                    raise ValueError("unknown secondary relationship table")
                 target = table_by_name.get(relationship.target_table)
                 if target is None:
                     raise ValueError(
@@ -483,6 +571,21 @@ class AnalysisPlan:
                             )
                     stage_tables = set()
                     stage_values = set(names)
+                elif isinstance(view, SortedView):
+                    for item in view.order:
+                        self._validate_value(item.value, stage_tables, stage_values)
+                elif isinstance(view, WindowView):
+                    for value in (
+                        view.measure,
+                        *view.partition,
+                        *((view.time,) if view.time else ()),
+                    ):
+                        self._validate_value(value, stage_tables, stage_values)
+                    if view.output in stage_values or view.output in {
+                        table_by_name[name].attribute for name in stage_tables
+                    }:
+                        raise ValueError("window output shadows a preceding value")
+                    stage_values.add(view.output)
             emitted.add(view.name)
             previous = view.name
 
@@ -528,6 +631,8 @@ class AnalysisPlan:
                 current += tuple(added)
             elif isinstance(view, CalculatedView):
                 current += tuple(value.name for value in view.values)
+            elif isinstance(view, WindowView):
+                current += (view.output,)
             elif isinstance(view, ProjectedView):
                 current = tuple(value.name for value in view.values)
             elif isinstance(view, ReducedView):
@@ -545,8 +650,17 @@ class AnalysisPlan:
             CalculatedView: "convert",
             ProjectedView: "select",
             ReducedView: "group_agg",
+            SortedView: "sort",
+            WindowView: "window",
         }
-        return {view.name: operations[type(view)] for view in self.views}
+        return {
+            view.name: view.function
+            if isinstance(view, WindowView)
+            else "topn"
+            if isinstance(view, SortedView) and view.limit is not None
+            else operations[type(view)]
+            for view in self.views
+        }
 
     def _validate_predicate(
         self,
@@ -554,6 +668,10 @@ class AnalysisPlan:
         tables: set[str],
         values: set[str],
     ) -> None:
+        if isinstance(predicate, JunctionValue):
+            for child in predicate.predicates:
+                self._validate_predicate(child, tables, values)
+            return
         self._validate_value(predicate.left, tables, values)
         self._validate_value(predicate.right, tables, values)
 
@@ -572,6 +690,9 @@ class AnalysisPlan:
         if isinstance(value, BinaryValue):
             self._validate_value(value.left, tables, values)
             self._validate_value(value.right, tables, values)
+            return
+        if isinstance(value, FunctionValue):
+            self._validate_value(value.operand, tables, values)
             return
         raise TypeError(f"unsupported value: {type(value).__name__}")
 

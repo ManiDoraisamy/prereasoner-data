@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import Connection, Engine
+from engine import request_timing
 
 from engine.deterministic.emitter import (
     GeneratedPackage,
@@ -14,7 +15,7 @@ from engine.deterministic.emitter import (
     PythonEmitter,
     SQLEmitter,
 )
-from engine.deterministic.plan import AnalysisPlan
+from engine.deterministic.plan import AnalysisPlan, SortedView
 from engine.deterministic.runtime import (
     ExecutionMode,
     VerificationMismatch,
@@ -95,6 +96,11 @@ class ExecutionResult:
             )
         return {
             "mode": self.mode.value,
+            "timings": {
+                key: value
+                for key, value in request_timing.snapshot().items()
+                if key.startswith("deterministic_")
+            },
             "manifest": self.emission.manifest(),
             "sql": self.emission.sql.record(),
             "python": self.emission.python.record(),
@@ -166,7 +172,8 @@ class DeterministicAnalysis:
                         revision=revision,
                         debug_root=debug_root,
                     )
-        emission = self.emit()
+        with request_timing.span("deterministic_emit"):
+            emission = self.emit()
         selected = choose_execution_mode(
             mode,
             estimated_rows=estimated_rows,
@@ -186,26 +193,36 @@ class DeterministicAnalysis:
             "conversation": self.conversation_schema
         }
         if selected is ExecutionMode.PYTHON:
-            python_result = execute_python(emission.python, bind, schema_map=schema_map)
-            view_rows = materialized_python_views(python_result, self.plan)
+            with request_timing.span("deterministic_python"):
+                python_result = execute_python(
+                    emission.python, bind, schema_map=schema_map
+                )
+                view_rows = materialized_python_views(python_result, self.plan)
             rows = view_rows[-1]
         elif selected is ExecutionMode.SQL:
-            view_rows = execute_sql_views(emission.sql, bind)
+            with request_timing.span("deterministic_sql"):
+                view_rows = execute_sql_views(emission.sql, bind)
             rows = view_rows[-1]
         elif selected is ExecutionMode.VERIFY:
-            python_result = execute_python(emission.python, bind, schema_map=schema_map)
-            python_views = materialized_python_views(python_result, self.plan)
-            sql_views = execute_sql_views(emission.sql, bind)
-            for name, python_rows, sql_rows in zip(
-                emission.python.manifest["views"],
+            with request_timing.span("deterministic_python"):
+                python_result = execute_python(
+                    emission.python, bind, schema_map=schema_map
+                )
+                python_views = materialized_python_views(python_result, self.plan)
+            with request_timing.span("deterministic_sql"):
+                sql_views = execute_sql_views(emission.sql, bind)
+            for step, python_rows, sql_rows in zip(
+                self.plan.views,
                 python_views,
                 sql_views,
                 strict=True,
             ):
                 try:
-                    assert_equivalent(python_rows, sql_rows)
+                    assert_equivalent(
+                        python_rows, sql_rows, ordered=isinstance(step, SortedView)
+                    )
                 except VerificationMismatch as exc:
-                    exc.add_note(f"deterministic view: {name}")
+                    exc.add_note(f"deterministic view: {step.name}")
                     raise
             view_rows = sql_views
             rows = sql_views[-1]

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 
 import numpy as np
 from psycopg2.extras import execute_values
@@ -24,7 +25,7 @@ class KnowledgeBridgeMixin:
 
     CONN_DDL = (
         '("column" TEXT, "value" TEXT, "world_type" TEXT, "world_key" TEXT, '
-        '"country" TEXT, "world_qid" TEXT)'
+        '"country" TEXT, "world_qid" TEXT, "entity_qid" TEXT, "context" TEXT)'
     )
     TYPE_QID = {
         "city": "Q515", "country": "Q6256", "state": "Q35657",
@@ -58,7 +59,7 @@ class KnowledgeBridgeMixin:
 
     def _bridge_state_hash(self, route_column, world_type, pairs):
         try:
-            payload = repr((route_column, world_type, sorted({(c, k) for c, k in pairs if k}),
+            payload = repr(("entity-qid-v2", route_column, world_type, sorted({(c, k) for c, k in pairs if k}),
                             self._bridge_world_version()))
             return hashlib.sha256(payload.encode("utf-8", "replace")).hexdigest()
         except Exception:                                 # noqa: BLE001 — no hash -> just rebuild
@@ -89,12 +90,25 @@ class KnowledgeBridgeMixin:
                 for key in keys:
                     countries.setdefault(key, key)
         type_qid = self.TYPE_QID.get(world_type)
+        entity_qids = {key if world_type == "city" else key.lower(): key
+                       for key in keys if re.fullmatch(r"Q\d+", key)}
+        if keys and world_type != "city":
+            # Match the existing name-bridge's canonical -> QID tie rule exactly.
+            cursor.execute(
+                'SELECT DISTINCT ON (lower(canonical)) lower(canonical), qid '
+                'FROM knowledgebase."words" WHERE type=%s AND lower(canonical)=ANY(%s) '
+                'AND qid IS NOT NULL ORDER BY lower(canonical), qid',
+                (world_type, [key.lower() for key in keys]),
+            )
+            entity_qids.update(cursor.fetchall())
         seen = set()
         rows = []
         for cell, key in pairs:
             if key and (cell, key) not in seen:
                 seen.add((cell, key))
-                rows.append((route_column, cell, world_type, key, countries.get(key), type_qid))
+                cell, context = cell if isinstance(cell, tuple) else (cell, "")
+                rows.append((route_column, cell, world_type, key, countries.get(key), type_qid,
+                             entity_qids.get(key if world_type == "city" else key.lower()), context))
         return rows
 
     def _persist_connected(self, main_table, route_column, world_type, pairs):
@@ -132,6 +146,10 @@ class KnowledgeBridgeMixin:
         cursor.execute(
             f"CREATE TABLE IF NOT EXISTS {qident(schema)}.{qident(bridge_name)} {self.CONN_DDL}"
         )
+        cursor.execute(f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
+                       'ADD COLUMN IF NOT EXISTS "entity_qid" TEXT')
+        cursor.execute(f'ALTER TABLE {qident(schema)}.{qident(bridge_name)} '
+                       'ADD COLUMN IF NOT EXISTS "context" TEXT')
         cursor.execute(
             "SELECT 1 FROM information_schema.columns WHERE table_schema=%s AND table_name=%s "
             "AND column_name='world_qid'",
@@ -151,7 +169,8 @@ class KnowledgeBridgeMixin:
             # ONE paged multi-row INSERT — the same per-row-round-trip fix as the sheet upload.
             execute_values(
                 cursor,
-                f"INSERT INTO {qident(schema)}.{qident(bridge_name)} VALUES %s",
+                f'INSERT INTO {qident(schema)}.{qident(bridge_name)} '
+                '("column", "value", "world_type", "world_key", "country", "world_qid", "entity_qid", "context") VALUES %s',
                 rows, page_size=500,
             )
         if state_hash:
@@ -177,7 +196,7 @@ class KnowledgeBridgeMixin:
             unsafe = str.maketrans({".": "_", "$": "_", "#": "_", "[": "_", "]": "_", "/": "_"})
             resolved = {}
             seen = set()
-            for _column, cell, _world_type, key, country, _type_qid in rows:
+            for _column, cell, _world_type, key, country, _type_qid, *_entity_qid in rows:
                 text = str(cell)
                 if text in seen:
                     continue
@@ -209,6 +228,18 @@ class KnowledgeBridgeMixin:
         return self._persist_connected(
             main_table, route_column, world_type, self._materialize(inner),
         )
+
+    def _city_bridge_disamb_sql(self, norm, main_table, route_column, country_column):
+        inner = super()._city_bridge_disamb_sql(norm, main_table, route_column, country_column)
+        if not inner:
+            return None
+        cursor = self._rconn().cursor()
+        cursor.execute(f"SELECT * FROM ({inner}) AS resolved(cell, context, qid)")
+        pairs = [((cell, context), qid) for cell, context, qid in cursor.fetchall()]
+        self._persist_connected(main_table, route_column, "city", pairs)
+        return (f'SELECT "value", "context", "entity_qid" FROM '
+                f'{qident(self._pg_schema)}.{qident(self._conn_bridge_name(main_table))} '
+                f'WHERE "column"={qlit(route_column)}')
 
     def _persist_main_unconnected(self, cursor, schema, table, planner_schema, plan):
         table_name = table["name"]

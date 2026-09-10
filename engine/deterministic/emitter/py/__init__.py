@@ -9,7 +9,7 @@ import keyword
 import math
 import shutil
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -24,10 +24,14 @@ from engine.deterministic.plan import (
     CombinedView,
     EnrichedView,
     FilteredView,
+    FunctionValue,
+    JunctionValue,
     LiteralValue,
     PredicateValue,
     ProjectedView,
     ReducedView,
+    SortedView,
+    WindowView,
     TableSpec,
     Value,
     ViewValue,
@@ -145,7 +149,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 2
+    VERSION = 3
 
     def emit(
         self,
@@ -171,12 +175,16 @@ class PythonEmitter:
             "date",
             "select",
             "and_",
+            "or_",
+            "cast",
+            "func",
+            "Text",
             *_operator_imports(plan),
             *(table.class_name for table in plan.tables),
             *(
                 _class_name(view.name)
                 for view in plan.views
-                if not isinstance(view, FilteredView)
+                if not isinstance(view, (FilteredView, SortedView))
             ),
             wrapper_class,
         ]
@@ -202,10 +210,8 @@ class PythonEmitter:
             "relationship_edges": [
                 {
                     "source": table.name,
-                    "attribute": relationship.attribute,
                     "target": relationship.target_table,
-                    "local_columns": list(relationship.local_columns),
-                    "remote_columns": list(relationship.remote_columns),
+                    **asdict(relationship),
                 }
                 for table in plan.tables
                 for relationship in table.relationships
@@ -261,7 +267,7 @@ class PythonEmitter:
                 py_type += " | None"
             args = [repr(column.name), sql_type]
             relationship = relationships_by_column.get(column.name)
-            if relationship is not None:
+            if relationship is not None and relationship.condition is None:
                 target = plan.table(relationship.target_table)
                 position = relationship.local_columns.index(column.name)
                 remote = relationship.remote_columns[position]
@@ -287,6 +293,54 @@ class PythonEmitter:
             else:
                 target_type = target.class_name + (" | None" if nullable else "")
                 annotation = repr(target_type)
+            if relationship.condition is not None:
+                primaryjoin = _orm_predicate(plan, relationship.condition)
+                if relationship.secondary:
+                    bridge = plan.table(relationship.secondary)
+                    foreign_columns = _predicate_columns(
+                        relationship.condition
+                    ) | _predicate_columns(relationship.secondary_condition)
+                    foreign_columns = sorted(
+                        (
+                            value
+                            for value in foreign_columns
+                            if value.table == bridge.name
+                        ),
+                        key=lambda value: value.column,
+                    )
+                else:
+                    foreign_columns = [
+                        ColumnValue(table.name, column)
+                        for column in relationship.local_columns
+                    ]
+                foreign = (
+                    "["
+                    + ", ".join(_orm_value(plan, value) for value in foreign_columns)
+                    + "]"
+                )
+                lines.extend(
+                    [
+                        f"    {relationship.attribute}: Mapped[{annotation}] = relationship(",
+                        f"        {target.class_name!r},",
+                        f"        primaryjoin={primaryjoin!r},",
+                        f"        foreign_keys={foreign!r},",
+                    ]
+                )
+                if relationship.secondary:
+                    lines.extend(
+                        [
+                            f"        secondary=lambda: Base.metadata.tables[{bridge.schema + '.' + bridge.name!r}],",
+                            f"        secondaryjoin={_orm_predicate(plan, relationship.secondary_condition)!r},",
+                        ]
+                    )
+                lines.extend(
+                    [
+                        f"        uselist={relationship.many!r},",
+                        '        viewonly=True, lazy="selectin",',
+                        "    )",
+                    ]
+                )
+                continue
             foreign = ", ".join(
                 scalar_attrs[column] for column in relationship.local_columns
             )
@@ -325,7 +379,7 @@ class PythonEmitter:
             "from datetime import date",
             "from decimal import Decimal",
             "",
-            "from sqlalchemy import and_, select",
+            "from sqlalchemy import Text, and_, cast, func, or_, select",
             "from sqlalchemy.orm import Session",
             "",
             f"from engine.deterministic.operators import {operator_imports}",
@@ -354,7 +408,7 @@ class PythonEmitter:
                         enrichment.target_table
                     ].attribute
                 current_values = set(previous_values)
-            elif isinstance(view, FilteredView):
+            elif isinstance(view, (FilteredView, SortedView)):
                 stage_tables[view.name] = dict(previous_tables)
                 stage_values[view.name] = set(previous_values)
                 previous_tables, previous_values = (
@@ -365,6 +419,9 @@ class PythonEmitter:
             elif isinstance(view, CalculatedView):
                 current_tables = dict(previous_tables)
                 current_values = previous_values | {value.name for value in view.values}
+            elif isinstance(view, WindowView):
+                current_tables = dict(previous_tables)
+                current_values = previous_values | {view.output}
             elif isinstance(view, ProjectedView):
                 current_tables = {}
                 current_values = {value.name for value in view.values}
@@ -465,6 +522,37 @@ class PythonEmitter:
                         stage_values[view.source],
                     )
                 )
+            elif isinstance(view, SortedView):
+                keys = [
+                    self._python_value(
+                        plan,
+                        item.value,
+                        "row",
+                        stage_tables[view.source],
+                        stage_values[view.source],
+                    )
+                    for item in view.order
+                ]
+                lines.extend(
+                    [
+                        f"        {view.name} = {view.source}.sort(",
+                        f"            name={view.name!r},",
+                        f"            keys=lambda row: ({', '.join(keys)},),",
+                        f"            descending={tuple(item.descending for item in view.order)!r},",
+                        f"            limit={view.limit!r},",
+                        "        )",
+                    ]
+                )
+            elif isinstance(view, WindowView):
+                lines.extend(
+                    self._emit_window(
+                        plan,
+                        view,
+                        row_classes[view.name],
+                        stage_tables[view.source],
+                        stage_values[view.source],
+                    )
+                )
             lines.append("")
             previous = view.name
             emitted_variables.append(view.name)
@@ -494,6 +582,21 @@ class PythonEmitter:
         for table in tables[1:]:
             source, relationship = plan.connecting_relationship(joined, table.name)
             target = plan.table(relationship.target_table)
+            if relationship.condition is not None:
+                method = "outerjoin" if view.outer else "join"
+                if relationship.secondary:
+                    bridge = plan.table(relationship.secondary)
+                    lines.append(
+                        f"            .{method}({bridge.class_name}, {_orm_predicate(plan, relationship.condition)})"
+                    )
+                    condition = relationship.secondary_condition
+                else:
+                    condition = relationship.condition
+                lines.append(
+                    f"            .{method}({table.class_name}, {_orm_predicate(plan, condition)})"
+                )
+                joined.add(table.name)
+                continue
             comparisons = []
             for local, remote in zip(
                 relationship.local_columns, relationship.remote_columns
@@ -507,7 +610,9 @@ class PythonEmitter:
                 if len(comparisons) == 1
                 else "and_(" + ", ".join(comparisons) + ")"
             )
-            lines.append(f"            .join({table.class_name}, {on_clause})")
+            lines.append(
+                f"            .{'outerjoin' if view.outer else 'join'}({table.class_name}, {on_clause})"
+            )
             joined.add(table.name)
         lines.extend(
             [
@@ -544,13 +649,16 @@ class PythonEmitter:
             for index, relationship in enumerate(enrichment.relationship_path):
                 # An absent intermediate reference behaves like the SQL inner join.
                 variable = f"_{target_attribute}_ref_{index}"
-                lines.extend(
-                    [
-                        f"            {variable} = {expression}.{relationship}",
-                        f"            if {variable} is None:",
-                        "                return None",
-                    ]
+                lines.append(
+                    f"            {variable} = None if {expression} is None else {expression}.{relationship}"
                 )
+                if enrichment.required:
+                    lines.extend(
+                        [
+                            f"            if {variable} is None:",
+                            "                return None",
+                        ]
+                    )
                 expression = variable
             lines.append(f"            {target_attribute} = {expression}")
         lines.extend(
@@ -602,6 +710,62 @@ class PythonEmitter:
             )
             lines.append(f"                {selected.name}={expression},")
         lines.extend(["            ),", "        )"])
+        return lines
+
+    def _emit_window(self, plan, view, row_class, source_tables, source_values):
+        def value(item, row):
+            return self._python_value(plan, item, row, source_tables, source_values)
+
+        predicates = [
+            f"EQ({value(key, 'prior')}, {value(key, 'row')}) is True"
+            for key in view.partition
+        ]
+        if view.function == "yoy":
+            predicates.append(
+                f"EQ({value(view.time, 'row')}, ADD({value(view.time, 'prior')}, 1)) is True"
+            )
+        elif view.function == "running":
+            predicates.append(
+                f"LE({value(view.time, 'prior')}, {value(view.time, 'row')}) is True"
+            )
+        condition = " and ".join(predicates) or "True"
+        fields = [f"{attr}=row.{attr}" for attr in source_tables.values()] + [
+            f"{name}=row.{name}" for name in sorted(source_values)
+        ]
+        helper = f"emit_{view.name}"
+        lines = [f"        def {helper}(row):"]
+        if view.function == "yoy":
+            expression = f"DIVIDE(SUBTRACT({value(view.measure, 'row')}, {value(view.measure, 'prior')}), {value(view.measure, 'prior')})"
+            constructor = ", ".join(fields + [f"{view.output}={expression}"])
+            lines.extend(
+                [
+                    f"            return [{row_class}({constructor})",
+                    f"                    for prior in {view.source}.rows if {condition}]",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    f"            total = {view.source}.reduce(",
+                    f"                name={view.name + '_sum'!r}, initial=None,",
+                    f"                step=lambda total, prior: SUM(total, {value(view.measure, 'prior')}) if {condition} else total,",
+                    "            ).rows[0]",
+                ]
+            )
+            expression = (
+                "total"
+                if view.function == "running"
+                else f"DIVIDE({value(view.measure, 'row')}, total)"
+            )
+            lines.append(
+                f"            return {row_class}({', '.join(fields + [f'{view.output}={expression}'])})"
+            )
+        lines.extend(
+            [
+                "",
+                f"        {view.name} = {view.source}.for_each(name={view.name!r}, emit={helper})",
+            ]
+        )
         return lines
 
     def _emit_reduced(
@@ -740,6 +904,16 @@ class PythonEmitter:
         tables: Mapping[str, str],
         values: set[str],
     ) -> str:
+        if isinstance(predicate, JunctionValue):
+            return (
+                predicate.operator
+                + "("
+                + ", ".join(
+                    self._python_predicate(plan, child, row, tables, values)
+                    for child in predicate.predicates
+                )
+                + ")"
+            )
         left = self._python_value(plan, predicate.left, row, tables, values)
         right = self._python_value(plan, predicate.right, row, tables, values)
         return f"{_PREDICATE_FUNCTION[predicate.operator]}({left}, {right})"
@@ -752,6 +926,8 @@ class PythonEmitter:
         tables: Mapping[str, str],
         values: set[str],
     ) -> str:
+        if isinstance(value, FunctionValue):
+            return f"{value.function}({self._python_value(plan, value.operand, row, tables, values)})"
         if isinstance(value, LiteralValue):
             return _python_literal(value.value)
         if isinstance(value, ViewValue):
@@ -762,7 +938,18 @@ class PythonEmitter:
             table = plan.table(value.table)
             if value.table not in tables:
                 raise ValueError(f"table {value.table!r} is not available in this view")
-            return f"{row}.{tables[value.table]}.{table.scalar_attribute(value.column)}"
+            expression = (
+                f"{row}.{tables[value.table]}.{table.scalar_attribute(value.column)}"
+            )
+            if plan.views[0].outer or any(
+                isinstance(view, EnrichedView)
+                and any(not enrichment.required for enrichment in view.enrichments)
+                for view in plan.views
+            ):
+                return (
+                    f"(None if {row}.{tables[value.table]} is None else {expression})"
+                )
+            return expression
         if isinstance(value, BinaryValue):
             left = self._python_value(plan, value.left, row, tables, values)
             right = self._python_value(plan, value.right, row, tables, values)
@@ -810,16 +997,27 @@ def _operator_imports(plan: AnalysisPlan) -> tuple[str, ...]:
     names = {"View"}
 
     def add_value(value: Value) -> None:
+        if isinstance(value, FunctionValue):
+            names.add(value.function)
+            add_value(value.operand)
         if isinstance(value, BinaryValue):
             names.add(_BINARY_FUNCTION[value.operator])
             add_value(value.left)
             add_value(value.right)
 
+    def add_predicate(predicate):
+        if isinstance(predicate, JunctionValue):
+            names.add(predicate.operator)
+            for child in predicate.predicates:
+                add_predicate(child)
+        else:
+            names.add(_PREDICATE_FUNCTION[predicate.operator])
+            add_value(predicate.left)
+            add_value(predicate.right)
+
     for view in plan.views:
         if isinstance(view, FilteredView):
-            names.add(_PREDICATE_FUNCTION[view.predicate.operator])
-            add_value(view.predicate.left)
-            add_value(view.predicate.right)
+            add_predicate(view.predicate)
         elif isinstance(view, (CalculatedView, ProjectedView)):
             for selected in view.values:
                 add_value(selected.value)
@@ -835,4 +1033,49 @@ def _operator_imports(plan: AnalysisPlan) -> tuple[str, ...]:
                     names.update({"AverageState", "FINALIZE_AVG"})
                 if aggregate.operand is not None:
                     add_value(aggregate.operand)
+        elif isinstance(view, WindowView):
+            names.update({"SUM", "EQ", "LE", "ADD", "SUBTRACT", "DIVIDE"})
     return tuple(sorted(names))
+
+
+def _orm_value(plan, value):
+    if isinstance(value, ColumnValue):
+        table = plan.table(value.table)
+        return f"{table.class_name}.{table.scalar_attribute(value.column)}"
+    if isinstance(value, FunctionValue):
+        operand = _orm_value(plan, value.operand)
+        return (
+            f"cast({operand}, Text)"
+            if value.function == "TEXT"
+            else f"func.lower({operand})"
+        )
+    if isinstance(value, LiteralValue):
+        return _python_literal(value.value)
+    raise TypeError(f"unsupported ORM join value: {type(value).__name__}")
+
+
+def _orm_predicate(plan, predicate):
+    if isinstance(predicate, JunctionValue):
+        return (
+            predicate.operator.lower()
+            + "_("
+            + ", ".join(_orm_predicate(plan, child) for child in predicate.predicates)
+            + ")"
+        )
+    operator = {"=": "==", "<>": "!="}.get(predicate.operator, predicate.operator)
+    return f"{_orm_value(plan, predicate.left)} {operator} {_orm_value(plan, predicate.right)}"
+
+
+def _predicate_columns(predicate):
+    def columns(value):
+        if isinstance(value, ColumnValue):
+            return {value}
+        if isinstance(value, FunctionValue):
+            return columns(value.operand)
+        return set()
+
+    if isinstance(predicate, JunctionValue):
+        return set().union(
+            *(_predicate_columns(child) for child in predicate.predicates)
+        )
+    return columns(predicate.left) | columns(predicate.right)

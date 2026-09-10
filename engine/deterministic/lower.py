@@ -17,6 +17,7 @@ from engine.deterministic.plan import (
     ColumnValue,
     CombinedView,
     FilteredView,
+    JunctionValue,
     LiteralValue,
     PredicateValue,
     ProjectedView,
@@ -30,6 +31,7 @@ from engine.deterministic.plan import (
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
+    BooleanExpr,
     ColumnRef,
     Comparison,
     Literal,
@@ -50,6 +52,8 @@ def lower_select_query(
     query: SelectQuery,
     schema: Sequence[Mapping[str, object]],
     foreign_keys: Sequence[Mapping[str, object]],
+    *,
+    postgres_row_identity: bool = False,
 ) -> AnalysisPlan:
     """Build a feed-forward plan without parsing or reverse-engineering rendered SQL."""
     if not isinstance(query.from_table, str) or query.from_alias is not None:
@@ -127,6 +131,10 @@ def lower_select_query(
             ),
             None,
         )
+        if selected is None and postgres_row_identity:
+            # PostgreSQL's tuple identity is unique within the repeatable-read
+            # snapshot. It preserves duplicate input rows without changing CSVs.
+            selected = ("ctid",)
         if selected is None:
             raise UnsupportedDeterministicPlan(
                 f"table {table!r} has no stable ORM identity for this dataset"
@@ -161,6 +169,21 @@ def lower_select_query(
                     nullable=_column_nullable(column),
                 )
                 for column in columns_by_table[table]
+            )
+            + (
+                (
+                    ColumnSpec(
+                        "ctid",
+                        _next_unique(
+                            "_orm_row_identity", set(column_attributes[table].values())
+                        ),
+                        ASTType.TEXT,
+                        True,
+                        False,
+                    ),
+                )
+                if "ctid" in primary_keys[table]
+                else ()
             ),
             relationships=tuple(relationships_by_table[table]),
         )
@@ -340,6 +363,10 @@ def _relationship_edges(query, foreign_keys, included):
 
 
 def _predicate(value) -> PredicateValue:
+    if isinstance(value, BooleanExpr):
+        return JunctionValue(
+            value.operator, tuple(_predicate(term) for term in value.terms)
+        )
     if not isinstance(value, Comparison):
         raise UnsupportedDeterministicPlan(
             "only one non-aggregate comparison is supported"
