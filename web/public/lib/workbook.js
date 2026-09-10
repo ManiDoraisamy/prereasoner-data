@@ -856,6 +856,11 @@ async function startTurn(){
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
       noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis); });   // metadata even when views streamed live
+    // Which backend produced the sheets. Needed HERE too: when views stream live over RTDB
+    // this body is the only place the orchestrated turn reports its execution, and
+    // renderTurnFromHTTP below runs only when nothing streamed.
+    noteExecution(executionOf(j));
+    if(EXEC&&BOOK.some(s=>s.cls==='deriv')) paint();
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // no live stream -> render from the body
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
