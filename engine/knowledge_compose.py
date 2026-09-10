@@ -4,7 +4,8 @@ A world question with composition DEPTH (year-over-year, top-N, share, cumulativ
 one uploaded table is answered by a STACK of views — the analytical primitives composed by depth
 (engine.compose) over a BASE relation that is the uploaded FK join + the world-meaning join. A plain
 aggregate / hybrid-semantic / clarify query DELEGATES to KnowledgeQuery unchanged. So composition ADDS depth
-without regressing anything.
+without regressing anything. When an execution context requests a shared backend, the selected composition
+bindings use the same SQL/Python emitters as own-data and world plans.
 
 Reuse, not reinvention:
   * the WORLD lookup (city -> country) comes from KnowledgeQuery's world schema (knowledgebase."words"); the uploaded data
@@ -26,7 +27,13 @@ from engine.entities import WORLD_TABLE_TYPE
 from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
 from engine.compose import ComposeEngine
-from engine.routing import DEPTH_PRIMS, WORLD_MEASURES, compose_owns, required_ops
+from engine.routing import (
+    COMPOSITION_OPS,
+    DEPTH_PRIMS,
+    WORLD_MEASURES,
+    compose_owns,
+    required_ops,
+)
 from engine.numeric import parse_decimal
 
 
@@ -50,8 +57,9 @@ class ComposedKnowledgeQuery:
     _serve_locks = tuple(threading.RLock() for _ in range(64))
 
     # Routing constants (DEPTH_PRIMS = primitive-head EVIDENCE to build a compose plan; WORLD_MEASURES = a world
-    # attribute the upload can't expose) and the routing AUTHORITY (compose_owns) live in engine.routing — the ONE
-    # shared router used by both this serving path and the Spider eval, so they can never drift.
+    # attribute the upload can't expose) and the world-ownership authority (compose_owns) live in engine.routing.
+    # The shared deterministic adapter additionally lowers selected local compositions, so explicit Python/verify
+    # requests do not fall back to the legacy SQLite candidate executor.
     def __init__(self):
         self.qw = KnowledgeQuery()                            # resolution + world DB + auth + bridge machinery
         self.reader = PrimitiveReader(encoder=self.qw)    # the learned 10-primitive head on the SAME unified encoder
@@ -373,8 +381,21 @@ class ComposedKnowledgeQuery:
         res = self.reason.run(tables, question, world=world)
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
-        if context is not None and compose_owns(res.get("views"), res.get("world_dependency"),
-                                               (res.get("answer") or {}).get("rows"), required_ops(question)):
+        plan_ops = {
+            view.get("op")
+            for view in (res.get("views") or [])
+            if isinstance(view, dict)
+        }
+        shared_composition = bool(plan_ops & COMPOSITION_OPS)
+        if context is not None and (
+            shared_composition
+            or compose_owns(
+                res.get("views"),
+                res.get("world_dependency"),
+                (res.get("answer") or {}).get("rows"),
+                required_ops(question),
+            )
+        ):
             from engine.deterministic.compose import lower_composition
             from engine.numeric import wire_rows
             norm, fks = self.qw.ingest(tables)
@@ -469,28 +490,31 @@ class ComposedKnowledgeQuery:
             return self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                  explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
         if self._composed(tables, question):
-            # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building —
-            # never authority to stand on it. Ground the world dependency FIRST: if nothing resolves against the
-            # world model, the query is answerable from the uploaded tables alone, so the typed-AST planner owns it
-            # and we never build (let alone stand on) the ComposeEngine. Only when a world dependency grounds do we
-            # build the view stack and let engine.routing.compose_owns decide on the EXPLICIT world_dependency
-            # record (a genuine, NECESSARY world composite stands; a redundant join or a plain world lookup falls
-            # through to the authoritative delegate). The world lookup is the slow step, so stream resolving first.
+            # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building.
+            # World ownership still goes through engine.routing.compose_owns, while an explicit deterministic
+            # execution context may lower a selected local composition through the shared plan as well.
             if emit:
                 emit("status", "resolving")
-            norm, _ = (self.qw.ingest(tables, explicit_fks=explicit_fks)
-                       if explicit_fks else self.qw.ingest(tables))
-            world = self._world_lookup(norm, sub)
-            if world:
-                try:
-                    er = self._run_engine(tables, question, sub, as_of, emit=emit, world=world,
-                                          dataset_semantics=dataset_semantics)
-                    if compose_owns(er.get("views"), er.get("world_dependency"),
-                                    (er.get("result") or {}).get("rows"), required_ops(question)):
-                        self._emit_response_views(emit, er)
-                        return er
-                except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
-                    print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
+            try:
+                er = self._run_engine(
+                    tables,
+                    question,
+                    sub,
+                    as_of,
+                    emit=emit,
+                    world=None,
+                    dataset_semantics=dataset_semantics,
+                )
+                if er.get("deterministic") or compose_owns(
+                    er.get("views"),
+                    er.get("world_dependency"),
+                    (er.get("result") or {}).get("rows"),
+                    required_ops(question),
+                ):
+                    self._emit_response_views(emit, er)
+                    return er
+            except Exception as e:                    # noqa: BLE001 — never hard-fail; fall back to delegate
+                print(f"composed serve failed, delegating: {type(e).__name__}", flush=True)
             deleg = (self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                    explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
                      if explicit_fks else self.qw.serve(tables, question, as_of=as_of, schema=sub,

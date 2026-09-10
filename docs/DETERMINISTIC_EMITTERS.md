@@ -203,16 +203,18 @@ through the existing timing collector; backend durations include stage materiali
 ## Coverage and extension
 
 Own-data AST lowering supports unaliased inner joins, Boolean comparison filters, projections and arithmetic,
-`COUNT/SUM/AVG/MIN/MAX`, and grouped aggregates whose projected group columns precede aggregates.
-Its aliases, self-joins, DISTINCT, HAVING, ordering, limits, subqueries, and set queries remain outside
-that AST adapter. This is distinct from the composition adapter's supported ordering and correlated operators.
+`COUNT/SUM/AVG/MIN/MAX`, and grouped aggregates whose projected group columns precede aggregates. A scalar
+aggregate may carry a semantically harmless `ORDER BY` or `LIMIT 1`; general ordering, limits, aliases,
+self-joins, DISTINCT, HAVING, subqueries, and set queries remain outside that AST adapter. This is distinct
+from the composition adapter's supported ordering and correlated operators.
 
 The world adapter consumes the existing planner's grounded relationship chain, filters, selected
 measure, registered calculation, and currency binding. It does not parse rendered SQL. Geographic
 and non-geographic scalar world queries, including the default customer-orders FX question, use it.
 World-only DISTINCT projections and grouped world extrema still require additional typed bindings.
 
-The composition adapter consumes the existing ComposeEngine's selected primitive records. It supports
+The composition adapter consumes the existing ComposeEngine's selected primitive records for both necessary
+world compositions and selected local analytical compositions. It supports
 filters, grouped reductions, HAVING thresholds, divide, share, running total, previous-year joins,
 sorting, and top-N. Its ORM reference graph points to the existing knowledgebase relations, not a
 model over the flattened `knowledgebase facts` preview. The current compose planner still materializes

@@ -108,12 +108,13 @@ syntax. Prereasoner trades some raw coverage (it's a 0.5B model) for an auditabl
 `"total amount in France"` is a **world** query — `France` is *not* a value in the uploaded cities, so it can
 only be reached by resolving `city → country` against the Wikidata-backed entity store, with
 Schema.org-named typing evidence. The shared router
-([`engine/routing.py:route`](../engine/routing.py)) detects a **necessary world dependency** and hands the query
-to the `ComposeEngine`, which builds a **view-stack** (`world_join → world_filter → group_agg`) instead of a
-single `SelectQuery`. The readout underneath is identical, and the view stack is still a *typed tree/DAG of
-nodes* — just hosted as a world composite rather than the own-data planner. For a purely own-data prompt like
-`"how many customers in Paris"`, you get the single `SelectQuery` exactly as drawn above
-(`SELECT COUNT(*) … WHERE city = 'Paris'`).
+([`engine/routing.py:route`](../engine/routing.py)) detects a **necessary world dependency** and lets the
+`ComposeEngine` build a **view-stack** (`world_join → world_filter → group_agg`) instead of a single
+`SelectQuery`. The selected world bindings then lower into the same deterministic plan used by SQL and Python.
+For a purely own-data prompt like `"how many customers in Paris"`, you get the single `SelectQuery` exactly as
+drawn above (`SELECT COUNT(*) … WHERE city = 'Paris'`). For an analytical own-data prompt such as a top-N or
+share, ComposeEngine may supply a multi-view binding; explicit `use=py` or `use=both` lowers that binding through
+the same Python/SQL emitter pair rather than accepting an opaque SQLite answer.
 
 See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data vs. world, and
 [`docs/SQL_AST.md`](SQL_AST.md) for the planner's search phases in depth.

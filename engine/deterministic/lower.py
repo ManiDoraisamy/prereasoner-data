@@ -60,10 +60,18 @@ def lower_select_query(
         raise UnsupportedDeterministicPlan(
             "derived tables and aliases are not supported"
         )
+    scalar_aggregate = (
+        bool(query.select)
+        and not query.group_by
+        and all(isinstance(item.expression, Aggregate) for item in query.select)
+    )
+    harmless_scalar_order = scalar_aggregate and (
+        not query.order_by or query.limit in (None, 1)
+    )
     if (
         query.having is not None
-        or query.order_by
-        or query.limit is not None
+        or (query.order_by and not harmless_scalar_order)
+        or (query.limit is not None and not harmless_scalar_order)
         or query.distinct
     ):
         raise UnsupportedDeterministicPlan(

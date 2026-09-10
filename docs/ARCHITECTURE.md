@@ -34,7 +34,7 @@ engine/knowledge.py
         v
 engine/routing.py
         |
-        +-- DELEGATE --> own-data typed AST or ordinary world lookup
+        +-- DELEGATE --> own-data typed AST, local composition, or ordinary world lookup
         |
         +-- COMPOSE  --> world-dependent multi-step view composition
         v
@@ -69,7 +69,9 @@ mistaken for a condition missing from the final aggregate.
 
 The own-data `TableQuery._serve_ast` winner, world planner's grounded slots, and selected
 ComposeEngine primitive records have separate lowering adapters under `engine/deterministic/`.
-They feed the same plan, emitters, and runtime; none is another planner. World ORM relationships
+They feed the same plan, emitters, and runtime; none is another planner. The routing authority still
+requires a necessary world dependency before ComposeEngine owns a world answer, but an explicit
+`python` or `verify` request can lower a selected local composition as well. World ORM relationships
 use persisted cell-to-QID associations and actual knowledgebase tables. Composition retains its
 SQLite candidate-materialization step for operand binding/routing, then runs the selected typed
 program through the shared runtime. Unsupported shapes still fail closed for explicit Python/verification.
@@ -176,8 +178,10 @@ replay. The legacy Wikidata schema migration is still pending.
    `engine.conversations` reserves the engine-owned analysis id and revision. An inspect request loads an exact
    completed revision without invoking the planner.
 7. `engine.knowledge.KnowledgeReasoner` receives the complete working table set and the question.
-8. `engine.routing.route()` makes the single serving route decision. Composition owns only a grounded world
-   dependency that needs multi-step operations. Self-contained uploaded/reference data stays on the AST path.
+8. `engine.routing.route()` makes the single world-composition ownership decision. A necessary world
+    dependency may be owned by ComposeEngine; self-contained data remains authoritative in the typed AST,
+    while selected local analytical compositions can still be lowered into the shared plan for explicit
+    SQL/Python execution.
 9. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
    the explicitly reachable shared knowledge tables.
 10. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
