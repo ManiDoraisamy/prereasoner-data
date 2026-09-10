@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from functools import cmp_to_key
 from typing import Generic, TypeVar
@@ -222,8 +223,22 @@ def DIVIDE(left, right):
         )
 
 
+def _comparable(left, right):
+    def date_text(value):
+        return str(value) if isinstance(value, datetime) else value.isoformat()
+
+    if isinstance(left, str) and isinstance(right, date):
+        right = date_text(right)
+    elif isinstance(left, date) and isinstance(right, str):
+        left = date_text(left)
+    return left, right
+
+
 def EQ(left, right):
-    return None if left is None or right is None else left == right
+    if left is None or right is None:
+        return None
+    left, right = _comparable(left, right)
+    return left == right
 
 
 def LOWER(value):
@@ -247,23 +262,38 @@ def OR(*values):
 
 
 def NE(left, right):
-    return None if left is None or right is None else left != right
+    if left is None or right is None:
+        return None
+    left, right = _comparable(left, right)
+    return left != right
 
 
 def GT(left, right):
-    return None if left is None or right is None else left > right
+    if left is None or right is None:
+        return None
+    left, right = _comparable(left, right)
+    return left > right
 
 
 def GE(left, right):
-    return None if left is None or right is None else left >= right
+    if left is None or right is None:
+        return None
+    left, right = _comparable(left, right)
+    return left >= right
 
 
 def LT(left, right):
-    return None if left is None or right is None else left < right
+    if left is None or right is None:
+        return None
+    left, right = _comparable(left, right)
+    return left < right
 
 
 def LE(left, right):
-    return None if left is None or right is None else left <= right
+    if left is None or right is None:
+        return None
+    left, right = _comparable(left, right)
+    return left <= right
 
 
 def IS(left, right):

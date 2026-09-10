@@ -540,6 +540,9 @@ def test_typed_date_literals_compare_as_dates_in_generated_python():
                 schema_map={"conversation": "main"},
                 row_limit=10_000,
             )
+            assert materialized_python_views(result, plan)[0][2]["events__occurred"] == (
+                "2026-01-02 03:04:05"
+            )
             assert materialized_python_views(result, plan)[-1] == ({"count": 2},)
     finally:
         engine.dispose()

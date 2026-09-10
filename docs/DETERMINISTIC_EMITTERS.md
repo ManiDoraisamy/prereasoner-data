@@ -72,8 +72,9 @@ enrichment path crosses an object already selected by `combined`, loading re-roo
 Production reads the existing PostgreSQL conversation and knowledgebase schemas. A schema translation
 maps logical `conversation` to the already authorized `c_<32hex>` namespace. Python execution does
 not eliminate conversation schemas or copy PostgreSQL data into in-memory SQLite.
-Generated date columns use native PostgreSQL `DATE`; the hermetic SQLite adapter also accepts either
-ISO date text or a full ISO timestamp and normalizes both to Python `date` before a stage loop runs.
+Generated date columns use native PostgreSQL `DATE`. The hermetic SQLite adapter preserves ISO date
+or timestamp text exactly; typed comparison operators compare Python date literals against that ISO
+text without discarding the timestamp.
 
 Uploaded tables lack declared primary keys. Automatic lowering proves identity from actual column
 values after numeric upload coercion, preferring a unique reference key or identifier and then a
