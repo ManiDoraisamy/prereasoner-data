@@ -340,6 +340,14 @@ resource "google_cloud_run_v2_service" "api" {
         value = tostring(var.max_conversation_storage_bytes)
       }
       env {
+        name  = "DETERMINISTIC_EXECUTION_MODE"
+        value = var.deterministic_execution_mode
+      }
+      env {
+        name  = "DETERMINISTIC_PYTHON_ROW_LIMIT"
+        value = tostring(var.deterministic_python_row_limit)
+      }
+      env {
         name  = "KB_PG_DB"
         value = google_sql_database.world.name
       }

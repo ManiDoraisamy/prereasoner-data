@@ -60,9 +60,10 @@ The answer is computed by a deterministic emitted program, not written by a deco
 shared-plan subset can run readable Python for bounded small inputs and SQL for larger inputs; a
 verification mode executes and compares both at every named stage. The workbook URL can select a
 request-local backend with `?use=sql`, `?use=py`, or `?use=both` (`both` is stage-by-stage verification).
-Direct requests with an explicit mode use a transient analysis plan; named workbook revisions retain
-their authoritative slugs. Unsupported queries can use the existing SQL path with `sql` or the default
-policy; explicit `py` and `both` requests return an error instead of accepting a SQL fallback.
+Every direct request uses a transient analysis plan; named workbook revisions retain their authoritative
+slugs. The default `auto` policy prefers Python at or below 10,000 estimated input rows and SQL above it,
+with a hard materialization bound and recorded SQL fallback. Unsupported queries can use the existing SQL
+path with `sql` or the default policy; explicit `py` and `both` requests return an error instead of accepting a SQL fallback.
 Responses report the actual backend. Opening a saved conversation does not rerun it in the new mode.
 See [the execution contract](docs/DETERMINISTIC_EMITTERS.md) for coverage, source lifetime, and limits.
 The frozen Qwen model is used as an encoder for intent and schema signals; it
@@ -134,7 +135,7 @@ engine/knowledge.py              one serving entry point
                 engine/knowledge_query.py, engine/knowledge_compose.py
         |
         v
-supported named or explicitly selected subset: Python/SQL execution and optional parity
+supported shared-plan subset: bounded Python/SQL execution and optional parity
 other shapes: SQL execution; explicit Python/verification rejects the fallback
         |
         v

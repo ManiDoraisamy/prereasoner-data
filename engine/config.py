@@ -22,7 +22,7 @@ Env contract:
   MAX_CONVERSATION_STORAGE_BYTES per-user stored source/state byte cap (default 256 MiB).
   AUTH_TEST_SUB        TEST-ONLY auth bypass: a fixed principal, skips Firebase token verification.
   APP_ENV              environment name; test bypasses are honored only in development/test.
-  DETERMINISTIC_EXECUTION_MODE auto, python, sql, or verify for supported named analyses.
+  DETERMINISTIC_EXECUTION_MODE auto, python, sql, or verify for supported shared plans.
   DETERMINISTIC_PYTHON_ROW_LIMIT maximum estimated input rows selected for Python in auto mode.
   DETERMINISTIC_PERSIST_GENERATED write generated Python outside development when explicitly true.
   DATASET_ATTESTATION_KEY shared engine/orchestrator HMAC key for authenticated dataset claims.
@@ -49,8 +49,10 @@ Env contract:
                        token explicitly per call, because process env is shared across concurrent turns.
 """
 from __future__ import annotations
+
 import os
 from pathlib import Path
+
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 
 

@@ -8,7 +8,10 @@ later step consumes only the relation immediately before it.
 from __future__ import annotations
 
 import keyword
+import math
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from typing import TypeAlias
 
 from engine.sql_ast import SQLType
@@ -138,6 +141,24 @@ class ColumnValue:
 @dataclass(frozen=True)
 class LiteralValue:
     value: object
+
+    def __post_init__(self) -> None:
+        value = self.value
+        if type(value) is float:
+            if not math.isfinite(value):
+                raise ValueError("literal numbers must be finite")
+            value = Decimal(str(value))
+            object.__setattr__(self, "value", value)
+        if isinstance(value, Decimal) and not value.is_finite():
+            raise ValueError("literal numbers must be finite")
+        if value is not None and type(value) not in {
+            bool,
+            int,
+            str,
+            date,
+            Decimal,
+        }:
+            raise TypeError(f"unsupported literal type: {type(value).__name__}")
 
 
 @dataclass(frozen=True)
@@ -411,12 +432,6 @@ class AnalysisPlan:
             column_names = {column.name for column in table.columns}
             column_attributes = {column.attribute for column in table.columns}
             for relationship in table.relationships:
-                for condition in (
-                    relationship.condition,
-                    relationship.secondary_condition,
-                ):
-                    if condition is not None:
-                        self._validate_predicate(condition, set(table_by_name), set())
                 if (
                     relationship.secondary
                     and relationship.secondary not in table_by_name
@@ -427,6 +442,26 @@ class AnalysisPlan:
                     raise ValueError(
                         f"relationship {table.name}.{relationship.attribute} targets an unknown table"
                     )
+                conditions = (
+                    (
+                        relationship.condition,
+                        {
+                            table.name,
+                            relationship.secondary or target.name,
+                        },
+                    ),
+                    (
+                        relationship.secondary_condition,
+                        {relationship.secondary, target.name},
+                    ),
+                )
+                for condition, allowed_tables in conditions:
+                    if condition is not None:
+                        self._validate_predicate(
+                            condition,
+                            {name for name in allowed_tables if name is not None},
+                            set(),
+                        )
                 if not set(relationship.local_columns) <= column_names:
                     raise ValueError(
                         f"relationship {table.name}.{relationship.attribute} has unknown local columns"
@@ -480,6 +515,10 @@ class AnalysisPlan:
                     if len(connections) != 1:
                         raise ValueError(
                             f"combined table {table_name!r} requires exactly one relationship to the joined graph"
+                        )
+                    if connections[0].many:
+                        raise ValueError(
+                            "combined views currently require scalar relationships"
                         )
                     joined.add(table_name)
                 stage_tables = set(view.tables)
@@ -672,6 +711,11 @@ class AnalysisPlan:
             for child in predicate.predicates:
                 self._validate_predicate(child, tables, values)
             return
+        if predicate.operator in {"IS", "IS NOT"} and not (
+            isinstance(predicate.right, LiteralValue)
+            and (predicate.right.value is None or type(predicate.right.value) is bool)
+        ):
+            raise ValueError("IS/IS NOT supports only NULL and boolean literals")
         self._validate_value(predicate.left, tables, values)
         self._validate_value(predicate.right, tables, values)
 

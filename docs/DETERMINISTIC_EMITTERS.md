@@ -62,8 +62,12 @@ Composite relationships retain every key pair and have explicit ORM join conditi
 
 Enrichment follows declared scalar paths such as `order.city.country`. Required references drop
 missing objects (inner joins); optional references preserve them (left joins). Collection-valued enrichment is rejected until both
-emitters implement its multiplicity. SQLAlchemy select-in loading may issue additional relationship
-queries after the combined query.
+emitters implement its multiplicity. The combined query also requires scalar relationships. It assigns
+the joined ORM objects directly (`order.customer_id` is the selected `Customer`), so exposing the object
+graph does not issue a redundant customer query. Enrichment paths are declared as maximal SQLAlchemy
+`selectinload` options; a multi-hop path can issue one bounded query per relationship level. Mappings use
+`lazy="raise"`, so an undeclared traversal fails instead of silently producing an N+1 query. If an
+enrichment path crosses an object already selected by `combined`, loading re-roots from that object.
 
 Production reads the existing PostgreSQL conversation and knowledgebase schemas. A schema translation
 maps logical `conversation` to the already authorized `c_<32hex>` namespace. Python execution does
@@ -104,17 +108,21 @@ engine call independently of Sonnet's tool arguments. Unknown values are rejecte
 | `py` or `python` | `python` | Generated Python | Error; no accepted answer |
 | `both` or `verify` | `verify` | Both, comparing every stage | Error; no accepted answer |
 | `auto` | `auto` | Row-threshold selection | Existing SQL executor |
-| Omitted | Deployment default | Configured policy for named analyses | Existing SQL executor |
+| Omitted | Deployment default | Configured policy for every supported shared plan | Existing SQL executor |
 
-An explicit override on a direct request receives a transient `query` slug, enabling the lowering
-hook without creating a named workbook catalog entry. A direct request without an override or named
-analysis retains its existing SQL behavior. Named analyses use
+Every direct request receives a transient `query` slug, enabling the lowering hook without creating a
+named workbook catalog entry. Named analyses retain their persisted slug and revision. Both use
 `DETERMINISTIC_EXECUTION_MODE=auto|python|sql|verify`, default `auto`. This environment setting applies
 within the supported subset; it does not force unsupported planners to emit Python.
 
 `auto` selects Python at or below `DETERMINISTIC_PYTHON_ROW_LIMIT`, default `10000`, using the total
-input row estimate. It does not estimate join expansion, object size, or reference loading. No
-benchmark establishes a universal Python speed advantage or the optimal crossover point.
+input row estimate, and SQL above it. The ORM query fetches at most `limit + 1` combined rows and every
+Python stage enforces the same materialization cap, so an underestimated join cannot bypass the bound.
+If the cap or another generated-Python runtime check fails in `auto`, a database savepoint is rolled
+back and emitted SQL runs against the same outer snapshot; the response reports the SQL fallback and
+reason. Explicit `python` and `verify` requests are also bounded but fail closed rather than changing
+backend. The threshold is a measured deployment policy, not a proof that Python wins for every shape;
+input width, reference loading, join expansion, and correlated operations still affect cost.
 
 Successful responses identify the actual execution, for example:
 
@@ -122,7 +130,8 @@ Successful responses identify the actual execution, for example:
 {"execution":{"requested":"verify","actual":"verify","verified":true,"implementation":"shared_plan"}}
 ```
 
-`actual` uses internal names; `implementation` is `shared_plan` or `sql_executor`. Shared-plan responses
+`actual` uses internal names; `implementation` is `shared_plan` or `sql_executor`, and
+`fallback_reason` is populated when `auto` attempted Python before using emitted SQL. Shared-plan responses
 also include `deterministic`: actual mode, both sources, manifests, hashes, and optional debug path.
 The MCP/chat adapter preserves this evidence. On an unsupported explicit Python request, the error
 may report `actual: "sql"`: the current guard checks the completed route result before accepting or
@@ -144,6 +153,10 @@ registrations on exit, including failures. SQL creates temporary views, reads th
 in reverse order. The service returns complete rows; only trace previews are limited to 50 rows.
 The serving API separately retains its existing 50-row answer preview.
 
+Automatic Python execution is wrapped in a database savepoint. A Python failure rolls back that
+savepoint before SQL fallback, while both remain inside the engine-owned `REPEATABLE READ` transaction.
+Explicit Python and verification surface the error and never accept an unverified SQL answer.
+
 Operators propagate SQL nulls, ignore null aggregate operands, return zero for empty counts, and
 return null for empty sums/averages/minima/maxima. Division by zero returns null. Python execution
 uses a local 128-digit Decimal context; division and averages round to 20 decimal places with ties
@@ -154,6 +167,14 @@ Explicit sorted stages are also checked in order; top-N adds deterministic tie k
 Decimal values, integers, and decimal representations of floats normalize without rounding significant
 digits. A mismatch raises `VerificationMismatch` with the failing view in an exception note.
 Agreement does not prove that the shared planner correctly understood the question.
+
+The Spider runner extends the existing denotation evaluator with
+`--backend sql|python|auto|verify`, `--python-row-limit`, and `--scalar-only`. Candidate planning and
+ranking are unchanged. Generated Python executes the selected typed AST on a separate in-memory
+SQLite database; gold SQL still executes independently and correctness still uses
+`spider.probe.spider_eval.compare`. Evaluator `auto` records strict Python/selected-SQL equality without
+changing the selected output; `verify` requires that equality. Thus Python coverage and scalar-gold accuracy are additional fields in the same
+evaluation artifact, not a separate correctness definition.
 
 SQLite is a hermetic test backend. Its native numeric storage and arithmetic are not PostgreSQL
 NUMERIC. Passing simple SQLite fixtures does not validate arbitrary fractional PostgreSQL arithmetic;

@@ -124,6 +124,28 @@ variable "max_conversation_storage_bytes" {
   }
 }
 
+variable "deterministic_execution_mode" {
+  description = "Default shared-plan execution policy: auto prefers bounded Python and falls back to SQL."
+  type        = string
+  default     = "auto"
+
+  validation {
+    condition     = contains(["auto", "python", "sql", "verify"], var.deterministic_execution_mode)
+    error_message = "deterministic_execution_mode must be auto, python, sql, or verify."
+  }
+}
+
+variable "deterministic_python_row_limit" {
+  description = "Maximum estimated and materialized input rows allowed for generated Python execution."
+  type        = number
+  default     = 10000
+
+  validation {
+    condition     = var.deterministic_python_row_limit >= 0 && floor(var.deterministic_python_row_limit) == var.deterministic_python_row_limit
+    error_message = "deterministic_python_row_limit must be a non-negative whole number."
+  }
+}
+
 variable "serving_db_role" {
   description = <<-EOT
     Mandatory least-privilege serving role. Terraform creates this NON-superuser Cloud SQL login

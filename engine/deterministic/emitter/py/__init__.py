@@ -31,10 +31,10 @@ from engine.deterministic.plan import (
     ProjectedView,
     ReducedView,
     SortedView,
-    WindowView,
     TableSpec,
     Value,
     ViewValue,
+    WindowView,
 )
 from engine.sql_ast import SQLType
 
@@ -149,7 +149,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 3
+    VERSION = 4
 
     def emit(
         self,
@@ -179,6 +179,7 @@ class PythonEmitter:
             "cast",
             "func",
             "Text",
+            "set_committed_value",
             *_operator_imports(plan),
             *(table.class_name for table in plan.tables),
             *(
@@ -336,7 +337,7 @@ class PythonEmitter:
                 lines.extend(
                     [
                         f"        uselist={relationship.many!r},",
-                        '        viewonly=True, lazy="selectin",',
+                        '        viewonly=True, lazy="raise",',
                         "    )",
                     ]
                 )
@@ -363,7 +364,7 @@ class PythonEmitter:
                     f"        foreign_keys=[{foreign}],",
                     f"        primaryjoin={primaryjoin!r},",
                     f"        uselist={relationship.many!r},",
-                    '        lazy="selectin",',
+                    '        lazy="raise",',
                     "    )",
                 ]
             )
@@ -380,7 +381,8 @@ class PythonEmitter:
             "from decimal import Decimal",
             "",
             "from sqlalchemy import Text, and_, cast, func, or_, select",
-            "from sqlalchemy.orm import Session",
+            "from sqlalchemy.orm import Session, selectinload",
+            "from sqlalchemy.orm.attributes import set_committed_value",
             "",
             f"from engine.deterministic.operators import {operator_imports}",
         ]
@@ -453,8 +455,9 @@ class PythonEmitter:
                 "",
                 "",
                 "class " + _wrapper_class(plan) + ":",
-                "    def __init__(self, session: Session):",
+                "    def __init__(self, session: Session, row_limit: int | None = None):",
                 "        self.session = session",
+                "        self.row_limit = row_limit",
                 "",
                 f"    def {plan.slug}(self) -> AnalysisResult:",
             ]
@@ -579,9 +582,13 @@ class PythonEmitter:
             + ")",
         ]
         joined = {tables[0].name}
+        relationship_assignments: list[tuple[TableSpec, str, TableSpec]] = []
         for table in tables[1:]:
             source, relationship = plan.connecting_relationship(joined, table.name)
             target = plan.table(relationship.target_table)
+            relationship_assignments.append(
+                (source, relationship.attribute, target)
+            )
             if relationship.condition is not None:
                 method = "outerjoin" if view.outer else "join"
                 if relationship.secondary:
@@ -614,24 +621,107 @@ class PythonEmitter:
                 f"            .{'outerjoin' if view.outer else 'join'}({table.class_name}, {on_clause})"
             )
             joined.add(table.name)
+        loader_options = self._loader_options(plan)
+        if loader_options:
+            lines.extend(
+                [
+                    "            .options(",
+                    *(f"                {option}," for option in loader_options),
+                    "            )",
+                ]
+            )
         lines.extend(
             [
                 "        )",
-                f"        {view.name} = View.from_orm(",
-                f"            name={view.name!r},",
-                "            rows=self.session.execute(statement),",
-                "            construct=lambda "
+                "        if self.row_limit is not None:",
+                "            statement = statement.limit(self.row_limit + 1)",
+                f"        def emit_{view.name}("
                 + ", ".join(table.attribute for table in tables)
-                + f": {row_class}(",
+                + "):",
+                *(
+                    line
+                    for source, relationship_attribute, target in relationship_assignments
+                    for line in (
+                        f"            if {source.attribute} is not None:",
+                        f"                set_committed_value({source.attribute}, {relationship_attribute!r}, {target.attribute})",
+                    )
+                ),
+                f"            return {row_class}(",
                 *(
                     f"                {table.attribute}={table.attribute},"
                     for table in tables
                 ),
-                "            ),",
+                "            )",
+                "",
+                f"        {view.name} = View.from_orm(",
+                f"            name={view.name!r},",
+                "            rows=self.session.execute(statement),",
+                f"            construct=emit_{view.name},",
+                "            row_limit=self.row_limit,",
                 "        )",
             ]
         )
         return lines
+
+    @staticmethod
+    def _loader_options(plan: AnalysisPlan) -> tuple[str, ...]:
+        """Emit only the relationship paths traversed by enrichment stages.
+
+        Mappings use ``lazy='raise'`` so an omitted path fails instead of silently
+        introducing an N+1 query. Keeping only maximal paths avoids redundant
+        select-in options when both ``order.city`` and ``order.city.country`` are
+        materialized.
+        """
+        combined = plan.views[0]
+        roots = {table_name: (table_name, ()) for table_name in combined.tables}
+        requested = set()
+        for view in plan.views:
+            if not isinstance(view, EnrichedView):
+                continue
+            for enrichment in view.enrichments:
+                source_name = enrichment.source_table
+                remaining = enrichment.relationship_path
+                current = plan.table(source_name)
+                # If a path passes through an object already selected by the
+                # combined query, continue from that root instead of loading it
+                # a second time (Order.customer.country -> Customer.country).
+                while remaining:
+                    target_name = current.relationship(remaining[0]).target_table
+                    if target_name not in roots:
+                        break
+                    source_name = target_name
+                    remaining = remaining[1:]
+                    current = plan.table(source_name)
+                root, prefix = roots[source_name]
+                full_path = prefix + remaining
+                roots[enrichment.target_table] = (root, full_path)
+                requested.add((root, full_path))
+        maximal = sorted(
+            (
+                item
+                for item in requested
+                if not any(
+                    item[0] == other[0]
+                    and len(item[1]) < len(other[1])
+                    and other[1][: len(item[1])] == item[1]
+                    for other in requested
+                )
+            ),
+            key=lambda item: (item[0], item[1]),
+        )
+        options = []
+        for source_name, path in maximal:
+            current = plan.table(source_name)
+            expression = f"selectinload({current.class_name}.{path[0]})"
+            current = plan.table(current.relationship(path[0]).target_table)
+            for relationship_name in path[1:]:
+                relationship = current.relationship(relationship_name)
+                expression += (
+                    f".selectinload({current.class_name}.{relationship_name})"
+                )
+                current = plan.table(relationship.target_table)
+            options.append(expression)
+        return tuple(options)
 
     def _emit_enriched(
         self,
@@ -643,15 +733,26 @@ class PythonEmitter:
     ) -> list[str]:
         helper = f"emit_{view.name}"
         lines = [f"        def {helper}(row):"]
+        materialized_objects = {
+            table_name: f"row.{attribute}"
+            for table_name, attribute in source_tables.items()
+        }
         for enrichment in view.enrichments:
-            expression = "row." + source_tables[enrichment.source_table]
+            expression = materialized_objects[enrichment.source_table]
+            current_table = plan.table(enrichment.source_table)
             target_attribute = plan.table(enrichment.target_table).attribute
             for index, relationship in enumerate(enrichment.relationship_path):
+                target_table = current_table.relationship(relationship).target_table
                 # An absent intermediate reference behaves like the SQL inner join.
                 variable = f"_{target_attribute}_ref_{index}"
-                lines.append(
-                    f"            {variable} = None if {expression} is None else {expression}.{relationship}"
-                )
+                if target_table in materialized_objects:
+                    lines.append(
+                        f"            {variable} = {materialized_objects[target_table]}"
+                    )
+                else:
+                    lines.append(
+                        f"            {variable} = None if {expression} is None else {expression}.{relationship}"
+                    )
                 if enrichment.required:
                     lines.extend(
                         [
@@ -660,7 +761,9 @@ class PythonEmitter:
                         ]
                     )
                 expression = variable
+                current_table = plan.table(target_table)
             lines.append(f"            {target_attribute} = {expression}")
+            materialized_objects[enrichment.target_table] = target_attribute
         lines.extend(
             [
                 f"            return {row_class}(",
@@ -1051,6 +1154,11 @@ def _orm_value(plan, value):
         )
     if isinstance(value, LiteralValue):
         return _python_literal(value.value)
+    if isinstance(value, BinaryValue):
+        return (
+            f"({_orm_value(plan, value.left)} {value.operator} "
+            f"{_orm_value(plan, value.right)})"
+        )
     raise TypeError(f"unsupported ORM join value: {type(value).__name__}")
 
 
@@ -1062,7 +1170,15 @@ def _orm_predicate(plan, predicate):
             + ", ".join(_orm_predicate(plan, child) for child in predicate.predicates)
             + ")"
         )
-    operator = {"=": "==", "<>": "!="}.get(predicate.operator, predicate.operator)
+    # SQLAlchemy evaluates declarative join strings as Python expressions. SQL's
+    # IS/IS NOT therefore map to equality/inequality; leaving the SQL spelling in
+    # generated model source would be invalid Python syntax.
+    operator = {
+        "=": "==",
+        "<>": "!=",
+        "IS": "==",
+        "IS NOT": "!=",
+    }.get(predicate.operator, predicate.operator)
     return f"{_orm_value(plan, predicate.left)} {operator} {_orm_value(plan, predicate.right)}"
 
 
@@ -1072,6 +1188,8 @@ def _predicate_columns(predicate):
             return {value}
         if isinstance(value, FunctionValue):
             return columns(value.operand)
+        if isinstance(value, BinaryValue):
+            return columns(value.left) | columns(value.right)
         return set()
 
     if isinstance(predicate, JunctionValue):

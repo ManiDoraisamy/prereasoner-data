@@ -91,7 +91,9 @@ terraform apply -var project_id=<PROJECT> \
   -var image=<region>-docker.pkg.dev/<project>/<repo>/engine@sha256:<digest> \
   -var rtdb_url=https://<project>-default-rtdb.firebaseio.com \
   -var rtdb_trace_retention_days=7 \
-  -var conversation_retention_days=90
+  -var conversation_retention_days=90 \
+  -var deterministic_execution_mode=auto \
+  -var deterministic_python_row_limit=10000
 ```
 
 Outputs include `service_url`, `sql_connection_name`, `sql_public_ip`, `db_password_secret`,

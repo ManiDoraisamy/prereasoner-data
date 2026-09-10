@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP, localcontext
-from typing import Generic, TypeVar
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from functools import cmp_to_key
+from typing import Generic, TypeVar
+
 from engine.numeric import DECIMAL_PRECISION, DIVISION_SCALE
 
 T = TypeVar("T")
@@ -14,20 +15,51 @@ U = TypeVar("U")
 A = TypeVar("A")
 
 
+class PythonRowLimitExceeded(RuntimeError):
+    """The materialized Python pipeline exceeded its bounded execution budget."""
+
+
 @dataclass(frozen=True)
 class View(Generic[T]):
     name: str
     rows: tuple[T, ...]
+    row_limit: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.row_limit is not None and (
+            type(self.row_limit) is not int or self.row_limit < 0
+        ):
+            raise ValueError("Python view row limit must be non-negative")
+        if self.row_limit is not None and len(self.rows) > self.row_limit:
+            raise PythonRowLimitExceeded(
+                f"Python view {self.name!r} exceeded the {self.row_limit}-row limit"
+            )
+
+    @staticmethod
+    def _append_bounded(
+        materialized: list[U], value: U, name: str, row_limit: int | None
+    ) -> None:
+        if row_limit is not None and len(materialized) >= row_limit:
+            raise PythonRowLimitExceeded(
+                f"Python view {name!r} exceeded the {row_limit}-row limit"
+            )
+        materialized.append(value)
 
     @classmethod
     def from_orm(
-        cls, name: str, rows: Iterable[object], construct: Callable[..., T]
+        cls,
+        name: str,
+        rows: Iterable[object],
+        construct: Callable[..., T],
+        row_limit: int | None = None,
     ) -> View[T]:
         materialized = []
         for row in rows:
             values = tuple(row) if not isinstance(row, tuple) else row
-            materialized.append(construct(*values))
-        return cls(name, tuple(materialized))
+            cls._append_bounded(
+                materialized, construct(*values), name, row_limit
+            )
+        return cls(name, tuple(materialized), row_limit)
 
     def for_each(
         self, name: str, emit: Callable[[T], U | Iterable[U] | None]
@@ -38,17 +70,24 @@ class View(Generic[T]):
             if produced is None:
                 continue
             if isinstance(produced, (list, tuple)):
-                materialized.extend(produced)
+                for value in produced:
+                    self._append_bounded(
+                        materialized, value, name, self.row_limit
+                    )
             else:
-                materialized.append(produced)
-        return View(name, tuple(materialized))
+                self._append_bounded(
+                    materialized, produced, name, self.row_limit
+                )
+        return View(name, tuple(materialized), self.row_limit)
 
     def filter(self, name: str, where: Callable[[T], bool | None]) -> View[T]:
         materialized = []
         for row in self.rows:
             if where(row) is True:
-                materialized.append(row)
-        return View(name, tuple(materialized))
+                self._append_bounded(
+                    materialized, row, name, self.row_limit
+                )
+        return View(name, tuple(materialized), self.row_limit)
 
     def sort(self, name, keys, descending, limit=None):
         """ORDER BY with explicit NULLS LAST; emitters supply deterministic tie keys."""
@@ -65,7 +104,11 @@ class View(Generic[T]):
                     return result
             return 0
 
-        return View(name, tuple(sorted(self.rows, key=cmp_to_key(compare))[:limit]))
+        return View(
+            name,
+            tuple(sorted(self.rows, key=cmp_to_key(compare))[:limit]),
+            self.row_limit,
+        )
 
     def reduce(
         self,
@@ -77,9 +120,13 @@ class View(Generic[T]):
         result = initial
         for row in self.rows:
             result = step(result, row)
+        # SQL scalar aggregates always emit one row, even for an empty input.
+        output_limit = (
+            None if self.row_limit is None else max(1, self.row_limit)
+        )
         if finalize is not None:
-            return View(name, (finalize(result),))
-        return View(name, (result,))
+            return View(name, (finalize(result),), output_limit)
+        return View(name, (result,), output_limit)
 
     def group_reduce(
         self,
@@ -92,13 +139,18 @@ class View(Generic[T]):
         groups: dict[object, A] = {}
         for row in self.rows:
             group_key = key(row)
-            current = groups.get(group_key)
-            if current is None:
+            if group_key not in groups:
                 current = initial(row)
+            else:
+                current = groups[group_key]
             groups[group_key] = step(current, row)
         if finalize is not None:
-            return View(name, tuple(finalize(value) for value in groups.values()))
-        return View(name, tuple(groups.values()))
+            return View(
+                name,
+                tuple(finalize(value) for value in groups.values()),
+                self.row_limit,
+            )
+        return View(name, tuple(groups.values()), self.row_limit)
 
 
 @dataclass(frozen=True)
@@ -179,7 +231,11 @@ def LOWER(value):
 
 
 def TEXT(value):
-    return None if value is None else str(value)
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
 
 
 def AND(*values):

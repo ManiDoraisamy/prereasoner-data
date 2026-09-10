@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import Connection, Engine
-from engine import request_timing
 
+from engine import request_timing
 from engine.deterministic.emitter import (
     GeneratedPackage,
     GeneratedSQL,
@@ -62,6 +62,7 @@ class ExecutionResult:
     emission: DualEmission
     view_rows: tuple[tuple[dict[str, object], ...], ...]
     debug_path: Path | None = None
+    fallback_reason: str | None = None
 
     def record(self) -> dict[str, object]:
         views = []
@@ -107,6 +108,7 @@ class ExecutionResult:
             "views": views,
             "final_sql": views[-1]["sql"],
             "debug_path": str(self.debug_path) if self.debug_path is not None else None,
+            "fallback_reason": self.fallback_reason,
         }
 
 
@@ -172,10 +174,32 @@ class DeterministicAnalysis:
                         revision=revision,
                         debug_root=debug_root,
                     )
+        if not bind.in_transaction():
+            # A caller-supplied Connection gets the same snapshot/cleanup
+            # contract as an Engine. Without this branch begin_nested() would
+            # autobegin an outer transaction and leave it open after returning.
+            connection = bind
+            if connection.dialect.name == "postgresql":
+                connection = connection.execution_options(
+                    isolation_level="REPEATABLE READ"
+                )
+            with connection.begin():
+                return self.run(
+                    connection,
+                    mode=mode,
+                    estimated_rows=estimated_rows,
+                    python_row_limit=python_row_limit,
+                    app_env=app_env,
+                    persist_generated=persist_generated,
+                    conversation_id=conversation_id,
+                    revision=revision,
+                    debug_root=debug_root,
+                )
         with request_timing.span("deterministic_emit"):
             emission = self.emit()
+        requested = ExecutionMode(mode)
         selected = choose_execution_mode(
-            mode,
+            requested,
             estimated_rows=estimated_rows,
             python_row_limit=python_row_limit,
         )
@@ -192,13 +216,33 @@ class DeterministicAnalysis:
         schema_map: Mapping[str, str | None] = {
             "conversation": self.conversation_schema
         }
+        fallback_reason = None
         if selected is ExecutionMode.PYTHON:
-            with request_timing.span("deterministic_python"):
-                python_result = execute_python(
-                    emission.python, bind, schema_map=schema_map
-                )
-                view_rows = materialized_python_views(python_result, self.plan)
-            rows = view_rows[-1]
+            try:
+                # AUTO is an availability policy as well as a size policy. A
+                # savepoint makes every Python failure recoverable before the
+                # emitted SQL fallback uses the same outer snapshot.
+                with bind.begin_nested(), request_timing.span(
+                    "deterministic_python"
+                ):
+                    python_result = execute_python(
+                        emission.python,
+                        bind,
+                        schema_map=schema_map,
+                        row_limit=python_row_limit,
+                    )
+                    view_rows = materialized_python_views(
+                        python_result, self.plan
+                    )
+                rows = view_rows[-1]
+            except Exception as exc:
+                if requested is not ExecutionMode.AUTO:
+                    raise
+                fallback_reason = f"{type(exc).__name__}: {exc}"
+                selected = ExecutionMode.SQL
+                with request_timing.span("deterministic_sql"):
+                    view_rows = execute_sql_views(emission.sql, bind)
+                rows = view_rows[-1]
         elif selected is ExecutionMode.SQL:
             with request_timing.span("deterministic_sql"):
                 view_rows = execute_sql_views(emission.sql, bind)
@@ -206,7 +250,10 @@ class DeterministicAnalysis:
         elif selected is ExecutionMode.VERIFY:
             with request_timing.span("deterministic_python"):
                 python_result = execute_python(
-                    emission.python, bind, schema_map=schema_map
+                    emission.python,
+                    bind,
+                    schema_map=schema_map,
+                    row_limit=python_row_limit,
                 )
                 python_views = materialized_python_views(python_result, self.plan)
             with request_timing.span("deterministic_sql"):
@@ -228,4 +275,11 @@ class DeterministicAnalysis:
             rows = sql_views[-1]
         else:  # pragma: no cover - the enum and chooser make this unreachable
             raise AssertionError(f"unexpected execution mode: {selected}")
-        return ExecutionResult(selected, rows, emission, view_rows, debug_path)
+        return ExecutionResult(
+            selected,
+            rows,
+            emission,
+            view_rows,
+            debug_path,
+            fallback_reason,
+        )

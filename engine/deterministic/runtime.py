@@ -15,8 +15,8 @@ from pathlib import Path
 from types import MappingProxyType, ModuleType
 
 from sqlalchemy import Connection, Engine, text
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SAWarning
+from sqlalchemy.orm import Session
 
 from engine.deterministic.emitter.py import GeneratedPackage
 from engine.deterministic.emitter.sql import GeneratedSQL
@@ -102,14 +102,22 @@ def execute_python(
     bind: Engine | Connection,
     *,
     schema_map: Mapping[str, str | None] | None = None,
+    row_limit: int | None = None,
 ):
     """Execute the emitted wrapper against a SQLAlchemy bind and return AnalysisResult."""
+    if row_limit is not None and (
+        type(row_limit) is not int or row_limit < 0
+    ):
+        raise ValueError("Python execution row limit must be non-negative")
     translated = bind.execution_options(schema_translate_map=dict(schema_map or {}))
     with (
         warnings.catch_warnings(),
         localcontext() as context,
         load_generated_package(package) as loaded,
-        Session(bind=translated) as session,
+        # The service owns the transaction/savepoint boundary. Joining it in
+        # rollback-only mode avoids a redundant inner SAVEPOINT around this
+        # read-only ORM session while preserving outer rollback on failure.
+        Session(bind=translated, join_transaction_mode="rollback_only") as session,
     ):
         warnings.filterwarnings(
             "error",
@@ -117,7 +125,7 @@ def execute_python(
             category=SAWarning,
         )
         context.prec = DECIMAL_PRECISION
-        wrapper = loaded.analysis_class()(session)
+        wrapper = loaded.analysis_class()(session, row_limit=row_limit)
         return getattr(wrapper, str(package.manifest["slug"]))()
 
 
@@ -135,7 +143,9 @@ def execute_sql_views(
     row_limit: int | None = None,
 ) -> tuple[tuple[dict[str, object], ...], ...]:
     """Execute SQL and retain each named stage for trace display or parity checks."""
-    if row_limit is not None and row_limit < 0:
+    if row_limit is not None and (
+        type(row_limit) is not int or row_limit < 0
+    ):
         raise ValueError("SQL view row limit must be non-negative")
     owns_connection = isinstance(bind, Engine)
     connection = bind.connect() if owns_connection else bind
@@ -223,10 +233,15 @@ def choose_execution_mode(
     python_row_limit: int = 10_000,
 ) -> ExecutionMode:
     mode = ExecutionMode(requested)
+    if (
+        type(estimated_rows) is not int
+        or type(python_row_limit) is not int
+        or estimated_rows < 0
+        or python_row_limit < 0
+    ):
+        raise ValueError("row estimates and limits must be non-negative integers")
     if mode is not ExecutionMode.AUTO:
         return mode
-    if estimated_rows < 0 or python_row_limit < 0:
-        raise ValueError("row estimates and limits must be non-negative")
     return (
         ExecutionMode.PYTHON
         if estimated_rows <= python_row_limit

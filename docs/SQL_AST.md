@@ -16,7 +16,7 @@ Given a question, tables, and foreign keys, the planner:
 5. Ranks candidates with named deterministic features.
 6. Renders only validated ASTs to SQL.
 
-For a named analysis or an explicit direct execution request in the supported dual subset, the winner lowers into
+For every direct or named request in the supported dual subset, the winner lowers into
 one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted independently from that
 plan; neither source is parsed to create the other. See
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
@@ -268,6 +268,22 @@ command with `--config gold_tables`.
 `--selection serving_top1` reproduces the live selector; `--selection execution_checks`
 enables execution-based candidate checks for diagnosis. Encoder training is unchanged and
 covered in [`docs/TRAINING.md`](TRAINING.md).
+
+The same evaluator can execute a lowerable selected AST through the readable Python emitter
+without changing candidate generation, ranking, gold execution, or comparison:
+
+```bash
+python -m spider.probe.full_eval \
+  --dbs spider/data/dbs --config whole_db \
+  --selection serving_top1 --max-candidates 25 \
+  --backend auto --python-row-limit 10000 --scalar-only \
+  --tag serving_python_scalar
+```
+
+`auto` mirrors the production threshold and retains SQL fallback; the evaluator also records strict
+selected-SQL/Python equality without changing the Python result. `python` fails unsupported candidates
+so coverage is visible. `verify` requires strict SQL/Python denotation equality. All modes reuse `spider.probe.spider_eval.compare`; the
+Python fields extend the existing scalar-gold report rather than defining another accuracy metric.
 
 ## Tests
 

@@ -39,7 +39,7 @@ engine/routing.py
         +-- COMPOSE  --> world-dependent multi-step view composition
         v
 guarded execution in the conversation schema
-        |  supported named or explicitly selected analysis: Python/SQL, or both for parity
+        |  supported shared plan: bounded Python/SQL, or both for parity
         |  other plans: SQL; explicit Python/verification rejects the fallback
         |
         +-- engine/provenance.py: typed expression and source lineage
@@ -59,8 +59,8 @@ temporary SQL views, and compares materialized stage rows. Production uses the e
 conversation and knowledgebase schemas in either mode.
 
 The request's `use` preference flows from the browser through `/chat` or `/api/reason` without changing
-process environment. `context.py` creates a transient `query` context for an explicit direct request,
-or uses the named analysis slug and revision. The server checks the final response before saving an
+process environment. `context.py` creates a transient `query` context for every direct request, or uses
+the named analysis slug and revision. The server checks the final response before saving an
 analysis: explicit Python/verification requests cannot accept a legacy SQL fallback. Successful
 responses identify the requested and actual mode; the MCP adapter preserves that evidence.
 The knowledge-query adapter also preserves the own-data delegate's generated program and stages.
@@ -78,7 +78,10 @@ program through the shared runtime. Unsupported shapes still fail closed for exp
 
 Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace
 collection materializes every stage in either mode, so SQL mode is not a bounded-memory streaming
-executor. The row threshold is a selection heuristic, not a demonstrated performance crossover.
+executor. `auto` prefers Python for an estimated total of at most 10,000 input rows and SQL above it.
+The Python combined query and every materialized stage enforce that cap; underestimated expansion or
+another Python failure rolls back a savepoint and records an emitted-SQL fallback. The threshold is a
+deployment policy and must continue to be checked against production-shaped benchmarks.
 
 ## Data Scopes
 
@@ -182,8 +185,9 @@ replay. The legacy Wikidata schema migration is still pending.
     dependency may be owned by ComposeEngine; self-contained data remains authoritative in the typed AST,
     while selected local analytical compositions can still be lowered into the shared plan for explicit
     SQL/Python execution.
-9. The selected planner emits guarded, quoted, read-only SQL and executes it against the conversation schema plus
-   the explicitly reachable shared knowledge tables.
+9. The selected planner emits a typed query. Supported shapes lower to one shared plan and deterministic SQL/Python
+   programs; the request policy executes bounded Python, SQL, or both against the conversation schema plus the
+   explicitly reachable shared knowledge tables. Unsupported shapes remain on guarded, quoted, read-only SQL.
 10. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
    scores, the shared registry selects the highest-ranked candidate that realizes every detected calculation. An
    unmet or ambiguous calculation replaces the numeric result with a structured clarification.
@@ -195,7 +199,7 @@ replay. The legacy Wikidata schema migration is still pending.
     not replace the last completed revision.
 13. The engine returns rows, SQL, route evidence, intermediate views, and provenance. Trace writes are best effort
     and do not determine the answer. Every emitted view stack follows the one derivation-trail contract in
-    `docs/SHEETS_AS_REASONING.md` (step grammar, no forward references, executed SQL only); emitters extend that
+    `docs/SHEETS_AS_REASONING.md` (step grammar, no forward references, executed program only); emitters extend that
     grammar in place rather than inventing per-path sheet shapes.
 
 ## Request And Provenance Contracts

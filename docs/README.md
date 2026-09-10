@@ -48,7 +48,7 @@ route ownership and typed SQL candidate search
         |
         v
 guarded execution over uploaded and approved reference rows
-        |  supported named or explicitly selected subset: emitted Python/SQL, optional parity
+        |  supported shared-plan subset: bounded emitted Python/SQL, optional parity
         |  other shapes: SQL; explicit Python/verification rejects the fallback
         |
         v
@@ -82,7 +82,7 @@ candidates, schema-linking mistakes, ranking mistakes, source gaps, or entity-re
 | Capability | Status | Notes |
 |---|---|---|
 | Typed own-data SQL planning and calculation verification | **Current** | Main planner path |
-| Deterministic SQL and readable Python emission | **Current, bounded** | Named or explicit direct own-data subset; unsupported explicit Python/verification requests error; default/SQL retains other planners |
+| Deterministic SQL and readable Python emission | **Current, bounded** | All supported direct and named plans use the selected policy; `auto` prefers Python through 10,000 estimated input rows and falls back safely; unsupported explicit Python/verification requests error |
 | Conversation-scoped uploads and user-scoped private references | **Current** | Organization-wide tenancy is not implemented |
 | Bounded conversation storage and inactivity expiry | **Current** | Daily cleanup; defaults and limits are in `ARCHITECTURE.md` |
 | Multiple named analysis workbooks per conversation | **Current** | Immutable revisions; historical rail links retain shared input tables |

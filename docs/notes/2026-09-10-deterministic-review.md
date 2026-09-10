@@ -1,68 +1,75 @@
 # Deterministic execution review — 2026-09-10
 
-Scope: shared-plan lowering, both source emitters, ORM execution, numeric comparison, request-local
-mode selection, browser/MCP/chat propagation, tests, and the corresponding runtime documentation.
-Baseline: `31af22b`. This record describes the review changes in the working tree; these changes
-have not been deployed as part of this review.
+Scope: shared-plan lowering; SQL and Python emission; SQLAlchemy object loading; numeric, null,
+aggregate, and relationship semantics; request-local execution selection; Spider evaluation; and
+production/browser release checks. This is a point-in-time engineering record. The canonical
+behavioral contract remains [DETERMINISTIC_EMITTERS.md](../DETERMINISTIC_EMITTERS.md).
+
+## Architecture after the review
+
+One immutable `AnalysisPlan` remains the only input to both emitters. The Python emitter does not
+parse SQL, and the SQL emitter does not translate Python. The selected planner AST, grounded world
+bindings, or selected composition primitives lower into the plan before either program is emitted.
+
+Every direct request now gets an ephemeral `query` analysis context; named workbook revisions keep
+their persisted slug. With the default `auto` policy, supported plans use Python when the estimated
+total input is at most 10,000 rows and emitted SQL above that threshold. Unsupported plans continue
+through the established SQL executor. Explicit Python or verification never accepts a SQL fallback.
+
+The generated classes are real SQLAlchemy mappings. A foreign-key attribute such as
+`Order.customer_id` exposes a `Customer` object while its physical key remains in a private mapped
+storage attribute. The combined query hydrates joined relationships from the entities it already
+selected. Enrichment loads only declared maximal relationship paths, re-roots through combined
+objects, and uses `lazy="raise"` to prevent an accidental N+1 query.
 
 ## Findings addressed
 
-| Finding | Change and evidence |
+| Finding | Resolution |
 |---|---|
-| Direct requests had no analysis context, so `use` could be ignored | Explicit direct requests now get a transient `query` context; nested empty contexts clear inherited records |
-| Unsupported explicit Python/verification could be accepted as SQL | Final response enforcement rejects those answers and reports actual execution before analysis persistence |
-| Chat response shaping discarded deterministic evidence | The adapter preserves execution metadata and generated source/manifests |
-| The knowledge adapter dropped the own-data delegate's generated program and views | The actual serving adapter now preserves both, with a regression through `KnowledgeTableQuery.serve` |
-| Coverage inspected only the final reduction and could report earlier filters as missing | Coverage now inspects the complete emitted SQL source, with an earlier-filter regression |
-| SQL service results were limited to 50 rows | Full result materialization is independent of trace previews; all three modes return 75 rows in the regression fixture |
-| Emitters and runtime duplicated join/attribute rules | The shared plan owns scalar storage names and connecting edges |
-| Composite ORM FK inference was ambiguous | Generated relationships now specify every join pair explicitly; composite execution is tested |
-| A missing intermediate reference raised an attribute error | Generated enrichment guards every hop, matching inner-join row elimination |
-| Enrichment lost prior calculated values | Generated rows retain values from their predecessor; a combined/calculated/enriched/reduced fixture verifies parity |
-| Raw or absent identity evidence could merge ORM facts | Lowering requires non-null uniqueness after numeric coercion and a proven scalar relationship target |
-| Grouped output could follow GROUP BY order instead of SELECT order | Lowering validates the group projection and preserves selected column order |
-| Decimal normalization could erase significant differences | Comparison normalizes without Decimal-context rounding; large-value mismatch and equivalent-scale cases are tested |
-| Integer division used binary float and AVG depended on ambient precision | Python executes with a local Decimal context; division/average and emitted SQL share a 20-place rounding policy |
-| Verification could read different PostgreSQL snapshots | Engine-owned runs share one REPEATABLE READ transaction; connection callers retain transaction responsibility |
-| Plan sequence inputs could remain mutable; generated names could collide | Sequence fields are copied to tuples; ORM, module, and generated-symbol collisions are rejected |
-| Unsupported collection/conflicting enrichment paths could be misinterpreted | Plan validation rejects collection traversal and conflicting/repeated paths requiring aliases |
-| Example and Sheets picker navigation lost `use` | Query helpers preserve it; unknown modes reach server validation |
-| An orchestrator test existed but never ran | The missing test is registered; emitter tests now use automatic discovery in their module runner |
+| Omitted `use` on direct requests bypassed the deployment policy | Every direct request receives a transient analysis context, so the configured default applies without creating a workbook revision |
+| A row-count underestimate could materialize an unbounded Python join | The ORM query requests at most `limit + 1`; every Python stage propagates and enforces the hard limit |
+| A Python exception in `auto` could fail the request | Python runs inside a savepoint; any ordinary runtime failure rolls back and executes emitted SQL against the same outer snapshot, recording the reason |
+| Joined ORM relationships could trigger redundant or undeclared loads | Combined entities populate scalar relationships directly; enrichment uses explicit maximal `selectinload` paths and all mappings reject undeclared lazy access |
+| A path such as `order.customer.country` could reload an already selected customer | Loader paths re-root at an object already materialized by `combined` |
+| Collection joins could silently collapse or duplicate objects | Combined and enrichment stages reject collection relationships until both emitters have explicit multiplicity semantics |
+| Group reduction treated a valid `None` accumulator as a missing group | Membership, rather than `dict.get`, now distinguishes group creation from state |
+| Python rendered booleans as `True`/`False` while PostgreSQL text casts use lowercase | The `TEXT` operator emits `true`/`false` and preserves null |
+| Float literals could introduce binary-float differences | Plan construction canonicalizes finite floats to `Decimal`; non-finite and unsupported date-time literals fail before emission |
+| Typed SQL date literals reached Python as strings | The AST adapter parses validated ISO date literals to `date`, so ORM date comparisons use the same type |
+| `IS` accepted operands that the SQL emitter could not represent consistently | Plans restrict `IS` and `IS NOT` to null and boolean literals |
+| Relationship predicates could capture an unrelated table | Validation scopes primary and secondary join predicates to the relationship endpoints and association table |
+| Explicit execution modes could accept negative or boolean row budgets | All modes validate nonnegative integer estimates and limits before selection |
+| Empty scalar aggregate with a zero input limit could lose SQL's one-row result | Scalar reduction retains SQL's one output row while the input materialization remains bounded |
+| Spider Python evaluation risked defining a new accuracy metric | The existing runner now executes the selected AST with SQL, Python, auto, or verification and continues to use the existing gold execution and `spider_eval.compare` contract |
 
-Python and SQL emitter versions are now 2. Source changes naturally produce different hashes.
-Existing saved revisions remain historical records; opening them does not execute the new emitters.
+Earlier changes in this release also preserved deterministic evidence through the knowledge and chat
+adapters, checked the complete emitted view stack for coverage, removed the 50-row result truncation
+(while retaining a 50-row trace preview), required stable ORM identity, retained composite keys and
+prior calculated values, and made Python/SQL verification share one repeatable-read snapshot.
 
-## Verification performed
+## Correctness and performance boundaries
 
-- All 27 hermetic suites passed with `RUN_ENGINE_TESTS=0` and `RUN_ORCHESTRATOR_TESTS=0`.
-- The expanded deterministic emitter suite passed 25 cases, including real generated-code execution
-  and SQL comparison on SQLite fixtures. It was rerun after the final plan validation changes.
-- All seven Playwright tests passed: the full release journey and each of `sql`, `py`, and `both`
-  through direct and chat navigation and follow-up payloads, against a local fixture API.
-- Home/demo/picker Node checks and all 11 workbook reference-state tests passed.
-- Changed Python files passed Ruff's `F,E9` checks; `git diff --check` passed.
+Stage parity proves that two implementations of the same shared plan agree; it does not prove that
+the planner chose the right plan for the question. Spider scalar-gold evaluation supplies that
+independent expected-result check. Its Python modes preserve the selected candidate, planner ranking,
+input cap, gold query, and comparison logic. Reports must include lowering coverage and must not
+present an oracle `gold_tables` run as the gold-blind headline.
 
-The browser fixture does not execute either backend. SQLite parity does not prove PostgreSQL numeric
-equivalence. No authenticated production dataset matrix or external Anthropic evaluation was run
-for this review. The prior deployment's PostgreSQL dataset attempt timed out before any cases ran;
-it must not be described as a successful integration evaluation.
+Python's threshold is deliberately enforced twice: once by the estimate used for selection and once
+by actual materialization. Width, reference depth, and correlated operations can still affect runtime
+inside the bound. `auto` is therefore both a preference and an availability policy, whereas explicit
+Python is a fail-closed diagnostic choice. Verification remains the strongest parity mode because it
+compares every named stage on PostgreSQL.
 
-## Remaining boundaries
+SQLite fixtures validate generated-source execution and evaluator integration, but PostgreSQL is the
+release authority for ORM loading, numeric behavior, schemas, and knowledgebase relationships. Browser
+fixture tests validate request propagation and UI behavior; an authenticated hosted Chrome run is a
+separate launch check.
 
-1. Specialized world/compose planners still need migration to the shared plan. Manually authored
-   knowledgebase graph fixtures do not establish automatic serving support for geography/FX demos.
-2. `tests.test_datasets` is not yet parameterized by execution mode and does not assert the backend.
-   Add a PostgreSQL matrix with independent expected results before claiming all-dataset parity.
-3. Explicit-mode enforcement is currently after route execution. A rejected fallback can already
-   have executed SQL and emitted provisional progress. Capability checks should eventually happen
-   before execution for each planner.
-4. SQL temporary views can recompute predecessors; both backends retain full stage rows. Memory and
-   timing benchmarks, join-size estimates, and bounded trace collection remain performance work.
-5. The automatic dual manifest does not pin a knowledgebase release. Hand-authored runs can supply
-   one; production source provenance and snapshot isolation are separate from release pinning.
-6. The UI has no dedicated Python source viewer. Source exists in shared-plan response/snapshot
-   records. Saved conversation URLs restore history rather than verifying it under a new mode.
+## Release evidence
 
-These are documented limits and follow-up work, not implemented capabilities. The canonical behavior
-is specified in [DETERMINISTIC_EMITTERS.md](../DETERMINISTIC_EMITTERS.md); testing claims are bounded
-in [TESTING.md](../TESTING.md).
+Release evidence is recorded in the task/commit that deploys this review rather than frozen into this
+design note. A launch claim requires, at minimum: focused emitter tests; the hermetic repository runner;
+the live PostgreSQL dataset matrix in SQL, Python, and verification modes; the existing Spider
+scalar-gold evaluator with Python-aware fields; hosted health checks; and a Chrome journey through the
+deployed application. Any skipped authentication- or infrastructure-gated check must be named plainly.

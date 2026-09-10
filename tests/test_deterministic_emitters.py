@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import tempfile
 from dataclasses import replace
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 
 from engine.deterministic import (
     AggregateValue,
@@ -38,6 +39,7 @@ from engine.deterministic.context import (
     set_execution_record,
 )
 from engine.deterministic.emitter import PythonEmitter, SQLEmitter
+from engine.deterministic.plan import JunctionValue
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -182,6 +184,10 @@ def test_python_source_is_readable_object_graph_and_feed_forward_pipeline():
         "from engine.deterministic.operators import EQ, MULTIPLY, SUM, View" in wrapper
     )
     assert "total_amount_enriched = total_amount_combined.for_each(" in wrapper
+    assert "selectinload(Order.city).selectinload(City.country)" in wrapper
+    assert "selectinload(Order.customer_id)" not in wrapper
+    assert "set_committed_value(orders, 'customer_id', customers)" in wrapper
+    assert 'lazy="raise"' in orders
     assert "total_amount_filtered = total_amount_enriched.filter(" in wrapper
     assert "total_amount_calculated = total_amount_filtered.for_each(" in wrapper
     assert "total_amount_total = total_amount_calculated.reduce(" in wrapper
@@ -208,6 +214,8 @@ def test_both_emitters_are_byte_deterministic_and_have_matching_stages():
 
 
 def test_generated_python_and_sql_execute_to_the_same_result():
+    from engine.deterministic.runtime import execute_python
+
     engine = create_engine("sqlite+pysqlite:///:memory:")
     with engine.connect() as connection:
         connection.execute(text("ATTACH DATABASE ':memory:' AS conversation"))
@@ -254,6 +262,44 @@ def test_generated_python_and_sql_execute_to_the_same_result():
             )
         )
         analysis = DeterministicAnalysis(_plan(), conversation_schema="conversation")
+        generated = analysis.emit().python
+        orm_statements = []
+
+        def capture_orm_statement(_conn, _cursor, statement, _params, _ctx, _many):
+            orm_statements.append(statement)
+
+        event.listen(engine, "before_cursor_execute", capture_orm_statement)
+        python_result = execute_python(
+            generated,
+            connection,
+            schema_map={"conversation": "conversation"},
+            row_limit=10_000,
+        )
+        event.remove(engine, "before_cursor_execute", capture_orm_statement)
+        first_order = python_result.views[0].rows[0].orders
+        assert first_order.customer_id.name == "Ada"
+        assert len(
+            [sql for sql in orm_statements if sql.lstrip().upper().startswith("SELECT")]
+        ) == 3
+
+        orm_statements.clear()
+        event.listen(engine, "before_cursor_execute", capture_orm_statement)
+        python_only = analysis.run(
+            connection, mode=ExecutionMode.PYTHON, estimated_rows=3
+        )
+        event.remove(engine, "before_cursor_execute", capture_orm_statement)
+        transaction_statements = [
+            sql.strip().upper()
+            for sql in orm_statements
+            if "SAVEPOINT" in sql.upper()
+        ]
+        assert sum(sql.startswith("SAVEPOINT") for sql in transaction_statements) == 1
+        assert not any(
+            sql.startswith("ROLLBACK TO SAVEPOINT")
+            for sql in transaction_statements
+        )
+        assert python_only.rows == ({"total_amount": 40},)
+
         result = analysis.run(connection, mode=ExecutionMode.VERIFY, estimated_rows=3)
     assert result.rows == ({"total_amount": 40},)
     record = result.record()
@@ -283,9 +329,212 @@ def test_auto_policy_uses_python_only_below_the_configured_limit():
         is ExecutionMode.SQL
     )
     assert choose_execution_mode("verify", estimated_rows=1) is ExecutionMode.VERIFY
+    for kwargs in (
+        {"estimated_rows": -1},
+        {"estimated_rows": True},
+        {"estimated_rows": 1, "python_row_limit": -1},
+        {"estimated_rows": 1, "python_row_limit": False},
+    ):
+        try:
+            choose_execution_mode("sql", **kwargs)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"invalid execution budget was accepted: {kwargs}")
     assert debug_generation_enabled("development")
     assert not debug_generation_enabled("production")
     assert debug_generation_enabled("production", explicit=True)
+
+
+def test_auto_python_has_a_hard_materialized_row_limit_and_sql_fallback():
+    from unittest.mock import patch
+
+    table = TableSpec(
+        "items",
+        "Item",
+        "items",
+        "conversation",
+        (ColumnSpec("id", "id", SQLType.INTEGER, primary_key=True, nullable=False),),
+    )
+    plan = AnalysisPlan(
+        "items",
+        (table,),
+        (
+            CombinedView("items_combined", ("items",)),
+            ProjectedView(
+                "items_result",
+                "items_combined",
+                (SelectedValue("id", ColumnValue("items", "id")),),
+            ),
+        ),
+    )
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.connect() as connection:
+        connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
+        connection.exec_driver_sql(
+            "CREATE TABLE conversation.items (id INTEGER PRIMARY KEY)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO conversation.items VALUES (1), (2), (3)"
+        )
+        result = DeterministicAnalysis(
+            plan, conversation_schema="conversation"
+        ).run(
+            connection,
+            mode="auto",
+            estimated_rows=2,
+            python_row_limit=2,
+        )
+        assert result.mode is ExecutionMode.SQL
+        assert result.rows == ({"id": 1}, {"id": 2}, {"id": 3})
+        assert result.fallback_reason and "2-row limit" in result.fallback_reason
+
+        from engine.deterministic.operators import PythonRowLimitExceeded
+
+        try:
+            DeterministicAnalysis(plan, conversation_schema="conversation").run(
+                connection,
+                mode="python",
+                estimated_rows=2,
+                python_row_limit=2,
+            )
+        except PythonRowLimitExceeded:
+            pass
+        else:
+            raise AssertionError("explicit Python ignored its hard row limit")
+
+        with patch(
+            "engine.deterministic.service.execute_python",
+            side_effect=RuntimeError("generated runtime failed"),
+        ):
+            recovered = DeterministicAnalysis(
+                plan, conversation_schema="conversation"
+            ).run(
+                connection,
+                mode="auto",
+                estimated_rows=2,
+                python_row_limit=3,
+            )
+        assert recovered.mode is ExecutionMode.SQL
+        assert recovered.rows == ({"id": 1}, {"id": 2}, {"id": 3})
+        assert recovered.fallback_reason == (
+            "RuntimeError: generated runtime failed"
+        )
+
+
+def test_python_operators_preserve_sql_boolean_text_and_none_group_state():
+    from engine.deterministic.operators import TEXT, View
+
+    assert TEXT(True) == "true"
+    assert TEXT(False) == "false"
+    assert TEXT(None) is None
+
+    grouped = View("source", ("a", "a")).group_reduce(
+        "grouped",
+        key=lambda row: row,
+        initial=lambda _row: None,
+        step=lambda current, _row: "seen" if current is None else "seen-again",
+    )
+    assert grouped.rows == ("seen-again",)
+    empty_count = View("empty", (), row_limit=0).reduce(
+        "count", initial=0, step=lambda current, _row: current + 1
+    )
+    assert empty_count.rows == (0,)
+
+
+def test_plan_canonicalizes_numeric_literals_and_rejects_ambiguous_is():
+    assert LiteralValue(0.1).value == Decimal("0.1")
+    for value in (
+        float("nan"),
+        Decimal("Infinity"),
+        datetime(2026, 9, 10, tzinfo=UTC),
+    ):
+        try:
+            LiteralValue(value)
+        except (TypeError, ValueError):
+            pass
+        else:
+            raise AssertionError(f"unsupported literal was accepted: {value!r}")
+
+    original = _plan()
+    views = list(original.views)
+    views[2] = FilteredView(
+        "total_amount_filtered",
+        "total_amount_enriched",
+        PredicateValue(
+            ColumnValue("country", "name"), "IS", LiteralValue("France")
+        ),
+    )
+    try:
+        AnalysisPlan(original.slug, original.tables, tuple(views))
+    except ValueError as exc:
+        assert "IS/IS NOT supports only NULL and boolean literals" in str(exc)
+    else:
+        raise AssertionError("ambiguous IS comparison was accepted")
+
+
+def test_typed_date_literals_compare_as_dates_in_generated_python():
+    from engine.deterministic.runtime import execute_python, materialized_python_views
+
+    tables = [
+        {
+            "name": "events",
+            "columns": ["event_id", "occurred"],
+            "rows": [[1, "2025-12-31"], [2, "2026-01-01"]],
+        }
+    ]
+    schema = [
+        {
+            "table": "events",
+            "name": "event_id",
+            "affinity": "INTEGER",
+            "values": [1, 2],
+        },
+        {
+            "table": "events",
+            "name": "occurred",
+            "affinity": "TEXT",
+            "is_date": True,
+            "values": ["2025-12-31", "2026-01-01"],
+        },
+    ]
+    query = SelectQuery(
+        (
+            SelectItem(
+                Aggregate("COUNT", Star()),
+                "count",
+            ),
+        ),
+        "events",
+        where=Comparison(
+            ColumnRef("events", "occurred", SQLType.DATE),
+            ">=",
+            Literal("2026-01-01", SQLType.DATE),
+        ),
+    )
+    plan = lower_select_query("recent", query, schema, ())
+    assert plan.views[1].predicate.right.value == date(2026, 1, 1)
+
+    from sqlalchemy.pool import StaticPool
+
+    from spider.probe.evalutil import build_mem_db
+
+    raw = build_mem_db(tables)
+    engine = create_engine(
+        "sqlite+pysqlite://", creator=lambda: raw, poolclass=StaticPool
+    )
+    try:
+        with engine.connect() as connection:
+            generated = PythonEmitter().emit(plan)
+            result = execute_python(
+                generated,
+                connection,
+                schema_map={"conversation": "main"},
+                row_limit=10_000,
+            )
+            assert materialized_python_views(result, plan)[-1] == ({"count": 1},)
+    finally:
+        engine.dispose()
 
 
 def test_development_debug_tree_contains_the_exact_executed_source():
@@ -401,6 +650,84 @@ def test_existing_typed_sql_ast_lowers_without_parsing_rendered_sql():
     assert "total_amount_total = total_amount_calculated.reduce(" in wrapper
 
 
+def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
+    from engine.sql_candidate import ScoredQuery
+    from spider.probe.full_eval import (
+        _execute_python_candidate,
+        _lower_python_candidate,
+    )
+    from spider.probe.spider_eval import compare
+
+    tables = [
+        {
+            "name": "orders",
+            "columns": ["order_id", "amount"],
+            "rows": [[1, 10], [2, 20], [3, None]],
+        }
+    ]
+    schema = [
+        {
+            "table": "orders",
+            "name": "order_id",
+            "affinity": "INTEGER",
+            "values": [1, 2, 3],
+        },
+        {
+            "table": "orders",
+            "name": "amount",
+            "affinity": "INTEGER",
+            "values": [10, 20, None],
+        },
+    ]
+    query = SelectQuery(
+        (
+            SelectItem(
+                Aggregate("SUM", ColumnRef("orders", "amount", SQLType.INTEGER)),
+                "total",
+            ),
+        ),
+        "orders",
+    )
+    candidate = ScoredQuery(
+        query, "SELECT SUM(amount) AS total FROM orders", 1, ()
+    )
+    plan, estimated_rows = _lower_python_candidate(candidate, tables, schema, ())
+    rows = _execute_python_candidate(plan, tables, estimated_rows, 10_000)
+    assert rows == [[30]]
+    assert compare([[30]], rows)["scalar_exact"] is True
+
+    from spider.probe.full_eval import ast_predict
+
+    class FakeEncoder:
+        def ingest(self, input_tables):
+            return input_tables, ()
+
+        def schema(self, _tables, _foreign_keys):
+            return schema, {}, {}
+
+        def search_ast(self, *_args, **_kwargs):
+            return [candidate]
+
+        def guard(self, _sql):
+            return True, None
+
+        def execute(self, _table_map, _schema, _sql):
+            return ["total"], [(30,)]
+
+    evaluated = ast_predict(
+        FakeEncoder(),
+        tables,
+        "total amount",
+        schema_fks=(),
+        execution_backend="auto",
+        python_row_limit=10_000,
+    )
+    assert evaluated["ok"] is True
+    assert evaluated["rows"] == [[30]]
+    assert evaluated["execution_backend_actual"] == "python"
+    assert evaluated["python_sql_equal"] is True
+
+
 def test_lowering_uses_the_joined_relationship_when_two_edges_share_tables():
     query = SelectQuery(
         select=(SelectItem(ColumnRef("customers", "name", SQLType.TEXT), "name"),),
@@ -477,6 +804,144 @@ def test_multihop_enrichment_projects_only_the_declared_object():
     assert 'AS "city__qid"' not in enriched_sql
     assert 'AS "country__qid"' in enriched_sql
     assert "city__qid" not in plan.view_columns()["total_amount_enriched"]
+
+
+def test_enrichment_reroots_through_an_object_already_loaded_by_combined():
+    original = _plan()
+    customers = replace(
+        original.table("customers"),
+        columns=original.table("customers").columns
+        + (ColumnSpec("country", "country", SQLType.TEXT),),
+        relationships=(
+            RelationshipSpec("country", "country", ("country",), ("qid",)),
+        ),
+    )
+    plan = AnalysisPlan(
+        "customer_country",
+        (original.table("orders"), customers, *original.tables[2:]),
+        (
+            CombinedView(
+                "customer_country_combined", ("orders", "customers")
+            ),
+            EnrichedView(
+                "customer_country_enriched",
+                "customer_country_combined",
+                (
+                    Enrichment(
+                        "country",
+                        "orders",
+                        ("customer_id", "country"),
+                    ),
+                ),
+            ),
+            ProjectedView(
+                "customer_country_result",
+                "customer_country_enriched",
+                (
+                    SelectedValue(
+                        "country", ColumnValue("country", "name")
+                    ),
+                ),
+            ),
+        ),
+    )
+    wrapper = PythonEmitter().emit(plan).files["orders_customers.py"]
+    assert "selectinload(Customer.country)" in wrapper
+    assert "selectinload(Order.customer_id)" not in wrapper
+
+
+def test_relationship_join_predicates_cannot_capture_unrelated_tables():
+    original = _plan()
+    orders = original.table("orders")
+    invalid_customer = replace(
+        orders.relationship("customer_id"),
+        condition=PredicateValue(
+            ColumnValue("orders", "customer_id"),
+            "=",
+            ColumnValue("city", "qid"),
+        ),
+    )
+    orders = replace(
+        orders,
+        relationships=(invalid_customer, orders.relationship("city")),
+    )
+    try:
+        AnalysisPlan(original.slug, (orders,) + original.tables[1:], original.views)
+    except ValueError as exc:
+        assert "table 'city' is unavailable" in str(exc)
+    else:
+        raise AssertionError("relationship captured an unrelated table")
+
+
+def test_custom_orm_join_uses_python_spelling_for_sql_is_predicates():
+    original = _plan()
+    orders = original.table("orders")
+    customer = orders.relationship("customer_id")
+    custom_customer = replace(
+        customer,
+        condition=JunctionValue(
+            "AND",
+            (
+                PredicateValue(
+                    BinaryValue(
+                        ColumnValue("orders", "customer_id"),
+                        "+",
+                        LiteralValue(0),
+                    ),
+                    "=",
+                    ColumnValue("customers", "customer_id"),
+                ),
+                PredicateValue(
+                    ColumnValue("customers", "name"),
+                    "IS NOT",
+                    LiteralValue(None),
+                ),
+            ),
+        ),
+    )
+    orders = replace(
+        orders,
+        relationships=(custom_customer, orders.relationship("city")),
+    )
+    plan = replace(original, tables=(orders, *original.tables[1:]))
+    package = PythonEmitter().emit(plan)
+    source = package.files["orders.py"]
+    assert "Customer.name != None" in source
+    assert "Customer.name IS NOT None" not in source
+
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        for schema in ("conversation", "knowledgebase"):
+            connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {schema}")
+        connection.exec_driver_sql(
+            "CREATE TABLE conversation.orders "
+            "(order_id INTEGER, customer_id INTEGER, amount NUMERIC, city TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE conversation.customers (customer_id INTEGER, name TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE knowledgebase.city (qid TEXT, name TEXT, country TEXT)"
+        )
+        connection.exec_driver_sql(
+            "CREATE TABLE knowledgebase.country (qid TEXT, name TEXT)"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO conversation.customers VALUES (1, 'Ada')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO conversation.orders VALUES (10, 1, 12.5, 'Q90')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO knowledgebase.city VALUES ('Q90', 'Paris', 'Q142')"
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO knowledgebase.country VALUES ('Q142', 'France')"
+        )
+        result = DeterministicAnalysis(
+            plan, conversation_schema="conversation"
+        ).run(connection, mode="verify", estimated_rows=1)
+    assert result.rows == ({"total_amount": Decimal("25.00000000000000000000")},)
 
 
 def test_lowering_does_not_treat_a_repeated_foreign_id_as_row_identity():
@@ -716,7 +1181,8 @@ def test_direct_execution_context_and_explicit_mode_fail_closed():
         assert current_analysis_context().execution_mode == "python"
         set_execution_record({"mode": "python"})
         with analysis_execution_context(None, "c_" + "5" * 32):
-            assert current_analysis_context() is None
+            assert current_analysis_context().slug == "query"
+            assert current_analysis_context().execution_mode is None
             assert current_execution_record() is None
         assert current_execution_record() == {"mode": "python"}
     answer = {"result": {"columns": ["n"], "rows": [[1]]}}
@@ -729,6 +1195,18 @@ def test_direct_execution_context_and_explicit_mode_fail_closed():
         allowed = enforce_execution_response(answer, mode)
         assert allowed["execution"]["actual"] == "sql"
         assert allowed["execution"]["implementation"] == "sql_executor"
+        assert allowed["execution"]["fallback_reason"] is None
+    recovered = enforce_execution_response(
+        {
+            **answer,
+            "deterministic": {
+                "mode": "sql",
+                "fallback_reason": "PythonRowLimitExceeded: bounded",
+            },
+        },
+        "auto",
+    )
+    assert recovered["execution"]["fallback_reason"].endswith("bounded")
     verified = enforce_execution_response(
         {**answer, "deterministic": {"mode": "verify"}}, "verify"
     )
@@ -741,8 +1219,8 @@ def test_direct_execution_context_and_explicit_mode_fail_closed():
 def test_parity_never_rounds_away_large_decimal_differences():
     from engine.deterministic.runtime import VerificationMismatch, assert_equivalent
 
-    left = Decimal("1234567890123456789012345678901234567890")
-    right = Decimal("1234567890123456789012345678901234567891")
+    left = Decimal(1234567890123456789012345678901234567890)
+    right = Decimal(1234567890123456789012345678901234567891)
     try:
         assert_equivalent(({"n": left},), ({"n": right},))
     except VerificationMismatch:
@@ -841,6 +1319,24 @@ def test_collection_enrichment_is_rejected_before_generation():
         raise AssertionError("unsupported collection traversal was accepted")
 
 
+def test_collection_combined_relationship_is_rejected_before_generation():
+    original = _plan()
+    orders = original.table("orders")
+    orders = replace(
+        orders,
+        relationships=tuple(
+            replace(edge, many=True) if edge.attribute == "customer_id" else edge
+            for edge in orders.relationships
+        ),
+    )
+    try:
+        AnalysisPlan(original.slug, (orders,) + original.tables[1:], original.views)
+    except ValueError as exc:
+        assert "combined views currently require scalar relationships" in str(exc)
+    else:
+        raise AssertionError("unsupported collection join was accepted")
+
+
 def test_colliding_generated_class_cannot_replace_the_result_type():
     original = _plan()
     orders = replace(original.table("orders"), class_name="AnalysisResult")
@@ -855,8 +1351,9 @@ def test_colliding_generated_class_cannot_replace_the_result_type():
 
 def test_knowledge_delegate_preserves_shared_plan_execution_evidence():
     from types import SimpleNamespace
-    from engine.knowledge_tables import KnowledgeTableQuery
+
     from engine.deterministic.context import enforce_execution_response
+    from engine.knowledge_tables import KnowledgeTableQuery
 
     raw = {
         "result": {"columns": ["total"], "rows": [[3]]},
@@ -891,6 +1388,7 @@ def test_knowledge_delegate_preserves_shared_plan_execution_evidence():
 
 def test_coverage_checks_filters_in_the_full_emitted_program():
     from types import SimpleNamespace
+
     from engine.knowledge_query import KnowledgeQuery, _coverage_sql
 
     program = SQLEmitter().emit(_plan())
@@ -920,10 +1418,10 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
     from engine.deterministic.plan import JunctionValue
     from engine.deterministic.runtime import (
-        execute_python,
-        materialized_python_views,
-        execute_sql_views,
         assert_equivalent,
+        execute_python,
+        execute_sql_views,
+        materialized_python_views,
     )
 
     plan = _plan()
@@ -994,12 +1492,12 @@ def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
 
 
 def test_correlated_operators_sort_and_outer_join_are_readable_and_equivalent():
-    from engine.deterministic.plan import WindowView, SortedView, SortValue
+    from engine.deterministic.plan import SortedView, SortValue, WindowView
     from engine.deterministic.runtime import (
-        execute_python,
-        materialized_python_views,
-        execute_sql_views,
         assert_equivalent,
+        execute_python,
+        execute_sql_views,
+        materialized_python_views,
     )
 
     observation = TableSpec(
@@ -1082,6 +1580,7 @@ def test_correlated_operators_sort_and_outer_join_are_readable_and_equivalent():
 
 def test_composition_lowers_selected_bindings_and_executes_real_reference_relationships():
     from unittest.mock import patch
+
     from engine.compose import ComposeEngine
     from engine.deterministic.compose import lower_composition
 

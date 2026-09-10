@@ -12,7 +12,7 @@ conversation may contain several named analyses over those shared inputs. Each c
 the exact returned SQL, rows, and provenance. The UI shows short logical tab labels, while the wire-level derived
 view names are prefixed by the analysis slug: `total_sales_combined`, `total_sales_filtered`, and
 `total_sales_total`. This makes traces unambiguous without turning the tabs into long machine names.
-Supported own-data analyses, named or explicitly selected by `use`, also expose these stages as readable Python; the
+Supported own-data analyses also expose these stages as readable Python under the deployment or request-local policy; the
 dual-source contract is defined in [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
 ## The step grammar
@@ -30,9 +30,13 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
 
 ## The rules
 
-1. **Executed SQL only.** A sheet's SQL is the statement that actually produced its rows —
-   `con.execute(view_sql)`, rows off that cursor. Never a prettified or reconstructed query.
-2. **No forward references.** Any table or column a step's SQL joins, filters, or projects must
+1. **Executed program only.** A sheet's rows come from the named stage that actually ran. In SQL
+   mode that is the exact emitted statement and its cursor rows. In Python mode it is the exact
+   generated `View` transition and its materialized objects; the recorded SQL is the deterministic,
+   stage-aligned counterpart, not a claim that an SQL view produced those rows. Verification mode
+   executes both and releases the SQL rows only after every named stage agrees. Never substitute a
+   prettified or reconstructed program for either emitted source.
+2. **No forward references.** Any table or column a step joins, filters, or projects must
    already be visible to the user: on an earlier sheet, or browsable in the **Reference** tab
    (the knowledgebase table the lookup used). The reference-lookup sheet exists precisely so a
    later `WHERE "city"."country" = …` filters a column the user has already seen.
@@ -44,9 +48,9 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
    needs (`calculated` need not re-show `country`), but it may never *use* a column that no
    earlier sheet displayed (rule 2).
 5. **Entity values display as human labels.** Reference columns store QIDs (`Q142`); displayed
-   rows and step labels resolve them (`France`) via `knowledgebase."words"`. The SQL text keeps
-   the storage literal — the SQL is the proof, the label is the explanation, and the step label
-   bridges them (`where country = 'France'`).
+   rows and step labels resolve them (`France`) via `knowledgebase."words"`. Both emitted programs
+   keep the storage literal—the executed source is the proof, the label is the explanation, and
+   the step label bridges them (`where country = 'France'`).
 6. **Result overlays the last sheet.** The final aggregate is its own sheet (`total`) so the
    per-row `calculated` grid is never replaced by a single number.
 7. **Provenance on every column.** Each sheet's columns carry their source badge — SRC (user
@@ -70,7 +74,7 @@ A trail is a subset of these steps, always in this order, each one a real sheet:
 - [ ] Tabs read left to right as a derivation: uploads → (combined) → (reference lookup) →
       (filtered) → (calculated) → total, with Result overlaid on the last.
 - [ ] No `combined` tab when only one sheet was uploaded.
-- [ ] Every column named in any sheet's SQL WHERE/JOIN/SELECT is visible on an earlier sheet or
+- [ ] Every column used by an emitted filter/join/projection is visible on an earlier sheet or
       in the Reference tab.
 - [ ] Step labels are human-readable (no bare QIDs).
 - [ ] The Result equals the last sheet's aggregate; for conversions, the `calculated` column

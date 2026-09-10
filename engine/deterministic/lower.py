@@ -6,6 +6,7 @@ import keyword
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from datetime import date
 from decimal import Decimal
 
 from engine.deterministic.plan import (
@@ -28,6 +29,7 @@ from engine.deterministic.plan import (
     Value,
     ViewValue,
 )
+from engine.numeric import coerce_numeric
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
@@ -40,7 +42,6 @@ from engine.sql_ast import (
     Star,
 )
 from engine.sql_ast import SQLType as ASTType
-from engine.numeric import coerce_numeric
 
 
 class UnsupportedDeterministicPlan(ValueError):
@@ -255,7 +256,7 @@ def lower_select_query(
             item for item in query.select if isinstance(item.expression, ColumnRef)
         ]
         if (
-            set(item.expression for item in group_items) != set(query.group_by)
+            {item.expression for item in group_items} != set(query.group_by)
             or list(query.select[: len(group_items)]) != group_items
         ):
             raise UnsupportedDeterministicPlan(
@@ -390,9 +391,16 @@ def _value(value) -> Value:
     if isinstance(value, ColumnRef):
         return ColumnValue(value.table, value.name)
     if isinstance(value, Literal):
-        literal = (
-            Decimal(str(value.value)) if isinstance(value.value, float) else value.value
-        )
+        literal = value.value
+        if value.type is ASTType.DATE and isinstance(literal, str):
+            try:
+                literal = date.fromisoformat(literal)
+            except ValueError as exc:
+                raise UnsupportedDeterministicPlan(
+                    f"invalid ISO date literal: {literal!r}"
+                ) from exc
+        elif isinstance(literal, float):
+            literal = Decimal(str(literal))
         return LiteralValue(literal)
     if isinstance(value, BinaryExpr):
         return BinaryValue(_value(value.left), value.operator, _value(value.right))

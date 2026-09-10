@@ -48,24 +48,22 @@ def analysis_execution_context(
     *,
     execution_mode: str | None = None,
 ) -> Iterator[AnalysisExecutionContext | None]:
-    # Direct requests have no workbook catalog entry. Give an explicit execution
-    # request a transient slug without creating a persisted named analysis.
-    if descriptor is None and execution_mode is not None:
+    # Direct requests have no workbook catalog entry. Give every direct request a
+    # transient slug so the deployment's auto policy can prefer Python for small,
+    # supported plans without creating a persisted named analysis. Unsupported
+    # plans still remain on the existing SQL executor.
+    if descriptor is None:
         descriptor = {"slug": "query", "revision": 1}
-    context = (
-        None
-        if descriptor is None
-        else AnalysisExecutionContext(
-            conversation_id=conversation_id,
-            slug=str(descriptor["slug"]),
-            revision=int(descriptor["revision"]),
-            dataset_version=(
-                str(descriptor["dataset_version"])
-                if descriptor.get("dataset_version") is not None
-                else None
-            ),
-            execution_mode=execution_mode,
-        )
+    context = AnalysisExecutionContext(
+        conversation_id=conversation_id,
+        slug=str(descriptor["slug"]),
+        revision=int(descriptor["revision"]),
+        dataset_version=(
+            str(descriptor["dataset_version"])
+            if descriptor.get("dataset_version") is not None
+            else None
+        ),
+        execution_mode=execution_mode,
     )
     token = _CURRENT.set(context)
     record_token = _EXECUTION_RECORD.set(None)
@@ -95,6 +93,7 @@ def enforce_execution_response(response: dict, requested: str | None) -> dict:
         "actual": actual,
         "verified": actual == "verify",
         "implementation": "shared_plan" if record else "sql_executor",
+        "fallback_reason": record.get("fallback_reason") if record else None,
     }
     if requested in {"python", "verify"} and actual != requested:
         return {

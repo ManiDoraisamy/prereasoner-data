@@ -129,9 +129,10 @@ All under `spider/probe/`. Data (`dev.json`, `tables.json`, the 20 dev SQLite DB
   over representative Spider columns to test the v1 Phase-4 worry: does the router **abstain** on
   out-of-taxonomy columns, or **silently mis-fire** (false resolution)?
 - **Probe D+ — full offline system** (`full_eval.py`, model on CPU; **the headline**). Reproduces the
-  live own-data path (the compose route and the deterministic typed-AST planner), executes the emitted
-  SQL on SQLite, and compares denotation to the real gold rows. Reports the three-outcome split + a
-  stage-attributed error histogram.
+  live own-data path (the compose route and the deterministic typed-AST planner), executes the selected
+  candidate with SQL or, when lowerable, the shared-plan Python emitter, and compares denotation to the
+  real gold rows. Gold execution and correctness always reuse `spider_eval.compare`. Reports the
+  three-outcome split, a stage-attributed error histogram, and optional Python coverage/parity fields.
 
 Two input configs are reported:
 - **`whole_db`** — feed all of the DB's tables (product-realistic, gold-blind). This is **standard
@@ -239,6 +240,11 @@ python -m spider.probe.static_probe        # Probe A + B
 python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection serving_top1 --max-candidates 25
 # Oracle table selection (the product-analogue upper bound): same command with --config gold_tables:
 python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
+
+# Production Python-preferred policy on the existing scalar-gold contract:
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection serving_top1 --max-candidates 25 --backend auto --python-row-limit 10000 --scalar-only
+
+# Coverage-only and strict selected-SQL/Python parity diagnostics use --backend python or --backend verify.
 
 python -m spider.probe.typing_probe --dbs spider/data/dbs   # Probe C
 ```

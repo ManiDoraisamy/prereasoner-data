@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
-from engine.numeric import DIVISION_SCALE
 
 from engine.deterministic.plan import (
     AggregateValue,
@@ -27,10 +26,11 @@ from engine.deterministic.plan import (
     ProjectedView,
     ReducedView,
     SortedView,
-    WindowView,
     Value,
     ViewValue,
+    WindowView,
 )
+from engine.numeric import DIVISION_SCALE
 
 _BINARY = {"+": "+", "-": "-", "*": "*", "/": "/"}
 
@@ -66,7 +66,7 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
@@ -409,6 +409,16 @@ class SQLEmitter:
                     if item.function == "TEXT"
                     else f"LOWER({operand})"
                 )
+            if isinstance(item, BinaryValue):
+                left = value(item.left)
+                right = value(item.right)
+                if item.operator == "/":
+                    return (
+                        f"ROUND((CAST({left} AS NUMERIC) * "
+                        f"1.{'0' * DIVISION_SCALE} / NULLIF({right}, 0)), "
+                        f"{DIVISION_SCALE})"
+                    )
+                return f"({left} {_BINARY[item.operator]} {right})"
             return self._value(item, set(), set())
 
         if isinstance(predicate, JunctionValue):

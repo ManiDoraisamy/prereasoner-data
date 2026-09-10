@@ -17,7 +17,7 @@ orchestrated navigation and follow-up payloads. Its API and authentication are l
 proves browser transport behavior, not actual backend execution or live authentication.
 
 `tests.test_datasets` evaluates the public prompts and `eval.txt` expectations against the seeded
-production `ComposedKnowledgeQuery` entry point. It runs `sql,python,verify` by default and checks
+production `ComposedKnowledgeQuery` entry point. It runs `sql,python,verify,default` by default and checks
 actual mode, exact stage parity in verify, cross-request answer agreement, and independent expectations.
 `EVAL_EXECUTION_MODES` selects modes; `EVAL_DATASETS` narrows datasets for diagnosis, not a full release
 claim. `EVAL_REPORT` saves per-case timings, source manifests, answers, and failures as JSON.
@@ -254,6 +254,29 @@ python -m spider.probe.full_eval `
   --tag <unique-tag> `
   --out spider/results/<unique-tag>/whole_db/full_eval_whole_db
 ```
+
+To exercise the production backend policy on the clean scalar-gold subset, keep the same runner and
+comparison contract:
+
+```powershell
+python -m spider.probe.full_eval `
+  --dbs spider/data/dbs `
+  --config whole_db `
+  --selection serving_top1 `
+  --max-candidates 25 `
+  --backend auto `
+  --python-row-limit 10000 `
+  --scalar-only `
+  --tag <unique-tag>
+```
+
+`--backend python` measures generated-Python coverage without fallback. Evaluator `auto` also records
+strict selected-SQL/Python equality for every Python-executed example but returns the Python result,
+matching production output selection. `--backend verify` requires those denotations to agree. In every
+mode, gold execution and scalar correctness continue to use the existing
+`spider.probe.spider_eval.compare` functions. Do not compare only Python-lowerable examples and call the
+result whole-suite accuracy; report lowering coverage, accuracy on executed Python, and accuracy over
+all scalar gold examples.
 
 `whole_db` is the gold-blind headline. `gold_tables` is an oracle table-selection ablation and must not be reported
 as standard Spider accuracy. Compare per-example records as well as aggregate strict, lenient, and scalar metrics;

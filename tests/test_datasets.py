@@ -145,31 +145,43 @@ def main() -> int:
     if not os.environ.get("KB_PG_PASSWORD"):
         print("set KB_PG_PASSWORD")
         return 1
-    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine import request_timing
     from engine.deterministic.context import (
         analysis_execution_context,
         enforce_execution_response,
     )
-    from engine import request_timing
+    from engine.knowledge_compose import ComposedKnowledgeQuery
     from regress.live_schema import live_schema
 
     Q = ComposedKnowledgeQuery()
     schema = live_schema().name
     fails = []
     records = []
-    modes = os.environ.get("EVAL_EXECUTION_MODES", "sql,python,verify").split(",")
+    modes = [
+        mode.strip()
+        for mode in os.environ.get(
+            "EVAL_EXECUTION_MODES", "sql,python,verify,default"
+        ).split(",")
+        if mode.strip()
+    ]
+    unknown_modes = set(modes) - {"sql", "python", "verify", "auto", "default"}
+    if unknown_modes:
+        raise ValueError(f"unknown EVAL_EXECUTION_MODES: {sorted(unknown_modes)}")
 
     def serve(tables, question, *, schema):
         responses = []
         for mode in modes:
+            requested_mode = None if mode == "default" else mode
             token = request_timing.begin(f"dataset-{name}-{mode}")
             try:
-                with analysis_execution_context(None, schema, execution_mode=mode):
+                with analysis_execution_context(
+                    None, schema, execution_mode=requested_mode
+                ):
                     try:
                         response = enforce_execution_response(
-                            Q.serve(tables, question, schema), mode
+                            Q.serve(tables, question, schema), requested_mode
                         )
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 — the matrix records backend failures
                         response = {"error": f"{type(exc).__name__}: {exc}"}
                 record = {
                     "dataset": name,
@@ -196,6 +208,14 @@ def main() -> int:
                 )
                 if response.get("error"):
                     fails.append(f"{name} [{mode}] {question!r}: {response['error']}")
+                elif response.get("result") is not None:
+                    expected_mode = "python" if mode in {"auto", "default"} else mode
+                    actual_mode = (response.get("execution") or {}).get("actual")
+                    if actual_mode != expected_mode:
+                        fails.append(
+                            f"{name} [{mode}] {question!r}: expected backend "
+                            f"{expected_mode!r}, got {actual_mode!r}"
+                        )
                 responses.append(response)
             finally:
                 request_timing.end(token)

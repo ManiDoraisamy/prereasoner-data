@@ -158,6 +158,11 @@ requests return an error. Browser URLs carry the same preference, for example
 `/?load=customer-orders&use=sql` and `/reason?use=both`. A saved conversation URL restores its
 snapshot without rerunning it. See [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
+If `use` is omitted, the default `auto` policy applies to both direct questions and named analyses:
+Python at or below 10,000 estimated input rows and SQL above it. The Python materialization limit is
+hard; an underestimated expansion or runtime failure records an emitted-SQL fallback. Set
+`DETERMINISTIC_EXECUTION_MODE` and `DETERMINISTIC_PYTHON_ROW_LIMIT` to change the deployment policy.
+
 The optional chat orchestrator adds named workbook intent to data calls. `create` allocates a distinct analysis;
 `modify` appends an immutable revision to an existing analysis; and `inspect` reopens one exact revision without
 running the planner. Uploaded tables keep their canonical file stems throughout the conversation (`orders.csv`
