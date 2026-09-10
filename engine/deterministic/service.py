@@ -83,6 +83,7 @@ class ExecutionResult:
                     "op": self.emission.python.manifest["view_operations"][step],
                     "label": suffix.replace("_", " "),
                     "sql": sql,
+                    "python": self.emission.python.manifest["view_sources"].get(step, ""),
                     "columns": self.emission.python.manifest["view_columns"][step],
                     "rows": [
                         [
@@ -239,6 +240,14 @@ class DeterministicAnalysis:
                 if requested is not ExecutionMode.AUTO:
                     raise
                 fallback_reason = f"{type(exc).__name__}: {exc}"
+                # Python-by-default is only trustworthy if a silent retreat to SQL is
+                # visible. Count it and name the exception type on the request's one
+                # [timing] line; the message itself may quote user data, so it stays in
+                # the response envelope and out of the log.
+                request_timing.count("deterministic_python_fallback")
+                request_timing.count(
+                    f"deterministic_python_fallback_{type(exc).__name__}"
+                )
                 selected = ExecutionMode.SQL
                 with request_timing.span("deterministic_sql"):
                     view_rows = execute_sql_views(emission.sql, bind)

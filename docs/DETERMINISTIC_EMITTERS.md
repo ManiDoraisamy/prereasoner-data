@@ -123,7 +123,10 @@ input row estimate, and SQL above it. The ORM query fetches at most `limit + 1` 
 Python stage enforces the same materialization cap, so an underestimated join cannot bypass the bound.
 If the cap or another generated-Python runtime check fails in `auto`, a database savepoint is rolled
 back and emitted SQL runs against the same outer snapshot; the response reports the SQL fallback and
-reason. Explicit `python` and `verify` requests are also bounded but fail closed rather than changing
+reason, the request's one `[timing]` line carries `py_fallback=<ExceptionClass>`, and
+`deterministic_python_fallback` is counted — so a silent retreat from the Python default is visible
+in logs, not only in the response body. Only the exception class is logged; the rest of the reason
+can quote user data and stays in the envelope. Explicit `python` and `verify` requests are also bounded but fail closed rather than changing
 backend. The threshold is a measured deployment policy, not a proof that Python wins for every shape;
 input width, reference loading, join expansion, and correlated operations still affect cost.
 
@@ -141,8 +144,14 @@ may report `actual: "sql"`: the current guard checks the completed route result 
 saving it. It does not preflight every planner, and provisional progress can precede the final error.
 
 Opening an existing conversation or inspecting a revision restores saved results. Changing `use`
-does not rerun history; submit a question to use the new mode. The current UI has no dedicated
-generated-Python source viewer.
+does not rerun history; submit a question to use the new mode.
+
+Each stage record carries both `sql` and `python`, the latter being the exact slice of the emitted
+wrapper that produced that stage (`view_sources` in the Python manifest). The workbook's per-sheet
+badge names the backend that actually ran: `Python` shows the generated loops, `SQL` shows the view's
+query. When `verify` ran both, the badge becomes a Python/SQL picker defaulting to Python; switching
+re-renders the pair already returned and never triggers a second execution, because verification
+already proved the two stage sets equal.
 
 ## Execution and comparison
 
@@ -175,8 +184,10 @@ The Spider runner extends the existing denotation evaluator with
 `--backend sql|python|auto|verify`, `--python-row-limit`, and `--scalar-only`. Candidate planning and
 ranking are unchanged. Generated Python executes the selected typed AST on a separate in-memory
 SQLite database; gold SQL still executes independently and correctness still uses
-`spider.probe.spider_eval.compare`. Evaluator `auto` records strict Python/selected-SQL equality without
-changing the selected output; `verify` requires that equality. Thus Python coverage and scalar-gold accuracy are additional fields in the same
+`spider.probe.spider_eval.compare`. Evaluator `auto` GRADES the Python rows whenever the selected
+candidate lowered and executed, and records strict Python/selected-SQL equality alongside; `verify`
+additionally requires that equality. Because `auto` grades Python, a Python-only defect moves scalar
+accuracy away from the SQL baseline — that is the signal, not a measurement artifact. Thus Python coverage and scalar-gold accuracy are additional fields in the same
 evaluation artifact, not a separate correctness definition.
 
 SQLite is a hermetic test backend. Its native numeric storage and arithmetic are not PostgreSQL

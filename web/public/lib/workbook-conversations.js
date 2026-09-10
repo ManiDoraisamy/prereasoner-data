@@ -60,6 +60,14 @@ async function renderDrawer(){
   const clr=document.createElement('button'); clr.className='convclear'; clr.textContent='Clear all conversations'; clr.onclick=clearAllConvs;
   list.appendChild(clr);
 }
+// One binding for the conversation list, used by BOTH surfaces that render it: the /reason
+// drawer and the signed-in home rail. Delegated, so it survives renderDrawer() rebuilds.
+function bindConversationList(){
+  const cl=$('convlist'); if(!cl||cl._convBound) return; cl._convBound=true;
+  cl.addEventListener('click',e=>{
+    const del=e.target.closest('.convdel'); if(del){ e.stopPropagation(); deleteConv(del.dataset.del); return; }
+    const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
+}
 async function deleteConv(id){
   const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.style.opacity='.4';
   try{ const tk=await window.ensureToken();
@@ -85,14 +93,14 @@ function convSnapshot(){
   const sheets=BOOK.filter(s=>s.cls==='deriv'||s.cls==='ref'||(s.cls==='master'&&(!s.saved||s.dirty))).map(s=>({
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
     rows:s.cls==='master'?(s.rows||[]).map(r=>r.slice()):(s.rows||[]).slice(0,MAX_RENDER_ROWS),
-    sql:s.sql||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
+    sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
     cellAI:s.cls==='master'&&s.cellAI?[...s.cellAI]:undefined }));
   const refcands=REFCANDS.map(c=>({name:c.name, key:c.key, vals:(c.vals||[]).slice(0,500),   // the AVAILABLE list must survive reload so "+ Reference" persists
     cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
     rows:(c.cols&&c.cols.length>1&&c.rows)?((!c.saved||c.dirty)?c.rows.map(r=>r.slice()):c.rows.slice(0,MAX_RENDER_ROWS)):undefined,
     saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
   return {v:2, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
-    datasetSemantics:DS_META, viewedAnalysis:VIEWED_ANALYSIS||null};
+    datasetSemantics:DS_META, viewedAnalysis:VIEWED_ANALYSIS||null, execution:EXEC||null};
 }
 let _saveStateT=null;
 function saveConvState(){                                     // persist the snapshot after a turn settles
@@ -112,8 +120,9 @@ function saveConvState(){                                     // persist the sna
 function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
   if(!st||![1,2].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
+  noteExecution(st.execution);                               // restore which backend produced these sheets, so the badge stays Python/SQL
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
-      rows:s.rows||[], sql:s.sql||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
+      rows:s.rows||[], sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
       cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});
     if(s.cls==='master'&&s.name) MSEEN.add(referenceKey(s.name,s.cols)); });   // don't let loadMaster duplicate it
   if(Array.isArray(st.refcands)){                            // AVAILABLE candidates (removed or never-shown) -> "+ Reference" persists across reload

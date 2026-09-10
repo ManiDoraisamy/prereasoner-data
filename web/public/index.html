@@ -56,6 +56,15 @@
 .exlist .xempty{padding:14px;color:var(--card-ink-dim);font-size:13px}
 </style>
 </head><body>
+<!-- Signed-in home rail. Hidden until auth resolves, so a signed-out visitor never sees it
+     flash. It renders through the SAME renderDrawer()/convlist the /reason drawer uses. -->
+<aside class=homerail id=homerail hidden aria-label="Your conversations">
+  <div class=railtop>
+    <button class=railnew type=button id=railnew>New conversation</button>
+  </div>
+  <div class=convlist id=convlist></div>
+  <a class=railprivacy href="/privacy">Privacy</a>
+</aside>
 <div class=page>
   <div class=hdr><a class=brand href="https://prereasoner.com/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost type=button id=loginbtn>Login</button></div>
   <div class=hero>
@@ -88,6 +97,7 @@
 <div class=pbackdrop id=exbackdrop onclick=closeExamples()></div>
 <div class=preview id=examples role=dialog aria-label="Example questions"><button class=px onclick=closeExamples() aria-label=Close>&times;</button><div class=ph>Example questions <span class=c>&middot; pick one to load its dataset</span></div><div class=exlist id=exlist></div></div>
 <script src="lib/shared.js"></script>
+<script src="lib/workbook-conversations.js"></script>
 <script src="lib/xlsx-reader.js"></script>
 <script>
 // Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
@@ -245,7 +255,15 @@ try{ fetch(API_BASE+'/api/reason',{method:'GET',cache:'no-store'}).catch(()=>{})
 <script type="module">
 import { auth, ensureSignedIn } from '/lib/firebase-init.js';
 const login=document.getElementById('loginbtn');
-function showSignedIn(){login.textContent='Signed in';login.disabled=true;login.setAttribute('aria-label','Signed in');}
+// Signed in: the rail IS the signed-in state, so the badge is redundant — drop it and show
+// the user's conversations instead. Rendering reuses the /reason drawer's list.
+function showSignedIn(){
+  login.hidden=true;
+  const rail=document.getElementById('homerail'); if(!rail) return;
+  rail.hidden=false; document.body.classList.add('hasrail');
+  document.getElementById('railnew').onclick=()=>{ try{ newConversation(); }catch(_){ location.href='/'; } };
+  try{ bindConversationList(); renderDrawer(); }catch(_){}
+}
 try{await auth.authStateReady();if(auth.currentUser)showSignedIn();}catch(_){}
 login.addEventListener('click',async()=>{
   login.disabled=true;login.textContent='Signing in…';

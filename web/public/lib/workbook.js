@@ -42,6 +42,9 @@ let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
+let EXEC=null;                                   // {actual,verified} — which backend produced this turn's sheets
+let SRC='py';                                    // chosen derivation language when BOTH backends ran
+let SRCOPEN=false;                               // the source panel's open state, preserved across repaints
 let DS_META=[];                                  // dataset semantics: conversation-stated measure metadata [{table, column, currency, basis}]
                                                  // from the engine's dataset_semantics response field -> a badge on the user's column header
 function noteDatasetSemantics(list){
@@ -76,6 +79,40 @@ const UNDOCAP=120;
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='master'); if(!passive&&AUTO) ACTIVE=m.id; if(passive&&!ACTIVE) ACTIVE=m.id; paint(); }
+// Which backend actually produced this turn's sheets. `verify` ran BOTH and proved every
+// stage equal, so the language switch re-renders the pair we already have; it never asks
+// the server to execute a second time.
+function noteExecution(value){ if(value&&value.actual) EXEC={actual:value.actual, verified:!!value.verified}; }
+function sheetSource(m){
+  const py=(m&&m.python)||'', sql=(m&&m.sql)||'', actual=(EXEC&&EXEC.actual)||'';
+  const both=!!(py&&sql&&actual==='verify');
+  const primary=(py&&(actual==='python'||actual==='verify'))?'py':(sql?'sql':(py?'py':''));
+  return {py,sql,both,primary};
+}
+const PYKW=/^(?:def|return|for|in|if|else|elif|None|True|False|lambda|not|and|or|is|class|import|from|while|continue|break)$/;
+const PYOP=/^(?:SUM|MAX|MIN|COUNT|COUNT_STAR|AVG|FINALIZE_AVG|AverageState|ADD|SUBTRACT|MULTIPLY|DIVIDE|EQ|NE|GT|GE|LT|LE|IS|IS_NOT|AND|OR|LOWER|TEXT|View)$/;
+// Highlight by splitting into comment / string / word runs and escaping EVERY piece, so
+// generated identifiers can never reach the DOM as markup.
+function pyHighlight(src){
+  const re=/(#[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|([A-Za-z_][A-Za-z0-9_]*)/g;
+  let out='',last=0,m2;
+  while((m2=re.exec(src))){
+    out+=esc(src.slice(last,m2.index));
+    if(m2[1]) out+='<span class="pt cmt">'+esc(m2[1])+'</span>';
+    else if(m2[2]) out+='<span class="pt str">'+esc(m2[2])+'</span>';
+    else out+= PYKW.test(m2[3])?'<span class="pt kw">'+esc(m2[3])+'</span>'
+             : PYOP.test(m2[3])?'<span class="pt op">'+esc(m2[3])+'</span>' : esc(m2[3]);
+    last=re.lastIndex;
+  }
+  return out+esc(src.slice(last));
+}
+// The emitted stage keeps its position inside the wrapper method; strip that shared indent
+// for display only. The exact bytes stay in the analysis record.
+function dedent(src){
+  const lines=String(src||'').replace(/\s+$/,'').split('\n');
+  const pad=Math.min(...lines.filter(l=>l.trim()).map(l=>l.match(/^ */)[0].length));
+  return lines.map(l=>l.slice(pad)).join('\n');
+}
 function noteAnalysis(value){
   if(!value||!value.slug)return;
   TURN_ANALYSIS=Object.assign({},value);
@@ -165,7 +202,7 @@ function renderSheet(){
   let h='<div class="bandbar band-'+m.cls+'"></div><div class=sheetband>'
     +'<span class="dot '+m.cls+'"></span><span class=snm title="'+esc(m.result?'Result':m.name)+'">'+esc(m.result?'Result':dispName(m))+'</span>'
     +'<span class="skind '+m.cls+'">'+(m.result?esc(m.name):KINDLBL[m.cls])+'</span>'
-    +(m.sql?'<span class=spacer></span><button class=sqlbtn title="View the SQL for this sheet" aria-label="View SQL" onclick=toggleSql()>SQL</button>':'')
+    +srcBadge(m)
     +(m.cls==='master'?'<span class=spacer></span>'
         +((m.saved&&!m.dirty)                                 // saved -> a ⋮ menu (Autofill / Upload / Delete); otherwise the Save button
            ?'<button class="mbtn mdots" aria-label="More actions" onclick="masterMenu(\''+m.id+'\',this,event)">⋮</button>'
@@ -189,7 +226,7 @@ function renderSheet(){
         +'</span>';
     h+='</div>';
   }
-  if(m.sql) h+='<div class=sqlrow id=sqlrow><div class=vsql>'+sqlTokens(m.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div></div>';
+  h+=srcPanel(m);
   h+=renderGrid(m);
   if(m.result){                                              // E1/B2: ground the answer — link it to the rows it aggregated
     const feeders=BOOK.filter(s=>s.cls==='deriv'&&!s.result);
@@ -199,7 +236,28 @@ function renderSheet(){
   }
   $('sheetcard').innerHTML=h;
 }
-function toggleSql(){const r=$('sqlrow'); if(r) r.classList.toggle('open');}
+// One control per sheet. When only one backend ran it is a button naming that language;
+// when `verify` ran both it becomes a Python/SQL picker, defaulting to Python.
+function srcBadge(m){
+  const s=sheetSource(m); if(!s.primary) return '';
+  if(s.both) return '<span class=spacer></span><select class="sqlbtn srcsel" aria-label="Derivation language"'
+    +' title="Both backends ran and every stage matched — switch the view" onchange="pickSrc(this.value)">'
+    +'<option value="py"'+(SRC==='py'?' selected':'')+'>Python</option>'
+    +'<option value="sql"'+(SRC==='sql'?' selected':'')+'>SQL</option></select>';
+  const lbl=s.primary==='py'?'Python':'SQL';
+  return '<span class=spacer></span><button class=sqlbtn title="View the '+lbl+' for this sheet"'
+    +' aria-label="View '+lbl+'" onclick=toggleSrc()>'+lbl+'</button>';
+}
+function srcPanel(m){
+  const s=sheetSource(m); if(!s.primary) return '';
+  const lang=s.both?SRC:s.primary;
+  const body = lang==='py'
+    ? '<pre class=vpy>'+pyHighlight(dedent(s.py))+'</pre>'
+    : '<div class=vsql>'+sqlTokens(s.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div>';
+  return '<div class="sqlrow'+(SRCOPEN?' open':'')+'" id=sqlrow>'+body+'</div>';
+}
+function toggleSrc(){ SRCOPEN=!SRCOPEN; const r=$('sqlrow'); if(r) r.classList.toggle('open',SRCOPEN); }
+function pickSrc(lang){ SRC=(lang==='sql')?'sql':'py'; SRCOPEN=true; renderSheet(); }
 function tabTxt(s){ const t=s.result?'Result':dispName(s); return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
   // A5: group the strip by pipeline role — Sources · Reference · Steps · Result — so inputs and the answer are never
@@ -324,13 +382,14 @@ async function loadAnalysis(analysisId,revision){
     const payload=await response.json().catch(()=>null);
     if(!response.ok||!payload||!payload.response)throw new Error((payload&&payload.error)||'analysis unavailable');
     const answer=payload.response, descriptor=payload.analysis||answer.analysis;
+    noteExecution(answer.execution);
     BOOK=BOOK.filter(s=>s.cls==='input'||s.cls==='master');
     VIEWS=[]; RESOLVES=[]; J=answer;
     (answer.views||[]).forEach((view,index)=>{
       VIEWS.push(view);
       BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_'+index, cls:'deriv',
         name:stepLabel(view), desc:stepDesc(view), cols:view.columns||[], rows:view.rows||[],
-        sql:view.sql||'', columnProvenance:view.column_provenance||[]});
+        sql:view.sql||'', python:view.python||'', columnProvenance:view.column_provenance||[]});
     });
     if(!VIEWS.length&&answer.sql&&answer.result){
       const result=answer.result;
@@ -338,7 +397,7 @@ async function loadAnalysis(analysisId,revision){
         columns:result.columns||[],rows:result.rows||[],sql:answer.sql,column_provenance:result.column_provenance||[]};
       VIEWS.push(view);
       BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_0',cls:'deriv',name:stepLabel(view),
-        desc:stepDesc(view),cols:view.columns,rows:view.rows,sql:view.sql,columnProvenance:view.column_provenance});
+        desc:stepDesc(view),cols:view.columns,rows:view.rows,sql:view.sql,python:view.python||'',columnProvenance:view.column_provenance});
     }
     const last=BOOK.filter(s=>s.cls==='deriv').pop();
     if(last){
@@ -645,7 +704,7 @@ function appendView(v){
   VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
   const label=stepLabel(v);                                  // short logical name (never v1/step_1/b2)
   STATUS=stepStatus(v);
-  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||'', columnProvenance:v.column_provenance||[]});
+  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||'', python:v.python||'', columnProvenance:v.column_provenance||[]});
 }
 function appendResolve(r){
   dropStale();
@@ -820,7 +879,7 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
   let rendered=false;
   (j.traces||[]).forEach(t=>{ noteDatasetSemantics((t.engine||{}).dataset_semantics); });
   (j.traces||[]).forEach(t=>{ const eng=t.engine||{};
-    noteAnalysis(eng.analysis);
+    noteAnalysis(eng.analysis); noteExecution(eng.execution);
     if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v); rendered=true; }); }   // composed query: the full view stack
     else if(eng.sql&&eng.answer&&Array.isArray(eng.answer.rows)){                                                  // typed-AST own-data path returns one SQL + answer, no view stack -> surface it as a single step so the SQL + result are visible
       const agg=/\b(sum|count|avg|min|max)\s*\(/i.test(eng.sql);
@@ -874,7 +933,7 @@ async function startRun(){
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
-  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); if(j.present) PRESENT=true; tryPresent(); });
+  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(j.execution); if(j.present) PRESENT=true; tryPresent(); });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
@@ -927,7 +986,7 @@ function resetRun(){
   // (answered by Sonnet, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
   BOOK.forEach(s=>{ if(s.cls!=='input'&&s.cls!=='master') s.stale=true; });   // master data persists like the user's own tables
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
-  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null;
+  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false;
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
   TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];
@@ -951,9 +1010,7 @@ function wireChat(){
   const t=$('tabstrip'); if(t) t.addEventListener('scroll',updateTabArrows);
   window.addEventListener('resize',updateTabArrows);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
-  const cl=$('convlist'); if(cl) cl.addEventListener('click',e=>{
-    const del=e.target.closest('.convdel'); if(del){ e.stopPropagation(); deleteConv(del.dataset.del); return; }
-    const it=e.target.closest('.convitem'); if(it&&it.dataset.cid) openConversation(it.dataset.cid); });
+  bindConversationList();
 }
 
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */

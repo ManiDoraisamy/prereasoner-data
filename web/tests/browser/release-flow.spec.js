@@ -33,7 +33,11 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
 
   await page.goto('/');
   await page.getByRole('button',{name:'Login'}).click();
-  await expect(page.getByRole('button',{name:'Signed in'})).toBeDisabled();
+  // Signing in replaces the badge with the conversation rail: the rail IS the signed-in
+  // state, so a "Signed in" button would be redundant chrome.
+  await expect(page.locator('#homerail')).toBeVisible();
+  await expect(page.getByRole('button',{name:'New conversation'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Login'})).toBeHidden();
 
   const workbook=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([
@@ -67,9 +71,11 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.locator('.wtab').filter({hasText:'calculated'}).click();
   await expect(page.locator('.provtag')).toHaveText(['SRC','ECB','CALC']);
   await expect(page.locator('th').filter({hasText:'rate_to_usd'})).toHaveAttribute('title',/European Central Bank.*ecb-2026-09-05/);
-  await page.getByRole('button',{name:'View SQL'}).click();
+  // No `use` on the URL, so the deployment's auto policy runs Python for this small input
+  // and the sheet's derivation badge names Python rather than SQL.
+  await page.getByRole('button',{name:'View Python'}).click();
   await expect(page.locator('#sqlrow')).toHaveClass(/open/);
-  await expect(page.locator('#sqlrow')).toContainText('SELECT');
+  await expect(page.locator('#sqlrow')).toContainText('for_each(');
 
   await page.locator('#chatq').fill('only Paris');
   await page.getByRole('button',{name:'Send'}).click();
@@ -108,6 +114,44 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
 });
 
 function conversationPattern(){return 'c_[0-9a-f]{32}';}
+
+// The derivation a sheet shows must name the backend that actually produced it. Python mode
+// shows the generated loops; `both` (verify) ran BOTH and proved every stage equal, so it
+// offers a picker that re-renders the pair already in hand — it never re-executes.
+test('the sheet badge names the backend that produced it',async({page})=>{
+  await mockAuth(page,'0');
+  await page.goto('/?load=orders-tiers&use=py');
+  await page.locator('#q').fill('total amount');
+  await page.getByRole('button',{name:'Ask'}).click();
+  await expect(page.locator('.wb.result tbody')).toContainText('180');
+
+  const badge=page.getByRole('button',{name:'View Python'});
+  await expect(badge).toBeVisible();
+  await expect(page.getByRole('button',{name:'View SQL'})).toHaveCount(0);
+  await badge.click();
+  await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
+  await expect(page.locator('#sqlrow .vpy')).toContainText('SUM(result.total, row.converted)');
+});
+
+test('verify mode offers a Python/SQL picker over the same proven stages',async({page})=>{
+  await mockAuth(page,'0');
+  await page.goto('/?load=orders-tiers&use=both');
+  await page.locator('#q').fill('total amount');
+  await page.getByRole('button',{name:'Ask'}).click();
+  await expect(page.locator('.wb.result tbody')).toContainText('180');
+
+  const picker=page.locator('select.srcsel');
+  await expect(picker).toBeVisible();
+  await expect(picker).toHaveValue('py');
+  await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
+
+  const requestsBefore=(await (await page.request.get('/__state')).json()).requestCount;
+  await picker.selectOption('sql');
+  await expect(page.locator('#sqlrow .vsql')).toContainText('SUM');
+  await expect(page.locator('#sqlrow .vpy')).toHaveCount(0);
+  const requestsAfter=(await (await page.request.get('/__state')).json()).requestCount;
+  expect(requestsAfter).toBe(requestsBefore);          // switching language must not re-execute
+});
 
 for(const use of ['sql','py','both']){
   for(const chat of ['0','1']){

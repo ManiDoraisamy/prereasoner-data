@@ -194,7 +194,8 @@ class PythonEmitter:
         files = {"base.py": self._base_source()}
         for table in plan.tables:
             files[f"{table.attribute}.py"] = self._table_source(plan, table)
-        files[f"{wrapper_module}.py"] = self._analysis_source(plan)
+        analysis_source, view_sources = self._analysis_source(plan)
+        files[f"{wrapper_module}.py"] = analysis_source
         manifest = {
             "emitter": "python",
             "emitter_version": self.VERSION,
@@ -208,6 +209,9 @@ class PythonEmitter:
                 name: list(columns) for name, columns in plan.view_columns().items()
             },
             "view_operations": plan.view_operations(),
+            # Per-stage slice of the wrapper source, so the workbook can show the exact
+            # Python that produced a sheet beside that sheet's SQL.
+            "view_sources": view_sources,
             "relationship_edges": [
                 {
                     "source": table.name,
@@ -396,7 +400,12 @@ class PythonEmitter:
             )
         return "\n".join(lines).rstrip() + "\n"
 
-    def _analysis_source(self, plan: AnalysisPlan) -> str:
+    def _analysis_source(self, plan: AnalysisPlan) -> tuple[str, dict[str, str]]:
+        """Return the wrapper source and, per view, the exact slice of it that stage owns.
+
+        The slice is taken from the same ``lines`` buffer the module is joined from, so a
+        stage's displayed Python is a literal substring of the source that executes.
+        """
         table_by_name = {table.name: table for table in plan.tables}
         operator_imports = ", ".join(_operator_imports(plan))
         lines = [
@@ -482,8 +491,11 @@ class PythonEmitter:
                 "",
                 "class " + _wrapper_class(plan) + ":",
                 "    def __init__(self, session: Session, row_limit: int | None = None):",
-                "        self.session = session",
-                "        self.row_limit = row_limit",
+                # Private storage: the analysis slug becomes a method on this class, and a
+                # slug such as "session" would otherwise be shadowed by the instance
+                # attribute and break at call time. A slug can never start with "_".
+                "        self._session = session",
+                "        self._row_limit = row_limit",
                 "",
                 f"    def {plan.slug}(self) -> AnalysisResult:",
             ]
@@ -491,7 +503,9 @@ class PythonEmitter:
 
         previous = None
         emitted_variables = []
+        view_sources: dict[str, str] = {}
         for view in plan.views:
+            stage_start = len(lines)
             lines.append(f"        # View: {view.name}")
             if isinstance(view, CombinedView):
                 lines.extend(self._emit_combined(plan, view, row_classes[view.name]))
@@ -583,6 +597,7 @@ class PythonEmitter:
                     )
                 )
             lines.append("")
+            view_sources[view.name] = "\n".join(lines[stage_start : len(lines) - 1])
             previous = view.name
             emitted_variables.append(view.name)
         lines.extend(
@@ -595,7 +610,7 @@ class PythonEmitter:
                 "        )",
             ]
         )
-        return "\n".join(lines).rstrip() + "\n"
+        return "\n".join(lines).rstrip() + "\n", view_sources
 
     def _emit_combined(
         self, plan: AnalysisPlan, view: CombinedView, row_class: str
@@ -659,8 +674,8 @@ class PythonEmitter:
         lines.extend(
             [
                 "        )",
-                "        if self.row_limit is not None:",
-                "            statement = statement.limit(self.row_limit + 1)",
+                "        if self._row_limit is not None:",
+                "            statement = statement.limit(self._row_limit + 1)",
                 f"        def emit_{view.name}("
                 + ", ".join(table.attribute for table in tables)
                 + "):",
@@ -681,9 +696,9 @@ class PythonEmitter:
                 "",
                 f"        {view.name} = View.from_orm(",
                 f"            name={view.name!r},",
-                "            rows=self.session.execute(statement),",
+                "            rows=self._session.execute(statement),",
                 f"            construct=emit_{view.name},",
-                "            row_limit=self.row_limit,",
+                "            row_limit=self._row_limit,",
                 "        )",
             ]
         )

@@ -1,6 +1,8 @@
 """Hermetic tests for named analysis identity, view names, and streamed/HTTP parity."""
 from __future__ import annotations
 
+import keyword
+
 from engine.analysis import (
     AnalysisError,
     analysis_emitter,
@@ -25,6 +27,14 @@ def test_slugs_are_canonical_bounded_and_deterministic():
     assert len(long.encode("ascii")) <= 40
     assert long == canonical_analysis_slug("A " + "very " * 30 + "long analysis")
     assert len(analysis_view_name(long, "knowledgebase lookup")) <= 63
+    # The slug is also the generated Python method name. "import"/"yield" are ordinary
+    # business words that canonicalize onto Python keywords; before they were prefixed,
+    # AnalysisPlan rejected them and the ValueError escaped /reason as a 500.
+    for word in ("import", "yield", "class", "pass", "lambda"):
+        canonical = canonical_analysis_slug(word)
+        assert not keyword.iskeyword(canonical), word
+        assert canonical.isidentifier(), word
+        assert canonical_analysis_slug(canonical) == canonical, word   # idempotent
 
 
 def test_effective_input_hash_covers_values_references_and_table_order():

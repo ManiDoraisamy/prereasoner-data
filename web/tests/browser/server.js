@@ -43,9 +43,21 @@ function answer(question,analysis){
     sql:'SELECT SUM(converted) AS total FROM calculated',
     views:[
       {name:'calculated',op:'convert',label:'calculated',sql:'SELECT amount, rate_to_usd, amount * rate_to_usd AS converted FROM orders',
+        python:`        # View: calculated
+        calculated = combined.for_each(
+            name='calculated',
+            emit=lambda row: Calculated(
+                converted=MULTIPLY(row.orders.amount, row.exchange_rate.rate_to_usd),
+            ),
+        )`,
         columns:['amount','rate_to_usd','converted'],rows:[[100,1.2,120],[50,1.2,60]],
         column_provenance:[input('amount'),ecb('rate_to_usd'),calc('converted','multiply',['orders.amount','exchange_rate.rate_to_usd'])]},
       {name:'total',op:'group_agg',label:'total',sql:'SELECT SUM(converted) AS total FROM calculated',
+        python:`        # View: total
+        total = calculated.reduce(
+            name='total', initial=Total(total=None),
+            step=lambda result, row: Total(total=SUM(result.total, row.converted)),
+        )`,
         columns:['total'],rows:[[value]],column_provenance:[calc('total','sum',['calculated.converted'])]},
     ],result:{columns:['total'],rows:[[value]],column_provenance:[calc('total','sum',['calculated.converted'])]}};
 }
@@ -54,7 +66,14 @@ function analysisFor(question){
   if(/paris/i.test(question))return {analysis_id:totalSalesId,slug:'total_sales',revision:2,action:'modify',stale:false,display_name:'total sales'};
   return {analysis_id:totalSalesId,slug:'total_sales',revision:1,action:'create',stale:false,display_name:'total sales'};
 }
+// Mirrors enforce_execution_response: `use` selects the backend, and omitted `use` lets the
+// auto policy pick Python for a small input.
+function executionFor(use){
+  const actual=use==='sql'?'sql':(use==='both'||use==='verify')?'verify':'python';
+  return {requested:use||'default',actual,verified:actual==='verify',implementation:'shared_plan',fallback_reason:null};
+}
 function shaped(raw){return {status:'answered',model:'test',answer:raw.result,sql:raw.sql,views:raw.views,
+  execution:raw.execution,
   analysis:raw.analysis,dataset_semantics:raw.dataset_semantics,conversation_id:conversation,trace:{jobId:'test'}};}
 
 const server=http.createServer(async(req,res)=>{
@@ -67,6 +86,7 @@ const server=http.createServer(async(req,res)=>{
     const body=await readJson(req);requestCount+=1;
     if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
     const analysis=analysisFor(body.question||''); const raw=answer(body.question||'',analysis);
+    raw.execution=executionFor(body.use);
     revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
     return send(res,200,raw);
   }
@@ -74,6 +94,7 @@ const server=http.createServer(async(req,res)=>{
     const body=await readJson(req);requestCount+=1;
     if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
     const analysis=analysisFor(body.message||''); const raw=answer(body.message||'',analysis);
+    raw.execution=executionFor(body.use);
     revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
     return send(res,200,{reply:/top selling/i.test(body.message||'')?'Coat is the top-selling product.':
       (/paris/i.test(body.message||'')?'The Paris total is 120.':'Your total is 180.'),

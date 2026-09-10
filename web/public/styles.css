@@ -222,6 +222,19 @@ body.app{background:#fff}
 .sqlrow.open{display:block}
 .vsql{display:flex;flex-wrap:wrap;gap:4px}.vtok{background:#4a2db5;color:#fff;border-radius:6px;padding:2px 7px;font:600 11px var(--mono)}
 .vtok.kw{background:#7c3aed}.vtok.world{background:#c026d3}.vtok.lit{background:#d6336c}.vtok.tbl{background:#0891b2}
+/* Generated Python keeps its line structure — the loop nesting IS the derivation, so it is a
+   code block, not the SQL token chips. */
+.vpy{margin:0;max-height:320px;overflow:auto;white-space:pre;font:500 11.5px/1.65 var(--mono);color:#2a1c4e;-webkit-font-smoothing:antialiased}
+.vpy .pt.kw{color:#7c3aed;font-weight:700}
+.vpy .pt.op{color:#0891b2;font-weight:700}
+.vpy .pt.str{color:#d6336c}
+.vpy .pt.cmt{color:#8b83a8;font-style:italic}
+/* The language picker replaces the badge only when BOTH backends ran; it must read as the
+   same pill, not a form control. */
+.srcsel{-webkit-appearance:none;appearance:none;background:#fff;padding-right:22px;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M1 3.5 5 7.5 9 3.5' fill='none' stroke='%236d28d9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center}
+.srcsel:hover{background-color:#f3effd}
 .sheetscroll{flex:1;min-height:0;overflow:auto}
 .sheetscroll::-webkit-scrollbar{height:9px;width:9px}.sheetscroll::-webkit-scrollbar-thumb{background:#d9d2f3;border-radius:6px}.sheetscroll::-webkit-scrollbar-track{background:transparent}
 table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%}
@@ -346,6 +359,22 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .menubtn{all:unset;cursor:pointer;width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
 .menubtn:hover{background:rgba(255,255,255,.14)}
 .htitle{flex:1;min-width:0;color:#fff;font:600 15px var(--disp);letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.96}
+/* Signed-in home rail. White against the purple canvas — the same contrast the /reason
+   drawer already uses, so "your stuff" reads as a distinct surface from the workspace.
+   It is a permanent rail, not an overlay, so it takes a hairline border and no shadow. */
+.homerail{position:fixed;top:0;left:0;bottom:0;width:264px;background:#fff;border-right:1px solid #ece7fa;
+  z-index:30;display:flex;flex-direction:column;overflow:hidden}
+.homerail[hidden]{display:none}
+.railtop{padding:16px 14px 10px}
+.railnew{all:unset;box-sizing:border-box;display:block;width:100%;text-align:center;cursor:pointer;
+  padding:10px 12px;border-radius:11px;background:var(--brand);color:#fff;font:600 13px var(--disp)}
+.railnew:hover{filter:brightness(1.07)}
+.railprivacy{display:block;padding:12px 18px 16px;color:var(--card-ink-dim);font:12px var(--disp);text-decoration:none}
+.railprivacy:hover{color:var(--brand);text-decoration:underline}
+body.hasrail .page{margin-left:264px}
+/* Below the rail's breakpoint the hero needs the full width back; the drawer on /reason
+   remains the way to reach conversations on a phone. */
+@media(max-width:900px){ .homerail{display:none} body.hasrail .page{margin-left:0} }
 .drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(20,12,48,.42);z-index:40}
 .drawer-backdrop.open{display:block}
 .drawer{position:fixed;top:0;left:0;bottom:0;width:300px;max-width:86vw;background:#fff;z-index:41;transform:translateX(-100%);transition:transform .2s ease;box-shadow:0 0 46px rgba(59,23,174,.30);display:flex;flex-direction:column}

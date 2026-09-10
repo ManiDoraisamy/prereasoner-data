@@ -1667,6 +1667,66 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
 
 
 # Discover the contract cases so new tests cannot be omitted from the module runner.
+def test_a_slug_naming_wrapper_state_still_executes():
+    """The slug is a method on the generated wrapper, so it can collide with the wrapper's
+    own constructor arguments. While those were stored as public attributes, a slug of
+    "session" was shadowed by the instance attribute and the call raised
+    "'Session' object is not callable" instead of running the analysis."""
+    items = TableSpec(
+        name="items",
+        class_name="Item",
+        attribute="items",
+        schema="conversation",
+        columns=(
+            ColumnSpec(
+                "item_id", "item_id", SQLType.INTEGER, primary_key=True, nullable=False
+            ),
+            ColumnSpec("amount", "amount", SQLType.INTEGER, nullable=False),
+        ),
+    )
+    for slug in ("session", "row_limit"):
+        plan = AnalysisPlan(
+            slug=slug,
+            tables=(items,),
+            views=(
+                CombinedView(f"{slug}_combined", ("items",)),
+                ReducedView(
+                    f"{slug}_total",
+                    f"{slug}_combined",
+                    (AggregateValue("total", "SUM", ColumnValue("items", "amount")),),
+                ),
+            ),
+        )
+        result = _execute_fixture(
+            plan,
+            [
+                "CREATE TABLE conversation.items ("
+                "item_id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)",
+                "INSERT INTO conversation.items VALUES (1, 10), (2, 32)",
+            ],
+            mode="verify",
+            estimated_rows=2,
+        )
+        assert result.rows == ({"total": 42},), (slug, result.rows)
+        # the stage record carries the Python beside the SQL for the workbook
+        views = result.record()["views"]
+        assert all(view["python"] for view in views), slug
+
+
+def test_every_stage_reports_the_exact_python_that_produced_it():
+    """A stage's displayed Python must be a literal slice of the module that executed,
+    never a re-rendering of the plan, or the workbook would show code that never ran."""
+    plan = _plan()
+    package = PythonEmitter().emit(plan)
+    source = package.files[package.entrypoint]
+    sources = package.manifest["view_sources"]
+    assert set(sources) == {view.name for view in plan.views}
+    for view in plan.views:
+        segment = sources[view.name]
+        assert segment.startswith(f"        # View: {view.name}\n"), view.name
+        assert segment in source, view.name
+
+
 TESTS = [
     value
     for name, value in sorted(globals().items())

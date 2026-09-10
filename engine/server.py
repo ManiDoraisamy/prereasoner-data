@@ -708,6 +708,13 @@ class H(BaseHTTPRequestHandler):
                             dataset_semantics=semantics, **serve_kwargs
                         )
                         res = enforce_execution_response(res, req.get("use"))
+                    # Python-by-default retreating to SQL must not be silent. Carry only the
+                    # exception CLASS onto the request's one timing line; the rest of the
+                    # reason can quote user data and stays in the response envelope.
+                    reason = ((res or {}).get("execution") or {}).get("fallback_reason") \
+                        if isinstance(res, dict) else None
+                    if reason:
+                        self._py_fallback = str(reason).split(":", 1)[0].strip()
                     if isinstance(res, dict) and res.get("deterministic"):
                         for index, view in enumerate(res.get("views") or ()):
                             emit(f"views/{index}", view)
@@ -777,7 +784,8 @@ class H(BaseHTTPRequestHandler):
             print(f"world request failed: {type(e).__name__} at {frames}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
         finally:
-            request_timing.emit("reason", status=getattr(self, "_status", None))
+            request_timing.emit("reason", status=getattr(self, "_status", None),
+                                py_fallback=getattr(self, "_py_fallback", None))
             request_timing.end(timing_token)
 
     # ---------------- /api/dimension (stateless, authenticated) ----------------
