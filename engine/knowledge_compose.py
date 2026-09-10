@@ -38,7 +38,11 @@ from engine.numeric import parse_decimal
 
 
 _TRACE_VIEW_FIELDS = (
-    "op", "label", "sql", "columns", "rows", "source_release_id", "column_provenance",
+    # `python` rides beside `sql` so the STREAMED trail and the returned trail carry the same
+    # derivation (SHEETS_AS_REASONING). Without it a streamed sheet had SQL but no Python and
+    # the workbook badge fell back to SQL even when Python produced the rows.
+    "op", "label", "sql", "python", "columns", "rows", "source_release_id",
+    "column_provenance",
 )
 
 

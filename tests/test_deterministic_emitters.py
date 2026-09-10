@@ -1727,6 +1727,28 @@ def test_every_stage_reports_the_exact_python_that_produced_it():
         assert segment in source, view.name
 
 
+def test_streamed_trace_carries_the_same_derivation_as_the_returned_trace():
+    """SHEETS_AS_REASONING: the streamed trail and the returned trail are the same trail.
+
+    The compose trace whitelist bounds the wire payload. When it listed `sql` but not
+    `python`, a streamed sheet arrived with SQL only, so the workbook badge fell back to
+    SQL even though Python had produced the rows.
+    """
+    from engine.knowledge_compose import _TRACE_VIEW_FIELDS, _trace_view
+
+    assert "python" in _TRACE_VIEW_FIELDS
+    view = {
+        "name": "total_amount_total",
+        "op": "group_agg",
+        "label": "total",
+        "sql": "SELECT SUM(x) AS total FROM prior",
+        "python": "        # View: total_amount_total\n        total = prior.reduce(...)",
+        "columns": ["total"],
+        "rows": [[42]],
+    }
+    assert _trace_view(view)["python"] == view["python"]
+
+
 TESTS = [
     value
     for name, value in sorted(globals().items())

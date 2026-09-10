@@ -372,6 +372,9 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .railprivacy{display:block;padding:12px 18px 16px;color:var(--card-ink-dim);font:12px var(--disp);text-decoration:none}
 .railprivacy:hover{color:var(--brand);text-decoration:underline}
 body.hasrail .page{margin-left:264px}
+/* .ghost uses `all:unset`, which resets display and so BEATS the UA `[hidden]{display:none}`.
+   Without this the signed-in login button stayed on screen next to the rail. */
+.ghost[hidden]{display:none}
 /* Below the rail's breakpoint the hero needs the full width back; the drawer on /reason
    remains the way to reach conversations on a phone. */
 @media(max-width:900px){ .homerail{display:none} body.hasrail .page{margin-left:0} }
