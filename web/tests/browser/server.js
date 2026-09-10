@@ -50,7 +50,8 @@ function answer(question,analysis){
                 converted=MULTIPLY(row.orders.amount, row.exchange_rate.rate_to_usd),
             ),
         )`,
-        columns:['amount','rate_to_usd','converted'],rows:[[100,1.2,120],[50,1.2,60]],
+        // The engine aliases joined columns as <table>__<column>; calculated values stay bare.
+        columns:['orders__amount','exchange_rate__rate_to_usd','converted'],rows:[[100,1.2,120],[50,1.2,60]],
         column_provenance:[input('amount'),ecb('rate_to_usd'),calc('converted','multiply',['orders.amount','exchange_rate.rate_to_usd'])]},
       {name:'total',op:'group_agg',label:'total',sql:'SELECT SUM(converted) AS total FROM calculated',
         python:`        # View: total

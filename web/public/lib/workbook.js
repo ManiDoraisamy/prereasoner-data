@@ -44,8 +44,9 @@ let PRESENT=false;                               // present mode: a REAL answer,
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
 let EXEC=null;                                   // latest {actual,verified}; each derivation sheet owns its execution
 let EXEC_BY_KEY=new Map();                       // call jobId -> execution; closes cross-node RTDB ordering races
-let SRC='py';                                    // chosen derivation language when BOTH backends ran
+let SRC='py';                                    // derivation language being READ; both sources always exist
 let SRCOPEN=false;                               // the source panel's open state, preserved across repaints
+let ONESHOT_USE=null;                            // one confirmed "run both and compare"; the next ordinary question clears it
 let DS_META=[];                                  // dataset semantics: conversation-stated measure metadata [{table, column, currency, basis}]
                                                  // from the engine's dataset_semantics response field -> a badge on the user's column header
 function noteDatasetSemantics(list){
@@ -103,18 +104,19 @@ function executionOf(body){
   const found=(body.traces||[]).map(t=>t&&t.engine&&t.engine.execution).filter(Boolean);
   return found.length?found[found.length-1]:null;
 }
+// Both emitters always run, so a sheet carries BOTH sources whichever backend executed.
+// `ran` is therefore the only honest distinction: which one produced these rows. Reading the
+// other language is free and changes nothing; only `ran` may not be claimed without evidence.
 function sheetSource(m){
   const py=(m&&m.python)||'', sql=(m&&m.sql)||'', execution=normalizedExecution(m&&m.execution);
   const actual=(execution&&execution.actual)||'';
-  const both=!!(py&&sql&&actual==='verify'&&execution.verified);
-  // With both sources but no execution evidence, show no badge instead of falsely
-  // claiming SQL while a Python result is still completing over RTDB.
-  let primary='';
-  if(both)primary='py';
-  else if(actual==='python')primary=py?'py':'';
-  else if(actual==='sql')primary=sql?'sql':'';
-  else if(!actual)primary=py&&!sql?'py':(sql&&!py?'sql':'');
-  return {py,sql,both,primary};
+  const verified=!!(execution&&execution.verified);
+  const ran = actual==='verify'&&verified ? 'both'
+            : actual==='python' ? 'py'
+            : actual==='sql' ? 'sql' : '';
+  const primary = SRC==='sql' ? (sql?'sql':(py?'py':''))
+                : (py?'py':(sql?'sql':''));
+  return {py,sql,ran,primary,both:ran==='both'};
 }
 const PYKW=/^(?:def|return|for|in|if|else|elif|None|True|False|lambda|not|and|or|is|class|import|from|while|continue|break)$/;
 const PYOP=/^(?:SUM|MAX|MIN|COUNT|COUNT_STAR|AVG|FINALIZE_AVG|AverageState|ADD|SUBTRACT|MULTIPLY|DIVIDE|EQ|NE|GT|GE|LT|LE|IS|IS_NOT|AND|OR|LOWER|TEXT|View)$/;
@@ -176,6 +178,14 @@ function renderGrid(m){
     if(s.includes('CENTRAL BANK')||s==='ECB')return 'ECB'; if(s.includes('IANA'))return 'IANA';
     if(s.includes('SAVED REFERENCE'))return 'REF'; return s.replace(/[^A-Z0-9]/g,'').slice(0,6)||'REF';};
   const provClass=p=>p&&p.kind==='input'?'src':p&&p.kind==='derived'?'ai':p&&p.kind==='mixed'?'mixed':'kb';
+  // Engine views alias columns as <table>__<column> so joined tables cannot collide. That alias
+  // is the wire name and the SQL name; the header shows the column alone and carries its table
+  // as a chip. Only engine-authored sheets are split — an uploaded header may contain "__".
+  const splitCol=name=>{ const parts=showProv?String(name).match(/^([A-Za-z0-9_]+)__(.+)$/):null;
+    return parts?{table:parts[1],label:parts[2]}:{table:'',label:String(name)}; };
+  // The kind is a glyph, not a word: the table chip beside it already carries the text.
+  const PROV_EMOJI={SRC:'\u{1F4C4}',USER:'\u{1F4AC}',CALC:'\u{1F9EE}',WIKI:'\u{1F30D}',ECB:'\u{1F4B1}',IANA:'\u{1F310}',REF:'\u{1F4DA}'};
+  const provEmoji=p=>PROV_EMOJI[provTag(p)]||PROV_EMOJI.REF;
   const provTitle=p=>{if(!p)return ''; let out=p.kind==='input'?'From your uploaded data':
       p.kind==='asserted'?'Supplied in this conversation':p.kind==='derived'?'Calculated by Prereasoner':'Reference data from '+(p.source||'a published source');
     if(p.operation)out+=' · '+p.operation; if(p.release_id)out+=' · release '+p.release_id;
@@ -194,7 +204,9 @@ function renderGrid(m){
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
         :(ds?' title="'+escAttr('Denominated in '+ds.currency+' — you said: '+((ds.basis&&ds.basis.text)||'in the chat'))+'"'
           :(pv?' title="'+escAttr(provTitle(pr))+'"':'')))
-      +'>'+esc(cols[ci])+(pv?'<span class="provtag '+pv+'">'+esc(provTag(pr))+'</span>':'')
+      +'>'+esc(splitCol(cols[ci]).label)
+      +(splitCol(cols[ci]).table?'<span class=tabtag title="'+escAttr('Column of '+splitCol(cols[ci]).table)+'">'+esc(splitCol(cols[ci]).table)+'</span>':'')
+      +(pv?'<span class="provemoji '+pv+'" role=img aria-label="'+escAttr(provTitle(pr))+'" title="'+escAttr(provTitle(pr))+'">'+provEmoji(pr)+'</span>':'')
       +(ds?'<span class="provtag kb" title="'+escAttr('Supplied in conversation')+'">'+esc(ds.currency)+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
@@ -265,23 +277,43 @@ function renderSheet(){
 }
 // One control per sheet. When only one backend ran it is a button naming that language;
 // when `verify` ran both it becomes a Python/SQL picker, defaulting to Python.
+// Both options stay ENABLED: each names a source that exists. A disabled option could not be
+// chosen at all, and greying one would claim it is unavailable when it is merely unexecuted.
 function srcBadge(m){
-  const s=sheetSource(m); if(!s.primary) return '';
-  if(s.both) return '<span class=spacer></span><select class="sqlbtn srcsel" aria-label="Derivation language"'
-    +' title="Both backends ran and every stage matched — switch the view" onchange="pickSrc(this.value)">'
-    +'<option value="py"'+(SRC==='py'?' selected':'')+'>Python</option>'
-    +'<option value="sql"'+(SRC==='sql'?' selected':'')+'>SQL</option></select>';
-  const lbl=s.primary==='py'?'Python':'SQL';
-  return '<span class=spacer></span><button class=sqlbtn title="View the '+lbl+' for this sheet"'
-    +' aria-label="View '+lbl+'" onclick=toggleSrc()>'+lbl+'</button>';
+  const s=sheetSource(m); if(!s.py&&!s.sql) return '';
+  const ran=l=>s.ran==='both'||s.ran===l;
+  const opt=(v,label)=>'<option value="'+v+'"'+(s.primary===v?' selected':'')+'>'
+    +label+(ran(v)?' · ran':'')+'</option>';
+  return '<span class=spacer></span><select class="sqlbtn srcsel" aria-label="Derivation language"'
+    +' title="Switch the derivation you are reading. This never re-runs the calculation."'
+    +' onchange="pickSrc(this.value)">'
+    +(s.py?opt('py','Python'):'')+(s.sql?opt('sql','SQL'):'')+'</select>';
 }
 function srcPanel(m){
   const s=sheetSource(m); if(!s.primary) return '';
-  const lang=s.both?SRC:s.primary;
+  const lang=s.primary;
   const body = lang==='py'
     ? '<pre class=vpy>'+pyHighlight(dedent(s.py))+'</pre>'
     : '<div class=vsql>'+sqlTokens(s.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div>';
-  return '<div class="sqlrow'+(SRCOPEN?' open':'')+'" id=sqlrow>'+body+'</div>';
+  let note='';
+  if(s.ran==='both'){
+    note='<div class="srcnote ok">Both backends ran and every stage matched.</div>';
+  } else if(s.ran&&s.ran!==lang){
+    const shown=lang==='py'?'Python':'SQL', actual=s.ran==='py'?'Python':'SQL';
+    note='<div class=srcnote>This '+shown+' is the stage-aligned counterpart of the '+actual
+      +' that produced these rows &mdash; it was not run. '
+      +'<button class=srclink onclick="verifyRerun()">Run both and compare</button></div>';
+  }
+  return '<div class="sqlrow'+(SRCOPEN?' open':'')+'" id=sqlrow>'+note+body+'</div>';
+}
+// Re-asking is the only way to execute the other backend: an analysis revision is immutable,
+// and `use` alone never reruns history. Scoped to ONE request so the conversation is not
+// silently pinned to a slower backend afterwards.
+function verifyRerun(){
+  if(!question||!((SETTLED&&convId())||FAILMSG)) return;
+  if(!confirm('Run this same calculation with BOTH Python and SQL and compare every step?\n\nIt asks the question again; the rest of the conversation keeps its normal setting.')) return;
+  ONESHOT_USE='both';
+  archiveTurn(); resetRun(); paint(); startRun();
 }
 function toggleSrc(){ SRCOPEN=!SRCOPEN; const r=$('sqlrow'); if(r) r.classList.toggle('open',SRCOPEN); }
 function pickSrc(lang){ SRC=(lang==='sql')?'sql':'py'; SRCOPEN=true; renderSheet(); }
@@ -859,7 +891,7 @@ async function startTurn(){
   const httpPromise=fetch(CHAT_ENDPOINT,{method:'POST',
     headers:{'content-type':'application/json','Authorization':'Bearer '+token},
     body:JSON.stringify(Object.assign({message:question, tables:SHEETS, history:HISTORY, turnId:turnId,
-      conversation_id:convId()}, executionRequestFields()))}).then(parseBody).catch(()=>null);
+      conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody).catch(()=>null);
   // (1) LIVE: subscribe to the turn node -> render each announced engine call's trace as it streams. This is
   // the PRIMARY completion path: the Firebase Hosting proxy times out at ~60s but the engine cold start +
   // Sonnet loop can exceed that, so the answer often lands on RTDB after the HTTP call has already given up.
@@ -965,7 +997,7 @@ async function startRun(){
   // response. Keep the parsed-body promise so both fallbacks can await it (body reads exactly once).
   const parseBody=async r=>{ try{ if(!r)return null; const txt=await r.text(); return (r.ok&&txt.trim().charAt(0)==='{')?JSON.parse(txt):null; }catch(_){ return null; } };
   const httpPromise=fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},
-                                    body:JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields()))}).then(parseBody).catch(()=>null);
+                                    body:JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody).catch(()=>null);
   // Persist the server-authoritative conversation_id — GUARDED to this turn (RUN===myRun) so a slow
   // earlier turn can't clobber a later one — and re-render so the follow-up send button re-enables.
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
@@ -1007,7 +1039,7 @@ async function startRun(){
     let j=null;
     for(let a=0;a<5&&!j&&live()&&!DONE;a++){
       try{
-        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields()))}).then(parseBody);
+        j=a===0?await httpPromise:await fetch(ENDPOINT,{method:'POST',headers:{'content-type':'application/json','Authorization':'Bearer '+token},body:JSON.stringify(Object.assign({tables:SHEETS,question:question,jobId:jobId,conversation_id:convId()}, executionRequestFields(ONESHOT_USE)))}).then(parseBody);
         if(j)break;
       }catch(_){}
       if(a<4&&live()){ STATUS=WB.warmupMsg; renderRail(); await new Promise(res=>setTimeout(res,4000)); }
@@ -1037,6 +1069,7 @@ function resetRun(){
 function sendChat(){
   const box=$('chatq'); const q=(box&&box.value||'').trim();
   if(!q||!((SETTLED&&convId())||FAILMSG))return;              // one run at a time; a follow-up needs the conversation_id (else it orphans) — mirrors the send-button gate
+  ONESHOT_USE=null;                                           // an ordinary question returns to the deployment default
   archiveTurn();
   box.value='';
   question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}

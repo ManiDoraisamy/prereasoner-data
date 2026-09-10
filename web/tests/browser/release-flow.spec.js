@@ -69,12 +69,19 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect.poll(async()=>((await request.get('/__state')).json()).then(v=>v.requestCount)).toBe(1);
 
   await page.locator('.wtab').filter({hasText:'calculated'}).click();
-  await expect(page.locator('.provtag')).toHaveText(['SRC','ECB','CALC']);
+  // The header carries the owning table as a chip and the provenance kind as a glyph, so the
+  // <table>__<column> wire alias never reaches the user. aria-label keeps the kind readable.
+  await expect(page.locator('.provemoji')).toHaveText(['\u{1F4C4}','\u{1F4B1}','\u{1F9EE}']);
+  await expect(page.locator('.provemoji').first()).toHaveAttribute('aria-label',/uploaded data/);
+  await expect(page.locator('th').filter({hasText:'rate_to_usd'}).locator('.tabtag')).toHaveText('exchange_rate');
+  await expect(page.locator('th').filter({hasText:'rate_to_usd'})).not.toContainText('exchange_rate__rate_to_usd');
   await expect(page.locator('th').filter({hasText:'rate_to_usd'})).toHaveAttribute('title',/European Central Bank.*ecb-2026-09-05/);
-  // No `use` on the URL, so the deployment's auto policy runs Python for this small input
-  // and the sheet's derivation badge names Python rather than SQL.
-  await page.getByRole('button',{name:'View Python'}).click();
-  await expect(page.locator('#sqlrow')).toHaveClass(/open/);
+  // No `use` on the URL, so the deployment's auto policy runs Python for this small input.
+  // Both sources exist, so both are offered; only Python is marked as the one that ran.
+  const picker=page.locator('select.srcsel');
+  await expect(picker).toHaveValue('py');
+  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
+  await expect(picker.locator('option[value="sql"]')).toHaveText('SQL');
   await expect(page.locator('#sqlrow')).toContainText('for_each(');
 
   await page.locator('#chatq').fill('only Paris');
@@ -129,12 +136,17 @@ test(`the sheet badge names the backend that produced it (${chat==='1'?'chat':'d
   await page.getByRole('button',{name:'Ask'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('180');
 
-  const badge=page.getByRole('button',{name:'View Python'});
-  await expect(badge).toBeVisible();
-  await expect(page.getByRole('button',{name:'View SQL'})).toHaveCount(0);
-  await badge.click();
+  const picker=page.locator('select.srcsel');
+  await expect(picker).toHaveValue('py');
+  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
   await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
   await expect(page.locator('#sqlrow .vpy')).toContainText('SUM(result.total, row.converted)');
+  // Reading the unexecuted counterpart is free and must not re-run anything.
+  const before=(await (await page.request.get('/__state')).json()).requestCount;
+  await picker.selectOption('sql');
+  await expect(page.locator('#sqlrow .srcnote')).toContainText('was not run');
+  await expect(page.locator('#sqlrow .vsql')).toContainText('SUM');
+  expect((await (await page.request.get('/__state')).json()).requestCount).toBe(before);
 });
 }
 
@@ -148,6 +160,9 @@ test('verify mode offers a Python/SQL picker over the same proven stages',async(
   const picker=page.locator('select.srcsel');
   await expect(picker).toBeVisible();
   await expect(picker).toHaveValue('py');
+  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
+  await expect(picker.locator('option[value="sql"]')).toHaveText(/SQL . ran/);
+  await expect(page.locator('#sqlrow .srcnote')).toContainText('every stage matched');
   await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
 
   const requestsBefore=(await (await page.request.get('/__state')).json()).requestCount;
@@ -179,12 +194,13 @@ test('an orchestrated turn keeps backend provenance per engine call',async({page
   await page.getByRole('button',{name:'Ask'}).click();
   const derivationTabs=page.locator('.wtab').filter({has:page.locator('.dot.deriv')});
   await expect(derivationTabs).toHaveCount(2);
+  const picker=page.locator('select.srcsel');
   await derivationTabs.nth(0).click();
-  await expect(page.getByRole('button',{name:'View Python'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'View SQL'})).toHaveCount(0);
+  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
+  await expect(picker.locator('option[value="sql"]')).toHaveText('SQL');
   await derivationTabs.nth(1).click();
-  await expect(page.getByRole('button',{name:'View SQL'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'View Python'})).toHaveCount(0);
+  await expect(picker.locator('option[value="sql"]')).toHaveText(/SQL . ran/);
+  await expect(picker.locator('option[value="py"]')).toHaveText('Python');
 });
 
 test('signed-in conversations remain reachable on mobile home',async({page})=>{

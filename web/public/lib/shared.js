@@ -29,7 +29,10 @@ function executionQuery(search=''){
   const query=params.toString();
   return query ? '?'+query : '';
 }
-function executionRequestFields(){ return EXECUTION_USE ? {use:EXECUTION_USE} : {}; }
+// `override` serves a ONE-OFF backend choice (the workbook's "run both and compare").
+// It is deliberately not written back to EXECUTION_USE, so the conversation returns to the
+// deployment default on the next turn instead of silently pinning itself to one backend.
+function executionRequestFields(override){ const use=override||EXECUTION_USE; return use ? {use} : {}; }
 
 // sessionStorage keys — the only state handed between pages (tables, question, clarify payload).
 const SS = {
