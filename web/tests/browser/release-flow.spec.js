@@ -118,8 +118,12 @@ function conversationPattern(){return 'c_[0-9a-f]{32}';}
 // The derivation a sheet shows must name the backend that actually produced it. Python mode
 // shows the generated loops; `both` (verify) ran BOTH and proved every stage equal, so it
 // offers a picker that re-renders the pair already in hand — it never re-executes.
-test('the sheet badge names the backend that produced it',async({page})=>{
-  await mockAuth(page,'0');
+// Both transports, because they carry `execution` in DIFFERENT places: the direct engine
+// reply has it at the top level, the orchestrated /chat reply nests it under
+// traces[].engine. Testing only the direct path let a SQL-labelled Python answer ship.
+for(const chat of ['0','1']){
+test(`the sheet badge names the backend that produced it (${chat==='1'?'chat':'direct'})`,async({page})=>{
+  await mockAuth(page,chat);
   await page.goto('/?load=orders-tiers&use=py');
   await page.locator('#q').fill('total amount');
   await page.getByRole('button',{name:'Ask'}).click();
@@ -132,6 +136,7 @@ test('the sheet badge names the backend that produced it',async({page})=>{
   await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
   await expect(page.locator('#sqlrow .vpy')).toContainText('SUM(result.total, row.converted)');
 });
+}
 
 test('verify mode offers a Python/SQL picker over the same proven stages',async({page})=>{
   await mockAuth(page,'0');

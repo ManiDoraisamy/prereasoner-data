@@ -83,6 +83,15 @@ function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='maste
 // stage equal, so the language switch re-renders the pair we already have; it never asks
 // the server to execute a second time.
 function noteExecution(value){ if(value&&value.actual) EXEC={actual:value.actual, verified:!!value.verified}; }
+// The turn's body has two shapes: the direct engine reply carries `execution` at the top
+// level, while the orchestrated /chat reply nests it per engine call under traces[].engine.
+// The LAST engine call is the one whose views are on screen.
+function executionOf(body){
+  if(!body) return null;
+  if(body.execution) return body.execution;
+  const found=(body.traces||[]).map(t=>t&&t.engine&&t.engine.execution).filter(Boolean);
+  return found.length?found[found.length-1]:null;
+}
 function sheetSource(m){
   const py=(m&&m.python)||'', sql=(m&&m.sql)||'', actual=(EXEC&&EXEC.actual)||'';
   const both=!!(py&&sql&&actual==='verify');
@@ -933,7 +942,7 @@ async function startRun(){
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
-  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(j.execution); if(j.present) PRESENT=true; tryPresent(); });
+  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(executionOf(j)); if(j.present) PRESENT=true; tryPresent(); });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
