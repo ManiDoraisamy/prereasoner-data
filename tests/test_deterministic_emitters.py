@@ -480,7 +480,11 @@ def test_typed_date_literals_compare_as_dates_in_generated_python():
         {
             "name": "events",
             "columns": ["event_id", "occurred"],
-            "rows": [[1, "2025-12-31"], [2, "2026-01-01"]],
+            "rows": [
+                [1, "2025-12-31"],
+                [2, "2026-01-01"],
+                [3, "2026-01-02 03:04:05"],
+            ],
         }
     ]
     schema = [
@@ -488,14 +492,18 @@ def test_typed_date_literals_compare_as_dates_in_generated_python():
             "table": "events",
             "name": "event_id",
             "affinity": "INTEGER",
-            "values": [1, 2],
+            "values": [1, 2, 3],
         },
         {
             "table": "events",
             "name": "occurred",
             "affinity": "TEXT",
             "is_date": True,
-            "values": ["2025-12-31", "2026-01-01"],
+            "values": [
+                "2025-12-31",
+                "2026-01-01",
+                "2026-01-02 03:04:05",
+            ],
         },
     ]
     query = SelectQuery(
@@ -532,7 +540,7 @@ def test_typed_date_literals_compare_as_dates_in_generated_python():
                 schema_map={"conversation": "main"},
                 row_limit=10_000,
             )
-            assert materialized_python_views(result, plan)[-1] == ({"count": 1},)
+            assert materialized_python_views(result, plan)[-1] == ({"count": 2},)
     finally:
         engine.dispose()
 

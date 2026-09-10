@@ -36,6 +36,7 @@ objects, and uses `lazy="raise"` to prevent an accidental N+1 query.
 | Python rendered booleans as `True`/`False` while PostgreSQL text casts use lowercase | The `TEXT` operator emits `true`/`false` and preserves null |
 | Float literals could introduce binary-float differences | Plan construction canonicalizes finite floats to `Decimal`; non-finite and unsupported date-time literals fail before emission |
 | Typed SQL date literals reached Python as strings | The AST adapter parses validated ISO date literals to `date`, so ORM date comparisons use the same type |
+| SQLite-backed evaluation could label timestamp text as a date and fail while loading an unrelated mapped column | Generated date mappings use native PostgreSQL `DATE` and normalize SQLite ISO date or timestamp text before execution |
 | `IS` accepted operands that the SQL emitter could not represent consistently | Plans restrict `IS` and `IS NOT` to null and boolean literals |
 | Relationship predicates could capture an unrelated table | Validation scopes primary and secondary join predicates to the relationship endpoints and association table |
 | Explicit execution modes could accept negative or boolean row budgets | All modes validate nonnegative integer estimates and limits before selection |

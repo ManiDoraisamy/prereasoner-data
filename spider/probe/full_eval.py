@@ -702,14 +702,12 @@ def main():
         {"contract": checkpoint_contract, "records": checkpoint_records()},
     )
     suf = suffix
-    with open(os.path.join(args.out, f"full_eval{suf}.json"), "w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2)
-        handle.write("\n")
-    with open(
-        os.path.join(args.out, f"full_eval_per_example{suf}.json"), "w", encoding="utf-8"
-    ) as handle:
-        json.dump(per_example, handle, indent=2)
-        handle.write("\n")
+    _write_json_atomic(
+        os.path.join(args.out, f"full_eval{suf}.json"), summary
+    )
+    _write_json_atomic(
+        os.path.join(args.out, f"full_eval_per_example{suf}.json"), per_example
+    )
 
     P = print
     P("\n" + "=" * 78); P("PROBE D+ — FULL OFFLINE SYSTEM (typed-AST planner + compose, live routing)"); P("=" * 78)

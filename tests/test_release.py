@@ -58,6 +58,9 @@ def test_spider_evaluator_supports_module_invocation():
     )
     assert result.returncode == 0, result.stderr
     assert "--config" in result.stdout
+    source = _text("spider/probe/full_eval.py")
+    assert "json.dump(" not in source
+    assert source.count("_write_json_atomic(") >= 6
 
 
 def test_public_weight_bundle_is_manifested_and_documented():

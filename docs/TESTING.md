@@ -8,8 +8,8 @@ Spider accuracy evaluation. They answer different questions and should not be co
 The emitter suite executes real generated Python and SQL over SQLite fixtures. It covers stage
 alignment, composite object relationships, missing multi-hop references, retained calculated fields,
 grouped output order, full results versus 50-row previews, identity coercion, source determinism,
-request context isolation, and explicit-mode fallback rejection. Numeric comparison tests ensure
-large decimal differences are not rounded away. SQLite's native arithmetic is not a substitute for
+date/timestamp source normalization, request context isolation, and explicit-mode fallback rejection.
+Numeric comparison tests ensure large decimal differences are not rounded away. SQLite's native arithmetic is not a substitute for
 PostgreSQL NUMERIC coverage.
 
 `npm run test:browser` exercises the release journey plus `sql`, `py`, and `both` across direct and

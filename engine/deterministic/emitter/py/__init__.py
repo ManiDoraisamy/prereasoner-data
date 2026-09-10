@@ -42,7 +42,7 @@ _TYPE = {
     SQLType.INTEGER: ("int", "BigInteger"),
     SQLType.REAL: ("Decimal", "Numeric(58, 20)"),
     SQLType.BOOLEAN: ("bool", "Boolean"),
-    SQLType.DATE: ("date", "Date"),
+    SQLType.DATE: ("date", "NormalizedDate"),
     SQLType.TEXT: ("str", "Text"),
     SQLType.UNKNOWN: ("object", "Text"),
 }
@@ -149,7 +149,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 4
+    VERSION = 5
 
     def emit(
         self,
@@ -223,7 +223,43 @@ class PythonEmitter:
     @staticmethod
     def _base_source() -> str:
         return (
-            "from sqlalchemy.orm import DeclarativeBase\n\n\n"
+            "from datetime import date, datetime\n"
+            "\n"
+            "from sqlalchemy import Date, Text\n"
+            "from sqlalchemy.orm import DeclarativeBase\n"
+            "from sqlalchemy.types import TypeDecorator\n"
+            "\n"
+            "\n"
+            "def normalize_date(value):\n"
+            "    if value is None or type(value) is date:\n"
+            "        return value\n"
+            "    if isinstance(value, datetime):\n"
+            "        return value.date()\n"
+            "    text = str(value).strip()\n"
+            "    try:\n"
+            "        return date.fromisoformat(text)\n"
+            "    except ValueError:\n"
+            "        return datetime.fromisoformat(text).date()\n"
+            "\n"
+            "\n"
+            "class NormalizedDate(TypeDecorator[date]):\n"
+            "    impl = Date\n"
+            "    cache_ok = True\n"
+            "\n"
+            "    def load_dialect_impl(self, dialect):\n"
+            "        storage = Text() if dialect.name == 'sqlite' else Date()\n"
+            "        return dialect.type_descriptor(storage)\n"
+            "\n"
+            "    def process_bind_param(self, value, dialect):\n"
+            "        normalized = normalize_date(value)\n"
+            "        if normalized is not None and dialect.name == 'sqlite':\n"
+            "            return normalized.isoformat()\n"
+            "        return normalized\n"
+            "\n"
+            "    def process_result_value(self, value, _dialect):\n"
+            "        return normalize_date(value)\n"
+            "\n"
+            "\n"
             "class Base(DeclarativeBase):\n"
             "    pass\n"
         )
@@ -232,7 +268,6 @@ class PythonEmitter:
         imports = {
             "BigInteger",
             "Boolean",
-            "Date",
             "ForeignKey",
             "Numeric",
             "Text",
@@ -246,7 +281,7 @@ class PythonEmitter:
             f"from sqlalchemy import {', '.join(sorted(imports))}",
             "from sqlalchemy.orm import Mapped, mapped_column, relationship",
             "",
-            "from .base import Base",
+            "from .base import Base, NormalizedDate",
             "",
             "",
             f"class {table.class_name}(Base):",
