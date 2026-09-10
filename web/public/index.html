@@ -63,7 +63,7 @@
     <button class=railnew type=button id=railnew>New conversation</button>
   </div>
   <div class=convlist id=convlist></div>
-  <a class=railprivacy href="/privacy">Privacy</a>
+  <div class=railuser id=railuser hidden></div>
 </aside>
 <div class=page>
   <div class=hdr><a class=brand href="https://prereasoner.com/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost type=button id=loginbtn>Login</button></div>
@@ -257,17 +257,27 @@ import { auth, ensureSignedIn } from '/lib/firebase-init.js';
 const login=document.getElementById('loginbtn');
 // Signed in: the rail IS the signed-in state, so the badge is redundant — drop it and show
 // the user's conversations instead. Rendering reuses the /reason drawer's list.
-function showSignedIn(){
+function showSignedIn(user){
   login.hidden=true;
   const rail=document.getElementById('homerail'); if(!rail) return;
   rail.hidden=false; document.body.classList.add('hasrail');
   document.getElementById('railnew').onclick=()=>{ try{ newConversation(); }catch(_){ location.href='/'; } };
   try{ bindConversationList(); renderDrawer(); }catch(_){}
+  // The rail foots with WHO is signed in. Built with the DOM API, never interpolated
+  // markup: the display name and email come from the identity provider.
+  const box=document.getElementById('railuser'); if(!box||!user) return;
+  const name=(user.displayName||'').trim()||(user.email||'').trim(); if(!name) return;
+  box.textContent='';
+  const av=document.createElement('span'); av.className='railav';
+  av.textContent=name.slice(0,1).toUpperCase();
+  const who=document.createElement('span'); who.className='railwho';
+  who.textContent=name; who.title=(user.email||name);
+  box.append(av,who); box.hidden=false;
 }
-try{await auth.authStateReady();if(auth.currentUser)showSignedIn();}catch(_){}
+try{await auth.authStateReady();if(auth.currentUser)showSignedIn(auth.currentUser);}catch(_){}
 login.addEventListener('click',async()=>{
   login.disabled=true;login.textContent='Signing in…';
-  try{if(await ensureSignedIn())showSignedIn();else{login.disabled=false;login.textContent='Login';}}
+  try{if(await ensureSignedIn())showSignedIn(auth.currentUser);else{login.disabled=false;login.textContent='Login';}}
   catch(error){login.disabled=false;login.textContent='Login';document.getElementById('err').textContent=(error&&error.message)||'Sign-in failed. Please try again.';}
 });
 </script></body></html>

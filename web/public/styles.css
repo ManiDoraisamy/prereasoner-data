@@ -369,8 +369,14 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .railnew{all:unset;box-sizing:border-box;display:block;width:100%;text-align:center;cursor:pointer;
   padding:10px 12px;border-radius:11px;background:var(--brand);color:#fff;font:600 13px var(--disp)}
 .railnew:hover{filter:brightness(1.07)}
-.railprivacy{display:block;padding:12px 18px 16px;color:var(--card-ink-dim);font:12px var(--disp);text-decoration:none}
-.railprivacy:hover{color:var(--brand);text-decoration:underline}
+/* The rail foots with the signed-in account, not another Privacy link — the page already
+   carries exactly one, in the main footer. */
+.railuser{display:flex;align-items:center;gap:9px;padding:11px 14px;border-top:1px solid #f1edfb;min-width:0}
+.railuser[hidden]{display:none}
+.railav{flex:0 0 auto;width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;
+  display:flex;align-items:center;justify-content:center;font:600 12px var(--disp)}
+.railwho{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  color:var(--card-ink);font:500 13px var(--disp)}
 body.hasrail .page{margin-left:264px}
 /* .ghost uses `all:unset`, which resets display and so BEATS the UA `[hidden]{display:none}`.
    Without this the signed-in login button stayed on screen next to the rail. */
