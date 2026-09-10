@@ -12,7 +12,7 @@ conversation may contain several named analyses over those shared inputs. Each c
 the exact returned SQL, rows, and provenance. The UI shows short logical tab labels, while the wire-level derived
 view names are prefixed by the analysis slug: `total_sales_combined`, `total_sales_filtered`, and
 `total_sales_total`. This makes traces unambiguous without turning the tabs into long machine names.
-Supported named own-data analyses also expose the same feed-forward stages as readable Python; the
+Supported own-data analyses, named or explicitly selected by `use`, also expose these stages as readable Python; the
 dual-source contract is defined in [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
 ## The step grammar

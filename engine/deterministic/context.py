@@ -14,7 +14,7 @@ class AnalysisExecutionContext:
     slug: str
     revision: int
     dataset_version: str | None
-    execution_mode: str | None
+    execution_mode: str | None = None
 
 
 _CURRENT: ContextVar[AnalysisExecutionContext | None] = ContextVar(
@@ -35,7 +35,9 @@ def current_execution_record() -> dict[str, object] | None:
 
 def set_execution_record(record: dict[str, object]) -> None:
     if _CURRENT.get() is None:
-        raise RuntimeError("deterministic execution record requires an analysis context")
+        raise RuntimeError(
+            "deterministic execution record requires an analysis context"
+        )
     _EXECUTION_RECORD.set(record)
 
 
@@ -46,19 +48,24 @@ def analysis_execution_context(
     *,
     execution_mode: str | None = None,
 ) -> Iterator[AnalysisExecutionContext | None]:
-    if descriptor is None:
-        yield None
-        return
-    context = AnalysisExecutionContext(
-        conversation_id=conversation_id,
-        slug=str(descriptor["slug"]),
-        revision=int(descriptor["revision"]),
-        dataset_version=(
-            str(descriptor["dataset_version"])
-            if descriptor.get("dataset_version") is not None
-            else None
-        ),
-        execution_mode=execution_mode,
+    # Direct requests have no workbook catalog entry. Give an explicit execution
+    # request a transient slug without creating a persisted named analysis.
+    if descriptor is None and execution_mode is not None:
+        descriptor = {"slug": "query", "revision": 1}
+    context = (
+        None
+        if descriptor is None
+        else AnalysisExecutionContext(
+            conversation_id=conversation_id,
+            slug=str(descriptor["slug"]),
+            revision=int(descriptor["revision"]),
+            dataset_version=(
+                str(descriptor["dataset_version"])
+                if descriptor.get("dataset_version") is not None
+                else None
+            ),
+            execution_mode=execution_mode,
+        )
     )
     token = _CURRENT.set(context)
     record_token = _EXECUTION_RECORD.set(None)
@@ -67,3 +74,33 @@ def analysis_execution_context(
     finally:
         _EXECUTION_RECORD.reset(record_token)
         _CURRENT.reset(token)
+
+
+def enforce_execution_response(response: dict, requested: str | None) -> dict:
+    """Report the backend actually used; never label a SQL fallback as Python/parity.
+
+    Called before saving an analysis or emitting its final answer. Clarification
+    and failed planning do not count as execution of either backend.
+    """
+    if (
+        response.get("clarify")
+        or response.get("error")
+        or response.get("result") is None
+    ):
+        return response
+    record = response.get("deterministic")
+    actual = record.get("mode") if record else "sql"
+    execution = {
+        "requested": requested or "default",
+        "actual": actual,
+        "verified": actual == "verify",
+        "implementation": "shared_plan" if record else "sql_executor",
+    }
+    if requested in {"python", "verify"} and actual != requested:
+        return {
+            "question": response.get("question", ""),
+            "error": "This query cannot run with the requested Python execution mode. "
+            "Use sql or auto; this query shape is outside the shared-plan subset.",
+            "execution": {**execution, "verified": False},
+        }
+    return {**response, "execution": execution}

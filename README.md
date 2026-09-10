@@ -7,7 +7,7 @@ inspectable derivation.
 [Website](https://prereasoner.com/) | [Try it](https://chat.prereasoner.com/)
 
 Today, Prereasoner compiles those dimensions into a typed table plan. SQL gives every derivation a
-precise execution path. Supported named own-data analyses also emit readable SQLAlchemy/Python from
+precise execution path. Supported own-data analyses also emit readable SQLAlchemy/Python from
 the same immutable plan, using explicit feed-forward `View` stages and operator calls. The same
 semantic model extends to public knowledge, source-grounded enrichment, structured retrieval, and
 domain-specific calculations without hiding the decision in generated text.
@@ -57,11 +57,15 @@ applies—the generated Python source and hashes that produced that answer.
 ## What Is Deterministic
 
 The answer is computed by a deterministic emitted program, not written by a decoder. The supported
-named own-data subset runs readable Python for bounded small inputs and SQL for larger inputs; a
+own-data subset can run readable Python for bounded small inputs and SQL for larger inputs; a
 verification mode executes and compares both at every named stage. The workbook URL can select a
-request-local backend for named analyses with `?use=sql`, `?use=py`, or `?use=both` (`both` is
-stage-by-stage verification). Other query shapes continue on
-the existing SQL path. The frozen Qwen model is used as an encoder for intent and schema signals; it
+request-local backend with `?use=sql`, `?use=py`, or `?use=both` (`both` is stage-by-stage verification).
+Direct requests with an explicit mode use a transient analysis plan; named workbook revisions retain
+their authoritative slugs. Unsupported queries can use the existing SQL path with `sql` or the default
+policy; explicit `py` and `both` requests return an error instead of accepting a SQL fallback.
+Responses report the actual backend. Opening a saved conversation does not rerun it in the new mode.
+See [the execution contract](docs/DETERMINISTIC_EMITTERS.md) for coverage, source lifetime, and limits.
+The frozen Qwen model is used as an encoder for intent and schema signals; it
 does not call `generate()` to write a query or a number.
 
 Schema.org supplies the semantic vocabulary: classes, properties, domains, ranges, and inheritance.
@@ -130,8 +134,8 @@ engine/knowledge.py              one serving entry point
                 engine/knowledge_query.py, engine/knowledge_compose.py
         |
         v
-supported named subset: deterministic Python/SQL execution and optional parity
-other shapes: existing SQL execution
+supported named or explicitly selected subset: Python/SQL execution and optional parity
+other shapes: SQL execution; explicit Python/verification rejects the fallback
         |
         v
 engine/provenance.py + inspectable trace

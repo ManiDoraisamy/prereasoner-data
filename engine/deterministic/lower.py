@@ -38,6 +38,7 @@ from engine.sql_ast import (
     Star,
 )
 from engine.sql_ast import SQLType as ASTType
+from engine.numeric import coerce_numeric
 
 
 class UnsupportedDeterministicPlan(ValueError):
@@ -86,6 +87,17 @@ def lower_select_query(
         for table in table_order
     }
     edges = _relationship_edges(query, foreign_keys, set(table_order))
+    scalar_edges = []
+    for source, target, local, remote in edges:
+        if _stable_orm_key(remote, columns_by_table[target]):
+            scalar_edges.append((source, target, local, remote))
+        elif _stable_orm_key(local, columns_by_table[source]):
+            scalar_edges.append((target, source, remote, local))
+        else:
+            raise UnsupportedDeterministicPlan(
+                "join has no proven scalar relationship target"
+            )
+    edges = tuple(scalar_edges)
     preferred_keys: dict[str, list[tuple[str, ...]]] = defaultdict(list)
     for source, target, local_columns, remote_columns in edges:
         del source, local_columns
@@ -101,9 +113,7 @@ def lower_select_query(
                 re.IGNORECASE,
             )
         )
-        all_columns = tuple(
-            str(column["name"]) for column in columns_by_table[table]
-        )
+        all_columns = tuple(str(column["name"]) for column in columns_by_table[table])
         candidates = [*preferred_keys[table]]
         candidates.extend((column,) for column in id_columns)
         if id_columns:
@@ -210,33 +220,21 @@ def lower_select_query(
                     f"{slug}_calculated", views[-1].name, tuple(calculations)
                 )
             )
-        grouped = []
-        for group_column in query.group_by:
-            match = next(
-                (
-                    (item, output_name)
-                    for item, output_name in zip(
-                        query.select, output_names, strict=True
-                    )
-                    if item.expression == group_column
-                ),
-                None,
-            )
-            if match is None:
-                raise UnsupportedDeterministicPlan(
-                    "every GROUP BY column must be projected"
-                )
-            grouped.append(SelectedValue(match[1], _value(group_column)))
-        if [
+        group_items = [
             item for item in query.select if isinstance(item.expression, ColumnRef)
-        ] != [
-            item
-            for item in query.select[: len(grouped)]
-            if isinstance(item.expression, ColumnRef)
-        ]:
+        ]
+        if (
+            set(item.expression for item in group_items) != set(query.group_by)
+            or list(query.select[: len(group_items)]) != group_items
+        ):
             raise UnsupportedDeterministicPlan(
-                "group columns must precede aggregates in the selected output"
+                "projected group columns must match GROUP BY and precede aggregates"
             )
+        grouped = [
+            SelectedValue(name, _value(item.expression))
+            for item, name in zip(query.select, output_names, strict=True)
+            if isinstance(item.expression, ColumnRef)
+        ]
         views.append(
             ReducedView(
                 f"{slug}_total",
@@ -259,7 +257,10 @@ def lower_select_query(
             )
         )
         views.append(ProjectedView(f"{slug}_result", views[-1].name, values))
-    return AnalysisPlan(slug, table_specs, tuple(views))
+    try:
+        return AnalysisPlan(slug, table_specs, tuple(views))
+    except (ValueError, TypeError) as exc:
+        raise UnsupportedDeterministicPlan(str(exc)) from exc
 
 
 def _relationship_edges(query, foreign_keys, included):
@@ -315,8 +316,7 @@ def _relationship_edges(query, foreign_keys, included):
                 "join does not extend the existing table graph"
             )
         join_pairs = {
-            (left.table, left.name, right.table, right.name)
-            for left, right in pairs
+            (left.table, left.name, right.table, right.name) for left, right in pairs
         }
         matching = [
             edge
@@ -356,9 +356,7 @@ def _value(value) -> Value:
         return ColumnValue(value.table, value.name)
     if isinstance(value, Literal):
         literal = (
-            Decimal(str(value.value))
-            if isinstance(value.value, float)
-            else value.value
+            Decimal(str(value.value)) if isinstance(value.value, float) else value.value
         )
         return LiteralValue(literal)
     if isinstance(value, BinaryExpr):
@@ -412,21 +410,27 @@ def _stable_orm_key(
         not isinstance(values, Sequence) or isinstance(values, (str, bytes))
         for values in raw_values
     ):
-        return True
+        return False
     lengths = {len(values) for values in raw_values}
     if len(lengths) != 1:
         return False
     seen = set()
     for row in zip(*raw_values, strict=True):
-        if all(
+        # Identity must be unique after the same numeric coercion used by upload.
+        row = tuple(
+            coerce_numeric(value, str(by_name[name].get("affinity", "TEXT")))
+            if by_name[name].get("affinity") in {"INTEGER", "REAL"}
+            else value
+            for name, value in zip(candidate, row, strict=True)
+        )
+        if any(
             value is None or (isinstance(value, str) and not value.strip())
             for value in row
         ):
             return False
-        identity = tuple((type(value).__name__, repr(value)) for value in row)
-        if identity in seen:
+        if row in seen:
             return False
-        seen.add(identity)
+        seen.add(row)
     return True
 
 
@@ -471,7 +475,7 @@ def _identifier(value: str) -> str:
         name = "value"
     if name[0].isdigit():
         name = "value_" + name
-    if keyword.iskeyword(name):
+    if keyword.iskeyword(name) or name in {"base", "metadata", "registry", "session"}:
         name += "_value"
     return name
 

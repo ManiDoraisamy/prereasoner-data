@@ -95,7 +95,7 @@ assert(/files:DATASETS\[d\]\.join\(', '\)/.test(html),
 assert(html.includes('<div class=xd>\'+esc(e.files)+\'</div>'), 'the row subtitle must render the sheet names');
 assert(!html.includes('<div class=xd>\'+esc(e.dir)+\'</div>'), 'the row subtitle must not be the directory name');
 assert(/name:n,/.test(html), 'the chip name must be the same DATASETS value the picker prints');
-assert(html.includes("location.href='/?load='+encodeURIComponent(b.dataset.load)"),
+assert(html.includes("executionQuery('?load='+encodeURIComponent(b.dataset.load))"),
   'picking an example must navigate to its ?load= URL');
 assert(html.includes("location.href='reason'+executionQuery()"),
   'submitting a dataset must carry the URL-selected execution mode to /reason');
@@ -104,6 +104,15 @@ assert(shared.includes("raw==='sql'") && shared.includes("raw==='py'") && shared
   'the browser URL contract must accept sql, py, and both');
 assert(shared.includes('function executionRequestFields()'),
   'the browser must expose the selected execution mode to request builders');
+const modeSource = shared.slice(shared.indexOf('const EXECUTION_USE'), shared.indexOf('// sessionStorage keys'));
+for (const [raw, expected] of [['sql','sql'], ['py','py'], ['python','py'], ['both','both'], ['verify','both'], ['auto','auto'], ['typo','typo'], ['',null]]) {
+  const context = vm.createContext({location: {search: '?use='+raw}, URLSearchParams});
+  const actual = JSON.parse(vm.runInContext(modeSource + `\nJSON.stringify({fields:executionRequestFields(), query:executionQuery('?load=orders-tiers')})`, context));
+  assert.deepStrictEqual(actual.fields, expected ? {use:expected} : {});
+  const params = new URLSearchParams(actual.query);
+  assert.strictEqual(params.get('load'), 'orders-tiers');
+  assert.strictEqual(params.get('use'), expected);
+}
 const conversations = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook-conversations.js'), 'utf8');
 assert(conversations.includes("'/reason/'+cid+executionQuery()"),
   'conversation URLs must preserve the selected execution mode');
@@ -196,7 +205,8 @@ function runReturnPath(stored, pathname) {
   const ctx = {
     SS: { RETURN_TO: 'pr_return_to' },
     sessionStorage: { getItem: k => (k === 'pr_return_to' ? stored : null) },
-    location: { pathname },
+    location: { pathname, origin: 'https://chat.prereasoner.com' },
+    URL,
   };
   vm.createContext(ctx);
   return vm.runInContext(returnPathSrc[0] + '\nreturnPath();', ctx);
@@ -204,6 +214,8 @@ function runReturnPath(stored, pathname) {
 for (const [stored, pathname, want, why] of [
   ['/sheets', '/picker', '/sheets', 'returns to the landing that opened the picker'],
   ['/excel', '/picker', '/excel', 'any landing round-trips'],
+  ['/sheets?use=both', '/picker', '/sheets?use=both', 'preserves the execution mode'],
+  ['/picker?use=both', '/picker', '/', 'query params cannot bypass the self-navigation check'],
   ['/picker', '/picker', '/', 'NEVER navigates the picker to itself (the sign-in loop)'],
   ['/PICKER', '/picker', '/', 'self-navigation check is case-insensitive'],
   ['https://evil.example', '/picker', '/', 'rejects an absolute off-site URL'],

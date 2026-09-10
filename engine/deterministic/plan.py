@@ -46,6 +46,8 @@ class RelationshipSpec:
     many: bool = False
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "local_columns", tuple(self.local_columns))
+        object.__setattr__(self, "remote_columns", tuple(self.remote_columns))
         _require_identifier(self.attribute, "relationship attribute")
         if not self.local_columns or len(self.local_columns) != len(
             self.remote_columns
@@ -65,6 +67,8 @@ class TableSpec:
     relationships: tuple[RelationshipSpec, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "columns", tuple(self.columns))
+        object.__setattr__(self, "relationships", tuple(self.relationships))
         if not self.name:
             raise ValueError("physical table names must be non-empty")
         if self.schema not in _SCHEMAS:
@@ -78,6 +82,16 @@ class TableSpec:
         relationship_attrs = [
             relationship.attribute for relationship in self.relationships
         ]
+        storage_attrs = [
+            self.scalar_attribute(column.name) for column in self.columns
+        ] + relationship_attrs
+        if len(storage_attrs) != len(set(storage_attrs)) or {
+            "metadata",
+            "registry",
+        } & set(storage_attrs):
+            raise ValueError(
+                "ORM attributes collide with storage or SQLAlchemy attributes"
+            )
         if len(relationship_attrs) != len(set(relationship_attrs)):
             raise ValueError("table relationships must have unique Python attributes")
         if not any(column.primary_key for column in self.columns):
@@ -96,6 +110,16 @@ class TableSpec:
             )
         except StopIteration as exc:
             raise ValueError(f"unknown relationship {self.name}.{attribute}") from exc
+
+    def scalar_attribute(self, column_name: str) -> str:
+        """Private storage name when the public FK attribute is an ORM object."""
+        column = self.column(column_name)
+        if any(
+            edge.attribute == column.attribute and column_name in edge.local_columns
+            for edge in self.relationships
+        ):
+            return f"_{column.attribute}_value"
+        return column.attribute
 
 
 @dataclass(frozen=True)
@@ -177,6 +201,7 @@ class CombinedView:
     tables: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "tables", tuple(self.tables))
         _require_identifier(self.name, "view name")
         if not self.tables:
             raise ValueError("combined view requires a name and at least one table")
@@ -191,6 +216,7 @@ class Enrichment:
     relationship_path: tuple[str, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "relationship_path", tuple(self.relationship_path))
         if not self.relationship_path:
             raise ValueError("enrichment requires a relationship path")
 
@@ -202,6 +228,7 @@ class EnrichedView:
     enrichments: tuple[Enrichment, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "enrichments", tuple(self.enrichments))
         _require_identifier(self.name, "view name")
         _require_identifier(self.source, "source view name")
         if not self.enrichments:
@@ -226,6 +253,7 @@ class CalculatedView:
     values: tuple[SelectedValue, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "values", tuple(self.values))
         _require_identifier(self.name, "view name")
         _require_identifier(self.source, "source view name")
         if not self.values:
@@ -241,6 +269,7 @@ class ProjectedView:
     values: tuple[SelectedValue, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "values", tuple(self.values))
         _require_identifier(self.name, "view name")
         _require_identifier(self.source, "source view name")
         if not self.values:
@@ -255,6 +284,8 @@ class ReducedView:
     group_by: tuple[SelectedValue, ...] = ()
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "aggregates", tuple(self.aggregates))
+        object.__setattr__(self, "group_by", tuple(self.group_by))
         _require_identifier(self.name, "view name")
         _require_identifier(self.source, "source view name")
         if not self.aggregates:
@@ -280,6 +311,8 @@ class AnalysisPlan:
     views: tuple[ViewStep, ...]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "tables", tuple(self.tables))
+        object.__setattr__(self, "views", tuple(self.views))
         _require_identifier(self.slug, "analysis slug")
         table_names = [table.name for table in self.tables]
         table_classes = [table.class_name for table in self.tables]
@@ -293,7 +326,9 @@ class AnalysisPlan:
         if not self.views or not isinstance(self.views[0], CombinedView):
             raise ValueError("analysis must begin with one combined ORM view")
         if not isinstance(self.views[-1], (ProjectedView, ReducedView)):
-            raise TypeError("analysis must end with one projected or reduced result view")
+            raise TypeError(
+                "analysis must end with one projected or reduced result view"
+            )
         table_by_name = {table.name: table for table in self.tables}
         for table in self.tables:
             column_names = {column.name for column in table.columns}
@@ -328,6 +363,10 @@ class AnalysisPlan:
         stage_tables: set[str] = set()
         stage_values: set[str] = set()
         for index, view in enumerate(self.views):
+            if len(view.name.encode("utf-8")) > 63:
+                raise ValueError(
+                    "view names must fit PostgreSQL's 63-byte identifier limit"
+                )
             if not view.name.startswith(self.slug + "_"):
                 raise ValueError("every view name must use the analysis slug prefix")
             if view.name in emitted:
@@ -371,14 +410,31 @@ class AnalysisPlan:
                             "one enriched view may materialize each target table only once"
                         )
                     incoming_tables = set(stage_tables)
+                    path_edges: dict[str, tuple[str, str]] = {}
                     for enrichment in view.enrichments:
                         if enrichment.source_table not in incoming_tables:
                             raise ValueError(
                                 f"enrichment source {enrichment.source_table!r} is unavailable"
                             )
                         current = table_by_name[enrichment.source_table]
+                        traversed = {current.name}
                         for relationship_name in enrichment.relationship_path:
                             relationship = current.relationship(relationship_name)
+                            if relationship.many:
+                                raise ValueError(
+                                    "enrichment currently requires scalar relationships"
+                                )
+                            target_name = relationship.target_table
+                            edge = (current.name, relationship_name)
+                            if target_name in traversed or (
+                                target_name in path_edges
+                                and path_edges[target_name] != edge
+                            ):
+                                raise ValueError(
+                                    "enrichment paths require aliases for repeated or conflicting tables"
+                                )
+                            path_edges[target_name] = edge
+                            traversed.add(target_name)
                             current = table_by_name[relationship.target_table]
                         if current.name != enrichment.target_table:
                             raise ValueError(
@@ -435,6 +491,19 @@ class AnalysisPlan:
             return next(table for table in self.tables if table.name == name)
         except StopIteration as exc:
             raise ValueError(f"unknown table: {name}") from exc
+
+    def connecting_relationship(self, joined: set[str], table_name: str):
+        """The validated join edge, shared by both emitters."""
+        for source_name in sorted(joined):
+            source = self.table(source_name)
+            for relationship in source.relationships:
+                if relationship.target_table == table_name:
+                    return source, relationship
+        table = self.table(table_name)
+        for relationship in table.relationships:
+            if relationship.target_table in joined:
+                return table, relationship
+        raise ValueError(f"combined view cannot connect table {table_name}")
 
     def view_columns(self) -> dict[str, tuple[str, ...]]:
         """Return each materialized stage's stable, SQL-visible column order."""
@@ -512,5 +581,6 @@ def _require_identifier(value: str, label: str) -> None:
         not isinstance(value, str)
         or not value.isidentifier()
         or keyword.iskeyword(value)
+        or value.startswith("__")
     ):
         raise ValueError(f"{label} must be a non-keyword Python identifier")

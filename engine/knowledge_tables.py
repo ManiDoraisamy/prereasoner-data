@@ -644,6 +644,9 @@ class KnowledgeTableQuery:
                 response["calculations"] = r["calculations"]
             if r.get("currency") is not None:  # compatibility projection of calculations
                 response["currency"] = r["currency"]
+            for key in ("views", "deterministic"):
+                if r.get(key) is not None:
+                    response[key] = r[key]
             return response
         # ---- WORLD-KNOWLEDGE path — uploaded FK joins + the meaning joins, WHERE from the world filter (if any)
         # AND any own-sheet values the question also quoted ("GOLD customers in France") ----

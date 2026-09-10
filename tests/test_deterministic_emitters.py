@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from engine.deterministic import (
     FilteredView,
     LiteralValue,
     PredicateValue,
+    ProjectedView,
     ReducedView,
     RelationshipSpec,
     SelectedValue,
@@ -46,6 +48,7 @@ from engine.sql_ast import (
     SelectItem,
     SelectQuery,
     SQLType,
+    Star,
 )
 
 
@@ -176,8 +179,7 @@ def test_python_source_is_readable_object_graph_and_feed_forward_pipeline():
     assert "class OrdersCustomers:" in wrapper
     assert "def total_amount(self) -> AnalysisResult:" in wrapper
     assert (
-        "from engine.deterministic.operators import EQ, MULTIPLY, SUM, View"
-        in wrapper
+        "from engine.deterministic.operators import EQ, MULTIPLY, SUM, View" in wrapper
     )
     assert "total_amount_enriched = total_amount_combined.for_each(" in wrapper
     assert "total_amount_filtered = total_amount_enriched.filter(" in wrapper
@@ -401,9 +403,7 @@ def test_existing_typed_sql_ast_lowers_without_parsing_rendered_sql():
 
 def test_lowering_uses_the_joined_relationship_when_two_edges_share_tables():
     query = SelectQuery(
-        select=(
-            SelectItem(ColumnRef("customers", "name", SQLType.TEXT), "name"),
-        ),
+        select=(SelectItem(ColumnRef("customers", "name", SQLType.TEXT), "name"),),
         from_table="orders",
         joins=(
             Join(
@@ -438,12 +438,17 @@ def test_lowering_uses_the_joined_relationship_when_two_edges_share_tables():
             "to_col": "customer_id",
         },
     ]
+    for column in schema:
+        column["values"] = [1] if column["affinity"] == "INTEGER" else ["Ada"]
     plan = lower_select_query("billing_name", query, schema, foreign_keys)
     assert [item.attribute for item in plan.table("orders").relationships] == [
         "billing_customer_id"
     ]
     sql = SQLEmitter({"conversation": "conversation"}).emit(plan).source
-    assert '"orders"."billing_customer_id" = "conversation"."customers"."customer_id"' in sql
+    assert (
+        '"orders"."billing_customer_id" = "conversation"."customers"."customer_id"'
+        in sql
+    )
     assert '"orders"."owner_id" = ' not in sql
 
 
@@ -518,9 +523,9 @@ def test_lowering_does_not_treat_a_repeated_foreign_id_as_row_identity():
         connection.execute(
             text("INSERT INTO conversation.orders VALUES (1, 10), (1, 20)")
         )
-        result = DeterministicAnalysis(
-            plan, conversation_schema="conversation"
-        ).run(connection, mode="verify", estimated_rows=2)
+        result = DeterministicAnalysis(plan, conversation_schema="conversation").run(
+            connection, mode="verify", estimated_rows=2
+        )
     assert result.rows == ({"total_amount": 30},)
 
 
@@ -554,19 +559,369 @@ def test_plan_rejects_an_ambiguous_combined_relationship():
         assert "exactly one relationship" in str(exc)
 
 
+def _execute_fixture(plan, statements, mode="verify", estimated_rows=3):
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    try:
+        with engine.connect() as connection:
+            connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS conversation")
+            connection.exec_driver_sql("ATTACH DATABASE ':memory:' AS knowledgebase")
+            for statement in statements:
+                connection.exec_driver_sql(statement)
+            return DeterministicAnalysis(plan, conversation_schema="conversation").run(
+                connection,
+                mode=mode,
+                estimated_rows=estimated_rows,
+            )
+    finally:
+        engine.dispose()
+
+
+def test_full_results_are_independent_of_trace_preview_limit():
+    table = TableSpec(
+        "items",
+        "Item",
+        "items",
+        "conversation",
+        (ColumnSpec("id", "id", SQLType.INTEGER, primary_key=True, nullable=False),),
+    )
+    plan = AnalysisPlan(
+        "ids",
+        (table,),
+        (
+            CombinedView("ids_combined", ("items",)),
+            ProjectedView(
+                "ids_result",
+                "ids_combined",
+                (SelectedValue("id", ColumnValue("items", "id")),),
+            ),
+        ),
+    )
+    statements = [
+        "CREATE TABLE conversation.items (id INTEGER PRIMARY KEY)",
+        "INSERT INTO conversation.items VALUES "
+        + ",".join(f"({i})" for i in range(75)),
+    ]
+    for mode in ("sql", "python", "verify"):
+        result = _execute_fixture(plan, statements, mode, 75)
+        assert len(result.rows) == 75, mode
+        assert len(result.record()["views"][-1]["rows"]) == 50
+
+
+def test_composite_relationship_executes_and_preserves_both_join_keys():
+    parent = TableSpec(
+        "parents",
+        "Parent",
+        "parents",
+        "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, primary_key=True, nullable=False),
+            ColumnSpec(
+                "region", "region", SQLType.INTEGER, primary_key=True, nullable=False
+            ),
+            ColumnSpec("label", "label", SQLType.TEXT),
+        ),
+    )
+    child = TableSpec(
+        "children",
+        "Child",
+        "children",
+        "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, primary_key=True, nullable=False),
+            ColumnSpec("parent_id", "parent_id", SQLType.INTEGER),
+            ColumnSpec("region", "region", SQLType.INTEGER),
+        ),
+        (
+            RelationshipSpec(
+                "parent", "parents", ("parent_id", "region"), ("id", "region")
+            ),
+        ),
+    )
+    plan = AnalysisPlan(
+        "labels",
+        (child, parent),
+        (
+            CombinedView("labels_combined", ("children", "parents")),
+            ProjectedView(
+                "labels_result",
+                "labels_combined",
+                (SelectedValue("label", ColumnValue("parents", "label")),),
+            ),
+        ),
+    )
+    result = _execute_fixture(
+        plan,
+        [
+            "CREATE TABLE conversation.parents (id INTEGER, region INTEGER, label TEXT)",
+            "CREATE TABLE conversation.children (id INTEGER, parent_id INTEGER, region INTEGER)",
+            "INSERT INTO conversation.parents VALUES (1,1,'west'), (1,2,'east')",
+            "INSERT INTO conversation.children VALUES (10,1,2)",
+        ],
+    )
+    assert result.rows == ({"label": "east"},)
+
+
+def test_multihop_missing_references_and_prior_calculations_match_sql():
+    original = _plan()
+    orders = replace(
+        original.table("orders"),
+        relationships=(original.table("orders").relationship("city"),),
+    )
+    plan = AnalysisPlan(
+        "amount",
+        (orders, original.table("city"), original.table("country")),
+        (
+            CombinedView("amount_combined", ("orders",)),
+            CalculatedView(
+                "amount_calculated",
+                "amount_combined",
+                (SelectedValue("gross", ColumnValue("orders", "amount")),),
+            ),
+            EnrichedView(
+                "amount_enriched",
+                "amount_calculated",
+                (Enrichment("country", "orders", ("city", "country")),),
+            ),
+            ReducedView(
+                "amount_total",
+                "amount_enriched",
+                (AggregateValue("total", "SUM", ViewValue("gross")),),
+            ),
+        ),
+    )
+    result = _execute_fixture(
+        plan,
+        [
+            "CREATE TABLE conversation.orders (order_id INTEGER, customer_id INTEGER, amount NUMERIC, city TEXT)",
+            "CREATE TABLE knowledgebase.city (qid TEXT, name TEXT, country TEXT)",
+            "CREATE TABLE knowledgebase.country (qid TEXT, name TEXT)",
+            "INSERT INTO conversation.orders VALUES (1,1,10,'Paris'), (2,1,20,'missing'), (3,1,40,'orphan')",
+            "INSERT INTO knowledgebase.city VALUES ('Paris','Paris','FR'), ('orphan','Unknown','missing')",
+            "INSERT INTO knowledgebase.country VALUES ('FR','France')",
+        ],
+    )
+    assert result.rows == ({"total": 10},)
+    assert [len(rows) for rows in result.view_rows] == [3, 3, 1, 1]
+
+
+def test_direct_execution_context_and_explicit_mode_fail_closed():
+    from engine.deterministic.context import (
+        current_analysis_context,
+        enforce_execution_response,
+    )
+    from mcp_server.engine_client import shape_reason_response
+
+    with analysis_execution_context(None, "c_" + "4" * 32, execution_mode="python"):
+        assert current_analysis_context().slug == "query"
+        assert current_analysis_context().execution_mode == "python"
+        set_execution_record({"mode": "python"})
+        with analysis_execution_context(None, "c_" + "5" * 32):
+            assert current_analysis_context() is None
+            assert current_execution_record() is None
+        assert current_execution_record() == {"mode": "python"}
+    answer = {"result": {"columns": ["n"], "rows": [[1]]}}
+    for mode in ("python", "verify"):
+        rejected = enforce_execution_response(answer, mode)
+        assert rejected.get("error") and "result" not in rejected
+        assert rejected["execution"]["verified"] is False
+        assert shape_reason_response(rejected, None)["status"] == "error"
+    for mode in (None, "sql", "auto"):
+        allowed = enforce_execution_response(answer, mode)
+        assert allowed["execution"]["actual"] == "sql"
+        assert allowed["execution"]["implementation"] == "sql_executor"
+    verified = enforce_execution_response(
+        {**answer, "deterministic": {"mode": "verify"}}, "verify"
+    )
+    shaped = shape_reason_response(verified, None)
+    assert shaped["execution"]["verified"] is True
+    assert shaped["deterministic"]["mode"] == "verify"
+    assert current_analysis_context() is None and current_execution_record() is None
+
+
+def test_parity_never_rounds_away_large_decimal_differences():
+    from engine.deterministic.runtime import VerificationMismatch, assert_equivalent
+
+    left = Decimal("1234567890123456789012345678901234567890")
+    right = Decimal("1234567890123456789012345678901234567891")
+    try:
+        assert_equivalent(({"n": left},), ({"n": right},))
+    except VerificationMismatch:
+        pass
+    else:
+        raise AssertionError("parity hid a precision mismatch")
+    assert_equivalent(
+        ({"n": Decimal("1.00")}, {"n": Decimal("1.1")}),
+        ({"n": Decimal("1.10")}, {"n": 1}),
+    )
+
+
+def test_lowering_requires_identity_evidence_after_numeric_coercion():
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
+
+    query = SelectQuery(
+        (SelectItem(ColumnRef("items", "id", SQLType.INTEGER)),), "items"
+    )
+    for values in (None, ["01", 1], [None, 1]):
+        schema = [{"table": "items", "name": "id", "affinity": "INTEGER"}]
+        if values is not None:
+            schema[0]["values"] = values
+        try:
+            lower_select_query("ids", query, schema, ())
+        except UnsupportedDeterministicPlan:
+            pass
+        else:
+            raise AssertionError(f"unproven identity accepted: {values}")
+
+
+def test_grouped_projection_keeps_select_order_when_group_by_order_differs():
+    a, b = (
+        ColumnRef("items", "a", SQLType.INTEGER),
+        ColumnRef("items", "b", SQLType.INTEGER),
+    )
+    query = SelectQuery(
+        (
+            SelectItem(b, "b"),
+            SelectItem(a, "a"),
+            SelectItem(Aggregate("COUNT", Star()), "n"),
+        ),
+        "items",
+        group_by=(a, b),
+    )
+    schema = [
+        {"table": "items", "name": name, "affinity": "INTEGER", "values": values}
+        for name, values in (("a", [1, 2]), ("b", [10, 20]))
+    ]
+    plan = lower_select_query("groups", query, schema, ())
+    assert plan.view_columns()["groups_total"] == ("b", "a", "n")
+    result = _execute_fixture(
+        plan,
+        [
+            "CREATE TABLE conversation.items (a INTEGER, b INTEGER)",
+            "INSERT INTO conversation.items VALUES (1,10),(2,20)",
+        ],
+    )
+    assert list(result.rows[0]) == ["b", "a", "n"]
+
+
+def test_integer_division_uses_decimal_and_sql_null_semantics():
+    from engine.deterministic.operators import DIVIDE, AverageState
+
+    assert DIVIDE(1, 2) == Decimal("0.5")
+    assert DIVIDE(1, 3) == Decimal("0.33333333333333333333")
+    assert DIVIDE(1, 0) is None and DIVIDE(None, 1) is None
+    assert AverageState().value is None
+    assert AverageState(Decimal(1), 3).value == DIVIDE(1, 3)
+
+
+def test_mutating_constructor_lists_cannot_change_an_emitted_plan():
+    original = _plan()
+    tables, views = list(original.tables), list(original.views)
+    plan = AnalysisPlan(original.slug, tables, views)
+    source = PythonEmitter().emit(plan).source_sha256
+    tables.clear()
+    views.clear()
+    assert PythonEmitter().emit(plan).source_sha256 == source
+
+
+def test_collection_enrichment_is_rejected_before_generation():
+    original = _plan()
+    orders = original.table("orders")
+    orders = replace(
+        orders,
+        relationships=tuple(
+            replace(edge, many=True) if edge.attribute == "city" else edge
+            for edge in orders.relationships
+        ),
+    )
+    try:
+        AnalysisPlan(original.slug, (orders,) + original.tables[1:], original.views)
+    except ValueError as exc:
+        assert "scalar relationships" in str(exc)
+    else:
+        raise AssertionError("unsupported collection traversal was accepted")
+
+
+def test_colliding_generated_class_cannot_replace_the_result_type():
+    original = _plan()
+    orders = replace(original.table("orders"), class_name="AnalysisResult")
+    plan = AnalysisPlan(original.slug, (orders,) + original.tables[1:], original.views)
+    try:
+        PythonEmitter().emit(plan)
+    except ValueError as exc:
+        assert "names collide" in str(exc)
+    else:
+        raise AssertionError("a generated class silently replaced AnalysisResult")
+
+
+def test_knowledge_delegate_preserves_shared_plan_execution_evidence():
+    from types import SimpleNamespace
+    from engine.knowledge_tables import KnowledgeTableQuery
+    from engine.deterministic.context import enforce_execution_response
+
+    raw = {
+        "result": {"columns": ["total"], "rows": [[3]]},
+        "sql": 'SELECT SUM(amount) FROM "query_combined"',
+        "views": [{"name": "query_total", "rows": [[3]]}],
+        "deterministic": {"mode": "verify", "python": {"source_sha256": "fixture"}},
+    }
+    # Exercise the actual serving adapter with only external planning/lookup inputs stubbed.
+    adapter = SimpleNamespace(
+        q11=SimpleNamespace(
+            ingest=lambda tables: ([], []),
+            schema=lambda *args: ([], {}, {}),
+            serve=lambda *args: raw,
+        ),
+        read_op_all=lambda *args: None,
+        _currency_conversion_binding=lambda *args: None,
+        _world_rate_binding=lambda *args: None,
+        meaning_filter=lambda *args: None,
+        _own_value_matches=lambda *args: [],
+        world_target=lambda *args: None,
+        _debug_input=lambda *args: {},
+    )
+    response = KnowledgeTableQuery.serve(
+        adapter, [], "total amount", as_of="2026-09-10"
+    )
+    assert response["views"] is raw["views"]
+    assert response["deterministic"] is raw["deterministic"]
+    assert (
+        enforce_execution_response(response, "verify")["execution"]["verified"] is True
+    )
+
+
+def test_coverage_checks_filters_in_the_full_emitted_program():
+    from types import SimpleNamespace
+    from engine.knowledge_query import KnowledgeQuery, _coverage_sql
+
+    program = SQLEmitter().emit(_plan())
+    response = {
+        "sql": program.statements[-1],
+        "deterministic": {"sql": program.record()},
+    }
+    adapter = SimpleNamespace(
+        _is_id=lambda name: False,
+        _encode=lambda words: [[0] for word in words],
+        _word_qid=lambda word: None,
+        _best_world_entity=lambda words: (words[0], "France", "country", 1),
+    )
+    schema = [{"table": "orders", "name": "amount", "affinity": "REAL"}]
+    assert KnowledgeQuery._uncovered(
+        adapter, "total amount in France", schema, response["sql"]
+    ) == ["france"]
+    assert (
+        KnowledgeQuery._uncovered(
+            adapter, "total amount in France", schema, _coverage_sql(response)
+        )
+        == []
+    )
+    assert _coverage_sql({"sql": "SELECT 1"}) == "SELECT 1"
+
+
+# Discover the contract cases so new tests cannot be omitted from the module runner.
 TESTS = [
-    test_python_source_is_readable_object_graph_and_feed_forward_pipeline,
-    test_both_emitters_are_byte_deterministic_and_have_matching_stages,
-    test_generated_python_and_sql_execute_to_the_same_result,
-    test_auto_policy_uses_python_only_below_the_configured_limit,
-    test_development_debug_tree_contains_the_exact_executed_source,
-    test_plan_rejects_a_stage_that_skips_its_predecessor,
-    test_existing_typed_sql_ast_lowers_without_parsing_rendered_sql,
-    test_lowering_uses_the_joined_relationship_when_two_edges_share_tables,
-    test_execution_record_is_request_local_and_cleared_with_its_context,
-    test_multihop_enrichment_projects_only_the_declared_object,
-    test_lowering_does_not_treat_a_repeated_foreign_id_as_row_identity,
-    test_plan_rejects_an_ambiguous_combined_relationship,
+    value
+    for name, value in sorted(globals().items())
+    if name.startswith("test_") and callable(value)
 ]
 
 

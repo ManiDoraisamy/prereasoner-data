@@ -9,6 +9,11 @@ checks the SQL query. It does not write SQL one token at a time.
 We trace **`"total amount in France"`** through the stack. This happens to need public world data,
 but the own-data planning steps are the same for an ordinary table question.
 
+This world-data example follows the SQL serving path. Supported own-data winners can also lower into
+one shared plan that emits a SQL view stack and readable ORM/Python stages. The backend is selected
+by request context, after planning. See [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md) for
+that path and its limits; the world example here does not demonstrate Python world execution.
+
 ---
 
 ## Stage 1 - the question becomes typed signals

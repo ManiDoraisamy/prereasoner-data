@@ -18,14 +18,18 @@ const firebaseDatabase=`
   export function off(){}
 `;
 
-test('sign in, upload, answer, inspect trace, follow up, and delete',async({page,request})=>{
+async function mockAuth(page,chat='1'){
   await page.route('https://www.gstatic.com/firebasejs/**/firebase-app.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseApp}));
   await page.route('https://www.gstatic.com/firebasejs/**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseAuth}));
   await page.route('https://www.gstatic.com/firebasejs/**/firebase-database.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseDatabase}));
-  await page.addInitScript(()=>{
+  await page.addInitScript(chat=>{
     sessionStorage.setItem('pr_test_auth','1');
-    localStorage.setItem('pr_chat','1');
-  });
+    localStorage.setItem('pr_chat',chat);
+  },chat);
+}
+
+test('sign in, upload, answer, inspect trace, follow up, and delete',async({page,request})=>{
+  await mockAuth(page);
 
   await page.goto('/');
   await page.getByRole('button',{name:'Login'}).click();
@@ -104,3 +108,24 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
 });
 
 function conversationPattern(){return 'c_[0-9a-f]{32}';}
+
+for(const use of ['sql','py','both']){
+  for(const chat of ['0','1']){
+    test(`execution mode ${use} survives ${chat==='1'?'chat':'direct'} navigation and follow-up`,async({page})=>{
+      await mockAuth(page,chat);
+      const endpoint=chat==='1'?'/chat':'/api/reason';
+      await page.goto('/?load=orders-tiers&use='+use);
+      await page.locator('#q').fill('total amount');
+      const first=page.waitForRequest(req=>new URL(req.url()).pathname===endpoint&&req.method()==='POST');
+      await page.getByRole('button',{name:'Ask'}).click();
+      expect((await first).postDataJSON().use).toBe(use);
+      await expect(page).toHaveURL(new RegExp(`/reason/${conversationPattern()}\\?use=${use}$`));
+      await expect(page.locator('.wb.result tbody')).toContainText('180');
+      const followup=page.waitForRequest(req=>new URL(req.url()).pathname===endpoint&&req.method()==='POST');
+      await page.locator('#chatq').fill('only Paris');
+      await page.getByRole('button',{name:'Send'}).click();
+      expect((await followup).postDataJSON().use).toBe(use);
+      await expect(page.locator('.wb.result tbody')).toContainText('120');
+    });
+  }
+}

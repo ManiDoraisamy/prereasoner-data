@@ -9,7 +9,7 @@ These need no PostgreSQL, model weights, or network. Install `requirements-ci.tx
 | Command | Covers |
 |---|---|
 | `python -m tests.test_sql_ast` | Typed AST validation/rendering, search, ranking, execution checks, and failure profiles |
-| `python -m tests.test_deterministic_emitters` | Shared-plan validation, readable ORM/Python emission, SQL emission, and result parity |
+| `python -m tests.test_deterministic_emitters` | Shared-plan validation, generated ORM execution, composite/missing-reference parity, mode policy, identity coercion, and full-result/preview separation |
 | `python -m tests.test_calculations` | Typed calculation intent, operands, joins, grain, evidence, and abstention |
 | `python -m tests.test_routing` | The one shared serving/evaluation route decision |
 | `python -m tests.test_router_evidence` | Property-family consensus and inspectable route evidence |

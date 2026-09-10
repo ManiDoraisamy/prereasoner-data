@@ -83,7 +83,12 @@ class ExecutionResult:
                     "sql": sql,
                     "columns": self.emission.python.manifest["view_columns"][step],
                     "rows": [
-                        [row.get(column) for column in self.emission.python.manifest["view_columns"][step]]
+                        [
+                            row.get(column)
+                            for column in self.emission.python.manifest["view_columns"][
+                                step
+                            ]
+                        ]
                         for row in rows[:50]
                     ],
                 }
@@ -142,6 +147,25 @@ class DeterministicAnalysis:
         revision: int = 1,
         debug_root: str | Path = DEFAULT_DEBUG_ROOT,
     ) -> ExecutionResult:
+        if isinstance(bind, Engine):
+            # Both programs and every SQL stage must observe one database snapshot.
+            with bind.connect() as connection:
+                if connection.dialect.name == "postgresql":
+                    connection = connection.execution_options(
+                        isolation_level="REPEATABLE READ"
+                    )
+                with connection.begin():
+                    return self.run(
+                        connection,
+                        mode=mode,
+                        estimated_rows=estimated_rows,
+                        python_row_limit=python_row_limit,
+                        app_env=app_env,
+                        persist_generated=persist_generated,
+                        conversation_id=conversation_id,
+                        revision=revision,
+                        debug_root=debug_root,
+                    )
         emission = self.emit()
         selected = choose_execution_mode(
             mode,
@@ -166,7 +190,7 @@ class DeterministicAnalysis:
             view_rows = materialized_python_views(python_result, self.plan)
             rows = view_rows[-1]
         elif selected is ExecutionMode.SQL:
-            view_rows = execute_sql_views(emission.sql, bind, row_limit=50)
+            view_rows = execute_sql_views(emission.sql, bind)
             rows = view_rows[-1]
         elif selected is ExecutionMode.VERIFY:
             python_result = execute_python(emission.python, bind, schema_map=schema_map)

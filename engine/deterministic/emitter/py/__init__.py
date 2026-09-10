@@ -145,7 +145,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 1
+    VERSION = 2
 
     def emit(
         self,
@@ -156,6 +156,32 @@ class PythonEmitter:
     ) -> GeneratedPackage:
         wrapper_module = _wrapper_module(plan)
         wrapper_class = _wrapper_class(plan)
+        module_names = [
+            "base",
+            *(table.attribute for table in plan.tables),
+            wrapper_module,
+        ]
+        if len(module_names) != len(set(module_names)):
+            raise ValueError("generated module names collide")
+        symbols = [
+            "Base",
+            "Session",
+            "Decimal",
+            "AnalysisResult",
+            "date",
+            "select",
+            "and_",
+            *_operator_imports(plan),
+            *(table.class_name for table in plan.tables),
+            *(
+                _class_name(view.name)
+                for view in plan.views
+                if not isinstance(view, FilteredView)
+            ),
+            wrapper_class,
+        ]
+        if len(symbols) != len(set(symbols)):
+            raise ValueError("generated Python class or import names collide")
         files = {"base.py": self._base_source()}
         for table in plan.tables:
             files[f"{table.attribute}.py"] = self._table_source(plan, table)
@@ -228,7 +254,7 @@ class PythonEmitter:
         }
         scalar_attrs: dict[str, str] = {}
         for column in table.columns:
-            scalar_attribute = self._scalar_attribute(table, column.name)
+            scalar_attribute = table.scalar_attribute(column.name)
             scalar_attrs[column.name] = scalar_attribute
             py_type, sql_type = _TYPE[column.type]
             if column.nullable:
@@ -264,11 +290,24 @@ class PythonEmitter:
             foreign = ", ".join(
                 scalar_attrs[column] for column in relationship.local_columns
             )
+            comparisons = [
+                f"{table.class_name}.{scalar_attrs[local]} == "
+                f"{target.class_name}.{target.scalar_attribute(remote)}"
+                for local, remote in zip(
+                    relationship.local_columns, relationship.remote_columns, strict=True
+                )
+            ]
+            primaryjoin = (
+                comparisons[0]
+                if len(comparisons) == 1
+                else "and_(" + ", ".join(comparisons) + ")"
+            )
             lines.extend(
                 [
                     f"    {relationship.attribute}: Mapped[{annotation}] = relationship(",
                     f"        {target.class_name!r},",
                     f"        foreign_keys=[{foreign}],",
+                    f"        primaryjoin={primaryjoin!r},",
                     f"        uselist={relationship.many!r},",
                     '        lazy="selectin",',
                     "    )",
@@ -377,6 +416,7 @@ class PythonEmitter:
                         view,
                         row_classes[view.name],
                         stage_tables[view.source],
+                        stage_values[view.source],
                     )
                 )
             elif isinstance(view, FilteredView):
@@ -452,18 +492,15 @@ class PythonEmitter:
         ]
         joined = {tables[0].name}
         for table in tables[1:]:
-            edge = self._connecting_relationship(plan, joined, table.name)
-            if edge is None:
-                raise ValueError(f"combined view cannot connect table {table.name}")
-            source, relationship = edge
+            source, relationship = plan.connecting_relationship(joined, table.name)
             target = plan.table(relationship.target_table)
             comparisons = []
             for local, remote in zip(
                 relationship.local_columns, relationship.remote_columns
             ):
                 comparisons.append(
-                    f"{source.class_name}.{self._scalar_attribute(source, local)} == "
-                    f"{target.class_name}.{self._scalar_attribute(target, remote)}"
+                    f"{source.class_name}.{source.scalar_attribute(local)} == "
+                    f"{target.class_name}.{target.scalar_attribute(remote)}"
                 )
             on_clause = (
                 comparisons[0]
@@ -497,27 +534,35 @@ class PythonEmitter:
         view: EnrichedView,
         row_class: str,
         source_tables: Mapping[str, str],
+        source_values: set[str],
     ) -> list[str]:
         helper = f"emit_{view.name}"
         lines = [f"        def {helper}(row):"]
         for enrichment in view.enrichments:
             expression = "row." + source_tables[enrichment.source_table]
-            for relationship in enrichment.relationship_path:
-                expression += "." + relationship
             target_attribute = plan.table(enrichment.target_table).attribute
-            lines.extend(
-                [
-                    f"            {target_attribute} = {expression}",
-                    f"            if {target_attribute} is None:",
-                    "                return None",
-                ]
-            )
+            for index, relationship in enumerate(enrichment.relationship_path):
+                # An absent intermediate reference behaves like the SQL inner join.
+                variable = f"_{target_attribute}_ref_{index}"
+                lines.extend(
+                    [
+                        f"            {variable} = {expression}.{relationship}",
+                        f"            if {variable} is None:",
+                        "                return None",
+                    ]
+                )
+                expression = variable
+            lines.append(f"            {target_attribute} = {expression}")
         lines.extend(
             [
                 f"            return {row_class}(",
                 *(
                     f"                {attribute}=row.{attribute},"
                     for attribute in source_tables.values()
+                ),
+                *(
+                    f"                {name}=row.{name},"
+                    for name in sorted(source_values)
                 ),
                 *(
                     f"                {plan.table(item.target_table).attribute}={plan.table(item.target_table).attribute},"
@@ -717,36 +762,12 @@ class PythonEmitter:
             table = plan.table(value.table)
             if value.table not in tables:
                 raise ValueError(f"table {value.table!r} is not available in this view")
-            return f"{row}.{tables[value.table]}.{self._scalar_attribute(table, value.column)}"
+            return f"{row}.{tables[value.table]}.{table.scalar_attribute(value.column)}"
         if isinstance(value, BinaryValue):
             left = self._python_value(plan, value.left, row, tables, values)
             right = self._python_value(plan, value.right, row, tables, values)
             return f"{_BINARY_FUNCTION[value.operator]}({left}, {right})"
         raise TypeError(f"unsupported Python value: {type(value).__name__}")
-
-    @staticmethod
-    def _scalar_attribute(table: TableSpec, column_name: str) -> str:
-        column = table.column(column_name)
-        if any(
-            relationship.attribute == column.attribute
-            and column_name in relationship.local_columns
-            for relationship in table.relationships
-        ):
-            return f"_{column.attribute}_value"
-        return column.attribute
-
-    @staticmethod
-    def _connecting_relationship(plan: AnalysisPlan, joined: set[str], table_name: str):
-        for source_name in sorted(joined):
-            source = plan.table(source_name)
-            for relationship in source.relationships:
-                if relationship.target_table == table_name:
-                    return source, relationship
-        table = plan.table(table_name)
-        for relationship in table.relationships:
-            if relationship.target_table in joined:
-                return table, relationship
-        return None
 
 
 def _class_name(value: str) -> str:

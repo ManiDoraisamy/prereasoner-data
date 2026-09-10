@@ -336,3 +336,21 @@ Production compiles generated Python as an ephemeral in-memory package. Developm
 `engine/deterministic/_gen/py/<conversation>/<slug>` tree for inspection; production writes that tree
 only when explicitly configured. Advanced AST and specialized world/compose shapes remain on their
 existing SQL paths until both emitters gain typed support; no approximate translation is allowed.
+
+## Explicit execution modes must report the backend actually used (2026-09-10)
+
+The URL `use` parameter is request context, forwarded through the direct engine or chat adapter;
+it never changes the process-wide default. Direct requests with an override receive a transient
+`query` slug without creating a named workbook. Persisted analyses keep their engine-owned slugs.
+The own-data and MCP response adapters preserve stage records and generated-source evidence.
+
+An explicit Python or verification request cannot accept an answer produced by the unsupported
+SQL path. The final server guard returns an error before saving such an answer. SQL and automatic
+selection retain the broader existing planners until those planners emit the shared typed plan.
+The guard is currently post-execution; route-specific capability preflight is still future work.
+
+Shared plan validation and join/storage-attribute rules have one owner in `engine/deterministic/plan.py`.
+Complete execution results are separate from 50-row trace previews. When the execution service owns
+the PostgreSQL connection, both backends and stage reads use one REPEATABLE READ transaction.
+Exact source hashes and backend agreement remain distinct from independent answer correctness and
+from knowledgebase release pinning. See `docs/DETERMINISTIC_EMITTERS.md` for the current boundaries.

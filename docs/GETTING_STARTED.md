@@ -151,6 +151,13 @@ it also carries the conversation id and can include route evidence, typing, inte
 calculation evidence, provenance, or warnings when those mechanisms participated. Treat absent
 optional evidence as path-specific, not as a different API version.
 
+To select a backend for the example, add `use = "sql"`, `use = "py"`, or `use = "both"` to the
+request hashtable before converting it to JSON. `both` requires matching SQL/Python stages; check
+`execution.actual` and `execution.verified` in the response. Unsupported explicit Python/verification
+requests return an error. Browser URLs carry the same preference, for example
+`/?load=customer-orders&use=sql` and `/reason?use=both`. A saved conversation URL restores its
+snapshot without rerunning it. See [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
+
 The optional chat orchestrator adds named workbook intent to data calls. `create` allocates a distinct analysis;
 `modify` appends an immutable revision to an existing analysis; and `inspect` reopens one exact revision without
 running the planner. Uploaded tables keep their canonical file stems throughout the conversation (`orders.csv`

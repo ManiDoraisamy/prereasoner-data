@@ -1,214 +1,207 @@
-# Deterministic SQL and Python emitters
+# Deterministic SQL and Python execution
 
-Status: **current for named own-data analyses in the supported lowering subset**. The typed SQL
-AST remains the only planner. The feature adds a backend-neutral, immutable view plan and two
-deterministic source emitters; it does not add a second language model, planner, or ranker.
+Status: implemented for a bounded own-data AST subset. Specialized world and compose planners
+still use SQL. This document describes the current source tree, not the last deployed revision.
+Local tests do not establish that every hosted dataset runs in both modes.
 
-## Contract
+## One planner, two readable programs
 
-A named analysis slug identifies the same computation in both languages:
+The engine constructs and ranks typed SQL AST candidates. For a supported winner,
+`lower_select_query()` constructs one immutable `AnalysisPlan`. SQL and Python emitters independently
+consume that plan. No model writes Python source, and neither emitter translates the other's source.
 
-```text
-typed SQL AST
-      |
-      v
-immutable AnalysisPlan
-      |
-      +---------------------------+
-      |                           |
-      v                           v
-SQL view emitter             Python source emitter
-      |                           |
-combined -> filtered -> ...   combined -> filter -> ...
-      |                           |
-      +------------+--------------+
-                   v
-          optional parity check
-```
+Sonnet proposes a named analysis action and slug. The engine validates the intent and owns planning,
+revision allocation, code generation, and execution. A slug such as `total_amount` is the Python
+method name and every SQL view's prefix. Each revision regenerates its program. A generated package
+currently contains one analysis method, not all conversation methods in one accumulating module.
 
-The plan owns table classes, physical columns, ORM relationships, expressions, aggregate
-operators, and the ordered materialized-view chain. Both emitters consume that same plan. Neither
-emitter parses the other emitter's source.
+## The view chain is the Python data flow
 
-Every view after `combined` must consume the immediately preceding view. The constructor rejects a
-chain that skips a step. For example:
-
-```text
-total_amount_combined
-    -> total_amount_enriched
-    -> total_amount_filtered
-    -> total_amount_calculated
-    -> total_amount_total
-```
-
-The equivalent Python function is deliberately feed-forward:
+The plan begins with `combined`. Every later stage consumes its immediate predecessor; the final
+stage projects or reduces its input. The generated wrapper follows this structure (arguments abbreviated):
 
 ```python
-def total_amount(self) -> AnalysisResult:
-    total_amount_combined = View.from_orm(...)
-    total_amount_enriched = total_amount_combined.for_each(...)
-    total_amount_filtered = total_amount_enriched.filter(...)
-    total_amount_calculated = total_amount_filtered.for_each(...)
-    total_amount_total = total_amount_calculated.reduce(...)
-    return AnalysisResult(result=total_amount_total, views=(...))
+class OrdersCustomers:
+    def total_amount(self) -> AnalysisResult:
+        total_amount_combined = View.from_orm(...)
+        total_amount_enriched = total_amount_combined.for_each(...)
+        total_amount_filtered = total_amount_enriched.filter(...)
+        total_amount_calculated = total_amount_filtered.for_each(...)
+        total_amount_total = total_amount_calculated.reduce(...)
+        return AnalysisResult(result=total_amount_total, views=(...))
 ```
 
-`View.for_each`, `filter`, `reduce`, and `group_reduce` contain ordinary deterministic loops. The
-generated function shows every transition and puts its operator expression at the call site. For
-example, SQL `SUM(gross_amount)` is emitted as
-`SUM(result.total_amount, row.gross_amount)` inside the reduction step. Grouping still has one
-named `group_reduce` stage and one pass over its input; it does not create an unreported helper
-view.
+| Stage | SQL form | Python operation |
+|---|---|---|
+| Combined | Input joins | `View.from_orm` over one ORM query |
+| Enriched | Reference inner joins | `previous.for_each`, traversing object relationships |
+| Filtered | `WHERE` | `previous.filter`, with an explicit predicate |
+| Calculated | Retained columns plus expressions | `previous.for_each`, retaining objects and earlier values |
+| Projected | Selected outputs | `previous.for_each`, producing result rows |
+| Reduced | Aggregates and optional grouping | `previous.reduce` or `previous.group_reduce` |
 
-## ORM object model
+The actual source includes the ORM query, row classes, transformation bodies, predicates, initial
+aggregate state, and operator calls. SQL `SUM(gross_amount)` corresponds to
+`SUM(result.total_amount, row.gross_amount)` in the reduction callback. `operators.py` contains
+ordinary Python functions and loops, not an expression interpreter. `group_reduce` makes one pass
+over input rows and finalizes the groups afterward.
 
-Generated table modules use SQLAlchemy 2 declarative mappings over the existing PostgreSQL
-conversation and knowledgebase schemas. Production does not copy PostgreSQL data into SQLite.
+Python stages materialize tuples. SQL creates temporary **views**, not PostgreSQL materialized views.
+Reading each SQL stage can recompute its predecessors. Both backends retain stage rows for inspection;
+that has memory and database costs, including in SQL mode.
 
-A foreign-key attribute is an object relationship, not a scalar pretending to be an object:
+## ORM objects and storage
 
-```python
-class Order(Base):
-    _customer_id_value: Mapped[int] = mapped_column(
-        "customer_id",
-        BigInteger,
-        ForeignKey("conversation.customers.customer_id"),
-    )
-    customer_id: Mapped["Customer"] = relationship("Customer", ...)
-    city: Mapped["City"] = relationship("City", ...)
+Generated table classes are SQLAlchemy declarative mappings. Stage dataclasses contain ORM objects
+and calculated values; they are not the table mappings. For example, a generated `Order` exposes
+`customer_id: Mapped["Customer"]` and `city: Mapped["City"]` as relationships. The physical customer
+key is stored in a private `_customer_id_value` attribute used for joins and trace flattening.
+Composite relationships retain every key pair and have explicit ORM join conditions.
+
+Enrichment follows declared scalar paths such as `order.city.country`. An absent intermediate
+object drops the row, matching an inner join. Collection-valued enrichment is rejected until both
+emitters implement its multiplicity. SQLAlchemy select-in loading may issue additional relationship
+queries after the combined query.
+
+Production reads the existing PostgreSQL conversation and knowledgebase schemas. A schema translation
+maps logical `conversation` to the already authorized `c_<32hex>` namespace. Python execution does
+not eliminate conversation schemas or copy PostgreSQL data into in-memory SQLite.
+
+Uploaded tables lack declared primary keys. Automatic lowering proves identity from actual column
+values after numeric upload coercion, preferring a unique reference key or identifier and then a
+non-null unique composite row. Missing evidence, identical duplicate facts, or joins without a unique
+scalar target prevent lowering. `"01"` and `1` cannot be distinct integer identities. Hand-authored
+plans must supply valid database keys.
+
+## Request selection
+
+Use one value per URL:
+
+```text
+/?load=customer-orders&use=sql
+/?load=orders-tiers&use=both
+/reason?use=py
+/reason/c_6852132aa60a4260a1af3ecced605b4d?use=both
 ```
 
-The physical key remains private because SQLAlchemy needs it for joins. The public attribute is the
-related object. A reference object may expose another object, such as `order.city.country`.
-`schema_translate_map` binds the logical `conversation` schema to the authorized physical
-`c_<32hex>` schema at execution time. Shared `knowledgebase` and `public` mappings retain their
-fixed schemas.
+`load` selects the home dataset; `use` selects execution for subsequent questions. The browser
+preserves it through reason/conversation navigation, example selection, and the Sheets picker.
+It includes `use` in direct `/api/reason` and `/chat` bodies. The orchestrator forwards it on every
+engine call independently of Sonnet's tool arguments. Unknown values are rejected by request validation.
 
-Because uploaded PostgreSQL tables do not declare primary keys, lowering proves an ORM identity from
-the request rows. It prefers a unique relationship target or identifier and otherwise uses the
-unique composite row. A table with no stable identity is not dual-executed; it remains on the SQL
-path. This prevents SQLAlchemy's identity map from merging repeated facts that share a foreign key.
+| Public value | Internal mode | Supported shared plan | Unsupported shape |
+|---|---|---|---|
+| `sql` | `sql` | Emitted SQL | Existing SQL executor |
+| `py` or `python` | `python` | Generated Python | Error; no accepted answer |
+| `both` or `verify` | `verify` | Both, comparing every stage | Error; no accepted answer |
+| `auto` | `auto` | Row-threshold selection | Existing SQL executor |
+| Omitted | Deployment default | Configured policy for named analyses | Existing SQL executor |
 
-The first view performs one ORM query that materializes the input object tuple, for example
-`Order` plus `Customer`. An enrichment view traverses declared object relationships to add `City`,
-`Country`, `Currency`, or another associated reference object. It does not perform a name-based
-reflection guess at runtime.
+An explicit override on a direct request receives a transient `query` slug, enabling the lowering
+hook without creating a named workbook catalog entry. A direct request without an override or named
+analysis retains its existing SQL behavior. Named analyses use
+`DETERMINISTIC_EXECUTION_MODE=auto|python|sql|verify`, default `auto`. This environment setting applies
+within the supported subset; it does not force unsupported planners to emit Python.
 
-## Source layout
+`auto` selects Python at or below `DETERMINISTIC_PYTHON_ROW_LIMIT`, default `10000`, using the total
+input row estimate. It does not estimate join expansion, object size, or reference loading. No
+benchmark establishes a universal Python speed advantage or the optimal crossover point.
 
-Implementation:
+Successful responses identify the actual execution, for example:
+
+```json
+{"execution":{"requested":"verify","actual":"verify","verified":true,"implementation":"shared_plan"}}
+```
+
+`actual` uses internal names; `implementation` is `shared_plan` or `sql_executor`. Shared-plan responses
+also include `deterministic`: actual mode, both sources, manifests, hashes, and optional debug path.
+The MCP/chat adapter preserves this evidence. On an unsupported explicit Python request, the error
+may report `actual: "sql"`: the current guard checks the completed route result before accepting or
+saving it. It does not preflight every planner, and provisional progress can precede the final error.
+
+Opening an existing conversation or inspecting a revision restores saved results. Changing `use`
+does not rerun history; submit a question to use the new mode. The current UI has no dedicated
+generated-Python source viewer.
+
+## Execution and comparison
+
+`DeterministicAnalysis.run()` accepts a SQLAlchemy engine or connection. With an engine it opens one
+transaction for the entire run and uses PostgreSQL `REPEATABLE READ`, so both backends and all stage
+reads share a snapshot. Callers supplying a connection own its transaction and isolation level and
+must arrange equivalent snapshot consistency.
+
+Python loads uniquely named in-memory modules, calls the slug method, and removes those module
+registrations on exit, including failures. SQL creates temporary views, reads them, and drops them
+in reverse order. The service returns complete rows; only trace previews are limited to 50 rows.
+The serving API separately retains its existing 50-row answer preview.
+
+Operators propagate SQL nulls, ignore null aggregate operands, return zero for empty counts, and
+return null for empty sums/averages/minima/maxima. Division by zero returns null. Python execution
+uses a local 128-digit Decimal context; division and averages round to 20 decimal places with ties
+away from zero, matching the emitted PostgreSQL `ROUND(..., 20)` policy.
+
+Verification compares every stage as an unordered multiset, preserving duplicates and column names.
+Decimal values, integers, and decimal representations of floats normalize without rounding significant
+digits. A mismatch raises `VerificationMismatch` with the failing view in an exception note.
+Agreement does not prove that the shared planner correctly understood the question.
+
+SQLite is a hermetic test backend. Its native numeric storage and arithmetic are not PostgreSQL
+NUMERIC. Passing simple SQLite fixtures does not validate arbitrary fractional PostgreSQL arithmetic;
+production parity needs PostgreSQL tests with representative values.
+
+## Source layout and lifetime
 
 ```text
 engine/deterministic/
-  plan.py                  immutable shared plan and validation
-  lower.py                 typed SQL AST -> supported shared plan
-  operators.py             SQL-semantic Python operators and View loops
-  runtime.py               in-memory package loader and parity comparison
-  service.py               emission and execution policy
-  emitter/
-    sql/__init__.py         SQL view-stack emitter
-    py/__init__.py          SQLAlchemy/Python source emitter
+  plan.py                 shared stages, expressions, tables, and relationships
+  lower.py                supported typed AST -> AnalysisPlan
+  context.py              request context and final mode reporting
+  operators.py            Python loops and SQL-semantic operators
+  runtime.py              package loading, SQL execution, normalization
+  service.py              policy, records, snapshot ownership
+  emitter/sql/__init__.py SQL source emitter
+  emitter/py/__init__.py  Python source emitter and debug writer
+  _gen/py/<conversationId>/<slug>/
+    base.py
+    orders.py
+    customers.py
+    city.py
+    country.py
+    orders_customers.py
+    manifest.json
 ```
 
-One generated package contains the table classes plus a wrapper named from its input objects:
+Source is emitted in memory in every shared-plan mode, including SQL. Python source is syntax-checked;
+Python and verification modes compile and execute it in process. Source comes from the closed emitter.
+The loader is not a sandbox for arbitrary client-supplied Python.
 
-```text
-base.py
-orders.py
-customers.py
-city.py
-country.py
-orders_customers.py        class OrdersCustomers; method total_amount(...)
-```
+`APP_ENV=development` also writes identical source bytes to `_gen`. Before writing, the writer validates
+the conversation/slug path and replaces only that directory to remove stale modules. Files remain for
+debugging; `_gen` is Git-ignored. Production writes no generated files unless
+`DETERMINISTIC_PERSIST_GENERATED=true`. Execution always uses in-memory source, even with a debug copy.
+Responses and saved analysis snapshots can retain source: memory-only execution does not mean source
+is never persisted.
 
-The emitted package and SQL program record SHA-256 hashes. Their combined manifest records the
-dataset version, knowledgebase release when supplied, relationship edges, view names, and both
-emitter versions.
+Records include source and per-file hashes, emitter versions, relationship edges, stages, dataset
+version, and knowledgebase release when supplied. The automatic serving hook currently passes the
+named dataset version but does not supply a knowledgebase release to the dual manifest. A null release
+is not a pinned knowledgebase snapshot.
 
-## Execution modes
+## Coverage and extension
 
-`DETERMINISTIC_EXECUTION_MODE` controls supported named analyses:
+Automatic lowering supports unaliased inner joins, one comparison filter, projections and arithmetic,
+`COUNT/SUM/AVG/MIN/MAX`, and grouped aggregates whose projected group columns precede aggregates.
+Aliases, self-joins, DISTINCT, Boolean predicate trees, HAVING, ordering, limits, subqueries, set
+queries, and specialized world/compose plans remain outside this subset.
 
-| Value | Behavior |
-|---|---|
-| `auto` | Python at or below `DETERMINISTIC_PYTHON_ROW_LIMIT`; SQL above it |
-| `python` | Compile and execute the generated Python package |
-| `sql` | Execute the generated SQL view stack |
-| `verify` | Execute both and fail at the first named stage whose normalized rows differ |
+Hand-authored plans support scalar knowledgebase enrichment; the serving world planner has not been
+migrated to those plans. The default customer-orders geography/FX prompt is therefore not evidence
+of an automatically generated ORM world pipeline.
 
-The `/reason` browser accepts a request-local override for a named analysis:
+Extend coverage by adding typed plan semantics, implementing both emitters, adding stage parity
+fixtures, and connecting the relevant planner. Reusable Python and SQL functions are future extension
+points, not a current plugin registry. They need explicit types, null/numeric semantics, versions,
+dependency records, and tests against independent expected results.
 
-```text
-/reason?use=sql
-/reason?use=py
-/reason?use=both
-/reason/c_<conversation-id>?use=both
-```
-
-`sql` selects SQL, `py` selects generated Python, and `both` maps to `verify`. The browser carries
-the preference in every direct `/api/reason` request and every orchestrated `/chat` engine call,
-including follow-ups and the conversation URL rewrite. An omitted value uses the deployment setting.
-The override is request-local and never changes `DETERMINISTIC_EXECUTION_MODE` for another concurrent
-user.
-
-`auto` is the default and the row limit defaults to `10000`. The estimate is the total number of
-input rows selected for the plan. Verification compares every materialized view through exact
-decimal normalization and ignores unspecified row order. A mismatch names the failing stage, so the
-difference is localized instead of appearing only as a wrong final value. Response view records
-include the shared operation name, column order, up to 50 materialized rows, and the exact SQL body.
-
-The source is deterministic, parsed with Python's AST parser before it is accepted, compiled, and
-executed as an ephemeral in-memory package. Production does not import a generated file from disk.
-
-## Development files and production memory
-
-With `APP_ENV=development`, the exact Python bytes that were compiled are also written to:
-
-```text
-engine/deterministic/_gen/py/<conversationId>/<slug>/
-```
-
-The directory contains the generated modules and `manifest.json`. Before a new revision is written,
-only that validated conversation/slug directory is removed, preventing stale modules from a prior
-revision. `_gen` is ignored by Git.
-
-Production is memory-only by default. Setting `DETERMINISTIC_PERSIST_GENERATED=true` explicitly
-enables the same debug write in another environment. The response/saved analysis may retain the
-exact source and hashes for interpretation and audit, but production execution never depends on
-that persisted copy.
-
-## Current lowering boundary
-
-`engine/deterministic/lower.py` currently lowers unaliased `SelectQuery` plans containing:
-
-- one or more input tables connected by inner joins;
-- one non-aggregate comparison filter;
-- column or arithmetic projections;
-- `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
-- aggregate operands containing `+`, `-`, `*`, or `/`; and
-- optional grouping when projected group columns precede aggregates.
-
-The full SQL AST supports more than this initial dual subset. Aliases, self-joins, `DISTINCT`,
-boolean predicate trees, `HAVING`, ordering, limits, subqueries, set queries, and advanced world
-composition continue to execute through the existing SQL AST/view path. They are not translated
-approximately. Extending dual coverage means adding a typed plan node, implementing it in both
-emitters, and adding a parity test.
-
-Manually constructed `AnalysisPlan` objects already support mixed conversation and associated
-knowledgebase table classes and multi-hop enrichment paths. The current automatic serving hook is
-limited to the own-data AST subset above; migration of the specialized world/compose plans must
-make those planners emit the same neutral plan before they can use Python execution.
-
-## Tests
-
-Run:
-
-```powershell
-python -m tests.test_deterministic_emitters
-python -m tests.test_analysis
-python -m tests.test_sql_ast
-```
-
-The emitter suite verifies byte determinism, object-valued relationships, exact stage chaining,
-typed-AST lowering, development source identity, execution policy, trace materialization, and
-SQL/Python parity at every stage of the same relational graph.
+See [TESTING.md](TESTING.md) for verification boundaries and
+[the review record](notes/2026-09-10-deterministic-review.md) for findings and remaining work.

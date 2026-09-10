@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from typing import Generic, TypeVar
+from engine.numeric import DECIMAL_PRECISION, DIVISION_SCALE
 
 T = TypeVar("T")
 U = TypeVar("U")
@@ -89,7 +90,7 @@ class AverageState:
 
     @property
     def value(self) -> Decimal | None:
-        return None if self.count == 0 else self.total / self.count
+        return DIVIDE(self.total, self.count)
 
 
 def FINALIZE_AVG(value: AverageState) -> Decimal | None:
@@ -141,7 +142,14 @@ def MULTIPLY(left, right):
 
 
 def DIVIDE(left, right):
-    return None if left is None or right in (None, 0) else left / right
+    if left is None or right in (None, 0):
+        return None
+    with localcontext() as context:
+        context.prec = DECIMAL_PRECISION
+        return (Decimal(str(left)) / Decimal(str(right))).quantize(
+            Decimal(1).scaleb(-DIVISION_SCALE),
+            rounding=ROUND_HALF_UP,
+        )
 
 
 def EQ(left, right):

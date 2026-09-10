@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from types import MappingProxyType
+from engine.numeric import DIVISION_SCALE
 
 from engine.deterministic.plan import (
     AggregateValue,
@@ -61,7 +62,7 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
@@ -122,8 +123,7 @@ class SQLEmitter:
                 "knowledgebase_release": knowledgebase_release,
                 "views": [view.name for view in plan.views],
                 "view_columns": {
-                    name: list(columns)
-                    for name, columns in plan.view_columns().items()
+                    name: list(columns) for name, columns in plan.view_columns().items()
                 },
                 "view_operations": plan.view_operations(),
             },
@@ -140,10 +140,7 @@ class SQLEmitter:
         sql = f"SELECT {', '.join(projections)} FROM {self._table(root.schema, root.name)}"
         joined = {root.name}
         for table in tables[1:]:
-            connection = self._connecting_relationship(plan, joined, table.name)
-            if connection is None:
-                raise ValueError(f"combined view cannot connect table {table.name}")
-            source, relationship = connection
+            source, relationship = plan.connecting_relationship(joined, table.name)
             target = plan.table(relationship.target_table)
             comparisons = [
                 f"{self._qualified(source.schema, source.name, local)} = "
@@ -235,7 +232,8 @@ class SQLEmitter:
             if aggregate.operand is None
             else self._value(aggregate.operand, tables, values)
         )
-        return f"{aggregate.function}({operand})"
+        sql = f"{aggregate.function}({operand})"
+        return f"ROUND({sql}, {DIVISION_SCALE})" if aggregate.function == "AVG" else sql
 
     def _predicate(
         self, predicate: PredicateValue, tables: set[str], values: set[str]
@@ -273,7 +271,7 @@ class SQLEmitter:
             if value.operator == "/":
                 left = self._value(value.left, tables, values)
                 right = self._value(value.right, tables, values)
-                return f"(CAST({left} AS NUMERIC) / NULLIF({right}, 0))"
+                return f"ROUND((CAST({left} AS NUMERIC) * 1.0 / NULLIF({right}, 0)), {DIVISION_SCALE})"
             return (
                 f"({self._value(value.left, tables, values)} {_BINARY[value.operator]} "
                 f"{self._value(value.right, tables, values)})"
@@ -285,19 +283,6 @@ class SQLEmitter:
 
     def _qualified(self, schema: str, table: str, column: str) -> str:
         return _qualified(self.schema_map.get(schema, schema), table, column)
-
-    @staticmethod
-    def _connecting_relationship(plan: AnalysisPlan, joined: set[str], table_name: str):
-        for source_name in sorted(joined):
-            source = plan.table(source_name)
-            for relationship in source.relationships:
-                if relationship.target_table == table_name:
-                    return source, relationship
-        table = plan.table(table_name)
-        for relationship in table.relationships:
-            if relationship.target_table in joined:
-                return table, relationship
-        return None
 
 
 def _q(value: object) -> str:

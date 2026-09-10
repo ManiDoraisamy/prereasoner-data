@@ -21,10 +21,13 @@ const EXECUTION_USE = (()=>{
   if(raw==='sql')return 'sql';
   if(raw==='py'||raw==='python')return 'py';
   if(raw==='both'||raw==='verify')return 'both';
-  return null;
+  return raw || null; // Let request validation reject unknown modes instead of silently ignoring them.
 })();
-function executionQuery(){
-  return EXECUTION_USE ? '?use='+encodeURIComponent(EXECUTION_USE) : '';
+function executionQuery(search=''){
+  const params=new URLSearchParams(search);
+  if(EXECUTION_USE)params.set('use',EXECUTION_USE);
+  const query=params.toString();
+  return query ? '?'+query : '';
 }
 function executionRequestFields(){ return EXECUTION_USE ? {use:EXECUTION_USE} : {}; }
 

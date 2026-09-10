@@ -3,6 +3,32 @@
 Prereasoner has hermetic tests, browser-state tests, live database integrations, a deployment regression gate, and
 Spider accuracy evaluation. They answer different questions and should not be collapsed into one green badge.
 
+## Dual-emitter verification
+
+The emitter suite executes real generated Python and SQL over SQLite fixtures. It covers stage
+alignment, composite object relationships, missing multi-hop references, retained calculated fields,
+grouped output order, full results versus 50-row previews, identity coercion, source determinism,
+request context isolation, and explicit-mode fallback rejection. Numeric comparison tests ensure
+large decimal differences are not rounded away. SQLite's native arithmetic is not a substitute for
+PostgreSQL NUMERIC coverage.
+
+`npm run test:browser` exercises the release journey plus `sql`, `py`, and `both` across direct and
+orchestrated navigation and follow-up payloads. Its API and authentication are local fixtures. It
+proves browser transport behavior, not actual backend execution or live authentication.
+
+`tests.test_datasets` evaluates the public prompts and `eval.txt` expectations against the seeded
+engine. It currently does **not** run a mode matrix or require a shared-plan execution record. A
+passing dataset evaluation therefore cannot be reported as SQL/Python parity for all datasets.
+`customer-orders` and `orders-tiers` are separate fixtures; `chat:` evaluation lines require the
+orchestrator's conversational context.
+
+Before releasing a parity claim, run authenticated requests against a test PostgreSQL deployment
+with the same input data and pinned references in each supported mode. Assert `execution.actual`,
+`execution.verified`, every stage, and the independent expected answer. Include fractional money,
+repeating division, averages, empty/null groups, duplicate facts, composite joins, and unsupported
+world/compose cases. An HTTP 200 page, a health response, or a 401 API rejection does not prove that
+Python ran. Record unavailable prerequisites as untested, never as passed.
+
 ## Quick Local Checks
 
 Run these before involving models, PostgreSQL, or network services:

@@ -20,6 +20,18 @@ framework; the pages use the browser APIs and classic JavaScript modules already
 
 ## Workbook sheet types
 
+Home URLs accept `?load=<dataset>&use=sql|py|both`, with one `use` value at a time. `load` selects
+the demo files; `use` follows navigation into `/reason` and `/reason/<conversationId>`, example
+selection, and the Sheets picker round trip. Request builders include it in both direct engine
+and chat JSON bodies, including follow-ups. `customer-orders` contains only `orders.csv`;
+`orders-tiers` contains `orders.csv` and `tier.csv`.
+
+The engine owns backend selection and reports the actual execution. Explicit `py`/`both` cannot
+accept unsupported SQL fallback results. Changing a saved conversation URL does not rerun its
+snapshot; submit another question to execute with the selected mode. Source is available in
+shared-plan response/snapshot records, but there is no dedicated Python code viewer in this UI.
+See [the execution contract](../docs/DETERMINISTIC_EMITTERS.md).
+
 | Class | Meaning | Editable |
 |---|---|---|
 | `input` | User-uploaded source table | Yes; changes require recalculation |

@@ -56,6 +56,13 @@ def _is_num(v):
         return False
 
 
+def _coverage_sql(response):
+    """Coverage needs all emitted stages, including filters before the final reduction."""
+    response = response or {}
+    program = (response.get("deterministic") or {}).get("sql") or {}
+    return program.get("source") or response.get("sql")
+
+
 def verify_nonempty(res, question):
     """An aggregate over ZERO matching rows is not an answer.
 
@@ -673,7 +680,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # instead of "bullshitting" a wrong query. The clarify UI lets the user confirm or edit before re-running.
         if schema:
             try:
-                dropped = self._uncovered(question, sch, (res or {}).get("sql"))
+                dropped = self._uncovered(question, sch, _coverage_sql(res))
                 if currency and currency.get("status") == "satisfied":
                     realized = currency_conversion_words(currency["target"])
                     dropped = [word for word in dropped if word not in realized]

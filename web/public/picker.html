@@ -55,7 +55,10 @@ function fail(m){ $("sp").style.display = "none"; setMsg(m, "Pick a sheet to ana
 // straight back into the sign-in loop instead of home with the sheet attached.
 function returnPath(){
   try{ const p = sessionStorage.getItem(SS.RETURN_TO);
-    if (p && /^\/[a-z]*$/i.test(p) && p.toLowerCase() !== location.pathname.toLowerCase()) return p;
+    if (p && /^\/[a-z]*(\?[^#]*)?$/i.test(p)) {
+      const target=new URL(p, location.origin);
+      if(target.origin===location.origin && target.pathname.toLowerCase()!==location.pathname.toLowerCase())return target.pathname+target.search;
+    }
   }catch(_){}
   return "/";
 }

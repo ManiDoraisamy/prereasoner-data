@@ -40,9 +40,11 @@ Use Docker Compose for PostgreSQL and the engine, or follow the native setup in
 |---|---|
 | Python-only utility | focused tests, Ruff fatal checks, and `python -m compileall -q engine db training tests orchestrator mcp_server regress` |
 | Planner/search/ranker | `python -m tests.test_sql_ast` |
+| Dual emitter/lowering/runtime | `python -m tests.test_deterministic_emitters`; PostgreSQL parity before making production equivalence claims |
 | Routing/compose | `python -m tests.test_routing` and `python -m tests.test_compose` |
 | Saved references | `python -m tests.test_master_ingest` |
 | Workbook frontend | `node --check web/public/lib/workbook.js` and `node web/tests/workbook_reference.test.js` |
+| URL execution-mode transport | `npm run test:web`, `npm run test:browser`, and `python -m tests.test_orchestrator_unit` |
 | Repository-wide | `python -m tests.run_all` and `git diff --check` |
 | Planner behavior measured on Spider | fresh serving-faithful `whole_db` evaluation with provenance |
 

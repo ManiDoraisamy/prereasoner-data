@@ -146,7 +146,7 @@ async function openExamples(){
     ? EXAMPLES.map(e=>'<button type=button data-load="'+esc(e.dir)+'"><div class=xq>'+esc(e.prompt)+'</div><div class=xd>'+esc(e.files)+'</div></button>').join('')
     : '<div class=xempty>The examples did not load — please try again.</div>';
   if(!EXAMPLES.length)EXAMPLES=null;                                              // a failed fetch retries on the next open
-  [...$('exlist').querySelectorAll('button')].forEach(b=>b.onclick=()=>{location.href='/?load='+encodeURIComponent(b.dataset.load);});
+  [...$('exlist').querySelectorAll('button')].forEach(b=>b.onclick=()=>{location.href='/'+executionQuery('?load='+encodeURIComponent(b.dataset.load));});
 }
 function closeExamples(){$('examples').style.display='none'; $('exbackdrop').style.display='none';}
 $('morex').addEventListener('click',openExamples);
@@ -201,8 +201,8 @@ $('f').addEventListener('submit',async function(e){
 function addSource(kind){
   if(kind==='sheets'){
     try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across the picker round-trip
-         sessionStorage.setItem(SS.RETURN_TO,location.pathname); }catch(_){}
-    location.href='picker';                                   // pick a Google Sheet -> returns here with it attached as a chip
+         sessionStorage.setItem(SS.RETURN_TO,location.pathname+executionQuery(location.search)); }catch(_){}
+    location.href='picker'+executionQuery();                  // pick a Google Sheet -> returns here with it attached as a chip
   } else {
     $('file').setAttribute('accept', kind==='excel'
       ? '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

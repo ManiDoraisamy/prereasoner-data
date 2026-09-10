@@ -16,10 +16,15 @@ Given a question, tables, and foreign keys, the planner:
 5. Ranks candidates with named deterministic features.
 6. Renders only validated ASTs to SQL.
 
-For a named analysis in the supported dual subset, the validated winner also lowers directly into
+For a named analysis or an explicit direct execution request in the supported dual subset, the winner lowers into
 one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted independently from that
 plan; neither source is parsed to create the other. See
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
+
+AST validity is broader than dual-emitter coverage. The lowering adapter requires proven ORM row
+identities and scalar join targets. Unsupported ASTs retain SQL execution under the default policy
+or `use=sql`; `use=py` and `use=both` cannot accept those fallback results. Stage parity is a backend
+equivalence test and does not replace tests against the independently expected meaning of a question.
 
 Foreign keys may contain one or several ordered column pairs. A composite key remains one
 logical graph edge and one `Join`; rendering produces an atomic conjunction such as
@@ -59,8 +64,8 @@ Every candidate must pass AST validation before it can be rendered to SQL.
 
 Live serving goes through `engine/tables.py`. `TableQuery.serve(tables, question)` runs the
 full own-data pipeline (ingest → schema → `_serve_ast` → guard → execute) and returns the
-answer plus the winning candidate. `_serve_ast` calls `search_ast` and selects
-`candidates[0]`:
+answer plus the winning candidate. `_serve_ast` calls `search_ast`, then
+`select_calculation_candidate` chooses the candidate under the shared calculation contract:
 
 ```python
 from engine.encoder_overlay import EncoderQuery

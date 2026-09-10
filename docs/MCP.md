@@ -38,6 +38,17 @@ Production defaults to fail-closed. `/api/dimension` is authenticated too.
 
 ## Tool Outcomes
 
+The HTTP `/chat` body accepts `use=sql|py|both` (and the internal aliases documented in
+[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md)). This is transport context: `_run_turn`
+passes it to every `engine_client.call_query`, which sends it in the `/api/reason` JSON body.
+It is not a mode chosen by Sonnet. The standalone MCP tool schema currently does not expose a
+`use` argument; the shared Python HTTP adapter does.
+
+The adapter preserves `execution` metadata on answers and errors, and `deterministic` source and
+manifest records on answers. `execution.verified=true` means the shared-plan stage comparison
+succeeded. A normal SQL answer, a saved snapshot, and an unsupported-mode error are not new parity
+verification. See the execution contract for the transient direct-request slug and fallback rules.
+
 `prereasoner_query` normalizes engine responses into one of:
 
 - `answered`: result rows, SQL, views, and trace metadata;

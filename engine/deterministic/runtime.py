@@ -8,7 +8,7 @@ import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, is_dataclass
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType, ModuleType
@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from engine.deterministic.emitter.py import GeneratedPackage
 from engine.deterministic.emitter.sql import GeneratedSQL
 from engine.deterministic.plan import AnalysisPlan
+from engine.numeric import DECIMAL_PRECISION, canonical_decimal
 
 _MODULE_COUNTER = itertools.count()
 _MODULE_LOCK = threading.Lock()
@@ -102,7 +103,12 @@ def execute_python(
 ):
     """Execute the emitted wrapper against a SQLAlchemy bind and return AnalysisResult."""
     translated = bind.execution_options(schema_translate_map=dict(schema_map or {}))
-    with load_generated_package(package) as loaded, Session(bind=translated) as session:
+    with (
+        localcontext() as context,
+        load_generated_package(package) as loaded,
+        Session(bind=translated) as session,
+    ):
+        context.prec = DECIMAL_PRECISION
         wrapper = loaded.analysis_class()(session)
         return getattr(wrapper, str(package.manifest["slug"]))()
 
@@ -127,9 +133,7 @@ def execute_sql_views(
     connection = bind.connect() if owns_connection else bind
     view_names = tuple(str(name) for name in program.manifest["views"])
     transaction = (
-        connection.begin_nested()
-        if connection.in_transaction()
-        else connection.begin()
+        connection.begin_nested() if connection.in_transaction() else connection.begin()
     )
     try:
         for statement in program.statements:
@@ -173,9 +177,11 @@ def materialized_python_views(
                 instance = getattr(row, table.attribute)
                 for column in table.columns:
                     key = f"{table.name}__{column.name}"
-                    scalar_attribute = _orm_scalar_attribute(table, column.name)
+                    scalar_attribute = table.scalar_attribute(column.name)
                     values[key] = (
-                        None if instance is None else getattr(instance, scalar_attribute)
+                        None
+                        if instance is None
+                        else getattr(instance, scalar_attribute)
                     )
             if is_dataclass(row):
                 for name in row.__dataclass_fields__:
@@ -226,11 +232,11 @@ def debug_generation_enabled(app_env: str, *, explicit: bool = False) -> bool:
 def _canonical_rows(rows: tuple[dict[str, object], ...]):
     def scalar(value: object):
         if isinstance(value, Decimal):
-            return ("number", value.normalize())
+            return ("number", canonical_decimal(value))
         if isinstance(value, int) and not isinstance(value, bool):
-            return ("number", Decimal(value).normalize())
+            return ("number", canonical_decimal(Decimal(value)))
         if isinstance(value, float):
-            return ("number", Decimal(str(value)).normalize())
+            return ("number", canonical_decimal(Decimal(str(value))))
         if isinstance(value, dict):
             return tuple(sorted((key, scalar(item)) for key, item in value.items()))
         if isinstance(value, (list, tuple)):
@@ -250,14 +256,3 @@ def _canonical_rows(rows: tuple[dict[str, object], ...]):
 
 def _quote_identifier(value: str) -> str:
     return '"' + value.replace('"', '""') + '"'
-
-
-def _orm_scalar_attribute(table, column_name: str) -> str:
-    column = table.column(column_name)
-    if any(
-        relationship.attribute == column.attribute
-        and column_name in relationship.local_columns
-        for relationship in table.relationships
-    ):
-        return f"_{column.attribute}_value"
-    return column.attribute

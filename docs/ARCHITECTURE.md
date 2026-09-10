@@ -6,7 +6,7 @@ current, opt-in, external, and planned behavior.
 
 Prereasoner represents a question, its data, and its source evidence as named dimensions. The current
 runtime composes those dimensions into a checked query plan, runs it, and returns the result with its
-rows and trace. For the supported named own-data subset, one immutable plan emits both a SQL view
+rows and trace. For the supported own-data subset, one immutable plan emits both a SQL view
 stack and readable SQLAlchemy/Python source; see
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). A frozen Qwen model supplies signals about
 intent and schema. It does not generate SQL, Python, or numeric answers. AST construction, routing,
@@ -39,8 +39,8 @@ engine/routing.py
         +-- COMPOSE  --> world-dependent multi-step view composition
         v
 guarded execution in the conversation schema
-        |  supported named analysis: auto Python/SQL, or both for parity
-        |  other plans: existing SQL executor
+        |  supported named or explicitly selected analysis: Python/SQL, or both for parity
+        |  other plans: SQL; explicit Python/verification rejects the fallback
         |
         +-- engine/provenance.py: typed expression and source lineage
         +-- response: rows, SQL, evidence, provenance, and source releases
@@ -49,6 +49,32 @@ guarded execution in the conversation schema
 
 The optional `orchestrator/` service wraps this API in a conversational tool loop. `mcp_server/` exposes the same
 engine operation to MCP clients. Neither component owns data reasoning or may invent a numeric result.
+
+## Execution backend boundary
+
+`engine/deterministic/plan.py` owns the shared stage chain, table identity, scalar attribute names, and
+join-edge selection. The emitters own only source generation. `service.py` chooses the backend and
+owns a shared database snapshot when given an engine; `runtime.py` loads generated modules, executes
+temporary SQL views, and compares materialized stage rows. Production uses the existing PostgreSQL
+conversation and knowledgebase schemas in either mode.
+
+The request's `use` preference flows from the browser through `/chat` or `/api/reason` without changing
+process environment. `context.py` creates a transient `query` context for an explicit direct request,
+or uses the named analysis slug and revision. The server checks the final response before saving an
+analysis: explicit Python/verification requests cannot accept a legacy SQL fallback. Successful
+responses identify the requested and actual mode; the MCP adapter preserves that evidence.
+The knowledge-query adapter also preserves the own-data delegate's generated program and stages.
+Its coverage check reads the complete emitted SQL program so a filter in an earlier stage is not
+mistaken for a condition missing from the final aggregate.
+
+The automatic lowering hook is in the own-data `TableQuery._serve_ast` path. Specialized world and
+compose planners have not been migrated to the shared plan. Manually constructing an ORM enrichment
+plan is not evidence that the serving world route uses Python. The default and explicit SQL paths
+retain those planners; explicit Python/verification reports unsupported results as errors.
+
+Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace
+collection materializes every stage in either mode, so SQL mode is not a bounded-memory streaming
+executor. The row threshold is a selection heuristic, not a demonstrated performance crossover.
 
 ## Data Scopes
 
