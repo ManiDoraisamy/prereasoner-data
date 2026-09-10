@@ -158,6 +158,55 @@ test('verify mode offers a Python/SQL picker over the same proven stages',async(
   expect(requestsAfter).toBe(requestsBefore);          // switching language must not re-execute
 });
 
+test('an orchestrated turn keeps backend provenance per engine call',async({page})=>{
+  await mockAuth(page,'1');
+  await page.route('**/chat',async route=>{
+    if(route.request().method()!=='POST')return route.continue();
+    const mk=(name,value,actual)=>({jobId:'job-'+name,question:name,engine:{
+      execution:{requested:'auto',actual,verified:false,implementation:'shared_plan',fallback_reason:null},
+      sql:`SELECT ${value} AS value`,
+      views:[{name,logical_name:name,op:'select',label:name,columns:['value'],rows:[[value]],
+        sql:`SELECT ${value} AS value`,python:`${name} = source.for_each(...)`}],
+      answer:{columns:['value'],rows:[[value]]},
+    }});
+    await route.fulfill({contentType:'application/json',body:JSON.stringify({
+      reply:'Both calculations completed.',conversation_id:'c_0123456789abcdef0123456789abcdef',
+      traces:[mk('python_stage',1,'python'),mk('sql_stage',2,'sql')],history:[],
+    })});
+  });
+  await page.goto('/?load=orders-tiers');
+  await page.locator('#q').fill('compare backends');
+  await page.getByRole('button',{name:'Ask'}).click();
+  const derivationTabs=page.locator('.wtab').filter({has:page.locator('.dot.deriv')});
+  await expect(derivationTabs).toHaveCount(2);
+  await derivationTabs.nth(0).click();
+  await expect(page.getByRole('button',{name:'View Python'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'View SQL'})).toHaveCount(0);
+  await derivationTabs.nth(1).click();
+  await expect(page.getByRole('button',{name:'View SQL'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'View Python'})).toHaveCount(0);
+});
+
+test('signed-in conversations remain reachable on mobile home',async({page})=>{
+  await page.setViewportSize({width:390,height:844});
+  await mockAuth(page);
+  await page.goto('/');
+  await page.getByRole('button',{name:'Login'}).click();
+  const menu=page.getByRole('button',{name:'Conversations'});
+  await expect(menu).toBeVisible();
+  await expect(menu).toHaveAttribute('aria-expanded','false');
+  await expect(page.locator('#homerail')).toHaveAttribute('aria-hidden','true');
+  expect(await page.locator('#homerail').evaluate(element=>element.inert)).toBe(true);
+  await menu.click();
+  await expect(menu).toHaveAttribute('aria-expanded','true');
+  await expect(page.locator('#homerail')).toHaveAttribute('aria-hidden','false');
+  await expect(page.locator('body')).toHaveClass(/homeopen/);
+  await expect(page.getByRole('button',{name:'New conversation'})).toBeVisible();
+  await expect(page.locator('#homeback')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveAttribute('aria-expanded','false');
+});
+
 for(const use of ['sql','py','both']){
   for(const chat of ['0','1']){
     test(`execution mode ${use} survives ${chat==='1'?'chat':'direct'} navigation and follow-up`,async({page})=>{

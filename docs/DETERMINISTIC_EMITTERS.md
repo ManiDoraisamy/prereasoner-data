@@ -11,9 +11,11 @@ The engine constructs and ranks typed SQL AST candidates. For a supported winner
 consume that plan. No model writes Python source, and neither emitter translates the other's source.
 
 Sonnet proposes a named analysis action and slug. The engine validates the intent and owns planning,
-revision allocation, code generation, and execution. A slug such as `total_amount` is the Python
-method name and every SQL view's prefix. Each revision regenerates its program. A generated package
-currently contains one analysis method, not all conversation methods in one accumulating module.
+revision allocation, code generation, and execution. A slug such as `total_amount` is every SQL
+view's prefix and normally the Python method name. Durable slugs that are Python keywords stay
+unchanged in the workbook and SQL; the emitter records a safe entrypoint such as `analysis_yield`.
+Each revision regenerates its program. A generated package currently contains one analysis method,
+not all conversation methods in one accumulating module.
 
 ## The view chain is the Python data flow
 
@@ -144,10 +146,17 @@ may report `actual: "sql"`: the current guard checks the completed route result 
 saving it. It does not preflight every planner, and provisional progress can precede the final error.
 
 Opening an existing conversation or inspecting a revision restores saved results. Changing `use`
-does not rerun history; submit a question to use the new mode.
+does not rerun history; submit a question to use the new mode. Conversation snapshot version 3 stores
+execution provenance on each derivation sheet because one orchestrated turn may contain several
+engine calls with different `auto` choices. Realtime and HTTP transports both bind execution by call
+job ID, independent of event arrival order. Before the 1 MiB persistence limit is reached, the client
+compacts reproducible preview rows while retaining workbook structure, exact source, and the scalar
+result; unsaved user-authored reference rows are never truncated.
 
 Each stage record carries both `sql` and `python`, the latter being the exact slice of the emitted
-wrapper that produced that stage (`view_sources` in the Python manifest). The workbook's per-sheet
+wrapper that produced that stage (`view_sources` in the emitter's internal manifest). The public
+package manifest omits that duplicate index because each served stage already carries its slice.
+The workbook's per-sheet
 badge names the backend that actually ran: `Python` shows the generated loops, `SQL` shows the view's
 query. When `verify` ran both, the badge becomes a Python/SQL picker defaulting to Python; switching
 re-renders the pair already returned and never triggers a second execution, because verification
@@ -160,8 +169,8 @@ transaction for the entire run and uses PostgreSQL `REPEATABLE READ`, so both ba
 reads share a snapshot. Callers supplying a connection own its transaction and isolation level and
 must arrange equivalent snapshot consistency.
 
-Python loads uniquely named in-memory modules, calls the slug method, and removes those module
-registrations on exit, including failures. SQL creates temporary views, reads them, and drops them
+Python loads uniquely named in-memory modules, calls the manifest's safe entrypoint method, and
+removes those module registrations on exit, including failures. SQL creates temporary views, reads them, and drops them
 in reverse order. The service returns complete rows; only trace previews are limited to 50 rows.
 The serving API separately retains its existing 50-row answer preview.
 

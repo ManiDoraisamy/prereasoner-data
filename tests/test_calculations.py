@@ -333,11 +333,19 @@ def test_decline_contract_reaches_stream_and_mcp():
     ok(response["clarify"] and response["result"] is None and response["reason"],
        "wrong number is removed from the clarify envelope")
 
-    emitted = {}
-    stream_final(lambda key, value: emitted.__setitem__(key, value), response)
+    emitted, events = {}, []
+    response["execution"] = {"actual": "python", "verified": False}
+    def emit(key, value):
+        events.append(key)
+        emitted[key] = value
+    stream_final(emit, response)
     ok(emitted["clarify"]["reason"] == response["reason"]
        and emitted["clarify"]["unmet"],
        "RTDB terminal event preserves reason and unmet evidence")
+    ok(emitted["execution"] == response["execution"],
+       "RTDB terminal events preserve the backend that produced the sheets")
+    ok(events.index("execution") < events.index("status"),
+       "execution reaches RTDB before the terminal status can close the subscription")
 
     shaped = shape_reason_response(response, "job-currency")
     ok(shaped["status"] == "clarify"

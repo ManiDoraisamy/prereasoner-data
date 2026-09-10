@@ -411,7 +411,10 @@ class AnalysisPlan:
     def __post_init__(self) -> None:
         object.__setattr__(self, "tables", tuple(self.tables))
         object.__setattr__(self, "views", tuple(self.views))
-        _require_identifier(self.slug, "analysis slug")
+        # A slug is a durable SQL/view prefix, not a Python symbol. Historical
+        # analyses can legitimately be named ``yield`` or ``class``; the Python
+        # emitter maps those to a separate safe entrypoint method.
+        _require_identifier(self.slug, "analysis slug", allow_keyword=True)
         table_names = [table.name for table in self.tables]
         table_classes = [table.class_name for table in self.tables]
         table_attributes = [table.attribute for table in self.tables]
@@ -741,11 +744,14 @@ class AnalysisPlan:
         raise TypeError(f"unsupported value: {type(value).__name__}")
 
 
-def _require_identifier(value: str, label: str) -> None:
+def _require_identifier(
+    value: str, label: str, *, allow_keyword: bool = False
+) -> None:
     if (
         not isinstance(value, str)
         or not value.isidentifier()
-        or keyword.iskeyword(value)
+        or (keyword.iskeyword(value) and not allow_keyword)
         or value.startswith("__")
     ):
-        raise ValueError(f"{label} must be a non-keyword Python identifier")
+        qualifier = "an identifier" if allow_keyword else "a non-keyword Python identifier"
+        raise ValueError(f"{label} must be {qualifier}")

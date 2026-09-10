@@ -294,8 +294,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
                         # prompt regression fails the live suite instead of shipping. No per-dimension
                         # code guard: it covered only currency and could never cover qualifier carry-over.
+                        raw_dataset_ops = dataset_attestation.bind_unambiguous_columns(
+                            (block.input or {}).get("dataset_ops"), tables,
+                        )
                         dataset_ops, quotes_verified = dataset_attestation.verify_quotes(
-                            (block.input or {}).get("dataset_ops"), user_message, history,
+                            raw_dataset_ops, user_message, history,
                         )
                         dataset_ops = dataset_ops or None
                         try:

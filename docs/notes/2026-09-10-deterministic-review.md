@@ -42,6 +42,12 @@ objects, and uses `lazy="raise"` to prevent an accidental N+1 query.
 | Explicit execution modes could accept negative or boolean row budgets | All modes validate nonnegative integer estimates and limits before selection |
 | Empty scalar aggregate with a zero input limit could lose SQL's one-row result | Scalar reduction retains SQL's one output row while the input materialization remains bounded |
 | Spider Python evaluation risked defining a new accuracy metric | The existing runner now executes the selected AST with SQL, Python, auto, or verification and continues to use the existing gold execution and `spider_eval.compare` contract |
+| A Python keyword slug could rename an existing workbook | Durable slugs are emitter-neutral; the Python manifest records a separate safe entrypoint method |
+| Realtime-only Python answers could be labelled SQL | Execution is streamed explicitly and attached per call/sheet, with HTTP reconciliation and snapshot v3 persistence |
+| A multi-call turn could apply its final backend to every sheet | Job-ID-scoped provenance keeps each call's Python, SQL, or verified source independent |
+| Generated Python pushed conversation state over 1 MiB and silently disabled restore | Reproducible preview rows compact first; local restore is attempted independently and persistence failures are logged |
+| Signed-in mobile home hid both login and conversation history | The home rail becomes a keyboard-dismissable mobile drawer |
+| A model could put a unique column name in the dataset-operation table field | The orchestrator repairs only a schema-unambiguous column-as-table transcription before attestation; ambiguous input still fails closed |
 
 Earlier changes in this release also preserved deterministic evidence through the knowledge and chat
 adapters, checked the complete emitted view stack for coverage, removed the 50-row result truncation

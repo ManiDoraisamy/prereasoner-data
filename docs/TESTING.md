@@ -13,8 +13,9 @@ Numeric comparison tests ensure large decimal differences are not rounded away. 
 PostgreSQL NUMERIC coverage.
 
 `npm run test:browser` exercises the release journey plus `sql`, `py`, and `both` across direct and
-orchestrated navigation and follow-up payloads. Its API and authentication are local fixtures. It
-proves browser transport behavior, not actual backend execution or live authentication.
+orchestrated navigation and follow-up payloads. It also verifies mixed Python/SQL calls within one
+orchestrated turn and signed-in conversation access on a mobile viewport. Its API and authentication
+are local fixtures. It proves browser transport behavior, not actual backend execution or live authentication.
 
 `tests.test_datasets` evaluates the public prompts and `eval.txt` expectations against the seeded
 production `ComposedKnowledgeQuery` entry point. It runs `sql,python,verify,default` by default and checks
@@ -184,8 +185,8 @@ The remaining locks target Linux containers. The `python-hermetic` GitHub Action
 on Linux; auditing them from Windows asks pip to resolve Windows-only transitive dependencies and is
 not a valid check of the release image.
 
-They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, named-analysis identity, and
-snapshot restoration. Run
+They cover dirty-state autosave, failed-save blocking, delete behavior, zero values, named-analysis identity,
+per-call execution provenance, bounded snapshot compaction, and snapshot restoration. Run
 `node --check` on every changed JavaScript file as well.
 
 The release journey uses Playwright and a local deterministic API fixture:
@@ -198,10 +199,10 @@ npm run test:browser
 
 `web/tests/browser/release-flow.spec.js` signs in through the local client contract, creates and uploads a real
 XLSX workbook through the production Web Worker parser, waits for an answer, checks source and calculation
-provenance, opens the SQL trace, modifies one named workbook, creates a second workbook, restores two historical
-revisions from rail links while retaining the input tab, and deletes the conversation. The API response is a
-fixture so the browser test is deterministic; Python integration suites separately cover the real engine and
-database.
+provenance, opens the source trace, distinguishes mixed per-call backends, exercises the mobile conversation
+drawer, modifies one named workbook, creates a second workbook, restores two historical revisions from rail
+links while retaining the input tab, and deletes the conversation. The API response is a fixture so the browser
+test is deterministic; Python integration suites separately cover the real engine and database.
 
 For a manual browser pass, start Firebase Hosting from `web/`:
 

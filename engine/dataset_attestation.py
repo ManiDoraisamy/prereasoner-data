@@ -8,11 +8,12 @@ state or the model context.
 """
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
+import io
 import json
 import os
-
 
 HEADER = "X-Prereasoner-Dataset-Attestation"
 _VERSION = "v1"
@@ -89,3 +90,44 @@ def verify_quotes(raw_ops, user_message, history=None):
         op["basis"] = {"source": "conversation", "text": quoted}
         out.append(op)
     return out, verified
+
+
+def bind_unambiguous_columns(raw_ops, tables):
+    """Repair only the model's unambiguous column-as-table transcription error.
+
+    The model does not receive uploaded CSV contents, so a statement such as
+    ``budget is in EUR`` can occasionally put ``budget`` in both the table and column
+    fields. If that column occurs in exactly one uploaded table, bind the operation to
+    that table before signing it. Ambiguous or otherwise invalid operations remain
+    unchanged and are rejected by the engine's existing validator.
+    """
+    if not isinstance(raw_ops, list) or not isinstance(tables, list):
+        return raw_ops
+    schemas: dict[str, tuple[str, ...]] = {}
+    for table in tables:
+        if not isinstance(table, dict) or not isinstance(table.get("name"), str):
+            continue
+        header = table.get("columns")
+        if not isinstance(header, (list, tuple)):
+            try:
+                header = next(csv.reader(io.StringIO(str(table.get("data") or ""))))
+            except (StopIteration, csv.Error):
+                header = []
+        schemas[table["name"]] = tuple(str(column) for column in header)
+
+    bound = []
+    for raw in raw_ops:
+        if not isinstance(raw, dict):
+            bound.append(raw)
+            continue
+        op = dict(raw)
+        table_name, column = op.get("table"), op.get("column")
+        if table_name not in schemas and isinstance(table_name, str):
+            candidates = [
+                name for name, columns in schemas.items()
+                if table_name in columns and column in columns
+            ]
+            if len(candidates) == 1:
+                op["table"] = candidates[0]
+        bound.append(op)
+    return bound

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import patch
 
+from engine import dataset_attestation
 from orchestrator import orchestrator
 
 
@@ -45,19 +47,23 @@ class _MessageStream:
 
 
 class _Messages:
-    def __init__(self, calls, fail_presentation=False):
+    def __init__(self, calls, fail_presentation=False, query_input=None):
         self.calls = calls
         self.fail_presentation = fail_presentation
+        self.query_input = query_input
 
     def stream(self, **kwargs):
         self.calls.append(kwargs)
         if len(self.calls) == 1:
+            query_input = self.query_input or {
+                "question": "total amount after the customer tier discount",
+                "action": "create", "slug": "discounted_total",
+            }
             response = SimpleNamespace(
                 stop_reason="tool_use",
                 content=[SimpleNamespace(
                     type="tool_use", name="prereasoner_query", id="query-1",
-                    input={"question": "total amount after the customer tier discount",
-                           "action": "create", "slug": "discounted_total"},
+                    input=query_input,
                 )],
             )
         else:
@@ -71,8 +77,8 @@ class _Messages:
 
 
 class _Client:
-    def __init__(self, calls, fail_presentation=False):
-        self.messages = _Messages(calls, fail_presentation)
+    def __init__(self, calls, fail_presentation=False, query_input=None):
+        self.messages = _Messages(calls, fail_presentation, query_input)
 
     async def __aenter__(self):
         return self
@@ -89,7 +95,8 @@ class _HTTP:
         return False
 
 
-async def _run(status: str, *, fail_presentation=False, use=None):
+async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
+               user_message=None, tables=None):
     model_calls, engine_calls = [], []
     shaped = {"status": status}
     if status == "answered":
@@ -106,19 +113,22 @@ async def _run(status: str, *, fail_presentation=False, use=None):
     original_client = orchestrator.AsyncAnthropic
     original_http = orchestrator.httpx.AsyncClient
     original_query = orchestrator.engine_client.call_query
-    orchestrator.AsyncAnthropic = lambda **_kwargs: _Client(model_calls, fail_presentation)
+    orchestrator.AsyncAnthropic = lambda **_kwargs: _Client(
+        model_calls, fail_presentation, query_input,
+    )
     orchestrator.httpx.AsyncClient = lambda **_kwargs: _HTTP()
     orchestrator.engine_client.call_query = query
     try:
         result = await orchestrator._run_turn(
-            "reduce the discount from total amount based on customer's tier",
-            [{"name": "orders", "data": "tier,amount\nGold,100\n"}],
+            user_message or "reduce the discount from total amount based on customer's tier",
+            tables or [{"name": "orders", "data": "tier,amount\nGold,100\n"}],
             [],
             engine_base_url="http://engine.invalid",
             bearer_token=None,
             api_key="test",
             model="test-model",
             use=use,
+            principal="user-a",
         )
     finally:
         orchestrator.AsyncAnthropic = original_client
@@ -143,6 +153,28 @@ def test_request_execution_mode_reaches_each_orchestrated_engine_call():
     result, _model_calls, engine_calls = asyncio.run(_run("answered", use="verify"))
     assert result["traces"]
     assert engine_calls[0][1]["use"] == "verify"
+
+
+def test_unambiguous_column_as_table_is_rebound_before_attestation():
+    op = {
+        "op": "set_measure_metadata", "table": "budget", "column": "budget",
+        "metadata": {"currency": "EUR"},
+        "basis": {"source": "conversation", "text": "This is in euros."},
+    }
+    query_input = {
+        "question": "What is the budget in USD?", "action": "create",
+        "slug": "budget_usd", "dataset_ops": [op],
+    }
+    with patch.dict("os.environ", {"DATASET_ATTESTATION_KEY": "unit-test-secret"}):
+        _result, _model_calls, engine_calls = asyncio.run(_run(
+            "answered", query_input=query_input, user_message="This is in euros. What's in USD?",
+            tables=[{"name": "responses", "data": "name,budget\nAda,100\n"}],
+        ))
+        sent = engine_calls[0][1]
+        assert sent["dataset_ops"][0]["table"] == "responses"
+        assert dataset_attestation.verify(
+            "user-a", sent["dataset_ops"], sent["dataset_attestation"],
+        )
 
 
 def test_terminal_fallback_preserves_the_engine_outcome():
@@ -230,6 +262,7 @@ def test_tool_exhaustion_never_exposes_an_internal_budget():
 
 TESTS = [
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
+    test_unambiguous_column_as_table_is_rebound_before_attestation,
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_named_workbook_tool_contract_and_catalog_boundary,

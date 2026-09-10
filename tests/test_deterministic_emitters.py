@@ -1667,11 +1667,11 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
 
 
 # Discover the contract cases so new tests cannot be omitted from the module runner.
-def test_a_slug_naming_wrapper_state_still_executes():
-    """The slug is a method on the generated wrapper, so it can collide with the wrapper's
-    own constructor arguments. While those were stored as public attributes, a slug of
-    "session" was shadowed by the instance attribute and the call raised
-    "'Session' object is not callable" instead of running the analysis."""
+def test_a_slug_naming_wrapper_state_or_python_keyword_still_executes():
+    """Durable slugs may collide with wrapper state or Python reserved words.
+
+    Both must execute without changing the workbook/SQL slug.
+    """
     items = TableSpec(
         name="items",
         class_name="Item",
@@ -1684,7 +1684,7 @@ def test_a_slug_naming_wrapper_state_still_executes():
             ColumnSpec("amount", "amount", SQLType.INTEGER, nullable=False),
         ),
     )
-    for slug in ("session", "row_limit"):
+    for slug in ("session", "row_limit", "yield", "class"):
         plan = AnalysisPlan(
             slug=slug,
             tables=(items,),
@@ -1700,8 +1700,10 @@ def test_a_slug_naming_wrapper_state_still_executes():
         result = _execute_fixture(
             plan,
             [
-                "CREATE TABLE conversation.items ("
-                "item_id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)",
+                (
+                    "CREATE TABLE conversation.items ("
+                    "item_id INTEGER PRIMARY KEY, amount INTEGER NOT NULL)"
+                ),
                 "INSERT INTO conversation.items VALUES (1, 10), (2, 32)",
             ],
             mode="verify",
@@ -1711,6 +1713,11 @@ def test_a_slug_naming_wrapper_state_still_executes():
         # the stage record carries the Python beside the SQL for the workbook
         views = result.record()["views"]
         assert all(view["python"] for view in views), slug
+        package = PythonEmitter().emit(plan)
+        expected_method = f"analysis_{slug}" if slug in {"yield", "class"} else slug
+        assert package.manifest["slug"] == slug
+        assert package.manifest["entrypoint_method"] == expected_method
+        assert f"    def {expected_method}(self) -> AnalysisResult:" in package.files[package.entrypoint]
 
 
 def test_every_stage_reports_the_exact_python_that_produced_it():
@@ -1725,6 +1732,8 @@ def test_every_stage_reports_the_exact_python_that_produced_it():
         segment = sources[view.name]
         assert segment.startswith(f"        # View: {view.name}\n"), view.name
         assert segment in source, view.name
+    assert "view_sources" not in package.record()["manifest"]
+    assert package.record()["manifest"]["emitter_version"] == 7
 
 
 def test_streamed_trace_carries_the_same_derivation_as_the_returned_trace():

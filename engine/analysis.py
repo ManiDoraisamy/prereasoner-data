@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import keyword
 import re
 import unicodedata
 from collections.abc import Callable
@@ -33,17 +32,16 @@ class AnalysisConflict(AnalysisError):
 def canonical_analysis_slug(value: object) -> str:
     """Return a short PostgreSQL-safe slug proposed by the conversational model.
 
-    The slug is also the generated Python method name, so it must be a legal
-    non-keyword identifier. A proposal such as "imports" or "yield" canonicalizes to
-    a keyword and would otherwise reach AnalysisPlan, which rejects it. Prefixing
-    reuses the existing non-alphabetic idiom below and stays idempotent, because the
-    prefixed form is no longer a keyword.
+    Slugs are durable workbook identities and may predate the Python emitter. Keep
+    Python's reserved words stable here; the emitter owns conversion to a safe method
+    identifier. Coupling the two once made an existing ``yield`` analysis impossible
+    to modify because request validation silently renamed it to ``analysis_yield``.
     """
     text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     if not slug:
         slug = "analysis"
-    if not slug[0].isalpha() or keyword.iskeyword(slug):
+    if not slug[0].isalpha():
         slug = "analysis_" + slug
     if len(slug.encode("ascii")) > MAX_ANALYSIS_SLUG_BYTES:
         digest = hashlib.sha256(slug.encode("ascii")).hexdigest()[:8]

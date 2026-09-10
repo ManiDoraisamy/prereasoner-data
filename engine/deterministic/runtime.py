@@ -126,7 +126,8 @@ def execute_python(
         )
         context.prec = DECIMAL_PRECISION
         wrapper = loaded.analysis_class()(session, row_limit=row_limit)
-        return getattr(wrapper, str(package.manifest["slug"]))()
+        method = package.manifest.get("entrypoint_method", package.manifest["slug"])
+        return getattr(wrapper, str(method))()
 
 
 def execute_sql(

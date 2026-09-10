@@ -27,6 +27,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const statusRef = at('status');
   const resolveRef = at('resolve');
   const viewsRef = at('views');
+  const executionRef = at('execution');
   const analysisRef = at('analysis');
   const resultRef = at('result');
   const datasetSemanticsRef = at('dataset_semantics');
@@ -41,6 +42,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uStatus = onValue(statusRef, s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });
   const uResolve = onChildAdded(resolveRef, s => { if (cb.onResolve) cb.onResolve(s.key, s.val()); });
   const uView = onChildAdded(viewsRef, s => { if (cb.onView) cb.onView(s.key, s.val()); });
+  const uExecution = onValue(executionRef, s => { const v = s.val(); if (v && cb.onExecution) cb.onExecution(v); });
   const uAnalysis = onValue(analysisRef, s => { const v = s.val(); if (v && cb.onAnalysis) cb.onAnalysis(v); });
   const uResult = onValue(resultRef, s => { const v = s.val(); if (v && cb.onResult) cb.onResult(v); });
   const uDatasetSemantics = onValue(datasetSemanticsRef, s => {
@@ -53,7 +55,7 @@ window.subscribeRun = (uid, jobId, cb) => {
   const uError = onValue(errorRef, s => { const v = s.val(); if (v != null && cb.onError) cb.onError(v); });
   const uMcols = onValue(mcolsRef, s => { const v = s.val(); if (v && cb.onMasterCols) cb.onMasterCols(v); });
   const uMrow = onChildAdded(mrowsRef, s => { if (cb.onMasterRow) cb.onMasterRow(s.key, s.val()); });
-  return () => { try { uConv(); uStatus(); uResolve(); uView(); uAnalysis(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uMcols(); uMrow(); off(base); } catch(_){} };
+  return () => { try { uConv(); uStatus(); uResolve(); uView(); uExecution(); uAnalysis(); uResult(); uDatasetSemantics(); uQuestion(); uClarify(); uLowConf(); uPresent(); uError(); uMcols(); uMrow(); off(base); } catch(_){} };
 };
 
 // Subscribe to an ORCHESTRATED turn at /runs/{uid}/{turnId}: the Sonnet front-door announces each engine

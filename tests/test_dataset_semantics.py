@@ -247,6 +247,22 @@ def test_orchestrator_attests_only_current_user_quotes():
         assert not dataset_attestation.verify("user-a", tampered, signature)
 
 
+def test_orchestrator_binds_only_unambiguous_column_as_table_errors():
+    raw = [_set(table="budget")]
+    csv_tables = [{"name": "responses", "data": "name,budget\nAda,10"}]
+    assert dataset_attestation.bind_unambiguous_columns(raw, csv_tables)[0]["table"] == "responses"
+    # The caller's model payload is not mutated before quote verification/signing.
+    assert raw[0]["table"] == "budget"
+
+    normalized = [{"name": "responses", "columns": ["name", "budget"], "rows": []}]
+    assert dataset_attestation.bind_unambiguous_columns(raw, normalized)[0]["table"] == "responses"
+
+    ambiguous = csv_tables + [{"name": "forecasts", "data": "budget,month\n20,Sep"}]
+    assert dataset_attestation.bind_unambiguous_columns(raw, ambiguous)[0]["table"] == "budget"
+    valid = [_set(table="responses")]
+    assert dataset_attestation.bind_unambiguous_columns(valid, csv_tables) == valid
+
+
 def test_synthesized_currency_column_is_never_world_routed():
     """Regression for an OBSERVED wrong answer (2026-09-08). The synthesized measure-currency column
     holds one ISO code per row; value-membership resolution matched 'EUR' to a CITY qid and built a
@@ -300,6 +316,7 @@ TESTS = [
     test_world_rate_binding_uses_claimed_measure_and_date,
     test_unclaimed_measure_cannot_inherit_another_measures_currency,
     test_orchestrator_attests_only_current_user_quotes,
+    test_orchestrator_binds_only_unambiguous_column_as_table_errors,
 ]
 
 

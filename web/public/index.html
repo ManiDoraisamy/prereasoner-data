@@ -65,8 +65,11 @@
   <div class=convlist id=convlist></div>
   <div class=railuser id=railuser hidden></div>
 </aside>
+<div class=homeback id=homeback aria-hidden=true></div>
 <div class=page>
-  <div class=hdr><a class=brand href="https://prereasoner.com/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost type=button id=loginbtn>Login</button></div>
+  <div class=hdr><button class=homemenubtn type=button id=homemenubtn aria-label="Conversations" aria-controls=homerail aria-expanded=false hidden>
+    <svg viewBox="0 0 24 24" aria-hidden=true><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
+  </button><a class=brand href="https://prereasoner.com/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost type=button id=loginbtn>Login</button></div>
   <div class=hero>
     <form class=hero-left id=f>
     <h1 class=h1 id=hd>Attach a spreadsheet and ask a question</h1>
@@ -255,12 +258,27 @@ try{ fetch(API_BASE+'/api/reason',{method:'GET',cache:'no-store'}).catch(()=>{})
 <script type="module">
 import { auth, ensureSignedIn } from '/lib/firebase-init.js';
 const login=document.getElementById('loginbtn');
+const homeMenu=document.getElementById('homemenubtn'), homeBack=document.getElementById('homeback');
+const homeRail=document.getElementById('homerail'), homeMedia=window.matchMedia('(max-width: 900px)');
+function setHomeDrawer(open){
+  open=!!open&&homeMedia.matches;
+  document.body.classList.toggle('homeopen',open);
+  homeBack.classList.toggle('open',open); homeBack.setAttribute('aria-hidden',open?'false':'true');
+  homeMenu.setAttribute('aria-expanded',open?'true':'false');
+  const concealed=homeMedia.matches&&!open; homeRail.inert=concealed;
+  homeRail.setAttribute('aria-hidden',concealed?'true':'false');
+  if(open){ try{ renderDrawer(); }catch(_){} }
+}
+homeMenu.addEventListener('click',()=>setHomeDrawer(!document.body.classList.contains('homeopen')));
+homeBack.addEventListener('click',()=>setHomeDrawer(false));
+document.addEventListener('keydown',event=>{ if(event.key==='Escape')setHomeDrawer(false); });
+homeMedia.addEventListener('change',()=>setHomeDrawer(false));
 // Signed in: the rail IS the signed-in state, so the badge is redundant — drop it and show
 // the user's conversations instead. Rendering reuses the /reason drawer's list.
 function showSignedIn(user){
   login.hidden=true;
   const rail=document.getElementById('homerail'); if(!rail) return;
-  rail.hidden=false; document.body.classList.add('hasrail');
+  rail.hidden=false; homeMenu.hidden=false; document.body.classList.add('hasrail'); setHomeDrawer(false);
   document.getElementById('railnew').onclick=()=>{ try{ newConversation(); }catch(_){ location.href='/'; } };
   try{ bindConversationList(); renderDrawer(); }catch(_){}
   // The rail foots with WHO is signed in. Built with the DOM API, never interpolated

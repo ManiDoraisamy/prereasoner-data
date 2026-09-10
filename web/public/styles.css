@@ -378,12 +378,25 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .railwho{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--card-ink);font:500 13px var(--disp)}
 body.hasrail .page{margin-left:264px}
+.homemenubtn{all:unset;cursor:pointer;width:38px;height:38px;border-radius:9px;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
+.homemenubtn:hover{background:rgba(255,255,255,.14)}
+.homemenubtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+.homemenubtn,.homemenubtn[hidden]{display:none}
+.homeback{display:none;position:fixed;inset:0;background:rgba(20,12,48,.42);z-index:40}
 /* .ghost uses `all:unset`, which resets display and so BEATS the UA `[hidden]{display:none}`.
    Without this the signed-in login button stayed on screen next to the rail. */
 .ghost[hidden]{display:none}
-/* Below the rail's breakpoint the hero needs the full width back; the drawer on /reason
-   remains the way to reach conversations on a phone. */
-@media(max-width:900px){ .homerail{display:none} body.hasrail .page{margin-left:0} }
+/* On a phone the signed-in rail becomes an accessible drawer instead of disappearing. */
+@media(max-width:900px){
+  body.hasrail .page{margin-left:0}
+  .homemenubtn:not([hidden]){display:flex}
+  .homerail{display:flex;width:300px;max-width:86vw;z-index:41;border-right:0;box-shadow:0 0 46px rgba(59,23,174,.30);
+    transform:translateX(-100%);transition:transform .2s ease}
+  .homerail[hidden]{display:none}
+  body.homeopen{overflow:hidden}
+  body.homeopen .homerail{transform:none}
+  .homeback.open{display:block}
+}
 .drawer-backdrop{display:none;position:fixed;inset:0;background:rgba(20,12,48,.42);z-index:40}
 .drawer-backdrop.open{display:block}
 .drawer{position:fixed;top:0;left:0;bottom:0;width:300px;max-width:86vw;background:#fff;z-index:41;transform:translateX(-100%);transition:transform .2s ease;box-shadow:0 0 46px rgba(59,23,174,.30);display:flex;flex-direction:column}

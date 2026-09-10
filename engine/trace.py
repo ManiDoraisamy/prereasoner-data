@@ -152,6 +152,11 @@ def stream_final(emit, res):
     try:
         if not isinstance(res, dict):
             return
+        # Views can arrive after the Hosting proxy has already abandoned the HTTP
+        # response. Stream the authoritative backend before the terminal status so
+        # the workbook never has to infer Python-versus-SQL from source availability.
+        if res.get("execution") is not None:
+            emit("execution", res["execution"])
         if res.get("low_confidence"):
             emit("low_confidence", True); emit("status", "clarify")   # conversational (not a data query) -> in-chat fallback
         elif res.get("clarify"):

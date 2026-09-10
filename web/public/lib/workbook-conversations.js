@@ -94,36 +94,80 @@ function convSnapshot(){
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
     rows:s.cls==='master'?(s.rows||[]).map(r=>r.slice()):(s.rows||[]).slice(0,MAX_RENDER_ROWS),
     sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
+    execution:normalizedExecution(s.execution),
     cellAI:s.cls==='master'&&s.cellAI?[...s.cellAI]:undefined }));
   const refcands=REFCANDS.map(c=>({name:c.name, key:c.key, vals:(c.vals||[]).slice(0,500),   // the AVAILABLE list must survive reload so "+ Reference" persists
     cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
     rows:(c.cols&&c.cols.length>1&&c.rows)?((!c.saved||c.dirty)?c.rows.map(r=>r.slice()):c.rows.slice(0,MAX_RENDER_ROWS)):undefined,
     saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
-  return {v:2, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
+  return {v:3, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
     datasetSemantics:DS_META, viewedAnalysis:VIEWED_ANALYSIS||null, execution:EXEC||null};
+}
+const MAX_CONVERSATION_STATE_BYTES=1024*1024;                 // must match engine.conversations.MAX_STATE_BYTES
+function conversationStateBytes(st){ return new TextEncoder().encode(JSON.stringify(st)).byteLength; }
+// Keep the durable snapshot under the server limit without throwing away the whole conversation.
+// Derived/reference rows are reproducible display material; unsaved or dirty master data is not, so
+// compaction never truncates those user-authored rows. Exact SQL/Python source and the final result row
+// survive every normal compaction tier so a restored workbook remains interpretable.
+function compactConvSnapshot(snapshot,maxBytes=MAX_CONVERSATION_STATE_BYTES){
+  if(!snapshot||conversationStateBytes(snapshot)<=maxBytes) return snapshot;
+  const st=JSON.parse(JSON.stringify(snapshot)); st.compacted=true;
+  const fits=()=>conversationStateBytes(st)<=maxBytes;
+  // Saved, clean candidates can be reloaded from the user's reference store. Their identity is enough
+  // to keep "+ Reference" present while avoiding hundreds of duplicate rows in conversation state.
+  (st.refcands||[]).forEach(c=>{ if(c&&c.saved&&!c.dirty){ c.vals=(c.vals||[]).slice(0,50); if(c.rows)c.rows=[]; } });
+  if(fits()) return st;
+  for(const cap of [100,25,5,1,0]){
+    (st.sheets||[]).forEach(s=>{
+      if(s.cls==='deriv'||s.cls==='ref'){
+        const keep=s.result?Math.max(1,cap):cap;
+        s.rows=(s.rows||[]).slice(0,keep);
+      }
+    });
+    (st.refcands||[]).forEach(c=>{ if(c&&!c.dirty){
+      c.vals=(c.vals||[]).slice(0,cap); if(c.rows)c.rows=c.rows.slice(0,cap);
+    } });
+    if(fits()) return st;
+  }
+  // A pathological final cell can itself exceed the cap. Preserve the source, columns, turn text,
+  // and workbook structure; the human-readable answer in `turns` still restores in the chat rail.
+  (st.sheets||[]).forEach(s=>{ if(s.cls==='deriv'||s.cls==='ref')s.rows=[]; });
+  if(fits()) return st;
+  return null;                                                // only irreducible user-authored state is too large
 }
 let _saveStateT=null;
 function saveConvState(){                                     // persist the snapshot after a turn settles
   const cid=convId(); if(!cid) return;
-  const st=convSnapshot(); if(!st||st.cid!==cid) return;
+  const full=convSnapshot(); if(!full||full.cid!==cid) return;
+  const st=compactConvSnapshot(full);
+  // Session storage is allowed to retain the fuller same-device copy. If its browser quota is
+  // smaller, retry with the server-safe compact copy rather than silently losing restore state.
+  try{ sessionStorage.setItem('pr_conv_state',JSON.stringify(full)); }
+  catch(error){
+    if(st){ try{ sessionStorage.setItem('pr_conv_state',JSON.stringify(st)); }catch(inner){ console.warn('conversation snapshot could not be cached',inner&&inner.name||'Error'); } }
+    else console.warn('conversation snapshot exceeds both persistence limits',error&&error.name||'Error');
+  }
+  if(!st){ console.warn('conversation snapshot exceeds the server limit after safe compaction'); return; }
   const body=JSON.stringify({id:cid, state:st});
-  if(new TextEncoder().encode(JSON.stringify(st)).byteLength>1024*1024) return; // match engine.conversations.MAX_STATE_BYTES
-  try{ sessionStorage.setItem('pr_conv_state', body.length?JSON.stringify(st):''); }catch(_){}   // IMMEDIATE: a same-tab refresh restores the latest
   clearTimeout(_saveStateT);
   _saveStateT=setTimeout(async ()=>{                         // DEBOUNCED: durable server persist (survives a fresh session / other device)
     try{ const tk=await window.ensureToken();
-      await fetch(API_BASE+'/api/conversation/state',{method:'POST',
+      const response=await fetch(API_BASE+'/api/conversation/state',{method:'POST',
         headers:{'content-type':'application/json','Authorization':'Bearer '+tk}, body});
-    }catch(_){}
+      if(!response.ok) console.warn('conversation snapshot was not persisted: HTTP '+response.status);
+    }catch(error){ console.warn('conversation snapshot was not persisted',error&&error.name||'Error'); }
   }, 700);
 }
+function restoredSheetExecution(st,s){
+  return normalizedExecution((s&&s.execution)||((st&&st.v<3)&&st.execution));
+}
 function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
-  if(!st||![1,2].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
+  if(!st||![1,2,3].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
-  noteExecution(st.execution);                               // restore which backend produced these sheets, so the badge stays Python/SQL
+  noteExecution(st.execution);                               // v1/v2 fallback; v3 stores provenance per sheet
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
       rows:s.rows||[], sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
-      cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});
+      execution:restoredSheetExecution(st,s),cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});
     if(s.cls==='master'&&s.name) MSEEN.add(referenceKey(s.name,s.cols)); });   // don't let loadMaster duplicate it
   if(Array.isArray(st.refcands)){                            // AVAILABLE candidates (removed or never-shown) -> "+ Reference" persists across reload
     const shown=new Set(BOOK.filter(s=>s.cls==='master').map(s=>referenceKey(s.name,s.cols)));

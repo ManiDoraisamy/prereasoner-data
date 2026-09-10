@@ -663,7 +663,9 @@ def save_state(user_id, conversation_id, state):
             owned = cur.fetchone()
             if not owned:
                 raise NotOwned("conversation not found")       # not yours OR absent
-            encoded = json.dumps(state)
+            # Match the browser's TextEncoder(JSON.stringify(...)) quota calculation:
+            # compact UTF-8 JSON, without Python's default ASCII expansion or spaces.
+            encoded = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
             state_bytes = len(encoded.encode("utf-8"))
             if state_bytes > MAX_STATE_BYTES:
                 raise QuotaExceeded("conversation state is too large")

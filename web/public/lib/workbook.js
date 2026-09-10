@@ -42,7 +42,8 @@ let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
-let EXEC=null;                                   // {actual,verified} — which backend produced this turn's sheets
+let EXEC=null;                                   // latest {actual,verified}; each derivation sheet owns its execution
+let EXEC_BY_KEY=new Map();                       // call jobId -> execution; closes cross-node RTDB ordering races
 let SRC='py';                                    // chosen derivation language when BOTH backends ran
 let SRCOPEN=false;                               // the source panel's open state, preserved across repaints
 let DS_META=[];                                  // dataset semantics: conversation-stated measure metadata [{table, column, currency, basis}]
@@ -79,13 +80,23 @@ const UNDOCAP=120;
 
 function sheetById(id){return BOOK.find(s=>s.id===id);}
 function addSheet(m){ BOOK.push(m); const passive=(m.cls==='ref'||m.cls==='master'); if(!passive&&AUTO) ACTIVE=m.id; if(passive&&!ACTIVE) ACTIVE=m.id; paint(); }
-// Which backend actually produced this turn's sheets. `verify` ran BOTH and proved every
-// stage equal, so the language switch re-renders the pair we already have; it never asks
-// the server to execute a second time.
-function noteExecution(value){ if(value&&value.actual) EXEC={actual:value.actual, verified:!!value.verified}; }
+// Execution is per engine call, therefore per sheet. An orchestrated turn can contain more
+// than one call and auto mode can choose a different backend for each. `executionKey` is the
+// call's jobId and lets a late RTDB terminal event annotate views that streamed before it.
+function normalizedExecution(value){
+  return value&&value.actual ? {actual:String(value.actual),verified:!!value.verified} : null;
+}
+function noteExecution(value,executionKey){
+  const execution=normalizedExecution(value); if(!execution)return null; EXEC=execution;
+  if(executionKey){
+    EXEC_BY_KEY.set(executionKey,execution);
+    VIEWS.forEach(v=>{if(v.executionKey===executionKey)v.execution=execution;});
+    BOOK.forEach(s=>{if(s.executionKey===executionKey)s.execution=execution;});
+  }
+  return execution;
+}
 // The turn's body has two shapes: the direct engine reply carries `execution` at the top
 // level, while the orchestrated /chat reply nests it per engine call under traces[].engine.
-// The LAST engine call is the one whose views are on screen.
 function executionOf(body){
   if(!body) return null;
   if(body.execution) return body.execution;
@@ -93,9 +104,16 @@ function executionOf(body){
   return found.length?found[found.length-1]:null;
 }
 function sheetSource(m){
-  const py=(m&&m.python)||'', sql=(m&&m.sql)||'', actual=(EXEC&&EXEC.actual)||'';
-  const both=!!(py&&sql&&actual==='verify');
-  const primary=(py&&(actual==='python'||actual==='verify'))?'py':(sql?'sql':(py?'py':''));
+  const py=(m&&m.python)||'', sql=(m&&m.sql)||'', execution=normalizedExecution(m&&m.execution);
+  const actual=(execution&&execution.actual)||'';
+  const both=!!(py&&sql&&actual==='verify'&&execution.verified);
+  // With both sources but no execution evidence, show no badge instead of falsely
+  // claiming SQL while a Python result is still completing over RTDB.
+  let primary='';
+  if(both)primary='py';
+  else if(actual==='python')primary=py?'py':'';
+  else if(actual==='sql')primary=sql?'sql':'';
+  else if(!actual)primary=py&&!sql?'py':(sql&&!py?'sql':'');
   return {py,sql,both,primary};
 }
 const PYKW=/^(?:def|return|for|in|if|else|elif|None|True|False|lambda|not|and|or|is|class|import|from|while|continue|break)$/;
@@ -391,22 +409,23 @@ async function loadAnalysis(analysisId,revision){
     const payload=await response.json().catch(()=>null);
     if(!response.ok||!payload||!payload.response)throw new Error((payload&&payload.error)||'analysis unavailable');
     const answer=payload.response, descriptor=payload.analysis||answer.analysis;
-    noteExecution(answer.execution);
+    const execution=noteExecution(answer.execution);
     BOOK=BOOK.filter(s=>s.cls==='input'||s.cls==='master');
     VIEWS=[]; RESOLVES=[]; J=answer;
     (answer.views||[]).forEach((view,index)=>{
-      VIEWS.push(view);
+      const item=Object.assign({},view,{execution:normalizedExecution(view.execution||execution)}); VIEWS.push(item);
       BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_'+index, cls:'deriv',
-        name:stepLabel(view), desc:stepDesc(view), cols:view.columns||[], rows:view.rows||[],
-        sql:view.sql||'', python:view.python||'', columnProvenance:view.column_provenance||[]});
+        name:stepLabel(item), desc:stepDesc(item), cols:item.columns||[], rows:item.rows||[],
+        sql:item.sql||'', python:item.python||'', execution:item.execution,columnProvenance:item.column_provenance||[]});
     });
     if(!VIEWS.length&&answer.sql&&answer.result){
       const result=answer.result;
       const view={name:'result',op:/\b(sum|count|avg|min|max)\s*\(/i.test(answer.sql)?'group_agg':'select',
         columns:result.columns||[],rows:result.rows||[],sql:answer.sql,column_provenance:result.column_provenance||[]};
-      VIEWS.push(view);
+      view.execution=execution; VIEWS.push(view);
       BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_0',cls:'deriv',name:stepLabel(view),
-        desc:stepDesc(view),cols:view.columns,rows:view.rows,sql:view.sql,python:view.python||'',columnProvenance:view.column_provenance});
+        desc:stepDesc(view),cols:view.columns,rows:view.rows,sql:view.sql,python:view.python||'',execution,
+        columnProvenance:view.column_provenance});
     }
     const last=BOOK.filter(s=>s.cls==='deriv').pop();
     if(last){
@@ -708,12 +727,15 @@ function stepStatus(v){                                       // a friendly, pla
     default: return 'Working it out…';
   }
 }
-function appendView(v){
+function appendView(v,execution=null,executionKey=null){
   dropStale();
-  VIEWS.push(v); J=J||{}; J.views=VIEWS; if(v.sql&&!J.sql)J.sql=v.sql;
-  const label=stepLabel(v);                                  // short logical name (never v1/step_1/b2)
-  STATUS=stepStatus(v);
-  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(v), cols:v.columns||[], rows:v.rows||[], sql:v.sql||'', python:v.python||'', columnProvenance:v.column_provenance||[]});
+  const key=executionKey||v.executionKey||null;
+  const item=Object.assign({},v,{execution:normalizedExecution(execution||v.execution||(key&&EXEC_BY_KEY.get(key))),executionKey:key});
+  VIEWS.push(item); J=J||{}; J.views=VIEWS; if(item.sql&&!J.sql)J.sql=item.sql;
+  const label=stepLabel(item);                               // short logical name (never v1/step_1/b2)
+  STATUS=stepStatus(item);
+  addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(item), cols:item.columns||[], rows:item.rows||[], sql:item.sql||'', python:item.python||'',
+    execution:item.execution,executionKey:item.executionKey,columnProvenance:item.column_provenance||[]});
 }
 function appendResolve(r){
   dropStale();
@@ -728,7 +750,8 @@ function finalize(){
   if(SETTLED)return; settle();
   if(!VIEWS.length){                                          // delegated (no composition) — synthesize the single result sheet
     const r=(J&&J.result)||{};
-    appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[],column_provenance:r.column_provenance||[]});
+    appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[],column_provenance:r.column_provenance||[]},
+      (J&&J.execution)||EXEC);
   } else if(J&&J.result&&Array.isArray(J.result.rows)){       // the last view's table is the authoritative final answer
     const lv=VIEWS[VIEWS.length-1], lm=BOOK.filter(s=>s.cls==='deriv').pop();
     lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows;   // an empty result ([]) legitimately shows "no rows"
@@ -753,11 +776,13 @@ function tryPresent(){
   if(!ans||!ans.columns)return;                              // no answer in hand yet -> a later trigger will retry
   conversationalReply({question:question, present:true, answer:ans, sql:(J&&J.sql)||(HTTPJ&&HTTPJ.sql)||null});
 }
-function renderFromJSON(j){
+function renderFromJSON(j,executionKey=null){
   if(SETTLED)return;
   if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
-  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis); (j.views||[]).forEach(v=>appendView(v));
+  const execution=noteExecution(executionOf(j),executionKey);
+  J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis);
+  (j.views||[]).forEach(v=>appendView(v,execution,executionKey));
   if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
 }
@@ -855,17 +880,15 @@ async function startTurn(){
     if(j&&Array.isArray(j.history)){ HISTORY=j.history; HTTPHIST=true; }
     if(!j){ if(!streaming&&!SETTLED) fail('the assistant did not respond — please try again'); return; }
     if(Array.isArray(j.traces)) j.traces.forEach(t=>{ const engine=t.engine||{};
-      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis); });   // metadata even when views streamed live
-    // Which backend produced the sheets. Needed HERE too: when views stream live over RTDB
-    // this body is the only place the orchestrated turn reports its execution, and
-    // renderTurnFromHTTP below runs only when nothing streamed.
-    noteExecution(executionOf(j));
+      noteDatasetSemantics(engine.dataset_semantics); noteAnalysis(engine.analysis);
+      noteExecution(engine.execution,t.jobId); });            // metadata even when views streamed live
     if(EXEC&&BOOK.some(s=>s.cls==='deriv')) paint();
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // no live stream -> render from the body
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
     if(!REPLY&&j.reply) REPLY=j.reply;
     if(!SETTLED) markTurnDone();
+    else if(EXEC) saveConvState();                            // late HTTP metadata upgrades the durable per-sheet provenance
   });
   // (3) SAFETY NET: fail only if NOTHING arrived through either channel (covers a truly dead run / cold start).
   setTimeout(()=>{ if(RUN!==myRun||SETTLED)return; if(!VIEWS.length&&!REPLY&&!CALLS.length) fail('the assistant is taking too long — please try again in a moment'); }, 180000);
@@ -877,7 +900,8 @@ function addCall(uid,c){                                      // an engine call 
   const sub=window.subscribeRun(uid,c.jobId,{
     onDatasetSemantics:noteDatasetSemantics,
     onAnalysis:noteAnalysis,
-    onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; SEEN.add(id); appendView(v); },
+    onExecution:e=>{ if(!e)return; noteExecution(e,c.jobId); paint(); },
+    onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; SEEN.add(id); appendView(v,null,c.jobId); },
     onResolve:(k,r)=>{ if(!r||typeof r!=='object'||!r.column)return; const id=c.jobId+'/'+k; if(SEEN_R.has(id))return; SEEN_R.add(id); appendResolve(r); },
     // reconcile this call's last view with its authoritative result rows (calls stream sequentially, so the
     // most recent deriv sheet is this call's last step). The answer + any clarify are synthesized into REPLY.
@@ -893,12 +917,12 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
   let rendered=false;
   (j.traces||[]).forEach(t=>{ noteDatasetSemantics((t.engine||{}).dataset_semantics); });
   (j.traces||[]).forEach(t=>{ const eng=t.engine||{};
-    noteAnalysis(eng.analysis); noteExecution(eng.execution);
-    if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v); rendered=true; }); }   // composed query: the full view stack
+    noteAnalysis(eng.analysis); const execution=noteExecution(eng.execution,t.jobId);
+    if(Array.isArray(eng.views)&&eng.views.length){ eng.views.forEach(v=>{ appendView(v,execution,t.jobId); rendered=true; }); }   // composed query: the full view stack
     else if(eng.sql&&eng.answer&&Array.isArray(eng.answer.rows)){                                                  // typed-AST own-data path returns one SQL + answer, no view stack -> surface it as a single step so the SQL + result are visible
       const agg=/\b(sum|count|avg|min|max)\s*\(/i.test(eng.sql);
       appendView({op:agg?'group_agg':'select', label:'result', columns:eng.answer.columns||[], rows:eng.answer.rows, sql:eng.sql,
-        column_provenance:eng.answer.column_provenance||[]}); rendered=true; }
+        column_provenance:eng.answer.column_provenance||[]},execution,t.jobId); rendered=true; }
     if(eng.answer&&Array.isArray(eng.answer.rows)){
       J=J||{}; J.result=eng.answer; if(eng.sql)J.sql=eng.sql;
       const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale).pop();
@@ -947,19 +971,21 @@ async function startRun(){
   httpPromise.then(j=>{ if(RUN===myRun&&j&&j.conversation_id){ setConversation(j.conversation_id); renderRail(); } });   // setConversation (not a bare sessionStorage write) so the URL becomes /reason/<id> + a snapshot can save
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
-  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(executionOf(j)); if(j.present) PRESENT=true; tryPresent(); });
+  httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(executionOf(j),jobId);
+    if(EXEC&&BOOK.some(s=>s.cls==='deriv'))paint(); if(SETTLED&&EXEC)saveConvState(); if(j.present) PRESENT=true; tryPresent(); });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
       onDatasetSemantics:noteDatasetSemantics,
       onAnalysis:noteAnalysis,
+      onExecution:e=>{ if(RUN!==myRun||!e)return; noteExecution(e,jobId); paint(); },
       onConversation:c=>{ if(RUN!==myRun||!c)return; setConversation(c); renderRail(); },   // arrives early via the stream — persist + reflect in the URL (mirrors the orchestrated path), reliable even if the HTTP body is lost
       onStatus:st=>{ if(!live())return;
         if(st==='resolving'&&!VIEWS.length&&!RESOLVES.length){ STATUS='Resolving to the world…'; renderRail(); }
         else if(st==='running'&&!VIEWS.length&&!RESOLVES.length){ STATUS=WB.runningMsg; renderRail(); }
         else if(st==='done') markDone(); },
       onResolve:(k,r)=>{ if(!live()||!r||typeof r!=='object'||!r.column||SEEN_R.has(k))return; SEEN_R.add(k); appendResolve(r); if(DONE)markDone(); },
-      onView:(k,v)=>{ if(!live()||!v||SEEN.has(k))return; SEEN.add(k); appendView(v); if(DONE)markDone(); },
+      onView:(k,v)=>{ if(!live()||!v||SEEN.has(k))return; SEEN.add(k); appendView(v,null,jobId); if(DONE)markDone(); },
       onResult:r=>{ if(RUN!==myRun)return; J=J||{}; J.result=r; if(live()){ if(DONE)markDone(); } else if(PRESENT){ tryPresent(); } },   // keep late results for present (result node may arrive after settle)
       onClarify:c=>{ if(!live())return; conversationalReply(Object.assign({question:question,clarify:true},c)); },
       onLowConfidence:()=>{ if(!live())return; conversationalReply({question:question}); },
@@ -973,7 +999,7 @@ async function startRun(){
     if(!j||!live()||DONE)return;
     await new Promise(res=>setTimeout(res,3000));             // grace: a merely-lagging stream still wins
     if(!live()||DONE||VIEWS.length||RESOLVES.length)return;
-    renderFromJSON(j);
+    renderFromJSON(j,jobId);
   });
   // (3) SAFETY NET: if RTDB never reports within ~90s, await/re-drive the POST (cold-start retries).
   setTimeout(async()=>{
@@ -988,7 +1014,7 @@ async function startRun(){
     }
     if(!live()||DONE||VIEWS.length)return;
     if(!j){ fail('the model is taking too long to start — please try again in a moment'); return; }
-    renderFromJSON(j);
+    renderFromJSON(j,jobId);
   },90000);
 }
 
@@ -1001,6 +1027,7 @@ function resetRun(){
   BOOK.forEach(s=>{ if(s.cls!=='input'&&s.cls!=='master') s.stale=true; });   // master data persists like the user's own tables
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false;
+  EXEC_BY_KEY=new Map();
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
   TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
   callSubs.forEach(u=>{try{u();}catch(_){}}); callSubs=[];

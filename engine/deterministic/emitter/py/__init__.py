@@ -92,6 +92,12 @@ class GeneratedPackage:
         return digest.hexdigest()
 
     def record(self) -> dict[str, object]:
+        # ``view_sources`` is an internal index into the exact entrypoint file. The
+        # serving record already places each slice beside its view, so repeating the
+        # whole mapping here only consumes analysis/conversation snapshot quota.
+        public_manifest = {
+            key: value for key, value in self.manifest.items() if key != "view_sources"
+        }
         return {
             "entrypoint": self.entrypoint,
             "source_sha256": self.source_sha256,
@@ -100,7 +106,7 @@ class GeneratedPackage:
                 for name, source in self.files.items()
             },
             "files": dict(self.files),
-            "manifest": dict(self.manifest),
+            "manifest": public_manifest,
         }
 
     def write_debug(
@@ -114,7 +120,7 @@ class GeneratedPackage:
         if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
             raise ValueError("generated debug revision must be positive")
         slug = str(self.manifest["slug"])
-        if not slug.isidentifier() or keyword.iskeyword(slug):
+        if not slug.isidentifier() or slug.startswith("__"):
             raise ValueError("generated debug paths require a canonical analysis slug")
         root_path = Path(root).resolve()
         destination = (root_path / conversation_id / slug).resolve()
@@ -149,7 +155,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 6
+    VERSION = 7
 
     def emit(
         self,
@@ -160,6 +166,7 @@ class PythonEmitter:
     ) -> GeneratedPackage:
         wrapper_module = _wrapper_module(plan)
         wrapper_class = _wrapper_class(plan)
+        entrypoint_method = _analysis_method(plan.slug)
         module_names = [
             "base",
             *(table.attribute for table in plan.tables),
@@ -201,6 +208,7 @@ class PythonEmitter:
             "emitter_version": self.VERSION,
             "slug": plan.slug,
             "entrypoint_class": wrapper_class,
+            "entrypoint_method": entrypoint_method,
             "dataset_version": dataset_version,
             "knowledgebase_release": knowledgebase_release,
             "tables": [table.name for table in plan.tables],
@@ -497,7 +505,7 @@ class PythonEmitter:
                 "        self._session = session",
                 "        self._row_limit = row_limit",
                 "",
-                f"    def {plan.slug}(self) -> AnalysisResult:",
+                f"    def {_analysis_method(plan.slug)}(self) -> AnalysisResult:",
             ]
         )
 
@@ -1119,6 +1127,11 @@ def _wrapper_module(plan: AnalysisPlan) -> str:
 
 def _wrapper_class(plan: AnalysisPlan) -> str:
     return _class_name(_wrapper_module(plan))
+
+
+def _analysis_method(slug: str) -> str:
+    """Map a durable workbook slug to a legal generated method name."""
+    return f"analysis_{slug}" if keyword.iskeyword(slug) else slug
 
 
 def _python_literal(value: object) -> str:

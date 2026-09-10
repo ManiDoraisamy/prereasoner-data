@@ -22,6 +22,8 @@ assert(firebaseSource.includes("at('dataset_semantics')") && firebaseSource.incl
   'live engine traces must carry dataset-semantics set and clear state');
 assert(firebaseSource.includes("at('analysis')") && firebaseSource.includes('onAnalysis'),
   'live engine traces must carry the server-owned analysis identity');
+assert(firebaseSource.includes("at('execution')") && firebaseSource.includes('onExecution'),
+  'live engine traces must carry the backend that produced each call');
 let finish;
 const done = new Promise((resolve, reject) => { finish = error => error ? reject(error) : resolve(); });
 const storage = new Map();
@@ -30,6 +32,7 @@ const context = {
   esc: value => String(value),
   setTimeout,
   clearTimeout,
+  TextEncoder,
   crypto: {randomUUID: () => 'job'},
   location: {search: '', pathname: '/reason'},
   history: {replaceState() {}},
@@ -59,12 +62,50 @@ const checks = `
     CHAT = [{q:'prior', reply:'answer'}]; SETTLED=false;
     DS_META = [{table:'orders', column:'amount', currency:'EUR'}];
     const snapshot = convSnapshot();
-    if (snapshot.v !== 2) throw new Error('named workbook identity requires snapshot v2');
+    if (snapshot.v !== 3) throw new Error('per-sheet execution provenance requires snapshot v3');
     const saved = snapshot.sheets[0];
     if (!saved.dirty) throw new Error('dirty state was serialized as clean');
     if (!saved.cellAI || saved.cellAI[0] !== '0,1') throw new Error('cell provenance was not serialized');
     if (!snapshot.datasetSemantics || snapshot.datasetSemantics[0].currency !== 'EUR')
       throw new Error('dataset semantics were omitted from the restorable snapshot');
+
+    // A turn can contain several engine calls whose auto policy chose different backends.
+    // A late terminal event must annotate only that call's sheets, not relabel the whole turn.
+    paint = () => {}; VIEWS = []; BOOK = []; RUN = 4; AUTO = true; J = null; EXEC = null; EXEC_BY_KEY = new Map();
+    noteExecution({actual:'python', verified:false}, 'call-python');
+    appendView({name:'from_python', op:'select', label:'from python', columns:['v'], rows:[[1]],
+      sql:'SELECT 1', python:'python one'}, null, 'call-python');
+    appendView({name:'from_sql', op:'select', label:'from sql', columns:['v'], rows:[[2]],
+      sql:'SELECT 2', python:'python two'}, null, 'call-sql');
+    noteExecution({actual:'sql', verified:false}, 'call-sql');
+    const pySheet = BOOK.find(s => s.name === 'from python');
+    const sqlSheet = BOOK.find(s => s.name === 'from sql');
+    if (sheetSource(pySheet).primary !== 'py') throw new Error('a later SQL call relabelled a Python sheet');
+    if (sheetSource(sqlSheet).primary !== 'sql') throw new Error('a SQL sheet did not retain its own backend');
+
+    CHAT = [{q:'prior', reply:'answer'}]; SETTLED=false; REFCANDS=[];
+    const perSheet = convSnapshot();
+    if (perSheet.sheets[0].execution.actual !== 'python' || perSheet.sheets[1].execution.actual !== 'sql')
+      throw new Error('snapshot omitted per-sheet execution provenance');
+    if (restoredSheetExecution({v:3,execution:{actual:'sql'}},{}) !== null)
+      throw new Error("v3 restore relabelled an unknown sheet with the turn's final backend");
+    if (restoredSheetExecution({v:2,execution:{actual:'python'}},{}).actual !== 'python')
+      throw new Error('legacy snapshots lost their turn-level execution fallback');
+
+    const hugeRows = Array.from({length:500}, (_, index) => [index, 'x'.repeat(5000)]);
+    BOOK = [
+      {id:'large', cls:'deriv', name:'combined', cols:['id','payload'], rows:hugeRows,
+       sql:'SELECT * FROM input', python:'combined = input.for_each(...)', execution:{actual:'python',verified:false}},
+      {id:'answer', cls:'deriv', name:'result', cols:['total'], rows:[[500]], result:true,
+       sql:'SELECT COUNT(*) FROM combined', python:'result = combined.reduce(...)', execution:{actual:'python',verified:false}},
+    ];
+    const large = convSnapshot(), compacted = compactConvSnapshot(large);
+    if (!compacted || conversationStateBytes(compacted) > MAX_CONVERSATION_STATE_BYTES)
+      throw new Error('large snapshots were discarded instead of compacted below the server limit');
+    if (!compacted.compacted || compacted.sheets[0].rows.length >= large.sheets[0].rows.length)
+      throw new Error('large derived rows were not trimmed');
+    if (!compacted.sheets[0].python || !compacted.sheets[1].sql || compacted.sheets[1].rows[0][0] !== 500)
+      throw new Error('snapshot compaction discarded source or the scalar result');
 
     const safeAnalysis = {analysis_id:'a_'+'1'.repeat(32), slug:'total_sales', revision:2};
     if (!analysisHeading(safeAnalysis).includes('loadAnalysis'))
@@ -143,5 +184,5 @@ vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});
 vm.runInContext(conversationSource, context, {filename: 'workbook-conversations.js'});
 vm.runInContext(workbookSource + checks, context, {filename: 'workbook.js'});
 
-done.then(() => console.log('workbook reference state: 11 passed, 0 failed'))
+done.then(() => console.log('workbook reference state: passed'))
   .catch(error => { console.error(error.stack || error); process.exitCode = 1; });

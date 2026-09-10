@@ -90,7 +90,7 @@ def test_save_state_locks_and_replaces_only_the_previous_state_bytes():
         assert conversations.save_state("user", cid, {"ok": True}) == {"saved": cid}
     assert "pg_advisory_xact_lock" in cursor.statements[0][0]
     update = next(item for item in cursor.statements if item[0].startswith('UPDATE "chat"."conversation"'))
-    assert update[1][1] == len(b'{"ok": true}')
+    assert update[1][1] == len(b'{"ok":true}')
     assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
 
 
