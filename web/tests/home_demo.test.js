@@ -102,13 +102,19 @@ assert(html.includes("location.href='reason'+executionQuery()"),
 const shared = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'shared.js'), 'utf8');
 assert(shared.includes("raw==='sql'") && shared.includes("raw==='py'") && shared.includes("raw==='both'"),
   'the browser URL contract must accept sql, py, and both');
-assert(shared.includes('function executionRequestFields()'),
+assert(shared.includes('function executionRequestFields(override)'),
   'the browser must expose the selected execution mode to request builders');
 const modeSource = shared.slice(shared.indexOf('const EXECUTION_USE'), shared.indexOf('// sessionStorage keys'));
 for (const [raw, expected] of [['sql','sql'], ['py','py'], ['python','py'], ['both','both'], ['verify','both'], ['auto','auto'], ['typo','typo'], ['',null]]) {
   const context = vm.createContext({location: {search: '?use='+raw}, URLSearchParams});
   const actual = JSON.parse(vm.runInContext(modeSource + `\nJSON.stringify({fields:executionRequestFields(), query:executionQuery('?load=orders-tiers')})`, context));
   assert.deepStrictEqual(actual.fields, expected ? {use:expected} : {});
+  // A one-off override (the workbook's "run both and compare") wins for a single request and
+  // must NOT be written back, or the conversation would stay pinned to that backend.
+  const overridden = JSON.parse(vm.runInContext(
+    `JSON.stringify({fields:executionRequestFields('both'), after:executionRequestFields()})`, context));
+  assert.deepStrictEqual(overridden.fields, {use:'both'});
+  assert.deepStrictEqual(overridden.after, expected ? {use:expected} : {});
   const params = new URLSearchParams(actual.query);
   assert.strictEqual(params.get('load'), 'orders-tiers');
   assert.strictEqual(params.get('use'), expected);
@@ -117,8 +123,10 @@ const conversations = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib'
 assert(conversations.includes("'/reason/'+cid+executionQuery()"),
   'conversation URLs must preserve the selected execution mode');
 const workbook = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
-assert((workbook.match(/executionRequestFields\(\)/g) || []).length >= 3,
+assert((workbook.match(/executionRequestFields\(ONESHOT_USE\)/g) || []).length >= 3,
   'direct and orchestrated retries must carry the selected execution mode');
+assert(/ONESHOT_USE=null;\s*\/\/ an ordinary question/.test(workbook),
+  'an ordinary question must clear the one-off backend override');
 const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
 assert(/min-width:1000px[^}]*\{[^}]*\.hero-left \.h1\{white-space:nowrap/.test(css.replace(/\s+/g, '')) ||
   css.includes('.hero-left .h1{white-space:nowrap;max-width:none}'),

@@ -46,6 +46,7 @@ let EXEC=null;                                   // latest {actual,verified}; ea
 let EXEC_BY_KEY=new Map();                       // call jobId -> execution; closes cross-node RTDB ordering races
 let SRC='py';                                    // derivation language being READ; both sources always exist
 let SRCOPEN=false;                               // the source panel's open state, preserved across repaints
+let SRC_PINNED=false;                            // true once the reader explicitly picks a language
 let ONESHOT_USE=null;                            // one confirmed "run both and compare"; the next ordinary question clears it
 let DS_META=[];                                  // dataset semantics: conversation-stated measure metadata [{table, column, currency, basis}]
                                                  // from the engine's dataset_semantics response field -> a badge on the user's column header
@@ -114,7 +115,10 @@ function sheetSource(m){
   const ran = actual==='verify'&&verified ? 'both'
             : actual==='python' ? 'py'
             : actual==='sql' ? 'sql' : '';
-  const primary = SRC==='sql' ? (sql?'sql':(py?'py':''))
+  // Default to the language that PRODUCED this sheet, so a turn mixing backends labels each
+  // sheet honestly. A user's explicit pick overrides it until the next question.
+  const preferred = SRC_PINNED ? SRC : (ran==='sql' ? 'sql' : 'py');
+  const primary = preferred==='sql' ? (sql?'sql':(py?'py':''))
                 : (py?'py':(sql?'sql':''));
   return {py,sql,ran,primary,both:ran==='both'};
 }
@@ -316,7 +320,7 @@ function verifyRerun(){
   archiveTurn(); resetRun(); paint(); startRun();
 }
 function toggleSrc(){ SRCOPEN=!SRCOPEN; const r=$('sqlrow'); if(r) r.classList.toggle('open',SRCOPEN); }
-function pickSrc(lang){ SRC=(lang==='sql')?'sql':'py'; SRCOPEN=true; renderSheet(); }
+function pickSrc(lang){ SRC=(lang==='sql')?'sql':'py'; SRC_PINNED=true; SRCOPEN=true; renderSheet(); }
 function tabTxt(s){ const t=s.result?'Result':dispName(s); return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
   // A5: group the strip by pipeline role — Sources · Reference · Steps · Result — so inputs and the answer are never
@@ -1058,7 +1062,7 @@ function resetRun(){
   // (answered by Sonnet, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
   BOOK.forEach(s=>{ if(s.cls!=='input'&&s.cls!=='master') s.stale=true; });   // master data persists like the user's own tables
   J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
-  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false;
+  CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false; SRC_PINNED=false; SRC='py';
   EXEC_BY_KEY=new Map();
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
   TURN_ANALYSIS=null; ANALYSIS_ERROR=null;
