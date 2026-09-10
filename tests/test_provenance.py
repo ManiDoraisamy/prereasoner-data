@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from engine.dataset_semantics import synthetic_currency_column
 from engine.knowledge_compose import _trace_view
 from engine.provenance import ProvenanceContext
-from engine.dataset_semantics import synthetic_currency_column
 
 
 def test_provenance_uses_request_roles_not_column_name_guesses():
@@ -130,12 +130,14 @@ def test_saved_reference_decimals_do_not_break_the_response():
     tables._typed and can reach the response without the Postgres round trip that normally
     normalizes them, so json.dumps raised. The response encoder now applies the existing exact
     wire contract (numeric.wire_value) and LOGS the leak rather than hiding it."""
-    import json, datetime
+    import datetime
+    import json
     from decimal import Decimal
+
     from engine.server import _json_safe
 
     payload = {"result": {"columns": ["rate"],
-                          "rows": [[Decimal("1.1622")], [Decimal("4")], [Decimal("0.5")]]},
+                          "rows": [[Decimal("1.1622")], [Decimal(4)], [Decimal("0.5")]]},
                "as_of": datetime.date(2026, 9, 7)}
     encoded = json.loads(json.dumps(payload, default=_json_safe))
     rows = encoded["result"]["rows"]
@@ -156,10 +158,11 @@ def test_saved_reference_decimals_do_not_break_the_response():
 def test_saved_reference_decimals_do_not_break_the_live_trace():
     import datetime
     from decimal import Decimal
+
     from engine.trace import rtdb_safe
 
     encoded = rtdb_safe({
-        "rows": [[Decimal("1.1622")], [Decimal("4")]],
+        "rows": [[Decimal("1.1622")], [Decimal(4)]],
         "effective_date": datetime.date(2026, 9, 8),
     })
     assert encoded == {
@@ -173,9 +176,27 @@ def test_saved_reference_decimals_do_not_break_the_live_trace():
         pass
 
 
+def test_json_artifacts_preserve_exact_database_scalars():
+    import datetime
+    import json
+    from decimal import Decimal
+
+    from engine.artifact_provenance import json_artifact_bytes
+
+    encoded = json.loads(json_artifact_bytes({
+        "rows": [[Decimal("1.1622")], [Decimal(4)], [Decimal("0.5")]],
+        "effective_date": datetime.date(2026, 9, 10),
+    }))
+    assert encoded == {
+        "rows": [["1.1622"], [4], [0.5]],
+        "effective_date": "2026-09-10",
+    }
+
+
 TESTS = [
     test_saved_reference_decimals_do_not_break_the_response,
     test_saved_reference_decimals_do_not_break_the_live_trace,
+    test_json_artifacts_preserve_exact_database_scalars,
     test_provenance_uses_request_roles_not_column_name_guesses,
     test_calculation_and_ecb_columns_keep_distinct_lineage,
     test_http_and_stream_paths_emit_the_same_provenance_shape,

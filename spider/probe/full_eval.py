@@ -64,6 +64,7 @@ DIFFS = ["easy", "medium", "hard", "extra"]
 # live serving uses, so the eval can never drift from production. DEPTH_PRIMS is the primitive-head EVIDENCE to
 # build a compose plan; compose_owns is the AUTHORITY (a grounded world dependency). Spider tables are world-less,
 # so compose_owns is always False here -> every question routes to the typed-AST planner.
+from engine.artifact_provenance import json_artifact_bytes
 from engine.routing import DEPTH_PRIMS, compose_owns, required_ops
 
 
@@ -153,9 +154,8 @@ def _git_provenance(root):
 
 def _write_json_atomic(path, value):
     temporary = f"{path}.{os.getpid()}.tmp"
-    with open(temporary, "w", encoding="utf-8") as handle:
-        json.dump(value, handle, indent=2)
-        handle.write("\n")
+    with open(temporary, "wb") as handle:
+        handle.write(json_artifact_bytes(value, indent=2))
     for attempt in range(10):
         try:
             os.replace(temporary, path)

@@ -4,9 +4,9 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
-from decimal import Decimal
 import os
 from collections.abc import Mapping
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +79,7 @@ def json_artifact_bytes(value: Any, *, indent: int | None = None) -> bytes:
     """Serialize a JSON artifact identically on every operating system."""
     options: dict[str, Any] = {
         "allow_nan": False,
+        "default": _canonical_scalar,
         "ensure_ascii": True,
         "sort_keys": True,
     }
