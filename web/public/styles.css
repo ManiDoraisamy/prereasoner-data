@@ -236,12 +236,17 @@ body.app{background:#fff}
 .vpy .pt.op{color:#0891b2;font-weight:700}
 .vpy .pt.str{color:#d6336c}
 .vpy .pt.cmt{color:#8b83a8;font-style:italic}
-/* The language picker replaces the badge only when BOTH backends ran; it must read as the
-   same pill, not a form control. */
-.srcsel{-webkit-appearance:none;appearance:none;background:#fff;padding-right:22px;
-  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M1 3.5 5 7.5 9 3.5' fill='none' stroke='%236d28d9' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-  background-repeat:no-repeat;background-position:right 8px center}
-.srcsel:hover{background-color:#f3effd}
+/* The split source badge: one pill, two segments. The MAIN segment names the language and
+   toggles the panel; the CARET opens the Python/SQL/Both picker (shared .mmenu popup). */
+.srcsplit{display:inline-flex;flex:0 0 auto}
+.srcsplit .srcmain{border-radius:9999px 0 0 9999px;background:#fff}
+.srcsplit .srcmain.on{background:#f3effd}
+.srcsplit .srccaret{border-radius:0 9999px 9999px 0;border-left:0;background:#fff;padding:4px 9px 4px 7px;font-size:9px}
+.srcsplit .sqlbtn:hover{background:#ece5fb}
+.mmenu button.on{color:var(--brand);background:#f7f4fe}
+/* Captions labelling each block when the panel shows BOTH languages at once. */
+.srccap{font:600 10px var(--mono);letter-spacing:.8px;color:#8a7fb8;margin:8px 0 4px;text-transform:uppercase}
+.srccap:first-child{margin-top:0}
 /* Says which backend produced the rows. The unexecuted counterpart is still readable — it is
    generated from the same plan — so this is a statement of provenance, not a warning. */
 .srcnote{margin:0 0 8px;font:12px var(--disp);color:var(--card-ink-dim);line-height:1.5}

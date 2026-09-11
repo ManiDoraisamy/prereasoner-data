@@ -44,7 +44,7 @@ let PRESENT=false;                               // present mode: a REAL answer,
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
 let EXEC=null;                                   // latest {actual,verified}; each derivation sheet owns its execution
 let EXEC_BY_KEY=new Map();                       // call jobId -> execution; closes cross-node RTDB ordering races
-let SRC='py';                                    // derivation language being READ; both sources always exist
+let SRC='py';                                    // derivation language being READ: 'py' | 'sql' | 'both'; both sources always exist
 let SRCOPEN=false;                               // the source panel's open state, preserved across repaints
 let SRC_PINNED=false;                            // true once the reader explicitly picks a language
 let ONESHOT_USE=null;                            // one confirmed "run both and compare"; the next ordinary question clears it
@@ -116,9 +116,11 @@ function sheetSource(m){
             : actual==='python' ? 'py'
             : actual==='sql' ? 'sql' : '';
   // Default to the language that PRODUCED this sheet, so a turn mixing backends labels each
-  // sheet honestly. A user's explicit pick overrides it until the next question.
+  // sheet honestly. A user's explicit pick ('py' | 'sql' | 'both') overrides it until the
+  // next question; 'both' needs both sources or it degrades to whichever exists.
   const preferred = SRC_PINNED ? SRC : (ran==='sql' ? 'sql' : 'py');
-  const primary = preferred==='sql' ? (sql?'sql':(py?'py':''))
+  const primary = preferred==='both' ? (py&&sql?'both':(py?'py':(sql?'sql':'')))
+                : preferred==='sql' ? (sql?'sql':(py?'py':''))
                 : (py?'py':(sql?'sql':''));
   return {py,sql,ran,primary,both:ran==='both'};
 }
@@ -284,29 +286,47 @@ function renderSheet(){
   }
   $('sheetcard').innerHTML=h;
 }
-// One control per sheet. When only one backend ran it is a button naming that language;
-// when `verify` ran both it becomes a Python/SQL picker, defaulting to Python.
-// Both options stay ENABLED: each names a source that exists. A disabled option could not be
-// chosen at all, and greying one would claim it is unavailable when it is merely unexecuted.
+// One split control per sheet: the MAIN segment names the language being read and
+// toggles the source panel open/closed; the CARET opens a Python / SQL / Both picker.
+// Every option stays ENABLED: each names a source that exists. A disabled option could
+// not be chosen at all, and greying one would claim it is unavailable when it is merely
+// unexecuted — "· ran" marks the backend(s) that actually produced these rows.
 function srcBadge(m){
   const s=sheetSource(m); if(!s.py&&!s.sql) return '';
-  const ran=l=>s.ran==='both'||s.ran===l;
-  const opt=(v,label)=>'<option value="'+v+'"'+(s.primary===v?' selected':'')+'>'
-    +label+(ran(v)?' · ran':'')+'</option>';
-  return '<span class=spacer></span><select class="sqlbtn srcsel" aria-label="Derivation language"'
-    +' title="Switch the derivation you are reading. This never re-runs the calculation."'
-    +' onchange="pickSrc(this.value)">'
-    +(s.py?opt('py','Python'):'')+(s.sql?opt('sql','SQL'):'')+'</select>';
+  const label = s.primary==='both'?'Both':s.primary==='sql'?'SQL':'Python';
+  return '<span class=spacer></span><span class=srcsplit>'
+    +'<button class="sqlbtn srcmain'+(SRCOPEN?' on':'')+'" aria-expanded="'+(SRCOPEN?'true':'false')+'"'
+    +' title="Show or hide this step&#39;s emitted source. This never re-runs the calculation."'
+    +' onclick="toggleSrc()">'+label+'</button>'
+    +'<button class="sqlbtn srccaret" aria-label="Choose derivation language" aria-haspopup="menu"'
+    +' title="Read the derivation as Python, SQL, or both" onclick="srcMenu(this,event)">&#9662;</button>'
+    +'</span>';
+}
+function srcMenu(btn,ev){
+  const m=sheetById(ACTIVE); const s=m&&sheetSource(m); if(!s||(!s.py&&!s.sql)) return;
+  const ranTag=l=>(s.ran==='both'||s.ran===l)?' · ran':'';
+  const item=(v,label,tag)=>'<button'+(s.primary===v?' class=on':'')
+    +' onclick="closePopMenu();pickSrc(\''+v+'\')">'+label+tag+'</button>';
+  openPopMenu(btn,
+    (s.py?item('py','Python',ranTag('py')):'')
+    +(s.sql?item('sql','SQL',ranTag('sql')):'')
+    +(s.py&&s.sql?item('both','Both',s.ran==='both'?' · ran':''):''), ev);
 }
 function srcPanel(m){
   const s=sheetSource(m); if(!s.primary) return '';
   const lang=s.primary;
-  const body = lang==='py'
-    ? '<pre class=vpy>'+pyHighlight(dedent(s.py))+'</pre>'
-    : '<div class=vsql>'+sqlTokens(s.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div>';
+  const pyBody='<pre class=vpy>'+pyHighlight(dedent(s.py))+'</pre>';
+  const sqlBody='<div class=vsql>'+sqlTokens(s.sql).map(tk=>'<span class="vtok '+tokCls(tk)+'">'+esc(tk)+'</span>').join('')+'</div>';
+  const body = lang==='both' ? '<div class=srccap>Python</div>'+pyBody+'<div class=srccap>SQL</div>'+sqlBody
+             : lang==='py' ? pyBody : sqlBody;
   let note='';
   if(s.ran==='both'){
     note='<div class="srcnote ok">Both backends ran and every stage matched.</div>';
+  } else if(s.ran&&lang==='both'){
+    const actual=s.ran==='py'?'Python':'SQL', other=s.ran==='py'?'SQL':'Python';
+    note='<div class=srcnote>The '+actual+' produced these rows; the '+other
+      +' is its stage-aligned counterpart &mdash; it was not run. '
+      +'<button class=srclink onclick="verifyRerun()">Run both and compare</button></div>';
   } else if(s.ran&&s.ran!==lang){
     const shown=lang==='py'?'Python':'SQL', actual=s.ran==='py'?'Python':'SQL';
     note='<div class=srcnote>This '+shown+' is the stage-aligned counterpart of the '+actual
@@ -327,8 +347,28 @@ function verifyRerun(){
   ONESHOT_USE='both';
   archiveTurn(); resetRun(); paint(); startRun();
 }
-function toggleSrc(){ SRCOPEN=!SRCOPEN; const r=$('sqlrow'); if(r) r.classList.toggle('open',SRCOPEN); }
-function pickSrc(lang){ SRC=(lang==='sql')?'sql':'py'; SRC_PINNED=true; SRCOPEN=true; renderSheet(); }
+// The main badge segment both opens AND closes the panel; re-render so its
+// pressed state and label stay truthful.
+function toggleSrc(){ SRCOPEN=!SRCOPEN; renderSheet(); }
+function pickSrc(lang){ SRC=(lang==='sql'||lang==='both')?lang:'py'; SRC_PINNED=true; SRCOPEN=true; renderSheet(); }
+// ONE floating menu at a time, anchored to its trigger button and kept on-screen;
+// a mousedown anywhere outside dismisses it. Shared by the reference sheet's ⋮
+// menu, the "+ Reference" popover ('above'), and the source-language caret.
+let _popDoc=null;
+function openPopMenu(btn, html, ev, place){
+  if(ev) ev.stopPropagation(); closePopMenu();
+  const el=document.createElement('div'); el.id='popmenu'; el.className='mmenu';
+  el.innerHTML=html; document.body.appendChild(el);
+  const r=btn.getBoundingClientRect();
+  if(place==='above'){ el.style.left=Math.max(8,r.left)+'px'; el.style.top=Math.max(8,r.top-el.offsetHeight-6)+'px'; }
+  else { el.style.left=Math.max(8, r.right-el.offsetWidth)+'px'; el.style.top=(r.bottom+4)+'px'; }
+  _popDoc=e=>{ if(!el.contains(e.target)) closePopMenu(); };   // click OUTSIDE closes; clicks on a menu item run first
+  setTimeout(()=>document.addEventListener('mousedown', _popDoc), 0);
+}
+function closePopMenu(){
+  if(_popDoc){ document.removeEventListener('mousedown', _popDoc); _popDoc=null; }
+  const m=document.getElementById('popmenu'); if(m) m.remove();
+}
 function tabTxt(s){ const t=s.result?'Result':dispName(s); return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
   // A5: group the strip by pipeline role — Sources · Reference · Steps · Result — so inputs and the answer are never

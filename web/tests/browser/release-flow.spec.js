@@ -107,10 +107,11 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('th').filter({hasText:'rate_to_usd'})).toHaveAttribute('title',/European Central Bank.*ecb-2026-09-05/);
   // No `use` on the URL, so the deployment's auto policy runs Python for this small input.
   // Both sources exist, so both are offered; only Python is marked as the one that ran.
-  const picker=page.locator('select.srcsel');
-  await expect(picker).toHaveValue('py');
-  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
-  await expect(picker.locator('option[value="sql"]')).toHaveText('SQL');
+  await expect(page.locator('.srcmain')).toHaveText('Python');
+  await page.locator('.srccaret').click();
+  await expect(page.locator('#popmenu button').filter({hasText:'Python'})).toContainText('· ran');
+  await expect(page.locator('#popmenu button').filter({hasText:'SQL'})).not.toContainText('ran');
+  await page.locator('#popmenu button').filter({hasText:'Python'}).click();
   await expect(page.locator('#sqlrow')).toContainText('for_each(');
 
   await page.locator('#chatq').fill('only Paris');
@@ -151,6 +152,14 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
 
 function conversationPattern(){return 'c_[0-9a-f]{32}';}
 
+// The split badge: the caret opens the language menu, an item pins the language and
+// opens the panel. Clicking an item is also what dismisses the menu here, so the next
+// action never fights a lingering fixed-position popup.
+async function pickLang(page,label){
+  await page.locator('.srccaret').click();
+  await page.locator('#popmenu button').filter({hasText:label}).click();
+}
+
 // The derivation a sheet shows must name the backend that actually produced it. Python mode
 // shows the generated loops; `both` (verify) ran BOTH and proved every stage equal, so it
 // offers a picker that re-renders the pair already in hand — it never re-executes.
@@ -165,14 +174,16 @@ test(`the sheet badge names the backend that produced it (${chat==='1'?'chat':'d
   await page.getByRole('button',{name:'Ask'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('180');
 
-  const picker=page.locator('select.srcsel');
-  await expect(picker).toHaveValue('py');
-  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
+  await expect(page.locator('.srcmain')).toHaveText('Python');
+  await page.locator('.srccaret').click();
+  await expect(page.locator('#popmenu button').filter({hasText:'Python'})).toContainText('· ran');
+  await page.locator('#popmenu button').filter({hasText:'Python'}).click();
   await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
   await expect(page.locator('#sqlrow .vpy')).toContainText('SUM(result.total, row.converted)');
   // Reading the unexecuted counterpart is free and must not re-run anything.
   const before=(await (await page.request.get('/__state')).json()).requestCount;
-  await picker.selectOption('sql');
+  await pickLang(page,'SQL');
+  await expect(page.locator('.srcmain')).toHaveText('SQL');
   await expect(page.locator('#sqlrow .srcnote')).toContainText('was not run');
   await expect(page.locator('#sqlrow .vsql')).toContainText('SUM');
   expect((await (await page.request.get('/__state')).json()).requestCount).toBe(before);
@@ -186,18 +197,31 @@ test('verify mode offers a Python/SQL picker over the same proven stages',async(
   await page.getByRole('button',{name:'Ask'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('180');
 
-  const picker=page.locator('select.srcsel');
-  await expect(picker).toBeVisible();
-  await expect(picker).toHaveValue('py');
-  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
-  await expect(picker.locator('option[value="sql"]')).toHaveText(/SQL . ran/);
+  await expect(page.locator('.srcmain')).toBeVisible();
+  await expect(page.locator('.srcmain')).toHaveText('Python');
+  await page.locator('.srccaret').click();
+  await expect(page.locator('#popmenu button').filter({hasText:'Python'})).toContainText('· ran');
+  await expect(page.locator('#popmenu button').filter({hasText:'SQL'})).toContainText('· ran');
+  await expect(page.locator('#popmenu button').filter({hasText:'Both'})).toContainText('· ran');
+  await page.locator('#popmenu button').filter({hasText:'Python'}).click();
   await expect(page.locator('#sqlrow .srcnote')).toContainText('every stage matched');
   await expect(page.locator('#sqlrow .vpy')).toContainText('calculated.reduce(');
 
   const requestsBefore=(await (await page.request.get('/__state')).json()).requestCount;
-  await picker.selectOption('sql');
+  await pickLang(page,'SQL');
   await expect(page.locator('#sqlrow .vsql')).toContainText('SUM');
   await expect(page.locator('#sqlrow .vpy')).toHaveCount(0);
+  // The main segment is a true toggle: it collapses the panel it opened.
+  await expect(page.locator('#sqlrow')).toBeVisible();
+  await page.locator('.srcmain').click();
+  await expect(page.locator('#sqlrow')).not.toBeVisible();
+  await page.locator('.srcmain').click();
+  await expect(page.locator('#sqlrow')).toBeVisible();
+  // 'Both' renders the stage-aligned pair at once.
+  await pickLang(page,'Both');
+  await expect(page.locator('.srcmain')).toHaveText('Both');
+  await expect(page.locator('#sqlrow .vpy')).toHaveCount(1);
+  await expect(page.locator('#sqlrow .vsql')).toHaveCount(1);
   const requestsAfter=(await (await page.request.get('/__state')).json()).requestCount;
   expect(requestsAfter).toBe(requestsBefore);          // switching language must not re-execute
 });
@@ -229,12 +253,13 @@ test('a complex eval renders one nested dependency tree with stage-aligned Pytho
 
   await root.locator(':scope > .branchsteps > .steplink').click();
   await expect(page.locator('#sqlrow')).toBeVisible();
-  const picker=page.locator('select.srcsel');
-  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
-  await expect(picker.locator('option[value="sql"]')).toHaveText(/SQL . ran/);
+  await page.locator('.srccaret').click();
+  await expect(page.locator('#popmenu button').filter({hasText:'Python'})).toContainText('· ran');
+  await expect(page.locator('#popmenu button').filter({hasText:'SQL'})).toContainText('· ran');
+  await page.locator('#popmenu button').filter({hasText:'Python'}).click();
   await expect(page.locator('#sqlrow .srccontext')).toContainText('Promotion gaps');
   await expect(page.locator('#sqlrow .vpy')).toContainText('anti_join');
-  await picker.selectOption('sql');
+  await pickLang(page,'SQL');
   await expect(page.locator('#sqlrow .vsql')).toContainText('NOTEXISTS');
 });
 
@@ -259,13 +284,19 @@ test('an orchestrated turn keeps backend provenance per engine call',async({page
   await page.getByRole('button',{name:'Ask'}).click();
   const derivationTabs=page.locator('.wtab').filter({has:page.locator('.dot.deriv')});
   await expect(derivationTabs).toHaveCount(2);
-  const picker=page.locator('select.srcsel');
-  await derivationTabs.nth(0).click();
-  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
-  await expect(picker.locator('option[value="sql"]')).toHaveText('SQL');
   await derivationTabs.nth(1).click();
-  await expect(picker.locator('option[value="sql"]')).toHaveText(/SQL . ran/);
-  await expect(picker.locator('option[value="py"]')).toHaveText('Python');
+  await expect(page.locator('.srcmain')).toHaveText('SQL');      // unpinned: each sheet defaults to the backend that produced it
+  await derivationTabs.nth(0).click();
+  await expect(page.locator('.srcmain')).toHaveText('Python');
+  await page.locator('.srccaret').click();
+  await expect(page.locator('#popmenu button').filter({hasText:'Python'})).toContainText('· ran');
+  await expect(page.locator('#popmenu button').filter({hasText:'SQL'})).not.toContainText('ran');
+  await page.locator('#popmenu button').filter({hasText:'Python'}).click();
+  await derivationTabs.nth(1).click();
+  await page.locator('.srccaret').click();
+  await expect(page.locator('#popmenu button').filter({hasText:'SQL'})).toContainText('· ran');   // provenance stays per engine call
+  await expect(page.locator('#popmenu button').filter({hasText:'Python'})).not.toContainText('ran');
+  await page.locator('#popmenu button').filter({hasText:'SQL'}).click();
 });
 
 test('signed-in conversations remain reachable on mobile home',async({page})=>{

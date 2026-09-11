@@ -89,15 +89,10 @@ function acceptRefCand(i){                                    // A1: user accept
   if(sh&&c.cellAI) sh.cellAI=new Set(c.cellAI); pick(id); saveConvState();
 }
 function refSuggestMenu(btn,ev){                             // the "+ Reference" popover — reference data available to show as a sheet
-  if(ev) ev.stopPropagation(); closeMasterMenu();
-  const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
-  el.innerHTML='<div class=mmenu-hd>Add reference data as a sheet</div>'
-    + REFCANDS.map((c,i)=>'<button onclick="closeMasterMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+((c.cols&&c.cols.length>1)?(c.cols.length-1)+' column'+(c.cols.length===2?'':'s'):(c.vals.length+' value'+(c.vals.length===1?'':'s')))+'</span></button>').join('');
-  document.body.appendChild(el);
-  const r=btn.getBoundingClientRect();
-  el.style.left=Math.max(8,r.left)+'px'; el.style.top=Math.max(8,r.top-el.offsetHeight-6)+'px';   // open ABOVE the bottom tab bar
-  _mmenuDoc=e=>{ if(!el.contains(e.target)) closeMasterMenu(); };
-  setTimeout(()=>document.addEventListener('mousedown',_mmenuDoc),0);
+  openPopMenu(btn,
+    '<div class=mmenu-hd>Add reference data as a sheet</div>'
+    + REFCANDS.map((c,i)=>'<button onclick="closePopMenu();acceptRefCand('+i+')">'+esc(c.name)+' <span class=mmenu-sub>'+((c.cols&&c.cols.length>1)?(c.cols.length-1)+' column'+(c.cols.length===2?'':'s'):(c.vals.length+' value'+(c.vals.length===1?'':'s')))+'</span></button>').join(''),
+    ev, 'above');                                            // open ABOVE the bottom tab bar
 }
 const hasCellValue=v=>v!=null&&String(v).trim()!=='';
 const referenceRows=s=>(s.rows||[]).filter(r=>r.some(hasCellValue));
@@ -273,23 +268,12 @@ async function deleteMasterData(id){                          // permanently del
     paint(); saveConvState(); toast('Deleted saved reference “'+sh.name+'”.', null, null, 7000);
   }catch(e){ toast('Could not delete “'+sh.name+'”: '+(e&&e.message||e), null, null, 9000); }
 }
-let _mmenuDoc=null;
-function masterMenu(id, btn, ev){                             // the ⋮ menu on a saved reference sheet
-  if(ev) ev.stopPropagation(); closeMasterMenu();
-  const el=document.createElement('div'); el.id='mmenu'; el.className='mmenu';
-  el.innerHTML='<button onclick="closeMasterMenu();generateMaster(\''+id+'\')">Autofill</button>'
-    +'<button onclick="closeMasterMenu();masterUpload(\''+id+'\')">Upload</button>'
-    +'<button onclick="closeMasterMenu();confirmRemoveMasterSheet(\''+id+'\')">Remove from workbook</button>'
-    +'<button class=danger onclick="closeMasterMenu();deleteMasterData(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete saved reference</button>';
-  document.body.appendChild(el);
-  const r=btn.getBoundingClientRect();                        // anchor the dropdown to the ⋮ button, right-aligned + on-screen
-  el.style.left=Math.max(8, r.right-el.offsetWidth)+'px'; el.style.top=(r.bottom+4)+'px';
-  _mmenuDoc=e=>{ if(!el.contains(e.target)) closeMasterMenu(); };   // click OUTSIDE closes; clicks on a menu item run first
-  setTimeout(()=>document.addEventListener('mousedown', _mmenuDoc), 0);
-}
-function closeMasterMenu(){
-  if(_mmenuDoc){ document.removeEventListener('mousedown', _mmenuDoc); _mmenuDoc=null; }
-  const m=document.getElementById('mmenu'); if(m) m.remove();
+function masterMenu(id, btn, ev){                             // the ⋮ menu on a saved reference sheet (shared popup in workbook.js)
+  openPopMenu(btn,
+    '<button onclick="closePopMenu();generateMaster(\''+id+'\')">Autofill</button>'
+    +'<button onclick="closePopMenu();masterUpload(\''+id+'\')">Upload</button>'
+    +'<button onclick="closePopMenu();confirmRemoveMasterSheet(\''+id+'\')">Remove from workbook</button>'
+    +'<button class=danger onclick="closePopMenu();deleteMasterData(\''+id+'\')"><span class=dgico aria-hidden=true>🗑</span> Delete saved reference</button>', ev);
 }
 let _toastTimer=null;
 function toast(msg, actionLabel, actionFn, ms){              // a transient bottom toast with an optional action (e.g. Undo)
