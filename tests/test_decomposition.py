@@ -11,6 +11,7 @@ from engine.decomposition import (
     build_decomposed_plan,
     compound_decomposition_required,
     leaf_measure_rejection,
+    ranked_leaf_grain_rejection,
     validate_decomposition,
 )
 from engine.deterministic import (
@@ -207,6 +208,34 @@ def test_measure_leaf_without_aggregation_is_rejected_not_answered():
     ) is None
 
 
+def test_ranked_cross_input_must_stay_at_the_ranked_entity_grain():
+    """A category ranking that also groups products is the wrong ranking grain."""
+    from engine.sql_ast import OrderTerm
+
+    category = ColumnRef("products", "category", SQLType.TEXT)
+    product = ColumnRef("products", "product_name", SQLType.TEXT)
+    revenue = Aggregate("SUM", ColumnRef("purchases", "line_total", SQLType.REAL))
+    wide = SelectQuery(
+        (SelectItem(category), SelectItem(product), SelectItem(revenue)),
+        "purchases", group_by=(category, product),
+        order_by=(OrderTerm(revenue, "DESC"),), limit=3,
+    )
+    narrow = SelectQuery(
+        (SelectItem(category), SelectItem(revenue)),
+        "purchases", group_by=(category,),
+        order_by=(OrderTerm(revenue, "DESC"),), limit=3,
+    )
+    rejection = ranked_leaf_grain_rejection("top_categories", wide, True)
+    assert rejection is not None and "ranked entity" in rejection
+    # The single-dimension ranking, a non-cross consumer, and an unranked wide
+    # evidence leaf all keep their current readings.
+    assert ranked_leaf_grain_rejection("top_categories", narrow, True) is None
+    assert ranked_leaf_grain_rejection("top_categories", wide, False) is None
+    assert ranked_leaf_grain_rejection(
+        "evidence", SelectQuery((SelectItem(category), SelectItem(product)), "purchases"), True
+    ) is None
+
+
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner = Mock()
     planner.ingest.side_effect = RuntimeError("planner unavailable")
@@ -236,6 +265,7 @@ TESTS = [
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,
+    test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]
 

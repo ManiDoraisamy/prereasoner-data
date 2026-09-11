@@ -52,7 +52,10 @@ clear answer about their data, in plain English.
    the final output grain, and make no further decomposition attempt. EVERY merge takes exactly TWO
    input node ids — never three. To involve a third relation (such as purchase evidence), chain a
    second merge whose inputs include the previous merge's id. Preserve every cutoff, metric,
-   filter, time period, and requested ordering from the original question.
+   filter, time period, and requested ordering from the original question. A ranking leaf must stay
+   at the ranked entity's grain: name only the ranked entity and its measure ("top 3 categories by
+   total revenue"), never an extra descriptive column — asking for products inside a category
+   ranking turns it into a product ranking and corrupts the ordering.
 
    Example: for "top 3 products by units sold and top 2 customers by spend, then products those
    customers never bought", use leaves equivalent to "top 3 product names by total quantity sold",

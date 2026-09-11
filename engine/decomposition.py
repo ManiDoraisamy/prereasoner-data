@@ -171,6 +171,29 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
         ) from exc
 
 
+def ranked_leaf_grain_rejection(node_id: str, selected, feeds_cross: bool) -> str | None:
+    """Model-facing rejection when a ranked cross input carries an extra dimension.
+
+    A ranking leaf that feeds a cross merge defines one side of a candidate-pair
+    space, so it must stay at the ranked entity's grain. Grouping it by a second
+    descriptive column ("top 3 categories ... and their products") silently turns
+    the ranking into the finer entity's ranking: the pair set may survive the
+    anti-join, but the ordering and the displayed measure are the wrong grain.
+    """
+    from engine.sql_ast import Aggregate
+
+    if not feeds_cross or selected.limit is None or len(selected.group_by) <= 1:
+        return None
+    if not any(isinstance(term.expression, Aggregate) for term in selected.order_by):
+        return None
+    return (
+        f"subquestion {node_id!r} is a ranking but groups {len(selected.group_by)} "
+        "columns; a ranking leaf that feeds a cross merge must name only the ranked "
+        "entity and its measure — drop the extra descriptive column and keep the "
+        "detail in the evidence subquestion instead"
+    )
+
+
 def leaf_measure_rejection(node_id: str, question: str, selected, pool) -> str | None:
     """Model-facing rejection when a leaf's summed measure lost its aggregation.
 
@@ -238,6 +261,11 @@ def build_decomposed_plan(
     if proposal is None:  # pragma: no cover - callers require a proposal
         raise DecompositionError("decomposition is required")
     graph = SchemaGraph.from_planner(schema, foreign_keys)
+    cross_inputs = {
+        node_id
+        for merge in proposal["merges"] if merge["op"] == "cross"
+        for node_id in merge["inputs"]
+    }
     views = []
     sections = []
     tables_by_name: dict[str, TableSpec] = {}
@@ -266,6 +294,8 @@ def build_decomposed_plan(
             )
         rejection = leaf_measure_rejection(
             node["id"], node["question"], candidate.query, candidates
+        ) or ranked_leaf_grain_rejection(
+            node["id"], candidate.query, node["id"] in cross_inputs
         )
         if rejection is not None:
             raise DecompositionError(rejection)
