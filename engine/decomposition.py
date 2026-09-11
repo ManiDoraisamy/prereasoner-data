@@ -7,23 +7,10 @@ import keyword
 from dataclasses import replace
 from typing import Any
 
-from engine.analysis import analysis_view_name
-from engine.deterministic.lower import UnsupportedDeterministicPlan, lower_select_query
-from engine.deterministic.plan import (
-    AnalysisPlan,
-    AntiJoinView,
-    CrossView,
-    MergeKey,
-    PlanSection,
-    ProjectedView,
-    ReducedView,
-    RelationshipSpec,
-    SortedView,
-    SortValue,
-    TableSpec,
-    ViewValue,
-)
-from engine.sql_ast import SelectQuery
+# The planner/plan imports stay INSIDE the fusion functions. The lean orchestrator
+# image ships this module only for `validate_decomposition` — the pure closed-grammar
+# check — and must not drag the typed-AST planner stack into an image that exists to
+# exclude it. The engine image is the only caller of `build_decomposed_plan`.
 
 MAX_SUBQUESTIONS = 4
 MAX_MERGES = 4
@@ -130,7 +117,20 @@ def build_decomposed_plan(
     proposal: dict[str, Any],
 ) -> AnalysisPlan:
     """Plan every leaf normally, then fuse their typed outputs with validated merges."""
+    from engine.analysis import analysis_view_name
     from engine.calculations import select_calculation_candidate
+    from engine.deterministic.lower import (
+        UnsupportedDeterministicPlan,
+        lower_select_query,
+    )
+    from engine.deterministic.plan import (
+        AnalysisPlan,
+        AntiJoinView,
+        CrossView,
+        MergeKey,
+        PlanSection,
+    )
+    from engine.sql_ast import SelectQuery
     from engine.sql_schema import SchemaGraph
 
     proposal = validate_decomposition(proposal)
@@ -239,7 +239,7 @@ def build_decomposed_plan(
     )
 
 
-def _merge_table(existing: TableSpec | None, incoming: TableSpec) -> TableSpec:
+def _merge_table(existing, incoming):
     if existing is None:
         return incoming
     if (
@@ -249,7 +249,7 @@ def _merge_table(existing: TableSpec | None, incoming: TableSpec) -> TableSpec:
         or existing.columns != incoming.columns
     ):
         raise DecompositionError(f"subplans disagree about table {incoming.name!r}")
-    relationships: list[RelationshipSpec] = list(existing.relationships)
+    relationships = list(existing.relationships)
     for relationship in incoming.relationships:
         if relationship not in relationships:
             if any(item.attribute == relationship.attribute for item in relationships):
@@ -262,17 +262,29 @@ def _merge_table(existing: TableSpec | None, incoming: TableSpec) -> TableSpec:
 
 def _shapes(views, tables, slug) -> dict[str, tuple[str, ...]]:
     # Build through the same plan validator/shape calculator used by both emitters.
+    from engine.deterministic.plan import AnalysisPlan
+
     return AnalysisPlan(slug, tables, views).view_columns()
 
 
-def _row_bound(plan: AnalysisPlan | None, output: str) -> int | None:
+def _row_bound(plan, output: str) -> int | None:
+    from engine.deterministic.plan import SortedView
+
     if plan is None:
         return None
     view = next(item for item in plan.views if item.name == output)
     return view.limit if isinstance(view, SortedView) else None
 
 
-def _inherited_order(views, source: str) -> tuple[SortValue, ...]:
+def _inherited_order(views, source: str):
+    from engine.deterministic.plan import (
+        AntiJoinView,
+        CrossView,
+        SortedView,
+        SortValue,
+        ViewValue,
+    )
+
     view = next(item for item in views if item.name == source)
     if isinstance(view, SortedView):
         return view.order
@@ -305,6 +317,14 @@ def _merge_key_columns(views, shapes, name: str) -> tuple[str, ...]:
     Aggregate aliases are deliberately excluded. Treating two identically named
     measures as identity columns can silently over-constrain an anti-join.
     """
+    from engine.deterministic.plan import (
+        AntiJoinView,
+        CrossView,
+        ProjectedView,
+        ReducedView,
+        SortedView,
+    )
+
     view = next(item for item in views if item.name == name)
     if isinstance(view, SortedView):
         return _merge_key_columns(views, shapes, view.source)
@@ -326,6 +346,8 @@ def _merge_key_columns(views, shapes, name: str) -> tuple[str, ...]:
 
 
 def _output_names(views, name: str) -> set[str]:
+    from engine.deterministic.plan import AntiJoinView, CrossView, SortedView
+
     view = next(item for item in views if item.name == name)
     if isinstance(view, SortedView):
         return _output_names(views, view.source)

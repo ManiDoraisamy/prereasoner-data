@@ -38,6 +38,9 @@ SOURCE_CHAT_ALLOWLIST = (
     "engine/__init__.py",
     "engine/analysis.py",
     "engine/auth.py",
+    # Grammar validation only: its planner imports are function-scoped, so the lean
+    # image never loads the typed-AST stack (the in-image test step proves the import).
+    "engine/decomposition.py",
     "engine/config.py",
     "engine/dataset_attestation.py",
     "engine/model_revisions.py",
