@@ -108,6 +108,41 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
     }
 
 
+def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
+    """Execution-free probe: does the planner's SELECTED candidate need decomposition?
+
+    This is the same predicate the own-data serve path applies after selection
+    (engine/tables.py sets `decomposition_required` when the winner is compound).
+    The compose path must consult it BEFORE building a composition: a multi-goal
+    question's surface ("top ...") can satisfy the compose gate, and a composed
+    top-N would then answer one fragment of the question. The probe selects but
+    never executes; any probe failure returns None so serving proceeds unchanged.
+    """
+    from engine.calculations import select_calculation_candidate
+    from engine.sql_ast import SelectQuery
+    from engine.sql_schema import SchemaGraph
+
+    try:
+        norm, inferred_fks = planner.ingest(tables)
+        schema, _, _ = planner.schema(norm, inferred_fks)
+        candidates = planner.search_ast(
+            question, schema, norm, inferred_fks, max_candidates=25
+        )
+        if not candidates:
+            return None
+        graph = SchemaGraph.from_planner(schema, inferred_fks)
+        candidate, _, _ = select_calculation_candidate(
+            question, norm, graph, candidates
+        )
+        if candidate is not None and not isinstance(candidate.query, SelectQuery):
+            return {
+                "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
+            }
+    except Exception as exc:  # noqa: BLE001 — the probe must never break serving
+        print(f"decomposition probe skipped: {type(exc).__name__}", flush=True)
+    return None
+
+
 def build_decomposed_plan(
     planner,
     slug: str,

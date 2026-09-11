@@ -525,6 +525,27 @@ class ComposedKnowledgeQuery:
             # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building.
             # World ownership still goes through engine.routing.compose_owns, while an explicit deterministic
             # execution context may lower a selected local composition through the shared plan as well.
+            #
+            # A compound question can also carry compose surface ("top 3 ... and top 2 ..."), and a
+            # composed top-N would answer one fragment of it. Consult the SAME selected-candidate
+            # predicate the delegate applies (engine/decomposition.py) before composing; the probe
+            # selects but never executes.
+            from engine.deterministic.context import current_analysis_context
+            from engine.decomposition import compound_decomposition_required
+
+            if current_analysis_context() is not None:
+                from engine import request_timing
+
+                with request_timing.span("decompose_probe"):
+                    required = compound_decomposition_required(self.qw, tables, question)
+                if required is not None:
+                    return {
+                        "question": question,
+                        "as_of": as_of,
+                        "clarify": True,
+                        "decomposition_required": required,
+                        "model": "engine - typed AST decomposition requested",
+                    }
             if emit:
                 emit("status", "resolving")
             try:

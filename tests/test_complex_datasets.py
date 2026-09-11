@@ -125,7 +125,36 @@ def test_full_complex_prompts_request_decomposition_without_executing_a_partial_
         assert execute.call_count == 0
 
 
+def test_compose_surface_does_not_swallow_a_compound_question():
+    """The Chrome pass caught this: 'top 3 ... and top 2 ...' satisfies the COMPOSE gate,
+    so the live path built a partial top-N and answered it — the delegate's compound
+    trigger (one layer down) never ran. The compose arm must consult the same
+    execution-free probe before composing."""
+    from engine.decomposition import compound_decomposition_required
+
+    planner = EncoderQuery()
+    for name in COMPLEX_DATASETS:
+        directory = DATASET_DIR / name
+        question = (directory / "prompt.txt").read_text(encoding="utf-8").strip()
+        with patch.object(
+            planner,
+            "execute",
+            side_effect=AssertionError("the compound probe executed a query"),
+        ):
+            required = compound_decomposition_required(planner, _tables(directory), question)
+        assert required is not None, name
+        assert "compound" in required["reason"], name
+    # A genuinely simple question must NOT trigger the probe, or every composed
+    # top-N would bounce to Sonnet for a pointless proposal.
+    simple = compound_decomposition_required(
+        planner, _tables(DATASET_DIR / "complex-promotions"),
+        "total quantity by product name",
+    )
+    assert simple is None
+
+
 TESTS = [
+    test_compose_surface_does_not_swallow_a_compound_question,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
 ]
