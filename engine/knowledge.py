@@ -36,7 +36,8 @@ class KnowledgeReasoner:
         self.composed = ComposedKnowledgeQuery()
         self.qw = self.composed.qw                                              # expose KnowledgeQuery (server warmup: MODEL.qw._spacy())
 
-    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=()):
+    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
+              decomposition=None):
         self.qw.begin_request()             # fresh request-scoped memo for shared-knowledge lookups
         if NEAR.search(question or ""):
             r = self._nearby(question)
@@ -56,9 +57,10 @@ class KnowledgeReasoner:
         try:                                                                # evidence emitted while this serve routes
             res = (self.composed.serve(
                 tables, question, sub, as_of=as_of, emit=emit, explicit_fks=explicit_fks,
-                dataset_semantics=dataset_semantics,
+                dataset_semantics=dataset_semantics, decomposition=decomposition,
             ) if explicit_fks else self.composed.serve(
-                tables, question, sub, as_of=as_of, emit=emit, dataset_semantics=dataset_semantics,
+                tables, question, sub, as_of=as_of, emit=emit,
+                dataset_semantics=dataset_semantics, decomposition=decomposition,
             ))
         finally:
             typing = self.qw.take_typing()

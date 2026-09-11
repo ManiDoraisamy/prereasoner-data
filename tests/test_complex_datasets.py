@@ -153,7 +153,47 @@ def test_compose_surface_does_not_swallow_a_compound_question():
     assert simple is None
 
 
+def test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer():
+    """engine/server.py calls KnowledgeReasoner.serve(..., decomposition=...). That
+    signature never accepted the keyword, so the retry raised TypeError and returned 500
+    before reaching any decomposition code — invisible to every test that called the
+    compose or planner layers directly. Assert the real entry point's contract."""
+    import inspect
+
+    from engine.knowledge import KnowledgeReasoner
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+
+    entry = inspect.signature(KnowledgeReasoner.serve).parameters
+    assert "decomposition" in entry, "the serving entry point must accept a proposal"
+
+    # ...and must FORWARD it, not merely accept it.
+    forwarded = {}
+
+    class Recorder(ComposedKnowledgeQuery):
+        def __init__(self):
+            pass
+
+        def serve(self, *args, **kwargs):
+            forwarded.update(kwargs)
+            return {"question": "q", "result": None, "clarify": None, "error": None}
+
+    reasoner = KnowledgeReasoner.__new__(KnowledgeReasoner)
+    reasoner.composed = Recorder()
+
+    class _Qw:
+        def begin_request(self): pass
+        def begin_typing(self): pass
+        def take_typing(self): return {}
+
+    reasoner.qw = _Qw()
+    proposal = {"subquestions": [], "merges": [], "output": "x", "grain": "one row"}
+    with patch.object(KnowledgeReasoner, "_tag_present", lambda self, r, *a: r),          patch.object(KnowledgeReasoner, "_verify_calculations", lambda self, r, *a: r),          patch.object(KnowledgeReasoner, "_attach_typing", lambda self, r, *a: r):
+        reasoner.serve([], "top 3 x and top 2 y", "c_" + "0" * 32, decomposition=proposal)
+    assert forwarded.get("decomposition") is proposal
+
+
 TESTS = [
+    test_the_serving_entry_point_carries_the_proposal_to_the_compose_layer,
     test_compose_surface_does_not_swallow_a_compound_question,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
