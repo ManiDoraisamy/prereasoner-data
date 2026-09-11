@@ -564,6 +564,69 @@ def semantic_tokens(name: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(expanded))
 
 
+# Transactional measure vocabulary. A question can rank or total a summable
+# fact-table measure without naming its column: "units sold" means the summed
+# quantity column and "revenue"/"spend" mean the summed extended-amount column.
+# Quantity nouns require an adjacent participle because the bare noun is a rate
+# qualifier ("unit price") or a plain column mention ("quantity"); money nouns
+# are inherently extended amounts. All sets hold canon() forms.
+QUANTITY_MEASURE_NOUNS = frozenset({"unit", "qty", "quantity"})
+MONEY_MEASURE_NOUNS = frozenset({
+    "revenue", "spend", "spent", "spending", "sale", "turnover", "expenditure",
+})
+TRANSACTION_PARTICIPLES = frozenset({"sold", "purchased", "bought", "ordered", "shipped"})
+QUANTITY_MEASURE_COLUMN_WORDS = frozenset({"quantity", "qty"})
+MONEY_MEASURE_COLUMN_WORDS = frozenset({
+    "total", "amount", "revenue", "sale", "spend", "value", "subtotal",
+})
+
+
+@dataclass(frozen=True)
+class ImplicitMeasure:
+    """A question position that names a summable measure without an aggregate word."""
+
+    position: int
+    column_words: frozenset[str]
+    participle: bool
+
+
+def implicit_sum_measures(question_tokens: Sequence[str]) -> tuple[ImplicitMeasure, ...]:
+    """Positions in canon()-normalized tokens that imply SUM over a measure column.
+
+    "units sold" and "quantity purchased" assert summation over transactions even
+    without "total"; bare money nouns such as "revenue" or "spend" do the same.
+    Bare quantity nouns never fire: "unit price" is a rate and "quantity" alone is
+    an ordinary column mention. Callers own schema-aware guards (a noun that names
+    a real table or column is an entity/column mention, not an implicit measure).
+    """
+    out = []
+    for index, token in enumerate(question_tokens):
+        follower = question_tokens[index + 1] if index + 1 < len(question_tokens) else ""
+        if token in QUANTITY_MEASURE_NOUNS:
+            if follower in TRANSACTION_PARTICIPLES:
+                out.append(ImplicitMeasure(index, QUANTITY_MEASURE_COLUMN_WORDS, True))
+        elif token in MONEY_MEASURE_NOUNS:
+            out.append(ImplicitMeasure(
+                index, MONEY_MEASURE_COLUMN_WORDS, follower in TRANSACTION_PARTICIPLES,
+            ))
+    return tuple(out)
+
+
+def measure_words_after(question_tokens: Sequence[str], position: int) -> frozenset[str] | None:
+    """Preferred measure-column words for an explicit aggregate cue at ``position``.
+
+    "total spend" and "total quantity sold" carry the measure noun right after the
+    aggregate word; without this the cue's numeric fallback is a semantically
+    arbitrary tie. Returns None when no measure noun follows within two tokens.
+    """
+    for token in question_tokens[position + 1:position + 3]:
+        if token in QUANTITY_MEASURE_NOUNS:
+            return QUANTITY_MEASURE_COLUMN_WORDS
+        if token in MONEY_MEASURE_NOUNS:
+            return MONEY_MEASURE_COLUMN_WORDS
+    return None
+
+
 def value_set(values: Sequence[object]) -> set[object]:
     return {value for value in values if value is not None and str(value).strip()}
 

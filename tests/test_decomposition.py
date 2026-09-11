@@ -10,6 +10,7 @@ from engine.decomposition import (
     _bind_merge_keys,
     build_decomposed_plan,
     compound_decomposition_required,
+    leaf_measure_rejection,
     validate_decomposition,
 )
 from engine.deterministic import (
@@ -23,7 +24,7 @@ from engine.deterministic import (
 )
 from engine.deterministic.context import analysis_execution_context
 from engine.knowledge_compose import ComposedKnowledgeQuery
-from engine.sql_ast import ColumnRef, SelectItem, SelectQuery, SQLType, Star
+from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType, Star
 from engine.sql_candidate import ScoredQuery
 
 
@@ -178,6 +179,34 @@ def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
     )
 
 
+def test_measure_leaf_without_aggregation_is_rejected_not_answered():
+    """A ranking-measure leaf that lost its SUM must clarify, never answer."""
+    quantity = ColumnRef("purchase_items", "quantity", SQLType.INTEGER)
+    name = ColumnRef("products", "product_name", SQLType.TEXT)
+    raw = SelectQuery((SelectItem(name), SelectItem(quantity)), "purchase_items")
+    summed = SelectQuery((SelectItem(name), SelectItem(Aggregate("SUM", quantity))),
+                         "purchase_items", group_by=(name,))
+    pool = [ScoredQuery(raw, "raw", 2, ()), ScoredQuery(summed, "summed", 1, ())]
+
+    rejection = leaf_measure_rejection(
+        "top_products", "top 3 products by units sold", raw, pool
+    )
+    assert rejection is not None and "restate" in rejection
+    # The selected plan aggregating the measure satisfies the contract.
+    assert leaf_measure_rejection(
+        "top_products", "top 3 products by units sold", summed, pool
+    ) is None
+    # A rate phrase is not a summed measure; raw ordering stands.
+    assert leaf_measure_rejection(
+        "top_products", "top 3 products by unit price", raw, pool
+    ) is None
+    # Without an aggregated reading in the pool the raw plan is the planner's
+    # honest best (for example a literal per-product units column): no veto.
+    assert leaf_measure_rejection(
+        "top_products", "top 3 products by units sold", raw, pool[:1]
+    ) is None
+
+
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner = Mock()
     planner.ingest.side_effect = RuntimeError("planner unavailable")
@@ -206,6 +235,7 @@ TESTS = [
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
+    test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]
 

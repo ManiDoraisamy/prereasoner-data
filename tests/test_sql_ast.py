@@ -85,6 +85,43 @@ COMMERCE_FKS = [
     {"from_table": "orders", "from_col": "Customer_ID", "to_table": "customers", "to_col": "Customer_ID"},
     {"from_table": "items", "from_col": "Order_ID", "to_table": "orders", "to_col": "Order_ID"},
 ]
+# Retail fact-table fixture for transactional measure phrases ("units sold",
+# "revenue", "total spend"). Rows are chosen so the summed ranking, the raw
+# row ranking, and each candidate measure column all produce DIFFERENT answers:
+# quantity sums Beta 9 > Alpha 8 > Gamma 6, revenue sums Beta 180 > Gamma 90 >
+# Alpha 80, raw quantity rows rank Beta then Gamma, and shopper spend ranks
+# Bob 180 > Alice 170 while shopper quantity ranks Alice first.
+SHOPPERS = {
+    "name": "shoppers",
+    "columns": ["shopper_id", "name"],
+    "rows": [[1, "Alice"], [2, "Bob"]],
+}
+PURCHASES = {
+    "name": "purchases",
+    "columns": ["purchase_id", "shopper_id"],
+    "rows": [[1001, 1], [1002, 2]],
+}
+RETAIL_PRODUCTS = {
+    "name": "products",
+    "columns": ["product_id", "product_name"],
+    "rows": [[101, "Alpha"], [102, "Beta"], [103, "Gamma"]],
+}
+PURCHASE_ITEMS = {
+    "name": "purchase_items",
+    "columns": ["purchase_item_id", "purchase_id", "product_id", "quantity", "unit_price", "line_total"],
+    "rows": [
+        [1, 1001, 101, 5, 10, 50],
+        [2, 1001, 101, 3, 10, 30],
+        [3, 1002, 102, 9, 20, 180],
+        [4, 1001, 103, 6, 15, 90],
+    ],
+}
+RETAIL = [SHOPPERS, PURCHASES, RETAIL_PRODUCTS, PURCHASE_ITEMS]
+RETAIL_FKS = [
+    {"from_table": "purchases", "from_col": "shopper_id", "to_table": "shoppers", "to_col": "shopper_id"},
+    {"from_table": "purchase_items", "from_col": "purchase_id", "to_table": "purchases", "to_col": "purchase_id"},
+    {"from_table": "purchase_items", "from_col": "product_id", "to_table": "products", "to_col": "product_id"},
+]
 STADIUM = {
     "name": "stadium",
     "columns": ["Stadium_ID", "Name", "Capacity"],
@@ -876,6 +913,59 @@ def test_grouped_topn_orders_by_aggregate_across_bridge():
     assert 'GROUP BY "customers"."Name"' in candidate.sql
     assert 'ORDER BY SUM("items"."Price") DESC LIMIT 2' in candidate.sql
     assert execute([CUSTOMERS, ORDERS, ITEMS], candidate.sql) == [("Bob", 30), ("Alice", 20)]
+
+
+def test_ranked_units_sold_sums_the_quantity_measure():
+    # "units sold" is an implicit SUM over the quantity column, never a raw
+    # ORDER BY over whichever numeric column shares a token ("unit_price").
+    candidate = best("top 2 products by units sold", RETAIL, RETAIL_FKS)
+    assert 'SUM("purchase_items"."quantity")' in candidate.sql
+    assert 'GROUP BY "products"."product_name"' in candidate.sql
+    assert 'ORDER BY SUM("purchase_items"."quantity") DESC LIMIT 2' in candidate.sql
+    assert execute(RETAIL, candidate.sql) == [("Beta", 9), ("Alpha", 8)]
+
+
+def test_ranked_revenue_sums_the_amount_measure():
+    candidate = best("top 2 products by revenue", RETAIL, RETAIL_FKS)
+    assert 'SUM("purchase_items"."line_total")' in candidate.sql
+    assert 'GROUP BY "products"."product_name"' in candidate.sql
+    assert execute(RETAIL, candidate.sql) == [("Beta", 180), ("Gamma", 90)]
+
+
+def test_unit_price_ranking_stays_a_raw_rate_order():
+    # Same profile as the units-sold family, but "unit price" is a rate
+    # qualifier: ranking stays a raw ORDER BY without any aggregation.
+    candidate = best("top 2 products by unit price", RETAIL, RETAIL_FKS)
+    assert "SUM(" not in candidate.sql
+    assert 'ORDER BY "purchase_items"."unit_price" DESC LIMIT 2' in candidate.sql
+
+
+def test_total_spend_binds_the_amount_measure_deterministically():
+    # Without measure vocabulary the SUM target fell back to an arbitrary
+    # numeric-column tie; "spend" must bind the extended-amount column.
+    candidate = best("top 2 shoppers by total spend", RETAIL, RETAIL_FKS)
+    assert 'SUM("purchase_items"."line_total")' in candidate.sql
+    assert execute(RETAIL, candidate.sql) == [("Bob", 180), ("Alice", 170)]
+
+
+def test_explicit_total_quantity_sold_phrasing_is_unchanged():
+    candidate = best("top 2 product names by total quantity sold", RETAIL, RETAIL_FKS)
+    assert 'SUM("purchase_items"."quantity")' in candidate.sql
+    assert 'ORDER BY SUM("purchase_items"."quantity") DESC LIMIT 2' in candidate.sql
+    assert execute(RETAIL, candidate.sql) == [("Beta", 9), ("Alpha", 8)]
+
+
+def test_literal_measure_column_keeps_raw_interpretation():
+    # A schema that names its own "revenue" column keeps the raw reading; the
+    # implicit measure fires only when the vocabulary has no direct column.
+    stores = {
+        "name": "stores",
+        "columns": ["store_id", "store_name", "revenue"],
+        "rows": [[1, "North", 100], [2, "South", 200]],
+    }
+    candidate = best("store with the highest revenue", [stores])
+    assert "SUM(" not in candidate.sql
+    assert 'ORDER BY "stores"."revenue" DESC LIMIT 1' in candidate.sql
 
 
 def test_search_is_deterministic():
@@ -1840,6 +1930,12 @@ TESTS = [
     test_order_column_does_not_leak_into_projection,
     test_literals_are_escaped_by_renderer,
     test_grouped_topn_orders_by_aggregate_across_bridge,
+    test_ranked_units_sold_sums_the_quantity_measure,
+    test_ranked_revenue_sums_the_amount_measure,
+    test_unit_price_ranking_stays_a_raw_rate_order,
+    test_total_spend_binds_the_amount_measure_deterministically,
+    test_explicit_total_quantity_sold_phrasing_is_unchanged,
+    test_literal_measure_column_keeps_raw_interpretation,
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,
     test_profile_beam_expands_missing_projection_binding,

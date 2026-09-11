@@ -31,6 +31,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
+from engine.sql_expansion import implicit_sum_measures, measure_words_after
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph
 
@@ -414,6 +415,32 @@ class SQLSearcher:
                 unique_cues.append((function, position))
                 seen_functions.add(function)
         cues = unique_cues
+        implicit_measures: dict[int, frozenset[str]] = {}
+        if not cues:
+            # "top 3 products by units sold" and "customers by revenue" imply SUM over
+            # a measure column even without an aggregate word. The cue fires only when
+            # the schema has a matching measure column; a bare money noun that names a
+            # real table ("sales") or appears in a mentioned column's own vocabulary
+            # ("revenue" column, "sale price") stays an entity or column mention with
+            # its current raw interpretation. A participle form always asserts the sum.
+            table_words = {
+                _canon(word) for table in self.schema.tables for word in _name_words(table)
+            }
+            mention_words = {
+                _canon(word)
+                for mention in mentions for option in mention.options
+                for word in _name_words(option.column.name)
+            }
+            for measure in implicit_sum_measures(tokens):
+                if not measure.participle and tokens[measure.position] in (
+                    table_words | mention_words
+                ):
+                    continue
+                if self._measure_targets(mentions, measure.position, measure.column_words):
+                    # One SUM cue per question, matching the explicit-cue dedup above.
+                    cues.append(("SUM", measure.position))
+                    implicit_measures[measure.position] = measure.column_words
+                    break
         if not cues:
             return [((), 0.0, ())]
 
@@ -430,17 +457,40 @@ class SQLSearcher:
                     options.append((Aggregate("COUNT", column, distinct=True), 3.8,
                                     f"aggregate:COUNT(DISTINCT {column.table}.{column.name})"))
             else:
-                targets = self._target_columns(mentions, position, numeric=function in {"SUM", "AVG"})
-                if not targets:
-                    targets = [
-                        _ColumnOption(c.ref, 0.0, len(tokens)) for c in self.schema.columns
-                        if c.ref.type.numeric and not _is_id(c.ref.name)
-                    ][:4]
+                implicit_words = implicit_measures.get(position)
+                if implicit_words is not None:
+                    # An implicit measure stays below every explicit cue (4.0 base) so
+                    # explicit phrasing always owns the plan when both are present.
+                    targets = self._measure_targets(mentions, position, implicit_words)
+                    base_score, cue_note = 3.6, ":implicit-measure"
+                else:
+                    base_score, cue_note = 4.0, ""
+                    targets = self._target_columns(mentions, position, numeric=function in {"SUM", "AVG"})
+                    preferred_words = (
+                        measure_words_after(tokens, position)
+                        if function in {"SUM", "AVG"} else None
+                    )
+                    if not targets:
+                        targets = [
+                            _ColumnOption(c.ref, 0.0, len(tokens)) for c in self.schema.columns
+                            if c.ref.type.numeric and not _is_id(c.ref.name)
+                        ]
+                        if preferred_words:
+                            # "total spend" without a column mention must not resolve by
+                            # candidate-order luck: keep the columns that carry measure
+                            # vocabulary when any do.
+                            matching = [
+                                option for option in targets
+                                if {_canon(word) for word in _name_words(option.column.name)}
+                                & preferred_words
+                            ]
+                            targets = matching or targets
+                        targets = targets[:4]
                 for option in targets[:4]:
                     if function in {"SUM", "AVG"} and not option.column.type.numeric:
                         continue
-                    options.append((Aggregate(function, option.column), 4.0 + option.score * 0.1,
-                                    f"aggregate:{function}({option.column.table}.{option.column.name})"))
+                    options.append((Aggregate(function, option.column), base_score + option.score * 0.1,
+                                    f"aggregate:{function}({option.column.table}.{option.column.name}){cue_note}"))
             expanded = []
             for aggregates, score, evidence in beam:
                 for aggregate, option_score, reason in options:
@@ -492,6 +542,26 @@ class SQLSearcher:
             option.column.name,
         ))
         return options
+
+    def _measure_targets(self, mentions: tuple[_Mention, ...], position: int,
+                         column_words: frozenset[str]) -> list[_ColumnOption]:
+        """Numeric columns whose name carries the measure vocabulary, mentions first.
+
+        An implicit measure never falls back to arbitrary numeric columns: when the
+        schema has no quantity/amount-named column the cue simply does not fire and
+        the question keeps its current interpretation.
+        """
+        def carries(column: ColumnRef) -> bool:
+            return bool({_canon(word) for word in _name_words(column.name)} & column_words)
+
+        preferred = [option for option in self._target_columns(mentions, position, numeric=True)
+                     if carries(option.column)]
+        if preferred:
+            return preferred
+        return [
+            _ColumnOption(c.ref, 0.0, position) for c in self.schema.columns
+            if c.ref.type.numeric and not _is_id(c.ref.name) and carries(c.ref)
+        ]
 
     def _predicate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
         groups: list[list[tuple[tuple[Comparison, ...], float, str]]] = []

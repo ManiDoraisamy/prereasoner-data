@@ -171,6 +171,45 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
         ) from exc
 
 
+def leaf_measure_rejection(node_id: str, question: str, selected, pool) -> str | None:
+    """Model-facing rejection when a leaf's summed measure lost its aggregation.
+
+    A leaf such as "top 3 products by units sold" names a transactional measure
+    that must be summed. If the selected plan carries no aggregate while the
+    candidate pool proves an aggregated reading of that measure exists, answering
+    would return a confident wrong ranking; the proposal is rejected instead so
+    the proposer can restate the leaf with the aggregation explicit.
+    """
+    from engine.sql_ast import Aggregate, SelectQuery
+    from engine.sql_expansion import implicit_sum_measures, name_tokens, tokens
+
+    measures = implicit_sum_measures(tokens(question))
+    if not measures:
+        return None
+
+    def aggregates(query: SelectQuery):
+        return [item.expression for item in query.select
+                if isinstance(item.expression, Aggregate)]
+
+    if aggregates(selected):
+        return None
+    wanted = frozenset().union(*(measure.column_words for measure in measures))
+    for candidate in pool:
+        query = getattr(candidate, "query", None)
+        if not isinstance(query, SelectQuery):
+            continue
+        for aggregate in aggregates(query):
+            name = getattr(aggregate.operand, "name", None)
+            if name is not None and set(name_tokens(name)) & wanted:
+                return (
+                    f"subquestion {node_id!r} names a summed measure but its selected "
+                    "plan does not aggregate; restate this subquestion with the "
+                    "aggregation explicit (for example 'total quantity sold' or "
+                    "'total revenue')"
+                )
+    return None
+
+
 def build_decomposed_plan(
     planner,
     slug: str,
@@ -225,6 +264,11 @@ def build_decomposed_plan(
             raise DecompositionError(
                 f"subquestion {node['id']!r} failed the query guard: {reason}"
             )
+        rejection = leaf_measure_rejection(
+            node["id"], node["question"], candidate.query, candidates
+        )
+        if rejection is not None:
+            raise DecompositionError(rejection)
         try:
             child = lower_select_query(
                 node["id"],
