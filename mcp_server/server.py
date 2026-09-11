@@ -23,7 +23,8 @@ mcp = FastMCP("prereasoner")
 async def prereasoner_query(question: str, tables: list, job_id: str | None = None,
                             conversation_id: str | None = None,
                             action: str | None = None, slug: str | None = None,
-                            analysis_id: str | None = None, revision: int | None = None) -> str:
+                            analysis_id: str | None = None, revision: int | None = None,
+                            decomposition: dict | None = None) -> str:
     """See description. `tables` = [{name, data(raw CSV)}], inline (no dataset_id).
 
     Dataset claims are emitted only by the authenticated chat orchestrator because the engine
@@ -35,6 +36,7 @@ async def prereasoner_query(question: str, tables: list, job_id: str | None = No
         analysis = {key: value for key, value in analysis.items() if value is not None}
     return json.dumps(await engine_client.call_query(
         question, tables or [], job_id, conversation_id, analysis=analysis,
+        decomposition=decomposition,
     ))
 
 

@@ -81,6 +81,23 @@ one-year simple-interest application are registered specifications; piecewise sc
 temporal rates abstain. This separation keeps recognition, search preference, and answer admissibility
 independently testable.
 
+## Compound questions use one bounded proposal and one executable DAG
+
+Complex requests such as “rank products, rank customers, then find products those customers have not
+bought” are not forced into a fake linear `combined → enriched → calculated` chain. They contain
+independent relations and a real dependency graph. The ordinary typed-AST planner is still tried first.
+Only when the selected query is compound may the orchestrator retry once with two to four
+natural-language leaf questions and a closed `cross`/`anti_join` topology.
+
+This is deliberately neither eager chain-of-thought planning nor recursive execution. Eager
+decomposition would pay for and trust a model on simple questions. Recursive decomposition would make
+control flow, cost, and termination depend on repeated model judgments. Here the model proposes only
+the semantic split after deterministic evidence says it is needed. Runtime code enforces one retry,
+the unchanged question/workbook identity, full output reachability, and bounded Cartesian products.
+The existing planner binds each leaf to real schema, compiler code infers merge keys from typed outputs,
+and one immutable DAG emits both SQL and human-readable Python. Intermediate rows never return to the
+model to drive another computation; SQL/Python parity is checked at every materialized DAG node.
+
 ## Config is environment-only
 
 The old code defaulted to a hardcoded Cloud SQL IP and a hardcoded Firebase RTDB URL. All

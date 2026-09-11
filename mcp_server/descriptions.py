@@ -16,14 +16,18 @@ WHEN TO CALL THIS (routing discipline — you are the unreliable component, so d
    in-head work. Express the complete calculation in that call.
 4. If the result has status "clarify", surface it to the user verbatim — do NOT fill the gap with a
    plausible answer. The clarification is the product.
+5. Call once without decomposition. Only if the engine returns status "decompose", retry the exact
+   same question and named-workbook decision once with two to four natural-language subquestions and
+   a closed cross/anti_join topology. Never supply SQL, Python, schema-identifier fields, or merge keys;
+   each leaf remains an ordinary natural-language question.
 
 INPUT: one complete data question plus a named-workbook decision. Use `create` with a concise snake-case
 slug for a distinct analysis; use `modify` with the exact existing analysis_id and slug when the user is
 changing or extending that analysis; use `inspect` only to reopen an existing revision. The engine owns
 IDs, validates ownership, and performs the necessary joins, reference lookups, filters, grouping, unit
-conversion, and typed arithmetic as one inspectable computation. Do not decompose it into intermediate
-tool calls. Any returned status is terminal for that question.
-OUTPUT: {status: "answered"|"clarify"|"error", answer:{columns,rows}, sql, clarify,
+conversion, and typed arithmetic as one inspectable computation. Do not turn branches into independent
+tool calls; the bounded retry still creates one engine-owned DAG. Answered, clarify, and error are terminal.
+OUTPUT: {status: "answered"|"decompose"|"clarify"|"error", answer:{columns,rows}, sql, clarify,
 analysis:{analysis_id,slug,revision,action}}."""
 
 DESCRIBE_DESC = """\

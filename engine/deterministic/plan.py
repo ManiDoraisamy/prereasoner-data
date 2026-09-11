@@ -1,8 +1,9 @@
 """Backend-neutral, immutable view plan for dual SQL and Python emission.
 
-The plan is deliberately smaller than either output language.  A named analysis is
-an ordered chain of materialized relations: the ORM supplies ``combined`` and every
-later step consumes only the relation immediately before it.
+The plan is deliberately smaller than either output language. A named analysis is a
+topologically ordered DAG of materialized relations. Most analyses remain a readable
+linear pipeline; decomposed analyses add explicit branch and merge nodes without
+changing the plan consumed by the SQL and Python emitters.
 """
 
 from __future__ import annotations
@@ -388,6 +389,80 @@ class WindowView:
             raise ValueError("a temporal operation requires an order column")
 
 
+@dataclass(frozen=True)
+class MergeKey:
+    """One output-column equality used by a derived-relation merge."""
+
+    left: str
+    right: str
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.left, "left merge key")
+        _require_identifier(self.right, "right merge key")
+
+
+@dataclass(frozen=True)
+class CrossView:
+    """The bounded Cartesian product of two already materialized relations."""
+
+    name: str
+    left: str
+    right: str
+    right_prefix: str = "right_"
+
+    def __post_init__(self) -> None:
+        for value in (self.name, self.left, self.right):
+            _require_identifier(value, "cross-view identifier")
+        _require_identifier(self.right_prefix.rstrip("_"), "cross-view prefix")
+        if self.left == self.right:
+            raise ValueError("a cross view requires two distinct inputs")
+
+
+@dataclass(frozen=True)
+class AntiJoinView:
+    """Rows from ``left`` for which no SQL-equal key exists in ``right``."""
+
+    name: str
+    left: str
+    right: str
+    keys: tuple[MergeKey, ...]
+    order: tuple[SortValue, ...] = ()
+
+    def __post_init__(self) -> None:
+        for value in (self.name, self.left, self.right):
+            _require_identifier(value, "anti-join identifier")
+        object.__setattr__(self, "keys", tuple(self.keys))
+        object.__setattr__(self, "order", tuple(self.order))
+        if self.left == self.right or not self.keys:
+            raise ValueError("an anti-join requires two distinct inputs and at least one key")
+
+
+@dataclass(frozen=True)
+class PlanSection:
+    """One human-readable branch or merge in a decomposed analysis."""
+
+    id: str
+    label: str
+    question: str
+    views: tuple[str, ...]
+    inputs: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        _require_identifier(self.id, "plan section id")
+        object.__setattr__(self, "views", tuple(self.views))
+        object.__setattr__(self, "inputs", tuple(self.inputs))
+        if (
+            not isinstance(self.label, str)
+            or not isinstance(self.question, str)
+            or not self.label.strip()
+            or not self.question.strip()
+            or not self.views
+        ):
+            raise ValueError("a plan section requires a label, question, and views")
+        if len(self.views) != len(set(self.views)) or len(self.inputs) != len(set(self.inputs)):
+            raise ValueError("plan section views and inputs must be unique")
+
+
 ViewStep: TypeAlias = (
     CombinedView
     | EnrichedView
@@ -397,20 +472,25 @@ ViewStep: TypeAlias = (
     | ReducedView
     | SortedView
     | WindowView
+    | CrossView
+    | AntiJoinView
 )
 
 
 @dataclass(frozen=True)
 class AnalysisPlan:
-    """One slug-named function and its feed-forward SQL/Python view chain."""
+    """One slug-named function and its topologically ordered SQL/Python view DAG."""
 
     slug: str
     tables: tuple[TableSpec, ...]
     views: tuple[ViewStep, ...]
+    output: str | None = None
+    sections: tuple[PlanSection, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tables", tuple(self.tables))
         object.__setattr__(self, "views", tuple(self.views))
+        object.__setattr__(self, "sections", tuple(self.sections))
         # A slug is a durable SQL/view prefix, not a Python symbol. Historical
         # analyses can legitimately be named ``yield`` or ``class``; the Python
         # emitter maps those to a separate safe entrypoint method.
@@ -425,11 +505,10 @@ class AnalysisPlan:
         if len(table_attributes) != len(set(table_attributes)):
             raise ValueError("analysis table attributes must be unique")
         if not self.views or not isinstance(self.views[0], CombinedView):
-            raise ValueError("analysis must begin with one combined ORM view")
-        if not isinstance(self.views[-1], (ProjectedView, ReducedView)):
-            raise TypeError(
-                "analysis must end with one projected or reduced result view"
-            )
+            raise ValueError("analysis must begin with a combined ORM view")
+        output = self.output or self.views[-1].name
+        _require_identifier(output, "analysis output view")
+        object.__setattr__(self, "output", output)
         table_by_name = {table.name: table for table in self.tables}
         for table in self.tables:
             column_names = {column.name for column in table.columns}
@@ -485,10 +564,10 @@ class AnalysisPlan:
                     )
 
         emitted: set[str] = set()
-        previous = None
-        stage_tables: set[str] = set()
-        stage_values: set[str] = set()
-        for index, view in enumerate(self.views):
+        tables_by_view: dict[str, set[str]] = {}
+        values_by_view: dict[str, set[str]] = {}
+        columns_by_view: dict[str, tuple[str, ...]] = {}
+        for view in self.views:
             if len(view.name.encode("utf-8")) > 63:
                 raise ValueError(
                     "view names must fit PostgreSQL's 63-byte identifier limit"
@@ -498,9 +577,7 @@ class AnalysisPlan:
             if view.name in emitted:
                 raise ValueError("view names must be unique")
             if isinstance(view, CombinedView):
-                if index != 0 or any(
-                    table not in table_by_name for table in view.tables
-                ):
+                if any(table not in table_by_name for table in view.tables):
                     raise ValueError("combined view references an unknown table")
                 joined = {view.tables[0]}
                 for table_name in view.tables[1:]:
@@ -525,12 +602,37 @@ class AnalysisPlan:
                         )
                     joined.add(table_name)
                 stage_tables = set(view.tables)
-                stage_values = set()
+                stage_values: set[str] = set()
             else:
-                if view.source != previous:
-                    raise ValueError(
-                        "every view must consume the immediately preceding view"
-                    )
+                inputs = self.inputs(view)
+                if any(source not in emitted for source in inputs):
+                    raise ValueError("every view input must precede the view")
+                if isinstance(view, (CrossView, AntiJoinView)):
+                    if any(tables_by_view[source] for source in inputs):
+                        raise ValueError(
+                            "merge inputs must be projected or reduced value relations"
+                        )
+                    left_columns = columns_by_view[view.left]
+                    right_columns = columns_by_view[view.right]
+                    stage_tables = set()
+                    if isinstance(view, CrossView):
+                        right_output = tuple(
+                            view.right_prefix + name if name in left_columns else name
+                            for name in right_columns
+                        )
+                        if len(set(left_columns + right_output)) != len(left_columns) + len(right_output):
+                            raise ValueError("cross-view output columns must be unique")
+                        stage_values = set(left_columns + right_output)
+                    else:
+                        stage_values = set(left_columns)
+                        for key in view.keys:
+                            if key.left not in left_columns or key.right not in right_columns:
+                                raise ValueError("anti-join keys must name input columns")
+                        for item in view.order:
+                            self._validate_value(item.value, stage_tables, stage_values)
+                else:
+                    stage_tables = set(tables_by_view[view.source])
+                    stage_values = set(values_by_view[view.source])
                 if isinstance(view, EnrichedView):
                     targets = [
                         enrichment.target_table for enrichment in view.enrichments
@@ -629,7 +731,45 @@ class AnalysisPlan:
                         raise ValueError("window output shadows a preceding value")
                     stage_values.add(view.output)
             emitted.add(view.name)
-            previous = view.name
+            tables_by_view[view.name] = set(stage_tables)
+            values_by_view[view.name] = set(stage_values)
+            columns_by_view[view.name] = self._view_columns(
+                view, columns_by_view
+            )
+
+        if self.output not in emitted:
+            raise ValueError("analysis output must name a materialized view")
+        if self.sections:
+            section_ids: set[str] = set()
+            section_views: list[str] = []
+            for section in self.sections:
+                if section.id in section_ids:
+                    raise ValueError("plan section ids must be unique")
+                if any(source not in section_ids for source in section.inputs):
+                    raise ValueError("plan section inputs must precede the section")
+                if any(name not in emitted for name in section.views):
+                    raise ValueError("plan sections must reference materialized views")
+                section_ids.add(section.id)
+                section_views.extend(section.views)
+            if len(section_views) != len(set(section_views)) or set(section_views) != emitted:
+                raise ValueError("plan sections must partition the materialized views")
+            section_by_view = {
+                view_name: section.id
+                for section in self.sections
+                for view_name in section.views
+            }
+            view_by_name = {view.name: view for view in self.views}
+            for section in self.sections:
+                actual_inputs = {
+                    section_by_view[source]
+                    for view_name in section.views
+                    for source in self.inputs(view_by_name[view_name])
+                    if section_by_view[source] != section.id
+                }
+                if actual_inputs != set(section.inputs):
+                    raise ValueError(
+                        "plan section inputs must match cross-section view dependencies"
+                    )
 
     def table(self, name: str) -> TableSpec:
         try:
@@ -650,39 +790,72 @@ class AnalysisPlan:
                 return table, relationship
         raise ValueError(f"combined view cannot connect table {table_name}")
 
+    @staticmethod
+    def inputs(view: ViewStep) -> tuple[str, ...]:
+        if isinstance(view, CombinedView):
+            return ()
+        if isinstance(view, (CrossView, AntiJoinView)):
+            return (view.left, view.right)
+        return (view.source,)
+
+    def _view_columns(
+        self,
+        view: ViewStep,
+        shapes: dict[str, tuple[str, ...]],
+    ) -> tuple[str, ...]:
+        if isinstance(view, CombinedView):
+            return tuple(
+                f"{table_name}__{column.name}"
+                for table_name in view.tables
+                for column in self.table(table_name).columns
+            )
+        if isinstance(view, CrossView):
+            left = shapes[view.left]
+            return left + tuple(
+                view.right_prefix + name if name in left else name
+                for name in shapes[view.right]
+            )
+        if isinstance(view, AntiJoinView):
+            return shapes[view.left]
+        current = shapes[view.source]
+        if isinstance(view, EnrichedView):
+            added = []
+            seen = set(current)
+            for enrichment in view.enrichments:
+                for column in self.table(enrichment.target_table).columns:
+                    name = f"{enrichment.target_table}__{column.name}"
+                    if name not in seen:
+                        seen.add(name)
+                        added.append(name)
+            return current + tuple(added)
+        if isinstance(view, CalculatedView):
+            return current + tuple(value.name for value in view.values)
+        if isinstance(view, WindowView):
+            return current + (view.output,)
+        if isinstance(view, ProjectedView):
+            return tuple(value.name for value in view.values)
+        if isinstance(view, ReducedView):
+            return tuple(value.name for value in view.group_by) + tuple(
+                value.name for value in view.aggregates
+            )
+        return current
+
     def view_columns(self) -> dict[str, tuple[str, ...]]:
         """Return each materialized stage's stable, SQL-visible column order."""
         shapes: dict[str, tuple[str, ...]] = {}
-        current: tuple[str, ...] = ()
         for view in self.views:
-            if isinstance(view, CombinedView):
-                current = tuple(
-                    f"{table_name}__{column.name}"
-                    for table_name in view.tables
-                    for column in self.table(table_name).columns
-                )
-            elif isinstance(view, EnrichedView):
-                added = []
-                seen = set(current)
-                for enrichment in view.enrichments:
-                    for column in self.table(enrichment.target_table).columns:
-                        name = f"{enrichment.target_table}__{column.name}"
-                        if name not in seen:
-                            seen.add(name)
-                            added.append(name)
-                current += tuple(added)
-            elif isinstance(view, CalculatedView):
-                current += tuple(value.name for value in view.values)
-            elif isinstance(view, WindowView):
-                current += (view.output,)
-            elif isinstance(view, ProjectedView):
-                current = tuple(value.name for value in view.values)
-            elif isinstance(view, ReducedView):
-                current = tuple(value.name for value in view.group_by) + tuple(
-                    value.name for value in view.aggregates
-                )
-            shapes[view.name] = current
+            shapes[view.name] = self._view_columns(view, shapes)
         return shapes
+
+    def view_inputs(self) -> dict[str, tuple[str, ...]]:
+        return {view.name: self.inputs(view) for view in self.views}
+
+    def view_sections(self) -> dict[str, str | None]:
+        out = {view.name: None for view in self.views}
+        for section in self.sections:
+            for view in section.views:
+                out[view] = section.id
+        return out
 
     def view_operations(self) -> dict[str, str]:
         operations = {
@@ -694,6 +867,8 @@ class AnalysisPlan:
             ReducedView: "group_agg",
             SortedView: "sort",
             WindowView: "window",
+            CrossView: "cross",
+            AntiJoinView: "anti_join",
         }
         return {
             view.name: view.function

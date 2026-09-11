@@ -42,7 +42,8 @@ _TRACE_VIEW_FIELDS = (
     # derivation (SHEETS_AS_REASONING). Without it a streamed sheet had SQL but no Python and
     # the workbook badge fell back to SQL even when Python produced the rows.
     "op", "label", "sql", "python", "columns", "rows", "source_release_id",
-    "column_provenance",
+    "column_provenance", "inputs", "section", "section_label", "section_question",
+    "section_inputs", "is_output",
 )
 
 
@@ -463,10 +464,12 @@ class ComposedKnowledgeQuery:
         except (TypeError, ValueError):
             return str(va) == str(vb)
 
-    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=()):
+    def serve(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
+              decomposition=None):
         if not sub:
             return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
-                                      explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+                                      explicit_fks=explicit_fks, dataset_semantics=dataset_semantics,
+                                      decomposition=decomposition)
         digest = hashlib.sha256(str(sub).encode("utf-8")).digest()
         local_lock = self._serve_locks[int.from_bytes(digest[:2], "big") % len(self._serve_locks)]
         with local_lock:
@@ -477,19 +480,44 @@ class ComposedKnowledgeQuery:
                             ("prereasoner-world-bridge", str(sub)))
                 try:
                     return self._serve_locked(tables, question, sub, as_of=as_of, emit=emit,
-                                               explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
+                                               explicit_fks=explicit_fks, dataset_semantics=dataset_semantics,
+                                               decomposition=decomposition)
                 finally:
                     cur.execute("SELECT pg_advisory_unlock(hashtext(%s), hashtext(%s))",
                                 ("prereasoner-world-bridge", str(sub)))
             finally:
                 cur.close()
 
-    def _serve_locked(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=()):
+    def _serve_locked(self, tables, question, sub, as_of=None, emit=None, explicit_fks=(), dataset_semantics=(),
+                      decomposition=None):
         """Composed (composition primitives / COUNT / world MEASURE) -> the view stack. A plain world-FILTERED
         scalar aggregate ('total amount in France') is ALSO re-expressed as the view stack so the demo SHOWS the
         reasoning (resolve -> world join -> filter -> aggregate) instead of jumping to the number. The delegate
         (KnowledgeQuery) stays AUTHORITATIVE for clarify / list / hybrid / non-geo / no-filter; the re-expression only
         stands when it reproduces the delegate's answer. Everything else delegates unchanged."""
+        if decomposition:
+            try:
+                return self._serve_decomposition(
+                    tables,
+                    question,
+                    sub,
+                    decomposition,
+                    as_of=as_of,
+                    explicit_fks=explicit_fks,
+                    dataset_semantics=dataset_semantics,
+                )
+            except Exception as exc:  # noqa: BLE001 - a rejected proposal is a bounded clarification
+                from engine.decomposition import DecompositionError
+
+                if isinstance(exc, DecompositionError):
+                    return {
+                        "question": question,
+                        "clarify": True,
+                        "reason": str(exc),
+                        "decomposition": decomposition,
+                        "model": "engine - decomposition rejected",
+                    }
+                raise
         if explicit_fks:
             return self.qw.serve(tables, question, as_of=as_of, schema=sub,
                                  explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
@@ -564,3 +592,60 @@ class ComposedKnowledgeQuery:
                 print(f"view re-expression failed, keeping delegate: {type(e).__name__}", flush=True)
         self._emit_response_views(emit, deleg)
         return deleg
+
+    def _serve_decomposition(
+        self,
+        tables,
+        question,
+        sub,
+        decomposition,
+        *,
+        as_of=None,
+        explicit_fks=(),
+        dataset_semantics=(),
+    ):
+        """Fuse planner-selected leaf ASTs and execute one dual-emitter snapshot."""
+        from engine.decomposition import build_decomposed_plan
+        from engine.deterministic.context import (
+            current_analysis_context,
+            current_execution_record,
+        )
+        from engine.numeric import wire_rows
+
+        norm, inferred_fks = self.qw.ingest(tables, explicit_fks=explicit_fks)
+        schema, _, _ = self.qw.schema(norm, inferred_fks)
+        context = current_analysis_context()
+        if context is None:
+            raise RuntimeError("decomposition requires an analysis execution context")
+        plan = build_decomposed_plan(
+            self.qw,
+            context.slug,
+            norm,
+            schema,
+            inferred_fks,
+            decomposition,
+        )
+        self.qw._pg_schema = sub
+        tablemap = {table["name"]: table for table in norm}
+        columns, rows = self.qw.execute(
+            tablemap, schema, "", deterministic_plan=plan
+        )
+        record = current_execution_record()
+        if record is None:
+            raise RuntimeError("decomposed execution did not produce a deterministic record")
+        return {
+            "question": question,
+            "as_of": as_of,
+            "error": None,
+            "model": "engine - decomposed typed AST",
+            "decomposition": decomposition,
+            "deterministic": {
+                key: value
+                for key, value in record.items()
+                if key not in {"views", "final_sql"}
+            },
+            "views": record["views"],
+            "sql": record["final_sql"],
+            "result": {"columns": columns, "rows": wire_rows(rows[:50])},
+            "dataset_semantics": list(dataset_semantics or ()),
+        }

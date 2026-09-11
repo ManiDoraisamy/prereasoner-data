@@ -435,6 +435,44 @@ def test_failed_modify_keeps_a_zero_payload_revision_tombstone():
                    for statement, _ in cursor.statements)
 
 
+def test_decomposition_probe_cancels_its_empty_revision_without_a_gap():
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if "SELECT a.slug" in text:
+                self.one = ("promotion_gaps", "old", 1, False)
+            elif "SELECT latest_revision" in text:
+                self.one = (1,)
+
+        def fetchone(self):
+            return self.one
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    descriptor = {
+        "analysis_id": "a_" + "1" * 32,
+        "slug": "promotion_gaps",
+        "revision": 2,
+        "action": "modify",
+    }
+    with patch.object(conversations, "_pg", return_value=connection):
+        conversations.cancel_analysis("user", "c_" + "2" * 32, descriptor)
+    deleted = [
+        params for statement, params in cursor.statements
+        if statement.startswith('DELETE FROM "chat"."analysis_revision"')
+    ]
+    assert deleted == [(descriptor["analysis_id"], 2, "pending")]
+    assert not any(
+        'SET status = %s' in statement for statement, _ in cursor.statements
+    )
+    assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
+
+
 def test_historical_revision_uses_its_own_input_hash_and_rejects_zero():
     class Cursor:
         def __init__(self):
@@ -482,6 +520,7 @@ TESTS = [
     test_analysis_reservation_rejects_a_superseded_source_snapshot,
     test_modify_reclaims_abandoned_pending_rows_without_reusing_failed_numbers,
     test_failed_modify_keeps_a_zero_payload_revision_tombstone,
+    test_decomposition_probe_cancels_its_empty_revision_without_a_gap,
     test_historical_revision_uses_its_own_input_hash_and_rejects_zero,
 ]
 

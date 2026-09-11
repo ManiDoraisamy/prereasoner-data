@@ -13,17 +13,21 @@ from sqlalchemy import create_engine, event, text
 from engine.deterministic import (
     AggregateValue,
     AnalysisPlan,
+    AntiJoinView,
     BinaryValue,
     CalculatedView,
     ColumnSpec,
     ColumnValue,
     CombinedView,
+    CrossView,
     DeterministicAnalysis,
     EnrichedView,
     Enrichment,
     ExecutionMode,
     FilteredView,
     LiteralValue,
+    MergeKey,
+    PlanSection,
     PredicateValue,
     ProjectedView,
     ReducedView,
@@ -571,7 +575,7 @@ def test_development_debug_tree_contains_the_exact_executed_source():
         )
 
 
-def test_plan_rejects_a_stage_that_skips_its_predecessor():
+def test_plan_accepts_a_prior_dependency_and_rejects_a_forward_reference():
     plan = _plan()
     views = list(plan.views)
     views[3] = CalculatedView(
@@ -579,11 +583,18 @@ def test_plan_rejects_a_stage_that_skips_its_predecessor():
         "total_amount_combined",
         (SelectedValue("gross_amount", ColumnValue("orders", "amount")),),
     )
+    branched = AnalysisPlan(plan.slug, plan.tables, tuple(views))
+    assert branched.views[3].source == "total_amount_combined"
+    views[3] = CalculatedView(
+        "total_amount_calculated",
+        "total_amount_total",
+        (SelectedValue("gross_amount", ColumnValue("orders", "amount")),),
+    )
     try:
         AnalysisPlan(plan.slug, plan.tables, tuple(views))
-        raise AssertionError("a non-feed-forward view chain was accepted")
+        raise AssertionError("a forward view reference was accepted")
     except ValueError as exc:
-        assert "immediately preceding" in str(exc)
+        assert "input must precede" in str(exc)
 
 
 def test_existing_typed_sql_ast_lowers_without_parsing_rendered_sql():
@@ -1666,6 +1677,155 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
             )
 
 
+def test_decomposed_dag_crosses_branches_and_excludes_existing_pairs():
+    from engine.deterministic.plan import SortedView, SortValue
+
+    customers = TableSpec(
+        "customers", "Customer", "customers", "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, True, False),
+            ColumnSpec("customer", "customer", SQLType.TEXT, False, False),
+        ),
+    )
+    products = TableSpec(
+        "products", "Product", "products", "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, True, False),
+            ColumnSpec("product", "product", SQLType.TEXT, False, False),
+        ),
+    )
+    history = TableSpec(
+        "history", "History", "history", "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, True, False),
+            ColumnSpec("customer", "customer", SQLType.TEXT, False, True),
+            ColumnSpec("product", "product", SQLType.TEXT, False, True),
+        ),
+    )
+    views = (
+        CombinedView("offers_customers_combined", ("customers",)),
+        ProjectedView(
+            "offers_customers_result", "offers_customers_combined",
+            (SelectedValue("customer", ColumnValue("customers", "customer")),),
+        ),
+        SortedView(
+            "offers_customers_top", "offers_customers_result",
+            (SortValue(ViewValue("customer")),), 2,
+        ),
+        CombinedView("offers_products_combined", ("products",)),
+        ProjectedView(
+            "offers_products_result", "offers_products_combined",
+            (SelectedValue("product", ColumnValue("products", "product")),),
+        ),
+        SortedView(
+            "offers_products_top", "offers_products_result",
+            (SortValue(ViewValue("product")),), 2,
+        ),
+        CombinedView("offers_history_combined", ("history",)),
+        ProjectedView(
+            "offers_history_result", "offers_history_combined",
+            (
+                SelectedValue("customer", ColumnValue("history", "customer")),
+                SelectedValue("product", ColumnValue("history", "product")),
+            ),
+        ),
+        CrossView(
+            "offers_candidates", "offers_customers_top", "offers_products_top"
+        ),
+        AntiJoinView(
+            "offers_result", "offers_candidates", "offers_history_result",
+            (MergeKey("customer", "customer"), MergeKey("product", "product")),
+            (SortValue(ViewValue("customer")), SortValue(ViewValue("product"))),
+        ),
+    )
+    plan = AnalysisPlan(
+        "offers", (customers, products, history), views, "offers_result",
+        (
+            PlanSection("customers", "Customers", "top customers", tuple(v.name for v in views[:3])),
+            PlanSection("products", "Products", "top products", tuple(v.name for v in views[3:6])),
+            PlanSection("history", "History", "purchased pairs", tuple(v.name for v in views[6:8])),
+            PlanSection("candidates", "Candidates", "candidate pairs", (views[8].name,), ("customers", "products")),
+            PlanSection("result", "Not purchased", "not purchased", (views[9].name,), ("candidates", "history")),
+        ),
+    )
+    result = _execute_fixture(
+        plan,
+        (
+            "CREATE TABLE conversation.customers(id INTEGER PRIMARY KEY, customer TEXT NOT NULL)",
+            "CREATE TABLE conversation.products(id INTEGER PRIMARY KEY, product TEXT NOT NULL)",
+            "CREATE TABLE conversation.history(id INTEGER PRIMARY KEY, customer TEXT, product TEXT)",
+            "INSERT INTO conversation.customers VALUES (1, 'A'), (2, 'B')",
+            "INSERT INTO conversation.products VALUES (1, 'X'), (2, 'Y')",
+            "INSERT INTO conversation.history VALUES (1, 'A', 'X'), (2, NULL, 'Y')",
+        ),
+        estimated_rows=6,
+    )
+    assert result.rows == (
+        {"customer": "A", "product": "Y"},
+        {"customer": "B", "product": "X"},
+        {"customer": "B", "product": "Y"},
+    )
+    record = result.record()
+    assert record["manifest"]["output"] == "offers_result"
+    assert record["views"][-1]["inputs"] == [
+        "offers_candidates", "offers_history_result"
+    ]
+    assert ".cross(" in record["views"][-2]["python"]
+    assert ".anti_join(" in record["views"][-1]["python"]
+    assert "NOT EXISTS" in record["views"][-1]["sql"]
+
+
+def test_merge_inputs_must_be_flat_value_relations():
+    from engine.deterministic.plan import SortedView, SortValue
+
+    items = TableSpec(
+        "items", "Item", "items", "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, True, False),
+            ColumnSpec("score", "score", SQLType.INTEGER, False, False),
+        ),
+    )
+    try:
+        AnalysisPlan(
+            "unsafe",
+            (items,),
+            (
+                CombinedView("unsafe_left", ("items",)),
+                SortedView(
+                    "unsafe_left_top", "unsafe_left",
+                    (SortValue(ColumnValue("items", "score"), True),), 2,
+                ),
+                CombinedView("unsafe_right", ("items",)),
+                SortedView(
+                    "unsafe_right_top", "unsafe_right",
+                    (SortValue(ColumnValue("items", "score"), True),), 2,
+                ),
+                CrossView("unsafe_pairs", "unsafe_left_top", "unsafe_right_top"),
+            ),
+        )
+        raise AssertionError("an ORM-object relation reached a flattening merge")
+    except ValueError as exc:
+        assert "projected or reduced" in str(exc)
+
+
+def test_section_tree_must_match_the_executable_view_dependencies():
+    plan = _plan()
+    sections = tuple(
+        PlanSection(
+            f"stage_{index}", f"Stage {index}", f"stage {index}",
+            (view.name,), (() if index == 0 else (f"stage_{index - 1}",)),
+        )
+        for index, view in enumerate(plan.views)
+    )
+    AnalysisPlan(plan.slug, plan.tables, plan.views, plan.output, sections)
+    wrong = sections[:-1] + (replace(sections[-1], inputs=("stage_0",)),)
+    try:
+        AnalysisPlan(plan.slug, plan.tables, plan.views, plan.output, wrong)
+        raise AssertionError("the displayed section tree diverged from executable inputs")
+    except ValueError as exc:
+        assert "cross-section view dependencies" in str(exc)
+
+
 # Discover the contract cases so new tests cannot be omitted from the module runner.
 def test_a_slug_naming_wrapper_state_or_python_keyword_still_executes():
     """Durable slugs may collide with wrapper state or Python reserved words.
@@ -1733,7 +1893,7 @@ def test_every_stage_reports_the_exact_python_that_produced_it():
         assert segment.startswith(f"        # View: {view.name}\n"), view.name
         assert segment in source, view.name
     assert "view_sources" not in package.record()["manifest"]
-    assert package.record()["manifest"]["emitter_version"] == 7
+    assert package.record()["manifest"]["emitter_version"] == 8
 
 
 def test_streamed_trace_carries_the_same_derivation_as_the_returned_trace():

@@ -10,17 +10,28 @@ The engine constructs and ranks typed SQL AST candidates. For a supported winner
 `lower_select_query()` constructs one immutable `AnalysisPlan`. SQL and Python emitters independently
 consume that plan. No model writes Python source, and neither emitter translates the other's source.
 
-Sonnet proposes a named analysis action and slug. The engine validates the intent and owns planning,
-revision allocation, code generation, and execution. A slug such as `total_amount` is every SQL
+Sonnet proposes a named analysis action and slug. It does not normally split a question. If the
+engine's selected typed AST is compound and cannot be represented as one shared-plan branch, the
+engine returns `decompose`; Sonnet may then make exactly one retry containing two to four
+natural-language subquestions and a closed `cross`/`anti_join` dependency graph. The retry must keep
+the exact question and analysis request identity. It cannot name tables, columns, keys, SQL, or Python, and
+every proposed node must contribute to the output. The engine independently plans each leaf and
+fuses only planner-bound typed relations. It owns revision allocation, code generation, and execution.
+
+A slug such as `total_amount` is every SQL
 view's prefix and normally the Python method name. Durable slugs that are Python keywords stay
 unchanged in the workbook and SQL; the emitter records a safe entrypoint such as `analysis_yield`.
 Each revision regenerates its program. A generated package currently contains one analysis method,
 not all conversation methods in one accumulating module.
 
-## The view chain is the Python data flow
+## The view DAG is the Python data flow
 
-The plan begins with `combined`. Every later stage consumes its immediate predecessor; the final
-stage projects or reduces its input. The generated wrapper follows this structure (arguments abbreviated):
+The plan is a topologically ordered DAG of named, materialized relations. A simple question remains a
+linear feed-forward pipeline; each stage consumes its predecessor. A decomposed question has multiple
+ordinary root pipelines followed by explicit merge stages. Both forms use the same `AnalysisPlan` and
+the same emitters.
+
+A simple generated wrapper follows this structure (arguments abbreviated):
 
 ```python
 class OrdersCustomers:
@@ -33,6 +44,31 @@ class OrdersCustomers:
         return AnalysisResult(result=total_amount_total, views=(...))
 ```
 
+A promotion-gap analysis remains equally explicit:
+
+```python
+class OrdersCustomersProducts:
+    def promotion_gaps(self) -> AnalysisResult:
+        top_products_combined = View.from_orm(...)
+        top_products_total = top_products_combined.group_reduce(...)
+        top_products_top = top_products_total.sort(...).take(3)
+
+        top_customers_combined = View.from_orm(...)
+        top_customers_total = top_customers_combined.group_reduce(...)
+        top_customers_top = top_customers_total.sort(...).take(2)
+
+        purchased_pairs_combined = View.from_orm(...)
+        purchased_pairs = purchased_pairs_combined.for_each(...)
+
+        candidate_pairs = top_customers_top.cross(top_products_top)
+        recommendations = candidate_pairs.anti_join(
+            purchased_pairs,
+            keys=(("customer_name", "customer_name"),
+                  ("product_name", "product_name")),
+        )
+        return AnalysisResult(result=recommendations, views=(...))
+```
+
 | Stage | SQL form | Python operation |
 |---|---|---|
 | Combined | Input joins | `View.from_orm` over one ORM query |
@@ -43,6 +79,8 @@ class OrdersCustomers:
 | Reduced | Aggregates and optional grouping | `previous.reduce` or `previous.group_reduce` |
 | Ordered | `ORDER BY ... NULLS LAST`, optional `LIMIT` | `previous.sort`, with explicit tie keys |
 | Correlated | Share, running total, or previous-period join | `previous.for_each`, with visible reduction/join expressions |
+| Cross | Bounded `CROSS JOIN` | `left.cross(right)` |
+| Anti-join | `WHERE NOT EXISTS` over compiler-inferred common dimension keys | `left.anti_join(right, keys=...)` |
 
 The actual source includes the ORM query, row classes, transformation bodies, predicates, initial
 aggregate state, and operator calls. SQL `SUM(gross_amount)` corresponds to
@@ -225,6 +263,8 @@ engine/deterministic/
     country.py
     orders_customers.py
     manifest.json
+
+engine/decomposition.py       closed proposal grammar and typed-plan fusion
 ```
 
 Source is emitted in memory in every shared-plan mode, including SQL. Python source is syntax-checked;
@@ -238,7 +278,8 @@ debugging; `_gen` is Git-ignored. Production writes no generated files unless
 Responses and saved analysis snapshots can retain source: memory-only execution does not mean source
 is never persisted.
 
-Records include source and per-file hashes, emitter versions, relationship edges, stages, dataset
+Records include source and per-file hashes, emitter versions, relationship edges, stages, the declared
+output, per-stage dependencies, and human-readable branch/merge sections, plus dataset
 version, and knowledgebase release when supplied. World and composition hooks supply the knowledgebase
 refresh/model version. Own-data programs have no knowledgebase dependency. A null release is not a
 pinned knowledgebase snapshot. Request timing exposes separate emission, Python, and SQL durations
@@ -247,8 +288,8 @@ through the existing timing collector; backend durations include stage materiali
 ## Coverage and extension
 
 Own-data AST lowering supports unaliased inner joins, Boolean comparison filters, projections and arithmetic,
-`COUNT/SUM/AVG/MIN/MAX`, and grouped aggregates whose projected group columns precede aggregates. A scalar
-aggregate may carry a semantically harmless `ORDER BY` or `LIMIT 1`; general ordering, limits, aliases,
+`COUNT/SUM/AVG/MIN/MAX`, grouped aggregates whose projected group columns precede aggregates, and deterministic
+ordering/limits over selected outputs. Unordered non-scalar limits, aliases,
 self-joins, DISTINCT, HAVING, subqueries, and set queries remain outside that AST adapter. This is distinct
 from the composition adapter's supported ordering and correlated operators.
 

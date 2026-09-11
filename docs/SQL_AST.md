@@ -21,6 +21,12 @@ one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted ind
 plan; neither source is parsed to create the other. See
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
+When the selected winner is a compound query that cannot be represented by one linear branch, the
+engine can request one bounded decomposition retry. A conversational model proposes only
+natural-language leaf questions and a closed `cross`/`anti_join` topology. The same planner searches,
+ranks, and validates every leaf; `engine/decomposition.py` fuses their typed outputs into one DAG.
+No model-authored SQL, Python, identifier, join key, or intermediate result enters execution.
+
 AST validity is broader than dual-emitter coverage. The lowering adapter requires proven ORM row
 identities and scalar join targets. Unsupported ASTs retain SQL execution under the default policy
 or `use=sql`; `use=py` and `use=both` cannot accept those fallback results. Stage parity is a backend
@@ -215,10 +221,11 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/currency_intent.py` | Currency syntax and canonical rate-column rules used by the currency specification. |
 | `engine/sql_profile.py` | Structural AST profiles. |
 | `engine/sql_profile_expansion.py` | Deterministic exact-profile candidate expansion (`ProfileSearchConfig`). |
-| `engine/deterministic/plan.py` | Immutable feed-forward plan shared by both source emitters. |
+| `engine/deterministic/plan.py` | Immutable topologically ordered plan shared by both source emitters. |
 | `engine/deterministic/lower.py` | Strict lowering from the supported typed-AST subset; unsupported shapes remain on SQL. |
 | `engine/deterministic/emitter/` | Deterministic SQL view-stack and readable SQLAlchemy/Python source emitters. |
 | `engine/deterministic/runtime.py` | In-memory Python loading, execution policy, and SQL/Python parity checking. |
+| `engine/decomposition.py` | Closed compound proposal validation and typed leaf-plan fusion. |
 
 `SQLSearcher.search` remains the low-level ablation boundary. The capability modules do
 not depend on one another's private internals.

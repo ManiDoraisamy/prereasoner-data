@@ -10,6 +10,7 @@ let deleted=false;
 let requestCount=0;
 const totalSalesId='a_11111111111111111111111111111111';
 const topProductsId='a_22222222222222222222222222222222';
+const promotionGapsId='a_33333333333333333333333333333333';
 const revisions=new Map();
 
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
@@ -25,10 +26,40 @@ function readJson(req){return new Promise((resolve,reject)=>{let raw='';req.setE
 function answer(question,analysis){
   const follow=/paris/i.test(question);
   const top=/top selling products/i.test(question);
+  const complex=/not buying|never bought/i.test(question);
   const value=follow?120:180;
   const input=(column)=>({kind:'input',source:'upload',table:'orders',column});
   const ecb=(column)=>({kind:'reference',source:'European Central Bank',table:'exchange_rate',column,release_id:'ecb-2026-09-05'});
   const calc=(column,operation,inputs)=>({kind:'derived',source:'Prereasoner',column,operation,inputs});
+  if(complex){
+    const prefix=analysis.slug+'_';
+    const sections={
+      top_products:{label:'Top selling products',question:'Top 3 product names by total quantity sold',inputs:[]},
+      top_customers:{label:'Top buying customers',question:'Top 2 customer names by total spend',inputs:[]},
+      purchases:{label:'Existing purchases',question:'Customer name and product name for each purchase',inputs:[]},
+      candidate_pairs:{label:'Candidate pairs',question:'Candidate pairs',inputs:['top_customers','top_products']},
+      recommendations:{label:'Promotion gaps',question:'Promotion gaps',inputs:['candidate_pairs','purchases']},
+    };
+    const view=(section,name,op,columns,rows,sql,python,inputs=[],isOutput=false)=>({
+      name:prefix+name,logical_name:name,op,label:name.replace(/_/g,' '),columns,rows,sql,python,
+      inputs:inputs.map(input=>prefix+input),section,section_label:sections[section].label,
+      section_question:sections[section].question,section_inputs:sections[section].inputs,is_output:isOutput,
+    });
+    const views=[
+      view('top_products','products_combined','join',['product_name','quantity'],[['Alpha',8],['Beta',9],['Gamma',6]],'SELECT product_name, quantity FROM products JOIN order_items USING (product_id)',"products_combined = orm.fetch(Product, OrderItem)"),
+      view('top_products','products_total','group_agg',['product_name','units_sold'],[['Alpha',8],['Beta',9],['Gamma',6]],'SELECT product_name, SUM(quantity) AS units_sold FROM products_combined GROUP BY product_name',"products_total = products_combined.reduce_by('product_name', SUM('quantity'))",['products_combined']),
+      view('top_products','products_top','topn',['product_name','units_sold'],[['Beta',9],['Alpha',8],['Gamma',6]],'SELECT * FROM products_total ORDER BY units_sold DESC LIMIT 3',"products_top = products_total.sort('units_sold', descending=True).take(3)",['products_total']),
+      view('top_customers','customers_combined','join',['customer_name','line_total'],[['Bob',90],['Bob',40],['Cara',190]],'SELECT customer_name, line_total FROM customers JOIN orders USING (customer_id) JOIN order_items USING (order_id)',"customers_combined = orm.fetch(Customer, Order, OrderItem)"),
+      view('top_customers','customers_total','group_agg',['customer_name','total_spend'],[['Bob',130],['Cara',190]],'SELECT customer_name, SUM(line_total) AS total_spend FROM customers_combined GROUP BY customer_name',"customers_total = customers_combined.reduce_by('customer_name', SUM('line_total'))",['customers_combined']),
+      view('top_customers','customers_top','topn',['customer_name','total_spend'],[['Cara',190],['Bob',130]],'SELECT * FROM customers_total ORDER BY total_spend DESC LIMIT 2',"customers_top = customers_total.sort('total_spend', descending=True).take(2)",['customers_total']),
+      view('purchases','purchases_combined','join',['customer_name','product_name'],[['Cara','Gamma'],['Bob','Beta'],['Bob','Alpha']],'SELECT customer_name, product_name FROM customers JOIN orders USING (customer_id) JOIN order_items USING (order_id) JOIN products USING (product_id)',"purchases_combined = orm.fetch(Customer, Order, OrderItem, Product)"),
+      view('purchases','purchase_pairs','select',['customer_name','product_name'],[['Cara','Gamma'],['Bob','Beta'],['Bob','Alpha']],'SELECT customer_name, product_name FROM purchases_combined',"purchase_pairs = purchases_combined.for_each(lambda row: PurchasePair(row.customer.name, row.product.name))",['purchases_combined']),
+      view('candidate_pairs','candidate_pairs','cross',['customer_name','total_spend','product_name','units_sold'],[['Cara',190,'Beta',9],['Cara',190,'Alpha',8],['Cara',190,'Gamma',6],['Bob',130,'Beta',9],['Bob',130,'Alpha',8],['Bob',130,'Gamma',6]],'SELECT c.*, p.* FROM customers_top c CROSS JOIN products_top p',"candidate_pairs = customers_top.cross(products_top)",['customers_top','products_top']),
+      view('recommendations','promotion_gaps','anti_join',['customer_name','total_spend','product_name','units_sold'],[['Cara',190,'Beta',9],['Cara',190,'Alpha',8],['Bob',130,'Gamma',6]],'SELECT c.* FROM candidate_pairs c WHERE NOT EXISTS (SELECT 1 FROM purchase_pairs p WHERE p.customer_name = c.customer_name AND p.product_name = c.product_name)',"promotion_gaps = candidate_pairs.anti_join(purchase_pairs, keys=[('customer_name', 'customer_name'), ('product_name', 'product_name')])",['candidate_pairs','purchase_pairs'],true),
+    ];
+    return {question,conversation_id:conversation,analysis,sql:views[views.length-1].sql,views,
+      result:{columns:views[views.length-1].columns,rows:views[views.length-1].rows}};
+  }
   if(top)return {question,conversation_id:conversation,analysis,
     sql:'SELECT product, SUM(amount) AS total FROM orders GROUP BY product ORDER BY total DESC',
     views:[{name:analysis.slug+'_top_results',logical_name:'top_results',op:'topn',label:'top results',
@@ -63,6 +94,7 @@ function answer(question,analysis){
     ],result:{columns:['total'],rows:[[value]],column_provenance:[calc('total','sum',['calculated.converted'])]}};
 }
 function analysisFor(question){
+  if(/not buying|never bought/i.test(question))return {analysis_id:promotionGapsId,slug:'promotion_gaps',revision:1,action:'create',stale:false,display_name:'promotion gaps'};
   if(/top selling products/i.test(question))return {analysis_id:topProductsId,slug:'top_selling_products',revision:1,action:'create',stale:false,display_name:'top selling products'};
   if(/paris/i.test(question))return {analysis_id:totalSalesId,slug:'total_sales',revision:2,action:'modify',stale:false,display_name:'total sales'};
   return {analysis_id:totalSalesId,slug:'total_sales',revision:1,action:'create',stale:false,display_name:'total sales'};
@@ -97,8 +129,10 @@ const server=http.createServer(async(req,res)=>{
     const analysis=analysisFor(body.message||''); const raw=answer(body.message||'',analysis);
     raw.execution=executionFor(body.use);
     revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
-    return send(res,200,{reply:/top selling/i.test(body.message||'')?'Coat is the top-selling product.':
-      (/paris/i.test(body.message||'')?'The Paris total is 120.':'Your total is 180.'),
+    return send(res,200,{reply:/not buying|never bought/i.test(body.message||'')
+      ?'Found 3 promotion gaps for the top customers and products.'
+      :/top selling/i.test(body.message||'')?'Coat is the top-selling product.'
+      :(/paris/i.test(body.message||'')?'The Paris total is 120.':'Your total is 180.'),
       traces:[{jobId:'test',question:body.message,engine:shaped(raw)}],
       history:(body.history||[]).concat([{role:'user',content:body.message},{role:'assistant',content:'Answered.'}]),
       conversation_id:conversation});

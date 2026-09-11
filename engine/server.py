@@ -14,7 +14,7 @@
   GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
 
 Request shape for reason/world: {tables:[{name,data}], question, as_of?, jobId?, conversation_id?,
-use?:sql|py|both, analysis?:{action,slug,analysis_id?,revision?}} +
+use?:sql|py|both, analysis?:{action,slug,analysis_id?,revision?}, decomposition?} +
 header Authorization: Bearer <Firebase ID token>. The response echoes conversation_id. For dimension:
 {data, mode:'analyze'}. Non-prod bypass: AUTH_TEST_SUB -> fixed user, skips token verification (test-only).
 
@@ -55,6 +55,7 @@ from engine.conversations import (
     QuotaExceeded,
     append_dataset_ops,
     begin_analysis,
+    cancel_analysis,
     complete_analysis,
     conversation_page,
     delete_all_conversations,
@@ -695,6 +696,8 @@ class H(BaseHTTPRequestHandler):
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
                 try:
                     serve_kwargs = {"emit": emit}
+                    if req.get("decomposition") is not None:
+                        serve_kwargs["decomposition"] = req["decomposition"]
                     if enrichment is not None and enrichment.used:
                         serve_kwargs["explicit_fks"] = enrichment.explicit_fks
                     from engine.deterministic.context import (
@@ -764,7 +767,14 @@ class H(BaseHTTPRequestHandler):
                     emit("analysis", snapshot["analysis"])
                     analysis = None                         # committed; the exception path must not fail it
                 else:
-                    discard_analysis()
+                    if isinstance(res, dict) and res.get("decomposition_required"):
+                        # The probe produced no executable workbook. Cancel its empty
+                        # reservation so the retry remains the next visible revision.
+                        pending = analysis
+                        analysis = None
+                        cancel_analysis(sub, conv, pending)
+                    else:
+                        discard_analysis()
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(res, default=_json_safe))
         except Exception as e:                           # noqa: BLE001

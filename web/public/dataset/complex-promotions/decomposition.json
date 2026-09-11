@@ -1,0 +1,35 @@
+{
+  "subquestions": [
+    {
+      "id": "top_products",
+      "label": "Top products",
+      "question": "top 3 product names by total quantity sold"
+    },
+    {
+      "id": "top_customers",
+      "label": "Top customers",
+      "question": "top 2 customer names by total spend"
+    },
+    {
+      "id": "purchased_pairs",
+      "label": "Purchased pairs",
+      "question": "list customer name and product name for each purchase"
+    }
+  ],
+  "merges": [
+    {
+      "id": "candidate_pairs",
+      "label": "Candidate pairs",
+      "op": "cross",
+      "inputs": ["top_customers", "top_products"]
+    },
+    {
+      "id": "recommendations",
+      "label": "Not yet purchased",
+      "op": "anti_join",
+      "inputs": ["candidate_pairs", "purchased_pairs"]
+    }
+  ],
+  "output": "recommendations",
+  "grain": "one customer-product recommendation pair"
+}

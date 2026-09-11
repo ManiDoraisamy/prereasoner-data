@@ -109,6 +109,8 @@
 // customers-orders is the two-sheet FK-join variant; payment-commissions exercises a separate joined rate calculation.
 // FX comes from the knowledgebase (ECB), never from a demo sheet.
 const DATASETS={'customer-orders':['orders'],'orders-tiers':['orders','tier'],'customers-orders':['customers','orders'],
+  'complex-promotions':['customers','products','orders','order_items'],
+  'complex-category-gaps':['customers','products','purchases'],
   'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake'],
   'formfacade-workshops':['feedback'],'neartail-shipping':['deliveries'],'formesign-contracts':['contracts'],
   'formesign-hospital-transfers':['transfers'],'neartail-catering':['catering'],'formfacade-bank-deposits':['deposits'],

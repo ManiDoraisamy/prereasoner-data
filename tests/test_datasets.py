@@ -29,6 +29,20 @@ EXPECTED = {
         "world+fx",
         1126.66,
     ),  # city -> country join + ECB conversion (as-of drift tolerated)
+    "complex-promotions": (
+        "own-rows",
+        {
+            "columns": ["customer_name", "product_name"],
+            "rows": [["Cara", "Beta"], ["Cara", "Alpha"], ["Bob", "Gamma"]],
+        },
+    ),
+    "complex-category-gaps": (
+        "own-rows",
+        {
+            "columns": ["customer_name", "category"],
+            "rows": [["Ava", "Travel"]],
+        },
+    ),
     "orders-tiers": (
         "world+fx",
         1126.66,
@@ -136,6 +150,9 @@ def _eval_cases(ds: Path):
         if expected.lower() == "clarify":
             cases.append((question, None, False, chat_only))
             continue
+        if expected.startswith("[") or expected.startswith("{"):
+            cases.append((question, json.loads(expected), False, chat_only))
+            continue
         fx = expected.startswith("~")
         cases.append((question, float(expected.lstrip("~")), fx, chat_only))
     return cases
@@ -168,7 +185,7 @@ def main() -> int:
     if unknown_modes:
         raise ValueError(f"unknown EVAL_EXECUTION_MODES: {sorted(unknown_modes)}")
 
-    def serve(tables, question, *, schema):
+    def serve(tables, question, *, schema, decomposition=None):
         responses = []
         for mode in modes:
             requested_mode = None if mode == "default" else mode
@@ -179,7 +196,12 @@ def main() -> int:
                 ):
                     try:
                         response = enforce_execution_response(
-                            Q.serve(tables, question, schema), requested_mode
+                            Q.serve(
+                                tables,
+                                question,
+                                schema,
+                                decomposition=decomposition,
+                            ), requested_mode
                         )
                     except Exception as exc:  # noqa: BLE001 — the matrix records backend failures
                         response = {"error": f"{type(exc).__name__}: {exc}"}
@@ -253,10 +275,33 @@ def main() -> int:
             fails.append(f"{name}: empty prompt.txt")
             continue
         kind, want = EXPECTED[name]
-        res = serve(_tables(ds), prompt, schema=schema)
+        decomposition_path = ds / "decomposition.json"
+        decomposition = (
+            json.loads(decomposition_path.read_text(encoding="utf-8"))
+            if decomposition_path.exists()
+            else None
+        )
+        res = serve(
+            _tables(ds), prompt, schema=schema, decomposition=decomposition
+        )
         got = _scalar(res)
         print(f"{name}: {prompt!r} -> {got} (exp ~{want}, {kind})")
-        if not isinstance(got, float):
+        if kind == "own-rows":
+            result = (res or {}).get("result") or {}
+            columns = list(result.get("columns") or ())
+            try:
+                indexes = [columns.index(column) for column in want["columns"]]
+                actual_rows = [
+                    [row[index] for index in indexes]
+                    for row in (result.get("rows") or ())
+                ]
+            except (ValueError, IndexError):
+                actual_rows = None
+            if actual_rows != want["rows"]:
+                fails.append(
+                    f"{name}: expected rows {want['rows']!r}, got {actual_rows!r}"
+                )
+        elif not isinstance(got, float):
             fails.append(f"{name}: no numeric answer (got {got!r})")
         elif kind == "world+fx":
             if abs(got - want) > want * FX_TOLERANCE:

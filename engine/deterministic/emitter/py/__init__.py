@@ -18,10 +18,12 @@ from types import MappingProxyType
 from engine.deterministic.plan import (
     AggregateValue,
     AnalysisPlan,
+    AntiJoinView,
     BinaryValue,
     CalculatedView,
     ColumnValue,
     CombinedView,
+    CrossView,
     EnrichedView,
     FilteredView,
     FunctionValue,
@@ -155,7 +157,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 7
+    VERSION = 8
 
     def emit(
         self,
@@ -192,7 +194,7 @@ class PythonEmitter:
             *(
                 _class_name(view.name)
                 for view in plan.views
-                if not isinstance(view, (FilteredView, SortedView))
+                if not isinstance(view, (AntiJoinView, FilteredView, SortedView))
             ),
             wrapper_class,
         ]
@@ -213,10 +215,25 @@ class PythonEmitter:
             "knowledgebase_release": knowledgebase_release,
             "tables": [table.name for table in plan.tables],
             "views": [view.name for view in plan.views],
+            "output": plan.output,
             "view_columns": {
                 name: list(columns) for name, columns in plan.view_columns().items()
             },
             "view_operations": plan.view_operations(),
+            "view_inputs": {
+                name: list(inputs) for name, inputs in plan.view_inputs().items()
+            },
+            "view_sections": plan.view_sections(),
+            "sections": [
+                {
+                    "id": section.id,
+                    "label": section.label,
+                    "question": section.question,
+                    "views": list(section.views),
+                    "inputs": list(section.inputs),
+                }
+                for section in plan.sections
+            ],
             # Per-stage slice of the wrapper source, so the workbook can show the exact
             # Python that produced a sheet beside that sheet's SQL.
             "view_sources": view_sources,
@@ -436,8 +453,7 @@ class PythonEmitter:
         stage_tables: dict[str, dict[str, str]] = {}
         stage_values: dict[str, set[str]] = {}
         row_classes: dict[str, str] = {}
-        previous_tables: dict[str, str] = {}
-        previous_values: set[str] = set()
+        view_columns = plan.view_columns()
         for view in plan.views:
             class_name = _class_name(view.name)
             row_classes[view.name] = class_name
@@ -446,27 +462,26 @@ class PythonEmitter:
                     name: table_by_name[name].attribute for name in view.tables
                 }
                 current_values: set[str] = set()
+            elif isinstance(view, (CrossView, AntiJoinView)):
+                current_tables = {}
+                current_values = set(view_columns[view.name])
             elif isinstance(view, EnrichedView):
-                current_tables = dict(previous_tables)
+                current_tables = dict(stage_tables[view.source])
                 for enrichment in view.enrichments:
                     current_tables[enrichment.target_table] = table_by_name[
                         enrichment.target_table
                     ].attribute
-                current_values = set(previous_values)
+                current_values = set(stage_values[view.source])
             elif isinstance(view, (FilteredView, SortedView)):
-                stage_tables[view.name] = dict(previous_tables)
-                stage_values[view.name] = set(previous_values)
-                previous_tables, previous_values = (
-                    dict(previous_tables),
-                    set(previous_values),
-                )
+                stage_tables[view.name] = dict(stage_tables[view.source])
+                stage_values[view.name] = set(stage_values[view.source])
                 continue
             elif isinstance(view, CalculatedView):
-                current_tables = dict(previous_tables)
-                current_values = previous_values | {value.name for value in view.values}
+                current_tables = dict(stage_tables[view.source])
+                current_values = stage_values[view.source] | {value.name for value in view.values}
             elif isinstance(view, WindowView):
-                current_tables = dict(previous_tables)
-                current_values = previous_values | {view.output}
+                current_tables = dict(stage_tables[view.source])
+                current_values = stage_values[view.source] | {view.output}
             elif isinstance(view, ProjectedView):
                 current_tables = {}
                 current_values = {value.name for value in view.values}
@@ -487,7 +502,6 @@ class PythonEmitter:
             else:
                 lines.append("    pass")
             lines.extend(["", ""])
-            previous_tables, previous_values = current_tables, current_values
 
         lines.extend(
             [
@@ -509,7 +523,6 @@ class PythonEmitter:
             ]
         )
 
-        previous = None
         emitted_variables = []
         view_sources: dict[str, str] = {}
         for view in plan.views:
@@ -517,6 +530,54 @@ class PythonEmitter:
             lines.append(f"        # View: {view.name}")
             if isinstance(view, CombinedView):
                 lines.extend(self._emit_combined(plan, view, row_classes[view.name]))
+            elif isinstance(view, CrossView):
+                left_columns = view_columns[view.left]
+                lines.extend(
+                    [
+                        f"        {view.name} = {view.left}.cross(",
+                        f"            name={view.name!r},",
+                        f"            other={view.right},",
+                        f"            construct=lambda left, right: {row_classes[view.name]}(",
+                        *(f"                {name}=left.{name}," for name in left_columns),
+                        *(
+                            f"                {view.right_prefix + name if name in left_columns else name}=right.{name},"
+                            for name in view_columns[view.right]
+                        ),
+                        "            ),",
+                        "        )",
+                    ]
+                )
+            elif isinstance(view, AntiJoinView):
+                lines.extend(
+                    [
+                        f"        {view.name} = {view.left}.anti_join(",
+                        f"            name={view.name!r},",
+                        f"            other={view.right},",
+                        "            left_key=lambda row: ("
+                        + ", ".join(f"row.{key.left}" for key in view.keys)
+                        + ",),",
+                        "            right_key=lambda row: ("
+                        + ", ".join(f"row.{key.right}" for key in view.keys)
+                        + ",),",
+                        "        )",
+                    ]
+                )
+                if view.order:
+                    keys = ", ".join(
+                        self._python_value(
+                            plan, item.value, "row", {}, stage_values[view.name]
+                        )
+                        for item in view.order
+                    )
+                    lines.extend(
+                        [
+                            f"        {view.name} = {view.name}.sort(",
+                            f"            name={view.name!r},",
+                            f"            keys=lambda row: ({keys},),",
+                            f"            descending={tuple(item.descending for item in view.order)!r},",
+                            "        )",
+                        ]
+                    )
             elif isinstance(view, EnrichedView):
                 lines.extend(
                     self._emit_enriched(
@@ -606,12 +667,11 @@ class PythonEmitter:
                 )
             lines.append("")
             view_sources[view.name] = "\n".join(lines[stage_start : len(lines) - 1])
-            previous = view.name
             emitted_variables.append(view.name)
         lines.extend(
             [
                 "        return AnalysisResult(",
-                f"            result={previous},",
+                f"            result={plan.output},",
                 "            views=(",
                 *(f"                {name}," for name in emitted_variables),
                 "            ),",
@@ -670,7 +730,7 @@ class PythonEmitter:
                 f"            .{'outerjoin' if view.outer else 'join'}({table.class_name}, {on_clause})"
             )
             joined.add(table.name)
-        loader_options = self._loader_options(plan)
+        loader_options = self._loader_options(plan, view)
         if loader_options:
             lines.extend(
                 [
@@ -713,7 +773,7 @@ class PythonEmitter:
         return lines
 
     @staticmethod
-    def _loader_options(plan: AnalysisPlan) -> tuple[str, ...]:
+    def _loader_options(plan: AnalysisPlan, combined: CombinedView) -> tuple[str, ...]:
         """Emit only the relationship paths traversed by enrichment stages.
 
         Mappings use ``lazy='raise'`` so an omitted path fails instead of silently
@@ -721,10 +781,16 @@ class PythonEmitter:
         select-in options when both ``order.city`` and ``order.city.country`` are
         materialized.
         """
-        combined = plan.views[0]
         roots = {table_name: (table_name, ()) for table_name in combined.tables}
         requested = set()
+        reachable = {combined.name}
         for view in plan.views:
+            if view is combined:
+                continue
+            inputs = plan.inputs(view)
+            if len(inputs) != 1 or inputs[0] not in reachable:
+                continue
+            reachable.add(view.name)
             if not isinstance(view, EnrichedView):
                 continue
             for enrichment in view.enrichments:
@@ -1093,9 +1159,12 @@ class PythonEmitter:
             expression = (
                 f"{row}.{tables[value.table]}.{table.scalar_attribute(value.column)}"
             )
-            if plan.views[0].outer or any(
-                isinstance(view, EnrichedView)
-                and any(not enrichment.required for enrichment in view.enrichments)
+            if any(
+                (isinstance(view, CombinedView) and view.outer)
+                or (
+                    isinstance(view, EnrichedView)
+                    and any(not enrichment.required for enrichment in view.enrichments)
+                )
                 for view in plan.views
             ):
                 return (

@@ -63,6 +63,26 @@ def test_shape():
     ok(clar["clarify"]["dropped"] == ["region"], "clarify carries dropped")
     ok("answer" not in clar, "clarify has no answer")
 
+    decompose = engine_client.shape_reason_response(
+        {
+            "question": "q",
+            "clarify": True,
+            "decomposition_required": {"reason": "compound analysis"},
+            "conversation_id": "c_" + "1" * 32,
+        },
+        "j-decompose",
+    )
+    ok(decompose["status"] == "decompose", "decomposition request -> status 'decompose'")
+    ok(
+        decompose["decomposition_required"]["reason"] == "compound analysis",
+        "decompose carries the bounded-retry reason",
+    )
+    ok("answer" not in decompose, "decompose has no premature answer")
+    ok(
+        decompose.get("conversation_id") == "c_" + "1" * 32,
+        "decompose preserves the conversation for the one retry",
+    )
+
     err_field = engine_client.shape_reason_response({"question": "q", "error": "guard: no", "result": None}, "j")
     ok(err_field["status"] == "error", "error field -> status 'error'")
     ok(err_field["error"] == "guard: no", "error message surfaced")
@@ -175,18 +195,25 @@ async def _stdio_handshake():
         async with ClientSession(read, write) as session:
             await session.initialize()
             result = await session.list_tools()
-            return {tool.name for tool in (getattr(result, "tools", None) or [])}
+            return {
+                tool.name: tool.inputSchema
+                for tool in (getattr(result, "tools", None) or [])
+            }
 
 
 def test_mcp_stdio_handshake():
     """Exercise the same child-process initialize/list_tools path used by /chat."""
     try:
-        names = asyncio.run(_stdio_handshake())
+        tools = asyncio.run(_stdio_handshake())
     except Exception as exc:  # noqa: BLE001
         ok(False, f"MCP stdio handshake: {type(exc).__name__}: {exc}")
         return
-    ok({"prereasoner_query", "prereasoner_describe"}.issubset(names),
+    ok({"prereasoner_query", "prereasoner_describe"}.issubset(tools),
        "MCP stdio handshake exposes both tools")
+    ok(
+        "decomposition" in tools["prereasoner_query"].get("properties", {}),
+        "external MCP clients can submit the one engine-requested decomposition retry",
+    )
 
 
 def main():

@@ -498,14 +498,18 @@ class TableQuery:
             )
             from engine.sql_ast import SelectQuery
 
-            if isinstance(candidate.query, SelectQuery):
-                try:
-                    deterministic_plan = lower_select_query(
-                        analysis_context.slug, candidate.query, sch, fks,
-                        postgres_row_identity=getattr(self, "postgres_row_identity", False),
-                    )
-                except UnsupportedDeterministicPlan:
-                    deterministic_plan = None
+            if not isinstance(candidate.query, SelectQuery):
+                # A named compound request needs a branch proposal before it has an
+                # executable dual-emitter plan. Do not run the planner's incidental
+                # set-operation candidate and then throw its rows away.
+                return candidate, None, None, candidates
+            try:
+                deterministic_plan = lower_select_query(
+                    analysis_context.slug, candidate.query, sch, fks,
+                    postgres_row_identity=getattr(self, "postgres_row_identity", False),
+                )
+            except UnsupportedDeterministicPlan:
+                deterministic_plan = None
         try:
             cols, rows = self.execute(
                 tablemap, sch, candidate.sql, query=candidate.query,
@@ -693,6 +697,16 @@ class TableQuery:
                 key: value for key, value in deterministic.items()
                 if key not in {"views", "final_sql"}
             }
+        elif candidate is not None:
+            from engine.deterministic.context import current_analysis_context
+            from engine.sql_ast import SelectQuery
+
+            if current_analysis_context() is not None and not isinstance(
+                candidate.query, SelectQuery
+            ):
+                response["decomposition_required"] = {
+                    "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
+                }
         return response
 
 

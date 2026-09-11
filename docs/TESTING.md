@@ -8,7 +8,8 @@ Spider accuracy evaluation. They answer different questions and should not be co
 The emitter suite executes real generated Python and SQL over SQLite fixtures. It covers stage
 alignment, composite object relationships, missing multi-hop references, retained calculated fields,
 grouped output order, full results versus 50-row previews, identity coercion, source determinism,
-date/timestamp source normalization, request context isolation, and explicit-mode fallback rejection.
+date/timestamp source normalization, request context isolation, explicit-mode fallback rejection,
+and branch/merge parity for bounded cross and anti-join nodes.
 Numeric comparison tests ensure large decimal differences are not rounded away. SQLite's native arithmetic is not a substitute for
 PostgreSQL NUMERIC coverage.
 
@@ -16,6 +17,13 @@ PostgreSQL NUMERIC coverage.
 orchestrated navigation and follow-up payloads. It also verifies mixed Python/SQL calls within one
 orchestrated turn and signed-in conversation access on a mobile viewport. Its API and authentication
 are local fixtures. It proves browser transport behavior, not actual backend execution or live authentication.
+
+`tests.test_complex_datasets` is the hermetic semantic gate for the shipped complex fixtures. It
+loads the promoted encoder, uses the production AST planner for every decomposition leaf, emits both
+programs from the fused DAG, executes verification on one in-memory SQLite snapshot, and compares the
+declared output columns with independently authored gold rows. The Chrome fixture separately checks
+that the same plan metadata renders as a nested dependency tree and that every materialized node can
+switch between its aligned SQL and Python source.
 
 `tests.test_datasets` evaluates the public prompts and `eval.txt` expectations against the seeded
 production `ComposedKnowledgeQuery` entry point. It runs `sql,python,verify,default` by default and checks
@@ -43,6 +51,7 @@ python -m deploy.dependency_locks
 python -m bandit -q -r engine db deploy training orchestrator mcp_server -x tests -lll
 python -m tests.test_sql_ast
 python -m tests.test_deterministic_emitters
+python -m tests.test_complex_datasets
 python -m tests.test_calculations
 python -m tests.test_analysis
 python -m tests.test_master_ingest
@@ -111,6 +120,7 @@ The runner executes the canonical suites in this order:
 |---|---|
 | `tests.test_sql_ast` | Typed planning, ranking, recursion, constraints, extrema, evaluation contract |
 | `tests.test_deterministic_emitters` | Plan validation, byte-stable source, ORM object relationships, stage alignment, execution policy, and SQL/Python parity |
+| `tests.test_complex_datasets` | Promoted-planner leaves, fused complex DAGs, independent gold rows, and SQL/Python stage verification on shipped fixtures |
 | `tests.test_calculations` | Typed arithmetic, operand eligibility, complete joins, all-branch proof, abstention, and clarify transport |
 | `tests.test_routing` | Shared route authority and cross-process determinism |
 | `tests.test_router_evidence` | Property-family consensus and surfaced routing evidence |
@@ -201,7 +211,8 @@ npm run test:browser
 XLSX workbook through the production Web Worker parser, waits for an answer, checks source and calculation
 provenance, opens the source trace, distinguishes mixed per-call backends, exercises the mobile conversation
 drawer, modifies one named workbook, creates a second workbook, restores two historical revisions from rail
-links while retaining the input tab, and deletes the conversation. The API response is a fixture so the browser
+links while retaining the input tab, renders a complex dependency tree with stage-level Python/SQL badges,
+switches the final anti-join between readable Python and SQL, and deletes the conversation. The API response is a fixture so the browser
 test is deterministic; Python integration suites separately cover the real engine and database.
 
 For a manual browser pass, start Firebase Hosting from `web/`:

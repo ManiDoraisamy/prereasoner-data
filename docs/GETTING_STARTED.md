@@ -167,7 +167,9 @@ The optional chat orchestrator adds named workbook intent to data calls. `create
 `modify` appends an immutable revision to an existing analysis; and `inspect` reopens one exact revision without
 running the planner. Uploaded tables keep their canonical file stems throughout the conversation (`orders.csv`
 becomes `orders`). Derived wire names use `<slug>_<step>`, while their `logical_name` and SQL preserve the actual
-relations and statement that ran. See `docs/SHEETS_AS_REASONING.md` for the workbook contract.
+relations and statement that ran. For a compound question the engine can request one bounded decomposition retry;
+the orchestrator supplies only natural-language leaf questions and a closed merge topology, while the engine binds
+and executes one shared SQL/Python DAG. See `docs/SHEETS_AS_REASONING.md` for the workbook contract.
 
 ## 6. Understand private references
 

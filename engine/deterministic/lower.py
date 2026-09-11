@@ -25,6 +25,8 @@ from engine.deterministic.plan import (
     ReducedView,
     RelationshipSpec,
     SelectedValue,
+    SortedView,
+    SortValue,
     TableSpec,
     Value,
     ViewValue,
@@ -56,7 +58,7 @@ def lower_select_query(
     *,
     postgres_row_identity: bool = False,
 ) -> AnalysisPlan:
-    """Build a feed-forward plan without parsing or reverse-engineering rendered SQL."""
+    """Build one linear plan branch without parsing or reverse-engineering rendered SQL."""
     if not isinstance(query.from_table, str) or query.from_alias is not None:
         raise UnsupportedDeterministicPlan(
             "derived tables and aliases are not supported"
@@ -71,12 +73,11 @@ def lower_select_query(
     )
     if (
         query.having is not None
-        or (query.order_by and not harmless_scalar_order)
-        or (query.limit is not None and not harmless_scalar_order)
         or query.distinct
+        or (query.limit is not None and not query.order_by and not harmless_scalar_order)
     ):
         raise UnsupportedDeterministicPlan(
-            "HAVING, ORDER BY, LIMIT, and DISTINCT are not supported"
+            "HAVING, DISTINCT, and unordered LIMIT are not supported"
         )
     if any(join.alias is not None or join.kind != "INNER" for join in query.joins):
         raise UnsupportedDeterministicPlan("only unaliased inner joins are supported")
@@ -289,6 +290,45 @@ def lower_select_query(
             )
         )
         views.append(ProjectedView(f"{slug}_result", views[-1].name, values))
+    if query.order_by and not harmless_scalar_order:
+        output_names = _select_names(query.select)
+        order = []
+        for term in query.order_by:
+            index = next(
+                (
+                    index
+                    for index, item in enumerate(query.select)
+                    if item.expression == term.expression
+                ),
+                None,
+            )
+            if index is None:
+                raise UnsupportedDeterministicPlan(
+                    "ORDER BY expressions must be present in the emitted projection"
+                )
+            order.append(
+                SortValue(
+                    ViewValue(output_names[index]), term.direction.upper() == "DESC"
+                )
+            )
+        # Deterministic tie order makes Python/SQL previews and downstream
+        # Cartesian products stable without changing the requested ranking.
+        ordered_names = {
+            item.value.name
+            for item in order
+            if isinstance(item.value, ViewValue)
+        }
+        for name in output_names:
+            if name not in ordered_names:
+                order.append(SortValue(ViewValue(name), False))
+        views.append(
+            SortedView(
+                f"{slug}_top_results" if query.limit is not None else f"{slug}_sorted",
+                views[-1].name,
+                tuple(order),
+                query.limit,
+            )
+        )
     try:
         return AnalysisPlan(slug, table_specs, tuple(views))
     except (ValueError, TypeError) as exc:

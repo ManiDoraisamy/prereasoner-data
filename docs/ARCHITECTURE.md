@@ -52,7 +52,7 @@ engine operation to MCP clients. Neither component owns data reasoning or may in
 
 ## Execution backend boundary
 
-`engine/deterministic/plan.py` owns the shared stage chain, table identity, scalar attribute names, and
+`engine/deterministic/plan.py` owns the shared topologically ordered stage DAG, table identity, scalar attribute names, and
 join-edge selection. The emitters own only source generation. `service.py` chooses the backend and
 owns a shared database snapshot when given an engine; `runtime.py` loads generated modules, executes
 temporary SQL views, and compares materialized stage rows. Production uses the existing PostgreSQL
@@ -75,6 +75,16 @@ requires a necessary world dependency before ComposeEngine owns a world answer, 
 use persisted cell-to-QID associations and actual knowledgebase tables. Composition retains its
 SQLite candidate-materialization step for operand binding/routing, then runs the selected typed
 program through the shared runtime. Unsupported shapes still fail closed for explicit Python/verification.
+
+`engine/decomposition.py` is the only compound-question fusion boundary. A normal request always tries
+the ordinary planner first. If its selected AST is compound, the engine returns a non-terminal
+`decompose` status without answer rows. The orchestrator may make one engine-triggered retry with a
+closed natural-language proposal: two to four leaf questions, one to four `cross`/`anti_join` merge
+nodes, one output, and a stated grain. Runtime guards require the exact original question and analysis
+request identity, reject proactive or repeated decomposition, reject dead nodes, and bound Cartesian products
+by explicit leaf limits. The existing AST planner independently binds every leaf; common dimension keys
+for an anti-join come from those typed relations. The result is one `AnalysisPlan`, not independently
+generated SQL and Python and not a model-executed chain of partial answers.
 
 Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace
 collection materializes every stage in either mode, so SQL mode is not a bounded-memory streaming
@@ -187,7 +197,9 @@ replay. The legacy Wikidata schema migration is still pending.
     SQL/Python execution.
 9. The selected planner emits a typed query. Supported shapes lower to one shared plan and deterministic SQL/Python
    programs; the request policy executes bounded Python, SQL, or both against the conversation schema plus the
-   explicitly reachable shared knowledge tables. Unsupported shapes remain on guarded, quoted, read-only SQL.
+   explicitly reachable shared knowledge tables. A selected compound own-data AST may request the one bounded
+   decomposition retry described above; all leaf planning and merge binding remains inside the engine. Other
+   unsupported shapes remain on guarded, quoted, read-only SQL.
 10. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
    scores, the shared registry selects the highest-ranked candidate that realizes every detected calculation. An
    unmet or ambiguous calculation replaces the numeric result with a structured clarification.
@@ -231,6 +243,7 @@ The own-data path is one bounded search over a typed SQL AST:
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
 | `engine/sql_rank.py` | Deterministic structural and encoder-derived candidate scoring |
 | `engine/tables.py` | Planner facade, SQL guard, and local SQLite execution |
+| `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
 The planner supports multi-table and multi-hop joins. Candidate execution can reject invalid or failing SQL, but
 execution success is not treated as proof that a query matches the question. Every deterministic ranking feature
@@ -448,6 +461,7 @@ The repository has one owner per decision:
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
+- bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;
 - private-reference behavior: `engine.master`;
 - runtime configuration: `engine.config`;
 - request validation and canonical table names: `engine.request_validation`;

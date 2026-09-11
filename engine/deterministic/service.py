@@ -15,7 +15,7 @@ from engine.deterministic.emitter import (
     PythonEmitter,
     SQLEmitter,
 )
-from engine.deterministic.plan import AnalysisPlan, SortedView
+from engine.deterministic.plan import AnalysisPlan, AntiJoinView, SortedView
 from engine.deterministic.runtime import (
     ExecutionMode,
     VerificationMismatch,
@@ -41,6 +41,8 @@ class DualEmission:
             "dataset_version": self.python.manifest["dataset_version"],
             "knowledgebase_release": self.python.manifest["knowledgebase_release"],
             "relationship_edges": self.python.manifest["relationship_edges"],
+            "output": self.python.manifest["output"],
+            "sections": self.python.manifest["sections"],
             "emitters": {
                 "sql": {
                     "version": self.sql.manifest["emitter_version"],
@@ -65,6 +67,10 @@ class ExecutionResult:
     fallback_reason: str | None = None
 
     def record(self) -> dict[str, object]:
+        sections = {
+            section["id"]: section
+            for section in self.emission.python.manifest["sections"]
+        }
         views = []
         for step, statement, rows in zip(
             self.emission.python.manifest["views"],
@@ -76,11 +82,19 @@ class ExecutionResult:
             suffix = str(step).removeprefix(
                 str(self.emission.python.manifest["slug"]) + "_"
             )
+            section_id = self.emission.python.manifest["view_sections"][step]
+            section = sections.get(section_id, {})
             views.append(
                 {
                     "name": step,
+                    "is_output": step == self.emission.python.manifest["output"],
                     "logical_name": suffix,
                     "op": self.emission.python.manifest["view_operations"][step],
+                    "inputs": self.emission.python.manifest["view_inputs"][step],
+                    "section": section_id,
+                    "section_label": section.get("label"),
+                    "section_question": section.get("question"),
+                    "section_inputs": section.get("inputs", []),
                     "label": suffix.replace("_", " "),
                     "sql": sql,
                     "python": self.emission.python.manifest["view_sources"].get(step, ""),
@@ -107,7 +121,11 @@ class ExecutionResult:
             "sql": self.emission.sql.record(),
             "python": self.emission.python.record(),
             "views": views,
-            "final_sql": views[-1]["sql"],
+            "final_sql": next(
+                view["sql"]
+                for view in views
+                if view["name"] == self.emission.python.manifest["output"]
+            ),
             "debug_path": str(self.debug_path) if self.debug_path is not None else None,
             "fallback_reason": self.fallback_reason,
         }
@@ -217,6 +235,9 @@ class DeterministicAnalysis:
         schema_map: Mapping[str, str | None] = {
             "conversation": self.conversation_schema
         }
+        output_index = tuple(view.name for view in self.plan.views).index(
+            str(self.plan.output)
+        )
         fallback_reason = None
         if selected is ExecutionMode.PYTHON:
             try:
@@ -235,7 +256,7 @@ class DeterministicAnalysis:
                     view_rows = materialized_python_views(
                         python_result, self.plan
                     )
-                rows = view_rows[-1]
+                rows = view_rows[output_index]
             except Exception as exc:
                 if requested is not ExecutionMode.AUTO:
                     raise
@@ -251,11 +272,11 @@ class DeterministicAnalysis:
                 selected = ExecutionMode.SQL
                 with request_timing.span("deterministic_sql"):
                     view_rows = execute_sql_views(emission.sql, bind)
-                rows = view_rows[-1]
+                rows = view_rows[output_index]
         elif selected is ExecutionMode.SQL:
             with request_timing.span("deterministic_sql"):
                 view_rows = execute_sql_views(emission.sql, bind)
-            rows = view_rows[-1]
+            rows = view_rows[output_index]
         elif selected is ExecutionMode.VERIFY:
             with request_timing.span("deterministic_python"):
                 python_result = execute_python(
@@ -275,13 +296,16 @@ class DeterministicAnalysis:
             ):
                 try:
                     assert_equivalent(
-                        python_rows, sql_rows, ordered=isinstance(step, SortedView)
+                        python_rows,
+                        sql_rows,
+                        ordered=isinstance(step, SortedView)
+                        or (isinstance(step, AntiJoinView) and bool(step.order)),
                     )
                 except VerificationMismatch as exc:
                     exc.add_note(f"deterministic view: {step.name}")
                     raise
             view_rows = sql_views
-            rows = sql_views[-1]
+            rows = sql_views[output_index]
         else:  # pragma: no cover - the enum and chooser make this unreachable
             raise AssertionError(f"unexpected execution mode: {selected}")
         return ExecutionResult(

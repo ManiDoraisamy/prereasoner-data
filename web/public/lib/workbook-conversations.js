@@ -94,6 +94,8 @@ function convSnapshot(){
     id:s.id, cls:s.cls, name:s.name, cols:s.cols||[],
     rows:s.cls==='master'?(s.rows||[]).map(r=>r.slice()):(s.rows||[]).slice(0,MAX_RENDER_ROWS),
     sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:s.cls==='master'&&!!s.dirty,
+    viewName:s.viewName||'',op:s.op||'',inputs:s.inputs||[],section:s.section||null,sectionLabel:s.sectionLabel||'',
+    sectionQuestion:s.sectionQuestion||'',sectionInputs:s.sectionInputs||[],isOutput:!!s.isOutput,
     execution:normalizedExecution(s.execution),
     cellAI:s.cls==='master'&&s.cellAI?[...s.cellAI]:undefined }));
   const refcands=REFCANDS.map(c=>({name:c.name, key:c.key, vals:(c.vals||[]).slice(0,500),   // the AVAILABLE list must survive reload so "+ Reference" persists
@@ -167,6 +169,8 @@ function restoreConvState(st){                               // render a stored 
   noteExecution(st.execution);                               // v1/v2 fallback; v3 stores provenance per sheet
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
       rows:s.rows||[], sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
+      viewName:s.viewName||'',op:s.op||'',inputs:s.inputs||[],section:s.section||null,sectionLabel:s.sectionLabel||'',
+      sectionQuestion:s.sectionQuestion||'',sectionInputs:s.sectionInputs||[],isOutput:!!s.isOutput,
       execution:restoredSheetExecution(st,s),cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});
     if(s.cls==='master'&&s.name) MSEEN.add(referenceKey(s.name,s.cols)); });   // don't let loadMaster duplicate it
   if(Array.isArray(st.refcands)){                            // AVAILABLE candidates (removed or never-shown) -> "+ Reference" persists across reload

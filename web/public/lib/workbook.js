@@ -275,10 +275,12 @@ function renderSheet(){
   h+=srcPanel(m);
   h+=renderGrid(m);
   if(m.result){                                              // E1/B2: ground the answer — link it to the rows it aggregated
-    const feeders=BOOK.filter(s=>s.cls==='deriv'&&!s.result);
-    const src=feeders[feeders.length-1];
-    if(src){ const n=(src.rows||[]).length;
-      h+='<div class=resultcap>= aggregated from <b>'+n+'</b> row'+(n===1?'':'s')+' · <button class=mlink onclick="pick(\''+src.id+'\')">view the “'+esc(dispName(src))+'” rows</button></div>'; }
+    const feeders=(m.inputs||[]).map(name=>BOOK.find(s=>s.viewName===name)).filter(Boolean);
+    const fallback=BOOK.filter(s=>s.cls==='deriv'&&!s.result).slice(-1);
+    const sources=feeders.length?feeders:fallback;
+    if(sources.length){
+      const links=sources.map(src=>'<button class=mlink onclick="pick(\''+src.id+'\')">'+esc(dispName(src))+'</button>').join(' + ');
+      h+='<div class=resultcap>= built from '+links+'</div>'; }
   }
   $('sheetcard').innerHTML=h;
 }
@@ -311,7 +313,10 @@ function srcPanel(m){
       +' that produced these rows &mdash; it was not run. '
       +'<button class=srclink onclick="verifyRerun()">Run both and compare</button></div>';
   }
-  return '<div class="sqlrow'+(SRCOPEN?' open':'')+'" id=sqlrow>'+note+body+'</div>';
+  const context=m.sectionLabel
+    ? '<div class=srccontext><span>'+esc(m.sectionLabel)+'</span><span class=srcsep>&rsaquo;</span><span>'+esc(m.desc||dispName(m))+'</span></div>'
+    : '';
+  return '<div class="sqlrow'+(SRCOPEN?' open':'')+'" id=sqlrow>'+context+note+body+'</div>';
 }
 // Re-asking is the only way to execute the other backend: an analysis revision is immutable,
 // and `use` alone never reruns history. Scoped to ONE request so the conversation is not
@@ -340,6 +345,7 @@ function renderTabs(){
   updateTabArrows();
 }
 function pick(id){ AUTO=false; ACTIVE=id; paint(); }
+function pickStep(id){ SRCOPEN=true; pick(id); }
 // Google-Sheets-style paging for the tab strip (its native scrollbar is hidden).
 function scrollTabs(d){ const t=$('tabstrip'); if(t) t.scrollBy({left:d*220,behavior:'smooth'}); }
 function updateTabArrows(){
@@ -370,10 +376,43 @@ function conv2html(t){
 // rows) would show the PRIOR turn's steps (e.g. France's world_join/world_filter) under the new question's header.
 function lineage(s){ if(!s||!s.sql)return ''; const t=[]; const re=/(?:from|join)\s+"([^"]+)"/gi; let m2;   // C1: which sheets feed this step (from its SQL)
   while((m2=re.exec(s.sql))){ const nm=m2[1]; if(!/world|meaning/i.test(nm)&&!t.includes(nm)) t.push(nm); } return t.slice(0,4).join(', '); }
-function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); return d.length?('<div class=steps>'+d.map((s,i)=>{ const lin=lineage(s);
-  return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pick(\''+s.id+'\')"><span class=idx>'+(i+1)+'</span><span class=stx>'+esc(s.desc||dispName(s))+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span></button>'; }).join('')+'</div>'):''; }
+function executionChip(s){
+  const src=sheetSource(s), text=src.ran==='both'?'PY = SQL':src.ran==='py'?'PY ran':src.ran==='sql'?'SQL ran':'';
+  return text?'<span class="stepbackend '+src.ran+'" title="Execution backend for this materialized step">'+text+'</span>':'';
+}
+function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v=>{const source=BOOK.find(x=>x.viewName===v);
+    return source?(source.section&&source.section!==s.section&&source.sectionLabel?source.sectionLabel:dispName(source)):String(v).replace(/_/g,' ');}).join(', '):lineage(s);
+  return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet and its emitted source'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pickStep(\''+s.id+'\')"><span class=idx>'+(index+1)+'</span><span class=stx>'+esc(s.desc||dispName(s))+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span>'+executionChip(s)+'</button>'; }
+function derivTree(d){
+  const bySection=new Map(), order=[];
+  d.forEach((sheet,index)=>{ if(!sheet.section)return; if(!bySection.has(sheet.section)){
+      bySection.set(sheet.section,{id:sheet.section,label:sheet.sectionLabel||sheet.section,question:sheet.sectionQuestion||'',inputs:sheet.sectionInputs||[],sheets:[]}); order.push(sheet.section); }
+    bySection.get(sheet.section).sheets.push({sheet,index}); });
+  if(!bySection.size)return '';
+  const output=(d.find(s=>s.result&&s.section)||d.slice().reverse().find(s=>s.section)||{}).section;
+  const seen=new Set();
+  const node=(id,depth)=>{ const section=bySection.get(id); if(!section)return '';
+    if(seen.has(id))return '<div class="reasonref depth'+depth+'">&uarr; '+esc(section.label)+'</div>';
+    seen.add(id);
+    const question=section.question&&section.question.toLowerCase()!==String(section.label).toLowerCase()
+      ? '<span class=branchq>'+esc(section.question)+'</span>':'';
+    const childIds=(section.inputs||[]).slice();
+    if(section.sheets.some(item=>item.sheet.op==='cross')) childIds.sort((a,b)=>{
+      const left=bySection.get(a), right=bySection.get(b);
+      return (left?left.sheets[0].index:Number.MAX_SAFE_INTEGER)-(right?right.sheets[0].index:Number.MAX_SAFE_INTEGER);
+    });
+    const children=childIds.map(source=>node(source,depth+1)).join('');
+    return '<div class="reasonnode depth'+depth+'"><div class=branchhead><span class=branchmark></span><span class=branchtxt><b>'+esc(section.label)+'</b>'+question+'</span></div>'
+      +(children?'<div class=reasonchildren>'+children+'</div>':'')
+      +'<div class=branchsteps>'+section.sheets.map(item=>stepLink(item.sheet,item.index)).join('')+'</div></div>'; };
+  let html=output?node(output,0):'';
+  order.forEach(id=>{if(!seen.has(id))html+=node(id,0);});
+  return '<div class=reasontree>'+html+'</div>';
+}
+function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); if(!d.length)return '';
+  const tree=derivTree(d); return tree||('<div class=steps>'+d.map(stepLink).join('')+'</div>'); }
 function asksLine(){ return CALLS.length?('<div class=cotask>read as '+CALLS.map(c=>'&ldquo;'+esc(c.question)+'&rdquo;').join(', ')+'</div>'):''; }
-// The chain of thought — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
+// The executable derivation tree — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
 // re-render (e.g. clicking a step to open its sheet) doesn't snap it shut.
 let COTOPEN=false;
 function cotHtml(){
@@ -383,7 +422,12 @@ function cotHtml(){
   const heading=TURN_ANALYSIS?analysisHeading(TURN_ANALYSIS):'<span class=analysisprefix>Reasoning steps</span>';
   return '<div class="cot'+(COTOPEN?' open':'')+'"><div class=cotbar><button class=cotbtn aria-label="Toggle reasoning steps" onclick="toggleCot()"><span class=cotchev>&#8250;</span></button>'+heading+'</div><div class=cotbody'+(COTOPEN?'':' hidden')+'>'+body+'</div></div>';
 }
-function toggleCot(){ COTOPEN=!COTOPEN; renderRail(); }
+function toggleCot(){ COTOPEN=!COTOPEN; renderRail();
+  if(COTOPEN){ const sc=$('rail'), tree=sc&&sc.querySelector('.cot.open'); if(tree){
+    const top=tree.getBoundingClientRect().top-sc.getBoundingClientRect().top+sc.scrollTop;
+    sc.scrollTop=Math.max(0,top-8);
+  }}
+}
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   let notice=ANALYSIS_ERROR?'<div class=analysiserror>'+esc(ANALYSIS_ERROR)+'</div>':'';
   if(VIEWED_ANALYSIS&&VIEWED_ANALYSIS.stale)
@@ -455,7 +499,9 @@ async function loadAnalysis(analysisId,revision){
       const item=Object.assign({},view,{execution:normalizedExecution(view.execution||execution)}); VIEWS.push(item);
       BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_'+index, cls:'deriv',
         name:stepLabel(item), desc:stepDesc(item), cols:item.columns||[], rows:item.rows||[],
-        sql:item.sql||'', python:item.python||'', execution:item.execution,columnProvenance:item.column_provenance||[]});
+        sql:item.sql||'', python:item.python||'', execution:item.execution,columnProvenance:item.column_provenance||[],
+        viewName:item.name||'',op:item.op||'',inputs:item.inputs||[],section:item.section||null,sectionLabel:item.section_label||'',
+        sectionQuestion:item.section_question||'',sectionInputs:item.section_inputs||[],isOutput:!!item.is_output});
     });
     if(!VIEWS.length&&answer.sql&&answer.result){
       const result=answer.result;
@@ -464,13 +510,14 @@ async function loadAnalysis(analysisId,revision){
       view.execution=execution; VIEWS.push(view);
       BOOK.push({id:'av_'+String(analysisId).slice(2,10)+'_'+revision+'_0',cls:'deriv',name:stepLabel(view),
         desc:stepDesc(view),cols:view.columns,rows:view.rows,sql:view.sql,python:view.python||'',execution,
-        columnProvenance:view.column_provenance});
+        columnProvenance:view.column_provenance,viewName:view.name||'',op:view.op||'',inputs:view.inputs||[],isOutput:true});
     }
-    const last=BOOK.filter(s=>s.cls==='deriv').pop();
-    if(last){
-      if(answer.result){ last.cols=answer.result.columns||last.cols; last.rows=answer.result.rows||last.rows;
-        last.columnProvenance=answer.result.column_provenance||last.columnProvenance||[]; }
-      last.result=true; ACTIVE=last.id;
+    const derivs=BOOK.filter(s=>s.cls==='deriv');
+    const output=derivs.find(s=>s.isOutput)||derivs[derivs.length-1];
+    if(output){
+      if(answer.result){ output.cols=answer.result.columns||output.cols; output.rows=answer.result.rows||output.rows;
+        output.columnProvenance=answer.result.column_provenance||output.columnProvenance||[]; }
+      output.result=true; ACTIVE=output.id;
     } else ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
     VIEWED_ANALYSIS=descriptor?Object.assign({},descriptor):null; ANALYSIS_ERROR=null;
     AUTO=false; STATUS=oldStatus; paint(); saveConvState();
@@ -729,7 +776,7 @@ function dropStale(){
 }
 // Short, logical step names (by op) — readable at a glance ("combined", "reference lookup", "filtered",
 // "total") instead of the engine's verbose "join orders + customers" / "where country = 'France'".
-const SHORTLBL={join:'combined',world_join:'reference lookup',world_filter:'filtered',filter:'filtered',
+const SHORTLBL={join:'combined',world_join:'reference lookup',world_filter:'filtered',filter:'filtered',cross:'candidate pairs',anti_join:'not yet matched',
   time_filter:'date filter',having:'filtered',group_agg:'total',yoy:'year-over-year',running:'running total',
   divide:'ratio',share:'share',topn:'top results',sort:'sorted'};
 function stepLabel(v){
@@ -748,6 +795,8 @@ function stepDesc(v){
   if(op==='convert'){ return 'Converted each amount at its ECB reference rate — the rate and its publication date are columns on this sheet, so the Result is just the converted column summed.'; }
   if(op==='group_agg'){ return ({count:'Counted the rows.',average:'Averaged the values.',extremes:'Found the highest and lowest values.'})[stepLabel(v)]||'Added up the values to get the total.'; }
   if(op==='topn'){ return 'Kept just the top-ranked results.'; }
+  if(op==='cross'){ return 'Built every candidate pair from the two ranked branches.'; }
+  if(op==='anti_join'){ return 'Removed pairs already present in the evidence branch.'; }
   if(op==='sort'){ return 'Sorted the results in order.'; }
   if(op==='yoy'){ return 'Computed the year-over-year change.'; }
   if(op==='running'){ return 'Computed a running (cumulative) total.'; }
@@ -774,7 +823,9 @@ function appendView(v,execution=null,executionKey=null){
   const label=stepLabel(item);                               // short logical name (never v1/step_1/b2)
   STATUS=stepStatus(item);
   addSheet({id:'v'+RUN+'_'+VIEWS.length, cls:'deriv', name:label, desc:stepDesc(item), cols:item.columns||[], rows:item.rows||[], sql:item.sql||'', python:item.python||'',
-    execution:item.execution,executionKey:item.executionKey,columnProvenance:item.column_provenance||[]});
+    execution:item.execution,executionKey:item.executionKey,columnProvenance:item.column_provenance||[],
+    viewName:item.name||'',op:item.op||'',inputs:item.inputs||[],section:item.section||null,sectionLabel:item.section_label||'',
+    sectionQuestion:item.section_question||'',sectionInputs:item.section_inputs||[],isOutput:!!item.is_output});
 }
 function appendResolve(r){
   dropStale();
@@ -791,13 +842,15 @@ function finalize(){
     const r=(J&&J.result)||{};
     appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[],column_provenance:r.column_provenance||[]},
       (J&&J.execution)||EXEC);
-  } else if(J&&J.result&&Array.isArray(J.result.rows)){       // the last view's table is the authoritative final answer
-    const lv=VIEWS[VIEWS.length-1], lm=BOOK.filter(s=>s.cls==='deriv').pop();
+  } else if(J&&J.result&&Array.isArray(J.result.rows)){       // the declared output view's table is the authoritative final answer
+    const lv=VIEWS.find(v=>v.is_output)||VIEWS[VIEWS.length-1];
+    const derivs=BOOK.filter(s=>s.cls==='deriv'), lm=derivs.find(s=>s.isOutput)||derivs[derivs.length-1];
     lv.columns=J.result.columns||lv.columns; lv.rows=J.result.rows;   // an empty result ([]) legitimately shows "no rows"
     if(lm){ lm.cols=lv.columns; lm.rows=lv.rows; }
   }
-  const last=BOOK.filter(s=>s.cls==='deriv').pop();
-  if(last){ last.result=true; if(AUTO) ACTIVE=last.id; }
+  const derivs=BOOK.filter(s=>s.cls==='deriv'), output=derivs.find(s=>s.isOutput)||derivs[derivs.length-1];
+  derivs.forEach(s=>{s.result=false;});
+  if(output){ output.result=true; if(AUTO) ACTIVE=output.id; }
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS='Answered in '+n+' step'+(n===1?'':'s');
   surfaceUnresolved();                                        // offer master-data sheets for text columns not in the world model

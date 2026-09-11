@@ -456,6 +456,42 @@ def fail_analysis(user_id, conversation_id, descriptor):
         conn.close()
 
 
+def cancel_analysis(user_id, conversation_id, descriptor):
+    """Remove an unanswered reservation used only to request decomposition.
+
+    This is not a failed execution: no executable plan existed yet. Deleting the
+    empty pending row lets the one bounded retry retain the next visible revision
+    number instead of creating a misleading failed-revision gap.
+    """
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        analysis_id = descriptor["analysis_id"]
+        cur.execute(
+            "SELECT pg_advisory_xact_lock(hashtext(%s))",
+            (f"prereasoner-conversation:{conversation_id}",),
+        )
+        _owned_analysis(cur, user_id, conversation_id, analysis_id, lock=True)
+        cur.execute(
+            'DELETE FROM "chat"."analysis_revision" '
+            'WHERE analysis_id = %s AND revision = %s AND status = %s',
+            (analysis_id, descriptor["revision"], "pending"),
+        )
+        cur.execute(
+            'SELECT latest_revision FROM "chat"."analysis" WHERE analysis_id = %s',
+            (analysis_id,),
+        )
+        row = cur.fetchone()
+        if descriptor.get("action") == "create" and row and int(row[0] or 0) == 0:
+            cur.execute('DELETE FROM "chat"."analysis" WHERE analysis_id = %s', (analysis_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def list_analyses(user_id, conversation_id):
     """Return the compact, authoritative catalog supplied to the orchestrator."""
     if not _ID_RE.fullmatch(conversation_id or ""):

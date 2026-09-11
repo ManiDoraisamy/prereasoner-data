@@ -195,6 +195,44 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
         except RequestValidationError:
             pass
 
+
+def test_decomposition_request_is_closed_bounded_and_fully_connected():
+    proposal = {
+        "subquestions": [
+            {"id": "products", "question": "top 3 products by quantity"},
+            {"id": "customers", "question": "top 2 customers by spend"},
+        ],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["customers", "products"]},
+        ],
+        "output": "pairs",
+        "grain": "one customer-product pair",
+    }
+    request = {
+        "question": "promotion gaps", "tables": [],
+        "analysis": {"action": "create", "slug": "promotion_gaps"},
+        "decomposition": proposal,
+    }
+    normalized = validate_reason_request(request)
+    assert normalized["decomposition"]["merges"][0]["inputs"] == (
+        "customers", "products",
+    )
+
+    for bad in (
+        {**proposal, "sql": "SELECT * FROM secrets"},
+        {**proposal, "subquestions": proposal["subquestions"] + [
+            {"id": "unused", "question": "unrelated totals"},
+        ]},
+        {**proposal, "merges": [
+            {"id": "pairs", "op": "join", "inputs": ["customers", "products"]},
+        ]},
+    ):
+        try:
+            validate_reason_request({**request, "decomposition": bad})
+            raise AssertionError("unsafe decomposition was accepted")
+        except RequestValidationError:
+            pass
+
     for body in (
         {"message": "x", "tables": [{"name": 0, "data": "a\n1"}]},
         {"message": "x", "tables": [{"name": "data", "data": 0}]},
@@ -282,6 +320,7 @@ TESTS = [
     test_chat_validation_normalizes_and_bounds_inputs,
     test_table_names_are_canonical_bounded_and_unique_at_every_boundary,
     test_reason_validation_rejects_unbounded_or_invalid_fields,
+    test_decomposition_request_is_closed_bounded_and_fully_connected,
     test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
     test_shared_request_gate_releases_capacity_and_limits_rate,
     test_distributed_paid_budget_is_atomic_and_releases_lease,

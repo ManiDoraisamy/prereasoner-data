@@ -182,6 +182,12 @@ def validate_reason_request(req: object) -> dict:
     normalized["use"] = validate_execution_use(req.get("use"))
     normalized["dataset_ops"] = _validate_dataset_ops_shape(req.get("dataset_ops"))
     try:
+        from engine.decomposition import DecompositionError, validate_decomposition
+
+        normalized["decomposition"] = validate_decomposition(req.get("decomposition"))
+    except DecompositionError as exc:
+        raise RequestValidationError(str(exc)) from exc
+    try:
         normalized["analysis"] = validate_analysis_spec(req.get("analysis"))
     except AnalysisError as exc:
         raise RequestValidationError(str(exc)) from exc

@@ -111,6 +111,41 @@ class View(Generic[T]):
             self.row_limit,
         )
 
+    def cross(
+        self,
+        name: str,
+        other: View[U],
+        construct: Callable[[T, U], A],
+    ) -> View[A]:
+        """CROSS JOIN with a hard materialization bound."""
+        materialized = []
+        for left in self.rows:
+            for right in other.rows:
+                self._append_bounded(
+                    materialized, construct(left, right), name, self.row_limit
+                )
+        return View(name, tuple(materialized), self.row_limit)
+
+    def anti_join(
+        self,
+        name: str,
+        other: View[U],
+        left_key: Callable[[T], tuple[object, ...]],
+        right_key: Callable[[U], tuple[object, ...]],
+    ) -> View[T]:
+        """SQL ``NOT EXISTS`` equality semantics, including non-matching NULL keys."""
+        blocked = {
+            key
+            for row in other.rows
+            if (key := right_key(row)) and all(value is not None for value in key)
+        }
+
+        def keep(row: T) -> bool:
+            key = left_key(row)
+            return any(value is None for value in key) or key not in blocked
+
+        return self.filter(name, keep)
+
     def reduce(
         self,
         name: str,

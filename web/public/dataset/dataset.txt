@@ -1,3 +1,5 @@
+complex-category-gaps: https://chat.prereasoner.com/?load=complex-category-gaps
+complex-promotions: https://chat.prereasoner.com/?load=complex-promotions
 customer-orders: https://chat.prereasoner.com/?load=customer-orders
 customers-orders: https://chat.prereasoner.com/?load=customers-orders
 formesign-contracts: https://chat.prereasoner.com/?load=formesign-contracts

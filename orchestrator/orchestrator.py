@@ -25,6 +25,7 @@ from anthropic import AsyncAnthropic
 
 from engine import dataset_attestation, request_timing
 from engine.analysis import AnalysisError, validate_analysis_spec
+from engine.decomposition import DecompositionError, validate_decomposition
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
@@ -53,6 +54,49 @@ CLAUDE_TOOLS = [
                                    "all requested joins, filters, grouping, conversions, and calculations "
                                    "in this single call, e.g. 'total amount in France in US dollars after "
                                    "the customer tier discount'.",
+                },
+                "decomposition": {
+                    "type": "object",
+                    "description": "Use only after the engine returns status=decompose. Split the "
+                                   "same question into planner-readable natural-language leaves and "
+                                   "combine their relation outputs with the closed merge grammar. "
+                                   "Never name tables, columns, keys, SQL, or Python.",
+                    "properties": {
+                        "subquestions": {
+                            "type": "array", "minItems": 2, "maxItems": 4,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "question": {"type": "string"},
+                                    "label": {"type": "string"},
+                                },
+                                "required": ["id", "question"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "merges": {
+                            "type": "array", "minItems": 1, "maxItems": 4,
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "op": {"type": "string", "enum": ["cross", "anti_join"]},
+                                    "inputs": {
+                                        "type": "array", "minItems": 2, "maxItems": 2,
+                                        "items": {"type": "string"},
+                                    },
+                                    "label": {"type": "string"},
+                                },
+                                "required": ["id", "op", "inputs"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "output": {"type": "string"},
+                        "grain": {"type": "string"},
+                    },
+                    "required": ["subquestions", "merges", "output", "grain"],
+                    "additionalProperties": False,
                 },
                 "dataset_ops": {
                     "type": "array",
@@ -136,6 +180,8 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
         out["error"] = shaped["error"]
     if shaped.get("analysis") is not None:
         out["analysis"] = shaped["analysis"]
+    if shaped.get("decomposition_required") is not None:
+        out["decomposition_required"] = shaped["decomposition_required"]
     return out
 
 
@@ -204,6 +250,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     `emit` is best-effort (a no-op when RTDB is unset) — streaming must never break the answer."""
     traces: list[dict[str, Any]] = []
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
+    decomposition_attempted = False
+    pending_decomposition: dict[str, Any] | None = None
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
     def _emit(node, value):
@@ -279,13 +327,26 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
 
                 tool_results = []
                 terminal_query = None
+                round_query_seen = False
                 for block in resp.content:
                     if block.type != "tool_use":
                         continue
                     if block.name == "prereasoner_query":
+                        if round_query_seen:
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": block.id,
+                                "content": json.dumps({
+                                    "status": "error",
+                                    "error": "only one data query is allowed per model round",
+                                }),
+                                "is_error": True,
+                            })
+                            continue
+                        round_query_seen = True
                         # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
                         question = (block.input or {}).get("question", "")
+                        decomposition = (block.input or {}).get("decomposition")
                         # The system prompt (rules 3-4) owns question fidelity: a standalone question is
                         # passed in the user's exact words, and a follow-up rewrite carries every
                         # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
@@ -314,12 +375,83 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 "is_error": True,
                             })
                             continue
+                        identity = {"question": question, "analysis": analysis_spec}
+                        if pending_decomposition is not None and decomposition is None:
+                            decomposition_attempted = True
+                            clarification = {
+                                "status": "clarify",
+                                "clarify": {"reason": "the decomposition retry was missing its branch proposal"},
+                            }
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": block.id,
+                                "content": json.dumps(clarification),
+                            })
+                            terminal_query = clarification
+                            continue
+                        if decomposition is not None:
+                            if pending_decomposition is None:
+                                failure = {
+                                    "status": "error",
+                                    "error": "decomposition is allowed only after status=decompose",
+                                }
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(failure),
+                                    "is_error": True,
+                                })
+                                terminal_query = failure
+                                continue
+                            if decomposition_attempted:
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps({
+                                        "status": "clarify",
+                                        "clarify": {"reason": "the bounded decomposition attempt was already used"},
+                                    }),
+                                })
+                                terminal_query = {
+                                    "status": "clarify",
+                                    "clarify": {"reason": "I need a more specific question to continue."},
+                                }
+                                continue
+                            if identity != pending_decomposition:
+                                decomposition_attempted = True
+                                clarification = {
+                                    "status": "clarify",
+                                    "clarify": {"reason": "the decomposition retry changed the original analysis request"},
+                                }
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(clarification),
+                                })
+                                terminal_query = clarification
+                                continue
+                            decomposition_attempted = True
+                            try:
+                                decomposition = validate_decomposition(decomposition)
+                            except DecompositionError as exc:
+                                clarification = {
+                                    "status": "clarify",
+                                    "clarify": {"reason": str(exc)},
+                                }
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(clarification),
+                                })
+                                terminal_query = clarification
+                                continue
+                            # The first engine call already authenticated and persisted any
+                            # conversation-stated dataset semantics. Replaying those mutation
+                            # ops on the decomposition retry would append the same event twice.
+                            dataset_ops = None
+                            quotes_verified = False
                         attestation = (dataset_attestation.sign(principal, dataset_ops)
                                        if quotes_verified else None)
                         print(f"[chat] tool_call={call_idx} question_chars={len(question)} "
                               f"ops={len(dataset_ops or [])}", flush=True)
                         _emit(f"calls/{call_idx}", {
                             "jobId": job_id, "question": question, "analysis": analysis_spec,
+                            "decomposition": decomposition,
                         })
                         call_idx += 1
                         # The caller's token is passed EXPLICITLY per call. It used to travel as
@@ -332,6 +464,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 request_id=job_id, client=http, dataset_ops=dataset_ops,
                                 dataset_attestation=attestation,
                                 analysis=analysis_spec,
+                                decomposition=decomposition,
                                 use=use,
                             )
                         if not conv and shaped.get("conversation_id"):
@@ -340,6 +473,14 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                                               # turn node on 'status:done' (workbook settle()), so the
                                                               # post-'done' emit below would be MISSED: no URL, no snapshot save
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                        if shaped.get("status") == "decompose":
+                            if decomposition_attempted:
+                                shaped = {
+                                    "status": "clarify",
+                                    "clarify": {"reason": "the decomposed leaves still could not be lowered"},
+                                }
+                            else:
+                                pending_decomposition = identity
                         if shaped.get("status") in {"answered", "clarify", "error"}:
                             terminal_query = shaped
                         tool_results.append({

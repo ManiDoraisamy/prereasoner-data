@@ -43,6 +43,7 @@ Extend these owners. Do not build parallel replacements.
 |---|---|
 | Own-data typed SQL AST and rendering | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
 | Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
+| Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery._serve_ast` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |

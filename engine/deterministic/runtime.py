@@ -134,7 +134,9 @@ def execute_sql(
     program: GeneratedSQL, bind: Engine | Connection
 ) -> tuple[dict[str, object], ...]:
     """Execute the emitted SQL view stack and return its final materialized view."""
-    return execute_sql_views(program, bind)[-1]
+    views = tuple(str(name) for name in program.manifest["views"])
+    output = str(program.manifest.get("output") or views[-1])
+    return execute_sql_views(program, bind)[views.index(output)]
 
 
 def execute_sql_views(

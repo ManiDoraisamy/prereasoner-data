@@ -52,6 +52,7 @@ verification. See the execution contract for the transient direct-request slug a
 `prereasoner_query` normalizes engine responses into one of:
 
 - `answered`: result rows, SQL, views, and trace metadata;
+- `decompose`: a non-terminal request for one bounded semantic split; no answer rows are returned;
 - `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.
 
@@ -68,6 +69,11 @@ the browser fallback; adapters must not reduce it to a generic rephrase message.
 The orchestrator calls the query tool when a response needs a fact derived from user data. It can answer greetings or
 explain the interface without a tool call. One user data question is sent as one complete engine query; joins,
 reference lookups, filters, grouping, conversion, and arithmetic are steps inside that query, not separate tool calls.
+There is one exception after deterministic evidence: if the engine returns `decompose`, the orchestrator may call
+the same question/action/slug once more with two to four natural-language leaves and a closed
+`cross`/`anti_join` graph. Runtime guards reject proactive decomposition, changed analysis request identity, dead nodes,
+unbounded Cartesian products, and a second retry. The engine plans every leaf and emits the final SQL/Python DAG;
+the model never supplies identifiers, code, merge keys, or intermediate result rows.
 Short follow-ups that name a data value, such as `how about Belgium?`, are still data questions even when they
 repeat the current value: the orchestrator rewrites them into a complete query and calls the engine again. It must
 not replace a numeric answer with a conversational confirmation.

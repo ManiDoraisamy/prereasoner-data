@@ -700,6 +700,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         res = verify_nonempty(
             EntityQuery.serve(self, tables, question, as_of=as_of, schema=schema,
                               explicit_fks=explicit_fks, dataset_semantics=dataset_semantics), question)
+        if isinstance(res, dict) and res.get("decomposition_required"):
+            return {
+                "question": question,
+                "as_of": as_of,
+                "clarify": True,
+                "decomposition_required": res["decomposition_required"],
+                "model": "engine - typed AST decomposition requested",
+            }
         if isinstance(res, dict) and res.get("clarify"):
             return res
         calculations = tuple((res or {}).get("calculations") or ()) if isinstance(res, dict) else ()

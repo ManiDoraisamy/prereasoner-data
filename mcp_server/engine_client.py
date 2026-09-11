@@ -5,7 +5,7 @@ subprocess: `shape_reason_response(...)` is a pure function over the engine's JS
 is the only thing that touches the network.
 
 Contract reference (docs/MCP.md): the engine's /api/reason body is NOT one fixed shape. We map
-it to a stable tool output whose `status` is one of "answered" | "clarify" | "error" — a mapping WE
+it to a stable tool output whose `status` is one of "answered" | "decompose" | "clarify" | "error" — a mapping WE
 compute (the engine has no top-level `status` field).
 """
 from __future__ import annotations
@@ -38,7 +38,9 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
     j = engine_json if isinstance(engine_json, dict) else {}
 
     # Status mapping (engine has no `status` field; derive it).
-    if j.get("clarify") is True:
+    if j.get("decomposition_required"):
+        status = "decompose"
+    elif j.get("clarify") is True:
         status = "clarify"
     elif j.get("error"):  # `error` as a field (guard/exec) OR a top-level {"error": ...} rejection body
         status = "error"
@@ -60,13 +62,18 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
         if j.get("views") is not None:
             out["views"] = j.get("views")           # the reasoning stack the player renders
         for k in ("meaning_join", "provenance", "warnings", "as_of", "reference",
-                  "dataset_semantics", "analysis", "deterministic"):
+                  "dataset_semantics", "analysis", "deterministic", "decomposition"):
             if j.get(k) is not None:
                 out[k] = j.get(k)
         # trace coordinates: the browser knows its own uid; we return the jobId the engine streamed under.
         out["trace"] = {"jobId": job_id}
         if j.get("conversation_id"):
             out["conversation_id"] = j["conversation_id"]    # so the orchestrator reuses ONE conversation for the whole session (no per-call minting)
+    elif status == "decompose":
+        out["decomposition_required"] = j["decomposition_required"]
+        out["trace"] = {"jobId": job_id}
+        if j.get("conversation_id"):
+            out["conversation_id"] = j["conversation_id"]
     elif status == "clarify":
         out["clarify"] = {k: j.get(k) for k in (
             "proposed", "dropped", "bindings", "original_sql", "reason", "unmet",
@@ -116,6 +123,7 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
                      dataset_ops: list[dict] | None = None,
                      dataset_attestation: str | None = None,
                      analysis: dict[str, Any] | None = None,
+                     decomposition: dict[str, Any] | None = None,
                      use: str | None = None) -> dict[str, Any]:
     """POST the question + inline tables to the engine's /api/reason and return the shaped tool output.
 
@@ -136,6 +144,8 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         body["dataset_ops"] = dataset_ops        # conversation-stated measure metadata (docs/DATASET_FORMATTER.md)
     if analysis:
         body["analysis"] = analysis
+    if decomposition:
+        body["decomposition"] = decomposition
     if use:
         body["use"] = use
     try:

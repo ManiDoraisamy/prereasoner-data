@@ -1,0 +1,4 @@
+# Complex-query expectations are JSON row sets derived directly from the CSVs.
+# Each question is sent in order in the same conversation after prompt.txt.
+chat: Find the top 3 categories by revenue and the top 3 customers by total spend, then list each customer-category pair where that customer has never bought from that category. Order customers by spend descending and categories by revenue descending. => [["Cleo","Home"],["Ava","Travel"],["Ava","Home"],["Ben","Office"],["Ben","Travel"]]
+chat: only use the top 2 customers => [["Cleo","Home"],["Ava","Travel"],["Ava","Home"]]

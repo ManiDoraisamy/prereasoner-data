@@ -246,6 +246,8 @@ body.app{background:#fff}
    generated from the same plan — so this is a statement of provenance, not a warning. */
 .srcnote{margin:0 0 8px;font:12px var(--disp);color:var(--card-ink-dim);line-height:1.5}
 .srcnote.ok{color:#0891b2}
+.srccontext{display:flex;align-items:center;gap:6px;margin:0 0 7px;color:#70668b;font:600 10.5px var(--mono)}
+.srcsep{color:#b0a8c8}
 .srclink{all:unset;cursor:pointer;color:var(--brand);font:600 12px var(--disp);text-decoration:underline}
 .srclink:hover{color:var(--brand-deep)}
 .sheetscroll{flex:1;min-height:0;overflow:auto}
@@ -294,6 +296,19 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .cotbody .steplink{align-items:flex-start}
 .cotbody .steplink .stx{white-space:normal;overflow:visible;line-height:1.45}
 .cotbody .steplink .idx{margin-top:1px}
+.reasontree{display:flex;flex-direction:column;gap:5px;margin-top:8px}
+.reasonnode{position:relative;min-width:0}
+.branchhead{display:flex;align-items:flex-start;gap:7px;padding:4px 2px;color:#51486b;font:12.5px/1.35 var(--disp)}
+.branchmark{width:7px;height:7px;margin-top:5px;border-radius:50%;background:#8f7bf2;box-shadow:0 0 0 3px #f0ecfd;flex:0 0 auto}
+.branchtxt{display:flex;flex-direction:column;min-width:0}
+.branchtxt b{font-weight:650;color:#4b4167}
+.branchq{margin-top:1px;color:#8b829e;font-size:11.5px}
+.reasonchildren{display:flex;flex-direction:column;gap:3px;margin-left:5px;padding-left:11px;border-left:1px solid #ddd5f4}
+.branchsteps{display:flex;flex-direction:column;gap:4px;margin:2px 0 4px 14px}
+.reasonchildren .branchsteps{margin-left:13px}
+.reasonref{margin:2px 0 2px 17px;color:#9389aa;font:11px var(--disp)}
+.stepbackend{align-self:flex-start;flex:0 0 auto;margin-top:1px;padding:2px 5px;border-radius:5px;background:#f1edfc;color:#6756b7;font:700 8.5px var(--mono);letter-spacing:.15px;white-space:nowrap}
+.stepbackend.both{background:#e7f7fa;color:#087e98}
 .resultline{margin-top:12px;padding:12px 14px;border-radius:11px;background:#eee9fc;border:1px solid #ddd4f5}
 .resultline .rk{font:600 9.5px var(--mono);letter-spacing:1.3px;text-transform:uppercase;color:var(--brand);margin-bottom:4px}
 .resultline .rv{font:600 22px var(--disp);color:var(--card-ink);letter-spacing:-.4px;word-break:break-word}

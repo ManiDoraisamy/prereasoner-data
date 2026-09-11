@@ -294,7 +294,12 @@ class _TableQueryPg(TableQuery):
                 mode=context.execution_mode or deterministic_execution_mode(),
                 estimated_rows=sum(
                     len(tablemap[name].get("rows") or ())
-                    for name in plan.views[0].tables
+                    for name in {
+                        table_name
+                        for view in plan.views
+                        if hasattr(view, "tables")
+                        for table_name in view.tables
+                    }
                     if name in tablemap
                 ),
                 python_row_limit=deterministic_python_row_limit(),
@@ -304,13 +309,10 @@ class _TableQueryPg(TableQuery):
                 revision=context.revision,
             )
             set_execution_record(result.record())
-            final_view = plan.views[-1]
             if result.rows:
                 columns = list(result.rows[0])
-            elif hasattr(final_view, "aggregates"):
-                columns = [value.name for value in final_view.group_by + final_view.aggregates]
             else:
-                columns = [value.name for value in final_view.values]
+                columns = list(plan.view_columns()[str(plan.output)])
             rows = [tuple(row.get(column) for column in columns) for row in result.rows]
             return columns, rows
         finally:

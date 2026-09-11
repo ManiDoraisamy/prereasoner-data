@@ -174,6 +174,42 @@ test('verify mode offers a Python/SQL picker over the same proven stages',async(
   expect(requestsAfter).toBe(requestsBefore);          // switching language must not re-execute
 });
 
+test('a complex eval renders one nested dependency tree with stage-aligned Python and SQL',async({page})=>{
+  await mockAuth(page,'1');
+  await page.goto('/?load=complex-promotions&use=both');
+  await expect(page.locator('.chip .nm')).toHaveCount(4);
+  await page.locator('#q').fill('Find the top 3 products by units sold and top 2 customers by spend, then list the top-customer/product pairs those customers are not buying.');
+  await page.getByRole('button',{name:'Ask'}).click();
+
+  await expect(page.locator('.wb.result tbody')).toContainText('Cara');
+  await expect(page.locator('.wb.result tbody')).toContainText('Beta');
+  await page.locator('.cotbtn').last().click();
+  const tree=page.locator('.reasontree');
+  await expect(tree).toBeVisible();
+  await expect(tree.locator('.branchhead b').first()).toBeInViewport();
+  await expect(tree.locator('.branchhead b')).toHaveText([
+    'Promotion gaps','Candidate pairs','Top selling products','Top buying customers','Existing purchases',
+  ]);
+  await expect(tree.locator('.steplink')).toHaveCount(10);
+  await expect(tree.locator('.stepbackend')).toHaveCount(10);
+  await expect(tree.locator('.stepbackend')).toHaveText(Array(10).fill('PY = SQL'));
+  const root=tree.locator('.reasonnode').first();
+  const rootChildren=root.locator(':scope > .reasonchildren > .reasonnode');
+  await expect(rootChildren).toHaveCount(2);
+  await expect(rootChildren.first().locator('.branchhead b').first()).toHaveText('Candidate pairs');
+  await expect(rootChildren.nth(1).locator('.branchhead b').first()).toHaveText('Existing purchases');
+
+  await root.locator(':scope > .branchsteps > .steplink').click();
+  await expect(page.locator('#sqlrow')).toBeVisible();
+  const picker=page.locator('select.srcsel');
+  await expect(picker.locator('option[value="py"]')).toHaveText(/Python . ran/);
+  await expect(picker.locator('option[value="sql"]')).toHaveText(/SQL . ran/);
+  await expect(page.locator('#sqlrow .srccontext')).toContainText('Promotion gaps');
+  await expect(page.locator('#sqlrow .vpy')).toContainText('anti_join');
+  await picker.selectOption('sql');
+  await expect(page.locator('#sqlrow .vsql')).toContainText('NOTEXISTS');
+});
+
 test('an orchestrated turn keeps backend provenance per engine call',async({page})=>{
   await mockAuth(page,'1');
   await page.route('**/chat',async route=>{

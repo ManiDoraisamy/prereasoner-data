@@ -49,7 +49,7 @@ These require the manifest-pinned runtime artifacts and a seeded PostgreSQL know
 | `python -m tests.test_datasets` | Every public demo workbook and its shipped prompt |
 
 `test_datasets` discovers the workbooks under `web/public/dataset/` and requires one verified
-expectation for each directory. It covers the current 12 demos across own-data aggregates,
+expectation for each directory. It covers the current 15 demos across own-data aggregates,
 joined discount and commission calculations, Wikidata-backed hospital/restaurant/bank joins,
 country/continent joins, and ECB conversion.
 Do not add a public demo until its source rows, routing path, expected result, and live regression

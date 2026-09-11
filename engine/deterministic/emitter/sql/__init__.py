@@ -13,10 +13,12 @@ from types import MappingProxyType
 from engine.deterministic.plan import (
     AggregateValue,
     AnalysisPlan,
+    AntiJoinView,
     BinaryValue,
     CalculatedView,
     ColumnValue,
     CombinedView,
+    CrossView,
     EnrichedView,
     FilteredView,
     FunctionValue,
@@ -66,7 +68,7 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
@@ -79,21 +81,57 @@ class SQLEmitter:
         knowledgebase_release: str | None = None,
     ) -> GeneratedSQL:
         statements = []
-        available_tables: set[str] = set()
-        available_values: set[str] = set()
+        tables_by_view: dict[str, set[str]] = {}
+        values_by_view: dict[str, set[str]] = {}
+        columns_by_view = plan.view_columns()
         for view in plan.views:
             if isinstance(view, CombinedView):
                 sql, available_tables = self._combined(plan, view)
                 available_values = set()
+            elif isinstance(view, CrossView):
+                left = columns_by_view[view.left]
+                selected = [f"l.{_q(name)} AS {_q(name)}" for name in left]
+                selected.extend(
+                    f"r.{_q(name)} AS {_q(view.right_prefix + name if name in left else name)}"
+                    for name in columns_by_view[view.right]
+                )
+                sql = (
+                    f"SELECT {', '.join(selected)} FROM {_q(view.left)} l "
+                    f"CROSS JOIN {_q(view.right)} r"
+                )
+                available_tables = set()
+                available_values = set(columns_by_view[view.name])
+            elif isinstance(view, AntiJoinView):
+                comparisons = " AND ".join(
+                    f"r.{_q(key.right)} = l.{_q(key.left)}" for key in view.keys
+                )
+                sql = (
+                    f"SELECT l.* FROM {_q(view.left)} l WHERE NOT EXISTS "
+                    f"(SELECT 1 FROM {_q(view.right)} r WHERE {comparisons})"
+                )
+                available_tables = set()
+                available_values = set(columns_by_view[view.name])
+                if view.order:
+                    sql += " ORDER BY " + ", ".join(
+                        f"{self._value(item.value, available_tables, available_values)} "
+                        f"{'DESC' if item.descending else 'ASC'} NULLS LAST"
+                        for item in view.order
+                    )
             elif isinstance(view, EnrichedView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 sql, added = self._enriched(plan, view, available_tables)
                 available_tables |= added
             elif isinstance(view, FilteredView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 predicate = self._predicate(
                     view.predicate, available_tables, available_values
                 )
                 sql = f"SELECT * FROM {_q(view.source)} WHERE {predicate}"
             elif isinstance(view, CalculatedView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 selected = ", ".join(
                     f"{self._value(item.value, available_tables, available_values)} AS {_q(item.name)}"
                     for item in view.values
@@ -101,6 +139,8 @@ class SQLEmitter:
                 sql = f"SELECT {_q(view.source)}.*, {selected} FROM {_q(view.source)}"
                 available_values |= {item.name for item in view.values}
             elif isinstance(view, ProjectedView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 selected = ", ".join(
                     f"{self._value(item.value, available_tables, available_values)} AS {_q(item.name)}"
                     for item in view.values
@@ -109,12 +149,16 @@ class SQLEmitter:
                 available_tables = set()
                 available_values = {item.name for item in view.values}
             elif isinstance(view, ReducedView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 sql = self._reduced(view, available_tables, available_values)
                 available_tables = set()
                 available_values = {item.name for item in view.group_by} | {
                     item.name for item in view.aggregates
                 }
             elif isinstance(view, SortedView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 order = ", ".join(
                     f"{self._value(item.value, available_tables, available_values)} {'DESC' if item.descending else 'ASC'} NULLS LAST"
                     for item in view.order
@@ -123,11 +167,15 @@ class SQLEmitter:
                 if view.limit is not None:
                     sql += f" LIMIT {view.limit}"
             elif isinstance(view, WindowView):
+                available_tables = set(tables_by_view[view.source])
+                available_values = set(values_by_view[view.source])
                 sql = self._window(view, available_tables, available_values)
                 available_values.add(view.output)
             else:
                 raise TypeError(f"unsupported SQL view: {type(view).__name__}")
             statements.append(f"CREATE TEMP VIEW {_q(view.name)} AS {sql}")
+            tables_by_view[view.name] = set(available_tables)
+            values_by_view[view.name] = set(available_values)
         return GeneratedSQL(
             tuple(statements),
             {
@@ -137,10 +185,25 @@ class SQLEmitter:
                 "dataset_version": dataset_version,
                 "knowledgebase_release": knowledgebase_release,
                 "views": [view.name for view in plan.views],
+                "output": plan.output,
                 "view_columns": {
                     name: list(columns) for name, columns in plan.view_columns().items()
                 },
                 "view_operations": plan.view_operations(),
+                "view_inputs": {
+                    name: list(inputs) for name, inputs in plan.view_inputs().items()
+                },
+                "view_sections": plan.view_sections(),
+                "sections": [
+                    {
+                        "id": section.id,
+                        "label": section.label,
+                        "question": section.question,
+                        "views": list(section.views),
+                        "inputs": list(section.inputs),
+                    }
+                    for section in plan.sections
+                ],
             },
         )
 
