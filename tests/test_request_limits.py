@@ -214,9 +214,12 @@ def test_decomposition_request_is_closed_bounded_and_fully_connected():
         "decomposition": proposal,
     }
     normalized = validate_reason_request(request)
-    assert normalized["decomposition"]["merges"][0]["inputs"] == (
+    # The validator returns JSON-safe normalized values.  Internal dependency
+    # sets may use tuples, but the request boundary must remain list-shaped so
+    # the normalized request can be serialized and sent back through the API.
+    assert normalized["decomposition"]["merges"][0]["inputs"] == [
         "customers", "products",
-    )
+    ]
 
     for bad in (
         {**proposal, "sql": "SELECT * FROM secrets"},
