@@ -231,11 +231,15 @@ The Spider runner extends the existing denotation evaluator with
 `--backend sql|python|auto|verify`, `--python-row-limit`, and `--scalar-only`. Candidate planning and
 ranking are unchanged. Generated Python executes the selected typed AST on a separate in-memory
 SQLite database; gold SQL still executes independently and correctness still uses
-`spider.probe.spider_eval.compare`. Evaluator `auto` GRADES the Python rows whenever the selected
-candidate lowered and executed, and records strict Python/selected-SQL equality alongside; `verify`
-additionally requires that equality. Because `auto` grades Python, a Python-only defect moves scalar
-accuracy away from the SQL baseline — that is the signal, not a measurement artifact. Thus Python coverage and scalar-gold accuracy are additional fields in the same
-evaluation artifact, not a separate correctness definition.
+`spider.probe.spider_eval.compare`. Evaluator `auto` executes both arms and GRADES the Python rows
+only when they strictly equal the selected SQL; on disagreement the selected SQL answer stands and
+the divergence is recorded as a fallback with its reason. Data can legitimately underdetermine an
+answer — an `ORDER BY ... LIMIT` cutoff that ties lets each backend return a different, equally valid
+row — and `auto` must not let the plan's deterministic tie-break silently replace the system's
+canonical answer. `verify` still fails hard on any inequality, so a real Python defect surfaces in
+both modes: as a hard failure under `verify` and as a nonzero divergence count under `auto`. Thus
+Python coverage and scalar-gold accuracy are additional fields in the same evaluation artifact, not a
+separate correctness definition.
 
 SQLite is a hermetic test backend. Its native numeric storage and arithmetic are not PostgreSQL
 NUMERIC. Passing simple SQLite fixtures does not validate arbitrary fractional PostgreSQL arithmetic;

@@ -625,9 +625,14 @@ class ComposedKnowledgeQuery:
             inferred_fks,
             decomposition,
         )
-        self.qw._pg_schema = sub
+        # Execute through the own-data PG executor (q11): it uploads the normalized
+        # tables into the conversation schema and routes the plan to the ONE
+        # deterministic executor. TableQuery.execute is the hermetic SQLite arm and
+        # ignores `deterministic_plan`, so calling it here ran an empty statement —
+        # every live decomposition failed while the SQLite-backed suite passed.
+        self.qw.q11._pg_schema = sub
         tablemap = {table["name"]: table for table in norm}
-        columns, rows = self.qw.execute(
+        columns, rows = self.qw.q11.execute(
             tablemap, schema, "", deterministic_plan=plan
         )
         record = current_execution_record()

@@ -51,6 +51,7 @@ from engine.sql_ast import (
     Comparison,
     Join,
     Literal,
+    OrderTerm,
     SelectItem,
     SelectQuery,
     SQLType,
@@ -748,6 +749,80 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
     assert evaluated["rows"] == [[30]]
     assert evaluated["execution_backend_actual"] == "python"
     assert evaluated["python_sql_equal"] is True
+
+
+def test_auto_keeps_the_selected_sql_answer_when_a_limit_cutoff_ties():
+    """A LIMIT that cuts through tied rows underdetermines the answer. The selected SQL's
+    engine-arbitrary pick is the system's canonical answer, so evaluator `auto` must not
+    let the plan's deterministic tie-break silently replace it — that flipped a Spider
+    scalar (224 -> 223) the first time ordered top-N lowering shipped. The divergence
+    stays on the record; `verify` still fails hard."""
+    from engine.sql_candidate import ScoredQuery
+    from spider.probe.full_eval import ast_predict
+
+    tables = [
+        {
+            "name": "courses",
+            "columns": ["course_id", "course_name"],
+            "rows": [[1, "rs"], [2, "ai"]],
+        }
+    ]
+    schema = [
+        {"table": "courses", "name": "course_id", "affinity": "INTEGER", "values": [1, 2]},
+        {"table": "courses", "name": "course_name", "affinity": "TEXT", "values": ["rs", "ai"]},
+    ]
+    name = ColumnRef("courses", "course_name", SQLType.TEXT)
+    query = SelectQuery(
+        (
+            SelectItem(name, "course_name"),
+            SelectItem(Aggregate("COUNT", Star()), "total"),
+        ),
+        "courses",
+        group_by=(name,),
+        order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),),
+        limit=1,
+    )
+    candidate = ScoredQuery(
+        query,
+        'SELECT course_name, COUNT(*) FROM courses GROUP BY course_name '
+        "ORDER BY COUNT(*) DESC LIMIT 1",
+        1,
+        (),
+    )
+
+    class TiedEncoder:
+        def ingest(self, input_tables):
+            return input_tables, ()
+
+        def schema(self, _tables, _foreign_keys):
+            return schema, {}, {}
+
+        def search_ast(self, *_args, **_kwargs):
+            return [candidate]
+
+        def guard(self, _sql):
+            return True, None
+
+        def execute(self, _table_map, _schema, _sql):
+            # The engine-arbitrary pick: the OTHER tie member than the plan's
+            # deterministic tie-break would choose.
+            return ["course_name", "total"], [("rs", 1)]
+
+    evaluated = ast_predict(
+        TiedEncoder(), tables, "course with most enrollments",
+        schema_fks=(), execution_backend="auto", python_row_limit=10_000,
+    )
+    assert evaluated["ok"] is True
+    assert evaluated["rows"] == [["rs", 1]]                 # the selected SQL answer stands
+    assert evaluated["execution_backend_actual"] == "sql"
+    assert evaluated["python_sql_equal"] is False           # the divergence is recorded
+    assert "tie" in evaluated["python_fallback_reason"]
+
+    verified = ast_predict(
+        TiedEncoder(), tables, "course with most enrollments",
+        schema_fks=(), execution_backend="verify", python_row_limit=10_000,
+    )
+    assert verified["ok"] is False                          # verify never papers over it
 
 
 def test_lowering_uses_the_joined_relationship_when_two_edges_share_tables():
