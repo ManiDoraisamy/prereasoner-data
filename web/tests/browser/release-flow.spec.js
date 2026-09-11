@@ -73,7 +73,8 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   // <table>__<column> wire alias never reaches the user. aria-label keeps the kind readable.
   await expect(page.locator('.provemoji')).toHaveText(['\u{1F4C4}','\u{1F4B1}','\u{1F9EE}']);
   await expect(page.locator('.provemoji').first()).toHaveAttribute('aria-label',/uploaded data/);
-  await expect(page.locator('th').filter({hasText:'rate_to_usd'}).locator('.tabtag')).toHaveText('exchange_rate');
+  // The glyph leads the table inside one chip: "<currency>exchange_rate", not the reverse.
+  await expect(page.locator('th').filter({hasText:'rate_to_usd'}).locator('.tabtag')).toHaveText('\u{1F4B1}exchange_rate');
   await expect(page.locator('th').filter({hasText:'rate_to_usd'})).not.toContainText('exchange_rate__rate_to_usd');
   await expect(page.locator('th').filter({hasText:'rate_to_usd'})).toHaveAttribute('title',/European Central Bank.*ecb-2026-09-05/);
   // No `use` on the URL, so the deployment's auto policy runs Python for this small input.

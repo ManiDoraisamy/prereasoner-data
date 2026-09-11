@@ -204,13 +204,16 @@ function renderGrid(m){
     // dataset-semantics badge: the conversation stated what this measure MEANS ("this is in euros").
     // Rendered as a chip on the user's own column header — metadata, never a fake data column.
     const ds=(m.cls==='input')?DS_META.find(d=>d.table===m.name&&d.column===cols[ci]):null;
+    const sc=splitCol(cols[ci]);
+    const glyph=pv?'<span class="provemoji '+pv+'" role=img aria-label="'+escAttr(provTitle(pr))+'" title="'+escAttr(provTitle(pr))+'">'+provEmoji(pr)+'</span>':'';
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'
         :(ds?' title="'+escAttr('Denominated in '+ds.currency+' — you said: '+((ds.basis&&ds.basis.text)||'in the chat'))+'"'
           :(pv?' title="'+escAttr(provTitle(pr))+'"':'')))
-      +'>'+esc(splitCol(cols[ci]).label)
-      +(splitCol(cols[ci]).table?'<span class=tabtag title="'+escAttr('Column of '+splitCol(cols[ci]).table)+'">'+esc(splitCol(cols[ci]).table)+'</span>':'')
-      +(pv?'<span class="provemoji '+pv+'" role=img aria-label="'+escAttr(provTitle(pr))+'" title="'+escAttr(provTitle(pr))+'">'+provEmoji(pr)+'</span>':'')
+      +'>'+esc(sc.label)
+      // The glyph LEADS its table, so the chip reads as one unit ("*globe* city"): the icon
+      // qualifies where the table came from. A calculated column has no table, so it stands alone.
+      +(sc.table?'<span class=tabtag title="'+escAttr('Column of '+sc.table)+'">'+glyph+esc(sc.table)+'</span>':glyph)
       +(ds?'<span class="provtag kb" title="'+escAttr('Supplied in conversation')+'">'+esc(ds.currency)+'</span>':'')+'</th>'; }
   if(m.cls==='master') h+='<th class=newcol onclick="addMasterCol(\''+m.id+'\')" title="Add a column">+ new column</th>';   // ghost "add column" — mirrors the "+ new row" ghost row
   h+='</tr></thead><tbody>';
