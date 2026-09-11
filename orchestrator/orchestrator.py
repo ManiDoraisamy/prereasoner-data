@@ -459,6 +459,36 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                                               # turn node on 'status:done' (workbook settle()), so the
                                                               # post-'done' emit below would be MISSED: no URL, no snapshot save
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                        if shaped.get("status") == "clarify" and shaped.get("decomposition_rejected"):
+                            # An engine-side proposal rejection gets the SAME bounded correction
+                            # contract as local validation: one actionable retry, then the shared
+                            # terminal clarification. The raw engine clarify stays in the trace.
+                            decomposition_rejections += 1
+                            if decomposition_rejections >= 2:
+                                terminal_query = {
+                                    "status": "clarify",
+                                    "clarify": {"reason": DECOMPOSITION_CLARIFY},
+                                }
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(terminal_query),
+                                    "is_error": False,
+                                })
+                            else:
+                                decomposition_attempted = False
+                                pending_decomposition = identity
+                                detail = str(shaped.get("rejection_detail") or "the engine rejected the proposal")
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps({
+                                        "status": "error",
+                                        "error": "invalid decomposition: " + detail
+                                                 + ". Correct the proposal and call the tool again "
+                                                   "with the same question and analysis.",
+                                    }),
+                                    "is_error": True,
+                                })
+                            continue
                         if shaped.get("status") == "decompose":
                             if decomposition_attempted:
                                 shaped = {

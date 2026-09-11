@@ -419,6 +419,179 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
     assert result["reply"] == "Cara has never bought Beta."
 
 
+def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
+    """A proposal can pass local validation and still be rejected by the engine's
+    build guards (wrong ranking grain, lost aggregation). The live release pass
+    caught that flow ending the turn on a terminal clarify with no correction:
+    the engine rejection must re-enter the SAME bounded retry as local
+    validation, with the engine's actionable detail forwarded to the model."""
+    question = "Find top categories and customers and list unbought pairs."
+    analysis = {"action": "create", "slug": "category_gaps"}
+    wide = {
+        "subquestions": [
+            {"id": "top_categories", "question": "top 2 categories and their products by revenue"},
+            {"id": "top_customers", "question": "top 2 customers by total spend"},
+            {"id": "purchases", "question": "customer and category for each purchase"},
+        ],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
+            {"id": "gaps", "op": "anti_join", "inputs": ["pairs", "purchases"]},
+        ],
+        "output": "gaps",
+        "grain": "one customer-category pair",
+    }
+    narrow = {
+        "subquestions": [
+            {"id": "top_categories", "question": "top 2 categories by total revenue"},
+            *wide["subquestions"][1:],
+        ],
+        "merges": wide["merges"],
+        "output": "gaps",
+        "grain": "one customer-category pair",
+    }
+    detail = ("subquestion 'top_categories' is a ranking but groups 2 columns; a ranking "
+              "leaf that feeds a cross merge must name only the ranked entity and its measure")
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            model_calls.append(kwargs)
+            if len(model_calls) == 1:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="plain",
+                    input={"question": question, **analysis},
+                )])
+            elif len(model_calls) == 2:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="wide",
+                    input={"question": question, **analysis, "decomposition": wide},
+                )])
+            elif len(model_calls) == 3:
+                rejection = json.loads(model_calls[2]["messages"][-1]["content"][0]["content"])
+                assert rejection["status"] == "error"
+                assert rejection["error"].startswith("invalid decomposition: subquestion")
+                assert "ranked entity" in rejection["error"]
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="narrow",
+                    input={"question": question, **analysis, "decomposition": narrow},
+                )])
+            else:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="Ava has never bought from Travel.",
+                )])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        proposal = kwargs.get("decomposition")
+        if proposal is None:
+            return {"status": "decompose",
+                    "decomposition_required": {"reason": "compound typed AST"}}
+        if proposal["subquestions"][0]["question"].startswith("top 2 categories and"):
+            return {
+                "status": "clarify",
+                "clarify": {"reason": "I couldn't run this as one combined analysis."},
+                "decomposition_rejected": True,
+                "rejection_detail": detail,
+            }
+        return {"status": "answered",
+                "answer": {"columns": ["customer_name", "category"], "rows": [["Ava", "Travel"]]}}
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query):
+            return await orchestrator._run_turn(
+                question, [{"name": "purchases", "data": "id\n1\n"}], [],
+                engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model",
+            )
+
+    result = asyncio.run(run())
+    assert len(engine_calls) == 3, "probe, rejected proposal, corrected proposal"
+    corrected = engine_calls[2][1]["decomposition"]
+    assert corrected["subquestions"][0]["question"] == "top 2 categories by total revenue"
+    assert result["reply"] == "Ava has never bought from Travel."
+    # The raw engine clarify stays honest in the trace for diagnostics.
+    assert result["traces"][1]["engine"].get("decomposition_rejected") is True
+
+
+def test_a_second_engine_rejection_terminates_in_plain_language():
+    question = "Find top categories and customers and list unbought pairs."
+    analysis = {"action": "create", "slug": "category_gaps"}
+    proposal = {
+        "subquestions": [
+            {"id": "top_categories", "question": "top 2 categories and their products by revenue"},
+            {"id": "top_customers", "question": "top 2 customers by total spend"},
+            {"id": "purchases", "question": "customer and category for each purchase"},
+        ],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
+            {"id": "gaps", "op": "anti_join", "inputs": ["pairs", "purchases"]},
+        ],
+        "output": "gaps",
+        "grain": "one customer-category pair",
+    }
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            model_calls.append(kwargs)
+            if len(model_calls) == 1:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="plain",
+                    input={"question": question, **analysis},
+                )])
+            elif len(model_calls) in (2, 3):
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id=f"try{len(model_calls)}",
+                    input={"question": question, **analysis, "decomposition": proposal},
+                )])
+            else:
+                terminal = json.loads(model_calls[3]["messages"][-1]["content"][0]["content"])
+                assert terminal["status"] == "clarify"
+                assert terminal["clarify"]["reason"] == orchestrator.DECOMPOSITION_CLARIFY
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="Could you ask the parts separately?",
+                )])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        if kwargs.get("decomposition") is None:
+            return {"status": "decompose",
+                    "decomposition_required": {"reason": "compound typed AST"}}
+        return {
+            "status": "clarify",
+            "clarify": {"reason": "I couldn't run this as one combined analysis."},
+            "decomposition_rejected": True,
+            "rejection_detail": "subquestion 'top_categories' is a ranking but groups 2 columns",
+        }
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query):
+            return await orchestrator._run_turn(
+                question, [{"name": "purchases", "data": "id\n1\n"}], [],
+                engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model",
+            )
+
+    result = asyncio.run(run())
+    assert len(engine_calls) == 3, "probe plus exactly two rejected proposals"
+    assert "subquestion" not in result["reply"], "validator internals never reach the user"
+    assert result["reply"] == "Could you ask the parts separately?"
+
+
 def test_a_second_invalid_proposal_terminates_in_plain_language():
     question = "Find top customers and products they have not bought."
     analysis = {"action": "create", "slug": "promotion_gaps"}
@@ -533,6 +706,8 @@ TESTS = [
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,
     test_decomposition_contract_has_no_schema_or_code_escape_hatch,
     test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification,
+    test_an_engine_rejected_proposal_gets_one_correction_then_answers,
+    test_a_second_engine_rejection_terminates_in_plain_language,
     test_a_second_invalid_proposal_terminates_in_plain_language,
     test_tool_exhaustion_never_exposes_an_internal_budget,
 ]

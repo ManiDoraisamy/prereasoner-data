@@ -83,6 +83,24 @@ def test_shape():
         "decompose preserves the conversation for the one retry",
     )
 
+    rejected = engine_client.shape_reason_response(
+        {
+            "question": "q",
+            "clarify": True,
+            "reason": "I couldn't run this as one combined analysis.",
+            "detail": "subquestion 'top_categories' is a ranking but groups 2 columns",
+            "decomposition_rejected": True,
+        },
+        "j-rejected",
+    )
+    ok(rejected["status"] == "clarify", "rejected proposal keeps status 'clarify'")
+    ok(rejected.get("decomposition_rejected") is True,
+       "rejected proposal carries the correctable marker")
+    ok("groups 2 columns" in rejected.get("rejection_detail", ""),
+       "rejected proposal forwards the engine's actionable detail")
+    ok("detail" not in rejected.get("clarify", {}),
+       "the user-facing clarify still hides validator internals")
+
     err_field = engine_client.shape_reason_response({"question": "q", "error": "guard: no", "result": None}, "j")
     ok(err_field["status"] == "error", "error field -> status 'error'")
     ok(err_field["error"] == "guard: no", "error message surfaced")

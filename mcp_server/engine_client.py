@@ -80,6 +80,12 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
             "calculations", "currency",
         )
                           if j.get(k) is not None}
+        if j.get("decomposition_rejected"):
+            # A rejected proposal is correctable: surface the marker and the
+            # engine's actionable detail so the orchestrator can grant its one
+            # bounded retry instead of ending the turn on the humanized reason.
+            out["decomposition_rejected"] = True
+            out["rejection_detail"] = str(j.get("detail") or "")
         out["trace"] = {"jobId": job_id}
         if j.get("conversation_id"):
             out["conversation_id"] = j["conversation_id"]
