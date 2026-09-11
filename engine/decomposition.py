@@ -232,6 +232,10 @@ def build_decomposed_plan(
                 schema,
                 foreign_keys,
                 postgres_row_identity=getattr(planner, "postgres_row_identity", False),
+                # A natural-language leaf such as "for each purchase" can be selected
+                # as a typed SELECT * even when its downstream merge only needs named
+                # dimensions. Normalize that AST before either emitter is built.
+                expand_stars=True,
             )
         except UnsupportedDeterministicPlan as exc:
             raise DecompositionError(

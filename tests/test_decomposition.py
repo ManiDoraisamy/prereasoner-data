@@ -23,7 +23,7 @@ from engine.deterministic import (
 )
 from engine.deterministic.context import analysis_execution_context
 from engine.knowledge_compose import ComposedKnowledgeQuery
-from engine.sql_ast import ColumnRef, SelectItem, SelectQuery, SQLType
+from engine.sql_ast import ColumnRef, SelectItem, SelectQuery, SQLType, Star
 from engine.sql_candidate import ScoredQuery
 
 
@@ -156,6 +156,28 @@ def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
     assert len(set(names)) == len(names)
 
 
+def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
+    """A broad natural-language leaf still gets explicit names for both emitters."""
+    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
+    schema = [
+        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
+    ]
+    query = SelectQuery((SelectItem(Star()),), "products")
+    planner = Mock()
+    planner.postgres_row_identity = False
+    planner.search_ast.return_value = [
+        ScoredQuery(query, "SELECT * FROM products", 1, ())
+    ]
+    planner.guard.return_value = (True, None)
+    plan = build_decomposed_plan(planner, "wildcard", tables, schema, (), _proposal())
+    assert [view.name for view in plan.views].count("wildcard_missing") == 1
+    assert any(
+        getattr(view, "values", ())
+        and view.values[0].value == ColumnValue("products", "id")
+        for view in plan.views
+    )
+
+
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner = Mock()
     planner.ingest.side_effect = RuntimeError("planner unavailable")
@@ -183,6 +205,7 @@ TESTS = [
     test_size_limit_counts_utf8_bytes_not_characters,
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
+    test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]
 

@@ -6,6 +6,7 @@ import keyword
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
@@ -57,8 +58,17 @@ def lower_select_query(
     foreign_keys: Sequence[Mapping[str, object]],
     *,
     postgres_row_identity: bool = False,
+    expand_stars: bool = False,
 ) -> AnalysisPlan:
-    """Build one linear plan branch without parsing or reverse-engineering rendered SQL."""
+    """Build one linear plan branch without parsing or reverse-engineering rendered SQL.
+
+    ``expand_stars`` is used only when a decomposition leaf has already been selected by
+    the typed planner.  The AST's wildcard is expanded against that same schema, in SQL
+    source order, so the dual plan has named values for both emitters.  The ordinary
+    single-query path keeps rejecting wildcards until it has an explicit projection
+    contract; decomposition is the one bounded path where preserving ``SELECT *``
+    semantics is required to avoid rejecting an otherwise valid natural-language leaf.
+    """
     if not isinstance(query.from_table, str) or query.from_alias is not None:
         raise UnsupportedDeterministicPlan(
             "derived tables and aliases are not supported"
@@ -91,6 +101,8 @@ def lower_select_query(
     missing = [table for table in table_order if table not in columns_by_table]
     if missing:
         raise UnsupportedDeterministicPlan(f"schema is missing tables: {missing}")
+    if expand_stars:
+        query = _expand_projection_stars(query, table_order, columns_by_table)
 
     table_attributes = _unique_names(table_order)
     class_names = _unique_class_names(table_order)
@@ -461,6 +473,44 @@ def _select_names(items: Sequence[SelectItem]) -> tuple[str, ...]:
         else:
             proposed.append("value")
     return _unique_identifiers(tuple(proposed))
+
+
+def _expand_projection_stars(
+    query: SelectQuery,
+    table_order: Sequence[str],
+    columns_by_table: Mapping[str, Sequence[Mapping[str, object]]],
+) -> SelectQuery:
+    """Replace top-level projection wildcards with the visible schema columns.
+
+    This is an AST-preserving normalization, not SQL parsing: a wildcard projects every
+    column from the FROM table followed by every joined table, exactly as the SQL AST
+    renderer does.  Duplicate physical names receive the normal deterministic output
+    suffix later in ``_select_names``.  Aggregate ``COUNT(*)`` remains untouched because
+    only top-level ``SelectItem(Star())`` nodes are expanded.
+    """
+    expanded: list[SelectItem] = []
+    changed = False
+    for item in query.select:
+        if not isinstance(item.expression, Star):
+            expanded.append(item)
+            continue
+        if item.alias is not None:
+            raise UnsupportedDeterministicPlan(
+                "aliased wildcard projections are not supported"
+            )
+        changed = True
+        expanded.extend(
+            SelectItem(
+                ColumnRef(
+                    table,
+                    str(column["name"]),
+                    _column_type(column),
+                )
+            )
+            for table in table_order
+            for column in columns_by_table[table]
+        )
+    return replace(query, select=tuple(expanded)) if changed else query
 
 
 def _column_type(column: Mapping[str, object]) -> ASTType:
