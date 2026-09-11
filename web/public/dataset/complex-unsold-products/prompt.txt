@@ -1,0 +1,1 @@
+List the product names that no customer from Paris has bought, ordered by product name.

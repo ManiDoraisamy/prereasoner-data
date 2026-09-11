@@ -1,0 +1,1 @@
+Find the top 3 products by units sold and the top 2 customers by total spend, then list each top-customer and top-product pair where that customer has never bought that product. Order customers by spend descending and products by units sold descending.

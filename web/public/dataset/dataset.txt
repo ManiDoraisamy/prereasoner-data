@@ -1,5 +1,7 @@
 complex-category-gaps: https://chat.prereasoner.com/?load=complex-category-gaps
 complex-promotions: https://chat.prereasoner.com/?load=complex-promotions
+complex-promotions-xlsx: https://chat.prereasoner.com/?load=complex-promotions-xlsx
+complex-unsold-products: https://chat.prereasoner.com/?load=complex-unsold-products
 customer-orders: https://chat.prereasoner.com/?load=customer-orders
 customers-orders: https://chat.prereasoner.com/?load=customers-orders
 formesign-contracts: https://chat.prereasoner.com/?load=formesign-contracts
@@ -10,6 +12,7 @@ formfacade-leads: https://chat.prereasoner.com/?load=formfacade-leads
 formfacade-workshops: https://chat.prereasoner.com/?load=formfacade-workshops
 neartail-catering: https://chat.prereasoner.com/?load=neartail-catering
 neartail-orders: https://chat.prereasoner.com/?load=neartail-orders
+neartail-orders-xlsx: https://chat.prereasoner.com/?load=neartail-orders-xlsx
 neartail-shipping: https://chat.prereasoner.com/?load=neartail-shipping
 orders-tiers: https://chat.prereasoner.com/?load=orders-tiers
 payment-commissions: https://chat.prereasoner.com/?load=payment-commissions

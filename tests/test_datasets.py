@@ -43,6 +43,21 @@ EXPECTED = {
             "rows": [["Ava", "Travel"]],
         },
     ),
+    "complex-unsold-products": (
+        "own-rows",
+        {
+            "columns": ["product_name"],
+            "rows": [["Delta"], ["Omega"]],
+        },
+    ),
+    "complex-promotions-xlsx": (
+        "own-rows",
+        {
+            "columns": ["customer_name", "product_name"],
+            "rows": [["Cara", "Beta"], ["Cara", "Alpha"], ["Bob", "Gamma"]],
+        },
+    ),
+    "neartail-orders-xlsx": ("own", 5),  # the same orders table, shipped as a real workbook
     "orders-tiers": (
         "world+fx",
         1126.66,
@@ -95,10 +110,37 @@ REWRITE_EXPECTATIONS = {
 }
 
 
+def _xlsx_rows(path: Path) -> list[list[str]]:
+    """Read the fixture-xlsx subset the dataset generator writes: one sheet, inline strings.
+
+    The browser converts workbook datasets to CSV text through the upload worker before the
+    engine ever sees them, so this reader exists ONLY so the live suite can feed the same
+    tables through the production entry point without adding a spreadsheet dependency.
+    """
+    import xml.etree.ElementTree as ET
+    import zipfile
+
+    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+    with zipfile.ZipFile(path) as z:
+        root = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
+    rows: list[list[str]] = []
+    for row in root.findall(".//m:sheetData/m:row", ns):
+        values = []
+        for cell in row.findall("m:c", ns):
+            node = (cell.find("m:is/m:t", ns) if cell.get("t") == "inlineStr"
+                    else cell.find("m:v", ns))
+            values.append("" if node is None or node.text is None else node.text)
+        rows.append(values)
+    return rows
+
+
 def _tables(ds: Path) -> list[dict]:
     tables = []
     for f in sorted(ds.glob("*.csv")):
         rows = list(csv.reader(io.StringIO(f.read_text(encoding="utf-8"))))
+        tables.append({"name": f.stem, "columns": rows[0], "rows": rows[1:]})
+    for f in sorted(ds.glob("*.xlsx")):
+        rows = _xlsx_rows(f)
         tables.append({"name": f.stem, "columns": rows[0], "rows": rows[1:]})
     return tables
 

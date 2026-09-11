@@ -21,7 +21,8 @@ from engine.encoder_overlay import EncoderQuery
 from tests.test_datasets import DATASET_DIR, EXPECTED, _tables
 
 
-COMPLEX_DATASETS = ("complex-promotions", "complex-category-gaps")
+COMPLEX_DATASETS = ("complex-promotions", "complex-category-gaps",
+                    "complex-promotions-xlsx", "complex-unsold-products")
 
 
 def _sqlite_type(affinity) -> str:
@@ -98,12 +99,18 @@ def test_shipped_complex_datasets_match_gold_in_python_and_sql():
         assert result.mode.value == "verify"
         # `verify` reaches this line only after DeterministicAnalysis has compared
         # every materialized Python stage with its corresponding SQL stage.
+        proposal = json.loads(
+            (DATASET_DIR / name / "decomposition.json").read_text(encoding="utf-8")
+        )
         record = result.record()
-        assert len(record["manifest"]["sections"]) == 5
+        assert len(record["manifest"]["sections"]) == (
+            len(proposal["subquestions"]) + len(proposal["merges"])
+        )
+        output_merge = next(
+            merge for merge in proposal["merges"] if merge["id"] == proposal["output"]
+        )
         assert record["views"][-1]["is_output"] is True
-        assert record["views"][-1]["section_inputs"] == [
-            "candidate_pairs", "purchased_pairs" if name == "complex-promotions" else "purchased_categories",
-        ]
+        assert record["views"][-1]["section_inputs"] == list(output_merge["inputs"])
         assert ".anti_join(" in record["views"][-1]["python"]
         assert "NOT EXISTS" in record["views"][-1]["sql"]
 

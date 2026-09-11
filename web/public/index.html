@@ -111,6 +111,9 @@
 const DATASETS={'customer-orders':['orders'],'orders-tiers':['orders','tier'],'customers-orders':['customers','orders'],
   'complex-promotions':['customers','products','orders','order_items'],
   'complex-category-gaps':['customers','products','purchases'],
+  'complex-unsold-products':['products','purchases'],
+  'neartail-orders-xlsx':['orders.xlsx'],
+  'complex-promotions-xlsx':['customers.xlsx','products.xlsx','orders.xlsx','order_items.xlsx'],
   'formfacade-leads':['responses'],'neartail-orders':['orders'],'formesign-intake':['intake'],
   'formfacade-workshops':['feedback'],'neartail-shipping':['deliveries'],'formesign-contracts':['contracts'],
   'formesign-hospital-transfers':['transfers'],'neartail-catering':['catering'],'formfacade-bank-deposits':['deposits'],
@@ -121,9 +124,18 @@ const $=id=>document.getElementById(id);
 const Q0=$('q').value;                                     // the HTML fallback question, captured before any restore
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo
 const DEMO_LOAD=Promise.all([
-  Promise.all(DATASETS[DATASET].map(n=>
-    fetch('/dataset/'+DATASET+'/'+n+'.csv').then(r=>{ if(!r.ok)throw new Error(n+': HTTP '+r.status); return r.text(); })
-      .then(t=>({name:n, data:t.replace(/\r\n/g,'\n').trim()})))),
+  Promise.all(DATASETS[DATASET].map(n=>{
+    // A registry entry ending in .xlsx ships as a real workbook and converts to CSV text
+    // through the SAME bounded worker the upload path uses, so everything downstream
+    // (chips, sessionStorage, /reason) still sees one CSV per table.
+    const xlsx=n.endsWith('.xlsx'), base=xlsx?n.slice(0,-5):n;
+    return fetch('/dataset/'+DATASET+'/'+(xlsx?n:n+'.csv')).then(r=>{
+      if(!r.ok)throw new Error(base+': HTTP '+r.status);
+      return xlsx
+        ? r.blob().then(b=>XLSX_READER.readWorkbook(b)).then(sheets=>({name:base, data:String((sheets[0]||{}).csv||'').replace(/\r\n/g,'\n').trim()}))
+        : r.text().then(t=>({name:base, data:t.replace(/\r\n/g,'\n').trim()}));
+    });
+  })),
   fetch('/dataset/'+DATASET+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>''),
 ]).then(([t,p])=>{
   if(isSample){ SHEETS=t; renderChips(); }                 // an upload or picker return that landed first wins

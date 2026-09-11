@@ -1,0 +1,27 @@
+{
+  "subquestions": [
+    {
+      "id": "all_products",
+      "question": "list the product names ordered by product name",
+      "label": "all products"
+    },
+    {
+      "id": "paris_products",
+      "question": "product names bought by customers from Paris",
+      "label": "bought in Paris"
+    }
+  ],
+  "merges": [
+    {
+      "id": "unsold",
+      "op": "anti_join",
+      "inputs": [
+        "all_products",
+        "paris_products"
+      ],
+      "label": "never bought in Paris"
+    }
+  ],
+  "output": "unsold",
+  "grain": "one product name"
+}

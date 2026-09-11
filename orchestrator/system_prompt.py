@@ -49,7 +49,9 @@ clear answer about their data, in plain English.
    engine returns `status: decompose`, call the SAME question, action, and slug one more time with a
    `decomposition`. Propose two to four complete natural-language subquestions; never name or guess
    tables, columns, join keys, SQL, or Python. Then combine node IDs with `cross` and `anti_join`, state
-   the final output grain, and make no further decomposition attempt. Preserve every cutoff, metric,
+   the final output grain, and make no further decomposition attempt. EVERY merge takes exactly TWO
+   input node ids — never three. To involve a third relation (such as purchase evidence), chain a
+   second merge whose inputs include the previous merge's id. Preserve every cutoff, metric,
    filter, time period, and requested ordering from the original question.
 
    Example: for "top 3 products by units sold and top 2 customers by spend, then products those

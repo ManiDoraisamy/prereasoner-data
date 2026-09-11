@@ -7,6 +7,7 @@ terminal engine result cannot start another paid tool round.
 from __future__ import annotations
 
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -322,19 +323,34 @@ def test_decomposition_contract_has_no_schema_or_code_escape_hatch():
     assert not ({"sql", "python", "table", "column", "key"} & set(merge["properties"]))
 
 
-def test_invalid_decomposition_consumes_the_single_retry_without_an_engine_call():
+def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
+    """The Chrome pass caught Sonnet sending a merge with the wrong arity; the old flow
+    consumed the single attempt and relayed the raw validator message to the user. An
+    invalid proposal is now a MODEL-facing tool error with the exact validator detail, and
+    Sonnet may correct it once; the single ENGINE retry is consumed only by a valid
+    proposal. A second invalid proposal terminates with plain language, never internals."""
     question = "Find top customers and products they have not bought."
     analysis = {"action": "create", "slug": "promotion_gaps"}
     invalid = {
         "subquestions": [
             {"id": "customers", "question": "top 2 customers by spend"},
             {"id": "products", "question": "top 3 products by sales"},
-            {"id": "unused", "question": "count all orders"},
+            {"id": "purchases", "question": "customer and product for each purchase"},
         ],
         "merges": [
-            {"id": "pairs", "op": "cross", "inputs": ["customers", "products"]},
+            {"id": "gaps", "op": "anti_join",
+             "inputs": ["customers", "products", "purchases"]},
         ],
-        "output": "pairs",
+        "output": "gaps",
+        "grain": "one customer-product pair",
+    }
+    valid = {
+        "subquestions": invalid["subquestions"],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["customers", "products"]},
+            {"id": "gaps", "op": "anti_join", "inputs": ["pairs", "purchases"]},
+        ],
+        "output": "gaps",
         "grain": "one customer-product pair",
     }
     model_calls, engine_calls = [], []
@@ -352,9 +368,96 @@ def test_invalid_decomposition_consumes_the_single_retry_without_an_engine_call(
                     type="tool_use", name="prereasoner_query", id="invalid",
                     input={"question": question, **analysis, "decomposition": invalid},
                 )])
+            elif len(model_calls) == 3:
+                rejection = json.loads(model_calls[2]["messages"][-1]["content"][0]["content"])
+                assert rejection["status"] == "error"
+                assert "exactly two inputs" in rejection["error"]
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="corrected",
+                    input={"question": question, **analysis, "decomposition": valid},
+                )])
             else:
                 response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
-                    type="text", text="Please make the requested branches more specific.",
+                    type="text", text="Cara has never bought Beta.",
+                )])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        if kwargs.get("decomposition") is None:
+            return {
+                "status": "decompose",
+                "decomposition_required": {"reason": "compound typed AST"},
+            }
+        return {
+            "status": "answered",
+            "answer": {"columns": ["customer_name", "product_name"],
+                       "rows": [["Cara", "Beta"]]},
+        }
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query):
+            return await orchestrator._run_turn(
+                question, [{"name": "orders", "data": "id\n1\n"}], [],
+                engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model",
+            )
+
+    result = asyncio.run(run())
+    assert len(engine_calls) == 2, "the corrected proposal must reach the engine exactly once"
+    forwarded = engine_calls[1][1].get("decomposition")
+    # validate_decomposition normalizes before forwarding (labels defaulted, inputs
+    # tupled); assert the corrected STRUCTURE rather than byte equality.
+    assert [m["id"] for m in forwarded["merges"]] == ["pairs", "gaps"]
+    assert all(len(m["inputs"]) == 2 for m in forwarded["merges"])
+    assert forwarded["output"] == "gaps"
+    assert result["reply"] == "Cara has never bought Beta."
+
+
+def test_a_second_invalid_proposal_terminates_in_plain_language():
+    question = "Find top customers and products they have not bought."
+    analysis = {"action": "create", "slug": "promotion_gaps"}
+    invalid = {
+        "subquestions": [
+            {"id": "customers", "question": "top 2 customers by spend"},
+            {"id": "products", "question": "top 3 products by sales"},
+        ],
+        "merges": [
+            {"id": "gaps", "op": "anti_join",
+             "inputs": ["customers", "products", "customers"]},
+        ],
+        "output": "gaps",
+        "grain": "one customer-product pair",
+    }
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            model_calls.append(kwargs)
+            if len(model_calls) == 1:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="plain",
+                    input={"question": question, **analysis},
+                )])
+            elif len(model_calls) in (2, 3):
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id=f"bad{len(model_calls)}",
+                    input={"question": question, **analysis, "decomposition": invalid},
+                )])
+            else:
+                terminal = json.loads(model_calls[3]["messages"][-1]["content"][0]["content"])
+                assert terminal["status"] == "clarify"
+                reason = terminal["clarify"]["reason"]
+                assert "exactly two inputs" not in reason, "validator internals must not reach the user"
+                assert "separate questions" in reason
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="Could you ask those parts separately?",
                 )])
             return _MessageStream(response)
 
@@ -380,9 +483,8 @@ def test_invalid_decomposition_consumes_the_single_retry_without_an_engine_call(
             )
 
     result = asyncio.run(run())
-    assert len(engine_calls) == 1, "an invalid proposal must not reach the engine or get another retry"
-    assert len(model_calls) == 3 and "tools" not in model_calls[2]
-    assert result["reply"] == "Please make the requested branches more specific."
+    assert len(engine_calls) == 1, "invalid proposals must never reach the engine"
+    assert result["reply"] == "Could you ask those parts separately?"
 
 
 def test_tool_exhaustion_never_exposes_an_internal_budget():
@@ -431,7 +533,8 @@ TESTS = [
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,
     test_decomposition_contract_has_no_schema_or_code_escape_hatch,
-    test_invalid_decomposition_consumes_the_single_retry_without_an_engine_call,
+    test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification,
+    test_a_second_invalid_proposal_terminates_in_plain_language,
     test_tool_exhaustion_never_exposes_an_internal_budget,
 ]
 

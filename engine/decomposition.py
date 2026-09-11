@@ -277,11 +277,23 @@ def build_decomposed_plan(
 def _merge_table(existing, incoming):
     if existing is None:
         return incoming
+
+    def shape(spec):
+        # Everything EXCEPT the identity flag. Two leaves may prove identity on
+        # different unique columns of the same table — a standalone scan prefers the
+        # id while a join proves its target name column. The fused plan shares one
+        # mapped class, joins reference columns explicitly, and either proven key
+        # keeps the ORM identity stable, so the first leaf's proof stands.
+        return [
+            (column.name, column.attribute, column.type, column.nullable)
+            for column in spec.columns
+        ]
+
     if (
         existing.class_name != incoming.class_name
         or existing.attribute != incoming.attribute
         or existing.schema != incoming.schema
-        or existing.columns != incoming.columns
+        or shape(existing) != shape(incoming)
     ):
         raise DecompositionError(f"subplans disagree about table {incoming.name!r}")
     relationships = list(existing.relationships)

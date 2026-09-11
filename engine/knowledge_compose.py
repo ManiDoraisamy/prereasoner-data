@@ -510,10 +510,14 @@ class ComposedKnowledgeQuery:
                 from engine.decomposition import DecompositionError
 
                 if isinstance(exc, DecompositionError):
+                    # The USER reads `reason`; the validator internals stay in `detail`
+                    # (kept out of the model-facing clarify by the response shaper).
                     return {
                         "question": question,
                         "clarify": True,
-                        "reason": str(exc),
+                        "reason": "I couldn't run this as one combined analysis. "
+                                  "Try asking the parts as separate questions.",
+                        "detail": str(exc),
                         "decomposition": decomposition,
                         "model": "engine - decomposition rejected",
                     }

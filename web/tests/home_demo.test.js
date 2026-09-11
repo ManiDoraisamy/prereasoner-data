@@ -58,7 +58,10 @@ assert(/'payment-commissions':\['payments','commission_rates'\]/.test(html),
   'the independent commission calculation dataset must be registered');
 assert(/'customers-orders':\['customers','orders'\]/.test(html), 'customers-orders must load both CSVs');
 assert(/\?p:'customer-orders'/.test(html), 'the default dataset must be the denormalized customer-orders');
-assert(html.includes("fetch('/dataset/'+DATASET+'/'+n+'.csv')"), 'the demo must load from /dataset/<name>/');
+assert(html.includes("fetch('/dataset/'+DATASET+'/'+(xlsx?n:n+'.csv'))"), 'the demo must load from /dataset/<name>/');
+assert(html.includes("XLSX_READER.readWorkbook(b)"),
+  'a .xlsx registry entry must convert through the same bounded worker the upload path uses');
+assert(/'neartail-orders-xlsx':\['orders\.xlsx'\]/.test(html), 'the workbook-format dataset must be registered');
 assert(html.includes('await DEMO_LOAD'), 'submit must wait for the demo fetch so a fast Ask cannot race it');
 // Every dataset directory ships a prompt.txt, is registered on the page with its exact CSV list,
 // and the page only prefills a PRISTINE question box (a typed or restored question always wins).
@@ -70,9 +73,12 @@ for (const dir of fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir,
   const files = fs.readdirSync(path.join(dsDir, dir));
   const prompt = files.includes('prompt.txt') && csvText(path.join(dir, 'prompt.txt')).trim();
   assert(prompt, `${dir} must ship a non-empty prompt.txt`);
-  const csvs = files.filter(f => f.endsWith('.csv')).map(f => f.replace(/\.csv$/, '')).sort();
-  assert.deepStrictEqual((registered[dir] || []).slice().sort(), csvs,
-    `${dir} must be registered on the page with exactly its CSVs`);
+  // A registry entry is the bare name for a CSV and keeps its .xlsx suffix for a workbook,
+  // matching how the loader picks the fetch/parse path.
+  const tables = files.filter(f => f.endsWith('.csv')).map(f => f.replace(/\.csv$/, ''))
+    .concat(files.filter(f => f.endsWith('.xlsx'))).sort();
+  assert.deepStrictEqual((registered[dir] || []).slice().sort(), tables,
+    `${dir} must be registered on the page with exactly its data files`);
 }
 assert(html.includes("fetch('/dataset/'+DATASET+'/prompt.txt')"), 'the page must fetch the dataset prompt');
 assert(html.includes("$('q').value===Q0"), 'the prompt must only replace the pristine default question');
@@ -94,7 +100,8 @@ assert(/files:DATASETS\[d\]\.join\(', '\)/.test(html),
   'picker rows must name sheets exactly as the chips do, with no extension appended');
 assert(html.includes('<div class=xd>\'+esc(e.files)+\'</div>'), 'the row subtitle must render the sheet names');
 assert(!html.includes('<div class=xd>\'+esc(e.dir)+\'</div>'), 'the row subtitle must not be the directory name');
-assert(/name:n,/.test(html), 'the chip name must be the same DATASETS value the picker prints');
+assert(/name:base,/.test(html) && html.includes("base=xlsx?n.slice(0,-5):n"),
+  'chips must show the table name with no extension, for CSV and workbook entries alike');
 assert(html.includes("executionQuery('?load='+encodeURIComponent(b.dataset.load))"),
   'picking an example must navigate to its ?load= URL');
 assert(html.includes("location.href='reason'+executionQuery()"),

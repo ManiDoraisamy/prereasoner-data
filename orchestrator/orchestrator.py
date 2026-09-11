@@ -26,6 +26,13 @@ from anthropic import AsyncAnthropic
 from engine import dataset_attestation, request_timing
 from engine.analysis import AnalysisError, validate_analysis_spec
 from engine.decomposition import DecompositionError, validate_decomposition
+
+# What the USER reads when a split cannot be made to work. Validator internals are
+# model-facing tool errors only; they never become the reply.
+DECOMPOSITION_CLARIFY = (
+    "I couldn't split this question into parts I can run reliably. "
+    "Try asking the parts as separate questions."
+)
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 from orchestrator.system_prompt import SYSTEM_PROMPT
@@ -251,6 +258,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     traces: list[dict[str, Any]] = []
     call_idx = 0                                             # per-turn engine-call counter (drives the jobIds)
     decomposition_attempted = False
+    decomposition_rejections = 0
     pending_decomposition: dict[str, Any] | None = None
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
@@ -377,16 +385,29 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             continue
                         identity = {"question": question, "analysis": analysis_spec}
                         if pending_decomposition is not None and decomposition is None:
-                            decomposition_attempted = True
-                            clarification = {
-                                "status": "clarify",
-                                "clarify": {"reason": "the decomposition retry was missing its branch proposal"},
-                            }
+                            decomposition_rejections += 1
+                            if decomposition_rejections >= 2:
+                                decomposition_attempted = True
+                                clarification = {
+                                    "status": "clarify",
+                                    "clarify": {"reason": DECOMPOSITION_CLARIFY},
+                                }
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(clarification),
+                                })
+                                terminal_query = clarification
+                                continue
                             tool_results.append({
                                 "type": "tool_result", "tool_use_id": block.id,
-                                "content": json.dumps(clarification),
+                                "content": json.dumps({
+                                    "status": "error",
+                                    "error": "the decomposition retry must include the "
+                                             "decomposition proposal; call again with the same "
+                                             "question, the same analysis, and the proposal",
+                                }),
+                                "is_error": True,
                             })
-                            terminal_query = clarification
                             continue
                         if decomposition is not None:
                             if pending_decomposition is None:
@@ -415,31 +436,58 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 }
                                 continue
                             if identity != pending_decomposition:
-                                decomposition_attempted = True
-                                clarification = {
-                                    "status": "clarify",
-                                    "clarify": {"reason": "the decomposition retry changed the original analysis request"},
-                                }
+                                decomposition_rejections += 1
+                                if decomposition_rejections >= 2:
+                                    decomposition_attempted = True
+                                    clarification = {
+                                        "status": "clarify",
+                                        "clarify": {"reason": DECOMPOSITION_CLARIFY},
+                                    }
+                                    tool_results.append({
+                                        "type": "tool_result", "tool_use_id": block.id,
+                                        "content": json.dumps(clarification),
+                                    })
+                                    terminal_query = clarification
+                                    continue
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps(clarification),
+                                    "content": json.dumps({
+                                        "status": "error",
+                                        "error": "the decomposition retry must keep the original "
+                                                 "question and analysis unchanged; call again with "
+                                                 "the same identity and the proposal",
+                                    }),
+                                    "is_error": True,
                                 })
-                                terminal_query = clarification
                                 continue
-                            decomposition_attempted = True
                             try:
                                 decomposition = validate_decomposition(decomposition)
                             except DecompositionError as exc:
-                                clarification = {
-                                    "status": "clarify",
-                                    "clarify": {"reason": str(exc)},
-                                }
+                                decomposition_rejections += 1
+                                if decomposition_rejections >= 2:
+                                    decomposition_attempted = True
+                                    clarification = {
+                                        "status": "clarify",
+                                        "clarify": {"reason": DECOMPOSITION_CLARIFY},
+                                    }
+                                    tool_results.append({
+                                        "type": "tool_result", "tool_use_id": block.id,
+                                        "content": json.dumps(clarification),
+                                    })
+                                    terminal_query = clarification
+                                    continue
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps(clarification),
+                                    "content": json.dumps({
+                                        "status": "error",
+                                        "error": "invalid decomposition: " + str(exc)
+                                                 + ". Correct the proposal and call the tool again "
+                                                   "with the same question and analysis.",
+                                    }),
+                                    "is_error": True,
                                 })
-                                terminal_query = clarification
                                 continue
+                            decomposition_attempted = True
                             # The first engine call already authenticated and persisted any
                             # conversation-stated dataset semantics. Replaying those mutation
                             # ops on the decomposition retry would append the same event twice.
