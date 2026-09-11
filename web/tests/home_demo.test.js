@@ -96,7 +96,7 @@ assert(html.includes("'/dataset/'+d+'/prompt.txt'"), 'the picker must show each 
 // internal detail they never see anywhere else. The names must be printed VERBATIM from the same
 // DATASETS values the chips are rendered from, so the dialog and the chips read identically; no
 // ".csv" decoration, because a chip is a sheet name (an .xlsx upload has one chip per worksheet).
-assert(/files:DATASETS\[d\]\.join\(', '\)/.test(html),
+assert(/files:DATASETS\[d\]\.map\(baseName\)\.join\(', '\)/.test(html),
   'picker rows must name sheets exactly as the chips do, with no extension appended');
 assert(html.includes('<div class=xd>\'+esc(e.files)+\'</div>'), 'the row subtitle must render the sheet names');
 assert(!html.includes('<div class=xd>\'+esc(e.dir)+\'</div>'), 'the row subtitle must not be the directory name');

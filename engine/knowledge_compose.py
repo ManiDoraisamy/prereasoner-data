@@ -535,13 +535,22 @@ class ComposedKnowledgeQuery:
             # predicate the delegate applies (engine/decomposition.py) before composing; the probe
             # selects but never executes.
             from engine.deterministic.context import current_analysis_context
-            from engine.decomposition import compound_decomposition_required
+            from engine.decomposition import DecompositionError, compound_decomposition_required
 
             if current_analysis_context() is not None:
                 from engine import request_timing
 
-                with request_timing.span("decompose_probe"):
-                    required = compound_decomposition_required(self.qw, tables, question)
+                try:
+                    with request_timing.span("decompose_probe"):
+                        required = compound_decomposition_required(self.qw, tables, question)
+                except DecompositionError:
+                    return {
+                        "question": question,
+                        "as_of": as_of,
+                        "clarify": True,
+                        "reason": "I couldn't reliably plan this combined analysis. Please try again.",
+                        "model": "engine - query planning unavailable",
+                    }
                 if required is not None:
                     return {
                         "question": question,

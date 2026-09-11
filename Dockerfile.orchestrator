@@ -17,6 +17,7 @@ COPY orchestrator/requirements.lock.txt /app/orchestrator/requirements.lock.txt
 RUN pip install --no-cache-dir --require-hashes -r orchestrator/requirements.lock.txt
 
 # The orchestrator uses only engine.config plus the lightweight analysis, auth, and trace modules imported by /chat.
+# This COPY is also the dependency manifest read by deploy/gcp/build_context.py.
 # Copy those modules explicitly so local model weights and the heavy serving implementation cannot accidentally
 # inflate this lean image.
 # mcp_server/ + orchestrator/ are the app. web/ is NOT copied: in production Firebase Hosting serves the

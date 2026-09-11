@@ -272,18 +272,9 @@ def ast_predict(
                 raise _DeterministicCandidateError(
                     "Python and selected SQL candidate disagree", metadata
                 )
-            if execution_backend == "auto" and not metadata["python_sql_equal"]:
-                # The generated plan may legitimately differ from the selected SQL when
-                # the data underdetermines the answer — an ORDER BY ... LIMIT cutoff that
-                # ties lets each backend pick a different, equally valid row. `auto` must
-                # not let that silently replace the system's canonical (selected-SQL)
-                # answer, so the SQL rows stand and the divergence stays on the record.
-                metadata["execution_backend_actual"] = "sql"
-                metadata["python_fallback_reason"] = (
-                    "generated Python and the selected SQL disagree "
-                    "(e.g. a tie at an ORDER BY LIMIT cutoff); the selected SQL answer stands"
-                )
-                return sql_rows, metadata
+            # Observation must not change the graded answer. Serving AUTO does
+            # not execute the original candidate to override successful Python;
+            # doing that only here hides both tie-policy changes and real bugs.
         return python_rows, metadata
 
     if not candidates:

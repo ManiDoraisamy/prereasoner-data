@@ -496,9 +496,9 @@ class TableQuery:
                 UnsupportedDeterministicPlan,
                 lower_select_query,
             )
-            from engine.sql_ast import SelectQuery
+            from engine.decomposition import selected_decomposition_required
 
-            if not isinstance(candidate.query, SelectQuery):
+            if selected_decomposition_required(candidate):
                 # A named compound request needs a branch proposal before it has an
                 # executable dual-emitter plan. Do not run the planner's incidental
                 # set-operation candidate and then throw its rows away.
@@ -699,14 +699,11 @@ class TableQuery:
             }
         elif candidate is not None:
             from engine.deterministic.context import current_analysis_context
-            from engine.sql_ast import SelectQuery
+            from engine.decomposition import selected_decomposition_required
 
-            if current_analysis_context() is not None and not isinstance(
-                candidate.query, SelectQuery
-            ):
-                response["decomposition_required"] = {
-                    "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
-                }
+            required = selected_decomposition_required(candidate)
+            if current_analysis_context() is not None and required:
+                response["decomposition_required"] = required
         return response
 
 

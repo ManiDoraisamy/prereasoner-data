@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import keyword
+import re
 from dataclasses import replace
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from engine.deterministic.plan import AnalysisPlan, TableSpec
 
 # The planner/plan imports stay INSIDE the fusion functions. The lean orchestrator
 # image ships this module only for `validate_decomposition` — the pure closed-grammar
@@ -29,7 +33,13 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
         return None
     if not isinstance(value, dict):
         raise DecompositionError("decomposition must be an object")
-    if len(json.dumps(value, ensure_ascii=False, separators=(",", ":"))) > MAX_DECOMPOSITION_BYTES:
+    try:
+        encoded = json.dumps(
+            value, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")
+    except (TypeError, ValueError, UnicodeError) as exc:
+        raise DecompositionError("decomposition must contain JSON values") from exc
+    if len(encoded) > MAX_DECOMPOSITION_BYTES:
         raise DecompositionError("decomposition is too large")
     unknown = set(value) - {"subquestions", "merges", "output", "grain"}
     if unknown:
@@ -38,7 +48,10 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
         )
     raw_questions = value.get("subquestions")
     raw_merges = value.get("merges")
-    if not isinstance(raw_questions, list) or not 2 <= len(raw_questions) <= MAX_SUBQUESTIONS:
+    if (
+        not isinstance(raw_questions, list)
+        or not 2 <= len(raw_questions) <= MAX_SUBQUESTIONS
+    ):
         raise DecompositionError("decomposition requires two to four subquestions")
     if not isinstance(raw_merges, list) or not 1 <= len(raw_merges) <= MAX_MERGES:
         raise DecompositionError("decomposition requires one to four merge steps")
@@ -47,10 +60,14 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
     subquestions = []
     for item in raw_questions:
         if not isinstance(item, dict) or set(item) - {"id", "question", "label"}:
-            raise DecompositionError("each subquestion has id, question, and optional label")
+            raise DecompositionError(
+                "each subquestion has id, question, and optional label"
+            )
         node_id = _identifier(item.get("id"), "subquestion id")
         question = _text(item.get("question"), "subquestion", 600)
-        label = _text(item.get("label") or node_id.replace("_", " "), "subquestion label", 80)
+        label = _text(
+            item.get("label") or node_id.replace("_", " "), "subquestion label", 80
+        )
         if node_id in nodes:
             raise DecompositionError("decomposition node ids must be unique")
         nodes.add(node_id)
@@ -59,33 +76,36 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
     merges = []
     for item in raw_merges:
         if not isinstance(item, dict) or set(item) - {"id", "op", "inputs", "label"}:
-            raise DecompositionError("each merge has id, op, inputs, and optional label")
+            raise DecompositionError(
+                "each merge has id, op, inputs, and optional label"
+            )
         node_id = _identifier(item.get("id"), "merge id")
         op = item.get("op")
         inputs = item.get("inputs")
-        if op not in _MERGE_OPS:
+        if not isinstance(op, str) or op not in _MERGE_OPS:
             raise DecompositionError("merge op must be cross or anti_join")
         if not isinstance(inputs, list) or len(inputs) != 2:
             raise DecompositionError("each merge requires exactly two inputs")
-        normalized_inputs = tuple(_identifier(source, "merge input") for source in inputs)
-        if normalized_inputs[0] == normalized_inputs[1] or any(source not in nodes for source in normalized_inputs):
+        normalized_inputs = tuple(
+            _identifier(source, "merge input") for source in inputs
+        )
+        if normalized_inputs[0] == normalized_inputs[1] or any(
+            source not in nodes for source in normalized_inputs
+        ):
             raise DecompositionError("merge inputs must name two preceding nodes")
         if node_id in nodes:
             raise DecompositionError("decomposition node ids must be unique")
         label = _text(item.get("label") or node_id.replace("_", " "), "merge label", 80)
         nodes.add(node_id)
         merges.append(
-            {"id": node_id, "op": op, "inputs": normalized_inputs, "label": label}
+            {"id": node_id, "op": op, "inputs": list(normalized_inputs), "label": label}
         )
 
     output = _identifier(value.get("output"), "decomposition output")
     grain = _text(value.get("grain"), "output grain", 120)
     if output not in {item["id"] for item in merges}:
         raise DecompositionError("decomposition output must name a merge node")
-    dependencies = {
-        item["id"]: tuple(item["inputs"])
-        for item in merges
-    }
+    dependencies = {item["id"]: tuple(item["inputs"]) for item in merges}
     reachable: set[str] = set()
 
     def visit(node_id: str) -> None:
@@ -108,6 +128,17 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
     }
 
 
+def selected_decomposition_required(candidate) -> dict[str, Any] | None:
+    """One selected-AST predicate, shared by the delegate and compose probe."""
+    from engine.sql_ast import SelectQuery
+
+    if candidate is not None and not isinstance(candidate.query, SelectQuery):
+        return {
+            "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
+        }
+    return None
+
+
 def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
     """Execution-free probe: does the planner's SELECTED candidate need decomposition?
 
@@ -116,10 +147,9 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
     The compose path must consult it BEFORE building a composition: a multi-goal
     question's surface ("top ...") can satisfy the compose gate, and a composed
     top-N would then answer one fragment of the question. The probe selects but
-    never executes; any probe failure returns None so serving proceeds unchanged.
+    never executes. A failed probe must not authorize a partial composed answer.
     """
     from engine.calculations import select_calculation_candidate
-    from engine.sql_ast import SelectQuery
     from engine.sql_schema import SchemaGraph
 
     try:
@@ -134,13 +164,11 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
         candidate, _, _ = select_calculation_candidate(
             question, norm, graph, candidates
         )
-        if candidate is not None and not isinstance(candidate.query, SelectQuery):
-            return {
-                "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
-            }
-    except Exception as exc:  # noqa: BLE001 — the probe must never break serving
-        print(f"decomposition probe skipped: {type(exc).__name__}", flush=True)
-    return None
+        return selected_decomposition_required(candidate)
+    except Exception as exc:
+        raise DecompositionError(
+            "could not check the selected query for decomposition"
+        ) from exc
 
 
 def build_decomposed_plan(
@@ -162,7 +190,6 @@ def build_decomposed_plan(
         AnalysisPlan,
         AntiJoinView,
         CrossView,
-        MergeKey,
         PlanSection,
     )
     from engine.sql_ast import SelectQuery
@@ -189,7 +216,7 @@ def build_decomposed_plan(
         candidate, _, _ = select_calculation_candidate(
             node["question"], tables, graph, candidates
         )
-        if not isinstance(candidate.query, SelectQuery):
+        if candidate is None or not isinstance(candidate.query, SelectQuery):
             raise DecompositionError(
                 f"subquestion {node['id']!r} requires an unsupported compound query"
             )
@@ -200,7 +227,7 @@ def build_decomposed_plan(
             )
         try:
             child = lower_select_query(
-                f"{slug}_{node['id']}",
+                node["id"],
                 candidate.query,
                 schema,
                 foreign_keys,
@@ -210,16 +237,37 @@ def build_decomposed_plan(
             raise DecompositionError(
                 f"subquestion {node['id']!r} cannot use both emitters: {exc}"
             ) from exc
+        # Every leaf is linear, but its names must use the ROOT slug's 63-byte
+        # naming contract. PostgreSQL truncates long identifiers silently; raw
+        # slug + node + stage concatenation can collapse multiple stages to one.
+        names = {view.name: analysis_view_name(slug, view.name) for view in child.views}
+        child = replace(
+            child,
+            slug=slug,
+            views=tuple(
+                replace(
+                    view,
+                    name=names[view.name],
+                    **(
+                        {"source": names[view.source]}
+                        if hasattr(view, "source")
+                        else {}
+                    ),
+                )
+                for view in child.views
+            ),
+            output=names[child.output],
+        )
         for table in child.tables:
-            tables_by_name[table.name] = _merge_table(tables_by_name.get(table.name), table)
+            tables_by_name[table.name] = _merge_table(
+                tables_by_name.get(table.name), table
+            )
         branch_views = tuple(view.name for view in child.views)
         views.extend(child.views)
         outputs[node["id"]] = str(child.output)
         row_bounds[node["id"]] = _row_bound(child, str(child.output))
         sections.append(
-            PlanSection(
-                node["id"], node["label"], node["question"], branch_views
-            )
+            PlanSection(node["id"], node["label"], node["question"], branch_views)
         )
 
     shapes = _shapes(tuple(views), tuple(tables_by_name.values()), slug)
@@ -230,25 +278,23 @@ def build_decomposed_plan(
         if merge["op"] == "cross":
             left_bound = row_bounds[left_id]
             right_bound = row_bounds[right_id]
-            if left_bound is None or right_bound is None or left_bound * right_bound > MAX_INTERMEDIATE_ROWS:
+            if (
+                left_bound is None
+                or right_bound is None
+                or left_bound * right_bound > MAX_INTERMEDIATE_ROWS
+            ):
                 raise DecompositionError(
                     "cross inputs require explicit limits whose product is at most 10,000 rows"
                 )
             view = CrossView(name, left, right, right_prefix=f"{right_id}_")
             row_bounds[merge["id"]] = left_bound * right_bound
         else:
-            left_keys = _merge_key_columns(views, shapes, left)
-            right_keys = set(_merge_key_columns(views, shapes, right))
-            shared = tuple(column for column in left_keys if column in right_keys)
-            if not shared:
-                raise DecompositionError(
-                    "anti-join inputs have no planner-bound dimension columns in common"
-                )
+            keys = _bind_merge_keys(views, shapes, left, right)
             view = AntiJoinView(
                 name,
                 left,
                 right,
-                tuple(MergeKey(column, column) for column in shared),
+                keys,
                 _inherited_order(views, left),
             )
             row_bounds[merge["id"]] = row_bounds[left_id]
@@ -311,7 +357,10 @@ def _shapes(views, tables, slug) -> dict[str, tuple[str, ...]]:
     # Build through the same plan validator/shape calculator used by both emitters.
     from engine.deterministic.plan import AnalysisPlan
 
-    return AnalysisPlan(slug, tables, views).view_columns()
+    try:
+        return AnalysisPlan(slug, tables, views).view_columns()
+    except (TypeError, ValueError) as exc:
+        raise DecompositionError(f"subplans cannot be fused safely: {exc}") from exc
 
 
 def _row_bound(plan, output: str) -> int | None:
@@ -346,7 +395,8 @@ def _inherited_order(views, source: str):
                 SortValue(
                     ViewValue(
                         view.right_prefix + item.value.name
-                        if isinstance(item.value, ViewValue) and item.value.name in left_shape
+                        if isinstance(item.value, ViewValue)
+                        and item.value.name in left_shape
                         else item.value.name
                     ),
                     item.descending,
@@ -358,38 +408,82 @@ def _inherited_order(views, source: str):
     return ()
 
 
-def _merge_key_columns(views, shapes, name: str) -> tuple[str, ...]:
-    """Return only planner-bound dimensions that are safe equality merge keys.
+def _merge_key_columns(views, shapes, name: str) -> dict[str, tuple[str, str]]:
+    """Return output names with their physical dimension lineage.
 
     Aggregate aliases are deliberately excluded. Treating two identically named
     measures as identity columns can silently over-constrain an anti-join.
     """
     from engine.deterministic.plan import (
         AntiJoinView,
+        CalculatedView,
+        ColumnValue,
         CrossView,
         ProjectedView,
         ReducedView,
         SortedView,
+        ViewValue,
     )
 
     view = next(item for item in views if item.name == name)
     if isinstance(view, SortedView):
         return _merge_key_columns(views, shapes, view.source)
-    if isinstance(view, ProjectedView):
-        return tuple(item.name for item in view.values)
-    if isinstance(view, ReducedView):
-        return tuple(item.name for item in view.group_by)
+    if isinstance(view, (CalculatedView, ProjectedView, ReducedView)):
+        prior = _merge_key_columns(views, shapes, view.source)
+        values = view.group_by if isinstance(view, ReducedView) else view.values
+        result = dict(prior) if isinstance(view, CalculatedView) else {}
+        for item in values:
+            result.pop(item.name, None)
+            if isinstance(item.value, ColumnValue):
+                result[item.name] = (item.value.table, item.value.column)
+            elif isinstance(item.value, ViewValue) and item.value.name in prior:
+                result[item.name] = prior[item.value.name]
+        return result
     if isinstance(view, CrossView):
         left = _merge_key_columns(views, shapes, view.left)
         left_output = set(shapes[view.left])
-        right = tuple(
-            view.right_prefix + column if column in left_output else column
-            for column in _merge_key_columns(views, shapes, view.right)
-        )
-        return tuple(dict.fromkeys(left + right))
+        right = {
+            view.right_prefix + column if column in left_output else column: origin
+            for column, origin in _merge_key_columns(views, shapes, view.right).items()
+        }
+        return {**left, **right}
     if isinstance(view, AntiJoinView):
         return _merge_key_columns(views, shapes, view.left)
-    return ()
+    if hasattr(view, "source"):
+        return _merge_key_columns(views, shapes, view.source)
+    return {}
+
+
+def _bind_merge_keys(views, shapes, left, right):
+    """Aliases are presentation, not identity. Bind only identical physical columns.
+
+    Ambiguous duplicate projections and unrelated columns sharing an alias fail
+    closed. Foreign-key equivalence needs a separate composite-key proof; merely
+    sharing a spelling (or a value) is never sufficient.
+    """
+    from engine.deterministic.plan import MergeKey
+
+    left_keys = _merge_key_columns(views, shapes, left)
+    right_keys = _merge_key_columns(views, shapes, right)
+    if any(
+        left_keys[name] != right_keys[name]
+        for name in left_keys.keys() & right_keys.keys()
+    ):
+        raise DecompositionError(
+            "anti-join aliases refer to different dimension lineage"
+        )
+    keys = []
+    for column, origin in left_keys.items():
+        matches = [name for name, other in right_keys.items() if origin == other]
+        if len(matches) > 1 or (matches and list(left_keys.values()).count(origin) > 1):
+            raise DecompositionError("anti-join dimension binding is ambiguous")
+        if matches:
+            keys.append(MergeKey(column, matches[0]))
+    if not keys:
+        raise DecompositionError(
+            "anti-join inputs have no common planner-bound dimension lineage"
+        )
+    return tuple(keys)
 
 
 def _output_names(views, name: str) -> set[str]:
@@ -416,7 +510,7 @@ def _output_names(views, name: str) -> set[str]:
 def _identifier(value: object, label: str) -> str:
     if (
         not isinstance(value, str)
-        or not value.isidentifier()
+        or re.fullmatch(r"[a-z][a-z0-9_]{0,39}", value) is None
         or keyword.iskeyword(value)
         or value.startswith("__")
     ):

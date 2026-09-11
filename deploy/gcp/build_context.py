@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,22 @@ SOURCE_ALLOWLIST = (
     "mcp_server",
     "orchestrator",
 )
+def chat_engine_sources() -> tuple[str, ...]:
+    """The Dockerfile owns the lean engine dependency list for BOTH build paths."""
+    dockerfile = (ROOT / "Dockerfile.orchestrator").read_text(encoding="utf-8")
+    sources = []
+    for line in dockerfile.replace("\\\n", " ").splitlines():
+        words = shlex.split(line, comments=True)
+        if words[:1] == ["COPY"] and words[-1:] == ["/app/engine/"]:
+            for source in words[1:-1]:
+                if not source.startswith("engine/") or not source.endswith(".py") or ".." in Path(source).parts:
+                    raise RuntimeError("lean engine COPY requires explicit Python source files")
+                sources.append(source)
+    if not sources or len(sources) != len(set(sources)):
+        raise RuntimeError("lean engine COPY must declare unique source files")
+    return tuple(sources)
+
+
 SOURCE_CHAT_ALLOWLIST = (
     ".dockerignore",
     ".gcloudignore",
@@ -35,20 +52,7 @@ SOURCE_CHAT_ALLOWLIST = (
     "LICENSE",
     "THIRD_PARTY.md",
     "cloudbuild.orchestrator.yaml",
-    "engine/__init__.py",
-    "engine/analysis.py",
-    "engine/auth.py",
-    # Grammar validation only: its planner imports are function-scoped, so the lean
-    # image never loads the typed-AST stack (the in-image test step proves the import).
-    "engine/decomposition.py",
-    "engine/config.py",
-    "engine/dataset_attestation.py",
-    "engine/model_revisions.py",
-    "engine/numeric.py",
-    "engine/request_limits.py",
-    "engine/request_timing.py",
-    "engine/request_validation.py",
-    "engine/trace.py",
+    *chat_engine_sources(),
     "mcp_server",
     "orchestrator",
     "tests",

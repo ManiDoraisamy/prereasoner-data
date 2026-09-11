@@ -26,6 +26,9 @@ from anthropic import AsyncAnthropic
 from engine import dataset_attestation, request_timing
 from engine.analysis import AnalysisError, validate_analysis_spec
 from engine.decomposition import DecompositionError, validate_decomposition
+from mcp_server import engine_client
+from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
+from orchestrator.system_prompt import SYSTEM_PROMPT
 
 # What the USER reads when a split cannot be made to work. Validator internals are
 # model-facing tool errors only; they never become the reply.
@@ -33,9 +36,6 @@ DECOMPOSITION_CLARIFY = (
     "I couldn't split this question into parts I can run reliably. "
     "Try asking the parts as separate questions."
 )
-from mcp_server import engine_client
-from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
-from orchestrator.system_prompt import SYSTEM_PROMPT
 
 # These are hard ceilings, not model preferences. A single authenticated turn may not create an
 # unbounded paid tool loop even when the upstream model keeps requesting tools.
@@ -384,113 +384,51 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             })
                             continue
                         identity = {"question": question, "analysis": analysis_spec}
-                        if pending_decomposition is not None and decomposition is None:
-                            decomposition_rejections += 1
-                            if decomposition_rejections >= 2:
-                                decomposition_attempted = True
-                                clarification = {
-                                    "status": "clarify",
-                                    "clarify": {"reason": DECOMPOSITION_CLARIFY},
-                                }
-                                tool_results.append({
-                                    "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps(clarification),
-                                })
-                                terminal_query = clarification
-                                continue
-                            tool_results.append({
-                                "type": "tool_result", "tool_use_id": block.id,
-                                "content": json.dumps({
-                                    "status": "error",
-                                    "error": "the decomposition retry must include the "
-                                             "decomposition proposal; call again with the same "
-                                             "question, the same analysis, and the proposal",
-                                }),
-                                "is_error": True,
-                            })
-                            continue
-                        if decomposition is not None:
-                            if pending_decomposition is None:
-                                failure = {
-                                    "status": "error",
-                                    "error": "decomposition is allowed only after status=decompose",
-                                }
-                                tool_results.append({
-                                    "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps(failure),
-                                    "is_error": True,
-                                })
-                                terminal_query = failure
-                                continue
-                            if decomposition_attempted:
-                                tool_results.append({
-                                    "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps({
-                                        "status": "clarify",
-                                        "clarify": {"reason": "the bounded decomposition attempt was already used"},
-                                    }),
-                                })
-                                terminal_query = {
-                                    "status": "clarify",
-                                    "clarify": {"reason": "I need a more specific question to continue."},
-                                }
-                                continue
-                            if identity != pending_decomposition:
-                                decomposition_rejections += 1
-                                if decomposition_rejections >= 2:
-                                    decomposition_attempted = True
-                                    clarification = {
-                                        "status": "clarify",
-                                        "clarify": {"reason": DECOMPOSITION_CLARIFY},
-                                    }
-                                    tool_results.append({
-                                        "type": "tool_result", "tool_use_id": block.id,
-                                        "content": json.dumps(clarification),
-                                    })
-                                    terminal_query = clarification
-                                    continue
-                                tool_results.append({
-                                    "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps({
-                                        "status": "error",
-                                        "error": "the decomposition retry must keep the original "
-                                                 "question and analysis unchanged; call again with "
-                                                 "the same identity and the proposal",
-                                    }),
-                                    "is_error": True,
-                                })
-                                continue
+                        if pending_decomposition is not None or decomposition is not None:
                             try:
+                                if pending_decomposition is None:
+                                    raise DecompositionError(
+                                        "decomposition is allowed only after status=decompose"
+                                    )
+                                if decomposition_attempted:
+                                    raise DecompositionError("the decomposition attempt was already used")
+                                if decomposition is None:
+                                    raise DecompositionError("the retry must include a decomposition proposal")
+                                if identity != pending_decomposition:
+                                    raise DecompositionError(
+                                        "the retry must keep the original question and analysis unchanged"
+                                    )
                                 decomposition = validate_decomposition(decomposition)
                             except DecompositionError as exc:
                                 decomposition_rejections += 1
-                                if decomposition_rejections >= 2:
+                                terminal = (
+                                    pending_decomposition is None
+                                    or decomposition_attempted
+                                    or decomposition_rejections >= 2
+                                )
+                                if terminal:
                                     decomposition_attempted = True
-                                    clarification = {
+                                    rejection = {
                                         "status": "clarify",
                                         "clarify": {"reason": DECOMPOSITION_CLARIFY},
                                     }
-                                    tool_results.append({
-                                        "type": "tool_result", "tool_use_id": block.id,
-                                        "content": json.dumps(clarification),
-                                    })
-                                    terminal_query = clarification
-                                    continue
-                                tool_results.append({
-                                    "type": "tool_result", "tool_use_id": block.id,
-                                    "content": json.dumps({
+                                    terminal_query = rejection
+                                else:
+                                    rejection = {
                                         "status": "error",
                                         "error": "invalid decomposition: " + str(exc)
                                                  + ". Correct the proposal and call the tool again "
                                                    "with the same question and analysis.",
-                                    }),
-                                    "is_error": True,
+                                    }
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(rejection),
+                                    "is_error": not terminal,
                                 })
                                 continue
                             decomposition_attempted = True
-                            # The first engine call already authenticated and persisted any
-                            # conversation-stated dataset semantics. Replaying those mutation
-                            # ops on the decomposition retry would append the same event twice.
+                            # These operations were persisted by the first engine call.
+                            # Replaying them on the retry would duplicate semantic events.
                             dataset_ops = None
                             quotes_verified = False
                         attestation = (dataset_attestation.sign(principal, dataset_ops)
@@ -525,7 +463,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             if decomposition_attempted:
                                 shaped = {
                                     "status": "clarify",
-                                    "clarify": {"reason": "the decomposed leaves still could not be lowered"},
+                                    "clarify": {"reason": DECOMPOSITION_CLARIFY},
                                 }
                             else:
                                 pending_decomposition = identity

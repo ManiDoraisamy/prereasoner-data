@@ -751,12 +751,12 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
     assert evaluated["python_sql_equal"] is True
 
 
-def test_auto_keeps_the_selected_sql_answer_when_a_limit_cutoff_ties():
-    """A LIMIT that cuts through tied rows underdetermines the answer. The selected SQL's
-    engine-arbitrary pick is the system's canonical answer, so evaluator `auto` must not
-    let the plan's deterministic tie-break silently replace it — that flipped a Spider
-    scalar (224 -> 223) the first time ordered top-N lowering shipped. The divergence
-    stays on the record; `verify` still fails hard."""
+def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
+    """Gold grading must observe serving, not silently substitute a SQL answer.
+
+    Ties may be underdetermined, but that is a reported divergence, not a reason
+    to change which backend's output the evaluator grades. Verify fails hard.
+    """
     from engine.sql_candidate import ScoredQuery
     from spider.probe.full_eval import ast_predict
 
@@ -813,10 +813,10 @@ def test_auto_keeps_the_selected_sql_answer_when_a_limit_cutoff_ties():
         schema_fks=(), execution_backend="auto", python_row_limit=10_000,
     )
     assert evaluated["ok"] is True
-    assert evaluated["rows"] == [["rs", 1]]                 # the selected SQL answer stands
-    assert evaluated["execution_backend_actual"] == "sql"
+    assert evaluated["rows"] == [["ai", 1]]                 # exactly what AUTO serves
+    assert evaluated["execution_backend_actual"] == "python"
     assert evaluated["python_sql_equal"] is False           # the divergence is recorded
-    assert "tie" in evaluated["python_fallback_reason"]
+    assert not evaluated.get("python_fallback_reason")
 
     verified = ast_predict(
         TiedEncoder(), tables, "course with most enrollments",

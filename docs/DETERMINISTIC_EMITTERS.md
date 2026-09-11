@@ -13,10 +13,15 @@ consume that plan. No model writes Python source, and neither emitter translates
 Sonnet proposes a named analysis action and slug. It does not normally split a question. If the
 engine's selected typed AST is compound and cannot be represented as one shared-plan branch, the
 engine returns `decompose`; Sonnet may then make exactly one retry containing two to four
-natural-language subquestions and a closed `cross`/`anti_join` dependency graph. The retry must keep
+natural-language subquestions and a closed `cross`/`anti_join` dependency graph. Each merge has exactly
+two inputs. A malformed proposal gets one model-facing correction round before a plain-language
+clarification; only one validated proposal may execute. The retry must keep
 the exact question and analysis request identity. It cannot name tables, columns, keys, SQL, or Python, and
 every proposed node must contribute to the output. The engine independently plans each leaf and
 fuses only planner-bound typed relations. It owns revision allocation, code generation, and execution.
+Node identifiers are lowercase ASCII identifiers of at most 40 characters; proposal size is bounded
+in UTF-8 bytes. Branch views use the root analysis slug and the shared PostgreSQL-safe naming function.
+A failed compound probe does not authorize a partial composed answer.
 
 A slug such as `total_amount` is every SQL
 view's prefix and normally the Python method name. Durable slugs that are Python keywords stay
@@ -80,13 +85,19 @@ class OrdersCustomersProducts:
 | Ordered | `ORDER BY ... NULLS LAST`, optional `LIMIT` | `previous.sort`, with explicit tie keys |
 | Correlated | Share, running total, or previous-period join | `previous.for_each`, with visible reduction/join expressions |
 | Cross | Bounded `CROSS JOIN` | `left.cross(right)` |
-| Anti-join | `WHERE NOT EXISTS` over compiler-inferred common dimension keys | `left.anti_join(right, keys=...)` |
+| Anti-join | `WHERE NOT EXISTS` over common physical dimension lineage | `left.anti_join(right, keys=...)` |
 
 The actual source includes the ORM query, row classes, transformation bodies, predicates, initial
 aggregate state, and operator calls. SQL `SUM(gross_amount)` corresponds to
 `SUM(result.total_amount, row.gross_amount)` in the reduction callback. `operators.py` contains
 ordinary Python functions and loops, not an expression interpreter. `group_reduce` makes one pass
 over input rows and finalizes the groups afterward.
+
+Anti-join keys follow physical column lineage through group dimensions, projections, sorting, and
+merges. Different aliases can denote the same dimension; matching aliases alone never prove identity.
+Aggregate measures and computed expressions are not implicit equality keys. Ambiguous bindings are
+rejected. Cross-table FK-equivalent keys require an additional composite-key proof and are not inferred
+by this adapter. A validated plan still does not prove that the proposal captures every part of the question.
 
 Python stages materialize tuples. SQL creates temporary **views**, not PostgreSQL materialized views.
 Reading each SQL stage can recompute its predecessors. Both backends retain stage rows for inspection;
@@ -231,13 +242,14 @@ The Spider runner extends the existing denotation evaluator with
 `--backend sql|python|auto|verify`, `--python-row-limit`, and `--scalar-only`. Candidate planning and
 ranking are unchanged. Generated Python executes the selected typed AST on a separate in-memory
 SQLite database; gold SQL still executes independently and correctness still uses
-`spider.probe.spider_eval.compare`. Evaluator `auto` executes both arms and GRADES the Python rows
-only when they strictly equal the selected SQL; on disagreement the selected SQL answer stands and
-the divergence is recorded as a fallback with its reason. Data can legitimately underdetermine an
-answer — an `ORDER BY ... LIMIT` cutoff that ties lets each backend return a different, equally valid
-row — and `auto` must not let the plan's deterministic tie-break silently replace the system's
-canonical answer. `verify` still fails hard on any inequality, so a real Python defect surfaces in
-both modes: as a hard failure under `verify` and as a nonzero divergence count under `auto`. Thus
+`spider.probe.spider_eval.compare`. Evaluator `auto` grades the successful Python result that AUTO
+serving would return, even if the original SQL candidate differs. It executes the original candidate
+separately to record discrepancies, never to replace a successful Python answer solely in evaluation.
+SQL fallback remains limited to unsupported lowering, row limits, or execution failure. A tied
+`ORDER BY ... LIMIT` cutoff can differ because the shared plan adds stable tie keys; report that
+change in scalar-gold results rather than hiding it behind an evaluator-only fallback. `verify` still
+fails on inequality against the original candidate. Shared-plan stage parity is a separate check
+against the SQL emitter, whose tie policy matches the Python emitter. Thus
 Python coverage and scalar-gold accuracy are additional fields in the same evaluation artifact, not a
 separate correctness definition.
 

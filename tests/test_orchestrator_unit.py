@@ -412,8 +412,7 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
     result = asyncio.run(run())
     assert len(engine_calls) == 2, "the corrected proposal must reach the engine exactly once"
     forwarded = engine_calls[1][1].get("decomposition")
-    # validate_decomposition normalizes before forwarding (labels defaulted, inputs
-    # tupled); assert the corrected STRUCTURE rather than byte equality.
+    # Validation defaults labels while retaining a JSON-native transport shape.
     assert [m["id"] for m in forwarded["merges"]] == ["pairs", "gaps"]
     assert all(len(m["inputs"]) == 2 for m in forwarded["merges"])
     assert forwarded["output"] == "gaps"

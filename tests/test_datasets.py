@@ -209,10 +209,10 @@ def main() -> int:
         analysis_execution_context,
         enforce_execution_response,
     )
-    from engine.knowledge_compose import ComposedKnowledgeQuery
+    from engine.knowledge import KnowledgeReasoner
     from regress.live_schema import live_schema
 
-    Q = ComposedKnowledgeQuery()
+    Q = KnowledgeReasoner()
     schema = live_schema().name
     fails = []
     records = []

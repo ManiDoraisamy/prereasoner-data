@@ -170,7 +170,8 @@ def test_external_model_deployment_fails_closed():
     assert "local.dataset_attestation_secret_id" in orchestrator_tf
     assert 'resource "google_secret_manager_secret_iam_member" "chat_dataset_attestation"' in orchestrator_tf
     assert "engine/dataset_attestation.py" in _text("Dockerfile.orchestrator")
-    assert '"engine/dataset_attestation.py"' in _text("deploy/gcp/build_context.py")
+    from deploy.gcp.build_context import SOURCE_CHAT_ALLOWLIST
+    assert "engine/dataset_attestation.py" in SOURCE_CHAT_ALLOWLIST
 
 
 def test_orchestrator_prompt_owns_generic_question_fidelity():
@@ -378,6 +379,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         SOURCE_ALLOWLIST,
         SOURCE_CHAT_ALLOWLIST,
         SOURCE_SYNC_ALLOWLIST,
+        chat_engine_sources,
     )
 
     source = _text("deploy/gcp/build_context.py")
@@ -397,6 +399,13 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     } <= set(SOURCE_CHAT_ALLOWLIST)
     chat_dockerfile = _text("Dockerfile.orchestrator")
     assert "engine/analysis.py" in chat_dockerfile
+    assert set(chat_engine_sources()) == {
+        name for name in SOURCE_CHAT_ALLOWLIST if name.startswith("engine/")
+    }
+    # Extending the image dependency list must automatically extend the upload.
+    with patch.object(Path, "read_text", return_value=chat_dockerfile +
+                      "\nCOPY engine/future_dependency.py /app/engine/\n"):
+        assert "engine/future_dependency.py" in chat_engine_sources()
     assert not {"training", "spider", "world_eval", "infra", "db"} & set(
         SOURCE_CHAT_ALLOWLIST
     )

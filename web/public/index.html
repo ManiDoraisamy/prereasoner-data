@@ -132,13 +132,16 @@ const DEMO_LOAD=Promise.all([
     return fetch('/dataset/'+DATASET+'/'+(xlsx?n:n+'.csv')).then(r=>{
       if(!r.ok)throw new Error(base+': HTTP '+r.status);
       return xlsx
-        ? r.blob().then(b=>XLSX_READER.readWorkbook(b)).then(sheets=>({name:base, data:String((sheets[0]||{}).csv||'').replace(/\r\n/g,'\n').trim()}))
-        : r.text().then(t=>({name:base, data:t.replace(/\r\n/g,'\n').trim()}));
+        ? r.blob().then(b=>XLSX_READER.readWorkbook(b)).then(sheets=>{
+            if(!sheets.length)throw new Error(base+': no sheet has a header and a data row');
+            return sheets.map(s=>({name:sheets.length>1?s.name:base, data:s.csv.replace(/\r\n/g,'\n').trim()}));
+          })
+        : r.text().then(t=>[{name:base, data:t.replace(/\r\n/g,'\n').trim()}]);
     });
   })),
   fetch('/dataset/'+DATASET+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>''),
 ]).then(([t,p])=>{
-  if(isSample){ SHEETS=t; renderChips(); }                 // an upload or picker return that landed first wins
+  if(isSample){ SHEETS=t.flat(); renderChips(); }          // an upload or picker return that landed first wins
   p=p.trim();                                              // the dataset's prompt fills a PRISTINE box only — never
   if(p&&$('q').value===Q0)$('q').value=p;                  // a question the user typed or a picker round-trip restored
 }).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
@@ -167,7 +170,7 @@ async function openExamples(){
   // is a SHEET name (an uploaded .xlsx contributes one chip per worksheet and has no file extension).
   EXAMPLES=(await Promise.all(Object.keys(DATASETS).map(d=>
     fetch('/dataset/'+d+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>'')
-      .then(p=>({dir:d, files:DATASETS[d].join(', '), prompt:p.trim()}))
+      .then(p=>({dir:d, files:DATASETS[d].map(baseName).join(', '), prompt:p.trim()}))
   ))).filter(e=>e.prompt);
   $('exlist').innerHTML=EXAMPLES.length
     ? EXAMPLES.map(e=>'<button type=button data-load="'+esc(e.dir)+'"><div class=xq>'+esc(e.prompt)+'</div><div class=xd>'+esc(e.files)+'</div></button>').join('')
