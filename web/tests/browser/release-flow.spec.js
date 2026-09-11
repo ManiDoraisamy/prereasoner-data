@@ -29,15 +29,13 @@ async function mockAuth(page,chat='1'){
 }
 
 test('a workbook demo retains every worksheet and strips file extensions from the picker',async({page})=>{
-  page.on('pageerror',error=>console.log('page error:',error.message));
-  page.on('console',message=>console.log('page console:',message.text()));
   await mockAuth(page);
   const book=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['id'],[1]]),'orders');
   XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['customer'],['Ada']]),'customers');
   const body=XLSX.write(book,{type:'buffer',bookType:'xlsx'});
   await page.route('**/dataset/neartail-orders-xlsx/orders.xlsx',route=>route.fulfill({
-    contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body,
+    contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:Buffer.from(body),
   }));
   await page.goto('/?load=neartail-orders-xlsx');
   await expect(page.locator('#chips .nm')).toHaveText(['orders','customers']);
@@ -51,7 +49,7 @@ test('a workbook demo with no data fails visibly instead of creating an empty ta
   XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['id']]),'empty');
   const body=XLSX.write(book,{type:'buffer',bookType:'xlsx'});
   await page.route('**/dataset/neartail-orders-xlsx/orders.xlsx',route=>route.fulfill({
-    contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body,
+    contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body:Buffer.from(body),
   }));
   await page.goto('/?load=neartail-orders-xlsx');
   await expect(page.locator('#err')).toContainText('no sheet has a header and a data row');
