@@ -389,6 +389,12 @@ def build_decomposed_plan(
         )
         shapes = _shapes(tuple(views), tuple(tables_by_name.values()), slug)
 
+    repeated = duplicated_output_dimension(
+        tuple(views), shapes, outputs[proposal["output"]]
+    )
+    if repeated is not None:
+        raise DecompositionError(repeated)
+
     return AnalysisPlan(
         slug,
         tuple(tables_by_name.values()),
@@ -530,6 +536,28 @@ def _merge_key_columns(views, shapes, name: str) -> dict[str, tuple[str, str]]:
     if hasattr(view, "source"):
         return _merge_key_columns(views, shapes, view.source)
     return {}
+
+
+def duplicated_output_dimension(views, shapes, output: str) -> str | None:
+    """Reject an answer whose grain repeats one physical dimension.
+
+    Crossing two leaves that describe the SAME entity produces an output with two
+    columns of identical lineage: every row then pairs a value with itself, and the
+    table reads as a confident answer while being a modelling error. The closed
+    grammar crosses DIFFERENT entities (customers x products), so repeated lineage
+    is never a supported grain. Aggregate aliases carry no lineage and are exempt,
+    so two measures that share a name cannot trip this.
+    """
+    seen: dict[tuple[str, str], str] = {}
+    for name, origin in _merge_key_columns(views, shapes, output).items():
+        if origin in seen:
+            return (
+                f"the combined answer would repeat the {origin[0]}.{origin[1]} column "
+                f"as both {seen[origin]!r} and {name!r}; cross two subquestions about "
+                "DIFFERENT entities, or use one subquestion when only one is needed"
+            )
+        seen[origin] = name
+    return None
 
 
 def _bind_merge_keys(views, shapes, left, right):

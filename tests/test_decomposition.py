@@ -236,6 +236,34 @@ def test_ranked_cross_input_must_stay_at_the_ranked_entity_grain():
     ) is None
 
 
+def test_an_answer_grain_cannot_repeat_one_physical_dimension():
+    """A cross of two same-entity leaves pairs values with themselves."""
+    from engine.decomposition import duplicated_output_dimension
+    from engine.deterministic.plan import CrossView
+
+    source = CombinedView("source", ("products", "customers"))
+    # Two projections of the SAME physical column, crossed.
+    left = ProjectedView("left", "source", (SelectedValue(
+        "product_name", ColumnValue("products", "product_name")),))
+    right = ProjectedView("right", "source", (SelectedValue(
+        "product_name", ColumnValue("products", "product_name")),))
+    crossed = CrossView("paired", "left", "right", "other_")
+    shapes = {"source": (), "left": ("product_name",), "right": ("product_name",),
+              "paired": ("product_name", "other_product_name")}
+    assert duplicated_output_dimension((source, left, right, crossed),
+                                       shapes, "paired") is not None
+    # Distinct entities are the supported shape and must pass.
+    right_customer = ProjectedView("right", "source", (SelectedValue(
+        "customer_name", ColumnValue("customers", "customer_name")),))
+    shapes_ok = {"source": (), "left": ("product_name",), "right": ("customer_name",),
+                 "paired": ("product_name", "customer_name")}
+    assert duplicated_output_dimension((source, left, right_customer, crossed),
+                                       shapes_ok, "paired") is None
+    # A single leaf keeps its own grain.
+    assert duplicated_output_dimension(
+        (source, left), {"source": (), "left": ("product_name",)}, "left") is None
+
+
 def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner = Mock()
     planner.ingest.side_effect = RuntimeError("planner unavailable")
@@ -266,6 +294,7 @@ TESTS = [
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
+    test_an_answer_grain_cannot_repeat_one_physical_dimension,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]
 
