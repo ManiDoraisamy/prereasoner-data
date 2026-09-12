@@ -1,0 +1,5 @@
+# Release-gated Neartail-style order-management questions.
+total quantity for VIP customers => 10925
+average price for VIP customers => 250.77935327248008
+number of orders with PayPal => 1977
+number of orders with Email => 2474

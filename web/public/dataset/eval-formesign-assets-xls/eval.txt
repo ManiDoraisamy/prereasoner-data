@@ -1,0 +1,4 @@
+# Gold: original Sheet1 rows 6:8, Purchase Cost E6:E8. Includes the scrapped laptop.
+What is the total purchase cost of the assets? => 1509.36
+How many assets are listed? => 3
+What is the highest purchase cost? => 847.98

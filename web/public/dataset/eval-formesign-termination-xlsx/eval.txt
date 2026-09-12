@@ -1,0 +1,4 @@
+# Release-gated Formesign-style contract-review questions.
+maximum notice_days => 180
+minimum notice_days => 5
+number of contracts => 183

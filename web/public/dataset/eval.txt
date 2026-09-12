@@ -1,0 +1,8 @@
+# Release-gated evaluation workbooks. These are deliberately excluded from dataset.txt,
+# the home-page example picker, and the public demo links.
+eval-formfacade-bank-marketing
+eval-neartail-ecommerce
+eval-formesign-termination-xlsx
+eval-neartail-supplier-report-xlsx
+eval-formesign-assets-xls
+eval-formesign-procurement-xlsx

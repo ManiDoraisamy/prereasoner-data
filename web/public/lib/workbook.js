@@ -856,6 +856,7 @@ function stepStatus(v){                                       // a friendly, pla
   }
 }
 function appendView(v,execution=null,executionKey=null){
+  v=RESULT_WIRE.table(v);
   dropStale();
   const key=executionKey||v.executionKey||null;
   const item=Object.assign({},v,{execution:normalizedExecution(execution||v.execution||(key&&EXEC_BY_KEY.get(key))),executionKey:key});
@@ -868,6 +869,7 @@ function appendView(v,execution=null,executionKey=null){
     sectionQuestion:item.section_question||'',sectionInputs:item.section_inputs||[],isOutput:!!item.is_output});
 }
 function appendResolve(r){
+  if(r.columns)r=RESULT_WIRE.table(r);
   dropStale();
   RESOLVES.push(r);
   STATUS='Looking up '+(r.column||'the world')+'…';
@@ -1016,7 +1018,7 @@ async function startTurn(){
       noteExecution(engine.execution,t.jobId); });            // metadata even when views streamed live
     if(EXEC&&BOOK.some(s=>s.cls==='deriv')) paint();
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
-    if(!VIEWS.length&&Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // no live stream -> render from the body
+    if(Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // reconcile even a partially streamed stack
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
     if(!REPLY&&j.reply) REPLY=j.reply;
     if(!SETTLED) markTurnDone();
@@ -1030,22 +1032,36 @@ function addCall(uid,c){                                      // an engine call 
   STATUS='Reading as: “'+c.question+'”…'; renderRail();
   if(!uid||!window.subscribeRun)return;
   const sub=window.subscribeRun(uid,c.jobId,{
+    onTransportError:message=>{ STATUS=message; renderRail(); },
     onDatasetSemantics:noteDatasetSemantics,
     onAnalysis:noteAnalysis,
     onExecution:e=>{ if(!e)return; noteExecution(e,c.jobId); paint(); },
-    onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; SEEN.add(id); appendView(v,null,c.jobId); },
+    onView:(k,v)=>{ if(!v)return; const id=c.jobId+'/'+k; if(SEEN.has(id))return; appendView(v,null,c.jobId); SEEN.add(id); },
     onResolve:(k,r)=>{ if(!r||typeof r!=='object'||!r.column)return; const id=c.jobId+'/'+k; if(SEEN_R.has(id))return; SEEN_R.add(id); appendResolve(r); },
     // reconcile this call's last view with its authoritative result rows (calls stream sequentially, so the
     // most recent deriv sheet is this call's last step). The answer + any clarify are synthesized into REPLY.
-    onResult:r=>{ if(!r||!Array.isArray(r.rows))return;
+    onResult:r=>{ if(!r)return; r=RESULT_WIRE.table(r);
       if(!BOOK.some(s=>s.cls==='deriv'&&!s.stale)) dropStale();   // a data result with no fresh derivation of its own -> retire the prior turn's stale steps; NEVER graft this answer onto them
-      const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale).pop();
+      const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale&&s.executionKey===c.jobId).pop();
       if(last){ if(r.columns&&r.columns.length)last.cols=r.columns; last.rows=r.rows; last.columnProvenance=r.column_provenance||last.columnProvenance||[]; last.result=true; if(last.id===ACTIVE)paint(); } else paint(); },
     onStatus:()=>{}, onClarify:()=>{}, onLowConfidence:()=>{}, onPresent:()=>{}, onError:()=>{},
   });
   callSubs.push(sub);
 }
 function renderTurnFromHTTP(j){                               // fallback: no RTDB -> build the derivation from the /chat body's traces
+  // Validate the complete response BEFORE retiring any streamed sheets. A partial
+  // stream is not evidence that all stages arrived. Replace by call identity, not
+  // by global last-view position, so retries cannot graft results onto another call.
+  j=RESULT_WIRE.decode(j);
+  (j.traces||[]).forEach(t=>{
+    const eng=t.engine||{};
+    if(Array.isArray(eng.views))eng.views=eng.views.map(v=>RESULT_WIRE.table(v));
+    if(eng.answer)eng.answer=RESULT_WIRE.table(eng.answer);
+  });
+  const keys=new Set((j.traces||[]).map(t=>t.jobId).filter(Boolean));
+  BOOK=BOOK.filter(s=>s.cls!=='deriv'||!keys.has(s.executionKey));
+  VIEWS=VIEWS.filter(v=>!keys.has(v.executionKey));
+  if(!BOOK.some(s=>s.id===ACTIVE))AUTO=true;
   let rendered=false;
   (j.traces||[]).forEach(t=>{ noteDatasetSemantics((t.engine||{}).dataset_semantics); });
   (j.traces||[]).forEach(t=>{ const eng=t.engine||{};
@@ -1057,7 +1073,7 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
         column_provenance:eng.answer.column_provenance||[]},execution,t.jobId); rendered=true; }
     if(eng.answer&&Array.isArray(eng.answer.rows)){
       J=J||{}; J.result=eng.answer; if(eng.sql)J.sql=eng.sql;
-      const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale).pop();
+      const last=BOOK.filter(s=>s.cls==='deriv'&&!s.stale&&s.executionKey===t.jobId).pop();
       if(last){ last.cols=eng.answer.columns||last.cols; last.rows=eng.answer.rows;
         last.columnProvenance=eng.answer.column_provenance||last.columnProvenance||[]; last.result=true; }
     }

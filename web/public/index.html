@@ -101,6 +101,7 @@
 <div class=preview id=examples role=dialog aria-label="Example questions"><button class=px onclick=closeExamples() aria-label=Close>&times;</button><div class=ph>Example questions <span class=c>&middot; pick one to load its dataset</span></div><div class=exlist id=exlist></div></div>
 <script src="lib/shared.js"></script>
 <script src="lib/workbook-conversations.js"></script>
+<script src="lib/upload-limits.js"></script>
 <script src="lib/xlsx-reader.js"></script>
 <script>
 // Demo workbooks live in /dataset/<name>/ as plain CSVs plus a prompt.txt that prefills the
@@ -123,6 +124,7 @@ const DATASET=(p=>Object.prototype.hasOwnProperty.call(DATASETS,p)?p:'customer-o
 const $=id=>document.getElementById(id);
 const Q0=$('q').value;                                     // the HTML fallback question, captured before any restore
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo
+let UPLOAD_PENDING=false, UPLOAD_ERROR='', UPLOAD_BATCH=0;
 const DEMO_LOAD=Promise.all([
   Promise.all(DATASETS[DATASET].map(n=>{
     // A registry entry ending in .xlsx ships as a real workbook and converts to CSV text
@@ -146,7 +148,7 @@ const DEMO_LOAD=Promise.all([
   if(p&&$('q').value===Q0)$('q').value=p;                  // a question the user typed or a picker round-trip restored
 }).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
 function renderChips(){
-  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span></span>').join('');
+  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'" title="'+esc(s.filename||s.name)+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span><small> '+parseCSV(s.data).rows.length.toLocaleString()+' rows</small></span>').join('');
   [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onclick=()=>openPreview(+el.dataset.i));
 }
 function openPreview(i){
@@ -191,26 +193,42 @@ function baseName(n){return (n||'').replace(/\.(csv|tsv|txt|xlsx|xlsm|xls)$/i,''
 function addSheet(name,data){if(isSample){SHEETS=[];isSample=false;}SHEETS.push({name:name,data:data});}
 $('file').addEventListener('change',async function(e){     // CSV/TSV read as text; .xlsx/.xls parsed client-side -> ONE table per worksheet (FK-joinable like multi-CSV)
   const files=[...e.target.files]; if(!files.length)return;
+  const batch=++UPLOAD_BATCH, pending=[];
+  UPLOAD_PENDING=true; UPLOAD_ERROR='';
+  const ask=document.querySelector('#f button[type=submit]'); ask.disabled=true;
   $('err').textContent='';
-  for(const f of files){
-    try{
+  try{
+    for(const f of files){
       if(/\.(xlsx|xlsm|xls)$/i.test(f.name)){
         const used=await XLSX_READER.readWorkbook(f);
-        if(!used.length){$('err').textContent='“'+f.name+'” has no sheet with a header and a data row.';continue;}
-        used.forEach(x=>addSheet(used.length>1?x.name:baseName(f.name),x.csv));   // multi-sheet -> one table per sheet
+        if(!used.length)throw new Error('“'+f.name+'” has no sheet with a header and a data row.');
+        used.forEach(x=>pending.push({name:used.length>1?x.name:baseName(f.name),data:x.csv,filename:f.name,import:x.import}));
       }else{
-        addSheet(baseName(f.name),await XLSX_READER.readText(f));
+        const data=await XLSX_READER.readText(f);
+        if(!parseCSV(data).rows.length)throw new Error('“'+f.name+'” has no data rows.');
+        pending.push({name:baseName(f.name),data,filename:f.name});
       }
-    }catch(err){$('err').textContent='Could not read “'+f.name+'”: '+((err&&err.message)||err);}
+    }
+    if(batch!==UPLOAD_BATCH)return;
+    const next=(isSample?[]:SHEETS).concat(pending);
+    if(next.length>UPLOAD_LIMITS.sheets)throw new Error('Attach at most 8 tables.');
+    if(next.reduce((n,s)=>n+s.data.length,0)>UPLOAD_LIMITS.totalChars)throw new Error('The combined tables are too large.');
+    SHEETS=next; isSample=false; renderChips();
+  }catch(err){
+    if(batch!==UPLOAD_BATCH)return;
+    UPLOAD_ERROR='Upload failed: '+((err&&err.message)||err)+' Choose files again to continue.';
+    $('err').textContent=UPLOAD_ERROR;
+  }finally{
+    if(batch===UPLOAD_BATCH){UPLOAD_PENDING=false;ask.disabled=!!UPLOAD_ERROR;e.target.value='';}
   }
-  renderChips();
-  e.target.value='';
 });
 $('q').addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('f').requestSubmit();}});  // Enter sends, Shift+Enter newline
 $('f').addEventListener('submit',async function(e){
   e.preventDefault();
+  if(UPLOAD_PENDING||UPLOAD_ERROR){$('err').textContent=UPLOAD_ERROR||'Wait for the upload to finish.';return;}
   const q=$('q').value.trim();
   if(isSample){ try{ await DEMO_LOAD; }catch(_){} }        // a fast Ask must not race the demo fetch
+  if(UPLOAD_PENDING||UPLOAD_ERROR)return;
   const valid=SHEETS.filter(s=>s.data.trim().split(/\r?\n/).filter(Boolean).length>=2);
   if(!valid.length){$('err').textContent='Attach at least one CSV or Excel file with a header row and a data row.';return;}
   if(!q){$('err').textContent='Type a question about your table.';return;}

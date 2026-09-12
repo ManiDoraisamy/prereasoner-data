@@ -146,7 +146,7 @@ The runner executes the canonical suites in this order:
 | `tests.test_route_wired` | Model-driven route to SQL end to end |
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 | `tests.test_schema_probes` | Live property/class generalization and cross-process determinism |
-| `tests.test_datasets` | Every public workbook prompt and direct follow-up against the seeded serving path |
+| `tests.test_datasets` | Every example and release-only eval prompt and direct follow-up against the seeded serving path |
 
 For a hosted release, set `REQUIRE_ORCHESTRATOR_TESTS=1` before running
 `python -m tests.test_orchestrator`. With that flag, a missing `ANTHROPIC_API_KEY` is a failure rather
@@ -161,11 +161,23 @@ Request tests do not fetch Wikidata. The runner reports unavailable suites as sk
 continue, but a skip is not a passing integration test. Record exact skips and prerequisites in a pull request.
 
 Every directory under `web/public/dataset/` must contain a `prompt.txt` and an `eval.txt`. The URL manifest in
-`web/public/dataset/dataset.txt` is generated from those directories and is checked by the web gate. Numeric and
-clarification cases in `eval.txt` are run by `tests.test_datasets` against the direct engine. Lines prefixed with
+`web/public/dataset/dataset.txt` contains only customer-facing examples. Evaluation-only directories are listed
+by name in `web/public/dataset/eval.txt`; they are intentionally absent from the home-page picker and example
+links. The release gate evaluates the union of both manifests. Numeric and clarification cases in each dataset's
+`eval.txt` are run by `tests.test_datasets` against the direct engine. Lines prefixed with
 `chat:` are conversational shorthand; they are intentionally excluded from that direct gate and belong to the
 orchestrator/browser path. The `orders-tiers` fixture includes the joined `tier.csv` discount schedule and its
 exact tier follow-up is covered by `tests.test_orchestrator`.
+
+The hosted upload UI currently limits CSV/text uploads to 2 MB and workbook uploads to 5,000 data rows. A
+release-only dataset may therefore use a documented, metric-preserving projection for the browser smoke pass;
+the direct release gate still evaluates the checked-in rows. Treat a live browser run as incomplete when the
+upload is rejected or when it exercises only such a bounded projection, and record the rejection instead of
+silently reusing a previous conversation's workbook.
+
+For a release claim, leave `EVAL_DATASETS` unset: `python -m tests.test_datasets` then evaluates the union of
+`dataset.txt` and the evaluation-only `eval.txt`. Set `EVAL_DATASETS` only for a focused diagnosis, and report it
+as a partial gate.
 
 Run live suites sequentially. They create and replace shared test fixtures; concurrently launching two aggregate
 runs against one database can make one suite observe the other's fixture state.

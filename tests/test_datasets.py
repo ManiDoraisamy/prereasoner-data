@@ -1,11 +1,11 @@
-"""The shipped demo datasets answer their shipped prompts. Live world Postgres.
+"""The shipped datasets answer their shipped prompts. Live world Postgres.
 
-Every directory under web/public/dataset/ is a public demo workbook: its CSVs are what the
-home page loads and its prompt.txt is what the page prefills. This suite runs each of those
-exact payloads through the serving entry point, so a planner or grounding change that breaks
-a public demo fails here before a visitor sees it. The expectations span both routes: prompts
-that need a knowledgebase join (country/continent grounding, FX conversion) and prompts that
-must stay on the own-data path because the column already answers them.
+Each directory under web/public/dataset/ is either a customer-facing example listed in
+dataset.txt or a release-only evaluation dataset listed in eval.txt. This suite runs each
+selected payload through the serving entry point, so a planner or grounding change that breaks
+an example or release gate fails before launch. The expectations span both routes: prompts that
+need a knowledgebase join (country/continent grounding, FX conversion) and prompts that must
+stay on the own-data path because the column already answers them.
 
   Needs a synced world Postgres (docker-compose + db/sync) and KB_PG_* env vars set.
   python -m tests.test_datasets
@@ -18,9 +18,23 @@ import io
 import json
 import os
 import sys
+import subprocess
 from pathlib import Path
 
 DATASET_DIR = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset"
+EXAMPLE_MANIFEST = DATASET_DIR / "dataset.txt"
+EVAL_MANIFEST = DATASET_DIR / "eval.txt"
+
+
+def _manifest_names(path: Path) -> set[str]:
+    if not path.exists():
+        return set()
+    return {
+        line.split(":", 1)[0].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
 
 # dataset directory -> expected scalar for its prompt.txt. A new dataset directory without an
 # entry here fails the suite: a public demo must not ship with an unverified answer.
@@ -97,6 +111,12 @@ EXPECTED = {
         "own",
         1082.41,
     ),  # joined instrument rate, subtracted row by row
+    "eval-formfacade-bank-marketing": ("own", 4521),
+    "eval-neartail-ecommerce": ("own", 502),
+    "eval-formesign-termination-xlsx": ("own", 56.30434782608695),
+    "eval-neartail-supplier-report-xlsx": ("own", 2128324.96),
+    "eval-formesign-assets-xls": ("own", 1509.36),
+    "eval-formesign-procurement-xlsx": ("own", 1168),
 }
 FX_TOLERANCE = (
     0.15  # world+fx answers move with the ECB daily rate; 15% bounds a plausible drift
@@ -111,7 +131,7 @@ REWRITE_EXPECTATIONS = {
 
 
 def _xlsx_rows(path: Path) -> list[list[str]]:
-    """Read the fixture-xlsx subset the dataset generator writes: one sheet, inline strings.
+    """Read the one-sheet XLSX fixtures used by the release gate.
 
     The browser converts workbook datasets to CSV text through the upload worker before the
     engine ever sees them, so this reader exists ONLY so the live suite can feed the same
@@ -122,6 +142,13 @@ def _xlsx_rows(path: Path) -> list[list[str]]:
 
     ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
     with zipfile.ZipFile(path) as z:
+        shared_strings: list[str] = []
+        if "xl/sharedStrings.xml" in z.namelist():
+            root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+            shared_strings = [
+                "".join(node.text or "" for node in item.iterfind(".//m:t", ns))
+                for item in root.findall("m:si", ns)
+            ]
         root = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
     rows: list[list[str]] = []
     for row in root.findall(".//m:sheetData/m:row", ns):
@@ -129,7 +156,10 @@ def _xlsx_rows(path: Path) -> list[list[str]]:
         for cell in row.findall("m:c", ns):
             node = (cell.find("m:is/m:t", ns) if cell.get("t") == "inlineStr"
                     else cell.find("m:v", ns))
-            values.append("" if node is None or node.text is None else node.text)
+            value = "" if node is None or node.text is None else node.text
+            if cell.get("t") == "s" and value:
+                value = shared_strings[int(value)]
+            values.append(value)
         rows.append(values)
     return rows
 
@@ -139,9 +169,17 @@ def _tables(ds: Path) -> list[dict]:
     for f in sorted(ds.glob("*.csv")):
         rows = list(csv.reader(io.StringIO(f.read_text(encoding="utf-8"))))
         tables.append({"name": f.stem, "columns": rows[0], "rows": rows[1:]})
-    for f in sorted(ds.glob("*.xlsx")):
-        rows = _xlsx_rows(f)
-        tables.append({"name": f.stem, "columns": rows[0], "rows": rows[1:]})
+    workbooks = sorted([*ds.glob("*.xlsx"), *ds.glob("*.xls")])
+    if workbooks:
+        result = subprocess.run(
+            ["node", str(Path(__file__).with_name("workbook_fixture.js")), *map(str, workbooks)],
+            capture_output=True, text=True, encoding="utf-8", timeout=60, check=True,
+        )
+        for workbook in json.loads(result.stdout):
+            for sheet in workbook["sheets"]:
+                rows = list(csv.reader(io.StringIO(sheet["csv"])))
+                name = Path(workbook["file"]).stem if len(workbook["sheets"]) == 1 else sheet["name"]
+                tables.append({"name": name, "columns": rows[0], "rows": rows[1:]})
     return tables
 
 
@@ -292,6 +330,21 @@ def main() -> int:
         return responses[0]
 
     on_disk = {d.name for d in DATASET_DIR.iterdir() if d.is_dir()}
+    example_names = _manifest_names(EXAMPLE_MANIFEST)
+    eval_names = _manifest_names(EVAL_MANIFEST)
+    if not EXAMPLE_MANIFEST.exists():
+        fails.append("missing customer-facing dataset.txt manifest")
+    if not EVAL_MANIFEST.exists():
+        fails.append("missing evaluation-only eval.txt manifest")
+    if example_names & eval_names:
+        fails.append(
+            f"dataset names appear in both manifests: {sorted(example_names & eval_names)}"
+        )
+    manifest_names = example_names | eval_names
+    for missing in sorted(manifest_names - on_disk):
+        fails.append(f"manifest names missing dataset directory: {missing!r}")
+    for unlisted in sorted(on_disk - manifest_names):
+        fails.append(f"dataset directory is absent from both manifests: {unlisted!r}")
     for missing in sorted(on_disk - set(EXPECTED)):
         fails.append(
             f"dataset {missing!r} ships without a verified expectation in tests/test_datasets.py"

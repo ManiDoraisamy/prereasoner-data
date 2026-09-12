@@ -1,0 +1,14 @@
+const assert=require('node:assert/strict');
+require('../public/lib/result-wire.js');
+const {decode,table}=globalThis.RESULT_WIRE;
+const rows=[[null,null],['1.1622',null],[null,null]];
+const envelope={__pr_wire__:'array/v1',json:JSON.stringify(rows)};
+assert.deepEqual(table({columns:['amount','currency'],rows:envelope}).rows,rows);
+assert.deepEqual(decode({empty:{__pr_wire__:'array/v1',json:'[]'}}),{empty:[]});
+assert.deepEqual(table({columns:['a','b'],rows:[null,{1:0},['x']]}).rows,[[null,null],[null,0],['x',null]]);
+assert.throws(()=>table({columns:['a'],rows:{2:['x']}}),/incomplete legacy/);
+assert.throws(()=>table({columns:['a'],rows:[[1,2]]}),/exceeds/);
+assert.throws(()=>decode({__pr_wire__:'array/v2',json:'[]'}),/unsupported/);
+assert.throws(()=>decode({__pr_wire__:'array/v1',json:'{}'}),/invalid array/);
+assert.deepEqual(table({columns:['a'],rows:[]}).rows,[]);
+console.log('result transport: 8 checks passed');

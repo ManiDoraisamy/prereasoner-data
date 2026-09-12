@@ -1,0 +1,5 @@
+# Release-gated FormFacade-style lead/campaign questions.
+total balance => 6431836
+average duration => 263.961291749613
+number of leads => 4521
+number of leads with contact_method cellular => 2896

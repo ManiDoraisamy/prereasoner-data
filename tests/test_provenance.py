@@ -193,7 +193,21 @@ def test_json_artifacts_preserve_exact_database_scalars():
     }
 
 
+def test_rtdb_array_envelope_preserves_sparse_and_empty_results():
+    import json
+    from decimal import Decimal
+    from engine.trace import rtdb_encode
+
+    rows = [[None, None], [Decimal('1.1622'), None], [None, None]]
+    wire = rtdb_encode({'columns': ['amount', 'currency'], 'rows': rows, 'empty': []})
+    assert wire['rows']['__pr_wire__'] == 'array/v1'
+    assert json.loads(wire['rows']['json']) == [[None, None], ['1.1622', None], [None, None]]
+    assert json.loads(wire['empty']['json']) == []
+    assert json.loads(wire['columns']['json']) == ['amount', 'currency']
+
+
 TESTS = [
+    test_rtdb_array_envelope_preserves_sparse_and_empty_results,
     test_saved_reference_decimals_do_not_break_the_response,
     test_saved_reference_decimals_do_not_break_the_live_trace,
     test_json_artifacts_preserve_exact_database_scalars,

@@ -13,7 +13,8 @@ const workbookSource = fs.readFileSync(
   path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
 const firebaseSource = fs.readFileSync(
   path.join(__dirname, '..', 'public', 'lib', 'firebase-init.js'), 'utf8');
-const source = referenceSource + '\n' + conversationSource + '\n' + workbookSource;
+const source = fs.readFileSync(path.join(__dirname,'..','public','lib','result-wire.js'),'utf8')
+  + '\n' + referenceSource + '\n' + conversationSource + '\n' + workbookSource;
 assert(!source.includes("world_join:'wikipedia lookup'"),
   'shared-data joins must not label non-Wikidata sources such as ECB as Wikipedia');
 assert(source.includes("world_join:'reference lookup'"),
@@ -180,6 +181,7 @@ const checks = `
 }());`;
 
 // Execute as three distinct classic scripts, matching the browser's real loading model.
+vm.runInContext(fs.readFileSync(path.join(__dirname,'..','public','lib','result-wire.js'),'utf8'),context);
 vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});
 vm.runInContext(conversationSource, context, {filename: 'workbook-conversations.js'});
 vm.runInContext(workbookSource + checks, context, {filename: 'workbook.js'});

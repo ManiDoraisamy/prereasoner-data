@@ -4,8 +4,21 @@
 // contract the pages have always used. The config lives in lib/config.js (public identifiers).
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, getIdToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getDatabase, ref, onValue, onChildAdded, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+import { getDatabase, ref, onValue as watchValue, onChildAdded as watchChild, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { firebaseConfig } from "./config.js";
+import './result-wire.js';
+
+function watch(watcher,target,cb,handler){
+  return watcher(target,snapshot=>{
+    try{
+      const value=window.RESULT_WIRE.decode(snapshot.val());
+      handler({key:snapshot.key,val:()=>value});
+    }catch(error){
+      console.warn('Live result could not be decoded',error.message);
+      if(cb.onTransportError)cb.onTransportError('Live result is incomplete. Recovering the authoritative response…');
+    }
+  });
+}
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -21,6 +34,8 @@ window.ensureToken = () => getIdToken(auth.currentUser);
 // status/result/clarify/error. Returns an unsubscribe fn so the caller can detach on
 // done / fallback. Reads are allowed only for uid === auth.uid (database.rules.json).
 window.subscribeRun = (uid, jobId, cb) => {
+  const onValue=(target,handler)=>watch(watchValue,target,cb,handler);
+  const onChildAdded=(target,handler)=>watch(watchChild,target,cb,handler);
   const base = ref(db, `runs/${uid}/${jobId}`);
   const at = node => ref(db, `runs/${uid}/${jobId}/${node}`);   // one node under this run's trace path
   const convRef = at('conversation_id');
@@ -63,6 +78,8 @@ window.subscribeRun = (uid, jobId, cb) => {
 // via subscribeRun, plus the final `reply` (Sonnet's text) and terminal `status`. Same ownership rules as
 // subscribeRun (reads gated to auth.uid). Returns an unsubscribe fn.
 window.subscribeTurn = (uid, turnId, cb) => {
+  const onValue=(target,handler)=>watch(watchValue,target,cb,handler);
+  const onChildAdded=(target,handler)=>watch(watchChild,target,cb,handler);
   const base = ref(db, `runs/${uid}/${turnId}`);
   const at = node => ref(db, `runs/${uid}/${turnId}/${node}`);
   const uStatus = onValue(at('status'), s => { const v = s.val(); if (v != null && cb.onStatus) cb.onStatus(v); });

@@ -166,6 +166,14 @@ function restoredSheetExecution(st,s){
 function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
   if(!st||![1,2,3].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
+  try{
+    // Validate atomically: do not restore half a workbook before discovering an
+    // incompatible legacy result. The caller can load its authoritative analysis.
+    st={...st,sheets:(st.sheets||[]).map(s=>RESULT_WIRE.table(s))};
+  }catch(error){
+    console.warn('Saved result requires authoritative recovery',error.message);
+    return false;
+  }
   noteExecution(st.execution);                               // v1/v2 fallback; v3 stores provenance per sheet
   (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
       rows:s.rows||[], sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,

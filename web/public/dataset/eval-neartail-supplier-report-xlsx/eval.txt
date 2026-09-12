@@ -1,0 +1,5 @@
+# Gold: original Sheet1!A12:H41, 30 payment records, amounts in G.
+What is the total amount paid to suppliers? => 2128324.96
+How many payments are listed? => 30
+What is the highest amount paid? => 225766.34
+What is the total amount paid to PHOENIX SOFTWARE LTD? => 445494.54

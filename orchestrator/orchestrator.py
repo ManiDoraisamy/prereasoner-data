@@ -415,15 +415,17 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                     terminal_query = rejection
                                 else:
                                     rejection = {
-                                        "status": "error",
-                                        "error": "invalid decomposition: " + str(exc)
+                                        "status": "repair_required",
+                                        "code": "invalid_decomposition",
+                                        "attempts_remaining": 1,
+                                        "detail": "invalid decomposition: " + str(exc)
                                                  + ". Correct the proposal and call the tool again "
                                                    "with the same question and analysis.",
                                     }
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,
                                     "content": json.dumps(rejection),
-                                    "is_error": not terminal,
+                                    "is_error": False,
                                 })
                                 continue
                             decomposition_attempted = True
@@ -481,12 +483,14 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,
                                     "content": json.dumps({
-                                        "status": "error",
-                                        "error": "invalid decomposition: " + detail
+                                        "status": "repair_required",
+                                        "code": "invalid_decomposition",
+                                        "attempts_remaining": 1,
+                                        "detail": "invalid decomposition: " + detail
                                                  + ". Correct the proposal and call the tool again "
                                                    "with the same question and analysis.",
                                     }),
-                                    "is_error": True,
+                                    "is_error": False,
                                 })
                             continue
                         if shaped.get("status") == "decompose":

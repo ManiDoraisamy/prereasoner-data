@@ -370,8 +370,9 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
                 )])
             elif len(model_calls) == 3:
                 rejection = json.loads(model_calls[2]["messages"][-1]["content"][0]["content"])
-                assert rejection["status"] == "error"
-                assert "exactly two inputs" in rejection["error"]
+                assert rejection["status"] == "repair_required"
+                assert rejection["attempts_remaining"] == 1
+                assert "exactly two inputs" in rejection["detail"]
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
                     type="tool_use", name="prereasoner_query", id="corrected",
                     input={"question": question, **analysis, "decomposition": valid},
@@ -468,9 +469,10 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
                 )])
             elif len(model_calls) == 3:
                 rejection = json.loads(model_calls[2]["messages"][-1]["content"][0]["content"])
-                assert rejection["status"] == "error"
-                assert rejection["error"].startswith("invalid decomposition: subquestion")
-                assert "ranked entity" in rejection["error"]
+                assert rejection["status"] == "repair_required"
+                assert rejection["attempts_remaining"] == 1
+                assert rejection["detail"].startswith("invalid decomposition: subquestion")
+                assert "ranked entity" in rejection["detail"]
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
                     type="tool_use", name="prereasoner_query", id="narrow",
                     input={"question": question, **analysis, "decomposition": narrow},

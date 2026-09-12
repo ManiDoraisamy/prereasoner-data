@@ -69,7 +69,11 @@ const registered = {};
 for (const m of html.matchAll(/'([a-z-]+)':\[([^\]]*)\]/g)) {
   registered[m[1]] = m[2].split(',').map(s => s.replace(/'/g, '').trim()).filter(Boolean);
 }
+const evaluationOnly = new Set(csvText('eval.txt').split(/\r?\n/)
+  .map(line => line.trim()).filter(line => line && !line.startsWith('#'))
+  .map(line => line.split(':', 1)[0].trim()));
 for (const dir of fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir, d)).isDirectory())) {
+  if (evaluationOnly.has(dir)) continue;
   const files = fs.readdirSync(path.join(dsDir, dir));
   const prompt = files.includes('prompt.txt') && csvText(path.join(dir, 'prompt.txt')).trim();
   assert(prompt, `${dir} must ship a non-empty prompt.txt`);
@@ -138,13 +142,19 @@ const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 
 assert(/min-width:1000px[^}]*\{[^}]*\.hero-left \.h1\{white-space:nowrap/.test(css.replace(/\s+/g, '')) ||
   css.includes('.hero-left .h1{white-space:nowrap;max-width:none}'),
   'the hero headline must render as one line on desktop widths');
-// dataset.txt is the shareable index: one line per dataset directory, in exactly the ?load= form
-// the page implements. Regenerating it here keeps the list complete when a dataset is added.
+// dataset.txt is the shareable example index: one line per example directory, in exactly the ?load=
+// form the page implements. Evaluation-only directories live in eval.txt and must never appear in
+// the picker or public example links.
 const dirs = fs.readdirSync(dsDir).filter(d => fs.statSync(path.join(dsDir, d)).isDirectory()).sort();
+assert.deepStrictEqual([...evaluationOnly].sort(), dirs.filter(d => evaluationOnly.has(d)).sort(),
+  'eval.txt must list exactly the evaluation-only dataset directories');
+assert(![...evaluationOnly].some(d => csvText('dataset.txt').includes(`${d}:`)),
+  'evaluation-only datasets must not appear in dataset.txt');
+const exampleDirs = dirs.filter(d => !evaluationOnly.has(d));
 assert.strictEqual(
   csvText('dataset.txt'),
-  dirs.map(d => `${d}: https://chat.prereasoner.com/?load=${d}`).join('\n') + '\n',
-  'dataset.txt must list every dataset directory as <dir>: https://chat.prereasoner.com/?load=<dir>');
+  exampleDirs.map(d => `${d}: https://chat.prereasoner.com/?load=${d}`).join('\n') + '\n',
+  'dataset.txt must list every example directory as <dir>: https://chat.prereasoner.com/?load=<dir>');
 // FX comes from the knowledgebase (ECB daily sync -> knowledgebase."exchange_rate"), never from a
 // demo sheet: an illustrative rate table on the page would SHADOW the real rates, because an
 // uploaded rate sheet deliberately wins over the knowledge join (own data first).

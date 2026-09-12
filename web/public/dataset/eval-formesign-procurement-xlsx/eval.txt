@@ -1,0 +1,4 @@
+# Gold from the original Purchase orders over £5000 tab, rows 2:1169.
+How many purchase orders are listed? => 1168
+What is the total Net PO Value? => 128831117.68
+What is the highest Net PO Value? => 15957248

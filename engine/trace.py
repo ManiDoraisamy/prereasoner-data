@@ -39,6 +39,23 @@ def rtdb_safe(value):
     return json.loads(json.dumps(value, default=_rtdb_scalar, allow_nan=False))
 
 
+def rtdb_encode(value):
+    """Protect arrays from RTDB's removal of nulls and sparse-array coercion.
+
+    HTTP and persisted snapshots keep ordinary JSON. The browser decodes this
+    versioned transport envelope before using the same table validator. Encode
+    complete arrays (including nested arrays) so empty/trailing-null rows survive.
+    """
+    def encode(item):
+        if isinstance(item, list):
+            return {"__pr_wire__": "array/v1", "json": json.dumps(item, allow_nan=False,
+                                                                  separators=(",", ":"))}
+        if isinstance(item, dict):
+            return {key: encode(child) for key, child in item.items()}
+        return item
+    return encode(rtdb_safe(value))
+
+
 def ensure_app():
     """Idempotently ensure the default firebase-admin app exists. When RTDB_URL is set the app carries the
     databaseURL (RTDB needs it); without it the app is still initialized (ADC creds) so token verification
@@ -81,7 +98,7 @@ def emitter(uid, job_id):
         try:
             with request_timing.span("rtdb"):            # the span publishes its own rtdb_n
                 ref = db.reference(f"{base}/{node}" if node else base)
-                (ref.update if merge else ref.set)(rtdb_safe(value))
+                (ref.update if merge else ref.set)(rtdb_encode(value))
         except Exception as e:                           # noqa: BLE001 — best-effort; never break the answer
             print(f"[trace] emit_failed error={type(e).__name__}", flush=True)
     return emit
