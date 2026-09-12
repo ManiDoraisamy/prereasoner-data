@@ -567,9 +567,19 @@ def test_order_noun_does_not_request_sort_or_group():
         assert execute(tables, candidate.sql) == [(2,)], candidate.sql
         assert not candidate.query.group_by and not candidate.query.order_by, candidate.sql
     from engine.sql_expansion import ordering_requested
-    assert not ordering_requested('What is the value of the purchase order?')
+    # `order`, `ordered` and `rank` are business nouns at least as often as they
+    # are instructions. Spider's "highest rank points" and "the money rank of the
+    # player" regressed when bare `rank` counted as a sort request: it suppressed
+    # the row-superlative candidates and left an unscoped MAX subquery to win.
+    for question in ('What is the value of the purchase order?',
+                     'Find the name of the winner who has the highest rank points.',
+                     'Return the money rank of the player with the greatest earnings.',
+                     'What is the rank of the player?',
+                     'top 3 products by quantity ordered'):
+        assert not ordering_requested(question), question
     for question in ('Order purchase orders by value', 'List purchase orders ordered by value',
-                     'List purchases in descending order', 'Sort the orders'):
+                     'List purchases in descending order', 'Sort the orders',
+                     'Rank the players by earnings', 'List the players ranked by earnings'):
         assert ordering_requested(question), question
 
 

@@ -32,10 +32,19 @@ from engine.sql_schema import SchemaGraph
 
 
 def ordering_requested(question: str) -> bool:
-    """An order instruction, not the lemmatized business noun 'orders'."""
+    """An order instruction, not a business noun.
+
+    ``order``, ``rank`` and ``ordered`` are all nouns or participles at least as
+    often as they are instructions: "purchase orders", "rank points", "the money
+    rank", "quantity ordered". Each therefore counts only in an explicit
+    instruction form -- followed by ``by``, or sentence-initial imperative.
+    ``sort``/``sorted`` are unambiguous verbs and need no such guard.
+    """
     return bool(re.search(
-        r'\b(?:sort|sorted|ordered|rank|ranked)\b|\border\s+by\b'
-        r'|\b(?:ascending|descending)\s+order\b|(?:^|[.!?;]\s*)(?:please\s+)?order\b',
+        r'\b(?:sort|sorted)\b'
+        r'|\b(?:order|ordered|rank|ranked)\s+by\b'
+        r'|\b(?:ascending|descending)\s+order\b'
+        r'|(?:^|[.!?;]\s*)(?:please\s+)?(?:order|rank)\b',
         question, re.I,
     ))
 
