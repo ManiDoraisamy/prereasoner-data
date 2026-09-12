@@ -40,6 +40,13 @@ DECOMPOSITION_CLARIFY = (
 # These are hard ceilings, not model preferences. A single authenticated turn may not create an
 # unbounded paid tool loop even when the upstream model keeps requesting tools.
 MAX_TOOL_ROUNDS = 6
+# Rejected decomposition proposals allowed before the turn gives up, shared by the
+# local-validation and engine-rejection paths. A proposal can carry more than one
+# independent mistake (wrong ranking grain AND wrong cross order), and the model
+# reliably repairs each one it is told about — so a single correction turned a
+# recoverable turn into a clarification about one third of the time in the release
+# journey. Three proposals stay well inside MAX_TOOL_ROUNDS and remain terminal.
+MAX_DECOMPOSITION_PROPOSALS = 3
 MAX_MODEL_TOKENS = 4096
 TOOL_EXHAUSTED_REPLY = (
     "I couldn't complete that request. Please try one specific question about the attached data."
@@ -404,7 +411,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 terminal = (
                                     pending_decomposition is None
                                     or decomposition_attempted
-                                    or decomposition_rejections >= 2
+                                    or decomposition_rejections >= MAX_DECOMPOSITION_PROPOSALS
                                 )
                                 if terminal:
                                     decomposition_attempted = True
@@ -417,7 +424,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                     rejection = {
                                         "status": "repair_required",
                                         "code": "invalid_decomposition",
-                                        "attempts_remaining": 1,
+                                        "attempts_remaining": MAX_DECOMPOSITION_PROPOSALS - decomposition_rejections,
                                         "retry": {"question": pending_decomposition["question"],
                                                   **pending_decomposition["analysis"]},
                                         "detail": "invalid decomposition: " + str(exc)
@@ -465,10 +472,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
                         if shaped.get("status") == "clarify" and shaped.get("decomposition_rejected"):
                             # An engine-side proposal rejection gets the SAME bounded correction
-                            # contract as local validation: one actionable retry, then the shared
-                            # terminal clarification. The raw engine clarify stays in the trace.
+                            # contract as local validation: an actionable retry while the shared
+                            # proposal budget lasts, then the terminal clarification. The raw
+                            # engine clarify stays in the trace.
                             decomposition_rejections += 1
-                            if decomposition_rejections >= 2:
+                            if decomposition_rejections >= MAX_DECOMPOSITION_PROPOSALS:
                                 terminal_query = {
                                     "status": "clarify",
                                     "clarify": {"reason": DECOMPOSITION_CLARIFY},
@@ -487,7 +495,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                     "content": json.dumps({
                                         "status": "repair_required",
                                         "code": "invalid_decomposition",
-                                        "attempts_remaining": 1,
+                                        "attempts_remaining": MAX_DECOMPOSITION_PROPOSALS - decomposition_rejections,
                                         "retry": {"question": identity["question"], **identity["analysis"]},
                                         "detail": "invalid decomposition: " + detail
                                                  + ". Correct the proposal and call the tool again "

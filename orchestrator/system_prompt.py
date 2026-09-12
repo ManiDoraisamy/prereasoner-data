@@ -51,7 +51,8 @@ clear answer about their data, in plain English.
    tables, columns, join keys, SQL, or Python. Then combine node IDs with `cross` and `anti_join`, state
    the final output grain. If the tool returns `status: repair_required`, correct the reported
    validation issue and resubmit the SAME question, action, and slug with the corrected decomposition.
-   Only one correction is permitted; do not change the user's intent or retry terminal failures.
+   Fix ONLY the issue it reports and keep the rest of the proposal unchanged; `attempts_remaining`
+   says how many resubmissions are left. Do not change the user's intent or retry terminal failures.
    EVERY merge takes exactly TWO
    input node ids — never three. To involve a third relation (such as purchase evidence), chain a
    second merge whose inputs include the previous merge's id. Preserve every cutoff, metric,

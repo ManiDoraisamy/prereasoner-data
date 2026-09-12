@@ -371,7 +371,7 @@ def test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification():
             elif len(model_calls) == 3:
                 rejection = json.loads(model_calls[2]["messages"][-1]["content"][0]["content"])
                 assert rejection["status"] == "repair_required"
-                assert rejection["attempts_remaining"] == 1
+                assert rejection["attempts_remaining"] == orchestrator.MAX_DECOMPOSITION_PROPOSALS - 1
                 assert "exactly two inputs" in rejection["detail"]
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
                     type="tool_use", name="prereasoner_query", id="corrected",
@@ -470,7 +470,7 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
             elif len(model_calls) == 3:
                 rejection = json.loads(model_calls[2]["messages"][-1]["content"][0]["content"])
                 assert rejection["status"] == "repair_required"
-                assert rejection["attempts_remaining"] == 1
+                assert rejection["attempts_remaining"] == orchestrator.MAX_DECOMPOSITION_PROPOSALS - 1
                 assert rejection["detail"].startswith("invalid decomposition: subquestion")
                 assert "ranked entity" in rejection["detail"]
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
@@ -522,7 +522,7 @@ def test_an_engine_rejected_proposal_gets_one_correction_then_answers():
     assert result["traces"][1]["engine"].get("decomposition_rejected") is True
 
 
-def test_a_second_engine_rejection_terminates_in_plain_language():
+def test_engine_rejections_terminate_in_plain_language_once_the_budget_is_spent():
     question = "Find top categories and customers and list unbought pairs."
     analysis = {"action": "create", "slug": "category_gaps"}
     proposal = {
@@ -548,13 +548,13 @@ def test_a_second_engine_rejection_terminates_in_plain_language():
                     type="tool_use", name="prereasoner_query", id="plain",
                     input={"question": question, **analysis},
                 )])
-            elif len(model_calls) in (2, 3):
+            elif len(model_calls) <= orchestrator.MAX_DECOMPOSITION_PROPOSALS + 1:
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
                     type="tool_use", name="prereasoner_query", id=f"try{len(model_calls)}",
                     input={"question": question, **analysis, "decomposition": proposal},
                 )])
             else:
-                terminal = json.loads(model_calls[3]["messages"][-1]["content"][0]["content"])
+                terminal = json.loads(model_calls[-1]["messages"][-1]["content"][0]["content"])
                 assert terminal["status"] == "clarify"
                 assert terminal["clarify"]["reason"] == orchestrator.DECOMPOSITION_CLARIFY
                 response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
@@ -589,12 +589,14 @@ def test_a_second_engine_rejection_terminates_in_plain_language():
             )
 
     result = asyncio.run(run())
-    assert len(engine_calls) == 3, "probe plus exactly two rejected proposals"
+    assert len(engine_calls) == 1 + orchestrator.MAX_DECOMPOSITION_PROPOSALS, (
+        "probe plus exactly the budgeted rejected proposals, then terminal"
+    )
     assert "subquestion" not in result["reply"], "validator internals never reach the user"
     assert result["reply"] == "Could you ask the parts separately?"
 
 
-def test_a_second_invalid_proposal_terminates_in_plain_language():
+def test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent():
     question = "Find top customers and products they have not bought."
     analysis = {"action": "create", "slug": "promotion_gaps"}
     invalid = {
@@ -619,13 +621,13 @@ def test_a_second_invalid_proposal_terminates_in_plain_language():
                     type="tool_use", name="prereasoner_query", id="plain",
                     input={"question": question, **analysis},
                 )])
-            elif len(model_calls) in (2, 3):
+            elif len(model_calls) <= orchestrator.MAX_DECOMPOSITION_PROPOSALS + 1:
                 response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
                     type="tool_use", name="prereasoner_query", id=f"bad{len(model_calls)}",
                     input={"question": question, **analysis, "decomposition": invalid},
                 )])
             else:
-                terminal = json.loads(model_calls[3]["messages"][-1]["content"][0]["content"])
+                terminal = json.loads(model_calls[-1]["messages"][-1]["content"][0]["content"])
                 assert terminal["status"] == "clarify"
                 reason = terminal["clarify"]["reason"]
                 assert "exactly two inputs" not in reason, "validator internals must not reach the user"
@@ -709,8 +711,8 @@ TESTS = [
     test_decomposition_contract_has_no_schema_or_code_escape_hatch,
     test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification,
     test_an_engine_rejected_proposal_gets_one_correction_then_answers,
-    test_a_second_engine_rejection_terminates_in_plain_language,
-    test_a_second_invalid_proposal_terminates_in_plain_language,
+    test_engine_rejections_terminate_in_plain_language_once_the_budget_is_spent,
+    test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent,
     test_tool_exhaustion_never_exposes_an_internal_budget,
 ]
 
