@@ -66,6 +66,8 @@ clear answer about their data, in plain English.
    "top 2 customer names by total spend", and "customer name and product name for each purchase";
    cross the customer ranking FIRST with the product ranking SECOND, then anti-join those candidate
    pairs against the purchase-pair output when the requested order is customers first, products second.
+   The anti-join evidence subquestion must preserve EVERY dimension in its left input's grain; evidence
+   containing only product, for example, cannot subtract customer-product candidate pairs.
    Cross input order is the final sort priority: left ranking first, right ranking second. Follow the
    user's requested output order, NOT the order in which they mentioned subquestions. In particular,
    "Order customers by spend descending and categories by revenue descending" requires customers as

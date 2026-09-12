@@ -575,12 +575,28 @@ def test_order_noun_does_not_request_sort_or_group():
                      'Find the name of the winner who has the highest rank points.',
                      'Return the money rank of the player with the greatest earnings.',
                      'What is the rank of the player?',
-                     'top 3 products by quantity ordered'):
+                     'top 3 products by quantity ordered',
+                     'How many units were ordered by each customer?'):
         assert not ordering_requested(question), question
     for question in ('Order purchase orders by value', 'List purchase orders ordered by value',
                      'List purchases in descending order', 'Sort the orders',
-                     'Rank the players by earnings', 'List the players ranked by earnings'):
+                     'Rank the players by earnings', 'List the players ranked by earnings',
+                     'Can you rank people by age?',
+                     'Show people ranked according to age',
+                     'Show people ordered alphabetically by name'):
         assert ordering_requested(question), question
+
+    unsorted_people = {
+        **PEOPLE,
+        "rows": [[3, "Cara", "Spain", 40], [1, "Alice", "France", 30],
+                 [2, "Bob", "France", 20]],
+    }
+    ranked = best("Can you rank people by age?", [unsorted_people])
+    assert ranked.query.order_by, ranked.sql
+    assert execute([unsorted_people], ranked.sql) == [(20,), (30,), (40,)]
+    alphabetical = best("Show names for people ordered alphabetically", [unsorted_people])
+    assert alphabetical.query.order_by, alphabetical.sql
+    assert execute([unsorted_people], alphabetical.sql) == [("Alice",), ("Bob",), ("Cara",)]
 
 
 def test_shared_table_words_do_not_collapse_distinct_projection_mentions():

@@ -129,6 +129,41 @@ def test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures
     _reject(lambda: _bind_merge_keys(views, {}, "a_result", "b_result"))
 
 
+def test_anti_join_evidence_must_preserve_the_complete_left_grain():
+    """Backend parity must not certify evidence that dropped half a candidate pair."""
+    from engine.deterministic.plan import CrossView
+
+    views = [
+        CombinedView("source", ("customers", "products")),
+        ProjectedView("customers", "source", (SelectedValue(
+            "customer_name", ColumnValue("customers", "customer_name")),)),
+        ProjectedView("products", "source", (SelectedValue(
+            "product_name", ColumnValue("products", "product_name")),)),
+        CrossView("candidate_pairs", "customers", "products", "product_"),
+        ProjectedView("product_evidence", "source", (SelectedValue(
+            "product_name", ColumnValue("products", "product_name")),)),
+    ]
+    shapes = {
+        "source": (), "customers": ("customer_name",),
+        "products": ("product_name",),
+        "candidate_pairs": ("customer_name", "product_name"),
+        "product_evidence": ("product_name",),
+    }
+    _reject(lambda: _bind_merge_keys(
+        views, shapes, "candidate_pairs", "product_evidence"
+    ))
+
+    views[-1] = ProjectedView("purchase_evidence", "source", (
+        SelectedValue("customer_name", ColumnValue("customers", "customer_name")),
+        SelectedValue("product_name", ColumnValue("products", "product_name")),
+    ))
+    shapes["purchase_evidence"] = ("customer_name", "product_name")
+    keys = _bind_merge_keys(views, shapes, "candidate_pairs", "purchase_evidence")
+    assert [(key.left, key.right) for key in keys] == [
+        ("customer_name", "customer_name"), ("product_name", "product_name")
+    ]
+
+
 def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
     tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
     schema = [
@@ -290,6 +325,7 @@ TESTS = [
     test_validation_is_closed_and_idempotent_at_transport_boundaries,
     test_size_limit_counts_utf8_bytes_not_characters,
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
+    test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,

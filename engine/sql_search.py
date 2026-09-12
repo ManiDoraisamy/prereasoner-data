@@ -865,6 +865,14 @@ class SQLSearcher:
             nearby = self._target_columns(mentions, by_position, numeric=False)
             expressions.extend((option.column, 2.0 - 0.1 * abs(option.position - by_position))
                                for option in nearby[:4])
+        if not expressions and "alphabetically" in token_set:
+            # "names ordered alphabetically" has no `by` target. Order the
+            # requested text projection, not an unrelated numeric fallback.
+            expressions.extend(
+                (column, 2.0)
+                for column in draft.projections
+                if column.type == SQLType.TEXT
+            )
         if draft.aggregates:
             aggregate_bonus = 3.0 if (by_position is not None or limit is not None) else 1.0
             expressions = [(aggregate, aggregate_bonus) for aggregate in draft.aggregates] + expressions

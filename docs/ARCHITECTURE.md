@@ -83,7 +83,8 @@ closed natural-language proposal: two to four leaf questions, one to four `cross
 nodes, one output, and a stated grain. Runtime guards require the exact original question and analysis
 request identity, reject proactive or repeated decomposition, reject dead nodes, and bound Cartesian products
 by explicit leaf limits. The existing AST planner independently binds every leaf; common dimension keys
-for an anti-join come from those typed relations. The result is one `AnalysisPlan`, not independently
+for an anti-join come from those typed relations, and the evidence relation must preserve every physical
+dimension in the left input's grain. The result is one `AnalysisPlan`, not independently
 generated SQL and Python and not a model-executed chain of partial answers.
 
 Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace

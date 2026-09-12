@@ -85,7 +85,7 @@ class OrdersCustomersProducts:
 | Ordered | `ORDER BY ... NULLS LAST`, optional `LIMIT` | `previous.sort`, with explicit tie keys |
 | Correlated | Share, running total, or previous-period join | `previous.for_each`, with visible reduction/join expressions |
 | Cross | Bounded `CROSS JOIN` | `left.cross(right)` |
-| Anti-join | `WHERE NOT EXISTS` over common physical dimension lineage | `left.anti_join(right, keys=...)` |
+| Anti-join | `WHERE NOT EXISTS` over every physical dimension in the left grain | `left.anti_join(right, keys=...)` |
 
 The actual source includes the ORM query, row classes, transformation bodies, predicates, initial
 aggregate state, and operator calls. SQL `SUM(gross_amount)` corresponds to

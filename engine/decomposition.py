@@ -579,12 +579,21 @@ def _bind_merge_keys(views, shapes, left, right):
             "anti-join aliases refer to different dimension lineage"
         )
     keys = []
+    missing = []
     for column, origin in left_keys.items():
         matches = [name for name, other in right_keys.items() if origin == other]
         if len(matches) > 1 or (matches and list(left_keys.values()).count(origin) > 1):
             raise DecompositionError("anti-join dimension binding is ambiguous")
         if matches:
             keys.append(MergeKey(column, matches[0]))
+        else:
+            missing.append(column)
+    if missing:
+        quoted = ", ".join(repr(column) for column in missing)
+        raise DecompositionError(
+            "the anti-join evidence is at a coarser grain than its left input; "
+            f"its subquestion must also preserve the left-side dimension(s) {quoted}"
+        )
     if not keys:
         raise DecompositionError(
             "anti-join inputs have no common planner-bound dimension lineage"

@@ -34,19 +34,50 @@ from engine.sql_schema import SchemaGraph
 def ordering_requested(question: str) -> bool:
     """An order instruction, not a business noun.
 
-    ``order``, ``rank`` and ``ordered`` are all nouns or participles at least as
-    often as they are instructions: "purchase orders", "rank points", "the money
-    rank", "quantity ordered". Each therefore counts only in an explicit
-    instruction form -- followed by ``by``, or sentence-initial imperative.
-    ``sort``/``sorted`` are unambiguous verbs and need no such guard.
+    ``order`` and ``rank`` can be business nouns ("purchase order", "rank
+    points"), while ``ordered`` can describe a measure ("quantity ordered").
+    Accept only unambiguous verbs/adverbs, imperative or polite-command forms,
+    and explicit participial ordering phrases.  Keep this parser deliberately
+    lexical: it is only a candidate-expansion cue, not an interpretation layer.
     """
-    return bool(re.search(
-        r'\b(?:sort|sorted)\b'
-        r'|\b(?:order|ordered|rank|ranked)\s+by\b'
+    text = " ".join(question.split())
+    if re.search(
+        r'\b(?:sort|sorted|alphabetically)\b'
         r'|\b(?:ascending|descending)\s+order\b'
-        r'|(?:^|[.!?;]\s*)(?:please\s+)?(?:order|rank)\b',
-        question, re.I,
-    ))
+        r'|\border\s+by\b',
+        text, re.IGNORECASE,
+    ):
+        return True
+    if re.search(
+        r'(?:^|[.!?;]\s*)(?:please\s+)?(?:order|rank)\b'
+        r'|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:order|rank)\b'
+        r'|\b(?:please|kindly)\s+(?:order|rank)\b'
+        r'|\b(?:and|then|to)\s+(?:order|rank)\b',
+        text, re.IGNORECASE,
+    ):
+        return True
+
+    # Participles describe ordering when followed by an ordering construction.
+    # The measure phrases below are the important exception: "units ordered by
+    # customer" says what was purchased, not how result rows should be sorted.
+    measure_nouns = {"amount", "number", "quantity", "unit", "units", "volume"}
+    words = re.findall(r"[A-Za-z0-9_]+", text.lower())
+    for index, word in enumerate(words):
+        if word not in {"ordered", "ranked"}:
+            continue
+        suffix = words[index + 1:index + 4]
+        if suffix[:2] == ["according", "to"] or suffix[:1] == ["alphabetically"]:
+            return True
+        if "by" in suffix:
+            prior = index - 1
+            while prior >= 0 and words[prior] in {
+                "are", "be", "been", "being", "is", "was", "were",
+            }:
+                prior -= 1
+            if word == "ordered" and prior >= 0 and words[prior] in measure_nouns:
+                continue
+            return True
+    return False
 
 
 WORD_NUMBERS = {
