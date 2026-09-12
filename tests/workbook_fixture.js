@@ -5,7 +5,8 @@ const root=path.resolve(__dirname,'../web/public');
 function readWorkbook(file){
   const bytes=fs.readFileSync(file);
   let result;
-  const context={Uint8Array,Date,console,self:{postMessage:value=>{result=value;}}};
+  const context={Uint8Array,Date,console,postMessage:value=>{result=value;}};
+  context.self=context;
   context.globalThis=context;
   context.importScripts=(...files)=>files.forEach(f=>vm.runInContext(fs.readFileSync(path.join(root,f),'utf8'),context));
   vm.createContext(context);

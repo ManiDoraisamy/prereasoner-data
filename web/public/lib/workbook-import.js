@@ -8,7 +8,9 @@
   function normalize(sheet,XLSX){
     if(!sheet['!ref'])return null;
     const bounds=XLSX.utils.decode_range(sheet['!ref']);
-    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:null,blankrows:true});
+    // SheetJS otherwise localizes date objects during extraction. Excel/Sheets
+    // cells are timezone-free: keep their wall-clock value across browser zones.
+    const raw=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:null,blankrows:true,UTC:true});
     let width=0;
     raw.forEach(r=>r.forEach((v,c)=>{if(filled(v))width=Math.max(width,c+1);}));
     if(!width)return null;
@@ -32,7 +34,7 @@
     }
     if(new Set(columns.map(c=>c.toLowerCase())).size!==columns.length)
       throw new Error('Duplicate column headers. Give each field a unique name.');
-    let end=rows.length;
+    let end=rows.length, validationEnd=rows.length;
     while(end>start+1&&!count(rows[end-1]))end--;
     // A separated, sparse final annotation block is metadata, not table rows.
     // Require an explicit note label: density alone would discard valid records.
@@ -40,24 +42,33 @@
       const values=rows[i].filter(filled);
       if(i>start+1&&!count(rows[i-1])&&values.length===1&&typeof values[0]==='string'&&
          /^(?:notes?|source|last reviewed|last updated)\s*:/i.test(values[0])&&
-         rows.slice(i).every(r=>count(r)<=1)) {end=i;break;}
+         rows.slice(i).every(r=>count(r)<=1)) {end=i;validationEnd=i;break;}
     }
     const data=[]; const skipped=[];
+    if(merges.some(m=>m.e.r>=start+1+bounds.s.r&&m.s.r<end+bounds.s.r&&
+        m.s.c<width+bounds.s.c&&m.e.c>=bounds.s.c))
+      throw new Error('Merged data cells are ambiguous. Unmerge the detail table and supply each record explicitly.');
     for(let i=start+1;i<end;i++){
       if(!count(rows[i])){skipped.push(i+bounds.s.r+1);continue;}
       const row=rows[i];
       if(row.some(v=>typeof v==='string'&&/^(grand total|sub[ -]?total|total)\s*:?$/i.test(v.trim())))
         throw new Error('A total/subtotal row is mixed with records. Select the detail table to avoid double-counting.');
-      data.push(row.map(v=>v instanceof Date?v.toISOString().slice(0,10):v));
+      data.push(row.map(v=>{
+        if(!(v instanceof Date))return v;
+        const iso=v.toISOString();
+        // Excel dates carry no timezone. Preserve non-midnight time components
+        // instead of silently truncating a timestamp to a calendar date.
+        return iso.endsWith('T00:00:00.000Z')?iso.slice(0,10):iso.slice(0,-1);
+      }));
     }
-    if(!data.length)return null;
     // The input file's cached values are authoritative; no formula is executed.
-    for(let r=start+1;r<end;r++)for(let c=0;c<width;c++){
+    for(let r=start+1;r<validationEnd;r++)for(let c=0;c<width;c++){
       const cell=sheet['!data']?sheet['!data'][r+bounds.s.r]?.[c+bounds.s.c]
         :sheet[XLSX.utils.encode_cell({r:r+bounds.s.r,c:c+bounds.s.c})];
-      if(cell&&cell.f&&!filled(cell.v))throw new Error('A formula has no cached value. Recalculate and save the workbook in Excel first.');
+      if(cell&&cell.f&&cell.v==null)throw new Error('A formula has no cached value. Recalculate and save the workbook in Excel first.');
       if(cell&&cell.t==='e')throw new Error('The table contains an Excel formula error. Correct it before uploading.');
     }
+    if(!data.length)return null;
     const normalized=XLSX.utils.aoa_to_sheet([columns,...data]);
     return {csv:XLSX.utils.sheet_to_csv(normalized,{blankrows:false}),import:{
       version:1,method:'deterministic-layout',headerRow:start+bounds.s.r+1,

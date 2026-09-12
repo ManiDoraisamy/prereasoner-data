@@ -216,10 +216,13 @@ assert(fb.hosting.redirects.some(r => r.source === '/sheet' && r.destination ===
 // --- picker regressions, both observed live on 2026-08-29 -------------------------------------
 const picker = fs.readFileSync(path.join(__dirname, '..', 'public', 'picker.html'), 'utf8');
 // (1) One request PER TAB spent the whole 60-reads/min/user Sheets quota on a single multi-tab
-//     workbook and failed with a bare "HTTP 429". Reads go through batchGet now.
-assert(picker.includes('/values:batchGet?'), 'tab values must be read with ONE batchGet per chunk');
-assert(!/\/values\/" \+ encodeURIComponent\(range\)/.test(picker), 'no per-tab values GET may remain');
-assert(/429/.test(picker), 'a rate-limit must be reported in words, not as a bare HTTP code');
+//     workbook and failed with a bare "HTTP 429". One export now feeds the same
+//     normalizer as Excel (no second header/date interpretation in the picker).
+const sheetsImport=fs.readFileSync(path.join(__dirname,'../public/lib/google-sheets-import.js'),'utf8');
+assert(picker.includes('GOOGLE_SHEETS_IMPORT.read(token, id, title)'), 'the picker must share the Excel normalizer');
+assert(!picker.includes('/values:batchGet?'), 'raw values must not bypass layout/date normalization');
+assert(sheetsImport.includes('/export?mimeType='), 'one selected-file export imports every tab');
+assert(/429/.test(sheetsImport), 'a rate-limit must be reported in words, not as a bare HTTP code');
 // (2) A stale return path pointing at the picker itself sent a SUCCESSFUL import back into the
 //     sign-in loop instead of home with the sheet attached. Assert the BEHAVIOUR, not the source:
 //     lift the real returnPath() out of the page and run it against stubbed browser state, so a

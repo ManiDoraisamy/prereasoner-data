@@ -27,6 +27,9 @@
   <a class=privacy href="/privacy">Privacy</a>
 </div>
 <script src="lib/shared.js"></script>
+<script src="lib/upload-limits.js"></script>
+<script src="lib/xlsx-reader.js"></script>
+<script src="lib/google-sheets-import.js"></script>
 <script>
 // Load the Picker from a CLASSIC script via api.js?onload — calling gapi.load from inside the ES module below
 // ran before gapi finished initializing and threw "u[v] is not a function". onload guarantees gapi is ready.
@@ -38,7 +41,8 @@ function __gapiOnLoad(){ gapi.load('picker', function(){ window.__pickerReady = 
 // One-shot Google Sheets import. Firebase signInWithRedirect adds the NARROW drive.file scope (only files the
 // user picks) and returns an OAuth access token via the credential — same-tab redirect, so no popup blockers and
 // it reuses the same Google session as /world. The Picker chooses ONE sheet; we read it ONCE with that token
-// (no service account / collaborator), convert each tab to CSV, and hand off to home via sessionStorage.
+// (no service account / collaborator), export an Excel snapshot through the shared upload
+// normalizer, and hand off its tables to home via sessionStorage. No edits to the source Sheet.
 // Firebase app/auth init is shared (lib/firebase-init.js); the Picker credentials live in lib/config.js.
 import { auth } from "./lib/firebase-init.js";
 import { PICKER_API_KEY, PICKER_APP_ID } from "./lib/config.js";
@@ -67,15 +71,6 @@ function startAuth(){ busy("Connecting to Google…"); try{ sessionStorage.setIt
   const p = new GoogleAuthProvider(); p.addScope(SCOPE); signInWithRedirect(auth, p); }
 $("pick").onclick = startAuth;
 
-// Sheets quota is 60 reads/min/user and 300/min/project (Google defaults), so a rate-limit is a
-// normal outcome for a big workbook, not a mystery: say so in words the user can act on.
-function api(token, url){ return fetch(url, { headers:{ Authorization:"Bearer " + token } }).then(r => {
-  if (r.status === 429) throw new Error("Google rate-limited this import (too many reads in a minute). Wait a minute and try again.");
-  if (!r.ok) throw new Error("HTTP " + r.status);
-  return r.json(); }); }
-function toCSV(rows){ return (rows||[]).map(r => (r||[]).map(c => { c = (c==null?"":String(c)); return /[",\n]/.test(c) ? '"'+c.replace(/"/g,'""')+'"' : c; }).join(",")).join("\n"); }
-function nonEmpty(rows){ return (rows||[]).filter(r => r && r.some(c => String(c==null?"":c).trim()!=="")).length >= 2; }
-
 function openPicker(token){
   const go = () => { if (!window.__pickerReady) return setTimeout(go, 120);
     setMsg("Choose a Google Sheet…", "");
@@ -95,22 +90,9 @@ async function onPick(token, data){
   const doc = data.docs[0], id = doc.id, title = doc.name || "sheet";
   busy("Reading “" + title + "”…");
   try{
-    const meta = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id + "?fields=properties.title,sheets.properties.title");
-    const tabs = ((meta.sheets||[]).map(s => s.properties && s.properties.title).filter(Boolean));
-    // ONE batchGet per chunk of tabs, not one GET per tab: a workbook with more tabs than the
-    // 60-reads-per-minute-per-user quota used to spend its whole budget on a single import and
-    // fail with a bare HTTP 429. Chunked so the query string stays a sane length on wide workbooks.
-    const tables = [];
-    for (let i = 0; i < tabs.length; i += 40){
-      const chunk = tabs.slice(i, i + 40);
-      const qs = chunk.map(t => "ranges=" + encodeURIComponent("'" + t.replace(/'/g, "''") + "'")).join("&");
-      const vr = await api(token, "https://sheets.googleapis.com/v4/spreadsheets/" + id
-                                + "/values:batchGet?" + qs + "&valueRenderOption=UNFORMATTED_VALUE");
-      (vr.valueRanges || []).forEach((r, j) => {                 // batchGet preserves the requested order
-        if (nonEmpty(r.values)) tables.push({ name: tabs.length > 1 ? chunk[j] : title, data: toCSV(r.values) });
-      });
-    }
-    if (!tables.length){ fail("“" + title + "” has no tab with a header and a data row."); return; }
+    // ONE selected-file export, not one read per tab. All tabs normalize or none
+    // are attached; the same bounded worker handles Google Sheets and local Excel.
+    const tables = await GOOGLE_SHEETS_IMPORT.read(token, id, title);
     sessionStorage.setItem(SS.PENDING_SHEETS, JSON.stringify(tables));   // hand the sheet back to the home page as an attachment
     location.href = returnPath();                            // home shows it as a chip; user edits the prompt, then clicks the arrow
   }catch(e){ fail("Could not read the sheet: " + ((e && e.message) || e)); }

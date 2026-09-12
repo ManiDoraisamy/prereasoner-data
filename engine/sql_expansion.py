@@ -31,6 +31,15 @@ from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph
 
 
+def ordering_requested(question: str) -> bool:
+    """An order instruction, not the lemmatized business noun 'orders'."""
+    return bool(re.search(
+        r'\b(?:sort|sorted|ordered|rank|ranked)\b|\border\s+by\b'
+        r'|\b(?:ascending|descending)\s+order\b|(?:^|[.!?;]\s*)(?:please\s+)?order\b',
+        question, re.I,
+    ))
+
+
 WORD_NUMBERS = {
     "zero": 0, "one": 1, "single": 1, "two": 2, "couple": 2, "three": 3,
     "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9,

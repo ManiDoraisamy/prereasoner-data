@@ -169,11 +169,52 @@ links. The release gate evaluates the union of both manifests. Numeric and clari
 orchestrator/browser path. The `orders-tiers` fixture includes the joined `tier.csv` discount schedule and its
 exact tier follow-up is covered by `tests.test_orchestrator`.
 
-The hosted upload UI currently limits CSV/text uploads to 2 MB and workbook uploads to 5,000 data rows. A
-release-only dataset may therefore use a documented, metric-preserving projection for the browser smoke pass;
-the direct release gate still evaluates the checked-in rows. Treat a live browser run as incomplete when the
-upload is rejected or when it exercises only such a bounded projection, and record the rejection instead of
-silently reusing a previous conversation's workbook.
+The candidate upload UI limits CSV/text files to 2 MiB, workbooks to 8 MiB and worksheets to 10,000
+data rows (plus one header). Expanded tables also obey the backend's 2,000,000-character per-table and
+6,000,000-character combined limits. These are independent of execution routing and the 500-row display
+preview. `web/public/lib/upload-limits.js` is shared by the reader and worker. A failed upload leaves the
+previous inputs intact but blocks Ask until a successful retry; partial batches are never submitted.
+
+Binary eval fixtures pass through `tests/workbook_fixture.js`, which executes the same worker as Chrome.
+Do not substitute a custom XML reader: omitted cells, multiple sheets and formatted headers must follow
+the production importer. `workbook-import.js` identifies complete headers after bounded metadata, removes
+blank separators and explicit separated footer notes, preserves numeric values and dates/timestamps, and
+records source header/row counts. Simple merged parent headings are flattened; merged data cells,
+duplicate headers and ambiguous total/subtotal rows are rejected. Cached formula values are read, never
+executed or recalculated. Missing caches and Excel errors fail visibly. Neither Sonnet nor the engine
+currently repairs arbitrary workbook layouts: the deterministic upload adapter handles this bounded subset.
+The original .xls/.xlsx files remain unchanged in evaluation-only directories with publisher attribution.
+
+The Google Sheets picker reads the selected file once via Drive `files.export` (XLSX), using the existing
+`drive.file` scope. It passes those bytes to the identical worker; it does not edit or continuously sync
+the source Sheet. This preserves the layout/date information that the former `values:batchGet` path
+discarded. The same 8 MiB, sheet, row, and expanded-text limits apply; failed exports or ambiguous layouts
+attach nothing. Chrome tests cover the complete picker round-trip with a mocked Google export containing
+the original formatted supplier workbook, plus rate-limit and layout failures. That is adapter/UI
+evidence, not a claim that a real user's Google OAuth grant has been verified.
+
+Run `npm run test:web` and `$env:PLAYWRIGHT_CHANNEL='chrome'; npm run test:browser` for hermetic UI
+regressions. These use mocked backend responses and are NOT live model accuracy evidence.
+
+For unmocked Chrome evaluation, run `node regress/browser_matrix.js` against `EVAL_BASE_URL` (default
+`http://127.0.0.1:8091`). Start the real engine and orchestrator on loopback with the same isolated
+test principal, `APP_ENV=test`, `RTDB_URL` empty, and `EXTERNAL_LLM_ENABLED=1` explicitly enabled for
+the requested Sonnet evaluation. PostgreSQL should use the IAM proxy and serving role. No database
+firewall changes or production auth bypasses are required. For a deployed origin, supply an authorized
+Playwright `EVAL_STORAGE_STATE`; the harness does not mint credentials or automate Google login.
+The runner uploads originals, sends initial and conversational follow-ups without `decomposition.json`,
+checks `py,sql,both`, and uses the shared `tests.test_datasets.grade_answer` golds. It records source
+revision/dirty state, requested/actual mode, full responses and browser failures in
+`regress/private/browser-matrix.json` (`EVAL_BROWSER_REPORT` overrides). `EVAL_DATASETS` and
+`EVAL_BROWSER_MODES` narrow a diagnostic run; report such runs as partial. Only conversations created
+by the harness are deleted after their evidence is recorded. Never commit authentication state or reports.
+
+The RTDB wire format wraps arrays in `{__pr_wire__: "array/v1", json: "[...]"}` to preserve nulls,
+empty arrays and exact row positions. HTTP and saved snapshots retain ordinary JSON; `result-wire.js`
+decodes and validates before rendering. Test both encoded arrays and malformed legacy streams. Partial
+streams reconcile by engine-call identity with authoritative HTTP results. Legacy snapshots that cannot
+be decoded recover their saved analysis instead of rerunning the model. A failed recovery is an explicit
+error, not a successful empty result. Deploy the compatible web decoder before the backend encoder.
 
 For a release claim, leave `EVAL_DATASETS` unset: `python -m tests.test_datasets` then evaluates the union of
 `dataset.txt` and the evaluation-only `eval.txt`. Set `EVAL_DATASETS` only for a focused diagnosis, and report it

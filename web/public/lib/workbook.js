@@ -42,6 +42,7 @@ let SEEN=new Set(),SEEN_R=new Set();
 let CONV=null,CONVPENDING=false,CONVPROP=null;   // conversational fallback: a clarify / non-data question answered IN the rail (no redirect)
 let PRESENT=false;                               // present mode: a REAL answer, phrased humanly -> Sonnet presents it in words, derivation stays in the panel
 let HTTPJ=null;                                  // the atomic HTTP body (result+present+sql) — the race-free answer source for present
+let TRANSPORT_ERROR=null, ANALYSIS_LOAD=0;
 let EXEC=null;                                   // latest {actual,verified}; each derivation sheet owns its execution
 let EXEC_BY_KEY=new Map();                       // call jobId -> execution; closes cross-node RTDB ordering races
 let SRC='py';                                    // derivation language being READ: 'py' | 'sql' | 'both'; both sources always exist
@@ -521,7 +522,7 @@ function archiveTurn(){                                       // freeze the turn
 async function loadAnalysis(analysisId,revision){
   if(!SETTLED||!convId()||!/^a_[0-9a-f]{32}$/.test(String(analysisId))
       ||!Number.isInteger(Number(revision))||Number(revision)<1||Number(revision)>1000000)return;
-  const oldStatus=STATUS;
+  const oldStatus=STATUS, requestRun=RUN, loadToken=++ANALYSIS_LOAD;
   const known=[TURN_ANALYSIS].concat(CHAT.map(turn=>turn.analysis)).find(item=>item&&item.analysis_id===analysisId);
   ANALYSIS_ERROR=null; STATUS='Opening '+analysisName(known)+'…'; renderRail();
   try{
@@ -530,8 +531,11 @@ async function loadAnalysis(analysisId,revision){
       +'&revision='+encodeURIComponent(revision);
     const response=await fetch(API_BASE+'/api/analysis?'+params,{headers:{Authorization:'Bearer '+token}});
     const payload=await response.json().catch(()=>null);
+    if(RUN!==requestRun||loadToken!==ANALYSIS_LOAD)return false;
     if(!response.ok||!payload||!payload.response)throw new Error((payload&&payload.error)||'analysis unavailable');
-    const answer=payload.response, descriptor=payload.analysis||answer.analysis;
+    const answer=RESULT_WIRE.decode(payload.response), descriptor=payload.analysis||answer.analysis;
+    if(Array.isArray(answer.views))answer.views=answer.views.map(v=>RESULT_WIRE.table(v));
+    if(answer.result)answer.result=RESULT_WIRE.table(answer.result);
     const execution=noteExecution(answer.execution);
     BOOK=BOOK.filter(s=>s.cls==='input'||s.cls==='master');
     VIEWS=[]; RESOLVES=[]; J=answer;
@@ -560,10 +564,12 @@ async function loadAnalysis(analysisId,revision){
       output.result=true; ACTIVE=output.id;
     } else ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
     VIEWED_ANALYSIS=descriptor?Object.assign({},descriptor):null; ANALYSIS_ERROR=null;
-    AUTO=false; STATUS=oldStatus; paint(); saveConvState();
+    AUTO=false; STATUS=oldStatus; paint(); saveConvState();return true;
   }catch(error){
+    if(RUN!==requestRun||loadToken!==ANALYSIS_LOAD)return false;
     STATUS=oldStatus; ANALYSIS_ERROR='Could not open that workbook. Please try again.'; renderRail();
     console.error('analysis load failed',error&&error.name||'Error');
+    return false;
   }
 }
 function renderRail(){
@@ -880,6 +886,7 @@ function appendResolve(r){
 function markDone(){ if(SETTLED)return; DONE=true; clearTimeout(doneTimer); doneTimer=setTimeout(finalize,400); }
 function finalize(){
   if(SETTLED)return; settle();
+  if(TRANSPORT_ERROR){recoverTransport();return;}
   if(!VIEWS.length){                                          // delegated (no composition) — synthesize the single result sheet
     const r=(J&&J.result)||{};
     appendView({name:'result',op:'group_agg',label:'result',sql:(J&&J.sql)||'',columns:r.columns||[],rows:r.rows||[],column_provenance:r.column_provenance||[]},
@@ -911,14 +918,24 @@ function tryPresent(){
   conversationalReply({question:question, present:true, answer:ans, sql:(J&&J.sql)||(HTTPJ&&HTTPJ.sql)||null});
 }
 function renderFromJSON(j,executionKey=null){
-  if(SETTLED)return;
   if(j.clarify||j.low_confidence){ conversationalReply(Object.assign({question:question},j)); return; }
   if(j.error){ fail(j.error); settle(); return; }
+  j=RESULT_WIRE.decode(j);
+  if(Array.isArray(j.views))j.views=j.views.map(v=>RESULT_WIRE.table(v));
+  if(j.result)j.result=RESULT_WIRE.table(j.result);
+  const wasSettled=SETTLED;
+  if(executionKey){
+    BOOK=BOOK.filter(s=>s.cls!=='deriv'||s.executionKey!==executionKey);
+    VIEWS=VIEWS.filter(v=>v.executionKey!==executionKey);
+  }
+  if(!BOOK.some(s=>s.id===ACTIVE))AUTO=true;
+  SETTLED=false; FAILMSG=null; TRANSPORT_ERROR=null;
   const execution=noteExecution(executionOf(j),executionKey);
   J=j; noteDatasetSemantics(j.dataset_semantics); noteAnalysis(j.analysis);
   (j.views||[]).forEach(v=>appendView(v,execution,executionKey));
   if(j.present) PRESENT=true;                                 // flag BEFORE finalize so it triggers the present reply
   DONE=true; finalize();
+  if(wasSettled)saveConvState();
 }
 function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); }
 // Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Sonnet fallback
@@ -1018,7 +1035,7 @@ async function startTurn(){
       noteExecution(engine.execution,t.jobId); });            // metadata even when views streamed live
     if(EXEC&&BOOK.some(s=>s.cls==='deriv')) paint();
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
-    if(Array.isArray(j.traces)){ renderTurnFromHTTP(j);   // reconcile even a partially streamed stack
+    if(Array.isArray(j.traces)){ try{renderTurnFromHTTP(j);}catch(error){fail('The answer data could not be loaded. Reopen this analysis to recover it.');return;}
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
     if(!REPLY&&j.reply) REPLY=j.reply;
     if(!SETTLED) markTurnDone();
@@ -1032,7 +1049,7 @@ function addCall(uid,c){                                      // an engine call 
   STATUS='Reading as: “'+c.question+'”…'; renderRail();
   if(!uid||!window.subscribeRun)return;
   const sub=window.subscribeRun(uid,c.jobId,{
-    onTransportError:message=>{ STATUS=message; renderRail(); },
+    onTransportError:message=>{ TRANSPORT_ERROR=message; STATUS=message; renderRail(); },
     onDatasetSemantics:noteDatasetSemantics,
     onAnalysis:noteAnalysis,
     onExecution:e=>{ if(!e)return; noteExecution(e,c.jobId); paint(); },
@@ -1059,6 +1076,7 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
     if(eng.answer)eng.answer=RESULT_WIRE.table(eng.answer);
   });
   const keys=new Set((j.traces||[]).map(t=>t.jobId).filter(Boolean));
+  TRANSPORT_ERROR=null; FAILMSG=null;
   BOOK=BOOK.filter(s=>s.cls!=='deriv'||!keys.has(s.executionKey));
   VIEWS=VIEWS.filter(v=>!keys.has(v.executionKey));
   if(!BOOK.some(s=>s.id===ACTIVE))AUTO=true;
@@ -1090,11 +1108,22 @@ function markTurnDone(){                                      // the turn finish
   // transcript client-side so the NEXT follow-up still has context.
   if(!HTTPHIST) HISTORY=HISTORY.concat([{role:'user',content:question},{role:'assistant',content:REPLY||''}]);
   try{ sessionStorage.setItem('pr_orch_history', JSON.stringify(HISTORY)); }catch(_){}   // survive a reload of THIS conversation
+  if(TRANSPORT_ERROR){recoverTransport();return;}
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS = n?('Answered in '+n+' step'+(n===1?'':'s')):'Done';
   surfaceUnresolved();                                        // offer master-data sheets for unresolved text columns
   renderRail();
   saveConvState();                                            // persist a renderable snapshot so a reload restores this turn
+}
+
+async function recoverTransport(){
+  const run=RUN, analysis=TURN_ANALYSIS;
+  fail('Some result tables could not be loaded. Recovering the saved analysis…');
+  if(analysis&&await loadAnalysis(analysis.analysis_id,analysis.revision)&&RUN===run){
+    TRANSPORT_ERROR=null;FAILMSG=null;paint();saveConvState();
+  }else if(RUN===run){
+    fail('Some result tables could not be recovered. Reopen the saved analysis; no new computation was started.');
+  }
 }
 
 async function startRun(){
@@ -1120,7 +1149,8 @@ async function startRun(){
   // The HTTP body is ATOMIC (result+present+sql together) — the race-free source for present. Stash it and
   // (re)attempt present; tryPresent no-ops until the derivation has settled, so this can't pre-empt streaming.
   httpPromise.then(j=>{ if(RUN!==myRun||!j)return; HTTPJ=j; noteAnalysis(j.analysis); noteExecution(executionOf(j),jobId);
-    if(EXEC&&BOOK.some(s=>s.cls==='deriv'))paint(); if(SETTLED&&EXEC)saveConvState(); if(j.present) PRESENT=true; tryPresent(); });
+    try{renderFromJSON(j,jobId);}catch(error){fail('The answer data could not be loaded. Reopen this analysis to recover it.');}
+  });
   // (2) live trace -> sheets appear as the engine works.
   if(uid&&window.subscribeRun){
     UNSUB=window.subscribeRun(uid,jobId,{
@@ -1134,7 +1164,8 @@ async function startRun(){
         else if(st==='done') markDone(); },
       onResolve:(k,r)=>{ if(!live()||!r||typeof r!=='object'||!r.column||SEEN_R.has(k))return; SEEN_R.add(k); appendResolve(r); if(DONE)markDone(); },
       onView:(k,v)=>{ if(!live()||!v||SEEN.has(k))return; SEEN.add(k); appendView(v,null,jobId); if(DONE)markDone(); },
-      onResult:r=>{ if(RUN!==myRun)return; J=J||{}; J.result=r; if(live()){ if(DONE)markDone(); } else if(PRESENT){ tryPresent(); } },   // keep late results for present (result node may arrive after settle)
+      onResult:r=>{ if(RUN!==myRun)return; J=J||{}; J.result=RESULT_WIRE.table(r); if(live()){ if(DONE)markDone(); } else if(PRESENT){ tryPresent(); } },
+      onTransportError:message=>{ if(RUN!==myRun)return; TRANSPORT_ERROR=message;STATUS=message;renderRail(); },
       onClarify:c=>{ if(!live())return; conversationalReply(Object.assign({question:question,clarify:true},c)); },
       onLowConfidence:()=>{ if(!live())return; conversationalReply({question:question}); },
       onPresent:()=>{ if(RUN!==myRun)return; PRESENT=true; tryPresent(); },   // real answer, human phrasing -> present it (no-ops until settled + answer in hand)
@@ -1173,7 +1204,7 @@ function resetRun(){
   // data query retires them when it makes its own first sheet (dropStale); a conversational/meta follow-up
   // (answered by Sonnet, no sheets of its own) leaves the last derivation on screen — it's usually the subject.
   BOOK.forEach(s=>{ if(s.cls!=='input'&&s.cls!=='master') s.stale=true; });   // master data persists like the user's own tables
-  J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;
+  J=null; VIEWS=[]; RESOLVES=[]; SETTLED=false; DONE=false; FAILMSG=null;TRANSPORT_ERROR=null;
   CONV=null; CONVPENDING=false; CONVPROP=null; PRESENT=false; HTTPJ=null; EXEC=null; SRCOPEN=false; SRC_PINNED=false; SRC='py';
   EXEC_BY_KEY=new Map();
   CALLS=[]; SEEN_CALL=new Set(); REPLY=null; HTTPHIST=false;  // orchestrated turn state (HISTORY persists across turns)
@@ -1231,7 +1262,18 @@ async function run(){
   // RESTORE the saved snapshot (turns + derived sheets + result) instead of re-running the model. Only when it
   // belongs to THIS conversation; otherwise fall through to a fresh run (a brand-new conversation, or no snapshot yet).
   let restored=false;
-  try{ const s=sessionStorage.getItem('pr_conv_state'); if(s){ const st=JSON.parse(s); if(st&&st.cid&&st.cid===convId()) restored=restoreConvState(st); } }catch(_){}
+  try{ const s=sessionStorage.getItem('pr_conv_state'); if(s){ const st=JSON.parse(s); if(st&&st.cid&&st.cid===convId()){
+    restored=restoreConvState(st);
+    if(!restored){
+      const last=Array.isArray(st.turns)&&st.turns[st.turns.length-1], analysis=st.viewedAnalysis||(last&&last.analysis);
+      // An incompatible snapshot must not trigger another paid model run or
+      // silently replace dirty reference data. Recover only durable derivations.
+      const local=(st.sheets||[]).filter(item=>item.cls==='master');
+      if(analysis&&restoreConvState({...st,sheets:local})){
+        await loadAnalysis(analysis.analysis_id,analysis.revision); restored=true;
+      }else{fail('This saved result needs recovery. The original snapshot is retained; open its analysis from conversation history.');return;}
+    }
+  } } }catch(error){fail('This saved result could not be restored. The original snapshot is retained.');return;}
   if(!restored) startRun();
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

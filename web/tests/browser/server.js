@@ -151,6 +151,8 @@ const server=http.createServer(async(req,res)=>{
 
   let relative=decodeURIComponent(url.pathname).replace(/^\/+/, '');
   if(!relative)relative='index.html';
+  if(['sheets','excel','csv'].includes(relative))relative='index.html';
+  if(relative==='picker')relative='picker.html';
   if(relative==='reason'||relative.startsWith('reason/'))relative='reason.html';
   const target=path.resolve(root,relative);
   if(!target.startsWith(root+path.sep)||!fs.existsSync(target)||!fs.statSync(target).isFile())return send(res,404,'not found','text/plain');

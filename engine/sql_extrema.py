@@ -29,6 +29,7 @@ from engine.sql_expansion import (
     is_id as _is_id,
     join_key as _join_key,
     linker_noise as _linker_noise,
+    ordering_requested,
     parse_number as _parse_number,
     physical_tables as _physical_tables,
     projection_window as _projection_window,
@@ -96,7 +97,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         token_set = set(tokens)
         if token_set & {"different", "each", "per"}:
             return []
-        if token_set & {"order", "ordered", "sort", "sorted"}:
+        if ordering_requested(question):
             return []
         if token_set & {"average", "avg", "mean", "sum", "total"}:
             return []

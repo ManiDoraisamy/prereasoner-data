@@ -15,6 +15,9 @@ framework; the pages use the browser APIs and classic JavaScript modules already
 - Conversation snapshots preserve the visible workbook and rail without re-running a query on reload.
 - Excel parsing runs in a disposable Web Worker using vendored SheetJS 0.20.3. Compressed input, expanded output,
   worksheet, row, column, and parse-time limits are enforced before data reaches the request API.
+- The Google Sheets picker exports only the selected Sheet as XLSX and uses that same importer, with the same
+  limits and layout checks. This is a read-only snapshot, not a live sync; OAuth tokens are never stored with
+  the imported data. Excel/Sheets date values remain timezone-free during normalization.
 - `column_provenance` is authored by the engine from source records and typed computation evidence. The browser
   renders those records verbatim and does not classify a column by its name.
 

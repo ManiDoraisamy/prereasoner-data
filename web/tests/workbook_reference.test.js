@@ -176,6 +176,13 @@ const checks = `
     const ordinaryClarify = clarifyFallbackText({proposed:'total revenue by country'});
     if (!ordinaryClarify.includes('Did you mean'))
       throw new Error('ordinary clarification lost its existing proposal fallback');
+    // Snapshot validation is atomic; malformed legacy rows must not erase the
+    // current workbook or masquerade as a valid empty answer.
+    const beforeRestore=JSON.stringify(BOOK);
+    if(restoreConvState({v:3,turns:[{q:'notices',reply:'three rows'}],sheets:[
+      {id:'bad',cls:'deriv',cols:['notice'],rows:{1:[7]}}
+    ]}))throw new Error('malformed legacy snapshot was treated as valid');
+    if(JSON.stringify(BOOK)!==beforeRestore)throw new Error('failed restore partially mutated the workbook');
     __finish();
   } catch (error) { __finish(error); }
 }());`;

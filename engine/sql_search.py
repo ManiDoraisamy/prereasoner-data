@@ -31,7 +31,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import implicit_sum_measures, measure_words_after
+from engine.sql_expansion import implicit_sum_measures, measure_words_after, ordering_requested
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph
 
@@ -165,7 +165,7 @@ class SQLSearcher:
                     grouped = ()
                     expressions = tuple(SelectItem(c) for c in raw_projection) or (SelectItem(Star()),)
 
-                orders = self._order_choices(tokens, mentions, draft)
+                orders = self._order_choices(tokens, mentions, draft, question)
                 for order_terms, limit, order_score, order_evidence in orders:
                     required = self._required_tables(expressions, draft.predicates, grouped, order_terms)
                     mentioned_tables = {table for table, score in table_scores.items() if score >= 2.5}
@@ -817,8 +817,15 @@ class SQLSearcher:
                                         (f"group-entity:{table}.{displays[0].name}",)))
         if projection_groups:
             options.append((projection_groups, 2.5, tuple(f"group:{c.table}.{c.name}" for c in projection_groups)))
-            if not explicit_positions and any(a.function == "COUNT" for a in draft.aggregates):
-                options.append(((), 0.0, ("group:none-count",)))
+            if not explicit_positions and (
+                any(a.function == "COUNT" for a in draft.aggregates)
+                or not set(tokens) & {"distinct", "different", "unique"}
+            ):
+                # A mentioned dimension can name a recipient/filter, not an output
+                # group ("total amount paid to suppliers"). Keep a scalar candidate
+                # for aggregates; role-aware ranking decides between them. Retain
+                # implicit grouping in "maximum age for different countries".
+                options.append(((), 0.0, ("group:none-aggregate",)))
         if not options:
             options.append(((), 0.0, ()))
         dedup = {}
@@ -829,7 +836,7 @@ class SQLSearcher:
         return sorted(dedup.values(), key=lambda item: (-item[1], repr(item[0])))[:8]
 
     def _order_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
-                       draft: _Draft) -> list[tuple[tuple[OrderTerm, ...], int | None, float, tuple[str, ...]]]:
+                       draft: _Draft, question: str) -> list[tuple[tuple[OrderTerm, ...], int | None, float, tuple[str, ...]]]:
         token_set = set(tokens)
         direction = None
         if token_set & {"descending", "desc", "highest", "largest", "biggest", "most", "latest", "newest", "top"}:
@@ -847,7 +854,7 @@ class SQLSearcher:
         if limit is None and token_set & {"most", "least", "highest", "lowest", "largest", "smallest"}:
             limit = 1
 
-        order_cue = direction is not None or limit is not None or bool(token_set & {"order", "ordered", "sort", "sorted", "rank", "ranked"})
+        order_cue = direction is not None or limit is not None or ordering_requested(question)
         if not order_cue:
             return [((), None, 0.0, ())]
         direction = direction or ("DESC" if draft.aggregates else "ASC")

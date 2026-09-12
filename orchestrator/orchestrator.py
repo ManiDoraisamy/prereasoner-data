@@ -418,6 +418,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                         "status": "repair_required",
                                         "code": "invalid_decomposition",
                                         "attempts_remaining": 1,
+                                        "retry": {"question": pending_decomposition["question"],
+                                                  **pending_decomposition["analysis"]},
                                         "detail": "invalid decomposition: " + str(exc)
                                                  + ". Correct the proposal and call the tool again "
                                                    "with the same question and analysis.",
@@ -486,6 +488,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                         "status": "repair_required",
                                         "code": "invalid_decomposition",
                                         "attempts_remaining": 1,
+                                        "retry": {"question": identity["question"], **identity["analysis"]},
                                         "detail": "invalid decomposition: " + detail
                                                  + ". Correct the proposal and call the tool again "
                                                    "with the same question and analysis.",

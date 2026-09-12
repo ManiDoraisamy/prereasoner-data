@@ -1,4 +1,4 @@
 # Complex-query expectations are JSON row sets derived directly from the CSVs.
 # Each question is sent in order in the same conversation after prompt.txt.
-chat: Find the top 2 products by revenue and the top 3 customers by total spend, then list each customer-product pair where that customer has never bought that product. Order customers by spend descending and products by revenue descending. => [["Cara","Beta"],["Bob","Gamma"]]
-chat: use the top 3 products instead => [["Cara","Beta"],["Cara","Alpha"],["Bob","Gamma"]]
+chat: Find the top 2 products by revenue and the top 3 customers by total spend, then list each customer-product pair where that customer has never bought that product. Order customers by spend descending and products by revenue descending. => {"columns":["customer_name","product_name"],"rows":[["Cara","Beta"],["Bob","Gamma"]]}
+chat: use the top 3 products instead => {"columns":["customer_name","product_name"],"rows":[["Cara","Beta"],["Cara","Alpha"],["Bob","Gamma"]]}

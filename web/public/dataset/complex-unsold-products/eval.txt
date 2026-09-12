@@ -1,3 +1,3 @@
 # Complex-query expectations are JSON row sets derived directly from the CSVs.
 # Each question is sent in order in the same conversation after prompt.txt.
-chat: how about customers from Lyon? => [["Alpha"],["Beta"],["Delta"],["Omega"]]
+chat: how about customers from Lyon? => {"columns":["product_name"],"rows":[["Alpha"],["Beta"],["Delta"],["Omega"]]}

@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import math
 import os
 import sys
 import subprocess
@@ -130,38 +131,6 @@ REWRITE_EXPECTATIONS = {
 }
 
 
-def _xlsx_rows(path: Path) -> list[list[str]]:
-    """Read the one-sheet XLSX fixtures used by the release gate.
-
-    The browser converts workbook datasets to CSV text through the upload worker before the
-    engine ever sees them, so this reader exists ONLY so the live suite can feed the same
-    tables through the production entry point without adding a spreadsheet dependency.
-    """
-    import xml.etree.ElementTree as ET
-    import zipfile
-
-    ns = {"m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
-    with zipfile.ZipFile(path) as z:
-        shared_strings: list[str] = []
-        if "xl/sharedStrings.xml" in z.namelist():
-            root = ET.fromstring(z.read("xl/sharedStrings.xml"))
-            shared_strings = [
-                "".join(node.text or "" for node in item.iterfind(".//m:t", ns))
-                for item in root.findall("m:si", ns)
-            ]
-        root = ET.fromstring(z.read("xl/worksheets/sheet1.xml"))
-    rows: list[list[str]] = []
-    for row in root.findall(".//m:sheetData/m:row", ns):
-        values = []
-        for cell in row.findall("m:c", ns):
-            node = (cell.find("m:is/m:t", ns) if cell.get("t") == "inlineStr"
-                    else cell.find("m:v", ns))
-            value = "" if node is None or node.text is None else node.text
-            if cell.get("t") == "s" and value:
-                value = shared_strings[int(value)]
-            values.append(value)
-        rows.append(values)
-    return rows
 
 
 def _tables(ds: Path) -> list[dict]:
@@ -238,6 +207,36 @@ def _eval_cases(ds: Path):
     return cases
 
 
+def grade_answer(response, expected, *, fx=False, followup=False):
+    """Shared gold comparison for direct and unmocked browser release reports.
+
+    Keep the existing exact base / one-cent follow-up / published FX tolerances.
+    A scalar gold requires a scalar result, never just the first cell of a list.
+    """
+    if expected is None:
+        return None if response.get('clarify') else 'expected clarification'
+    if response.get('error') or response.get('clarify'):
+        return 'no answer: ' + str(response.get('error') or response.get('reason') or 'clarification')
+    result = response.get('result') or {}
+    rows = result.get('rows') or []
+    if isinstance(expected, list):
+        return None if rows == expected else f'expected {expected!r}, got {rows!r}'
+    if isinstance(expected, dict):
+        try:
+            indexes = [result['columns'].index(c) for c in expected['columns']]
+            actual = [[r[i] for i in indexes] for r in rows]
+        except (KeyError, ValueError, IndexError, TypeError):
+            return 'expected output columns are missing'
+        return None if actual == expected['rows'] else f'expected {expected["rows"]!r}, got {actual!r}'
+    if len(rows) != 1 or not isinstance(rows[0], list) or len(rows[0]) != 1:
+        return 'expected a scalar answer, not a table or empty result'
+    actual = _scalar(response)
+    if not isinstance(actual, float) or not math.isfinite(actual):
+        return 'expected a numeric answer'
+    tolerance = abs(expected) * FX_TOLERANCE if fx else (0.01 if followup else 0)
+    return None if abs(actual - expected) <= tolerance else f'expected {expected}, got {actual}'
+
+
 def main() -> int:
     if not os.environ.get("KB_PG_PASSWORD"):
         print("set KB_PG_PASSWORD")
@@ -292,11 +291,17 @@ def main() -> int:
                     "answer": _scalar(response),
                     "clarify": bool(response.get("clarify")),
                     "error": response.get("error"),
+                    "reason": response.get("reason"),
                     "execution": response.get("execution"),
                     "timings": request_timing.snapshot(),
                     "manifest": response.get("deterministic", {}).get("manifest"),
                 }
                 records.append(record)
+                if os.environ.get("EVAL_REPORT"):
+                    Path(os.environ["EVAL_REPORT"]).write_text(
+                        json.dumps({"complete": False, "records": records, "failures": fails},
+                                   indent=2, default=str), encoding="utf-8",
+                    )
                 print(
                     json.dumps(
                         {
@@ -381,37 +386,17 @@ def main() -> int:
         )
         got = _scalar(res)
         print(f"{name}: {prompt!r} -> {got} (exp ~{want}, {kind})")
-        if kind == "own-rows":
-            result = (res or {}).get("result") or {}
-            columns = list(result.get("columns") or ())
-            try:
-                indexes = [columns.index(column) for column in want["columns"]]
-                actual_rows = [
-                    [row[index] for index in indexes]
-                    for row in (result.get("rows") or ())
-                ]
-            except (ValueError, IndexError):
-                actual_rows = None
-            if actual_rows != want["rows"]:
-                fails.append(
-                    f"{name}: expected rows {want['rows']!r}, got {actual_rows!r}"
-                )
-        elif not isinstance(got, float):
-            fails.append(f"{name}: no numeric answer (got {got!r})")
-        elif kind == "world+fx":
-            if abs(got - want) > want * FX_TOLERANCE:
-                fails.append(f"{name}: {got} outside ±{FX_TOLERANCE:.0%} of {want}")
-        elif got != want:
-            fails.append(f"{name}: {got} != {want}")
+        reason = grade_answer(res, want, fx=kind == 'world+fx')
+        if reason:
+            fails.append(f'{name}: {reason}')
 
         for question, expected in REWRITE_EXPECTATIONS.get(name, []):
             rewritten = serve(_tables(ds), question, schema=schema)
             rewritten_value = _scalar(rewritten)
             print(f"{name}: rewrite {question!r} -> {rewritten_value} (exp {expected})")
-            if rewritten.get("clarify") or rewritten_value != expected:
-                fails.append(
-                    f"{name} rewrite {question!r}: expected {expected}, got {rewritten!r}"
-                )
+            reason = grade_answer(rewritten, expected)
+            if reason:
+                fails.append(f"{name} rewrite {question!r}: {reason}")
 
         # FOLLOW-UPS (eval.txt) — direct engine cases in file order. Conversational shorthand is
         # explicitly skipped here and belongs to the orchestrator/browser release path below.
@@ -419,41 +404,21 @@ def main() -> int:
             if chat_only:
                 print(
                     f"{name}: follow-up {question!r} SKIPPED here — orchestrated path only "
-                    f"(verified by the Chrome release pass)"
+                    f"(requires a separate authenticated browser result; not verified here)"
                 )
                 continue
             follow = serve(_tables(ds), question, schema=schema)
             answer = _scalar(follow)
-            if expected is None:
-                clarified = bool((follow or {}).get("clarify"))
-                print(
-                    f"{name}: follow-up {question!r} -> clarify={clarified} answer={answer!r} (exp clarify)"
-                )
-                if not clarified:
-                    fails.append(
-                        f"{name} follow-up {question!r}: matched no rows but was presented "
-                        f"as the answer {answer!r} instead of a clarify"
-                    )
-                continue
             print(
                 f"{name}: follow-up {question!r} -> {answer} (exp {'~' if fx else ''}{expected})"
             )
-            if not isinstance(answer, float):
-                fails.append(
-                    f"{name} follow-up {question!r}: no numeric answer (got {answer!r})"
-                )
-            elif fx:
-                if abs(answer - expected) > expected * FX_TOLERANCE:
-                    fails.append(
-                        f"{name} follow-up {question!r}: {answer} outside "
-                        f"±{FX_TOLERANCE:.0%} of {expected}"
-                    )
-            elif abs(answer - expected) > 0.01:
-                fails.append(f"{name} follow-up {question!r}: {answer} != {expected}")
+            reason = grade_answer(follow, expected, fx=fx, followup=True)
+            if reason:
+                fails.append(f"{name} follow-up {question!r}: {reason}")
 
     if os.environ.get("EVAL_REPORT"):
         Path(os.environ["EVAL_REPORT"]).write_text(
-            json.dumps({"records": records, "failures": fails}, indent=2, default=str),
+            json.dumps({"complete": True, "records": records, "failures": fails}, indent=2, default=str),
             encoding="utf-8",
         )
     print(

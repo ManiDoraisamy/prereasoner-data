@@ -1,5 +1,143 @@
 const {test,expect}=require('@playwright/test');
 const XLSX=require('../../public/vendor/xlsx-0.20.3.full.min.js');
+const path=require('node:path');
+const fs=require('node:fs');
+
+for(const timezoneId of ['America/Los_Angeles','Pacific/Auckland'])test('spreadsheet dates retain their day in '+timezoneId,async({browser})=>{
+  const context=await browser.newContext({timezoneId});const page=await context.newPage();
+  try{
+    await mockAuth(page);await page.goto('/');
+    await page.locator('#file').setInputFiles(path.resolve(__dirname,'../../public/dataset/eval-formesign-assets-xls/assets.xls'));
+    await expect(page.locator('#chips .nm')).toHaveText(['assets']);
+    const data=await page.evaluate(()=>SHEETS[0].data);
+    expect(data).toContain(',2012-02-06,');
+    expect(data).toContain(',2016-04-09,');
+    expect(data).not.toContain('T23:00');
+  }finally{await context.close();}
+});
+
+for(const failure of [null,429,'layout'])test('Google Sheets uses the shared workbook importer: '+(failure||'success'),async({page})=>{
+  await mockAuth(page);
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('pr_return_to','/sheets?use=both');
+    sessionStorage.setItem('pr_pending_q','What is the total amount paid to suppliers?');
+  });
+  await page.route('https://www.gstatic.com/firebasejs/**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',body:firebaseAuth
+    .replace('class GoogleAuthProvider {','class GoogleAuthProvider { static credentialFromResult(){return {accessToken:"picker-fixture-token"}}')
+    .replace('getRedirectResult(){return null}', 'getRedirectResult(){return {}}')}));
+  await page.route('https://apis.google.com/js/api.js*',route=>route.fulfill({contentType:'text/javascript',body:`
+    window.gapi={load:(_name,cb)=>cb()};
+    window.google={picker:{Action:{CANCELLED:'cancelled',PICKED:'picked'},ViewId:{SPREADSHEETS:1},
+      View:class{},PickerBuilder:class{
+        addView(){return this}setOAuthToken(){return this}setDeveloperKey(){return this}
+        setAppId(){return this}setOrigin(){return this}setCallback(cb){this.cb=cb;return this}
+        build(){return {setVisible:()=>this.cb({action:'picked',docs:[{id:'selected-sheet',name:'Supplier report'}]})}}
+      }}};window.__gapiOnLoad();
+  `}));
+  let downloads=0;
+  await page.route('https://www.googleapis.com/drive/v3/files/selected-sheet/export?*',async route=>{
+    const headers={'access-control-allow-origin':'*','access-control-allow-headers':'authorization'};
+    if(route.request().method()==='OPTIONS')return route.fulfill({status:204,headers});
+    downloads++;
+    expect(route.request().headers().authorization).toBe('Bearer picker-fixture-token');
+    if(failure===429)return route.fulfill({status:429,headers});
+    let body=fs.readFileSync(path.resolve(__dirname,'../../public/dataset/eval-neartail-supplier-report-xlsx/payments.xlsx'));
+    if(failure==='layout'){
+      const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([['amount'],[10],['Total']]),'Data');
+      body=Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}));
+    }
+    return route.fulfill({headers,contentType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',body});
+  });
+  await page.goto('/picker?use=both');
+  if(failure){
+    await expect(page.locator('#msg')).toContainText(failure===429?'rate-limited':'double-counting');
+    expect(await page.evaluate(()=>sessionStorage.getItem(SS.PENDING_SHEETS))).toBeNull();
+  }else{
+    await expect(page).toHaveURL(/\/sheets\?use=both$/);
+    await expect(page.locator('#chips .nm')).toHaveText(['Supplier report']);
+    await page.locator('#chips .chip').click();
+    await expect(page.locator('#ph')).toContainText('30 rows');
+    await expect(page.locator('#ph')).toContainText('header row 11 (Google Sheets snapshot)');
+    expect(await page.evaluate(()=>SHEETS[0].data)).toBe(require('../../../tests/workbook_fixture.js').readWorkbook(
+      path.resolve(__dirname,'../../public/dataset/eval-neartail-supplier-report-xlsx/payments.xlsx'))[0].csv);
+  }
+  expect(downloads).toBe(1);
+  expect(await page.evaluate(()=>JSON.stringify({...sessionStorage}))).not.toContain('picker-fixture-token');
+});
+
+test('a rejected upload cannot submit the previous demo; a retry recovers',async({page})=>{
+  await mockAuth(page);await page.goto('/');
+  await expect(page.locator('#chips .nm')).toHaveText(['orders']);
+  await page.locator('#file').setInputFiles({name:'too-big.csv',mimeType:'text/csv',buffer:Buffer.alloc(2*1024*1024+1)});
+  await expect(page.locator('#err')).toContainText('Upload failed');
+  await expect(page.getByRole('button',{name:'Ask',exact:true})).toBeDisabled();
+  await page.locator('#q').press('Enter');
+  await expect(page).toHaveURL(/\/$/);
+  await page.locator('#file').setInputFiles({name:'replacement.csv',mimeType:'text/csv',buffer:Buffer.from('id,amount\n1,7')});
+  await expect(page.locator('#chips .nm')).toHaveText(['replacement']);
+  await expect(page.getByRole('button',{name:'Ask',exact:true})).toBeEnabled();
+});
+
+for(const [file,names,count,header] of [
+  ['eval-formesign-assets-xls/assets.xls',['assets'],3,4],
+  ['eval-neartail-supplier-report-xlsx/payments.xlsx',['payments'],30,11],
+  ['eval-formesign-procurement-xlsx/procurement.xlsx',['Contracts Register','Purchase orders over £5000'],1007,2],
+])test('formatted original upload: '+file,async({page})=>{
+  await mockAuth(page);await page.goto('/');
+  await page.locator('#file').setInputFiles(path.resolve(__dirname,'../../public/dataset',file));
+  await expect(page.locator('#chips .nm')).toHaveText(names);
+  await page.locator('#chips .chip').first().click();
+  await expect(page.locator('#ph')).toContainText(count+' rows');
+  await expect(page.locator('#ph')).toContainText('header row '+header);
+  await expect(page.locator('#err')).toBeEmpty();
+});
+
+test('10,000-row workbooks are accepted, but 10,001 rows are rejected atomically',async({page})=>{
+  await mockAuth(page);await page.goto('/');
+  const book=XLSX.utils.book_new();
+  const rows=[['id','amount'],...Array.from({length:10000},(_,i)=>[i+1,1])];
+  XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),'orders');
+  const upload=()=>page.locator('#file').setInputFiles({name:'boundary.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer:Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}))});
+  await upload();await expect(page.locator('#chips')).toContainText('10,000 rows');
+  rows.push([10001,1]);book.Sheets.orders=XLSX.utils.aoa_to_sheet(rows);
+  await upload();await expect(page.locator('#err')).toContainText('10,000 data rows');
+  await expect(page.locator('#chips')).toContainText('10,000 rows');
+  await expect(page.getByRole('button',{name:'Ask',exact:true})).toBeDisabled();
+});
+
+for(const malformed of [false,true])test('partial streams reconcile without duplicate stages (malformed='+malformed+')',async({page})=>{
+  await mockAuth(page);
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const encode=json=>({__pr_wire__:'array/v1',json:JSON.stringify(json)});
+  const first={name:'sparse_input',label:'input',op:'select',columns:['notice'],rows:[[null],[7],[null]],sql:'SELECT notice FROM contracts'};
+  const final={name:'sparse_result',label:'result',op:'select',columns:['notice'],rows:[[null],[7],[null]],sql:'SELECT * FROM sparse_input',is_output:true};
+  const streamed={...first,columns:encode(first.columns),rows:malformed?{1:[7]}:encode(first.rows)};
+  await page.route('https://www.gstatic.com/firebasejs/**/firebase-database.js',route=>route.fulfill({contentType:'text/javascript',body:`
+    export function getDatabase(){return {}}
+    export function ref(_db,path){return {path}}
+    export function onValue(){return ()=>{}}
+    export function onChildAdded(r,cb){
+      const value=r.path.endsWith('/calls')?{jobId:'sparse-call',question:'show notice'}:
+        r.path.endsWith('/views')?${JSON.stringify(streamed)}:null;
+      const t=value&&setTimeout(()=>cb({key:'0',val:()=>value}),30);
+      return ()=>clearTimeout(t);
+    }
+    export function off(){}
+  `}));
+  await page.route('**/chat',async route=>{
+    await new Promise(resolve=>setTimeout(resolve,500));
+    await route.fulfill({json:{reply:'Three notice rows.',conversation_id:'c_0123456789abcdef0123456789abcdef',history:[],
+      traces:[{jobId:'sparse-call',engine:{status:'answered',views:[first,final],answer:{columns:final.columns,rows:final.rows},
+        execution:{actual:'python',verified:false}}}]}});
+  });
+  await page.goto('/');await expect(page.locator('#chips .nm')).toHaveText(['orders']);
+  await page.getByRole('button',{name:'Ask',exact:true}).click();
+  await expect(page.locator('.convmsg').last()).toContainText('Three notice rows');
+  const state=await page.evaluate(()=>({views:VIEWS.length,sheets:BOOK.filter(s=>s.cls==='deriv').map(s=>s.rows)}));
+  expect(state).toEqual({views:2,sheets:[[[null],[7],[null]],[[null],[7],[null]]]});
+  expect(errors).toEqual([]);
+});
 
 const firebaseApp='export function initializeApp(){return {}}';
 const firebaseAuth=`

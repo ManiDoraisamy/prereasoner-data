@@ -63,8 +63,13 @@ clear answer about their data, in plain English.
    Example: for "top 3 products by units sold and top 2 customers by spend, then products those
    customers never bought", use leaves equivalent to "top 3 product names by total quantity sold",
    "top 2 customer names by total spend", and "customer name and product name for each purchase";
-   cross the first two ranked outputs, then anti-join those candidate pairs against the purchase-pair
-   output. The final grain is one customer-product pair. The purchase relation is essential evidence;
+   cross the customer ranking FIRST with the product ranking SECOND, then anti-join those candidate
+   pairs against the purchase-pair output when the requested order is customers first, products second.
+   Cross input order is the final sort priority: left ranking first, right ranking second. Follow the
+   user's requested output order, NOT the order in which they mentioned subquestions. In particular,
+   "Order customers by spend descending and categories by revenue descending" requires customers as
+   the LEFT cross input, even if categories were mentioned first. Preserve this on follow-ups.
+   The final grain is one customer-product pair. The purchase relation is essential evidence;
    products and customers themselves cannot be diffed because they are different kinds of entity.
 
    After the engine returns `answered`, `clarify`, or `error`, make no more tool calls for that question:

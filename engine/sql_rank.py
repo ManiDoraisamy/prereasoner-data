@@ -254,6 +254,11 @@ class CandidateRanker:
     def _group_alignment(self, column: ColumnRef, roles: QuestionRoles) -> bool:
         if column in roles.group_columns or column.table in roles.group_tables:
             return True
+        # "Show supplier and total amount" names an output dimension before the
+        # measure. "Total amount paid to suppliers" does not. COUNT has its own
+        # entity/cardinality interpretation and must not gain implicit groups.
+        if not roles.count_requested and column in roles.projection_columns:
+            return True
         for fk in self.schema.foreign_keys:
             for from_column, to_column in fk.column_pairs:
                 if column == from_column and to_column.table in roles.group_tables:

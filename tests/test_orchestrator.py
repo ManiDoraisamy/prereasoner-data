@@ -20,6 +20,7 @@ import urllib.error
 import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 P = 0
 F = 0
@@ -190,6 +191,30 @@ def main():
         clarified = [t for t in r2["traces"] if (t["engine"] or {}).get("status") == "clarify"]
         ok(len(clarified) >= 1, "the ambiguous query produced a clarify outcome")
         ok("region" in r2["reply"].lower(), "the reply relays the clarification (mentions 'region')")
+
+        # Real Sonnet authors the proposal. The fake engine asserts orchestration,
+        # not SQL/Python correctness (the unmocked Chrome gate owns that evidence).
+        print('[5] complex ordering follows output priority, not mention order')
+        question = ('Find the top 3 categories by revenue and top 3 customers by spend, '
+                    'then customer-category pairs never purchased. '
+                    'Order customers by spend descending and categories by revenue descending.')
+        calls = []
+        async def query(q, tables, job_id, conversation, **kwargs):
+            calls.append((q, kwargs))
+            if kwargs.get('decomposition') is None:
+                return {'status': 'decompose', 'decomposition_required': {'reason': 'compound query'}}
+            return {'status': 'answered', 'answer': {'columns': ['customer', 'category'], 'rows': [['A', 'B']]}}
+        with patch('orchestrator.orchestrator.engine_client.call_query', query):
+            asyncio.run(chat(question))
+        proposals = [options['decomposition'] for _, options in calls if options.get('decomposition')]
+        ok(len(proposals) == 1, 'Sonnet makes one engine-triggered decomposition proposal')
+        if proposals:
+            proposal = proposals[0]
+            leaves = {node['id']: node['question'].lower() for node in proposal['subquestions']}
+            cross = next((node for node in proposal['merges'] if node['op'] == 'cross'), None)
+            ok(cross is not None and 'customer' in leaves.get(cross['inputs'][0], '')
+               and 'categor' in leaves.get(cross['inputs'][1], ''),
+               'customer sort is primary even though categories were mentioned first')
 
         # server wiring — POST /chat returns a well-formed envelope (cheap, no tool needed).
         print("[S] POST /chat server envelope")

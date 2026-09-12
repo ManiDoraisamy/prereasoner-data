@@ -533,10 +533,33 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                "city", "cities", "country", "countries", "state", "states", "town", "towns", "place", "places",
                "nation", "nations", "element", "elements", "atomic", "has", "highest", "lowest", "largest",
                "smallest", "most", "least", "maximum", "minimum", "max", "min", "top", "bottom",
-               "named", "there"}
+               "named", "there", "among"}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]
+        # A weak embedding match to a town must not reinterpret ordinary query
+        # prose as geography. Only exempt bounded grammatical forms, and never
+        # when a status column or an observed literal makes the word a real
+        # business constraint. Invoices/orders are not evidence of payment.
+        state_columns = any(
+            set(_re.findall(r"[a-z]+", str(c['name']).lower())) &
+            {'status', 'state', 'paid', 'listed', 'settled'} for c in sch
+        )
+        if has_agg and not state_columns and set(content) & {'paid', 'listed'}:
+            literals = {word for c in sch for value in (c.get('values') or ())
+                        if value is not None for word in _re.findall(r'[a-z]+', str(value).casefold())}
+            prose = set()
+            if _re.search(r'\b(?:is|are|was|were)\s+listed\b', question, _re.I):
+                prose.add('listed')
+            payment_fact = any(
+                set(_re.findall(r'[a-z]+', str(c['table']).lower())) & {'payment', 'payments'}
+                for c in sch
+            )
+            if payment_fact and _re.search(r'\bamount\s+paid\b', question, _re.I):
+                prose.add('paid')
+            if literals & {'unpaid', 'unlisted', 'pending', 'settled', 'refunded'}:
+                prose.clear()
+            content = [word for word in content if word not in prose or word in literals]
         # Target words are covered only when SQL uses the exact direct-rate column for that
         # target. Unrelated arithmetic or a rate for another currency cannot bypass clarify.
         currency_target = currency_conversion_target(question)

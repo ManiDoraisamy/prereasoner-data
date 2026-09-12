@@ -540,6 +540,39 @@ def test_projection_filter_and_order():
     assert candidate.sql.endswith('ORDER BY "people"."Age" DESC')
 
 
+def test_scalar_aggregate_does_not_group_by_recipient_mention():
+    payments = {"name": "payments", "columns": ["Supplier", "Amount"],
+                "rows": [["A", 10], ["A", 20], ["B", 40]]}
+    for question in ("What is the total amount paid to suppliers?",
+                     "What is the average amount paid to suppliers?"):
+        candidate = best(question, [payments])
+        assert not candidate.query.group_by, candidate.sql
+        want = 70 if "total" in question else 70 / 3
+        assert execute([payments], candidate.sql) == [(want,)], candidate.sql
+    for question in ("Show suppliers and total amount", "Total amount by supplier",
+                     "Total amount for each supplier"):
+        candidate = best(question, [payments])
+        assert candidate.query.group_by, (question, candidate.sql)
+        assert execute([payments], candidate.sql) == [("A", 30), ("B", 40)]
+
+
+def test_order_noun_does_not_request_sort_or_group():
+    tables = [{"name": "purchase_orders_over_5000",
+               "columns": ["Purchase order", "Supplier name", "Net PO Value"],
+               "rows": [[4001, "A", 7], [4002, "B", 9]]},
+              {"name": "contracts_register", "columns": ["Number", "Supplier", "Est Value"],
+               "rows": [["C1", "A", 5]]}]
+    for question in ('How many purchase orders are listed?', 'Count purchase orders'):
+        candidate = best(question, tables)
+        assert execute(tables, candidate.sql) == [(2,)], candidate.sql
+        assert not candidate.query.group_by and not candidate.query.order_by, candidate.sql
+    from engine.sql_expansion import ordering_requested
+    assert not ordering_requested('What is the value of the purchase order?')
+    for question in ('Order purchase orders by value', 'List purchase orders ordered by value',
+                     'List purchases in descending order', 'Sort the orders'):
+        assert ordering_requested(question), question
+
+
 def test_shared_table_words_do_not_collapse_distinct_projection_mentions():
     documents = {
         "name": "Documents",
@@ -1906,6 +1939,8 @@ TESTS = [
     test_planner_requires_exact_currency_target_and_key_shape,
     test_arithmetic_expression_validation,
     test_projection_filter_and_order,
+    test_scalar_aggregate_does_not_group_by_recipient_mention,
+    test_order_noun_does_not_request_sort_or_group,
     test_shared_table_words_do_not_collapse_distinct_projection_mentions,
     test_generic_projection_respects_entity_qualifier,
     test_entity_projection_follows_owner_foreign_key,

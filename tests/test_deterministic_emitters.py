@@ -1512,6 +1512,32 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
     assert _coverage_sql({"sql": "SELECT 1"}) == "SELECT 1"
 
 
+def test_coverage_prose_is_not_a_place_or_an_ignored_status():
+    from types import SimpleNamespace
+    from engine.knowledge_query import KnowledgeQuery
+    adapter = SimpleNamespace(
+        _is_id=lambda name: False, _encode=lambda words: [[0] for _ in words],
+        _word_qid=lambda word: None,
+        _best_world_entity=lambda words: (words[0], "Spurious Place", "city", 0.61),
+    )
+    schema = [{"table": "payments", "name": "amount", "affinity": "REAL", "values": [10]}]
+    def dropped(question, columns=schema):
+        return KnowledgeQuery._uncovered(adapter, question, columns, 'SELECT SUM(amount) FROM payments')
+    assert dropped('How many payments are listed?') == []
+    assert dropped('What is the total amount paid?') == []
+    assert dropped('What is the total amount paid in France?') == ['france']
+    assert dropped('What is the total amount among payments in France?') == ['france']
+    assert dropped('How many listed payments?') == ['listed']  # status adjective, not display prose
+    with_status = schema + [{"table": "payments", "name": "status", "values": ["paid", "listed"]}]
+    assert dropped('What is the total amount paid?', with_status) == ['paid']
+    assert dropped('How many payments are listed?', with_status) == ['listed']
+    availability = schema + [{'table': 'payments', 'name': 'availability', 'values': ['Listed for sale']}]
+    assert dropped('How many payments are listed?', availability) == ['listed']
+    pending = schema + [{'table': 'payments', 'name': 'notes', 'values': ['Unpaid']}]
+    assert dropped('What is the total amount paid?', pending) == ['paid']
+    assert dropped('What is the total amount paid?', [dict(schema[0], table='invoices')]) == ['paid']
+
+
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
     from engine.deterministic.plan import JunctionValue
     from engine.deterministic.runtime import (

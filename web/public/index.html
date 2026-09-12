@@ -153,9 +153,12 @@ function renderChips(){
 }
 function openPreview(i){
   const s=SHEETS[i], p=parseCSV(s.data);
-  $('ph').innerHTML=esc(s.name)+' <span class=c>· '+p.rows.length+' rows × '+p.cols.length+' cols</span>';
+  $('ph').innerHTML=esc(s.name)+' <span class=c>· '+p.rows.length+' rows × '+p.cols.length+' cols'
+    +(s.import?' · imported from header row '+s.import.headerRow
+      +(s.import.source==='google-sheets'?' (Google Sheets snapshot)':' (cached Excel values)'):'')
+    +(p.rows.length>500?' · previewing first 500':'')+'</span>';
   let h='<table class=ptab><tr><th class=rn></th>'+p.cols.map(c=>'<th>'+esc(c.trim())+'</th>').join('')+'</tr>';
-  p.rows.forEach((r,ri)=>{h+='<tr><td class=rn>'+(ri+1)+'</td>'+p.cols.map((c,ci)=>'<td>'+esc(r[ci]==null?'':r[ci])+'</td>').join('')+'</tr>';});
+  p.rows.slice(0,500).forEach((r,ri)=>{h+='<tr><td class=rn>'+(ri+1)+'</td>'+p.cols.map((c,ci)=>'<td>'+esc(r[ci]==null?'':r[ci])+'</td>').join('')+'</tr>';});
   $('ptabwrap').innerHTML=h+'</table>';
   $('preview').style.display='block'; $('pbackdrop').style.display='block';
 }
