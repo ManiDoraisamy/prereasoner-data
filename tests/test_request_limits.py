@@ -16,8 +16,10 @@ from engine.request_limits import (
 )
 from engine.request_validation import (
     MAX_TABLE_IDENTIFIER_BYTES,
+    MAX_UPLOAD_ROWS,
     RequestValidationError,
     canonical_table_name,
+    upload_row_limit_error,
     validate_reason_request,
 )
 from orchestrator.validation import validate_chat_request
@@ -196,6 +198,18 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
             pass
 
 
+def test_uploaded_row_limit_rejects_without_truncating_at_the_public_boundary():
+    rows = [[index] for index in range(MAX_UPLOAD_ROWS)]
+    table = {"name": "orders", "rows": rows}
+    assert upload_row_limit_error([table]) is None
+    assert len(table["rows"]) == MAX_UPLOAD_ROWS
+
+    oversized = {"name": "orders", "rows": rows + [[MAX_UPLOAD_ROWS]]}
+    error = upload_row_limit_error([oversized])
+    assert error == "orders has too many data rows; maximum is 10000"
+    assert len(oversized["rows"]) == MAX_UPLOAD_ROWS + 1
+
+
 def test_decomposition_request_is_closed_bounded_and_fully_connected():
     proposal = {
         "subquestions": [
@@ -323,6 +337,7 @@ TESTS = [
     test_chat_validation_normalizes_and_bounds_inputs,
     test_table_names_are_canonical_bounded_and_unique_at_every_boundary,
     test_reason_validation_rejects_unbounded_or_invalid_fields,
+    test_uploaded_row_limit_rejects_without_truncating_at_the_public_boundary,
     test_decomposition_request_is_closed_bounded_and_fully_connected,
     test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
     test_shared_request_gate_releases_capacity_and_limits_rate,

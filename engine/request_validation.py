@@ -18,6 +18,7 @@ MAX_QUESTION_CHARS = 20_000
 MAX_HISTORY_ITEMS = 24
 MAX_HISTORY_CHARS = 80_000
 MAX_TABLES = 8
+MAX_UPLOAD_ROWS = 10_000
 MAX_TABLE_DISPLAY_NAME_CHARS = 128
 MAX_TABLE_CHARS = 2_000_000
 MAX_TABLE_TOTAL_CHARS = 6_000_000
@@ -116,6 +117,21 @@ def validate_tables(value, *, allow_single: bool = False) -> list[dict]:
         identifiers[identifier] = display_name
         tables.append({"name": identifier, "data": data})
     return tables
+
+
+def upload_row_limit_error(tables, *, limit: int = MAX_UPLOAD_ROWS) -> str | None:
+    """Return a client-facing error when parsed uploaded data exceeds its row bound.
+
+    Row counting belongs after CSV/XLSX parsing so quoted newlines and blank rows use
+    the same semantics as the table loader.  The HTTP handlers use this check to
+    reject oversized uploads; they must never silently discard user data.
+    """
+    for table in tables or ():
+        rows = table.get("rows") or ()
+        if len(rows) > limit:
+            name = str(table.get("name") or "uploaded table")
+            return f"{name} has too many data rows; maximum is {limit}"
+    return None
 
 
 def validate_question(value, *, field: str = "question") -> str:

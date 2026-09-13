@@ -28,6 +28,9 @@
     if(file.size>MAX_TEXT_BYTES)throw new Error('CSV and text files must be 2 MB or smaller');
     const text=await file.text();
     if(text.length>root.UPLOAD_LIMITS.tableChars)throw new Error('decoded table is too large');
+    const parsed=typeof root.parseCSV==='function'?root.parseCSV(text):null;
+    if(parsed&&parsed.rows.length>root.UPLOAD_LIMITS.rows)
+      throw new Error('each table may contain at most 10,000 data rows');
     return text;
   }
 

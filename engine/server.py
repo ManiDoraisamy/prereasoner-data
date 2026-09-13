@@ -82,7 +82,11 @@ from engine.request_limits import (
     allowed_origin,
     read_json_object,
 )
-from engine.request_validation import RequestValidationError, validate_reason_request
+from engine.request_validation import (
+    RequestValidationError,
+    upload_row_limit_error,
+    validate_reason_request,
+)
 from engine.tables import csv_table, normalize_tables, table_name
 from engine.trace import emitter, set_ctx, stream_final
 
@@ -93,7 +97,7 @@ WORLD_LOCK = threading.Lock()      # one request at a time through the shared wo
 DIM_LOCK = threading.Lock()        # one request at a time through the dimension model
 MAX_BODY = 10 * 1024 * 1024
 MAX_SHEETS = 8
-MAX_ROWS = 5000
+MAX_REFERENCE_ROWS = 5000
 MAX_TABLE_CHARS = 2 * 1024 * 1024
 MAX_TABLE_TOTAL_CHARS = 6 * 1024 * 1024
 MAX_CONVERSE_CHARS = 256 * 1024
@@ -571,11 +575,9 @@ class H(BaseHTTPRequestHandler):
                 tabs = [csv_table(data, req["table"])]
             if not tabs:
                 self._send(200, json.dumps({"error": "no CSV rows"})); return
-            truncated = []
-            for t in tabs:
-                if len(t["rows"]) > MAX_ROWS:
-                    truncated.append(f"{t['name']}: only the first {MAX_ROWS} rows were used ({len(t['rows'])} uploaded)")
-                    t["rows"] = t["rows"][:MAX_ROWS]
+            row_error = upload_row_limit_error(tabs)
+            if row_error:
+                self._send(413, json.dumps({"error": row_error})); return
             uploaded_count = len(tabs)
             # The WORKING Postgres schema is the CONVERSATION, not the user. A client-supplied
             # conversation id is honored ONLY after the ownership check (chat.user_conversation);
@@ -607,7 +609,9 @@ class H(BaseHTTPRequestHandler):
                     emit(f"views/{index}", view)
                 stream_final(emit, res)
                 self._send(200, json.dumps(res, default=_json_safe)); return
-            references = master.relevant_tables(sub, tabs, MAX_SHEETS - len(tabs), MAX_ROWS)
+            references = master.relevant_tables(
+                sub, tabs, MAX_SHEETS - len(tabs), MAX_REFERENCE_ROWS,
+            )
             tabs.extend(references["tables"])
             reference_count = len(references["tables"])
             enrichment = None
@@ -616,7 +620,7 @@ class H(BaseHTTPRequestHandler):
                 enrichment = ENRICHMENT.prepare(
                     tabs, req.get("question", ""), as_of=req.get("as_of"),
                     private_reference_versions=table_versions(references["tables"]),
-                    table_budget=max(0, MAX_SHEETS - len(tabs)), row_budget=MAX_ROWS,
+                    table_budget=max(0, MAX_SHEETS - len(tabs)), row_budget=MAX_REFERENCE_ROWS,
                 )
                 if enrichment.used:
                     tabs = list(enrichment.tables)
@@ -733,8 +737,6 @@ class H(BaseHTTPRequestHandler):
             if isinstance(res, dict) and (incoming or ops_log):
                 res["dataset_semantics"] = semantics         # the UI badge + audit surface
                 emit("dataset_semantics", semantics)
-            if truncated and isinstance(res, dict):
-                res.setdefault("warnings", []).extend(truncated)
             if references["warnings"] and isinstance(res, dict):
                 res.setdefault("warnings", []).extend(references["warnings"])
             if enrichment is not None and isinstance(res, dict):
@@ -817,8 +819,9 @@ class H(BaseHTTPRequestHandler):
             if not data.strip():
                 self._send(400, json.dumps({"error": "no CSV (need {data, mode:'analyze'})"})); return
             tbl = csv_table(data, table_name(req.get("table", "data"), 0))
-            if len(tbl["rows"]) > MAX_ROWS:
-                tbl["rows"] = tbl["rows"][:MAX_ROWS]
+            row_error = upload_row_limit_error([tbl])
+            if row_error:
+                self._send(413, json.dumps({"error": row_error})); return
             with DIM_LOCK:
                 res = DIM_MODEL.analyze(tbl)
             self._send(200, json.dumps(res))

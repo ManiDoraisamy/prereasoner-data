@@ -39,7 +39,7 @@ from engine.tables import TableQuery, qident
 # their decimal representation and arithmetic exactly; binary DOUBLE PRECISION does not.
 _PGTYPE = {"INTEGER": "BIGINT", "REAL": "NUMERIC(58,20)", "TEXT": "TEXT"}
 _CONNECT_ATTEMPTS = 3
-_UPLOAD_PAGE_SIZE = 500          # rows per INSERT statement; bounds statement size on wide 5000-row sheets
+_UPLOAD_PAGE_SIZE = 500          # rows per INSERT statement; bounds statement size on wide 10000-row sheets
 _NON_RETRYABLE_CONNECT_ERRORS = (
     "password authentication failed",
     "no pg_hba.conf entry",
@@ -196,7 +196,7 @@ def _load_user_schema(cur, schema, sch, tablemap):
             # every adapter — are byte-for-byte what the per-row loop passed. Only the statement count
             # changes: an uploaded sheet cost one network round trip PER ROW, which made request latency
             # scale linearly with the upload (measured: 1000 rows took 138s at a 133ms RTT, 0.26s batched).
-            # Paged so a wide 5000-row sheet cannot build one unbounded statement.
+            # Paged so a wide 10000-row sheet cannot build one unbounded statement.
             rows = [
                 [KnowledgeTableQuery._coerce(rd.get(c["name"]), c["affinity"]) for c in cols]
                 for rd in (dict(zip(t["columns"], r)) for r in t["rows"])
