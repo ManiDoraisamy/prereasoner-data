@@ -7,7 +7,7 @@
       html, body { height: 100%; }
       body { margin: 0; color: #202124; font: 13px Arial, sans-serif; }
       .branding-below {
-        bottom: 72px;
+        bottom: 54px;
         top: 0;
         overflow-y: auto;
         padding: 0 16px 16px;
@@ -33,6 +33,7 @@
         color: #5f6368;
         border-bottom: 1px solid #f1f3f4;
       }
+      .context[hidden] { display: none; }
       .context strong { color: #202124; font-weight: 500; }
       .status-error { color: #b31412; }
       .empty {
@@ -111,11 +112,8 @@
         padding: 8px 9px;
       }
       .composer button { flex: 0 0 auto; }
-      #send { border: 0; border-radius: 8px; background: #5d33fb; color: #fff; padding: 9px 12px; cursor: pointer; }
+      #send { border: 0; width: 34px; min-width: 34px !important; max-width: 34px; height: 34px; border-radius: 50%; background: #5d33fb; color: #fff; padding: 0; cursor: pointer; font-size: 18px; line-height: 34px; }
       #send:disabled { opacity: .45; cursor: default; }
-      .legal { display: flex; gap: 12px; margin-top: 5px; }
-      .legal a { color: #5f6368; font-size: 11px; text-decoration: none; }
-      .legal a:hover { text-decoration: underline; }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     </style>
   </head>
@@ -135,13 +133,8 @@
       <form class="composer" id="composer">
         <label class="sr-only" for="question">Ask about this spreadsheet</label>
         <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1" disabled></textarea>
-        <button class="blue" id="send" type="submit" disabled>Send</button>
+        <button class="blue" id="send" type="submit" aria-label="Send" disabled>↑</button>
       </form>
-      <div class="legal">
-        <a id="privacy" href="https://chat.prereasoner.com/privacy" target="_blank" rel="noopener">Privacy</a>
-        <a id="terms" href="https://chat.prereasoner.com/terms" target="_blank" rel="noopener">Terms</a>
-        <a id="support" href="https://chat.prereasoner.com/support" target="_blank" rel="noopener">Support</a>
-      </div>
     </div>
 
     <script>
@@ -154,9 +147,6 @@
         var emptyEl = document.getElementById('empty');
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
-        var privacyEl = document.getElementById('privacy');
-        var termsEl = document.getElementById('terms');
-        var supportEl = document.getElementById('support');
         var sheetCountEl = document.getElementById('sheetCount');
         var syncStateEl = document.getElementById('syncState');
 
@@ -198,6 +188,7 @@
         function renderContext(context, focus) {
           state.context = context;
           if (!context || context.error) {
+            contextEl.hidden = false;
             contextEl.className = 'context status-error';
             contextEl.textContent = context && context.error
               ? context.error
@@ -206,17 +197,9 @@
             sendEl.disabled = true;
             return;
           }
-          var name = context.activeSheet || 'current sheet';
           var tabs = Number(context.tableCount || (context.tables && context.tables.length) || 1);
-          var rows = Number(context.totalRows || 0);
-          contextEl.className = 'context';
-          contextEl.innerHTML = 'Using data from <strong>' + esc(name) + '</strong>' +
-            (tabs > 1 ? ' · ' + tabs + ' tabs' : '') +
-            (rows ? ' · ' + rows + ' rows' : '');
+          contextEl.className = 'context'; contextEl.hidden = true;
           sheetCountEl.textContent = tabs + ' sheet' + (tabs === 1 ? '' : 's');
-          if (context.privacyUrl) privacyEl.href = context.privacyUrl;
-          if (context.termsUrl) termsEl.href = context.termsUrl;
-          if (context.supportUrl) supportEl.href = context.supportUrl;
           questionEl.disabled = false;
           sendEl.disabled = false;
           if (focus !== false) questionEl.focus();
@@ -243,8 +226,7 @@
           if (!reasoning || !reasoning.length) return;
           var details = document.createElement('details');
           details.className = 'reasoning';
-          var firstQuestion = turn.querySelector('.question').textContent;
-          details.innerHTML = '<summary>Reasoning steps for <strong>' + esc(firstQuestion) + '</strong></summary>' +
+          details.innerHTML = '<summary>Reasoning steps</summary>' +
             '<div class="reasoning-body">' + reasoning.map(function (step) {
               return '<div class="operation"><div class="operation-label">' + esc(step.label || 'Step') + '</div>' +
                 (step.detail ? '<div class="operation-detail">' + esc(step.detail) + '</div>' : '') + '</div>';
@@ -255,6 +237,7 @@
         function renderResult(turn, result) {
           if (!result || !Array.isArray(result.rows) || !result.rows.length) return;
           var headers = Array.isArray(result.headers) ? result.headers : (Array.isArray(result.columns) ? result.columns : []);
+          if (result.rows.length === 1 && headers.length === 1) return;
           var wrap = document.createElement('div');
           wrap.className = 'result-table-wrap';
           var html = '<table class="result-table"><thead><tr>' + headers.map(function (h) {
@@ -293,7 +276,7 @@
           state.busy = busy;
           questionEl.disabled = busy || !state.context;
           sendEl.disabled = busy || !state.context;
-          sendEl.textContent = busy ? '…' : 'Send';
+          sendEl.textContent = busy ? '…' : '↑';
         }
 
         async function submit() {
@@ -362,7 +345,7 @@
           submit();
         });
         questionEl.addEventListener('keydown', function (event) {
-          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+          if (event.key === 'Enter' && !event.shiftKey) {
             event.preventDefault();
             submit();
           }

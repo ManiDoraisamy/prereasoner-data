@@ -165,8 +165,7 @@ function analysisHeading(value){
   const link=linkable
     ? '<button class="analysislink'+(current?' on':'')+'" onclick="loadAnalysis(\''+id+'\','+rev+')">'+esc(analysisName(value))+'</button>'
     : '<span class=analysisname>'+esc(analysisName(value))+'</span>';
-  const verb=value.action==='modify'?'Updated':value.action==='create'?'Created':'';
-  return '<span class=analysisprefix>Reasoning steps for</span> '+link+(verb?'<span class=analysisverb>'+verb+'</span>':'');
+  return '<span class=analysisprefix>Reasoning steps for</span> '+link;
 }
 
 /* ---------------- rendering: the sheet ---------------- */
@@ -420,9 +419,12 @@ function executionChip(s){
   const src=sheetSource(s), text=src.ran==='both'?'PY = SQL':src.ran==='py'?'PY ran':src.ran==='sql'?'SQL ran':'';
   return text?'<span class="stepbackend '+src.ran+'" title="Execution backend for this materialized step">'+text+'</span>':'';
 }
-function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v=>{const source=BOOK.find(x=>x.viewName===v);
-    return source?(source.section&&source.section!==s.section&&source.sectionLabel?source.sectionLabel:dispName(source)):String(v).replace(/_/g,' ');}).join(', '):lineage(s);
-  return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet and its emitted source'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pickStep(\''+s.id+'\')"><span class=idx>'+(index+1)+'</span><span class=stx>'+esc(s.desc||dispName(s))+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span>'+executionChip(s)+'</button>'; }
+function cleanStepText(value){return String(value||'').replace(/^(\w+)\s+\1\b/i,'$1');}
+function stepInputLabel(value,s){const source=BOOK.find(x=>x.viewName===value);if(source)return source.section&&source.section!==s.section&&source.sectionLabel?source.sectionLabel:dispName(source);
+  const raw=String(value||'');if(/^c_[0-9a-f]{32}$/i.test(raw))return SHEETS.length===1?(SHEETS[0].name||'your data'):'your data';return raw.replace(/_/g,' ');}
+function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v=>stepInputLabel(v,s)).join(', '):lineage(s);
+  const description=cleanStepText(s.desc||dispName(s));
+  return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet and its emitted source'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pickStep(\''+s.id+'\')"><span class=idx>'+(index+1)+'</span><span class=stx>'+esc(description)+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span>'+executionChip(s)+'</button>'; }
 function derivTree(d){
   const bySection=new Map(), order=[];
   d.forEach((sheet,index)=>{ if(!sheet.section)return; if(!bySection.has(sheet.section)){
@@ -470,8 +472,6 @@ function toggleCot(){ COTOPEN=!COTOPEN; renderRail();
 }
 function turnHtml(){                                          // the CURRENT (live) turn's assistant block
   let notice=ANALYSIS_ERROR?'<div class=analysiserror>'+esc(ANALYSIS_ERROR)+'</div>':'';
-  if(VIEWED_ANALYSIS&&VIEWED_ANALYSIS.stale)
-    notice+='<div class=analysisstale>This workbook uses an earlier version of the input data.</div>';
   if(FAILMSG) return notice+'<div class=failbox>'+esc(FAILMSG)+'<br><button class=retry onclick=location.reload()>Retry</button></div>';
   return notice+turnHtmlBody();
 }
@@ -1246,7 +1246,7 @@ function wireChat(){
   window.addEventListener('resize',updateTabArrows);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
   bindConversationList();
-  if(typeof setDrawer==='function')setDrawer(drawerPreference(),false);
+  if(typeof setDrawer==='function')setDrawer(false);
 }
 
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */

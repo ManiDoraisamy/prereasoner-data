@@ -11,7 +11,7 @@
 <meta name="twitter:description" content="Get the result with the query and rows behind it.">
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css?v=14">
+<link rel=stylesheet href="styles.css?v=15">
 <style>
 .attachbar{flex-wrap:nowrap}
 .chip{min-width:0;cursor:pointer;padding:6px 12px 6px 7px;gap:8px}
@@ -41,11 +41,8 @@
 .ptab th,.ptab td{border-bottom:1px solid #efeafa;border-right:1px solid #efeafa;padding:6px 11px;text-align:left;color:var(--card-ink);white-space:nowrap}
 .ptab th{background:#f3effd;color:var(--brand);font-weight:600}
 .ptab td.rn,.ptab th.rn{background:#faf9ff;color:#b3acce;text-align:center;width:38px;font-size:11px}
-/* "More examples" badge + the example-question picker (reuses the preview modal chrome) */
-/* the formfacade.com "More >" affordance: a plain text link with a chevron — Inter 14/400, no
-   border, no padding, no uppercase. Formfacade paints it brand purple on white; the same purple on
-   this purple backdrop would vanish, so only the colour carries over to white. */
-.morex{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;color:#fff;font-size:14px;font-weight:400;line-height:1}
+/* "More examples" is a plain text link with a compact chevron. */
+.morex{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:3px;color:#5d536d;font-size:14px;font-weight:400;line-height:1}
 .morex:hover{text-decoration:underline}
 .morex svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .exlist{padding:8px}
@@ -100,10 +97,10 @@
   <footer class=sitefoot><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></footer>
 </div>
 <input type=file id=file accept=".csv,.tsv,.txt,.xlsx,.xlsm,.xls,text/csv,text/plain,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" multiple style="display:none">
-<div class=pbackdrop id=pbackdrop onclick=closePreview()></div>
-<div class=preview id=preview><button class=px onclick=closePreview() aria-label=Close>&times;</button><div class=ph id=ph></div><div id=ptabwrap></div></div>
-<div class=pbackdrop id=exbackdrop onclick=closeExamples()></div>
-<div class=preview id=examples role=dialog aria-label="Example questions"><button class=px onclick=closeExamples() aria-label=Close>&times;</button><div class=ph>Example questions <span class=c>&middot; pick one to load its dataset</span></div><div class=exlist id=exlist></div></div>
+<div class=pbackdrop id=pbackdrop onclick=closePreview() aria-hidden=true></div>
+<div class=preview id=preview role=dialog aria-modal=true aria-label="Spreadsheet preview" aria-hidden=true><button class=px onclick=closePreview() aria-label=Close>&times;</button><div class=ph id=ph></div><div id=ptabwrap></div></div>
+<div class=pbackdrop id=exbackdrop onclick=closeExamples() aria-hidden=true></div>
+<div class=preview id=examples role=dialog aria-modal=true aria-label="Example questions" aria-hidden=true><button class=px onclick=closeExamples() aria-label=Close>&times;</button><div class=ph>Example questions <span class=c>&middot; pick one to load its dataset</span></div><div class=exlist id=exlist></div></div>
 <script src="lib/shared.js"></script>
 <script src="lib/workbook-conversations.js"></script>
 <script src="lib/upload-limits.js"></script>
@@ -153,9 +150,9 @@ const DEMO_LOAD=Promise.all([
   if(p&&$('q').value===Q0)$('q').value=p;                  // a question the user typed or a picker round-trip restored
 }).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
 function renderChips(){
-  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'" title="Preview '+escAttr(s.filename||s.name)+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span><small>'
-    +(s.source&&s.source.kind==='example'?'Example data · ':'')+parseCSV(s.data).rows.length.toLocaleString()+' rows</small><button class=chipx type=button aria-label="Remove '+escAttr(s.name)+'" title="Remove">&times;</button></span>').join('');
+  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip role=button tabindex=0 data-i="'+i+'" title="Preview '+escAttr(s.filename||s.name)+'"><span class=ic aria-hidden=true><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"></rect><path d="M2.5 6h11M6 2.5v11"></path></svg></span><span class=nm>'+esc(s.name)+'</span><button class=chipx type=button aria-label="Remove '+escAttr(s.name)+'" title="Remove">&times;</button></span>').join('');
   [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onclick=e=>{if(!e.target.closest('.chipx'))openPreview(+el.dataset.i);});
+  [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onkeydown=e=>{if(!e.target.closest('.chipx')&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openPreview(+el.dataset.i);}});
   [...$('chips').querySelectorAll('.chipx')].forEach(el=>el.onclick=e=>{e.stopPropagation();const chip=el.closest('.chip');SHEETS.splice(+chip.dataset.i,1);isSample=false;renderChips();});
 }
 function openPreview(i){
@@ -167,14 +164,17 @@ function openPreview(i){
   let h='<table class=ptab><tr><th class=rn></th>'+p.cols.map(c=>'<th>'+esc(c.trim())+'</th>').join('')+'</tr>';
   p.rows.slice(0,500).forEach((r,ri)=>{h+='<tr><td class=rn>'+(ri+1)+'</td>'+p.cols.map((c,ci)=>'<td>'+esc(r[ci]==null?'':r[ci])+'</td>').join('')+'</tr>';});
   $('ptabwrap').innerHTML=h+'</table>';
-  $('preview').style.display='block'; $('pbackdrop').style.display='block';
+  showModal('preview','pbackdrop');
 }
-function closePreview(){$('preview').style.display='none'; $('pbackdrop').style.display='none';}
+let LAST_MODAL_FOCUS=null;
+function showModal(id,backId){const dialog=$(id),back=$(backId);LAST_MODAL_FOCUS=document.activeElement;dialog.style.display='block';back.style.display='block';dialog.setAttribute('aria-hidden','false');back.setAttribute('aria-hidden','false');dialog.querySelector('.px').focus();}
+function hideModal(id,backId){const dialog=$(id),back=$(backId);dialog.style.display='none';back.style.display='none';dialog.setAttribute('aria-hidden','true');back.setAttribute('aria-hidden','true');if(LAST_MODAL_FOCUS&&document.contains(LAST_MODAL_FOCUS))LAST_MODAL_FOCUS.focus();LAST_MODAL_FOCUS=null;}
+function closePreview(){hideModal('preview','pbackdrop');}
 /* "More examples": every /dataset/<dir>/ ships a prompt.txt; the picker lists them and a click loads
    that dataset + prompt via the same ?load= URL the shareable dataset.txt index uses. */
 let EXAMPLES=null;
 async function openExamples(){
-  $('examples').style.display='block'; $('exbackdrop').style.display='block';
+  showModal('examples','exbackdrop');
   if(EXAMPLES)return;
   // Built from DATASETS — the SAME map ?load= resolves against — so every row listed is one that really
   // loads, and each row names the sheets it attaches, not its directory path. The names are printed
@@ -190,7 +190,7 @@ async function openExamples(){
   if(!EXAMPLES.length)EXAMPLES=null;                                              // a failed fetch retries on the next open
   [...$('exlist').querySelectorAll('button')].forEach(b=>b.onclick=()=>{location.href='/'+executionQuery('?load='+encodeURIComponent(b.dataset.load));});
 }
-function closeExamples(){$('examples').style.display='none'; $('exbackdrop').style.display='none';}
+function closeExamples(){hideModal('examples','exbackdrop');}
 $('morex').addEventListener('click',openExamples);
 try{                                                       // returning from /picker: attach the imported Google Sheet + restore the prompt
   const pend=sessionStorage.getItem(SS.PENDING_SHEETS);
@@ -300,14 +300,17 @@ if(MODE){
   addbtn.removeAttribute('aria-haspopup'); addbtn.removeAttribute('aria-expanded');
   addbtn.onclick=function(){addSource(cfg.src);};
 }else{
-  addbtn.onclick=function(e){e.stopPropagation();const o=addmenu.classList.toggle('open');addbtn.setAttribute('aria-expanded',o);};
-  document.addEventListener('click',function(){addmenu.classList.remove('open');});
+  const closeAddMenu=()=>{addmenu.classList.remove('open');addbtn.setAttribute('aria-expanded','false');};
+  addbtn.onclick=function(e){e.stopPropagation();const o=addmenu.classList.toggle('open');addbtn.setAttribute('aria-expanded',o?'true':'false');};
+  document.addEventListener('click',closeAddMenu);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAddMenu();});
   addmenu.onclick=function(e){e.stopPropagation();};
   [...addmenu.querySelectorAll('button')].forEach(b=>b.onclick=function(){
-    addmenu.classList.remove('open');
+    closeAddMenu();
     addSource(b.dataset.add);
   });
 }
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;if($('examples').getAttribute('aria-hidden')==='false')closeExamples();else if($('preview').getAttribute('aria-hidden')==='false')closePreview();});
 try{ fetch(API_BASE+'/api/reason',{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // home -> /reason: pre-warm that backend
 </script>
 <script type="module">
@@ -315,24 +318,23 @@ import { auth, ensureSignedIn, signOutUser } from '/lib/firebase-init.js';
 const login=document.getElementById('loginbtn');
 const homeMenu=document.getElementById('homemenubtn'), homeBack=document.getElementById('homeback');
 const homeRail=document.getElementById('homerail'), homeMedia=window.matchMedia('(max-width: 900px)');
-const NAV_KEY='pr_chat_nav_open';
-function navPreference(){try{const v=localStorage.getItem(NAV_KEY);return v==null?!homeMedia.matches:v==='1';}catch(_){return !homeMedia.matches;}}
-function setHomeDrawer(open,persist=true){
+function setHomeDrawer(open){
   open=!!open;
-  if(persist){try{localStorage.setItem(NAV_KEY,open?'1':'0');}catch(_){}}
+  const returnFocus=!open&&homeRail.contains(document.activeElement);
   document.body.classList.toggle('home-nav-open',open);
   document.body.classList.toggle('homeopen',open&&homeMedia.matches);
   homeBack.classList.toggle('open',open&&homeMedia.matches); homeBack.setAttribute('aria-hidden',open?'false':'true');
   homeMenu.setAttribute('aria-expanded',open?'true':'false');
-  const concealed=homeMedia.matches&&!open; homeRail.inert=concealed;
+  const concealed=!open; homeRail.inert=concealed;
   homeRail.setAttribute('aria-hidden',concealed?'true':'false');
-  if(open){ try{ renderDrawer(); }catch(_){} }
+  if(open){ try{ renderDrawer(); }catch(_){} requestAnimationFrame(()=>document.getElementById('homeclose').focus()); }
+  else if(returnFocus)homeMenu.focus();
 }
 homeMenu.addEventListener('click',()=>setHomeDrawer(!document.body.classList.contains('home-nav-open')));
 homeBack.addEventListener('click',()=>setHomeDrawer(false));
 document.getElementById('homeclose').addEventListener('click',()=>setHomeDrawer(false));
-document.addEventListener('keydown',event=>{ if(event.key==='Escape')setHomeDrawer(false); });
-homeMedia.addEventListener('change',()=>setHomeDrawer(navPreference(),false));
+document.addEventListener('keydown',event=>{ if(event.key==='Escape'){closeAccount();setHomeDrawer(false);} });
+homeMedia.addEventListener('change',()=>setHomeDrawer(false));
 const accountWrap=document.getElementById('accountwrap'),accountBtn=document.getElementById('accountbtn'),accountMenu=document.getElementById('accountmenu');
 function closeAccount(){accountMenu.classList.remove('open');accountBtn.setAttribute('aria-expanded','false');}
 accountBtn.addEventListener('click',event=>{event.stopPropagation();const open=accountMenu.classList.toggle('open');accountBtn.setAttribute('aria-expanded',open?'true':'false');});
@@ -343,9 +345,9 @@ document.getElementById('signoutbtn').addEventListener('click',async()=>{await s
 function showSignedIn(user){
   login.hidden=true;
   const rail=document.getElementById('homerail'); if(!rail) return;
-  rail.hidden=false; homeMenu.hidden=false; accountWrap.hidden=!user; document.body.classList.add('hasrail'); setHomeDrawer(navPreference(),false);
+  rail.hidden=false; homeMenu.hidden=false; accountWrap.hidden=!user; document.body.classList.add('hasrail','signed-in'); setHomeDrawer(false);
   document.getElementById('railnew').onclick=()=>{ try{ newConversation(); }catch(_){ location.href='/'; } };
-  try{ bindConversationList(); renderDrawer(); }catch(_){}
+  try{ bindConversationList(); }catch(_){}
   // The rail foots with WHO is signed in. Built with the DOM API, never interpolated
   // markup: the display name and email come from the identity provider.
   const box=document.getElementById('railuser'); if(!box||!user) return;

@@ -99,10 +99,10 @@ test('10,000-row workbooks are accepted, but 10,001 rows are rejected atomically
   XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),'orders');
   const upload=()=>page.locator('#file').setInputFiles({name:'boundary.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer:Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}))});
-  await upload();await expect(page.locator('#chips')).toContainText('10,000 rows');
+  await upload();await expect(page.locator('#chips .nm')).toHaveText('boundary');
   rows.push([10001,1]);book.Sheets.orders=XLSX.utils.aoa_to_sheet(rows);
   await upload();await expect(page.locator('#err')).toContainText('10,000 data rows');
-  await expect(page.locator('#chips')).toContainText('10,000 rows');
+  await expect(page.locator('#chips .nm')).toHaveText('boundary');
   await expect(page.getByRole('button',{name:'Ask',exact:true})).toBeDisabled();
 });
 
@@ -141,8 +141,8 @@ for(const malformed of [false,true])test('partial streams reconcile without dupl
 
 const firebaseApp='export function initializeApp(){return {}}';
 const firebaseAuth=`
-  const currentUser=null;
-  export function getAuth(){return {currentUser,authStateReady:async()=>{}}}
+  const currentUser={displayName:'Test User',email:'test@example.com'};
+  export function getAuth(){return {get currentUser(){return window.__uid?currentUser:null},authStateReady:async()=>{}}}
   export class GoogleAuthProvider { addScope(){} }
   export async function signInWithRedirect(){}
   export async function getRedirectResult(){return null}
@@ -194,16 +194,58 @@ test('a workbook demo with no data fails visibly instead of creating an empty ta
   await expect(page.locator('#chips .nm')).toHaveCount(0);
 });
 
+test('home menus and previews close cleanly with Escape and restore focus',async({page})=>{
+  await mockAuth(page);
+  await page.goto('/');
+  await expect(page.locator('#chips .nm')).toHaveText('orders');
+  const add=page.locator('#addbtn');
+  await add.click();
+  await expect(add).toHaveAttribute('aria-expanded','true');
+  await page.keyboard.press('Escape');
+  await expect(add).toHaveAttribute('aria-expanded','false');
+
+  const chip=page.locator('.chip').first();
+  await chip.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#preview')).toHaveAttribute('aria-hidden','false');
+  await expect(page.locator('#preview .px')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#preview')).toHaveAttribute('aria-hidden','true');
+  await expect(chip).toBeFocused();
+
+  const examples=page.locator('#morex');
+  await examples.click();
+  await expect(page.locator('#examples')).toHaveAttribute('aria-hidden','false');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#examples')).toHaveAttribute('aria-hidden','true');
+  await expect(examples).toBeFocused();
+});
+
 test('sign in, upload, answer, inspect trace, follow up, and delete',async({page,request})=>{
   await mockAuth(page);
+  await page.addInitScript(()=>localStorage.setItem('pr_chat_nav_open','1'));
 
   await page.goto('/');
+  await expect(page.locator('#chips .chip')).toHaveText('orders×');
+  await expect(page.locator('#chips')).not.toContainText(/Example data|rows/);
   await page.getByRole('button',{name:'Login'}).click();
-  // Signing in replaces the badge with the conversation rail: the rail IS the signed-in
-  // state, so a "Signed in" button would be redundant chrome.
+  // Signing in exposes history through a closed-by-default drawer. An obsolete persisted
+  // preference must not shift the whole page or reopen it on arrival.
   await expect(page.locator('#homerail')).toBeVisible();
-  await expect(page.getByRole('button',{name:'New chat'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Login'})).toBeHidden();
+  await expect(page.locator('body')).not.toHaveClass(/home-nav-open/);
+  await expect(page.locator('.page')).toHaveCSS('margin-left','0px');
+  await expect(page.locator('.brand')).toBeHidden();
+  const homeMenu=page.getByRole('button',{name:'Conversations'});
+  await expect(homeMenu).toHaveAttribute('aria-expanded','false');
+  await expect(page.locator('#homerail')).toHaveAttribute('aria-hidden','true');
+  expect(await page.locator('#homerail').evaluate(element=>element.inert)).toBe(true);
+  await homeMenu.click();
+  await expect(page.getByRole('button',{name:'New chat'})).toBeVisible();
+  await expect(page.locator('#railuser')).toContainText('Test User');
+  expect(await page.evaluate(()=>Math.abs(document.querySelector('.drawerhd').getBoundingClientRect().bottom-document.querySelector('.hdr').getBoundingClientRect().bottom))).toBeLessThanOrEqual(0.5);
+  await page.getByRole('button',{name:'Close chats'}).click();
+  await expect(page.locator('.page')).toHaveCSS('margin-left','0px');
 
   const workbook=XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook,XLSX.utils.aoa_to_sheet([
@@ -219,11 +261,25 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.getByRole('button',{name:'Ask'}).click();
 
   await expect(page).toHaveURL(new RegExp(`/reason/${conversationPattern()}`));
+  await expect(page.locator('body')).not.toHaveClass(/chat-nav-open/);
+  const workbookMenu=page.getByRole('button',{name:'Conversations',exact:true});
+  await expect(workbookMenu).toHaveAttribute('aria-expanded','false');
+  await expect(page.locator('#drawer')).toHaveAttribute('aria-hidden','true');
+  expect(await page.locator('#drawer').evaluate(element=>element.inert)).toBe(true);
+  await expect(page.locator('.drawerlinks')).toHaveCount(0);
+  await workbookMenu.click();
+  await expect(page.locator('#draweruser')).toContainText('Test User');
+  expect(await page.evaluate(()=>Math.abs(document.querySelector('.drawerhd').getBoundingClientRect().bottom-document.querySelector('.hdr').getBoundingClientRect().bottom))).toBeLessThanOrEqual(0.5);
+  await page.getByRole('button',{name:'Close chats'}).click();
   await expect(page.locator('.sheetband .snm')).toHaveText('Result');
   await expect(page.locator('.sheetband .skind')).toHaveText('total');
   await expect(page.locator('.wb.result tbody')).toContainText('180');
   await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for total sales');
-  await expect(page.locator('.cotbar').last()).toContainText('Created');
+  await expect(page.locator('.cotbar').last()).not.toContainText(/Created|Updated/);
+  await expect(page.locator('.steplink').first()).not.toContainText(/c_[0-9a-f]{32}|Combined combined/i);
+  const aligned=await page.evaluate(()=>{const band=document.querySelector('.sheetband').getBoundingClientRect(),head=document.querySelector('.railhead').getBoundingClientRect(),tabs=document.querySelector('.tabsbar').getBoundingClientRect(),chat=document.querySelector('.chatbar').getBoundingClientRect();return {top:Math.abs(band.bottom-head.bottom),bottom:Math.abs(tabs.top-chat.top)};});
+  expect(aligned.top).toBeLessThanOrEqual(0.5);
+  expect(aligned.bottom).toBeLessThanOrEqual(0.5);
   await page.locator('.wtab').filter({hasText:'orders'}).click();
   const amountHeader=page.locator('th').filter({hasText:'amount'}).first();
   await expect(amountHeader).toContainText('EUR');
@@ -256,7 +312,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.getByRole('button',{name:'Send'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('120');
   await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for total sales');
-  await expect(page.locator('.cotbar').last()).toContainText('Updated');
+  await expect(page.locator('.cotbar').last()).not.toContainText(/Created|Updated/);
   await page.locator('.wtab').filter({hasText:'orders'}).click();
   await expect(page.locator('th').filter({hasText:'amount'}).first()).not.toContainText('EUR');
   await page.reload();
@@ -267,7 +323,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.getByRole('button',{name:'Send'}).click();
   await expect(page.locator('.wb.result tbody')).toContainText('Coat');
   await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for top selling products');
-  await expect(page.locator('.cotbar').last()).toContainText('Created');
+  await expect(page.locator('.cotbar').last()).not.toContainText(/Created|Updated/);
 
   const totalSalesLinks=page.locator('.analysislink',{hasText:'total sales'});
   await expect(totalSalesLinks).toHaveCount(2);
@@ -305,6 +361,7 @@ test('Google source freshness uses one quiet status control and recalculates in 
   await expect(page.locator('#syncstate')).toHaveClass(/stale/);
   await expect(page.locator('#syncstate')).toHaveAttribute('aria-label','Answer is stale. Recalculate');
   await expect(page.locator('.recalchint')).toHaveCount(0);
+  await expect(page.locator('.analysisstale')).toHaveCount(0);
   await page.locator('#syncstate').click();
   await expect(page.locator('#syncstate')).toHaveClass(/current/);
   await expect(page.locator('.turn.user')).toHaveCount(turns);

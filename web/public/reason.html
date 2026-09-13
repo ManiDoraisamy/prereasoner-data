@@ -3,14 +3,14 @@
 <title>Prereasoner · workbook</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="/styles.css?v=14">
+<link rel=stylesheet href="/styles.css?v=15">
 </head><body class=app>
 <!-- The read-only WORKBOOK (shared logic: lib/workbook.js; shared styles: styles.css).
      Green sheets = the user's tables (the AI never writes here). Blue sheets = one per
      reasoning step. Grey sheets = the reference lookups it used. -->
 <div class=screen>
   <div class=hdr>
-    <button class=menubtn id=menubtn aria-label="Conversations" onclick=openDrawer()><svg viewBox="0 0 24 24" width=20 height=20 aria-hidden=true><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width=2 stroke-linecap=round fill=none/></svg></button>
+    <button class=menubtn id=menubtn aria-label="Conversations" aria-controls=drawer aria-expanded=false onclick=openDrawer()><svg viewBox="0 0 24 24" width=20 height=20 aria-hidden=true><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width=2 stroke-linecap=round fill=none/></svg></button>
     <div class=htitle id=htitle title=""></div>
     <div class=spacer></div>
     <div class=accountwrap id=accountwrap hidden><button class=accountbtn type=button id=accountbtn aria-label="Account" aria-haspopup=menu aria-expanded=false></button>
@@ -18,11 +18,11 @@
     </div>
   </div>
   <div class=drawer-backdrop id=drawerback onclick=closeDrawer()></div>
-  <aside class=drawer id=drawer aria-label="Conversations">
+  <aside class=drawer id=drawer aria-label="Conversations" aria-hidden=true inert>
     <div class=drawerhd><span>Chats</span><button class=drawerx onclick=closeDrawer() aria-label="Close chats">&times;</button></div>
-    <button class=convnew onclick="newConversation()">New chat</button>
+    <div class=railtop><button class=convnew onclick="newConversation()">New chat</button></div>
     <div class=convlist id=convlist></div>
-    <div class=drawerlinks><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div>
+    <div class=railuser id=draweruser hidden></div>
   </aside>
   <div class=workmain>
     <div class=sheetside>
@@ -64,7 +64,12 @@ function showAccount(user){
   const email=document.createElement('span');email.textContent=user.email||'';identity.append(strong,email);
   btn.onclick=event=>{event.stopPropagation();const open=menu.classList.toggle('open');btn.setAttribute('aria-expanded',open?'true':'false');};
   document.addEventListener('click',()=>{menu.classList.remove('open');btn.setAttribute('aria-expanded','false');});
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'){menu.classList.remove('open');btn.setAttribute('aria-expanded','false');}});
   document.getElementById('signoutbtn').onclick=async()=>{await signOutUser();location.href='/';};
+  const drawerUser=document.getElementById('draweruser');drawerUser.textContent='';
+  const avatar=document.createElement('span');avatar.className='railav';avatar.textContent=name.slice(0,1).toUpperCase();
+  const who=document.createElement('span');who.className='railwho';who.textContent=name;who.title=user.email||name;
+  drawerUser.append(avatar,who);drawerUser.hidden=false;
 }
 try { if (await ensureSignedIn()){ showAccount(auth.currentUser); run(); } }
 catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }

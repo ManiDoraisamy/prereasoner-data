@@ -338,9 +338,7 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .analysislink:hover,.analysislink:focus-visible{border-color:currentColor}
 .analysislink.on{color:#4c35cb}
 .analysisname{font-weight:600;color:var(--card-ink-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.analysisverb{margin-left:auto;padding-left:6px;color:#777087;font:600 9.5px var(--mono);text-transform:uppercase;white-space:nowrap}
 .analysiserror{margin:0 0 10px;padding:9px 11px;border-left:3px solid #b04a3c;background:#fff4f1;color:#713127;font:12px/1.45 var(--disp)}
-.analysisstale{margin:0 0 10px;padding:9px 11px;border-left:3px solid #b78022;background:#fff9e9;color:#694b14;font:12px/1.45 var(--disp)}
 .cot.archived .cotbar{padding:3px 4px}
 .cotask{padding:5px 10px;margin-bottom:6px;border-radius:8px;background:#f6f4ff;border:1px dashed #d8cdf5;color:#5b5273;font:12.5px/1.5 var(--disp)}
 .modebadge{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;margin:0 0 10px;padding:3px 10px;border-radius:9999px;background:#f3effd;border:1px solid #ddd4f5;color:var(--brand);font:600 11px var(--disp);cursor:default}
@@ -392,9 +390,7 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .menubtn{all:unset;cursor:pointer;width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
 .menubtn:hover{background:rgba(255,255,255,.14)}
 .htitle{flex:1;min-width:0;color:#fff;font:600 15px var(--disp);letter-spacing:-.2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.96}
-/* Signed-in home rail. White against the purple canvas — the same contrast the /reason
-   drawer already uses, so "your stuff" reads as a distinct surface from the workspace.
-   It is a permanent rail, not an overlay, so it takes a hairline border and no shadow. */
+/* Signed-in home conversation rail. */
 .homerail{position:fixed;top:0;left:0;bottom:0;width:264px;background:#fff;border-right:1px solid #ece7fa;
   z-index:30;display:flex;flex-direction:column;overflow:hidden}
 .homerail[hidden]{display:none}
@@ -410,7 +406,7 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
   display:flex;align-items:center;justify-content:center;font:600 12px var(--disp)}
 .railwho{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   color:var(--card-ink);font:500 13px var(--disp)}
-body.hasrail .page{margin-left:264px}
+body.hasrail .page{margin-left:0}
 .homemenubtn{all:unset;cursor:pointer;width:38px;height:38px;border-radius:9px;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
 .homemenubtn:hover{background:rgba(255,255,255,.14)}
 .homemenubtn svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
@@ -468,7 +464,8 @@ body{background:#fff;color:#211d2c}
 .addbtn{border-color:#ded8ee;background:#fff;color:#4e4268}.addbtn:hover{border-color:var(--brand);background:#f8f6ff;color:var(--brand)}
 .send{box-shadow:none;border-radius:10px}.send:hover{transform:none}
 .chip{background:#f7f5fb;border-color:#e5e0ee;border-radius:9px;padding-right:5px}.chip:hover{background:#f2eef9}
-.chip .ic{background:#fff;color:#615776;border:1px solid #e1dce9}.chip small{color:#746b83;white-space:nowrap;font:10.5px var(--disp)}
+.chip:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.chip .ic{background:#fff;color:#615776;border:1px solid #e1dce9}.chip .ic svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.2}.chip small{color:#746b83;white-space:nowrap;font:10.5px var(--disp)}
 .chipx{all:unset;cursor:pointer;color:#9b94a6;font:17px/1 var(--disp);padding:3px 5px;border-radius:6px}.chipx:hover{background:#f6e7e7;color:#b33a3a}
 .morex{color:#5d536d;font-size:13px}.morex:hover{color:var(--brand)}
 .err{color:#b13a3a;font-family:var(--disp)}
@@ -481,14 +478,14 @@ body{background:#fff;color:#211d2c}
 .homerail{display:flex}.homerail[hidden]{display:none}
 body.home-nav-open .homerail,.drawer.open{transform:none}
 body.hasrail.home-nav-open .page{margin-left:280px}
+body.signed-in .brand{display:none}
 .homemenubtn:not([hidden]){display:flex}.homemenubtn,.menubtn{color:#4d4658}.homemenubtn:hover,.menubtn:hover{color:var(--brand);background:#f3effd}
-.drawerhd{height:60px;padding:0 16px 0 18px;border-color:#e7e4ea;color:#706879;font:600 11px var(--disp);letter-spacing:.09em}
+.drawerhd{height:72px;flex:0 0 72px;padding:0 16px 0 18px;border-color:#e7e4ea;color:#706879;font:600 11px var(--disp);letter-spacing:.09em}
 .drawerx{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;font-size:20px}.drawerx:hover{background:#f0edf4}
 .railtop{padding:14px 12px 8px}.railnew,.convnew{box-sizing:border-box;width:100%;margin:0;padding:10px 13px;text-align:left;border:1px solid #d9d3e5;border-radius:9px;background:#fff;color:#342a48;font:600 13px var(--disp);box-shadow:none}
 .railnew::before,.convnew::before{content:"+";margin-right:8px;color:var(--brand);font-size:16px;font-weight:500}.railnew:hover,.convnew:hover{background:#f6f3fc;border-style:solid;border-color:#c9bfdd}
 .convlist{padding:8px 9px 14px}.convitem{padding:10px 34px 10px 11px}.convitem:hover{background:#f1eff4}.convitem.on{background:#eae5f7}
 .convitem .cq{font-size:13px}.convitem .ct{color:#8b8493}.convdel{font-size:14px;color:#968fa0}.convitem:hover .convdel,.convitem:focus-within .convdel{opacity:1}
-.drawerlinks{display:flex;gap:12px;padding:13px 17px 16px;border-top:1px solid #e7e4ea}.drawerlinks a{color:#77707f;font:11px var(--disp);text-decoration:none}.drawerlinks a:hover{color:var(--brand)}
 .railuser{border-color:#e7e4ea}.railav,.accountbtn{background:var(--brand)}
 .homeback,.drawer-backdrop{background:rgba(24,20,32,.28)}
 
@@ -505,13 +502,13 @@ body.hasrail.home-nav-open .page{margin-left:280px}
 /* Workbook shell. */
 .app .hdr{gap:11px;transition:margin-left .2s ease}.app .workmain{transition:margin-left .2s ease}
 .app .htitle{color:#2b2631;font-weight:500;opacity:1}.app .menubtn{color:#514a5c}
-.sheetband{border-color:#e7e4ea}.wb th,.wb td{border-color:#e8e6eb}.wb th,.wb th.rn{background:#f6f5f7;color:#51475f}.wb td.rn{background:#fafafa;color:#9d97a3}
-.tabsbar{background:#f4f3f5;border-color:#dfdce2}.wtab{color:#655d70;border-color:#e0dde3}.wtab:hover{background:#ebe8ee}.wtab.active{background:#fff;color:#2d2734}
-.rail{flex-basis:380px;max-width:380px;border-color:#e3e0e6}.railhead{height:48px;flex:0 0 48px;display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:0 15px;border-bottom:1px solid #e7e4ea;background:#fff}
+.sheetband{height:45px;flex-basis:45px;padding:0 16px;border-color:#e7e4ea}.wb th,.wb td{border-color:#e8e6eb}.wb th,.wb th.rn{background:#f6f5f7;color:#51475f}.wb td.rn{background:#fafafa;color:#9d97a3}
+.tabsbar{height:48px;flex-basis:48px;background:#f4f3f5;border-color:#dfdce2}.wtab{color:#655d70;border-color:#e0dde3}.wtab:hover{background:#ebe8ee}.wtab.active{background:#fff;color:#2d2734}
+.rail{flex:0 0 clamp(320px,34vw,380px);max-width:380px;border-color:#e3e0e6}.railhead{height:48px;flex:0 0 48px;display:flex;align-items:center;justify-content:flex-end;gap:9px;padding:0 15px;border-bottom:1px solid #e7e4ea;background:#fff}
 .inputcount{color:#77707f;font:500 12px var(--disp)}
 .syncstate{all:unset;box-sizing:border-box;width:25px;height:25px;border-radius:50%;display:flex;align-items:center;justify-content:center;font:700 13px/1 var(--disp);cursor:pointer}
 .syncstate[hidden]{display:none}.syncstate.current{background:#e4f5eb;color:#16804b}.syncstate.checking{background:#fff1d8;color:#a66300;letter-spacing:1px}.syncstate.stale,.syncstate.error{background:#fde7e7;color:#b42323}.syncstate:not([disabled]):hover{box-shadow:0 0 0 3px rgba(180,35,35,.10)}
-.railscroll{padding:18px}.turn .msg{background:#f5f3f8;border-color:#e2dee8}.chatbar{border-color:#e4e1e7;padding:11px 12px}.chatbar textarea{background:#fff;border-color:#d8d4dc}.chatbar textarea:focus{box-shadow:0 0 0 2px rgba(93,51,251,.09)}
+.railscroll{padding:18px}.turn .msg{background:#f5f3f8;border-color:#e2dee8}.chatbar{height:48px;flex:0 0 48px;align-items:center;border-color:#e4e1e7;padding:6px 10px}.chatbar textarea{height:36px;min-height:36px;padding:7px 11px;background:#fff;border-color:#d8d4dc}.chatbar textarea:focus{box-shadow:0 0 0 2px rgba(93,51,251,.09)}
 .drawer{z-index:42}.drawer-backdrop{z-index:41}
 @media(min-width:901px){
   body.app.chat-nav-open .hdr,body.app.chat-nav-open .workmain{margin-left:280px}
