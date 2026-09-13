@@ -287,6 +287,8 @@ assert(!html.includes('loginSoon'), 'the dead coming-soon login handler must be 
 const wb = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook.js'), 'utf8');
 const chat = fs.readFileSync(path.join(__dirname, '..', 'public', 'chatui.html'), 'utf8');
 const privacy = fs.readFileSync(path.join(__dirname, '..', 'public', 'privacy.html'), 'utf8');
+const terms = fs.readFileSync(path.join(__dirname, '..', 'public', 'terms.html'), 'utf8');
+const support = fs.readFileSync(path.join(__dirname, '..', 'public', 'support.html'), 'utf8');
 assert.strictEqual(fb.hosting.cleanUrls, true, 'privacy.html must be published at the linked /privacy URL');
 for (const gone of ['llmNoticeHtml', 'ackLlmNotice', 'optOutLlm', 'LLM_CONSENT', 'llmnotice']) {
   assert(!wb.includes(gone), `the removed consent UI must leave no ${gone} behind`);
@@ -304,6 +306,8 @@ assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(wb),
 assert(!/confirm\([^)]*(Anthropic|Claude|consent|local-only)/i.test(chat),
   'the standalone chat must never show a processor dialog');
 assert(html.includes('href="/privacy"'), 'the home page must link to the published privacy policy');
+assert(html.includes('href="/terms"'), 'the home page must link to the published terms');
+assert(html.includes('href="/support"'), 'the home page must link to published support');
 for (const page of ['reason.html', 'knowledge.html', 'picker.html', 'chatui.html']) {
   const body = fs.readFileSync(path.join(__dirname, '..', 'public', page), 'utf8');
   assert(body.includes('href="/privacy"'), `${page} must link to the published privacy policy`);
@@ -320,5 +324,13 @@ assert(privacy.includes('<a class="brand" href="https://prereasoner.com/">'),
   'the privacy page brand must link to the marketing site');
 assert(privacy.includes('<a class="back" href="/">'),
   'the privacy page must keep a distinct link back to the app');
+for (const [body, name, required] of [
+  [terms, 'terms', ['Terms of Service', 'Google Sheets add-on', 'Your data', 'Contact']],
+  [support, 'support', ['Support', 'Multiple Google accounts', 'Previous conversations', 'Remove access or delete data']],
+]) {
+  assert(body.includes('Prereasoner'), `${name} must use the Prereasoner product name`);
+  assert(!body.includes('Promptrepo'), `${name} must not retain Promptrepo branding`);
+  for (const text of required) assert(body.includes(text), `${name} must include ${text}`);
+}
 
 console.log("home demo + landing routes + picker + privacy: passed");

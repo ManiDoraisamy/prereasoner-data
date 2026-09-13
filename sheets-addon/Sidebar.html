@@ -7,7 +7,7 @@
       html, body { height: 100%; }
       body { margin: 0; color: #202124; font: 13px Arial, sans-serif; }
       .branding-below {
-        bottom: 66px;
+        bottom: 72px;
         top: 0;
         overflow-y: auto;
         padding: 0 16px 16px;
@@ -99,8 +99,9 @@
         box-sizing: border-box;
       }
       .composer button { flex: 0 0 auto; }
-      .privacy { display: block; margin-top: 5px; color: #5f6368; font-size: 11px; text-decoration: none; }
-      .privacy:hover { text-decoration: underline; }
+      .legal { display: flex; gap: 12px; margin-top: 5px; }
+      .legal a { color: #5f6368; font-size: 11px; text-decoration: none; }
+      .legal a:hover { text-decoration: underline; }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     </style>
   </head>
@@ -122,7 +123,11 @@
         <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1" disabled></textarea>
         <button class="blue" id="send" type="submit" disabled>Send</button>
       </form>
-      <a class="privacy" id="privacy" href="https://chat.prereasoner.com/privacy" target="_blank">Privacy</a>
+      <div class="legal">
+        <a id="privacy" href="https://chat.prereasoner.com/privacy" target="_blank" rel="noopener">Privacy</a>
+        <a id="terms" href="https://chat.prereasoner.com/terms" target="_blank" rel="noopener">Terms</a>
+        <a id="support" href="https://chat.prereasoner.com/support" target="_blank" rel="noopener">Support</a>
+      </div>
     </div>
 
     <script>
@@ -135,6 +140,8 @@
         var questionEl = document.getElementById('question');
         var sendEl = document.getElementById('send');
         var privacyEl = document.getElementById('privacy');
+        var termsEl = document.getElementById('terms');
+        var supportEl = document.getElementById('support');
 
         function esc(value) {
           var node = document.createElement('div');
@@ -177,6 +184,8 @@
             (tabs > 1 ? ' · ' + tabs + ' tabs' : '') +
             (rows ? ' · ' + rows + ' rows' : '');
           if (context.privacyUrl) privacyEl.href = context.privacyUrl;
+          if (context.termsUrl) termsEl.href = context.termsUrl;
+          if (context.supportUrl) supportEl.href = context.supportUrl;
           questionEl.disabled = false;
           sendEl.disabled = false;
           questionEl.focus();

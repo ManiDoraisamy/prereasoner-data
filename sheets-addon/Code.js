@@ -2,6 +2,8 @@ var PREREASONER_CHAT_URL = 'https://chat.prereasoner.com/chat';
 var PREREASONER_REASON_URL = 'https://chat.prereasoner.com/reason/';
 var PREREASONER_API_URL = 'https://chat.prereasoner.com';
 var PREREASONER_PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
+var PREREASONER_TERMS_URL = 'https://chat.prereasoner.com/terms';
+var PREREASONER_SUPPORT_URL = 'https://chat.prereasoner.com/support';
 var FIREBASE_API_KEY = 'AIzaSyAC_Kiqj3lqd52ufpqYDAO17G6T7wfBd9Q';
 var FIREBASE_TOKEN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=' + FIREBASE_API_KEY;
 var ADDON_LIMITS = {
@@ -86,7 +88,9 @@ function getSheetContext() {
       activeSheet: '',
       tables: [],
       totalRows: 0,
-      privacyUrl: PREREASONER_PRIVACY_URL
+      privacyUrl: PREREASONER_PRIVACY_URL,
+      termsUrl: PREREASONER_TERMS_URL,
+      supportUrl: PREREASONER_SUPPORT_URL
     };
   }
 }
@@ -182,7 +186,9 @@ function collectWorkbook_() {
       tables: summaries,
       tableCount: summaries.length,
       totalRows: totalRows,
-      privacyUrl: PREREASONER_PRIVACY_URL
+      privacyUrl: PREREASONER_PRIVACY_URL,
+      termsUrl: PREREASONER_TERMS_URL,
+      supportUrl: PREREASONER_SUPPORT_URL
     }
   };
 }

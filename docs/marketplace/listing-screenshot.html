@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1280,initial-scale=1">
+<title>Prereasoner Sheets Copilot</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:1280px;height:800px;overflow:hidden;font-family:Arial,sans-serif;color:#202124;background:#fff}
+.shell{display:grid;grid-template-columns:960px 320px;height:800px}.sheet{border-right:1px solid #dadce0;background:#fff}
+.top{height:64px;display:flex;align-items:center;gap:14px;padding:0 18px;border-bottom:1px solid #dadce0;background:#f8fafd}
+.mark{width:34px;height:34px;border-radius:7px;background:#0f9d58;color:#fff;display:grid;place-items:center;font-weight:700;font-size:19px}
+.title{font-size:18px}.saved{font-size:12px;color:#5f6368}.menus{height:36px;display:flex;align-items:center;gap:22px;padding:0 18px;border-bottom:1px solid #e8eaed;font-size:13px}
+.toolbar{height:40px;display:flex;align-items:center;gap:15px;padding:0 18px;background:#f8fafd;border-bottom:1px solid #e8eaed;color:#5f6368;font-size:13px}
+.grid{display:grid;grid-template-columns:44px 104px 184px 144px 112px 170px 170px;font-size:13px;font-family:Arial,sans-serif}
+.cell{height:29px;padding:6px 8px;border-right:1px solid #e1e5eb;border-bottom:1px solid #e1e5eb;overflow:hidden;white-space:nowrap}.corner,.row{background:#f8f9fa;color:#5f6368;text-align:center}.head{font-weight:600;background:#f8f9fa}.selected{outline:2px solid #1a73e8;outline-offset:-2px;background:#e8f0fe}
+.tabs{position:absolute;left:0;bottom:0;width:960px;height:42px;display:flex;align-items:center;gap:9px;padding:0 14px;border-top:1px solid #dadce0;background:#f8f9fa}.tab{padding:8px 18px;background:#fff;border-radius:4px 4px 0 0;color:#174ea6;font-weight:600}.side img{display:block;width:320px;height:800px}
+</style>
+</head>
+<body>
+<div class="shell">
+  <section class="sheet" aria-label="Sample Google Sheet">
+    <div class="top"><div class="mark">▦</div><div><div class="title">Customer orders</div><div class="saved">Saved to Drive</div></div></div>
+    <div class="menus"><span>File</span><span>Edit</span><span>View</span><span>Insert</span><span>Format</span><span>Data</span><span>Tools</span><span>Extensions</span></div>
+    <div class="toolbar"><span>↶</span><span>↷</span><span>100%</span><span>Currency</span><span>Percent</span><span>More formats</span></div>
+    <div class="grid">
+      <div class="cell corner"></div><div class="cell head">order ID</div><div class="cell head">customer</div><div class="cell head">city</div><div class="cell head">tier</div><div class="cell head">ordered</div><div class="cell head">amount</div>
+      <div class="cell row">2</div><div class="cell">101</div><div class="cell">Sherlock Holmes</div><div class="cell">London</div><div class="cell">Gold</div><div class="cell">Magnifying glass</div><div class="cell">120</div>
+      <div class="cell row">3</div><div class="cell">102</div><div class="cell">Sherlock Holmes</div><div class="cell">London</div><div class="cell">Gold</div><div class="cell">Calabash pipe</div><div class="cell">84</div>
+      <div class="cell row">4</div><div class="cell">103</div><div class="cell">Dr. John Watson</div><div class="cell">London</div><div class="cell">Silver</div><div class="cell">Medical bag</div><div class="cell">190</div>
+      <div class="cell row">5</div><div class="cell">104</div><div class="cell">Hercule Poirot</div><div class="cell">Brussels</div><div class="cell">Gold</div><div class="cell">Moustache wax</div><div class="cell">68</div>
+      <div class="cell row">6</div><div class="cell">105</div><div class="cell">Inspector Clouseau</div><div class="cell">Paris</div><div class="cell">Bronze</div><div class="cell">Gabardine trench coat</div><div class="cell">410</div>
+      <div class="cell row">7</div><div class="cell">106</div><div class="cell">Arsène Lupin</div><div class="cell">Paris</div><div class="cell">Gold</div><div class="cell">Top hat</div><div class="cell selected">830</div>
+      <div class="cell row">8</div><div class="cell">107</div><div class="cell">Nancy Drew</div><div class="cell">Toledo</div><div class="cell">Gold</div><div class="cell">Pocket flashlight</div><div class="cell">56</div>
+      <div class="cell row">9</div><div class="cell">108</div><div class="cell">Scooby-Doo</div><div class="cell">Cleveland</div><div class="cell">Bronze</div><div class="cell">Dog collar</div><div class="cell">34</div>
+      <div class="cell row">10</div><div class="cell">109</div><div class="cell">Byomkesh Bakshi</div><div class="cell">Kolkata</div><div class="cell">Silver</div><div class="cell">Case notebook</div><div class="cell">75</div>
+      <div class="cell row">11</div><div class="cell">110</div><div class="cell">Arsène Lupin</div><div class="cell">Paris</div><div class="cell">Gold</div><div class="cell">Monocle</div><div class="cell">400</div>
+      <div class="cell row">12</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">13</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">14</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">15</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">16</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">17</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">18</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">19</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+      <div class="cell row">20</div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell"></div>
+    </div>
+    <div class="tabs"><span>＋</span><span>☰</span><span class="tab">Customers</span></div>
+  </section>
+  <aside class="side"><img src="../../test-results/sheets-addon-sidebar.png" alt="Prereasoner Sheets Copilot sidebar showing an answer and reasoning steps"></aside>
+</div>
+</body>
+</html>

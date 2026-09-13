@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Prereasoner">
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="#5d33fb"/>
+  <path d="M41 32h29c22 0 34 11 34 29 0 19-13 30-35 30H58v21H41V32zm17 15v29h11c12 0 18-5 18-15 0-9-6-14-18-14H58z" fill="#fff"/>
+  <circle cx="102" cy="30" r="8" fill="#22a877"/>
+</svg>

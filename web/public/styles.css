@@ -70,7 +70,7 @@ body{font-family:var(--disp);background:var(--grad);color:var(--ink);min-height:
 .filecard .x{all:unset;cursor:pointer;color:var(--card-ink-dim);font-size:18px;padding:0 6px}.filecard .x:hover{color:#d33}
 /* landing — the chat widget is the hero: one centered column, prompt card front and center */
 .page{min-height:100vh;display:flex;flex-direction:column}
-.sitefoot{flex:0 0 auto;padding:0 36px 18px;text-align:center}.sitefoot a{color:rgba(255,255,255,.85);font-size:12px;text-decoration:none}.sitefoot a:hover{color:#fff;text-decoration:underline}
+.sitefoot{flex:0 0 auto;padding:0 36px 18px;text-align:center;display:flex;justify-content:center;gap:16px}.sitefoot a{color:rgba(255,255,255,.85);font-size:12px;text-decoration:none}.sitefoot a:hover{color:#fff;text-decoration:underline}
 .hero{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:24px 40px 56px;display:flex;align-items:center;justify-content:center}
 .hero-left{width:100%;max-width:720px;display:flex;flex-direction:column;align-items:center;gap:24px}
 /* match formfacade.com hero headline: Inter 500 (medium), ~44px, -1px tracking */

@@ -2,6 +2,10 @@
   "timeZone": "Europe/Paris",
   "exceptionLogging": "STACKDRIVER",
   "runtimeVersion": "V8",
+  "urlFetchWhitelist": [
+    "https://chat.prereasoner.com/",
+    "https://identitytoolkit.googleapis.com/"
+  ],
   "oauthScopes": [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
