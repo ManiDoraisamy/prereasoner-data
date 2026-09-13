@@ -66,6 +66,15 @@
             link.rel = 'noopener';
             link.innerHTML = '<div class="question">' + esc(conversation.question || '(untitled)') + '</div>' +
               (conversation.ts ? '<div class="time">' + esc(timestamp(conversation.ts)) + '</div>' : '');
+            link.addEventListener('click', function(event) {
+              var target = window.open('about:blank', '_blank');
+              if (!target) return;
+              event.preventDefault();
+              try { target.opener = null; } catch (_) {}
+              var open = function() { target.location.href = link.href; };
+              google.script.run.withSuccessHandler(open).withFailureHandler(open)
+                .syncPrereasonerConversation({conversationId: id});
+            });
             list.appendChild(link);
           });
         }

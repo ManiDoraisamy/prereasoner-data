@@ -41,6 +41,9 @@ assert.strictEqual(reasoning.result.rows[0][0], '200');
 
 assert(sidebar.includes('Ask about this spreadsheet'));
 assert(sidebar.includes('Reasoning steps for'));
+assert(sidebar.includes('+ New chat'));
+assert(sidebar.includes('Answer is stale. Recalculate'));
+assert(sidebar.includes('window.setInterval(checkSync, 15000)'));
 assert(sidebar.includes('https://ssl.gstatic.com/docs/script/css/add-ons1.css'));
 assert(!sidebar.includes('linear-gradient'));
 assert(sidebar.includes('chat.prereasoner.com/privacy'));
@@ -51,6 +54,8 @@ assert(manifest.urlFetchWhitelist.includes('https://identitytoolkit.googleapis.c
 assert(source.includes("addItem('Ask a question', 'showSidebar')"));
 assert(source.includes("addItem('Previous conversations', 'showPreviousConversations')"));
 assert(source.includes('/api/conversations?limit=50'));
+assert(source.includes('/api/conversation/sync'));
+assert(source.includes("source: {kind: 'google-sheets-addon'}"));
 assert(!source.includes('PropertiesService'));
 assert(previous.includes('Previous conversations'));
 assert(previous.includes('REASON_BASE'));

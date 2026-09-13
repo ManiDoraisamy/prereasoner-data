@@ -129,3 +129,9 @@ export async function ensureSignedIn(){
   window.__uid = auth.currentUser.uid;
   return auth.currentUser.uid;
 }
+
+export async function signOutUser(){
+  const module = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+  await module.signOut(auth);
+  window.__uid = null;
+}

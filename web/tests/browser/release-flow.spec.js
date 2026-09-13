@@ -202,7 +202,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   // Signing in replaces the badge with the conversation rail: the rail IS the signed-in
   // state, so a "Signed in" button would be redundant chrome.
   await expect(page.locator('#homerail')).toBeVisible();
-  await expect(page.getByRole('button',{name:'New conversation'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'New chat'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Login'})).toBeHidden();
 
   const workbook=XLSX.utils.book_new();
@@ -280,12 +280,34 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('.wb.result tbody')).toContainText('120');
   await expect(page.locator('.wtab').filter({hasText:'orders'})).toHaveCount(1);
 
-  await page.getByRole('button',{name:'Conversations'}).click();
+  const deleteChat=page.getByTitle('Delete chat');
+  if(!await deleteChat.isVisible())await page.getByRole('button',{name:'Conversations',exact:true}).click();
   const deletion=page.waitForRequest(req=>req.url().endsWith('/api/conversation/delete')&&req.method()==='POST');
-  await page.getByTitle('Delete conversation').click();
+  await deleteChat.click();
   await deletion;
   await expect(page).toHaveURL('http://127.0.0.1:4173/');
   await expect.poll(async()=>((await request.get('/__state')).json()).then(v=>v.deleted)).toBe(true);
+});
+
+test('Google source freshness uses one quiet status control and recalculates in place',async({page})=>{
+  await mockAuth(page,'0');
+  await page.addInitScript(()=>{
+    sessionStorage.setItem('pr_world_tables',JSON.stringify([
+      {name:'orders',data:'order_id,city,amount\n1,Paris,120\n2,Lyon,60',source:{kind:'google-sheets'}},
+    ]));
+    sessionStorage.setItem('pr_world_q','total amount');
+  });
+  await page.goto('/reason?chat=0');
+  await expect(page.locator('#inputcount')).toHaveText('1 sheet');
+  await expect(page.locator('#syncstate')).toHaveClass(/current/);
+  const turns=await page.locator('.turn.user').count();
+  await page.evaluate(()=>{const info=sourceStatusInfo();info.stale=true;writeSourceInfo(info);renderSourceStatus();});
+  await expect(page.locator('#syncstate')).toHaveClass(/stale/);
+  await expect(page.locator('#syncstate')).toHaveAttribute('aria-label','Answer is stale. Recalculate');
+  await expect(page.locator('.recalchint')).toHaveCount(0);
+  await page.locator('#syncstate').click();
+  await expect(page.locator('#syncstate')).toHaveClass(/current/);
+  await expect(page.locator('.turn.user')).toHaveCount(turns);
 });
 
 function conversationPattern(){return 'c_[0-9a-f]{32}';}
@@ -451,7 +473,7 @@ test('signed-in conversations remain reachable on mobile home',async({page})=>{
   await expect(menu).toHaveAttribute('aria-expanded','true');
   await expect(page.locator('#homerail')).toHaveAttribute('aria-hidden','false');
   await expect(page.locator('body')).toHaveClass(/homeopen/);
-  await expect(page.getByRole('button',{name:'New conversation'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'New chat'})).toBeVisible();
   await expect(page.locator('#homeback')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(menu).toHaveAttribute('aria-expanded','false');

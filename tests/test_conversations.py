@@ -1,6 +1,7 @@
 """Hermetic tests for conversation quotas, pagination, and deletion."""
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -75,7 +76,7 @@ def test_save_state_locks_and_replaces_only_the_previous_state_bytes():
             text = str(statement)
             self.statements.append((text, params))
             if "SELECT c.source_bytes, c.state_bytes" in text:
-                self.one = (100, 20)
+                self.one = (100, 20, "a" * 64)
             elif 'FROM "chat"."analysis_revision"' in text:
                 self.one = (0,)
 
@@ -87,10 +88,11 @@ def test_save_state_locks_and_replaces_only_the_previous_state_bytes():
     cid = "c_" + "d" * 32
     with patch.object(conversations, "_pg", return_value=connection), \
             patch.object(conversations.config, "max_conversation_storage_bytes", return_value=200):
-        assert conversations.save_state("user", cid, {"ok": True}) == {"saved": cid}
+        assert conversations.save_state("user", cid, {"ok": True}) == {"saved": cid, "source_hash": "a" * 64}
     assert "pg_advisory_xact_lock" in cursor.statements[0][0]
     update = next(item for item in cursor.statements if item[0].startswith('UPDATE "chat"."conversation"'))
-    assert update[1][1] == len(b'{"ok":true}')
+    assert json.loads(update[1][0])["sourceHash"] == "a" * 64
+    assert update[1][1] == len(update[1][0].encode("utf-8"))
     assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
 
 
@@ -157,6 +159,38 @@ def test_source_replacement_advances_dataset_version_and_marks_analyses_stale():
                   if statement.startswith('UPDATE "chat"."conversation" SET tables'))
     assert "dataset_version = dataset_version + %s" in update[0]
     assert update[1][3] == 1
+
+
+def test_source_sync_keeps_the_answer_but_marks_changed_data_stale():
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.statements = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append((text, params))
+            if "SELECT c.source_bytes, c.source_hash, c.dataset_version" in text:
+                self.one = (20, "0" * 64, 7)
+            elif "SUM(c.source_bytes" in text or 'SUM(ar.response_bytes)' in text:
+                self.one = (0,)
+
+        def fetchone(self):
+            return self.one
+
+    cursor = Cursor()
+    connection = _Connection(cursor)
+    cid = "c_" + "5" * 32
+    tables = [{"name": "orders", "data": "id,amount\n1,14\n",
+               "source": {"kind": "google-sheets-addon"}}]
+    with patch.object(conversations, "_pg", return_value=connection), \
+            patch.object(conversations.config, "max_conversation_storage_bytes", return_value=1_000_000):
+        result = conversations.sync_conversation_source("user", cid, tables)
+    assert result["changed"] is True and result["dataset_version"] == 8
+    assert any(statement.startswith('UPDATE "chat"."analysis" SET stale')
+               for statement, _ in cursor.statements)
+    assert not any('state =' in statement for statement, _ in cursor.statements)
+    assert connection.commits == 1 and connection.rollbacks == 0 and connection.closed
 
 
 def test_delete_all_removes_only_owned_valid_conversations_and_user_traces():
@@ -513,6 +547,7 @@ TESTS = [
     test_save_state_rejects_an_oversized_snapshot_and_rolls_back,
     test_source_snapshot_hash_is_order_independent_but_value_sensitive,
     test_source_replacement_advances_dataset_version_and_marks_analyses_stale,
+    test_source_sync_keeps_the_answer_but_marks_changed_data_stale,
     test_delete_all_removes_only_owned_valid_conversations_and_user_traces,
     test_append_dataset_ops_is_bounded_and_serialized,
     test_analysis_completion_marks_changed_sources_stale_and_advances_monotonically,

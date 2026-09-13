@@ -29,7 +29,8 @@
       const sheets=await root.XLSX_READER.readWorkbook(new Blob(chunks,{type:MIME}));
       if(!sheets.length)throw new Error('This Sheet has no tab with a header and a data row.');
       return sheets.map(s=>({name:sheets.length>1?s.name:title||s.name,data:s.csv,
-        import:{...s.import,source:'google-sheets',formulaValues:'google-export-snapshot'}}));
+        import:{...s.import,source:'google-sheets',formulaValues:'google-export-snapshot'},
+        source:{kind:'google-sheets'}}));
     }catch(error){
       if(error.name==='AbortError')throw new Error('Google Sheet import timed out. Try again or export a smaller workbook.');
       throw error;

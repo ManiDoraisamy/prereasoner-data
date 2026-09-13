@@ -81,7 +81,11 @@ def _store_tables(sheets):
     out = []
     for s in (sheets or []):
         if isinstance(s, dict) and (s.get("data") or "").strip():
-            out.append({"name": s.get("name") or "table", "data": s["data"]})
+            table = {"name": s.get("name") or "table", "data": s["data"]}
+            source = s.get("source")
+            if isinstance(source, dict) and isinstance(source.get("kind"), str):
+                table["source"] = {"kind": source["kind"][:40]}
+            out.append(table)
     return out[:8]
 
 
@@ -187,6 +191,57 @@ def resolve_conversation(user_id, conversation_id, initial_prompt, sheets):
             try:
                 conn.rollback()
             except Exception:                                # noqa: BLE001
+                pass
+            raise
+    finally:
+        conn.close()
+
+
+def sync_conversation_source(user_id, conversation_id, sheets):
+    """Replace one owned conversation's uploaded snapshot without recomputing its answer.
+
+    The Google Sheets add-on uses this after it detects workbook changes. A changed source marks
+    analyses stale and advances the dataset version; the existing answer remains renderable until
+    the user explicitly recalculates it.
+    """
+    if not _ID_RE.match(conversation_id or ""):
+        raise NotOwned("bad conversation id")
+    stored_tables = _store_tables(sheets)
+    if not stored_tables:
+        raise ValueError("at least one source table is required")
+    source_bytes = _encoded_size(stored_tables)
+    source_hash = source_snapshot_hash(stored_tables)
+    conn = _pg()
+    try:
+        try:
+            cur = conn.cursor()
+            cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
+                        (f"prereasoner-conversation-quota:{user_id}",))
+            cur.execute('SELECT c.source_bytes, c.source_hash, c.dataset_version '
+                        'FROM "chat"."conversation" c '
+                        'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+                        'WHERE c.conversation_id = %s AND uc.user_id = %s FOR UPDATE',
+                        (conversation_id, user_id))
+            row = cur.fetchone()
+            if not row:
+                raise NotOwned("conversation not found")
+            _check_storage(cur, user_id, previous=int(row[0] or 0), replacement=source_bytes)
+            changed = bool(row[1] and row[1] != source_hash)
+            if changed:
+                cur.execute('UPDATE "chat"."analysis" SET stale = true, updated_at = now() '
+                            'WHERE conversation_id = %s', (conversation_id,))
+            cur.execute('UPDATE "chat"."conversation" SET tables = %s, source_hash = %s, source_bytes = %s, '
+                        'dataset_version = dataset_version + %s, last_active_at = now(), expires_at = %s '
+                        'WHERE conversation_id = %s',
+                        (json.dumps(stored_tables), source_hash, source_bytes, int(changed),
+                         _expiry(), conversation_id))
+            conn.commit()
+            return {"conversation_id": conversation_id, "changed": changed,
+                    "source_hash": source_hash, "dataset_version": int(row[2] or 0) + int(changed)}
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
                 pass
             raise
     finally:
@@ -664,7 +719,7 @@ def get_conversation(user_id, conversation_id):
     conn = _pg()
     try:
         cur = conn.cursor()
-        cur.execute('SELECT c.initial_prompt, c.tables, c.state FROM "chat"."conversation" c '
+        cur.execute('SELECT c.initial_prompt, c.tables, c.state, c.source_hash, c.dataset_version FROM "chat"."conversation" c '
                     'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                     'WHERE uc.user_id = %s AND c.conversation_id = %s', (user_id, conversation_id))
         row = cur.fetchone()
@@ -675,7 +730,7 @@ def get_conversation(user_id, conversation_id):
         if not row:
             raise NotOwned("conversation not found")
         return {"conversation_id": conversation_id, "question": row[0] or "", "tables": row[1] or [],
-                "state": row[2] or None}
+                "state": row[2] or None, "source_hash": row[3] or "", "dataset_version": int(row[4] or 0)}
     finally:
         conn.close()
 
@@ -692,7 +747,7 @@ def save_state(user_id, conversation_id, state):
             cur = conn.cursor()
             cur.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',
                         (f"prereasoner-conversation-quota:{user_id}",))
-            cur.execute('SELECT c.source_bytes, c.state_bytes FROM "chat"."conversation" c '
+            cur.execute('SELECT c.source_bytes, c.state_bytes, c.source_hash FROM "chat"."conversation" c '
                         'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
                         'WHERE c.conversation_id = %s AND uc.user_id = %s',
                         (conversation_id, user_id))
@@ -701,7 +756,11 @@ def save_state(user_id, conversation_id, state):
                 raise NotOwned("conversation not found")       # not yours OR absent
             # Match the browser's TextEncoder(JSON.stringify(...)) quota calculation:
             # compact UTF-8 JSON, without Python's default ASCII expansion or spaces.
-            encoded = json.dumps(state, ensure_ascii=False, separators=(",", ":"))
+            source_hash = owned[2] if len(owned) > 2 else ""
+            stored_state = dict(state) if isinstance(state, dict) else state
+            if isinstance(stored_state, dict) and source_hash:
+                stored_state["sourceHash"] = source_hash
+            encoded = json.dumps(stored_state, ensure_ascii=False, separators=(",", ":"))
             state_bytes = len(encoded.encode("utf-8"))
             if state_bytes > MAX_STATE_BYTES:
                 raise QuotaExceeded("conversation state is too large")
@@ -710,7 +769,10 @@ def save_state(user_id, conversation_id, state):
                         'last_active_at = now(), expires_at = %s WHERE conversation_id = %s',
                         (encoded, state_bytes, _expiry(), conversation_id))
             conn.commit()
-            return {"saved": conversation_id}
+            result = {"saved": conversation_id}
+            if source_hash:
+                result["source_hash"] = source_hash
+            return result
         except Exception:
             try:
                 conn.rollback()

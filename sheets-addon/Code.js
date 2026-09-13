@@ -119,6 +119,39 @@ function askPrereasoner(request) {
   return clientResponse_(response, workbook.summary, question);
 }
 
+function syncPrereasonerConversation(request) {
+  request = request || {};
+  var conversationId = String(request.conversationId || '');
+  if (!/^c_[0-9a-f]{32}$/i.test(conversationId)) {
+    throw new Error('Start a chat before checking data sync.');
+  }
+  var workbook = collectWorkbook_();
+  var token = firebaseIdToken_();
+  var response;
+  try {
+    response = UrlFetchApp.fetch(PREREASONER_API_URL + '/api/conversation/sync', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {Authorization: 'Bearer ' + token, Accept: 'application/json'},
+      payload: JSON.stringify({id: conversationId, tables: workbook.tables}),
+      muteHttpExceptions: true
+    });
+  } catch (error) {
+    throw new Error('Prereasoner could not check data sync. Try again.');
+  }
+  var body = {};
+  try { body = JSON.parse(response.getContentText() || '{}'); } catch (_) {}
+  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
+    throw new Error(body.error || 'Prereasoner could not sync this spreadsheet.');
+  }
+  return {
+    changed: !!body.changed,
+    sourceHash: body.source_hash || '',
+    datasetVersion: Number(body.dataset_version || 0),
+    context: workbook.summary
+  };
+}
+
 function collectWorkbook_() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   if (!spreadsheet) throw new Error('Open a Google Sheet before using Prereasoner.');
@@ -166,7 +199,7 @@ function collectWorkbook_() {
       throw new Error('The workbook is too large. Keep the combined sheet data under 6 MB of text.');
     }
 
-    tables.push({name: sheet.getName(), data: csv});
+    tables.push({name: sheet.getName(), data: csv, source: {kind: 'google-sheets-addon'}});
     summaries.push({
       name: sheet.getName(),
       range: range.getA1Notation(),
@@ -186,11 +219,18 @@ function collectWorkbook_() {
       tables: summaries,
       tableCount: summaries.length,
       totalRows: totalRows,
+      fingerprint: workbookFingerprint_(tables),
       privacyUrl: PREREASONER_PRIVACY_URL,
       termsUrl: PREREASONER_TERMS_URL,
       supportUrl: PREREASONER_SUPPORT_URL
     }
   };
+}
+
+function workbookFingerprint_(tables) {
+  var snapshot = (tables || []).map(function(table) { return [table.name, table.data]; });
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, JSON.stringify(snapshot));
+  return Utilities.base64EncodeWebSafe(digest).replace(/=+$/, '');
 }
 
 function errorMessage_(error) {

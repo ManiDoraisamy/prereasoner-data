@@ -14,12 +14,20 @@
         box-sizing: border-box;
       }
       .topline {
-        min-height: 46px;
+        min-height: 52px;
         display: flex;
         align-items: center;
         justify-content: space-between;
         border-bottom: 1px solid #dadce0;
       }
+      .new-chat { border: 1px solid #dadce0; border-radius: 7px; background: #fff; color: #3c3154; padding: 7px 9px; cursor: pointer; }
+      .new-chat:hover { background: #f7f5fb; border-color: #c8bfd8; }
+      .sync-meta { display: inline-flex; align-items: center; gap: 7px; color: #5f6368; font-size: 12px; white-space: nowrap; }
+      .sync-state { border: 0; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; cursor: pointer; }
+      .sync-state[hidden] { display: none; }
+      .sync-state.current { color: #137a43; background: #e3f4e9; cursor: default; }
+      .sync-state.checking { color: #9a5c00; background: #fff0d1; cursor: default; letter-spacing: 1px; }
+      .sync-state.stale, .sync-state.error { color: #b3261e; background: #fce8e6; }
       .context {
         padding: 11px 0 13px;
         color: #5f6368;
@@ -38,8 +46,8 @@
         max-width: 94%;
         margin-left: 6%;
         padding: 9px 11px;
-        color: #174ea6;
-        background: #e8f0fe;
+        color: #4f2fd0;
+        background: #f0ecfc;
         border-radius: 8px;
         line-height: 1.4;
         box-sizing: border-box;
@@ -54,6 +62,7 @@
         white-space: pre-wrap;
       }
       .answer.pending { color: #5f6368; }
+      .turn.recalculating { opacity: .65; }
       details.reasoning {
         margin-top: 8px;
         border: 1px solid #dadce0;
@@ -97,8 +106,13 @@
         flex: 1;
         resize: vertical;
         box-sizing: border-box;
+        border: 1px solid #d9d4df;
+        border-radius: 8px;
+        padding: 8px 9px;
       }
       .composer button { flex: 0 0 auto; }
+      #send { border: 0; border-radius: 8px; background: #5d33fb; color: #fff; padding: 9px 12px; cursor: pointer; }
+      #send:disabled { opacity: .45; cursor: default; }
       .legal { display: flex; gap: 12px; margin-top: 5px; }
       .legal a { color: #5f6368; font-size: 11px; text-decoration: none; }
       .legal a:hover { text-decoration: underline; }
@@ -108,8 +122,8 @@
   <body>
     <div class="sidebar branding-below">
       <div class="topline">
-        <span class="gray">Sheets Copilot</span>
-        <button class="button" id="newConversation" type="button">New</button>
+        <button class="new-chat" id="newConversation" type="button">+ New chat</button>
+        <span class="sync-meta"><span id="sheetCount">0 sheets</span><button class="sync-state" id="syncState" type="button" hidden></button></span>
       </div>
       <div class="context" id="context" aria-live="polite">Reading the current sheet…</div>
       <div id="thread" aria-live="polite">
@@ -133,7 +147,8 @@
     <script>
       var INITIAL_CONTEXT = <?!= initialContext ?>;
       (function () {
-        var state = { conversationId: '', history: [], context: null, busy: false };
+        var state = { conversationId: '', history: [], context: null, busy: false, checking: false,
+          stale: false, syncError: false, errorAction: '', lastTurn: null, lastQuestion: '', syncedFingerprint: '' };
         var contextEl = document.getElementById('context');
         var threadEl = document.getElementById('thread');
         var emptyEl = document.getElementById('empty');
@@ -142,6 +157,21 @@
         var privacyEl = document.getElementById('privacy');
         var termsEl = document.getElementById('terms');
         var supportEl = document.getElementById('support');
+        var sheetCountEl = document.getElementById('sheetCount');
+        var syncStateEl = document.getElementById('syncState');
+
+        function renderSyncState(mode) {
+          var modes = {
+            current: ['✓', 'Source data and answer are in sync', true],
+            checking: ['…', 'Checking data sync', true],
+            stale: ['↻', 'Answer is stale. Recalculate', false],
+            error: ['!', 'Data sync failed. Retry', false]
+          };
+          if (!mode || !modes[mode]) { syncStateEl.hidden = true; return; }
+          var item = modes[mode]; syncStateEl.hidden = false; syncStateEl.className = 'sync-state ' + mode;
+          syncStateEl.textContent = item[0]; syncStateEl.title = item[1]; syncStateEl.setAttribute('aria-label', item[1]);
+          syncStateEl.disabled = item[2];
+        }
 
         function esc(value) {
           var node = document.createElement('div');
@@ -165,7 +195,7 @@
           return message;
         }
 
-        function renderContext(context) {
+        function renderContext(context, focus) {
           state.context = context;
           if (!context || context.error) {
             contextEl.className = 'context status-error';
@@ -183,15 +213,17 @@
           contextEl.innerHTML = 'Using data from <strong>' + esc(name) + '</strong>' +
             (tabs > 1 ? ' · ' + tabs + ' tabs' : '') +
             (rows ? ' · ' + rows + ' rows' : '');
+          sheetCountEl.textContent = tabs + ' sheet' + (tabs === 1 ? '' : 's');
           if (context.privacyUrl) privacyEl.href = context.privacyUrl;
           if (context.termsUrl) termsEl.href = context.termsUrl;
           if (context.supportUrl) supportEl.href = context.supportUrl;
           questionEl.disabled = false;
           sendEl.disabled = false;
-          questionEl.focus();
+          if (focus !== false) questionEl.focus();
         }
 
         function addUserTurn(text) {
+          var empty = threadEl.querySelector('.empty'); if (empty) empty.remove();
           var turn = document.createElement('div');
           turn.className = 'turn';
           turn.innerHTML = '<div class="question">' + esc(text) + '</div>';
@@ -235,7 +267,8 @@
           turn.appendChild(wrap);
         }
 
-        function finishTurn(turn, response) {
+        function finishTurn(turn, response, replacing, baseHistory) {
+          if (replacing) while (turn.children.length > 1) turn.removeChild(turn.lastChild);
           var pending = turn.querySelector('.pending');
           if (pending) pending.remove();
           var answer = document.createElement('div');
@@ -244,9 +277,15 @@
           turn.appendChild(answer);
           renderReasoning(turn, response.reasoning || response.steps);
           renderResult(turn, response.result);
+          if (replacing) state.history = (baseHistory || []).slice();
           state.history.push({ role: 'user', content: turn.querySelector('.question').textContent });
           state.history.push({ role: 'assistant', content: response.reply || '' });
           if (state.history.length > 24) state.history = state.history.slice(-24);
+          state.lastTurn = turn;
+          state.lastQuestion = turn.querySelector('.question').textContent;
+          if (response.context) renderContext(response.context, false);
+          state.syncedFingerprint = response.context && response.context.fingerprint || state.syncedFingerprint;
+          state.stale = false; state.syncError = false; state.errorAction = ''; turn.classList.remove('recalculating'); renderSyncState('current');
           threadEl.scrollTop = threadEl.scrollHeight;
         }
 
@@ -265,6 +304,7 @@
           var turn = addUserTurn(text);
           addPending(turn);
           setBusy(true);
+          renderSyncState('checking');
           try {
             var response = await callServer('askPrereasoner', {
               question: text,
@@ -276,11 +316,46 @@
           } catch (error) {
             var pending = turn.querySelector('.pending');
             if (pending) pending.textContent = errorText(error);
+            renderSyncState(state.stale ? 'stale' : (state.conversationId ? 'current' : null));
           } finally {
             setBusy(false);
             questionEl.focus();
           }
         }
+
+        async function checkSync() {
+          if (!state.conversationId || state.busy || state.checking || document.hidden) return;
+          state.checking = true; renderSyncState('checking');
+          try {
+            var result = await callServer('syncPrereasonerConversation', {conversationId: state.conversationId});
+            if (result.context) renderContext(result.context, false);
+            if (result.changed) state.stale = true;
+            state.syncError = false; state.errorAction = '';
+            renderSyncState(state.stale ? 'stale' : 'current');
+          } catch (_) {
+            state.syncError = true; state.errorAction = 'sync'; renderSyncState('error');
+          } finally { state.checking = false; }
+        }
+
+        async function recalculateCurrent() {
+          if (state.busy || !state.stale || !state.lastTurn || !state.lastQuestion) return;
+          var turn = state.lastTurn, baseHistory = state.history.slice(0, -2);
+          turn.classList.add('recalculating'); setBusy(true); renderSyncState('checking');
+          try {
+            var response = await callServer('askPrereasoner', {
+              question: state.lastQuestion, conversationId: state.conversationId, history: baseHistory
+            });
+            state.conversationId = response.conversationId || state.conversationId;
+            finishTurn(turn, response, true, baseHistory);
+          } catch (_) {
+            turn.classList.remove('recalculating'); state.syncError = true; state.errorAction = 'recalc'; renderSyncState('error');
+          } finally { setBusy(false); questionEl.focus(); }
+        }
+
+        syncStateEl.addEventListener('click', function () {
+          if (state.syncError && state.errorAction === 'recalc') recalculateCurrent();
+          else if (state.syncError) checkSync(); else if (state.stale) recalculateCurrent();
+        });
 
         document.getElementById('composer').addEventListener('submit', function (event) {
           event.preventDefault();
@@ -295,11 +370,13 @@
         document.getElementById('newConversation').addEventListener('click', function () {
           state.conversationId = '';
           state.history = [];
+          state.stale = false; state.syncError = false; state.errorAction = ''; state.lastTurn = null; state.lastQuestion = ''; state.syncedFingerprint = '';
           threadEl.innerHTML = '';
           var fresh = document.createElement('div');
           fresh.className = 'empty';
           fresh.textContent = 'Ask a question about the current sheet.';
           threadEl.appendChild(fresh);
+          renderSyncState(null);
           questionEl.focus();
         });
 
@@ -309,6 +386,7 @@
         contextRequest.then(renderContext).catch(function (error) {
           renderContext({ error: 'Could not read this spreadsheet: ' + errorText(error) });
         });
+        window.setInterval(checkSync, 15000);
       }());
     </script>
   </body>

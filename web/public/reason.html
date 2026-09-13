@@ -3,7 +3,7 @@
 <title>Prereasoner · workbook</title>
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="/styles.css?v=13">
+<link rel=stylesheet href="/styles.css?v=14">
 </head><body class=app>
 <!-- The read-only WORKBOOK (shared logic: lib/workbook.js; shared styles: styles.css).
      Green sheets = the user's tables (the AI never writes here). Blue sheets = one per
@@ -13,14 +13,16 @@
     <button class=menubtn id=menubtn aria-label="Conversations" onclick=openDrawer()><svg viewBox="0 0 24 24" width=20 height=20 aria-hidden=true><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width=2 stroke-linecap=round fill=none/></svg></button>
     <div class=htitle id=htitle title=""></div>
     <div class=spacer></div>
-    <a class=ghost href="/" style="text-decoration:none" onclick="newConversation();return false">+ New</a>
+    <div class=accountwrap id=accountwrap hidden><button class=accountbtn type=button id=accountbtn aria-label="Account" aria-haspopup=menu aria-expanded=false></button>
+      <div class=accountmenu id=accountmenu role=menu><div class=accountidentity id=accountidentity></div><a href="/support" role=menuitem>Support</a><a href="/privacy" role=menuitem>Privacy</a><a href="/terms" role=menuitem>Terms</a><button type=button id=signoutbtn role=menuitem>Sign out</button></div>
+    </div>
   </div>
   <div class=drawer-backdrop id=drawerback onclick=closeDrawer()></div>
   <aside class=drawer id=drawer aria-label="Conversations">
-    <div class=drawerhd><span>Conversations</span><button class=drawerx onclick=closeDrawer() aria-label=Close>&times;</button></div>
-    <button class=convnew onclick="newConversation()">+ New conversation</button>
+    <div class=drawerhd><span>Chats</span><button class=drawerx onclick=closeDrawer() aria-label="Close chats">&times;</button></div>
+    <button class=convnew onclick="newConversation()">New chat</button>
     <div class=convlist id=convlist></div>
-    <a class=drawerprivacy href="/privacy">Privacy</a>
+    <div class=drawerlinks><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/support">Support</a></div>
   </aside>
   <div class=workmain>
     <div class=sheetside>
@@ -34,6 +36,7 @@
       </div>
     </div>
     <div class=rail>
+      <div class=railhead><span class=inputcount id=inputcount>0 sheets</span><button class=syncstate id=syncstate type=button hidden></button></div>
       <div class=railscroll id=rail></div>
       <div class=chatbar>
         <textarea id=chatq rows=1 placeholder="Ask a follow-up…"></textarea>
@@ -53,7 +56,16 @@ window.WB_CONFIG = { endpoint: '/api/reason' };   // reason: composition over th
 <script type="module">
 // ensureSignedIn resolves the uid, resolves null when redirecting to Google, and THROWS when a
 // redirect came back without a session (the loop-breaker) — show that instead of looping.
-import { ensureSignedIn } from "/lib/firebase-init.js";
-try { if (await ensureSignedIn()) run(); }
+import { auth, ensureSignedIn, signOutUser } from "/lib/firebase-init.js";
+function showAccount(user){
+  if(!user)return;const wrap=document.getElementById('accountwrap'),btn=document.getElementById('accountbtn'),menu=document.getElementById('accountmenu');
+  const name=(user.displayName||'').trim()||(user.email||'').trim()||'Account';wrap.hidden=false;btn.textContent=name.slice(0,1).toUpperCase();
+  const identity=document.getElementById('accountidentity');identity.textContent='';const strong=document.createElement('strong');strong.textContent=name;
+  const email=document.createElement('span');email.textContent=user.email||'';identity.append(strong,email);
+  btn.onclick=event=>{event.stopPropagation();const open=menu.classList.toggle('open');btn.setAttribute('aria-expanded',open?'true':'false');};
+  document.addEventListener('click',()=>{menu.classList.remove('open');btn.setAttribute('aria-expanded','false');});
+  document.getElementById('signoutbtn').onclick=async()=>{await signOutUser();location.href='/';};
+}
+try { if (await ensureSignedIn()){ showAccount(auth.currentUser); run(); } }
 catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }
 </script></body></html>

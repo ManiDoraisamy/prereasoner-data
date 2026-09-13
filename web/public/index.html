@@ -11,7 +11,7 @@
 <meta name="twitter:description" content="Get the result with the query and rows behind it.">
 <link rel=preconnect href="https://fonts.googleapis.com"><link rel=preconnect href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel=stylesheet>
-<link rel=stylesheet href="styles.css">
+<link rel=stylesheet href="styles.css?v=14">
 <style>
 .attachbar{flex-wrap:nowrap}
 .chip{min-width:0;cursor:pointer;padding:6px 12px 6px 7px;gap:8px}
@@ -59,8 +59,9 @@
 <!-- Signed-in home rail. Hidden until auth resolves, so a signed-out visitor never sees it
      flash. It renders through the SAME renderDrawer()/convlist the /reason drawer uses. -->
 <aside class=homerail id=homerail hidden aria-label="Your conversations">
+  <div class=drawerhd><span>Chats</span><button class=drawerx type=button id=homeclose aria-label="Close chats">&times;</button></div>
   <div class=railtop>
-    <button class=railnew type=button id=railnew>New conversation</button>
+    <button class=railnew type=button id=railnew>New chat</button>
   </div>
   <div class=convlist id=convlist></div>
   <div class=railuser id=railuser hidden></div>
@@ -69,7 +70,11 @@
 <div class=page>
   <div class=hdr><button class=homemenubtn type=button id=homemenubtn aria-label="Conversations" aria-controls=homerail aria-expanded=false hidden>
     <svg viewBox="0 0 24 24" aria-hidden=true><path d="M4 7h16M4 12h16M4 17h16"></path></svg>
-  </button><a class=brand href="https://prereasoner.com/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost type=button id=loginbtn>Login</button></div>
+  </button><a class=brand href="https://prereasoner.com/"><img class=logo src="login_logo.svg" alt=""><span>Prereasoner</span></a><div class=spacer></div><button class=ghost type=button id=loginbtn>Login</button>
+    <div class=accountwrap id=accountwrap hidden><button class=accountbtn type=button id=accountbtn aria-label="Account" aria-haspopup=menu aria-expanded=false></button>
+      <div class=accountmenu id=accountmenu role=menu><div class=accountidentity id=accountidentity></div><a href="/support" role=menuitem>Support</a><a href="/privacy" role=menuitem>Privacy</a><a href="/terms" role=menuitem>Terms</a><button type=button id=signoutbtn role=menuitem>Sign out</button></div>
+    </div>
+  </div>
   <div class=hero>
     <form class=hero-left id=f>
     <h1 class=h1 id=hd>Attach a spreadsheet and ask a question</h1>
@@ -136,9 +141,9 @@ const DEMO_LOAD=Promise.all([
       return xlsx
         ? r.blob().then(b=>XLSX_READER.readWorkbook(b)).then(sheets=>{
             if(!sheets.length)throw new Error(base+': no sheet has a header and a data row');
-            return sheets.map(s=>({name:sheets.length>1?s.name:base, data:s.csv.replace(/\r\n/g,'\n').trim()}));
+            return sheets.map(s=>({name:sheets.length>1?s.name:base, data:s.csv.replace(/\r\n/g,'\n').trim(),source:{kind:'example'}}));
           })
-        : r.text().then(t=>[{name:base, data:t.replace(/\r\n/g,'\n').trim()}]);
+        : r.text().then(t=>[{name:base, data:t.replace(/\r\n/g,'\n').trim(),source:{kind:'example'}}]);
     });
   })),
   fetch('/dataset/'+DATASET+'/prompt.txt').then(r=>r.ok?r.text():'').catch(()=>''),
@@ -148,8 +153,10 @@ const DEMO_LOAD=Promise.all([
   if(p&&$('q').value===Q0)$('q').value=p;                  // a question the user typed or a picker round-trip restored
 }).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
 function renderChips(){
-  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'" title="'+esc(s.filename||s.name)+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span><small> '+parseCSV(s.data).rows.length.toLocaleString()+' rows</small></span>').join('');
-  [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onclick=()=>openPreview(+el.dataset.i));
+  $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip data-i="'+i+'" title="Preview '+escAttr(s.filename||s.name)+'"><span class=ic>📄</span><span class=nm>'+esc(s.name)+'</span><small>'
+    +(s.source&&s.source.kind==='example'?'Example data · ':'')+parseCSV(s.data).rows.length.toLocaleString()+' rows</small><button class=chipx type=button aria-label="Remove '+escAttr(s.name)+'" title="Remove">&times;</button></span>').join('');
+  [...$('chips').querySelectorAll('.chip')].forEach(el=>el.onclick=e=>{if(!e.target.closest('.chipx'))openPreview(+el.dataset.i);});
+  [...$('chips').querySelectorAll('.chipx')].forEach(el=>el.onclick=e=>{e.stopPropagation();const chip=el.closest('.chip');SHEETS.splice(+chip.dataset.i,1);isSample=false;renderChips();});
 }
 function openPreview(i){
   const s=SHEETS[i], p=parseCSV(s.data);
@@ -187,13 +194,17 @@ function closeExamples(){$('examples').style.display='none'; $('exbackdrop').sty
 $('morex').addEventListener('click',openExamples);
 try{                                                       // returning from /picker: attach the imported Google Sheet + restore the prompt
   const pend=sessionStorage.getItem(SS.PENDING_SHEETS);
-  if(pend){ const t=JSON.parse(pend); if(t&&t.length){ SHEETS=t; isSample=false; } sessionStorage.removeItem(SS.PENDING_SHEETS); }
+  if(pend){ const t=JSON.parse(pend); if(t&&t.length){ SHEETS=t; isSample=false; } sessionStorage.removeItem(SS.PENDING_SHEETS); sessionStorage.removeItem(SS.HOME_DRAFT); }
+  else if(sessionStorage.getItem(SS.AUTH_ACTION)){
+    const draft=JSON.parse(sessionStorage.getItem(SS.HOME_DRAFT)||'[]');
+    if(Array.isArray(draft)&&draft.length){SHEETS=draft;isSample=draft.every(s=>s&&s.source&&s.source.kind==='example');}
+  }
   const pq=sessionStorage.getItem(SS.PENDING_Q);
   if(pq!=null){ $('q').value=pq; sessionStorage.removeItem(SS.PENDING_Q); }
 }catch(_){}
 renderChips();
 function baseName(n){return (n||'').replace(/\.(csv|tsv|txt|xlsx|xlsm|xls)$/i,'');}
-function addSheet(name,data){if(isSample){SHEETS=[];isSample=false;}SHEETS.push({name:name,data:data});}
+function addSheet(name,data,kind){if(isSample){SHEETS=[];isSample=false;}SHEETS.push({name:name,data:data,source:{kind:kind||'csv'}});}
 $('file').addEventListener('change',async function(e){     // CSV/TSV read as text; .xlsx/.xls parsed client-side -> ONE table per worksheet (FK-joinable like multi-CSV)
   const files=[...e.target.files]; if(!files.length)return;
   const batch=++UPLOAD_BATCH, pending=[];
@@ -205,11 +216,11 @@ $('file').addEventListener('change',async function(e){     // CSV/TSV read as te
       if(/\.(xlsx|xlsm|xls)$/i.test(f.name)){
         const used=await XLSX_READER.readWorkbook(f);
         if(!used.length)throw new Error('“'+f.name+'” has no sheet with a header and a data row.');
-        used.forEach(x=>pending.push({name:used.length>1?x.name:baseName(f.name),data:x.csv,filename:f.name,import:x.import}));
+        used.forEach(x=>pending.push({name:used.length>1?x.name:baseName(f.name),data:x.csv,filename:f.name,import:x.import,source:{kind:'excel'}}));
       }else{
         const data=await XLSX_READER.readText(f);
         if(!parseCSV(data).rows.length)throw new Error('“'+f.name+'” has no data rows.');
-        pending.push({name:baseName(f.name),data,filename:f.name});
+        pending.push({name:baseName(f.name),data,filename:f.name,source:{kind:'csv'}});
       }
     }
     if(batch!==UPLOAD_BATCH)return;
@@ -244,16 +255,22 @@ $('f').addEventListener('submit',async function(e){
     // into the new one's /chat body until it crossed the server's history cap -> 413 on every submit.
     ['pr_conversation_id','pr_orch_history','pr_conv_state'].forEach(k=>sessionStorage.removeItem(k));
   }catch(_){}
-  location.href='reason'+executionQuery();                                         // auth happens ON /reason (redirect there) — no home bounce
+  try{
+    sessionStorage.setItem(SS.HOME_DRAFT,JSON.stringify(valid));
+    sessionStorage.setItem(SS.PENDING_Q,q);
+    sessionStorage.setItem(SS.ENTRY_ROUTE,location.pathname||'/');
+  }catch(_){}
+  await window.requireHomeAuthAction('ask');                       // signed out -> Google -> resume this exact draft
 });
 // Data-source entry: the button is a bare "+" everywhere. On "/" it opens the source menu
 // (Google Sheets / Excel / CSV); on the /sheets, /excel and /csv single-source landings it
 // triggers that source directly, no menu. One addSource() owns every path.
 function addSource(kind){
   if(kind==='sheets'){
-    try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across the picker round-trip
-         sessionStorage.setItem(SS.RETURN_TO,location.pathname+executionQuery(location.search)); }catch(_){}
-    location.href='picker'+executionQuery();                  // pick a Google Sheet -> returns here with it attached as a chip
+    try{ sessionStorage.setItem(SS.PENDING_Q,$('q').value);              // preserve the typed prompt across auth + picker
+         sessionStorage.setItem(SS.HOME_DRAFT,JSON.stringify(SHEETS));
+         sessionStorage.setItem(SS.ENTRY_ROUTE,location.pathname||'/'); }catch(_){}
+    window.requireHomeAuthAction('google-sheets');             // / and /sheets both authenticate at the Google source choice
   } else {
     $('file').setAttribute('accept', kind==='excel'
       ? '.xlsx,.xlsm,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -294,29 +311,39 @@ if(MODE){
 try{ fetch(API_BASE+'/api/reason',{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // home -> /reason: pre-warm that backend
 </script>
 <script type="module">
-import { auth, ensureSignedIn } from '/lib/firebase-init.js';
+import { auth, ensureSignedIn, signOutUser } from '/lib/firebase-init.js';
 const login=document.getElementById('loginbtn');
 const homeMenu=document.getElementById('homemenubtn'), homeBack=document.getElementById('homeback');
 const homeRail=document.getElementById('homerail'), homeMedia=window.matchMedia('(max-width: 900px)');
-function setHomeDrawer(open){
-  open=!!open&&homeMedia.matches;
-  document.body.classList.toggle('homeopen',open);
-  homeBack.classList.toggle('open',open); homeBack.setAttribute('aria-hidden',open?'false':'true');
+const NAV_KEY='pr_chat_nav_open';
+function navPreference(){try{const v=localStorage.getItem(NAV_KEY);return v==null?!homeMedia.matches:v==='1';}catch(_){return !homeMedia.matches;}}
+function setHomeDrawer(open,persist=true){
+  open=!!open;
+  if(persist){try{localStorage.setItem(NAV_KEY,open?'1':'0');}catch(_){}}
+  document.body.classList.toggle('home-nav-open',open);
+  document.body.classList.toggle('homeopen',open&&homeMedia.matches);
+  homeBack.classList.toggle('open',open&&homeMedia.matches); homeBack.setAttribute('aria-hidden',open?'false':'true');
   homeMenu.setAttribute('aria-expanded',open?'true':'false');
   const concealed=homeMedia.matches&&!open; homeRail.inert=concealed;
   homeRail.setAttribute('aria-hidden',concealed?'true':'false');
   if(open){ try{ renderDrawer(); }catch(_){} }
 }
-homeMenu.addEventListener('click',()=>setHomeDrawer(!document.body.classList.contains('homeopen')));
+homeMenu.addEventListener('click',()=>setHomeDrawer(!document.body.classList.contains('home-nav-open')));
 homeBack.addEventListener('click',()=>setHomeDrawer(false));
+document.getElementById('homeclose').addEventListener('click',()=>setHomeDrawer(false));
 document.addEventListener('keydown',event=>{ if(event.key==='Escape')setHomeDrawer(false); });
-homeMedia.addEventListener('change',()=>setHomeDrawer(false));
+homeMedia.addEventListener('change',()=>setHomeDrawer(navPreference(),false));
+const accountWrap=document.getElementById('accountwrap'),accountBtn=document.getElementById('accountbtn'),accountMenu=document.getElementById('accountmenu');
+function closeAccount(){accountMenu.classList.remove('open');accountBtn.setAttribute('aria-expanded','false');}
+accountBtn.addEventListener('click',event=>{event.stopPropagation();const open=accountMenu.classList.toggle('open');accountBtn.setAttribute('aria-expanded',open?'true':'false');});
+document.addEventListener('click',closeAccount);
+document.getElementById('signoutbtn').addEventListener('click',async()=>{await signOutUser();location.reload();});
 // Signed in: the rail IS the signed-in state, so the badge is redundant — drop it and show
 // the user's conversations instead. Rendering reuses the /reason drawer's list.
 function showSignedIn(user){
   login.hidden=true;
   const rail=document.getElementById('homerail'); if(!rail) return;
-  rail.hidden=false; homeMenu.hidden=false; document.body.classList.add('hasrail'); setHomeDrawer(false);
+  rail.hidden=false; homeMenu.hidden=false; accountWrap.hidden=!user; document.body.classList.add('hasrail'); setHomeDrawer(navPreference(),false);
   document.getElementById('railnew').onclick=()=>{ try{ newConversation(); }catch(_){ location.href='/'; } };
   try{ bindConversationList(); renderDrawer(); }catch(_){}
   // The rail foots with WHO is signed in. Built with the DOM API, never interpolated
@@ -329,8 +356,42 @@ function showSignedIn(user){
   const who=document.createElement('span'); who.className='railwho';
   who.textContent=name; who.title=(user.email||name);
   box.append(av,who); box.hidden=false;
+  accountBtn.textContent=name.slice(0,1).toUpperCase();
+  const identity=document.getElementById('accountidentity'); identity.textContent='';
+  const strong=document.createElement('strong');strong.textContent=name;
+  const email=document.createElement('span');email.textContent=user.email||'';
+  identity.append(strong,email);
 }
-try{await auth.authStateReady();if(auth.currentUser)showSignedIn(auth.currentUser);}catch(_){}
+function completeAction(action){
+  sessionStorage.removeItem(SS.AUTH_ACTION);
+  if(action==='ask'){
+    sessionStorage.removeItem(SS.HOME_DRAFT); sessionStorage.removeItem(SS.PENDING_Q);
+    location.href='reason'+executionQuery(); return;
+  }
+  if(action==='google-sheets'){
+    sessionStorage.setItem(SS.PENDING_Q,document.getElementById('q').value);
+    sessionStorage.setItem(SS.RETURN_TO,location.pathname+executionQuery(location.search));
+    location.href='picker'+executionQuery();
+  }
+}
+async function requireHomeAuthAction(action){
+  try{sessionStorage.setItem(SS.AUTH_ACTION,action);}catch(_){}
+  // The Picker owns the one Google redirect for Sheets because it must request drive.file as
+  // well as establish the app session. Routing there now avoids two consecutive sign-ins.
+  if(action==='google-sheets'){completeAction(action);return true;}
+  try{
+    const uid=await ensureSignedIn();
+    if(!uid)return false;
+    showSignedIn(auth.currentUser); completeAction(action); return true;
+  }catch(error){
+    document.getElementById('err').textContent=(error&&error.message)||'Sign-in failed. Please try again.';
+    return false;
+  }
+}
+window.requireHomeAuthAction=requireHomeAuthAction;
+const pendingAction=sessionStorage.getItem(SS.AUTH_ACTION);
+if(pendingAction==='ask'||pendingAction==='google-sheets') await requireHomeAuthAction(pendingAction);
+else try{await auth.authStateReady();if(auth.currentUser)showSignedIn(auth.currentUser);}catch(_){}
 login.addEventListener('click',async()=>{
   login.disabled=true;login.textContent='Signing in…';
   try{if(await ensureSignedIn())showSignedIn(auth.currentUser);else{login.disabled=false;login.textContent='Login';}}

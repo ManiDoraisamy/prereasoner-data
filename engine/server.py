@@ -68,6 +68,7 @@ from engine.conversations import (
     resolve_conversation,
     save_state,
     source_snapshot_hash,
+    sync_conversation_source,
 )
 from engine.dataset_semantics import DatasetOpError
 from engine.numeric import wire_value
@@ -86,6 +87,7 @@ from engine.request_validation import (
     RequestValidationError,
     upload_row_limit_error,
     validate_reason_request,
+    validate_tables,
 )
 from engine.tables import csv_table, normalize_tables, table_name
 from engine.trace import emitter, set_ctx, stream_final
@@ -341,6 +343,32 @@ class H(BaseHTTPRequestHandler):
             print(f"conversation state failed: {type(e).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
 
+    def _post_conv_sync(self):
+        """POST /api/conversation/sync updates source data but deliberately does not run analysis."""
+        try:
+            req = self._read_json()
+            if req is None:
+                return
+            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            try:
+                tables = validate_tables(req.get("tables"))
+                self._send(200, json.dumps(sync_conversation_source(
+                    sub, req.get("id", ""), tables,
+                )))
+            except RequestValidationError as exc:
+                self._send(exc.status_code, json.dumps({"error": str(exc)}))
+            except NotOwned:
+                self._send(404, json.dumps({"error": "conversation not found"}))
+            except QuotaExceeded as exc:
+                self._send(413, json.dumps({"error": str(exc)}))
+            except ValueError as exc:
+                self._send(400, json.dumps({"error": str(exc)}))
+        except Exception as exc:  # noqa: BLE001
+            print(f"conversation source sync failed: {type(exc).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
+
     def _post_conv_delete(self, path):
         """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
         try:
@@ -378,6 +406,8 @@ class H(BaseHTTPRequestHandler):
             self._post_conv_delete(path)
         elif path == "/api/conversation/state":
             self._post_conv_state()
+        elif path == "/api/conversation/sync":
+            self._post_conv_sync()
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:

@@ -115,7 +115,17 @@ def validate_tables(value, *, allow_single: bool = False) -> list[dict]:
                 f"table names {previous!r} and {display_name!r} resolve to the same identifier"
             )
         identifiers[identifier] = display_name
-        tables.append({"name": identifier, "data": data})
+        normalized = {"name": identifier, "data": data}
+        source = table.get("source")
+        if source is not None:
+            if not isinstance(source, dict):
+                raise RequestValidationError("table source must be an object")
+            kind = source.get("kind")
+            allowed = {"example", "google-sheets", "google-sheets-addon", "excel", "csv", "upload"}
+            if not isinstance(kind, str) or kind not in allowed:
+                raise RequestValidationError("table source kind is invalid")
+            normalized["source"] = {"kind": kind}
+        tables.append(normalized)
     return tables
 
 

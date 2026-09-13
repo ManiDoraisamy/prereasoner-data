@@ -42,7 +42,11 @@ const SS = {
   Q: 'pr_world_q',                    // the question being asked
   PENDING_SHEETS: 'pr_pending_sheets',// JSON [{name,data}] — Google Sheets import -> home
   PENDING_Q: 'pr_pending_q',          // the typed prompt preserved across the Sheets picker round-trip
-  RETURN_TO: 'pr_return_to'           // home route (/, /sheets, /excel, /csv) the picker returns to
+  RETURN_TO: 'pr_return_to',          // home route (/, /sheets, /excel, /csv) the picker returns to
+  HOME_DRAFT: 'pr_home_draft',        // attachments preserved across the sign-in redirect
+  AUTH_ACTION: 'pr_auth_action',      // ask | google-sheets — resumed after redirect
+  ENTRY_ROUTE: 'pr_entry_route',      // landing route New chat returns to
+  SOURCE_INFO: 'pr_source_info'       // source hash/kind for the result freshness control
 };
 
 // HTML-escape for TEXT NODES (& < >). NOT safe inside an attribute value — use escAttr there.

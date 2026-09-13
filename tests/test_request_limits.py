@@ -168,6 +168,11 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
     assert valid["question"] == "total amount"
     assert valid["tables"] == [{"name": "revenue_report", "data": "amount\n1"}]
     assert valid["jobId"] == "job_1"
+    sourced = validate_reason_request({
+        "question": "total amount",
+        "tables": {"name": "Orders", "data": "amount\n1", "source": {"kind": "google-sheets-addon"}},
+    })
+    assert sourced["tables"][0]["source"] == {"kind": "google-sheets-addon"}
     assert validate_reason_request({
         "question": "total amount", "tables": [], "use": "py",
     })["use"] == "python"
@@ -185,6 +190,7 @@ def test_reason_validation_rejects_unbounded_or_invalid_fields():
         {"question": "x", "tables": [], "conversation_id": "c_not-an-id"},
         {"question": "x", "tables": [{"name": 0, "data": "a\n1"}]},
         {"question": "x", "tables": [{"name": "data", "data": 0}]},
+        {"question": "x", "tables": [{"name": "data", "data": "a\n1", "source": {"kind": "unknown"}}]},
         {"question": "x", "tables": [], "analysis": {"action": "modify", "slug": "sales"}},
         {"question": "x", "tables": [], "analysis": {"action": "create", "slug": "sales",
                                                            "analysis_id": "a_" + "1" * 32}},

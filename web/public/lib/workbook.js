@@ -75,6 +75,7 @@ let HISTORY=[];                                  // lean cross-turn transcript f
 let CALLS=[],SEEN_CALL=new Set(),REPLY=null,callSubs=[];   // this turn's announced engine calls + their trace subs
 let HTTPHIST=false;                              // did the /chat body land (authoritative history)? else reconstruct client-side
 let EDITED=false,LASTQ=null;                     // the user edited an input cell (-> offer Recalculate); the last question run
+let RECALCULATING=false,SOURCE_RECALC_ERROR=false;
 let TURN_ANALYSIS=null,VIEWED_ANALYSIS=null;      // current rail identity; analysis revision displayed at left
 let ANALYSIS_ERROR=null;                         // non-modal failure while opening a stored workbook revision
 let SEL=null,ANCH=null,INEDIT=false;              // spreadsheet: the ACTIVE cell {sid,r,c}, the selection ANCHor {sid,r,c}, edit mode
@@ -257,8 +258,6 @@ function renderSheet(){
            ?'<button class="mbtn mdots" aria-label="More actions" onclick="masterMenu(\''+m.id+'\',this,event)">⋮</button>'
            :'<button class="mbtn msave dirty" title="Save as reference — reused across your conversations" onclick="saveMaster(\''+m.id+'\')">Save</button>'):'')
     +'</div>';
-  if(EDITED) h+='<div class="masterhint recalchint"><span>&#9998; You changed your data — recompute to update the answer.</span>'
-    +'<span class=mactions><button class=mlink onclick="recalc()">Recalculate</button></span></div>';
   if(m.cls==='master'){
     // D3: teach once, then get out of the way — empty tables get guidance, populated ones a quiet caption; the long pitch moves to a "?".
     const hasAttr=(m.cols||[]).length>1;
@@ -583,8 +582,22 @@ function renderRail(){
   // its history is client-side, but server-side grouping + the shareable URL still need the id threaded.
   const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&convId())||FAILMSG);
 }
-function paint(){ renderTabs(); renderSheet(); renderRail(); }
-function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed'; paint(); }
+function writeSourceInfo(info){try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info||{}));}catch(_){}}
+function sourceStatusInfo(){const info=typeof currentSourceInfo==='function'?currentSourceInfo():{};if(!info.kind&&typeof sourceKind==='function')info.kind=sourceKind(SHEETS);return info;}
+function renderSourceStatus(){
+  const count=$('inputcount'),button=$('syncstate');if(count)count.textContent=SHEETS.length+' sheet'+(SHEETS.length===1?'':'s');if(!button)return;
+  const info=sourceStatusInfo(),google=info.kind==='google-sheets',stale=EDITED||!!info.stale;
+  button.hidden=!(google||stale||SOURCE_RECALC_ERROR);
+  let cls='current',glyph='✓',label='Source data and answer are in sync',disabled=true;
+  if(SOURCE_RECALC_ERROR){cls='error';glyph='!';label='Recalculation failed. Retry';disabled=false;}
+  else if(RECALCULATING||(!SETTLED&&!FAILMSG&&google)){cls='checking';glyph='…';label=RECALCULATING?'Recalculating with the latest data':'Checking source data';}
+  else if(stale){cls='stale';glyph='↻';label='Answer is stale. Recalculate';disabled=false;}
+  button.className='syncstate '+cls;button.textContent=glyph;button.title=label;button.setAttribute('aria-label',label);button.disabled=disabled;
+  button.onclick=disabled?null:recalc;
+}
+function markSourceAnswerCurrent(){const info=sourceStatusInfo();info.stale=false;if(info.sourceHash)info.answerHash=info.sourceHash;writeSourceInfo(info);EDITED=false;RECALCULATING=false;SOURCE_RECALC_ERROR=false;}
+function paint(){ renderTabs(); renderSheet(); renderRail(); renderSourceStatus(); }
+function fail(m){ FAILMSG=String(m||'something went wrong'); STATUS='failed';if(RECALCULATING){RECALCULATING=false;SOURCE_RECALC_ERROR=true;}paint(); }
 
 /* ---------------- the run (streaming + fallbacks) ---------------- */
 const ENDPOINT=API_BASE+WB.endpoint;
@@ -800,13 +813,13 @@ function syncInputsToSheets(){                                // serialize edite
     SHEETS[s.si].data=[s.cols.map(csvCell).join(',')].concat((s.rows||[]).map(r=>r.map(csvCell).join(','))).join('\n'); });
   try{ sessionStorage.setItem(SS.TABLES, JSON.stringify(SHEETS)); }catch(_){}
 }
-function showRecalc(on){ renderSheet(); }   // the Recalculate bar is rendered by renderSheet (a masterhint-style top bar) when EDITED
+function showRecalc(on){ if(on){const info=sourceStatusInfo();info.stale=true;writeSourceInfo(info);} renderSourceStatus(); }
 function recalc(){                                            // re-run the last question on the edited data (auto-composed; no retyping)
   if(!SETTLED&&!FAILMSG) return;                             // one run at a time
   syncInputsToSheets();                                      // serialize the edits INTO SHEETS before the run (recalc clears EDITED, so startTurn can't)
-  showRecalc(false); EDITED=false; stampBaseline();          // the data we're about to compute becomes the new pristine baseline
+  RECALCULATING=true;SOURCE_RECALC_ERROR=false;EDITED=false;stampBaseline();renderSourceStatus();
   const q=LASTQ||question; if(!q) return;
-  archiveTurn(); question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
+  question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
   resetRun(); paint(); startRun();
 }
 
@@ -902,6 +915,7 @@ function finalize(){
   if(output){ output.result=true; if(AUTO) ACTIVE=output.id; }
   const n=BOOK.filter(s=>s.cls==='deriv').length;
   STATUS='Answered in '+n+' step'+(n===1?'':'s');
+  markSourceAnswerCurrent();
   surfaceUnresolved();                                        // offer master-data sheets for text columns not in the world model
   paint();
   if(PRESENT) tryPresent();                                   // real answer + human phrasing -> Sonnet presents it (derivation stays in the panel)
@@ -1232,6 +1246,7 @@ function wireChat(){
   window.addEventListener('resize',updateTabArrows);
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeDrawer(); });
   bindConversationList();
+  if(typeof setDrawer==='function')setDrawer(drawerPreference(),false);
 }
 
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */
@@ -1249,6 +1264,7 @@ async function run(){
         sessionStorage.setItem('pr_conversation_id', j.conversation_id);
         sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
         sessionStorage.setItem(SS.Q, j.question||'');
+        if(typeof rememberConversationSource==='function')rememberConversationSource(j);
         try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}
         location.reload(); return;
       }

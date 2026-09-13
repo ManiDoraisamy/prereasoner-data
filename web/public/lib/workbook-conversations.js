@@ -3,6 +3,20 @@
 
 function convId(){ try{ return sessionStorage.getItem('pr_conversation_id')||null; }catch(_){ return null; } }
 function urlConvId(){ const m=(location.pathname||'').match(/\/reason\/(c_[0-9a-f]{32})/i); return m?m[1]:null; }
+const CHAT_NAV_KEY='pr_chat_nav_open';
+function sourceKind(tables){
+  const kinds=(tables||[]).map(t=>(t&&t.source&&t.source.kind)||(t&&t.import&&t.import.source)||'');
+  if(kinds.some(k=>/^google-sheets/.test(k)))return 'google-sheets';
+  if(kinds.some(k=>k==='example'))return 'example';
+  if(kinds.some(k=>k==='excel'||k==='xlsx'))return 'excel';
+  return kinds.some(Boolean)?kinds.find(Boolean):'upload';
+}
+function rememberConversationSource(j){
+  if(!j)return;const info={kind:sourceKind(j.tables),sourceHash:j.source_hash||'',answerHash:(j.state&&j.state.sourceHash)||'',datasetVersion:j.dataset_version||0};
+  info.stale=!!(info.sourceHash&&info.answerHash&&info.sourceHash!==info.answerHash);
+  try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info));}catch(_){}
+}
+function currentSourceInfo(){try{return JSON.parse(sessionStorage.getItem(SS.SOURCE_INFO)||'{}')||{};}catch(_){return {};}}
 // Give the live conversation a stable, shareable URL: /reason/<conversationId>. Persists the id + rewrites the
 // address bar in place (no reload) so refresh, back/forward, and copy-link all land on THIS conversation.
 function setConversation(cid){
@@ -30,19 +44,32 @@ async function openConversation(id){                          // re-hydrate a pa
     sessionStorage.setItem('pr_conversation_id', j.conversation_id);
     sessionStorage.setItem(SS.TABLES, JSON.stringify(j.tables||[]));
     sessionStorage.setItem(SS.Q, j.question||'');
+    rememberConversationSource(j);
     try{ if(j.state) sessionStorage.setItem('pr_conv_state', JSON.stringify(j.state)); else sessionStorage.removeItem('pr_conv_state'); }catch(_){}   // restore the snapshot (else run() re-runs)
     location.href='/reason/'+j.conversation_id+executionQuery(); // deep-linkable per-conversation URL
   }catch(_){ if(it){ it.classList.remove('loading'); it.classList.add('err'); } }
 }
-function newConversation(){ try{ ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME].forEach(k=>k&&sessionStorage.removeItem(k)); }catch(_){}; location.href='/'+executionQuery(); }
-function openDrawer(){ $('drawer').classList.add('open'); $('drawerback').classList.add('open'); renderDrawer(); }
-function closeDrawer(){ $('drawer').classList.remove('open'); $('drawerback').classList.remove('open'); }
+function newConversation(){
+  let route='/';try{const saved=sessionStorage.getItem(SS.ENTRY_ROUTE)||'/';if(/^\/(sheets|excel|csv)?\/?$/.test(saved))route=saved.replace(/\/$/,'')||'/';
+    ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME,SS.SOURCE_INFO].forEach(k=>k&&sessionStorage.removeItem(k));
+  }catch(_){}location.href=route+executionQuery();
+}
+function drawerPreference(){try{const value=localStorage.getItem(CHAT_NAV_KEY);return value==null?matchMedia('(min-width: 901px)').matches:value==='1';}catch(_){return matchMedia('(min-width: 901px)').matches;}}
+function setDrawer(open,persist=true){
+  open=!!open;const drawer=$('drawer'),back=$('drawerback');if(!drawer)return;
+  if(persist){try{localStorage.setItem(CHAT_NAV_KEY,open?'1':'0');}catch(_){}}
+  drawer.classList.toggle('open',open);document.body.classList.toggle('chat-nav-open',open);
+  if(back)back.classList.toggle('open',open);const menu=$('menubtn');if(menu)menu.setAttribute('aria-expanded',open?'true':'false');
+  if(open)renderDrawer();
+}
+function openDrawer(){setDrawer(true);}
+function closeDrawer(){setDrawer(false);}
 async function renderDrawer(){
   const list=$('convlist'); if(!list)return;
   list.innerHTML='<div class=convempty>Loading…</div>';
   const page=await listConversations(), convs=page.conversations;
   list.innerHTML='';
-  if(!convs.length){ list.innerHTML='<div class=convempty>Your past conversations will appear here.</div>'; return; }
+  if(!convs.length){ list.innerHTML='<div class=convempty>Your previous chats will appear here.</div>'; return; }
   const cur=convId();
   // Build with the DOM API (dataset + textContent), never string-concatenated HTML — the conversation
   // id/question come from the server and must not be interpolated into markup or an inline handler.
@@ -50,7 +77,7 @@ async function renderDrawer(){
     const b=document.createElement('div'); b.className='convitem'+(c.id===cur?' on':''); b.dataset.cid=c.id;
     const q=document.createElement('div'); q.className='cq'; q.textContent=c.question||'(untitled)'; b.appendChild(q);
     if(c.ts){ const t=document.createElement('div'); t.className='ct'; t.textContent=prettyTs(c.ts); b.appendChild(t); }
-    const x=document.createElement('button'); x.className='convdel'; x.dataset.del=c.id; x.title='Delete conversation'; x.textContent='×'; b.appendChild(x);
+    const x=document.createElement('button'); x.className='convdel'; x.dataset.del=c.id; x.title='Delete chat'; x.setAttribute('aria-label','Delete chat'); x.textContent='⌫'; b.appendChild(x);
     list.insertBefore(b,before);
   });
   appendItems(convs);
@@ -102,8 +129,10 @@ function convSnapshot(){
     cols:(c.cols&&c.cols.length>1)?c.cols:undefined,
     rows:(c.cols&&c.cols.length>1&&c.rows)?((!c.saved||c.dirty)?c.rows.map(r=>r.slice()):c.rows.slice(0,MAX_RENDER_ROWS)):undefined,
     saved:!!c.saved, dirty:!!c.dirty, cellAI:c.cellAI}));
+  const source=currentSourceInfo();
   return {v:3, cid:convId(), turns, sheets, active:ACTIVE, history:HISTORY, refcands,
-    datasetSemantics:DS_META, viewedAnalysis:VIEWED_ANALYSIS||null, execution:EXEC||null};
+    datasetSemantics:DS_META, viewedAnalysis:VIEWED_ANALYSIS||null, execution:EXEC||null,
+    sourceHash:source.answerHash||(!source.stale?source.sourceHash:'')||undefined};
 }
 const MAX_CONVERSATION_STATE_BYTES=1024*1024;                 // must match engine.conversations.MAX_STATE_BYTES
 function conversationStateBytes(st){ return new TextEncoder().encode(JSON.stringify(st)).byteLength; }
@@ -157,6 +186,9 @@ function saveConvState(){                                     // persist the sna
       const response=await fetch(API_BASE+'/api/conversation/state',{method:'POST',
         headers:{'content-type':'application/json','Authorization':'Bearer '+tk}, body});
       if(!response.ok) console.warn('conversation snapshot was not persisted: HTTP '+response.status);
+      else{const saved=await response.json();if(saved.source_hash){const info=currentSourceInfo();info.sourceHash=saved.source_hash;info.answerHash=saved.source_hash;info.stale=false;
+        try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info));full.sourceHash=saved.source_hash;sessionStorage.setItem('pr_conv_state',JSON.stringify(full));}catch(_){}
+        if(typeof renderSourceStatus==='function')renderSourceStatus();}}
     }catch(error){ console.warn('conversation snapshot was not persisted',error&&error.name||'Error'); }
   }, 700);
 }
