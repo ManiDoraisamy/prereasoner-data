@@ -20,7 +20,7 @@ publisher-owned references, and [../db/README.md](../db/README.md) for the datab
 ## System Boundaries
 
 ```text
-browser or MCP client
+browser, Google Sheets add-on, or MCP client
         |
         | authenticated request: tables, question, optional conversation and analysis intent
         v
@@ -182,7 +182,10 @@ replay. The legacy Wikidata schema migration is still pending.
    identifier. Names that collide after canonicalization are rejected before parsing or paid inference.
 3. `engine.server` verifies the Firebase principal and parses the validated CSV payloads. Browser XLSX parsing is
    isolated in `web/public/lib/xlsx-worker.js`, which uses a vendored SheetJS build with compressed, expanded,
-   row, column, worksheet, and time limits.
+   row, column, worksheet, and time limits. `sheets-addon/` is a read-only Apps Script adapter: it serializes the
+   visible, non-empty workbook tabs under the same table and row limits, exchanges the user's Google OAuth access token for a
+   short-lived Firebase ID token, and calls the existing `/chat` owner. It does not implement reasoning or write
+   derived values into the spreadsheet.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning.
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
@@ -419,6 +422,7 @@ maintenance command from loading model artifacts.
 |---|---|---|
 | `engine/` | Authenticated reasoning, planning, grounding, execution | Presentation-only chat policy |
 | `web/` | Workbook state, uploads, references, trace rendering | SQL semantics |
+| `sheets-addon/` | Read-only workbook adapter and compact answer-rail presentation | Reasoning, result synthesis, or sheet mutation |
 | `mcp_server/` | Typed adapter over the engine HTTP API | A second planner or result synthesis |
 | `orchestrator/` | Optional conversation and tool invocation | Arithmetic or factual answers without engine evidence |
 | `db/` | Reproducible schema and knowledge synchronization | Request routing |
