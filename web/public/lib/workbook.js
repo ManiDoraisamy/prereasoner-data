@@ -420,9 +420,11 @@ function executionChip(s){
   return text?'<span class="stepbackend '+src.ran+'" title="Execution backend for this materialized step">'+text+'</span>':'';
 }
 function cleanStepText(value){return String(value||'').replace(/^(\w+)\s+\1\b/i,'$1');}
+function cleanLineageText(value){const inputName=SHEETS.length===1?(SHEETS[0].name||'your data'):'your data';
+  return String(value||'').replace(/\bc_[0-9a-f]{32}\b/gi,inputName);}
 function stepInputLabel(value,s){const source=BOOK.find(x=>x.viewName===value);if(source)return source.section&&source.section!==s.section&&source.sectionLabel?source.sectionLabel:dispName(source);
-  const raw=String(value||'');if(/^c_[0-9a-f]{32}$/i.test(raw))return SHEETS.length===1?(SHEETS[0].name||'your data'):'your data';return raw.replace(/_/g,' ');}
-function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v=>stepInputLabel(v,s)).join(', '):lineage(s);
+  return cleanLineageText(value).replace(/_/g,' ');}
+function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v=>stepInputLabel(v,s)).join(', '):cleanLineageText(lineage(s));
   const description=cleanStepText(s.desc||dispName(s));
   return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet and its emitted source'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pickStep(\''+s.id+'\')"><span class=idx>'+(index+1)+'</span><span class=stx>'+esc(description)+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span>'+executionChip(s)+'</button>'; }
 function derivTree(d){

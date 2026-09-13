@@ -277,6 +277,11 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('.cotbar').last()).toContainText('Reasoning steps for total sales');
   await expect(page.locator('.cotbar').last()).not.toContainText(/Created|Updated/);
   await expect(page.locator('.steplink').first()).not.toContainText(/c_[0-9a-f]{32}|Combined combined/i);
+  // Older stored analyses may only expose their source through parsed SQL lineage.
+  // That fallback must be cleaned just like the explicit `inputs` array.
+  await page.evaluate(()=>{const step=BOOK.find(sheet=>sheet.desc);step.inputs=[];step.sql='SELECT * FROM "c_0123456789abcdef0123456789abcdef"';renderRail();});
+  await expect(page.locator('.steplink').first()).toContainText('orders');
+  await expect(page.locator('.steplink').first()).not.toContainText(/c_[0-9a-f]{32}/i);
   const aligned=await page.evaluate(()=>{const band=document.querySelector('.sheetband').getBoundingClientRect(),head=document.querySelector('.railhead').getBoundingClientRect(),tabs=document.querySelector('.tabsbar').getBoundingClientRect(),chat=document.querySelector('.chatbar').getBoundingClientRect();return {top:Math.abs(band.bottom-head.bottom),bottom:Math.abs(tabs.top-chat.top)};});
   expect(aligned.top).toBeLessThanOrEqual(0.5);
   expect(aligned.bottom).toBeLessThanOrEqual(0.5);
