@@ -187,6 +187,18 @@ CHAT_MIGRATIONS = (
             'ON "chat"."sheet_session" (expires_at)',
         ),
     ),
+    ApplicationMigration(
+        7,
+        "google_sheets_spreadsheet_id_constraint",
+        (
+            'ALTER TABLE "chat"."sheet_session" '
+            'DROP CONSTRAINT chat_sheet_session_spreadsheet_id_shape',
+            'ALTER TABLE "chat"."sheet_session" '
+            'ADD CONSTRAINT chat_sheet_session_spreadsheet_id_shape '
+            "CHECK (char_length(spreadsheet_id) BETWEEN 10 AND 256 "
+            "AND spreadsheet_id ~ '^[A-Za-z0-9_-]+$')",
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

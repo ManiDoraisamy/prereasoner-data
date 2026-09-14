@@ -69,10 +69,10 @@ class _Connection:
 
 
 def test_chat_migration_is_admin_run_and_idempotent():
-    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5, 6]
+    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5, 6, 7]
     assert CHAT_MIGRATIONS[0].name == "conversation_state"
     connection = _Connection()
-    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7)
     assert migrate_chat(connection) == ()
     assert connection.commits == 2 and connection.rollbacks == 0
     assert any("ALTER TABLE \"chat\".\"conversation\"" in statement
@@ -101,6 +101,10 @@ def test_chat_migration_is_admin_run_and_idempotent():
     for field in ("spreadsheet_id", "conversation_id", "sidebar_state", "expires_at"):
         assert field in session_ddl
     assert '"chat"."sheet_session"' in init
+    constraint_fix = CHAT_MIGRATIONS[6]
+    assert constraint_fix.name == "google_sheets_spreadsheet_id_constraint"
+    assert "char_length(spreadsheet_id) BETWEEN 10 AND 256" in "\n".join(constraint_fix.statements)
+    assert "char_length(spreadsheet_id) BETWEEN 10 AND 256" in init
 
 
 def test_knowledgebase_migration_installs_definer_functions():
@@ -122,7 +126,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert migrate_knowledgebase(connection) == (1, 2, 3)
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
-    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7)
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():

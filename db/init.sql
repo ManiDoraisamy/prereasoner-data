@@ -395,7 +395,8 @@ CREATE INDEX IF NOT EXISTS ix_user_conv ON "chat"."user_conversation" (user_id, 
 CREATE TABLE IF NOT EXISTS "chat"."sheet_session" (
   user_id text NOT NULL REFERENCES "chat"."user_profile"(user_id) ON DELETE CASCADE,
   spreadsheet_id text NOT NULL CONSTRAINT chat_sheet_session_spreadsheet_id_shape
-    CHECK (spreadsheet_id ~ '^[A-Za-z0-9_-]{10,256}$'),
+    CHECK (char_length(spreadsheet_id) BETWEEN 10 AND 256
+      AND spreadsheet_id ~ '^[A-Za-z0-9_-]+$'),
   conversation_id text,
   sidebar_state jsonb,
   state_bytes bigint NOT NULL DEFAULT 0
