@@ -34,7 +34,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 <header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: September 13, 2026</div>
+  <div class="updated">Last updated: September 14, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -45,6 +45,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
     <li>Files and Google Sheets you choose, including table names, columns, and cell values.</li>
     <li>Your questions, conversation history, generated SQL, results, and reasoning traces.</li>
     <li>Account and session identifiers supplied through Google and Firebase Authentication.</li>
+    <li>For the Google Sheets add-on, the document ID needed to reopen the conversation associated
+    with that spreadsheet for your signed-in account.</li>
     <li>Operational data needed to secure, debug, and operate the service.</li>
   </ul>
 
@@ -90,7 +92,8 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>Storage and retention</h2>
   <p>Uploaded tables are stored in a conversation-scoped PostgreSQL schema. Conversation state and
-  named workbook revisions are stored in application tables with verified user ownership. Conversations
+  named workbook revisions, and Google Sheets conversation links are stored in application tables with
+  verified user ownership. Conversations and Sheets conversation links
   expire after 90 days without activity by default. The service also limits each account to 100 stored
   conversations, 256 MiB of serialized source and workbook state, and 1 MiB per saved snapshot. Reasoning traces stored in Firebase Realtime
   Database expire after seven days by default. A daily retention job applies both policies.</p>

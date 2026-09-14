@@ -159,6 +159,34 @@ CHAT_MIGRATIONS = (
             """,
         ),
     ),
+    ApplicationMigration(
+        6,
+        "google_sheets_sidebar_sessions",
+        (
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."sheet_session" (
+              user_id text NOT NULL REFERENCES "chat"."user_profile"(user_id) ON DELETE CASCADE,
+              spreadsheet_id text NOT NULL
+                CONSTRAINT chat_sheet_session_spreadsheet_id_shape
+                CHECK (spreadsheet_id ~ '^[A-Za-z0-9_-]{10,256}$'),
+              conversation_id text,
+              sidebar_state jsonb,
+              state_bytes bigint NOT NULL DEFAULT 0
+                CONSTRAINT chat_sheet_session_state_bytes_nonnegative CHECK (state_bytes >= 0),
+              created_at timestamptz NOT NULL DEFAULT now(),
+              updated_at timestamptz NOT NULL DEFAULT now(),
+              expires_at timestamptz NOT NULL DEFAULT (now() + interval '90 days'),
+              PRIMARY KEY (user_id, spreadsheet_id),
+              FOREIGN KEY (user_id, conversation_id)
+                REFERENCES "chat"."user_conversation"(user_id, conversation_id) ON DELETE CASCADE
+            )
+            """,
+            'CREATE INDEX IF NOT EXISTS ix_chat_sheet_session_conversation '
+            'ON "chat"."sheet_session" (conversation_id)',
+            'CREATE INDEX IF NOT EXISTS ix_chat_sheet_session_expiry '
+            'ON "chat"."sheet_session" (expires_at)',
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

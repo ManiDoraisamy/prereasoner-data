@@ -388,6 +388,30 @@ CREATE TABLE IF NOT EXISTS "chat"."user_conversation" (
 );
 CREATE INDEX IF NOT EXISTS ix_user_conv ON "chat"."user_conversation" (user_id, created_at DESC);
 
+-- Google may recreate an Editor add-on iframe at any time. This durable pointer restores the
+-- active conversation and its compact sidebar rendering for one signed-in user and spreadsheet.
+-- A null conversation_id is an explicit New chat marker, preventing legacy hash recovery from
+-- reviving an older conversation after the user intentionally cleared the sidebar.
+CREATE TABLE IF NOT EXISTS "chat"."sheet_session" (
+  user_id text NOT NULL REFERENCES "chat"."user_profile"(user_id) ON DELETE CASCADE,
+  spreadsheet_id text NOT NULL CONSTRAINT chat_sheet_session_spreadsheet_id_shape
+    CHECK (spreadsheet_id ~ '^[A-Za-z0-9_-]{10,256}$'),
+  conversation_id text,
+  sidebar_state jsonb,
+  state_bytes bigint NOT NULL DEFAULT 0
+    CONSTRAINT chat_sheet_session_state_bytes_nonnegative CHECK (state_bytes >= 0),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT (now() + interval '90 days'),
+  PRIMARY KEY (user_id, spreadsheet_id),
+  FOREIGN KEY (user_id, conversation_id)
+    REFERENCES "chat"."user_conversation"(user_id, conversation_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ix_chat_sheet_session_conversation
+  ON "chat"."sheet_session" (conversation_id);
+CREATE INDEX IF NOT EXISTS ix_chat_sheet_session_expiry
+  ON "chat"."sheet_session" (expires_at);
+
 -- Named analysis workbooks. The orchestrator proposes create/modify/inspect, while
 -- the engine owns IDs, unique slugs, revisions, and the stored derivation response.
 CREATE TABLE IF NOT EXISTS "chat"."analysis" (

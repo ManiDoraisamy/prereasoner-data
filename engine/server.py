@@ -9,6 +9,7 @@
   POST /api/dimension — the stateless per-column/per-cell taxonomy readout (no Postgres, auth required).
   GET  /api/conversations       — the signed-in user's conversations (drawer list; ownership-scoped).
   GET  /api/conversation?id=…   — one conversation's opening prompt + stored tables (re-open).
+  POST /api/spreadsheet/conversation/{restore,state,clear} — restore one Google Sheet's active sidebar.
   GET  /api/analyses?conversation_id=… — the conversation's engine-owned analysis catalog.
   GET  /api/analysis?conversation_id=…&analysis_id=…&revision=… — one immutable workbook revision.
   GET  /healthz — liveness (+ model load state); /api/healthz = same (GFE reserves /healthz on run.app).
@@ -89,6 +90,7 @@ from engine.request_validation import (
     validate_reason_request,
     validate_tables,
 )
+from engine.sheet_sessions import clear_sheet_session, restore_sheet_session, save_sheet_session
 from engine.tables import csv_table, normalize_tables, table_name
 from engine.trace import emitter, set_ctx, stream_final
 
@@ -369,6 +371,41 @@ class H(BaseHTTPRequestHandler):
             print(f"conversation source sync failed: {type(exc).__name__}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
 
+    def _post_sheet_session(self, path):
+        """Restore, save, or explicitly clear one authenticated Google Sheets sidebar session."""
+        try:
+            req = self._read_json()
+            if req is None:
+                return
+            sub, _uid = _verify_principal(_bearer(self.headers, req))
+            if not sub:
+                self._send(401, json.dumps({"error": "sign in required"})); return
+            spreadsheet_id = req.get("spreadsheet_id", "")
+            try:
+                if path.endswith("/restore"):
+                    tables = validate_tables(req.get("tables"))
+                    if not tables:
+                        raise ValueError("at least one source table is required")
+                    result = restore_sheet_session(sub, spreadsheet_id, tables)
+                elif path.endswith("/state"):
+                    result = save_sheet_session(
+                        sub, spreadsheet_id, req.get("conversation_id", ""), req.get("state"),
+                    )
+                else:
+                    result = clear_sheet_session(sub, spreadsheet_id)
+                self._send(200, json.dumps(result))
+            except RequestValidationError as exc:
+                self._send(exc.status_code, json.dumps({"error": str(exc)}))
+            except NotOwned:
+                self._send(404, json.dumps({"error": "conversation not found"}))
+            except QuotaExceeded as exc:
+                self._send(413, json.dumps({"error": str(exc)}))
+            except ValueError as exc:
+                self._send(400, json.dumps({"error": str(exc)}))
+        except Exception as exc:  # noqa: BLE001
+            print(f"spreadsheet session failed: {type(exc).__name__}", flush=True)
+            self._send(500, json.dumps({"error": "internal server error"}))
+
     def _post_conv_delete(self, path):
         """POST /api/conversation/delete {id} -> drop one conversation; /delete-all -> drop them all. uid-scoped."""
         try:
@@ -408,6 +445,12 @@ class H(BaseHTTPRequestHandler):
             self._post_conv_state()
         elif path == "/api/conversation/sync":
             self._post_conv_sync()
+        elif path in (
+            "/api/spreadsheet/conversation/restore",
+            "/api/spreadsheet/conversation/state",
+            "/api/spreadsheet/conversation/clear",
+        ):
+            self._post_sheet_session(path)
         elif path == "/api/admin/delete":
             self._post_admin_delete()
         else:

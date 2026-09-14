@@ -20,14 +20,28 @@
         justify-content: space-between;
         border-bottom: 1px solid #dadce0;
       }
-      .new-chat { border: 1px solid #dadce0; border-radius: 7px; background: #fff; color: #3c3154; padding: 7px 9px; cursor: pointer; }
+      .new-chat {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 30px;
+        box-sizing: border-box;
+        border: 1px solid #dadce0;
+        border-radius: 7px;
+        background: #fff;
+        color: #3c3154;
+        padding: 0 9px;
+        font: 400 12px/14px Arial, sans-serif;
+        line-height: 14px;
+        cursor: pointer;
+      }
       .new-chat:hover { background: #f7f5fb; border-color: #c8bfd8; }
       .sync-meta { display: inline-flex; align-items: center; gap: 7px; color: #5f6368; font-size: 12px; white-space: nowrap; }
       .sync-state { border: 0; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; cursor: pointer; }
       .sync-state[hidden] { display: none; }
       .sync-state.current { color: #137a43; background: #e3f4e9; cursor: default; }
       .sync-state.checking { color: #9a5c00; background: #fff0d1; cursor: default; letter-spacing: 1px; }
-      .sync-state.stale, .sync-state.error { color: #b3261e; background: #fce8e6; }
+      .sync-state.stale, .sync-state.error, .sync-state.session-error { color: #b3261e; background: #fce8e6; }
       .context {
         padding: 11px 0 13px;
         color: #5f6368;
@@ -41,6 +55,16 @@
         color: #5f6368;
         line-height: 1.5;
       }
+      .restore-note {
+        margin: 16px 0;
+        padding: 11px;
+        color: #5f6368;
+        background: #f8f9fa;
+        border: 1px solid #dadce0;
+        border-radius: 8px;
+        line-height: 1.45;
+      }
+      .restore-note strong { display: block; margin-bottom: 4px; color: #202124; font-weight: 500; }
       .turn { margin: 14px 0 18px; }
       .question {
         display: inline-block;
@@ -63,6 +87,7 @@
         white-space: pre-wrap;
       }
       .answer.pending { color: #5f6368; }
+      .answer.error { color: #8d1b15; background: #fce8e6; border-color: #f2b8b5; }
       .turn.recalculating { opacity: .65; }
       details.reasoning {
         margin-top: 8px;
@@ -97,7 +122,7 @@
         bottom: 0;
         box-sizing: border-box;
         padding: 8px 12px 10px;
-        background: #fff;
+        background: transparent;
         border-top: 1px solid #dadce0;
       }
       .composer { display: flex; gap: 8px; align-items: flex-end; }
@@ -140,8 +165,9 @@
     <script>
       var INITIAL_CONTEXT = <?!= initialContext ?>;
       (function () {
-        var state = { conversationId: '', history: [], context: null, busy: false, checking: false,
-          stale: false, syncError: false, errorAction: '', lastTurn: null, lastQuestion: '', syncedFingerprint: '' };
+        var state = { conversationId: '', history: [], turns: [], context: null, busy: false, checking: false,
+          restoring: true, stale: false, syncError: false, errorAction: '', lastTurn: null,
+          lastQuestion: '', syncedFingerprint: '' };
         var contextEl = document.getElementById('context');
         var threadEl = document.getElementById('thread');
         var emptyEl = document.getElementById('empty');
@@ -155,7 +181,8 @@
             current: ['✓', 'Source data and answer are in sync', true],
             checking: ['…', 'Checking data sync', true],
             stale: ['↻', 'Answer is stale. Recalculate', false],
-            error: ['!', 'Data sync failed. Retry', false]
+            error: ['!', 'Data sync failed. Retry', false],
+            'session-error': ['!', 'Conversation state could not be updated. Retry', false]
           };
           if (!mode || !modes[mode]) { syncStateEl.hidden = true; return; }
           var item = modes[mode]; syncStateEl.hidden = false; syncStateEl.className = 'sync-state ' + mode;
@@ -200,9 +227,14 @@
           var tabs = Number(context.tableCount || (context.tables && context.tables.length) || 1);
           contextEl.className = 'context'; contextEl.hidden = true;
           sheetCountEl.textContent = tabs + ' sheet' + (tabs === 1 ? '' : 's');
-          questionEl.disabled = false;
-          sendEl.disabled = false;
-          if (focus !== false) questionEl.focus();
+          updateComposerAvailability();
+          if (focus !== false && !state.restoring) questionEl.focus();
+        }
+
+        function updateComposerAvailability() {
+          var disabled = state.busy || state.restoring || !state.context || !!state.context.error;
+          questionEl.disabled = disabled;
+          sendEl.disabled = disabled;
         }
 
         function addUserTurn(text) {
@@ -250,6 +282,43 @@
           turn.appendChild(wrap);
         }
 
+        function completedTurnData(question, response) {
+          return {
+            question: String(question || ''),
+            reply: String(response.reply || 'No answer was returned.'),
+            reasoning: Array.isArray(response.reasoning || response.steps) ? (response.reasoning || response.steps) : [],
+            result: response.result || null
+          };
+        }
+
+        function renderCompletedTurn(data) {
+          var turn = addUserTurn(data.question);
+          var answer = document.createElement('div');
+          answer.className = 'answer';
+          answer.textContent = data.reply || 'No answer was returned.';
+          turn.appendChild(answer);
+          renderReasoning(turn, data.reasoning);
+          renderResult(turn, data.result);
+          return turn;
+        }
+
+        function sidebarSnapshot() {
+          return {
+            client: 'google-sheets-addon',
+            version: 1,
+            history: state.history.slice(-24),
+            turns: state.turns.slice(-24)
+          };
+        }
+
+        function persistCurrentState() {
+          if (!state.conversationId) return Promise.resolve();
+          return callServer('savePrereasonerSheetConversation', {
+            conversationId: state.conversationId,
+            state: sidebarSnapshot()
+          });
+        }
+
         function finishTurn(turn, response, replacing, baseHistory) {
           if (replacing) while (turn.children.length > 1) turn.removeChild(turn.lastChild);
           var pending = turn.querySelector('.pending');
@@ -260,6 +329,10 @@
           turn.appendChild(answer);
           renderReasoning(turn, response.reasoning || response.steps);
           renderResult(turn, response.result);
+          var turnData = completedTurnData(turn.querySelector('.question').textContent, response);
+          if (replacing && state.turns.length) state.turns[state.turns.length - 1] = turnData;
+          else state.turns.push(turnData);
+          if (state.turns.length > 24) state.turns = state.turns.slice(-24);
           if (replacing) state.history = (baseHistory || []).slice();
           state.history.push({ role: 'user', content: turn.querySelector('.question').textContent });
           state.history.push({ role: 'assistant', content: response.reply || '' });
@@ -274,9 +347,14 @@
 
         function setBusy(busy) {
           state.busy = busy;
-          questionEl.disabled = busy || !state.context;
-          sendEl.disabled = busy || !state.context;
+          updateComposerAvailability();
           sendEl.textContent = busy ? '…' : '↑';
+        }
+
+        function markSessionSaveError() {
+          state.syncError = true;
+          state.errorAction = 'save';
+          renderSyncState('session-error');
         }
 
         async function submit() {
@@ -296,18 +374,31 @@
             });
             state.conversationId = response.conversationId || state.conversationId;
             finishTurn(turn, response);
+            try {
+              await persistCurrentState();
+            } catch (_) {
+              markSessionSaveError();
+            }
           } catch (error) {
             var pending = turn.querySelector('.pending');
-            if (pending) pending.textContent = errorText(error);
+            if (pending) {
+              pending.className = 'answer error';
+              pending.setAttribute('role', 'alert');
+              pending.textContent = errorText(error);
+            }
+            questionEl.value = text;
+            questionEl.scrollTop = 0;
             renderSyncState(state.stale ? 'stale' : (state.conversationId ? 'current' : null));
           } finally {
             setBusy(false);
             questionEl.focus();
+            if (questionEl.value) questionEl.scrollTop = 0;
           }
         }
 
         async function checkSync() {
-          if (!state.conversationId || state.busy || state.checking || document.hidden) return;
+          if (!state.conversationId || state.busy || state.restoring || state.checking ||
+              (state.syncError && state.errorAction === 'save') || document.hidden) return;
           state.checking = true; renderSyncState('checking');
           try {
             var result = await callServer('syncPrereasonerConversation', {conversationId: state.conversationId});
@@ -330,12 +421,34 @@
             });
             state.conversationId = response.conversationId || state.conversationId;
             finishTurn(turn, response, true, baseHistory);
+            try {
+              await persistCurrentState();
+            } catch (_) {
+              markSessionSaveError();
+            }
           } catch (_) {
             turn.classList.remove('recalculating'); state.syncError = true; state.errorAction = 'recalc'; renderSyncState('error');
           } finally { setBusy(false); questionEl.focus(); }
         }
 
-        syncStateEl.addEventListener('click', function () {
+        syncStateEl.addEventListener('click', async function () {
+          if (state.syncError && state.errorAction === 'clear') {
+            renderSyncState('checking');
+            try {
+              await callServer('clearPrereasonerSheetConversation');
+              state.syncError = false; state.errorAction = ''; renderSyncState(null);
+            } catch (_) { renderSyncState('session-error'); }
+            return;
+          }
+          if (state.syncError && state.errorAction === 'save') {
+            renderSyncState('checking');
+            try {
+              await persistCurrentState();
+              state.syncError = false; state.errorAction = '';
+              renderSyncState(state.stale ? 'stale' : 'current');
+            } catch (_) { markSessionSaveError(); }
+            return;
+          }
           if (state.syncError && state.errorAction === 'recalc') recalculateCurrent();
           else if (state.syncError) checkSync(); else if (state.stale) recalculateCurrent();
         });
@@ -350,24 +463,95 @@
             submit();
           }
         });
-        document.getElementById('newConversation').addEventListener('click', function () {
+        document.getElementById('newConversation').addEventListener('click', async function () {
+          if (state.busy || state.restoring) return;
           state.conversationId = '';
           state.history = [];
+          state.turns = [];
           state.stale = false; state.syncError = false; state.errorAction = ''; state.lastTurn = null; state.lastQuestion = ''; state.syncedFingerprint = '';
           threadEl.innerHTML = '';
           var fresh = document.createElement('div');
           fresh.className = 'empty';
-          fresh.textContent = 'Ask a question about the current sheet.';
+          fresh.textContent = 'Starting a new chat…';
           threadEl.appendChild(fresh);
+          questionEl.value = '';
+          questionEl.scrollTop = 0;
           renderSyncState(null);
-          questionEl.focus();
+          state.restoring = true;
+          updateComposerAvailability();
+          try {
+            await callServer('clearPrereasonerSheetConversation');
+            fresh.textContent = 'Ask a question about the current sheet.';
+          } catch (_) {
+            fresh.textContent = 'Ask a question about the current sheet.';
+            state.syncError = true; state.errorAction = 'clear'; renderSyncState('session-error');
+          } finally {
+            state.restoring = false;
+            updateComposerAvailability();
+            questionEl.focus();
+          }
         });
+
+        function restoreConversation(payload) {
+          payload = payload || {};
+          if (payload.context) renderContext(payload.context, false);
+          state.restoring = false;
+          state.conversationId = String(payload.conversationId || '');
+          state.stale = !!payload.stale;
+          state.history = [];
+          state.turns = [];
+          state.lastTurn = null;
+          state.lastQuestion = '';
+          threadEl.innerHTML = '';
+          var saved = payload.state;
+          if (state.conversationId && saved && saved.client === 'google-sheets-addon' &&
+              Number(saved.version) === 1 && Array.isArray(saved.turns) && saved.turns.length) {
+            state.history = Array.isArray(saved.history) ? saved.history.slice(-24) : [];
+            state.turns = saved.turns.slice(-24).map(function (item) {
+              return completedTurnData(item && item.question, item || {});
+            });
+            state.turns.forEach(function (item) { state.lastTurn = renderCompletedTurn(item); });
+            state.lastQuestion = state.turns[state.turns.length - 1].question;
+            renderSyncState(state.stale ? 'stale' : 'current');
+            threadEl.scrollTop = threadEl.scrollHeight;
+          } else if (state.conversationId) {
+            var note = document.createElement('div');
+            note.className = 'restore-note';
+            var title = document.createElement('strong');
+            title.textContent = 'Previous conversation reconnected';
+            note.appendChild(title);
+            note.appendChild(document.createTextNode(payload.legacyQuestion
+              ? 'It started with “' + payload.legacyQuestion + '”. Earlier sidebar messages predate automatic restoration.'
+              : 'Earlier sidebar messages predate automatic restoration.'));
+            threadEl.appendChild(note);
+            renderSyncState(null);
+          } else {
+            var empty = document.createElement('div');
+            empty.className = 'empty';
+            empty.textContent = 'Ask a question about the current sheet.';
+            threadEl.appendChild(empty);
+            renderSyncState(null);
+          }
+          updateComposerAvailability();
+          questionEl.focus();
+        }
 
         var contextRequest = INITIAL_CONTEXT && typeof INITIAL_CONTEXT === 'object'
           ? Promise.resolve(INITIAL_CONTEXT)
           : callServer('getSheetContext');
-        contextRequest.then(renderContext).catch(function (error) {
-          renderContext({ error: 'Could not read this spreadsheet: ' + errorText(error) });
+        if (emptyEl) emptyEl.textContent = 'Restoring this sheet’s conversation…';
+        contextRequest.then(function (context) {
+          renderContext(context, false);
+          return callServer('restorePrereasonerSheetConversation');
+        }).then(restoreConversation).catch(function (error) {
+          state.restoring = false;
+          renderContext(state.context || { error: 'Could not read this spreadsheet: ' + errorText(error) }, false);
+          threadEl.innerHTML = '';
+          var empty = document.createElement('div');
+          empty.className = 'empty status-error';
+          empty.textContent = 'Could not restore this sheet’s conversation. You can start a new chat.';
+          threadEl.appendChild(empty);
+          updateComposerAvailability();
         });
         window.setInterval(checkSync, 15000);
       }());

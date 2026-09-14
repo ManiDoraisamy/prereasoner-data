@@ -95,6 +95,50 @@ function getSheetContext() {
   }
 }
 
+function restorePrereasonerSheetConversation() {
+  var workbook = collectWorkbook_();
+  var body = spreadsheetSessionRequest_('/api/spreadsheet/conversation/restore', {
+    spreadsheet_id: workbook.spreadsheetId,
+    tables: workbook.tables
+  });
+  return {
+    conversationId: body.conversation_id || '',
+    state: body.state && typeof body.state === 'object' ? body.state : null,
+    legacyQuestion: String(body.question || ''),
+    legacy: !!body.legacy,
+    stale: !!body.source_changed,
+    sourceHash: body.source_hash || '',
+    datasetVersion: Number(body.dataset_version || 0),
+    context: workbook.summary
+  };
+}
+
+function savePrereasonerSheetConversation(request) {
+  request = request || {};
+  var conversationId = String(request.conversationId || '');
+  if (!/^c_[0-9a-f]{32}$/i.test(conversationId)) {
+    throw new Error('The conversation expired. Start a new conversation and try again.');
+  }
+  if (!request.state || typeof request.state !== 'object' || Array.isArray(request.state)) {
+    throw new Error('The sidebar conversation could not be saved.');
+  }
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) throw new Error('Open a Google Sheet before using Prereasoner.');
+  return spreadsheetSessionRequest_('/api/spreadsheet/conversation/state', {
+    spreadsheet_id: spreadsheet.getId(),
+    conversation_id: conversationId,
+    state: request.state
+  });
+}
+
+function clearPrereasonerSheetConversation() {
+  var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (!spreadsheet) throw new Error('Open a Google Sheet before using Prereasoner.');
+  return spreadsheetSessionRequest_('/api/spreadsheet/conversation/clear', {
+    spreadsheet_id: spreadsheet.getId()
+  });
+}
+
 function askPrereasoner(request) {
   request = request || {};
   var question = String(request.question || '').trim();
@@ -212,6 +256,7 @@ function collectWorkbook_() {
   });
 
   return {
+    spreadsheetId: spreadsheet.getId(),
     tables: tables,
     summary: {
       spreadsheet: spreadsheet.getName(),
@@ -225,6 +270,31 @@ function collectWorkbook_() {
       supportUrl: PREREASONER_SUPPORT_URL
     }
   };
+}
+
+function spreadsheetSessionRequest_(path, payload) {
+  var token = firebaseIdToken_();
+  var response;
+  try {
+    response = UrlFetchApp.fetch(PREREASONER_API_URL + path, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {Authorization: 'Bearer ' + token, Accept: 'application/json'},
+      payload: JSON.stringify(payload || {}),
+      muteHttpExceptions: true
+    });
+  } catch (error) {
+    throw new Error('Prereasoner could not restore this sheet’s conversation. Try again in a moment.');
+  }
+  var body = {};
+  try { body = JSON.parse(response.getContentText() || '{}'); } catch (_) {}
+  var status = response.getResponseCode();
+  if (status < 200 || status >= 300) {
+    var message = body && body.error ? String(body.error) : 'sheet conversation request failed';
+    if (status === 401) message = 'Google sign-in could not be verified';
+    throw new Error('Prereasoner: ' + message + '.');
+  }
+  return body;
 }
 
 function workbookFingerprint_(tables) {

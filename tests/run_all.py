@@ -29,7 +29,7 @@ SUITES = ["tests.test_sql_ast", "tests.test_calculations", "tests.test_analysis"
           "tests.test_request_limits", "tests.test_request_timing", "tests.test_pg_upload",
           "tests.test_kb_memo", "tests.test_encode_cache", "tests.test_stream_buffer",
           "tests.test_dataset_semantics", "tests.test_dataset_gold",
-          "tests.test_conversations", "tests.test_provenance",
+          "tests.test_conversations", "tests.test_sheet_sessions", "tests.test_provenance",
           "tests.test_release", "tests.test_community_deploy",
           "tests.test_mcp", "tests.test_orchestrator_unit", "tests.test_orchestrator"]
 ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_joins",

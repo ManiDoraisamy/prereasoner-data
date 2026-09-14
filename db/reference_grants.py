@@ -14,7 +14,7 @@ from engine.enrichment.registry import Activation, PostgresStorage, REGISTRY
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_]*$")
 _WRITE_PRIVILEGES = ("INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
 _CHAT_TABLES = (
-    "user_profile", "conversation", "user_conversation", "analysis", "analysis_revision",
+    "user_profile", "conversation", "user_conversation", "sheet_session", "analysis", "analysis_revision",
     "working_table", "request_usage", "request_lease",
 )
 

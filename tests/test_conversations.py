@@ -215,6 +215,8 @@ def test_delete_all_removes_only_owned_valid_conversations_and_user_traces():
     delete_traces.assert_called_once_with("firebase-user")
     drops = [statement for statement, _ in cursor.statements if statement.startswith("DROP SCHEMA")]
     assert drops == [f'DROP SCHEMA IF EXISTS "{valid}" CASCADE']
+    assert any(statement.startswith('DELETE FROM "chat"."sheet_session"')
+               for statement, _ in cursor.statements)
     assert connection.commits == 1 and connection.closed
 
 

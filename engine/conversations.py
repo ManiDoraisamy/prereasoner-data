@@ -668,6 +668,12 @@ def delete_conversation(user_id, conversation_id, *, rtdb_uid=None):
                 raise NotOwned("conversation not found")       # not yours OR absent — same answer
             from engine.trace import delete_traces
             trace_count = delete_traces(rtdb_uid, conversation_id)
+            cur.execute(
+                'UPDATE "chat"."sheet_session" SET conversation_id = NULL, sidebar_state = NULL, '
+                'state_bytes = 0, updated_at = now() '
+                'WHERE user_id = %s AND conversation_id = %s',
+                (user_id, conversation_id),
+            )
             cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s',
                         (conversation_id, user_id))
             cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (conversation_id,))
@@ -694,6 +700,7 @@ def delete_all_conversations(user_id, *, rtdb_uid=None):
             ids = [r[0] for r in cur.fetchall() if _ID_RE.match(r[0] or "")]
             from engine.trace import delete_traces
             trace_count = delete_traces(rtdb_uid)
+            cur.execute('DELETE FROM "chat"."sheet_session" WHERE user_id = %s', (user_id,))
             for cid in ids:
                 cur.execute('DELETE FROM "chat"."user_conversation" WHERE conversation_id = %s AND user_id = %s', (cid, user_id))
                 cur.execute('DELETE FROM "chat"."conversation" WHERE conversation_id = %s', (cid,))
