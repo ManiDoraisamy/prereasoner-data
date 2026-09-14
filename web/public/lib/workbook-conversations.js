@@ -3,6 +3,14 @@
 
 function convId(){ try{ return sessionStorage.getItem('pr_conversation_id')||null; }catch(_){ return null; } }
 function urlConvId(){ const m=(location.pathname||'').match(/\/reason\/(c_[0-9a-f]{32})/i); return m?m[1]:null; }
+function urlAnalysis(){
+  try{
+    const params=new URLSearchParams(location.search),id=params.get('analysis_id')||'',raw=params.get('revision')||'';
+    const revision=Number(raw);
+    return /^a_[0-9a-f]{32}$/.test(id)&&/^\d+$/.test(raw)&&Number.isInteger(revision)
+      &&revision>=1&&revision<=1000000 ? {analysis_id:id,revision} : null;
+  }catch(_){return null;}
+}
 function sourceKind(tables){
   const kinds=(tables||[]).map(t=>(t&&t.source&&t.source.kind)||(t&&t.import&&t.import.source)||'');
   if(kinds.some(k=>/^google-sheets/.test(k)))return 'google-sheets';

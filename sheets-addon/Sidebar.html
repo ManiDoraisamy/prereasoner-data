@@ -548,15 +548,22 @@
           return name || 'this answer';
         }
 
-        function fullAnalysisUrl() {
-          return state.conversationId ? REASON_BASE + encodeURIComponent(state.conversationId) : '';
+        function fullAnalysisUrl(analysis) {
+          if (!state.conversationId) return '';
+          var url = REASON_BASE + encodeURIComponent(state.conversationId);
+          var id = analysis && String(analysis.analysis_id || '');
+          var revision = analysis && Number(analysis.revision);
+          if (/^a_[0-9a-f]{32}$/.test(id) && Number.isInteger(revision) && revision >= 1 && revision <= 1000000) {
+            url += '?analysis_id=' + encodeURIComponent(id) + '&revision=' + encodeURIComponent(revision);
+          }
+          return url;
         }
 
         function reasoningMarkup(reasoning, analysis, extraClass) {
           if (!reasoning || !reasoning.length) return;
           var shared = renderer();
           if (!shared) return;
-          var url = fullAnalysisUrl();
+          var url = fullAnalysisUrl(analysis);
           var title = 'Reasoning steps for ' + analysisName(analysis);
           var tree = shared.renderReasoningTree(reasoning, {
             renderStep: function (step, index) {

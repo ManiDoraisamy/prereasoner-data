@@ -71,7 +71,7 @@ const {chromium} = require('@playwright/test');
   await page.getByText('Reasoning steps for France total').waitFor();
   await page.getByText('Total amount in France', {exact:true}).waitFor();
   const analysisHref = await page.getByRole('link', {name:'Open full analysis ↗'}).getAttribute('href');
-  if (analysisHref !== 'https://chat.prereasoner.com/reason/c_0123456789abcdef0123456789abcdef') throw new Error('Analysis link was omitted');
+  if (analysisHref !== 'https://chat.prereasoner.com/reason/c_0123456789abcdef0123456789abcdef?analysis_id=a_11111111111111111111111111111111&revision=1') throw new Error('Analysis deep link omitted the exact revision');
   if (await page.locator('.result-table').count()) throw new Error('A scalar answer must not be repeated in a one-cell table');
   const saved = await page.evaluate(() => window.__sheetSessionState);
   if (!saved || saved.turns.length !== 1 || !saved.turns[0].reply.includes('US$1,240') || saved.syncedFingerprint !== 'sheet-v1') {

@@ -1276,7 +1276,7 @@ function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.t
 async function run(){
   // Deep link: landing on /reason/<id> in a session that isn't that conversation -> load it, then reload so
   // the module-level SHEETS/question pick it up. (A normal home->reason flow has no id in the URL.)
-  const ucid=urlConvId();
+  const ucid=urlConvId(), linkedAnalysis=urlAnalysis();
   if(ucid&&ucid!==convId()){
     try{ const tk=await window.ensureToken();
       const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(ucid),{headers:{Authorization:'Bearer '+tk}});
@@ -1311,5 +1311,6 @@ async function run(){
     }
   } } }catch(error){fail('This saved result could not be restored. The original snapshot is retained.');return;}
   if(!restored) startRun();
+  else if(linkedAnalysis) await loadAnalysis(linkedAnalysis.analysis_id,linkedAnalysis.revision);
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

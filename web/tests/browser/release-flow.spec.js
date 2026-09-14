@@ -341,6 +341,12 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('.wb.result tbody')).toContainText('120');
   await expect(page.locator('.wtab').filter({hasText:'orders'})).toHaveCount(1);
 
+  // A Sheets reasoning link carries one immutable analysis revision. Opening it must select that
+  // workbook, not whichever analysis happened to be active in this browser session.
+  await page.goto('/reason/c_0123456789abcdef0123456789abcdef?analysis_id=a_11111111111111111111111111111111&revision=1');
+  await expect(page.locator('.wb.result tbody')).toContainText('180');
+  await expect(page.locator('.analysislink.on')).toHaveText('total sales');
+
   const deleteChat=page.getByTitle('Delete chat');
   if(!await deleteChat.isVisible())await page.getByRole('button',{name:'Conversations',exact:true}).click();
   const deletion=page.waitForRequest(req=>req.url().endsWith('/api/conversation/delete')&&req.method()==='POST');
