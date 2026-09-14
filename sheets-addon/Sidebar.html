@@ -227,7 +227,7 @@
       (function () {
         var state = { conversationId: '', history: [], turns: [], context: null, busy: false, checking: false,
           restoring: true, stale: false, syncError: false, errorAction: '', lastTurn: null,
-          lastQuestion: '', syncedFingerprint: '' };
+          lastQuestion: '', lastAnalysis: null, syncedFingerprint: '' };
         var contextEl = document.getElementById('context');
         var threadEl = document.getElementById('thread');
         var emptyEl = document.getElementById('empty');
@@ -670,6 +670,7 @@
           if (state.history.length > 24) state.history = state.history.slice(-24);
           state.lastTurn = turn;
           state.lastQuestion = turn.querySelector('.question').textContent;
+          state.lastAnalysis = response.analysis && typeof response.analysis === 'object' ? response.analysis : null;
           if (response.context) renderContext(response.context, false);
           state.syncedFingerprint = response.context && response.context.fingerprint || state.syncedFingerprint;
           state.stale = false; state.syncError = false; state.errorAction = ''; turn.classList.remove('recalculating'); renderSyncState('current');
@@ -777,7 +778,10 @@
               stopLive = startLiveTurn(liveSession, turnId, turn, progress);
             } catch (_) {}
             var response = await callServer('askPrereasoner', {
-              question: state.lastQuestion, conversationId: state.conversationId, history: baseHistory, turnId: turnId
+              question: state.lastQuestion, conversationId: state.conversationId, history: baseHistory, turnId: turnId,
+              analysis: state.lastAnalysis && state.lastAnalysis.analysis_id && state.lastAnalysis.slug ? {
+                action: 'modify', analysis_id: state.lastAnalysis.analysis_id, slug: state.lastAnalysis.slug
+              } : null
             });
             state.conversationId = response.conversationId || state.conversationId;
             finishTurn(turn, response, true, baseHistory);
@@ -829,7 +833,7 @@
           state.conversationId = '';
           state.history = [];
           state.turns = [];
-          state.stale = false; state.syncError = false; state.errorAction = ''; state.lastTurn = null; state.lastQuestion = ''; state.syncedFingerprint = '';
+          state.stale = false; state.syncError = false; state.errorAction = ''; state.lastTurn = null; state.lastQuestion = ''; state.lastAnalysis = null; state.syncedFingerprint = '';
           threadEl.innerHTML = '';
           var fresh = document.createElement('div');
           fresh.className = 'empty';
@@ -864,6 +868,7 @@
           state.turns = [];
           state.lastTurn = null;
           state.lastQuestion = '';
+          state.lastAnalysis = null;
           threadEl.innerHTML = '';
           var saved = payload.state;
           if (state.conversationId && saved && saved.client === 'google-sheets-addon' &&
@@ -880,6 +885,7 @@
                 state.syncedFingerprint !== String(state.context.fingerprint || '')) state.stale = true;
             state.turns.forEach(function (item) { state.lastTurn = renderCompletedTurn(item); });
             state.lastQuestion = state.turns[state.turns.length - 1].question;
+            state.lastAnalysis = state.turns[state.turns.length - 1].analysis || null;
             renderSyncState(state.stale ? 'stale' : 'current');
             scrollConversation(true);
           } else if (state.conversationId) {

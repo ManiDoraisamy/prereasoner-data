@@ -121,10 +121,14 @@ def test_chat_validation_normalizes_and_bounds_inputs():
         "history": [{"role": "user", "content": "hello"}],
         "turnId": " t1 ",
         "use": "both",
+        "analysis": {"action": "modify", "analysis_id": "a_" + "1" * 32,
+                     "slug": "total_amount"},
     })
     assert out[:3] == ("total amount", [{"name": "orders", "data": "id,amount\n1,2\n"}],
                        [{"role": "user", "content": "hello"}])
     assert out[4] is None and out[5] == "verify"
+    assert out[6] == {"action": "modify", "analysis_id": "a_" + "1" * 32,
+                      "slug": "total_amount", "revision": None}
     for bad in ({"message": "x" * 20_001}, {"message": "x", "tables": [{}] * 9}):
         try:
             validate_chat_request(bad)

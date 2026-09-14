@@ -145,7 +145,8 @@ def test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation(
         assert len(model_calls) == 2, (status, model_calls)
         assert "tools" in model_calls[0]
         assert "tools" not in model_calls[1]
-        assert result["reply"] == "The verified result is ready."
+        expected = "876.50" if status == "answered" else "The verified result is ready."
+        assert result["reply"] == expected
         assert "step budget" not in result["reply"]
         assert len(result["traces"]) == 1
 
@@ -196,6 +197,27 @@ def test_terminal_fallback_preserves_the_engine_outcome():
     assert len(engine_calls) == 1
     assert result["reply"] == "876.50"
     assert "step budget" not in result["reply"]
+
+
+def test_recalculation_identity_and_scalar_presentation_are_grounded():
+    distinct = {
+        "analysis_id": "a_" + "2" * 32,
+        "slug": "distinct_order_id_count",
+        "latest_question": "Count the unique values in the order ID column across all data rows.",
+    }
+    other = {
+        "analysis_id": "a_" + "3" * 32,
+        "slug": "top_customer",
+        "latest_question": "Which customer placed the most orders?",
+    }
+    question = ("Count the unique values in the order ID column across all data rows. "
+                "Return the count and show the calculation steps.")
+    assert orchestrator._matching_analysis(question, [other, distinct]) == {
+        "action": "modify", "analysis_id": distinct["analysis_id"], "slug": distinct["slug"],
+    }
+    shaped = {"status": "answered", "answer": {"rows": [[23]], "columns": ["count"]}}
+    assert orchestrator._grounded_presentation(shaped, "There are 100 distinct IDs.") == "23"
+    assert orchestrator._grounded_presentation(shaped, "There are 23 distinct IDs.") == "There are 23 distinct IDs."
 
 
 def test_named_workbook_tool_contract_and_catalog_boundary():
@@ -705,6 +727,7 @@ TESTS = [
     test_unambiguous_column_as_table_is_rebound_before_attestation,
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
+    test_recalculation_identity_and_scalar_presentation_are_grounded,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,

@@ -17,6 +17,7 @@ for the reasoning player while feeding the model only a trimmed result.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Any
 
@@ -208,6 +209,34 @@ def _system_with_catalog(catalog: list[dict[str, Any]]) -> str:
         json.dumps(rows, ensure_ascii=False, separators=(",", ":"))
 
 
+def _question_words(value: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"[a-z0-9]+", str(value).casefold()))
+
+
+def _matching_analysis(user_message: str, catalog: list[dict[str, Any]],
+                       requested: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Resolve an explicit recalculation target without asking the LLM to guess its identity."""
+    rows = [item for item in catalog if isinstance(item, dict)]
+    if requested:
+        match = next((item for item in rows
+                      if item.get("analysis_id") == requested.get("analysis_id")
+                      and item.get("slug") == requested.get("slug")), None)
+        if match is None:
+            raise RuntimeError("requested analysis is not in the conversation catalog")
+        return {"action": "modify", "analysis_id": match["analysis_id"], "slug": match["slug"]}
+
+    words = _question_words(user_message)
+    candidates = []
+    for item in rows:
+        prior = _question_words(item.get("latest_question") or "")
+        if len(prior) >= 6 and (words == prior or words[:len(prior)] == prior):
+            candidates.append((len(prior), item))
+    if not candidates:
+        return None
+    match = max(candidates, key=lambda pair: pair[0])[1]
+    return {"action": "modify", "analysis_id": match["analysis_id"], "slug": match["slug"]}
+
+
 def _terminal_fallback(shaped: dict[str, Any]) -> str:
     """Last-resort text when the presentation model returns no prose.
 
@@ -224,6 +253,25 @@ def _terminal_fallback(shaped: dict[str, Any]) -> str:
     if len(rows) == 1 and len(rows[0]) == 1:
         return str(rows[0][0])
     return "I completed the calculation; the result and its reasoning are shown in the workbook."
+
+
+def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
+    """Never let optional presentation prose contradict a terminal engine outcome."""
+    fallback = _terminal_fallback(shaped)
+    if shaped.get("status") != "answered":
+        return presentation.strip() or fallback
+    answer = shaped.get("answer") or {}
+    rows = answer.get("rows") or []
+    if len(rows) != 1 or len(rows[0]) != 1:
+        return presentation.strip() or fallback
+    scalar = str(rows[0][0]).strip()
+    if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?", scalar):
+        return presentation.strip() or fallback
+    normalized_scalar = scalar.replace(",", "")
+    normalized_reply = presentation.replace(",", "")
+    if not re.search(rf"(?<![\d.]){re.escape(normalized_scalar)}(?![\d.])", normalized_reply):
+        return fallback
+    return presentation.strip() or fallback
 
 
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:
@@ -249,7 +297,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     api_key: str, model: str, turn_id: str | None = None,
                     emit=None, conversation_id: str | None = None,
                     principal: str | None = None,
-                    use: str | None = None) -> dict[str, Any]:
+                    use: str | None = None,
+                    analysis_override: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run one chat turn. `history` is a lean transcript [{role, content:str}, ...]; `tables` is the
     session's inline CSVs. Returns {reply, traces, history, conversation_id}.
 
@@ -294,6 +343,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             )
             if catalog is None:
                 raise RuntimeError("analysis catalog unavailable")
+        forced_analysis = _matching_analysis(user_message, catalog, analysis_override)
         system_prompt = _system_with_catalog(catalog)
         # Work on a local copy of the full block-level message list for the tool loop.
         messages: list[dict[str, Any]] = [
@@ -360,7 +410,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         round_query_seen = True
                         # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
-                        question = (block.input or {}).get("question", "")
+                        question = user_message if forced_analysis else (block.input or {}).get("question", "")
                         decomposition = (block.input or {}).get("decomposition")
                         # The system prompt (rules 3-4) owns question fidelity: a standalone question is
                         # passed in the user's exact words, and a follow-up rewrite carries every
@@ -377,19 +427,22 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             raw_dataset_ops, user_message, history,
                         )
                         dataset_ops = dataset_ops or None
-                        try:
-                            analysis_spec = validate_analysis_spec({
-                                key: (block.input or {}).get(key)
-                                for key in ("action", "slug", "analysis_id", "revision")
-                                if (block.input or {}).get(key) is not None
-                            })
-                        except AnalysisError as exc:
-                            tool_results.append({
-                                "type": "tool_result", "tool_use_id": block.id,
-                                "content": json.dumps({"status": "error", "error": str(exc)}),
-                                "is_error": True,
-                            })
-                            continue
+                        if forced_analysis:
+                            analysis_spec = dict(forced_analysis)
+                        else:
+                            try:
+                                analysis_spec = validate_analysis_spec({
+                                    key: (block.input or {}).get(key)
+                                    for key in ("action", "slug", "analysis_id", "revision")
+                                    if (block.input or {}).get(key) is not None
+                                })
+                            except AnalysisError as exc:
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps({"status": "error", "error": str(exc)}),
+                                    "is_error": True,
+                                })
+                                continue
                         identity = {"question": question, "analysis": analysis_spec}
                         if pending_decomposition is not None or decomposition is not None:
                             try:
@@ -557,9 +610,10 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                     if stream_buffer is not None and presentation_text:
                                         stream_buffer.update(presentation_text)
                                 presentation = await presentation_stream.get_final_message()
-                        final_text = "".join(
+                        presentation_text = "".join(
                             block.text for block in presentation.content if block.type == "text"
-                        ).strip() or final_text
+                        ).strip()
+                        final_text = _grounded_presentation(terminal_query, presentation_text)
                     except Exception as exc:  # noqa: BLE001 - presentation is optional after terminal data
                         print(f"[chat] presentation_failed error={type(exc).__name__}", flush=True)
                     break

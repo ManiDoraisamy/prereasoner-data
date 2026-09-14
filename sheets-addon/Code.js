@@ -163,6 +163,16 @@ function askPrereasoner(request) {
     history: normalizeHistory_(request.history),
     conversation_id: conversationId
   };
+  if (request.analysis) {
+    var requestedAnalysis = request.analysis;
+    var analysisId = String(requestedAnalysis.analysis_id || '');
+    var slug = String(requestedAnalysis.slug || '');
+    if (requestedAnalysis.action !== 'modify' || !/^a_[0-9a-f]{32}$/i.test(analysisId) ||
+        !/^[a-z][a-z0-9_]{0,39}$/.test(slug)) {
+      throw new Error('The analysis selected for recalculation is invalid.');
+    }
+    payload.analysis = {action: 'modify', analysis_id: analysisId, slug: slug};
+  }
   var turnId = request.turnId == null ? '' : String(request.turnId).trim();
   if (turnId) {
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(turnId)) throw new Error('The live request id is invalid.');

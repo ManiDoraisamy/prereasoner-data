@@ -272,6 +272,15 @@ def validate_chat_request(req: object):
             raise RequestValidationError("history is too large", 413)
         normalized_history.append({"role": item["role"], "content": content})
 
+    analysis = None
+    if req.get("analysis") is not None:
+        try:
+            analysis = validate_analysis_spec(req.get("analysis"))
+        except AnalysisError as exc:
+            raise RequestValidationError(str(exc)) from exc
+        if analysis["action"] != "modify":
+            raise RequestValidationError("chat analysis override must modify an existing analysis")
+
     return (message, tables, normalized_history, _optional_id(req, "turnId"),
             _optional_id(req, "conversation_id", conversation=True),
-            validate_execution_use(req.get("use")))
+            validate_execution_use(req.get("use")), analysis)

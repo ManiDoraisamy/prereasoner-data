@@ -94,6 +94,7 @@ assert(source.includes('function savePrereasonerSheetConversation(request)'));
 assert(source.includes('function clearPrereasonerSheetConversation()'));
 assert(source.includes('function getPrereasonerLiveSession()'));
 assert(source.includes('payload.turnId = turnId'));
+assert(source.includes("payload.analysis = {action: 'modify'"));
 assert(source.includes('PREREASONER_RTDB_URL'));
 assert(source.includes("source: {kind: 'google-sheets-addon'}"));
 assert(!source.includes('PropertiesService'));
