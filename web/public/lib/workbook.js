@@ -402,13 +402,9 @@ function resultSummary(){
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
 function conv2html(t){
-  // Render the assistant reply's inline markdown. esc() runs FIRST so any HTML in the (LLM-generated) text is
-  // neutralized to entities; the markdown tags below are then added on that safe string, so this stays XSS-safe.
-  let s = esc(String(t||''));
-  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');            // `inline code`
-  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');  // **bold**  (consumed before single-* italic)
-  s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');              // *italic*
-  return s.replace(/\n/g, '<br>');
+  // The same safe inline-Markdown renderer is used by the Google Sheets add-on.
+  if(window.PrereasonerTurnRenderer)return window.PrereasonerTurnRenderer.renderMarkdown(t);
+  return esc(String(t||'')).replace(/\n/g, '<br>');
 }
 // Only THIS turn's derivation is "Reasoning steps". Stale sheets (kept from the previous turn so a conversational
 // follow-up's workbook isn't empty) must NOT render here — else an empty/no-data turn ("chennai?" with no Chennai
@@ -428,6 +424,14 @@ function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v
   const description=cleanStepText(s.desc||dispName(s));
   return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet and its emitted source'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pickStep(\''+s.id+'\')"><span class=idx>'+(index+1)+'</span><span class=stx>'+esc(description)+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span>'+executionChip(s)+'</button>'; }
 function derivTree(d){
+  if(window.PrereasonerTurnRenderer){
+    const steps=d.map((sheet,index)=>({
+      source:sheet,index,label:sheet.desc||dispName(sheet),detail:sheet.desc||'',kind:sheet.op||'',isOutput:!!sheet.result,
+      sectionId:sheet.section||'',sectionLabel:sheet.sectionLabel||'',sectionQuestion:sheet.sectionQuestion||'',
+      sectionInputs:sheet.sectionInputs||[]
+    }));
+    return window.PrereasonerTurnRenderer.renderReasoningTree(steps,{renderStep:item=>stepLink(item.source,item.index)});
+  }
   const bySection=new Map(), order=[];
   d.forEach((sheet,index)=>{ if(!sheet.section)return; if(!bySection.has(sheet.section)){
       bySection.set(sheet.section,{id:sheet.section,label:sheet.sectionLabel||sheet.section,question:sheet.sectionQuestion||'',inputs:sheet.sectionInputs||[],sheets:[]}); order.push(sheet.section); }

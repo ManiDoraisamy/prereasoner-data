@@ -8,6 +8,7 @@ const source = fs.readFileSync(path.join(root, 'Code.js'), 'utf8');
 const sidebar = fs.readFileSync(path.join(root, 'Sidebar.html'), 'utf8');
 const previous = fs.readFileSync(path.join(root, 'Previous.html'), 'utf8');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'appsscript.json'), 'utf8'));
+const turnRenderer = fs.readFileSync(path.join(root, '..', 'web', 'public', 'lib', 'turn-renderer.js'), 'utf8');
 
 const context = {
   console,
@@ -27,20 +28,28 @@ const reasoning = context.extractReasoning_({
   traces: [{
     question: 'total amount in France',
     engine: {
+      analysis: {analysis_id: 'a_11111111111111111111111111111111', slug: 'france_total', revision: 1, display_name: 'France total'},
       resolves: [{column: 'country', table: 'orders'}],
-      views: [{op: 'filter', label: 'France orders', columns: ['amount'], rows: [[120], [80]]}],
+      views: [{op: 'filter', label: 'France orders', columns: ['amount'], rows: [[120], [80]],
+        section: 'france', section_label: 'France orders', section_question: 'Orders in France', section_inputs: [], is_output: true}],
       answer: {columns: ['total'], rows: [[200]]}
     }
   }]
 });
 assert.strictEqual(reasoning.steps.length, 2);
 assert.strictEqual(reasoning.steps[0].label, 'Resolve country');
-assert.strictEqual(reasoning.steps[1].label, 'France orders');
+assert.strictEqual(reasoning.steps[1].label, 'Filtered');
+assert.strictEqual(reasoning.steps[1].sectionLabel, 'France orders');
+assert.strictEqual(reasoning.analysis.display_name, 'France total');
 assert.deepStrictEqual(Array.from(reasoning.result.columns), ['total']);
 assert.strictEqual(reasoning.result.rows[0][0], '200');
 
 assert(sidebar.includes('Ask about this spreadsheet'));
-assert(sidebar.includes('Reasoning steps</summary>'));
+assert(sidebar.includes('Reasoning steps for '));
+assert(sidebar.includes('Open full analysis'));
+assert(sidebar.includes('turn-renderer.js'));
+assert(sidebar.includes('getPrereasonerLiveSession'));
+assert(sidebar.includes('startLiveTurn'));
 assert(sidebar.includes('Reading your sheet…'));
 assert(sidebar.includes('Planning the analysis…'));
 assert(sidebar.includes('Calculating and verifying…'));
@@ -60,6 +69,8 @@ assert(sidebar.includes('if (questionEl.value) questionEl.scrollTop = 0;'));
 assert(sidebar.includes("questionEl.value = '';"));
 assert(sidebar.includes('Answer is stale. Recalculate'));
 assert(sidebar.includes('window.setInterval(checkSync, 15000)'));
+assert(sidebar.includes('state.syncedFingerprint && context.fingerprint !== state.syncedFingerprint'));
+assert(sidebar.includes('syncedFingerprint: state.syncedFingerprint'));
 assert(sidebar.includes('https://ssl.gstatic.com/docs/script/css/add-ons1.css'));
 assert(!sidebar.includes('linear-gradient'));
 assert(!sidebar.includes('class="legal"'));
@@ -81,6 +92,9 @@ assert(source.includes('/api/spreadsheet/conversation/clear'));
 assert(source.includes('function restorePrereasonerSheetConversation()'));
 assert(source.includes('function savePrereasonerSheetConversation(request)'));
 assert(source.includes('function clearPrereasonerSheetConversation()'));
+assert(source.includes('function getPrereasonerLiveSession()'));
+assert(source.includes('payload.turnId = turnId'));
+assert(source.includes('PREREASONER_RTDB_URL'));
 assert(source.includes("source: {kind: 'google-sheets-addon'}"));
 assert(!source.includes('PropertiesService'));
 assert(previous.includes('Previous conversations'));
@@ -100,5 +114,7 @@ assert(sidebar.includes("callServer('savePrereasonerSheetConversation'"));
 assert(sidebar.includes("callServer('clearPrereasonerSheetConversation')"));
 assert(sidebar.includes("var source = await callServer('syncPrereasonerConversation'"));
 assert(sidebar.includes("turns: state.turns.slice(-24)"));
+assert(turnRenderer.includes('renderMarkdown'));
+assert(turnRenderer.includes('renderReasoningTree'));
 
 console.log('Sheets add-on tests passed.');

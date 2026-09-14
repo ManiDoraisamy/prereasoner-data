@@ -3,6 +3,7 @@
 var PREREASONER_CHAT_URL = 'https://prereasoner-chat-271377281957.us-central1.run.app/chat';
 var PREREASONER_REASON_URL = 'https://chat.prereasoner.com/reason/';
 var PREREASONER_API_URL = 'https://chat.prereasoner.com';
+var PREREASONER_RTDB_URL = 'https://prereasoner-inference-default-rtdb.firebaseio.com';
 var PREREASONER_PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
 var PREREASONER_TERMS_URL = 'https://chat.prereasoner.com/terms';
 var PREREASONER_SUPPORT_URL = 'https://chat.prereasoner.com/support';
@@ -76,6 +77,7 @@ function showSidebar() {
   } catch (error) {
     template.initialContext = JSON.stringify({error: errorMessage_(error)});
   }
+  template.reasonBase = JSON.stringify(PREREASONER_REASON_URL);
   var html = template.evaluate()
     .setTitle('Prereasoner');
   SpreadsheetApp.getUi().showSidebar(html);
@@ -161,8 +163,35 @@ function askPrereasoner(request) {
     history: normalizeHistory_(request.history),
     conversation_id: conversationId
   };
+  var turnId = request.turnId == null ? '' : String(request.turnId).trim();
+  if (turnId) {
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(turnId)) throw new Error('The live request id is invalid.');
+    payload.turnId = turnId;
+  }
   var response = fetchPrereasoner_(payload);
   return clientResponse_(response, workbook.summary, question);
+}
+
+function getPrereasonerLiveSession() {
+  var token = firebaseIdToken_();
+  var parts = String(token || '').split('.');
+  if (parts.length !== 3) throw new Error('Prereasoner live updates could not be authorized.');
+  var encoded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+  while (encoded.length % 4) encoded += '=';
+  var claims = {};
+  try {
+    claims = JSON.parse(Utilities.newBlob(Utilities.base64Decode(encoded)).getDataAsString());
+  } catch (_) {
+    throw new Error('Prereasoner live updates could not be authorized.');
+  }
+  var uid = String(claims.user_id || claims.sub || '');
+  if (!uid || uid.length > 128) throw new Error('Prereasoner live updates could not be authorized.');
+  return {
+    token: token,
+    uid: uid,
+    databaseUrl: PREREASONER_RTDB_URL,
+    expiresAt: Number(claims.exp || 0) * 1000
+  };
 }
 
 function syncPrereasonerConversation(request) {
@@ -399,6 +428,7 @@ function clientResponse_(raw, context, question) {
     history: normalizeHistory_(raw.history),
     steps: reasoning.steps,
     reasoning: reasoning.steps,
+    analysis: reasoning.analysis,
     result: reasoning.result,
     context: context,
     question: question
@@ -412,34 +442,55 @@ function extractReasoning_(raw) {
   }
   var steps = [];
   var result = null;
+  var analysis = null;
 
-  traces.forEach(function(trace) {
+  traces.forEach(function(trace, traceIndex) {
     var engine = trace && trace.engine ? trace.engine : {};
+    if (engine.analysis && typeof engine.analysis === 'object') analysis = engine.analysis;
+    var callKey = String((trace && trace.jobId) || ('call-' + (traceIndex + 1)));
+    var callSection = traces.length > 1 ? ('call:' + callKey) : '';
+    var callQuestion = String((trace && trace.question) || '');
     (Array.isArray(engine.resolves) ? engine.resolves : []).forEach(function(resolve) {
       if (!resolve || !resolve.column) return;
       steps.push({
         label: 'Resolve ' + resolve.column,
         kind: 'resolve',
-        detail: resolve.table ? 'Matched values from ' + resolve.table + '.' : 'Matched values to known entities.'
+        detail: resolve.table ? 'Matched values from ' + resolve.table + '.' : 'Matched values to known entities.',
+        sectionId: callSection,
+        sectionLabel: callQuestion || 'Reference lookup',
+        sectionQuestion: callQuestion,
+        sectionInputs: []
       });
     });
 
     var views = Array.isArray(engine.views) ? engine.views : [];
     views.forEach(function(view, index) {
       if (!view) return;
-      var label = String(view.label || operationLabel_(view.op) || ('Step ' + (index + 1)));
+      var rawSection = String(view.section || '');
+      var sectionId = rawSection ? (callKey + ':' + rawSection) : callSection;
+      var sectionInputs = (Array.isArray(view.section_inputs) ? view.section_inputs : []).map(function(input) {
+        return callKey + ':' + String(input);
+      });
       steps.push({
-        label: label,
+        label: sidebarStepLabel_(view, index),
         kind: String(view.op || 'step'),
         detail: operationDetail_(view.op),
-        preview: tablePreview_(view)
+        preview: tablePreview_(view),
+        inputs: Array.isArray(view.inputs) ? view.inputs.map(String) : [],
+        sectionId: sectionId,
+        sectionLabel: String(view.section_label || callQuestion || rawSection || ''),
+        sectionQuestion: String(view.section_question || callQuestion || ''),
+        sectionInputs: sectionInputs,
+        isOutput: !!view.is_output || index === views.length - 1
       });
     });
 
     var candidate = engine.answer || engine.result || (views.length ? views[views.length - 1] : null);
     if (candidate && Array.isArray(candidate.rows)) result = tablePreview_(candidate, 5, 5);
     if (!views.length && engine.sql && result) {
-      steps.push({label: 'Result', kind: 'query', detail: 'Calculated the answer from the workbook.', preview: result});
+      steps.push({label: 'Result', kind: 'query', detail: 'Calculated the answer from the workbook.',
+        preview: result, sectionId: callSection, sectionLabel: callQuestion, sectionQuestion: callQuestion,
+        sectionInputs: [], isOutput: true});
     }
   });
 
@@ -447,7 +498,25 @@ function extractReasoning_(raw) {
     var top = raw.answer || raw.result;
     if (top && Array.isArray(top.rows)) result = tablePreview_(top, 5, 5);
   }
-  return {steps: steps, result: result};
+  return {steps: steps, result: result, analysis: analysis};
+}
+
+function sidebarStepLabel_(view, index) {
+  var operation = String((view && view.op) || '');
+  var labels = {
+    join: 'Combined', world_join: 'Reference lookup', world_filter: 'Filtered', filter: 'Filtered',
+    time_filter: 'Date filter', having: 'Filtered', group_agg: 'Total', yoy: 'Year-over-year',
+    running: 'Running total', divide: 'Ratio', share: 'Share', topn: 'Top results', sort: 'Sorted',
+    cross: 'Candidate pairs', anti_join: 'Not yet matched', select: 'Result'
+  };
+  if (operation === 'group_agg') {
+    var aggregate = String((view.sql || '') + ' ' + (view.label || '')).toLowerCase();
+    if (/\bcount\b/.test(aggregate)) return 'Count';
+    if (/\bavg\b|average/.test(aggregate)) return 'Average';
+    if (/\bmin\b|\bmax\b/.test(aggregate)) return 'Extremes';
+  }
+  return labels[operation] || String(view.logical_name || view.label || operationLabel_(operation) || ('Step ' + (index + 1)))
+    .replace(/_/g, ' ');
 }
 
 function tablePreview_(table, maxRows, maxColumns) {

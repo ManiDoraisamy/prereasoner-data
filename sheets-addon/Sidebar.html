@@ -37,11 +37,29 @@
       }
       .new-chat:hover { background: #f7f5fb; border-color: #c8bfd8; }
       .sync-meta { display: inline-flex; align-items: center; gap: 7px; color: #5f6368; font-size: 12px; white-space: nowrap; }
-      .sync-state { border: 0; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; cursor: pointer; }
+      .sync-state {
+        min-height: 26px;
+        box-sizing: border-box;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 0 7px;
+        background: transparent;
+        font: 500 11px/1 Arial, sans-serif;
+        cursor: pointer;
+      }
       .sync-state[hidden] { display: none; }
-      .sync-state.current { color: #137a43; background: #e3f4e9; cursor: default; }
-      .sync-state.checking { color: #9a5c00; background: #fff0d1; cursor: default; letter-spacing: 1px; }
-      .sync-state.stale, .sync-state.error, .sync-state.session-error { color: #b3261e; background: #fce8e6; }
+      .sync-state.current { color: #137a43; cursor: default; }
+      .sync-state.checking { color: #7a5a16; cursor: default; }
+      .sync-state.stale, .sync-state.error, .sync-state.session-error {
+        color: #b3261e;
+        background: #fff7f6;
+        border-color: #f2b8b5;
+      }
+      .sync-state:not(:disabled):hover { background: #fce8e6; }
+      .sync-glyph { font-weight: 700; }
       .context {
         padding: 11px 0 13px;
         color: #5f6368;
@@ -86,26 +104,56 @@
         line-height: 1.45;
         white-space: pre-wrap;
       }
+      .answer a { color: #4f2fd0; text-decoration: underline; text-underline-offset: 2px; }
+      .answer code { padding: 1px 4px; border-radius: 4px; background: #eceff1; font: 12px Consolas, monospace; }
       .answer.pending { color: #5f6368; }
+      .answer.pending.has-reply { color: #202124; }
+      .pending-status { color: #5f6368; }
+      .streamed-reply { margin-top: 8px; color: #202124; }
       .answer.error { color: #8d1b15; background: #fce8e6; border-color: #f2b8b5; }
       .turn.recalculating { opacity: .65; }
       details.reasoning {
         margin-top: 8px;
-        border: 1px solid #dadce0;
-        border-radius: 6px;
-        overflow: hidden;
+        padding-top: 1px;
       }
       details.reasoning summary {
-        padding: 8px 10px;
+        padding: 6px 2px;
         color: #5f6368;
         cursor: pointer;
         list-style-position: inside;
       }
-      .reasoning-body { padding: 0 10px 10px; color: #5f6368; }
-      .operation { padding: 7px 0; border-top: 1px solid #f1f3f4; }
-      .operation:first-child { border-top: 0; }
-      .operation-label { color: #202124; font-weight: 500; }
-      .operation-detail { margin-top: 3px; line-height: 1.4; }
+      .reasoning-title { color: #4b4167; font-weight: 500; }
+      .reasoning-body { padding: 1px 0 4px; color: #5f6368; }
+      .analysis-open { display: inline-block; margin: 1px 0 7px 24px; color: #4f2fd0; text-decoration: none; font-size: 11px; }
+      .analysis-open:hover, .analysis-open:focus { text-decoration: underline; }
+      .reasontree { display: flex; flex-direction: column; gap: 5px; }
+      .reasonnode { position: relative; min-width: 0; }
+      .branchhead { display: flex; align-items: flex-start; gap: 7px; padding: 4px 2px; color: #51486b; line-height: 1.35; }
+      .branchmark { width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: #8f7bf2; box-shadow: 0 0 0 3px #f0ecfd; flex: 0 0 auto; }
+      .branchtxt { display: flex; flex-direction: column; min-width: 0; }
+      .branchtxt b { color: #4b4167; font-weight: 600; }
+      .branchq { margin-top: 1px; color: #8b829e; font-size: 11px; }
+      .reasonchildren { margin-left: 10px; padding-left: 9px; border-left: 1px solid #ded8ee; }
+      .reasonref { margin: 3px 0 3px 18px; color: #8b829e; font-size: 11px; }
+      .branchsteps { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 5px 14px; }
+      .steplink {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 7px 8px;
+        color: #202124;
+        background: #fff;
+        border: 1px solid #ebe7f3;
+        border-radius: 7px;
+        text-decoration: none;
+      }
+      .steplink:hover, .steplink:focus { border-color: #8f7bf2; background: #faf9ff; }
+      .steplink .idx { min-width: 19px; height: 19px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: #fff; background: #8f7bf2; font-size: 10px; font-weight: 600; flex: 0 0 auto; }
+      .steplink .stx { display: flex; flex: 1; min-width: 0; flex-direction: column; line-height: 1.35; }
+      .steplink .stx b { color: #342d44; font-weight: 600; }
+      .stepdetail { margin-top: 2px; color: #6c657c; }
+      .steplin { margin-top: 2px; color: #8b829e; font-size: 11px; }
+      .live-reasoning { opacity: .82; }
       .result-table-wrap { margin-top: 8px; overflow-x: auto; }
       .result-table { border-collapse: collapse; width: 100%; font-size: 12px; }
       .result-table th, .result-table td {
@@ -162,8 +210,11 @@
       </form>
     </div>
 
+    <script src="https://chat.prereasoner.com/lib/result-wire.js?v=1"></script>
+    <script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=1"></script>
     <script>
       var INITIAL_CONTEXT = <?!= initialContext ?>;
+      var REASON_BASE = <?!= reasonBase ?>;
       (function () {
         var state = { conversationId: '', history: [], turns: [], context: null, busy: false, checking: false,
           restoring: true, stale: false, syncError: false, errorAction: '', lastTurn: null,
@@ -178,16 +229,17 @@
 
         function renderSyncState(mode) {
           var modes = {
-            current: ['✓', 'Source data and answer are in sync', true],
-            checking: ['…', 'Checking data sync', true],
-            stale: ['↻', 'Answer is stale. Recalculate', false],
-            error: ['!', 'Data sync failed. Retry', false],
-            'session-error': ['!', 'Conversation state could not be updated. Retry', false]
+            current: ['✓', 'Synced', 'Source data and answer are in sync', true],
+            checking: ['…', 'Checking', 'Checking data sync', true],
+            stale: ['↻', 'Recalculate', 'Answer is stale. Recalculate', false],
+            error: ['!', 'Retry sync', 'Data sync failed. Retry', false],
+            'session-error': ['!', 'Retry save', 'Conversation state could not be updated. Retry', false]
           };
           if (!mode || !modes[mode]) { syncStateEl.hidden = true; return; }
           var item = modes[mode]; syncStateEl.hidden = false; syncStateEl.className = 'sync-state ' + mode;
-          syncStateEl.textContent = item[0]; syncStateEl.title = item[1]; syncStateEl.setAttribute('aria-label', item[1]);
-          syncStateEl.disabled = item[2];
+          syncStateEl.innerHTML = '<span class="sync-glyph">' + item[0] + '</span><span>' + item[1] + '</span>';
+          syncStateEl.title = item[2]; syncStateEl.setAttribute('aria-label', item[2]);
+          syncStateEl.disabled = item[3];
         }
 
         function esc(value) {
@@ -249,7 +301,7 @@
         function addPending(turn) {
           var answer = document.createElement('div');
           answer.className = 'answer pending';
-          answer.textContent = 'Reading your sheet…';
+          answer.innerHTML = '<div class="pending-status">Reading your sheet…</div>';
           turn.appendChild(answer);
           return answer;
         }
@@ -266,22 +318,232 @@
               window.clearInterval(timer);
               return;
             }
-            answer.textContent = messages[Math.min(index, messages.length - 1)];
+            if (answer.dataset.live !== '1') {
+              var status = answer.querySelector('.pending-status');
+              if (status) status.textContent = messages[Math.min(index, messages.length - 1)];
+            }
             index += 1;
           }, 8000);
           return function () { window.clearInterval(timer); };
         }
 
-        function renderReasoning(turn, reasoning) {
+        var liveSessionPromise = null;
+
+        function ensureLiveSession() {
+          if (!liveSessionPromise) {
+            liveSessionPromise = callServer('getPrereasonerLiveSession').then(function (session) {
+              if (!session || !session.token || !session.uid || !session.databaseUrl) throw new Error('Live updates unavailable');
+              return session;
+            }).catch(function (error) {
+              liveSessionPromise = null;
+              throw error;
+            });
+          }
+          return liveSessionPromise;
+        }
+
+        function liveTurnId() {
+          if (window.crypto && window.crypto.getRandomValues) {
+            var bytes = new Uint8Array(16);
+            window.crypto.getRandomValues(bytes);
+            return Array.prototype.map.call(bytes, function (value) {
+              return value.toString(16).padStart(2, '0');
+            }).join('');
+          }
+          return String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+        }
+
+        function orderedValues(value) {
+          if (Array.isArray(value)) return value.filter(function (item) { return item != null; });
+          if (!value || typeof value !== 'object') return [];
+          return Object.keys(value).sort(function (a, b) {
+            var an = /^\d+$/.test(a) ? Number(a) : NaN;
+            var bn = /^\d+$/.test(b) ? Number(b) : NaN;
+            return isNaN(an) || isNaN(bn) ? a.localeCompare(b) : an - bn;
+          }).map(function (key) { return value[key]; }).filter(function (item) { return item != null; });
+        }
+
+        async function liveJson(session, path, shallow) {
+          var url = String(session.databaseUrl).replace(/\/$/, '') + '/' + path + '.json?auth=' +
+            encodeURIComponent(session.token) + (shallow ? '&shallow=true' : '');
+          var response = await fetch(url, {cache: 'no-store'});
+          if (!response.ok) throw new Error('Live trace unavailable');
+          var value = await response.json();
+          return window.RESULT_WIRE ? window.RESULT_WIRE.decode(value) : value;
+        }
+
+        function liveStatus(value) {
+          var statuses = {
+            running: 'Understanding your question…', resolving: 'Connecting the relevant data…',
+            planning: 'Planning the analysis…', done: 'Finalizing the answer…'
+          };
+          return statuses[String(value || '').toLowerCase()] || 'Working through the data…';
+        }
+
+        function liveStepLabel(view, index) {
+          var labels = {join: 'Combined', world_join: 'Reference lookup', world_filter: 'Filtered',
+            filter: 'Filtered', time_filter: 'Date filter', having: 'Filtered', group_agg: 'Total',
+            yoy: 'Year-over-year', running: 'Running total', divide: 'Ratio', share: 'Share',
+            topn: 'Top results', sort: 'Sorted', cross: 'Candidate pairs', anti_join: 'Not yet matched',
+            select: 'Result'};
+          var operation = String((view && view.op) || '');
+          return labels[operation] || String((view && (view.logical_name || view.label)) || ('Step ' + (index + 1))).replace(/_/g, ' ');
+        }
+
+        function liveStepDetail(operation) {
+          var details = {join: 'Connected related rows across sheets.', world_join: 'Connected workbook values to reference data.',
+            world_filter: 'Applied the requested reference-data condition.', filter: 'Kept the rows that match the question.',
+            time_filter: 'Kept the rows in the requested period.', having: 'Kept the matching groups.',
+            group_agg: 'Grouped the matching rows and calculated the measure.', topn: 'Kept the highest-ranked results.',
+            sort: 'Ordered the result.', cross: 'Built the candidate combinations.', anti_join: 'Removed combinations already present in the data.',
+            divide: 'Divided the requested measures.', share: 'Calculated each value as a share of the total.'};
+          return details[operation] || 'Calculated an intermediate result.';
+        }
+
+        function liveReasoning(jobs) {
+          var steps = [], analysis = null;
+          Object.keys(jobs).forEach(function (jobId) {
+            var job = jobs[jobId];
+            if (job.analysis) analysis = job.analysis;
+            var views = orderedValues(job.views);
+            views.forEach(function (view, index) {
+              if (!view || typeof view !== 'object') return;
+              var rawSection = String(view.section || '');
+              steps.push({
+                label: liveStepLabel(view, index), kind: String(view.op || 'step'),
+                detail: liveStepDetail(String(view.op || '')),
+                inputs: Array.isArray(view.inputs) ? view.inputs.map(String) : [],
+                sectionId: rawSection ? jobId + ':' + rawSection : '',
+                sectionLabel: String(view.section_label || rawSection || ''),
+                sectionQuestion: String(view.section_question || ''),
+                sectionInputs: (Array.isArray(view.section_inputs) ? view.section_inputs : []).map(function (input) {
+                  return jobId + ':' + String(input);
+                }),
+                isOutput: !!view.is_output || index === views.length - 1
+              });
+            });
+          });
+          return {steps: steps, analysis: analysis};
+        }
+
+        function startLiveTurn(session, turnId, turn, pendingAnswer) {
+          var stopped = false, timer = null, jobs = {};
+          var base = 'runs/' + encodeURIComponent(session.uid) + '/';
+
+          async function refreshJob(jobId) {
+            if (!jobs[jobId]) jobs[jobId] = {views: {}, analysis: null};
+            var job = jobs[jobId];
+            var changed = false;
+            var values = await Promise.all([
+              liveJson(session, base + encodeURIComponent(jobId) + '/status', false),
+              job.analysis ? Promise.resolve(job.analysis) : liveJson(session, base + encodeURIComponent(jobId) + '/analysis', false),
+              liveJson(session, base + encodeURIComponent(jobId) + '/views', true)
+            ]);
+            if (values[0]) {
+              var status = pendingAnswer.querySelector('.pending-status');
+              if (status) status.textContent = liveStatus(values[0]);
+            }
+            if (!job.analysis && values[1]) { job.analysis = values[1]; changed = true; }
+            var keys = values[2] && typeof values[2] === 'object' ? Object.keys(values[2]) : [];
+            var fresh = keys.filter(function (key) { return !Object.prototype.hasOwnProperty.call(job.views, key); });
+            if (fresh.length) {
+              var loaded = await Promise.all(fresh.map(function (key) {
+                return liveJson(session, base + encodeURIComponent(jobId) + '/views/' + encodeURIComponent(key), false);
+              }));
+              fresh.forEach(function (key, index) { if (loaded[index]) job.views[key] = loaded[index]; });
+              changed = true;
+            }
+            return changed;
+          }
+
+          function showLiveReasoning() {
+            var data = liveReasoning(jobs);
+            if (!data.steps.length) return;
+            var previous = turn.querySelector('.live-reasoning');
+            var open = !!(previous && previous.open);
+            if (previous) previous.remove();
+            var details = renderReasoning(turn, data.steps, data.analysis, 'live-reasoning');
+            if (details) details.open = open;
+          }
+
+          async function poll() {
+            if (stopped) return;
+            try {
+              var root = await liveJson(session, base + encodeURIComponent(turnId), false);
+              if (root && typeof root === 'object') {
+                pendingAnswer.dataset.live = '1';
+                var status = pendingAnswer.querySelector('.pending-status');
+                if (status) status.textContent = liveStatus(root.status);
+                if (typeof root.reply === 'string' && root.reply.trim()) {
+                  var reply = pendingAnswer.querySelector('.streamed-reply');
+                  if (!reply) {
+                    reply = document.createElement('div'); reply.className = 'streamed-reply'; pendingAnswer.appendChild(reply);
+                  }
+                  renderAnswer(reply, root.reply);
+                  pendingAnswer.classList.add('has-reply');
+                }
+                if (root.conversation_id) state.conversationId = String(root.conversation_id);
+                var calls = orderedValues(root.calls).filter(function (call) { return call && call.jobId; });
+                var changed = false;
+                var updates = await Promise.all(calls.map(function (call) {
+                  return refreshJob(String(call.jobId)).catch(function () { return false; });
+                }));
+                updates.forEach(function (value) { changed = changed || value; });
+                if (changed) showLiveReasoning();
+              }
+            } catch (_) {
+              // The authoritative Apps Script request remains active; staged progress is the fallback.
+            }
+            if (!stopped) timer = window.setTimeout(poll, 1200);
+          }
+
+          poll();
+          return function () { stopped = true; if (timer) window.clearTimeout(timer); };
+        }
+
+        function renderer() { return window.PrereasonerTurnRenderer || null; }
+
+        function renderAnswer(answer, text) {
+          var shared = renderer();
+          if (shared) answer.innerHTML = shared.renderMarkdown(text || 'No answer was returned.');
+          else answer.textContent = text || 'No answer was returned.';
+        }
+
+        function analysisName(analysis) {
+          var shared = renderer();
+          var name = shared ? shared.analysisName(analysis) : '';
+          return name || 'this answer';
+        }
+
+        function fullAnalysisUrl() {
+          return state.conversationId ? REASON_BASE + encodeURIComponent(state.conversationId) : '';
+        }
+
+        function renderReasoning(turn, reasoning, analysis, extraClass) {
           if (!reasoning || !reasoning.length) return;
+          var shared = renderer();
+          if (!shared) return;
           var details = document.createElement('details');
-          details.className = 'reasoning';
-          details.innerHTML = '<summary>Reasoning steps</summary>' +
-            '<div class="reasoning-body">' + reasoning.map(function (step) {
-              return '<div class="operation"><div class="operation-label">' + esc(step.label || 'Step') + '</div>' +
-                (step.detail ? '<div class="operation-detail">' + esc(step.detail) + '</div>' : '') + '</div>';
-            }).join('') + '</div>';
+          details.className = 'reasoning' + (extraClass ? ' ' + extraClass : '');
+          var url = fullAnalysisUrl();
+          var title = 'Reasoning steps for ' + analysisName(analysis);
+          var tree = shared.renderReasoningTree(reasoning, {
+            renderStep: function (step, index) {
+              var label = esc(step.label || ('Step ' + (index + 1)));
+              var content = '<span class="idx">' + (index + 1) + '</span><span class="stx"><b>' + label + '</b>' +
+                (step.detail ? '<span class="stepdetail">' + esc(step.detail) + '</span>' : '') +
+                (step.inputs && step.inputs.length ? '<span class="steplin">From ' + esc(step.inputs.join(', ').replace(/_/g, ' ')) + '</span>' : '') + '</span>';
+              return url
+                ? '<a class="steplink" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" title="Open this reasoning in Prereasoner">' + content + '</a>'
+                : '<div class="steplink">' + content + '</div>';
+            }
+          });
+          details.innerHTML = '<summary><span class="reasoning-title">' + esc(title) + '</span></summary>' +
+            '<div class="reasoning-body">' +
+            (url ? '<a class="analysis-open" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Open full analysis ↗</a>' : '') +
+            tree + '</div>';
           turn.appendChild(details);
+          return details;
         }
 
         function renderResult(turn, result) {
@@ -305,6 +567,7 @@
             question: String(question || ''),
             reply: String(response.reply || 'No answer was returned.'),
             reasoning: Array.isArray(response.reasoning || response.steps) ? (response.reasoning || response.steps) : [],
+            analysis: response.analysis && typeof response.analysis === 'object' ? response.analysis : null,
             result: response.result || null
           };
         }
@@ -313,9 +576,9 @@
           var turn = addUserTurn(data.question);
           var answer = document.createElement('div');
           answer.className = 'answer';
-          answer.textContent = data.reply || 'No answer was returned.';
+          renderAnswer(answer, data.reply);
           turn.appendChild(answer);
-          renderReasoning(turn, data.reasoning);
+          renderReasoning(turn, data.reasoning, data.analysis);
           renderResult(turn, data.result);
           return turn;
         }
@@ -325,7 +588,8 @@
             client: 'google-sheets-addon',
             version: 1,
             history: state.history.slice(-24),
-            turns: state.turns.slice(-24)
+            turns: state.turns.slice(-24),
+            syncedFingerprint: state.syncedFingerprint
           };
         }
 
@@ -341,11 +605,13 @@
           if (replacing) while (turn.children.length > 1) turn.removeChild(turn.lastChild);
           var pending = turn.querySelector('.pending');
           if (pending) pending.remove();
+          var liveReasoning = turn.querySelector('.live-reasoning');
+          if (liveReasoning) liveReasoning.remove();
           var answer = document.createElement('div');
           answer.className = 'answer';
-          answer.textContent = response.reply || 'No answer was returned.';
+          renderAnswer(answer, response.reply);
           turn.appendChild(answer);
-          renderReasoning(turn, response.reasoning || response.steps);
+          renderReasoning(turn, response.reasoning || response.steps, response.analysis);
           renderResult(turn, response.result);
           var turnData = completedTurnData(turn.querySelector('.question').textContent, response);
           if (replacing && state.turns.length) state.turns[state.turns.length - 1] = turnData;
@@ -383,19 +649,28 @@
           var turn = addUserTurn(text);
           var pendingAnswer = addPending(turn);
           var stopProgress = startPendingProgress(pendingAnswer);
+          var stopLive = function () {};
+          var turnId = liveTurnId();
           setBusy(true);
           renderSyncState('checking');
           try {
             if (state.conversationId) {
-              var source = await callServer('syncPrereasonerConversation', {
-                conversationId: state.conversationId
-              });
-              if (source.context) renderContext(source.context, false);
+              var latest = await callServer('getSheetContext');
+              renderContext(latest, false);
+              if (state.syncedFingerprint && latest.fingerprint !== state.syncedFingerprint) {
+                var source = await callServer('syncPrereasonerConversation', {conversationId: state.conversationId});
+                if (source.context) renderContext(source.context, false);
+              }
             }
+            try {
+              var liveSession = await ensureLiveSession();
+              stopLive = startLiveTurn(liveSession, turnId, turn, pendingAnswer);
+            } catch (_) {}
             var response = await callServer('askPrereasoner', {
               question: text,
               conversationId: state.conversationId,
-              history: state.history
+              history: state.history,
+              turnId: turnId
             });
             state.conversationId = response.conversationId || state.conversationId;
             finishTurn(turn, response);
@@ -415,6 +690,7 @@
             questionEl.scrollTop = 0;
             renderSyncState(state.stale ? 'stale' : (state.conversationId ? 'current' : null));
           } finally {
+            stopLive();
             stopProgress();
             setBusy(false);
             questionEl.focus();
@@ -425,11 +701,16 @@
         async function checkSync() {
           if (!state.conversationId || state.busy || state.restoring || state.checking ||
               (state.syncError && state.errorAction === 'save') || document.hidden) return;
+          if (state.stale) { renderSyncState('stale'); return; }
           state.checking = true; renderSyncState('checking'); updateComposerAvailability();
           try {
-            var result = await callServer('syncPrereasonerConversation', {conversationId: state.conversationId});
-            if (result.context) renderContext(result.context, false);
-            if (result.changed) state.stale = true;
+            var context = await callServer('getSheetContext');
+            renderContext(context, false);
+            if (state.syncedFingerprint && context.fingerprint !== state.syncedFingerprint) {
+              var result = await callServer('syncPrereasonerConversation', {conversationId: state.conversationId});
+              if (result.context) renderContext(result.context, false);
+              state.stale = true;
+            }
             state.syncError = false; state.errorAction = '';
             renderSyncState(state.stale ? 'stale' : 'current');
           } catch (_) {
@@ -440,10 +721,16 @@
         async function recalculateCurrent() {
           if (state.busy || state.checking || !state.stale || !state.lastTurn || !state.lastQuestion) return;
           var turn = state.lastTurn, baseHistory = state.history.slice(0, -2);
+          var progress = addPending(turn), stopProgress = startPendingProgress(progress), stopLive = function () {};
+          var turnId = liveTurnId();
           turn.classList.add('recalculating'); setBusy(true); renderSyncState('checking');
           try {
+            try {
+              var liveSession = await ensureLiveSession();
+              stopLive = startLiveTurn(liveSession, turnId, turn, progress);
+            } catch (_) {}
             var response = await callServer('askPrereasoner', {
-              question: state.lastQuestion, conversationId: state.conversationId, history: baseHistory
+              question: state.lastQuestion, conversationId: state.conversationId, history: baseHistory, turnId: turnId
             });
             state.conversationId = response.conversationId || state.conversationId;
             finishTurn(turn, response, true, baseHistory);
@@ -453,8 +740,9 @@
               markSessionSaveError();
             }
           } catch (_) {
+            var pending = turn.querySelector('.pending'); if (pending) pending.remove();
             turn.classList.remove('recalculating'); state.syncError = true; state.errorAction = 'recalc'; renderSyncState('error');
-          } finally { setBusy(false); questionEl.focus(); }
+          } finally { stopLive(); stopProgress(); setBusy(false); questionEl.focus(); }
         }
 
         syncStateEl.addEventListener('click', async function () {
@@ -524,6 +812,7 @@
           state.restoring = false;
           state.conversationId = String(payload.conversationId || '');
           state.stale = !!payload.stale;
+          state.syncedFingerprint = '';
           state.history = [];
           state.turns = [];
           state.lastTurn = null;
@@ -536,6 +825,12 @@
             state.turns = saved.turns.slice(-24).map(function (item) {
               return completedTurnData(item && item.question, item || {});
             });
+            state.syncedFingerprint = String(saved.syncedFingerprint || '');
+            if (!state.syncedFingerprint && !state.stale && state.context) {
+              state.syncedFingerprint = String(state.context.fingerprint || '');
+            }
+            if (state.syncedFingerprint && state.context &&
+                state.syncedFingerprint !== String(state.context.fingerprint || '')) state.stale = true;
             state.turns.forEach(function (item) { state.lastTurn = renderCompletedTurn(item); });
             state.lastQuestion = state.turns[state.turns.length - 1].question;
             renderSyncState(state.stale ? 'stale' : 'current');
