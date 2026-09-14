@@ -468,7 +468,16 @@ function cotHtml(){
   const body=asksLine()+derivLinks();
   if(!body&&!TURN_ANALYSIS) return '';
   const heading=TURN_ANALYSIS?analysisHeading(TURN_ANALYSIS):'<span class=analysisprefix>Reasoning steps</span>';
+  if(window.PrereasonerTurnRenderer)return window.PrereasonerTurnRenderer.renderReasoningPanel({
+    titleHtml:heading,bodyHtml:body,open:COTOPEN,className:'cot',onToggle:'setCotOpen(this.open)'
+  });
   return '<div class="cot'+(COTOPEN?' open':'')+'"><div class=cotbar><button class=cotbtn aria-label="Toggle reasoning steps" onclick="toggleCot()"><span class=cotchev>&#8250;</span></button>'+heading+'</div><div class=cotbody'+(COTOPEN?'':' hidden')+'>'+body+'</div></div>';
+}
+function setCotOpen(open){ COTOPEN=!!open;
+  if(COTOPEN){ const sc=$('rail'), tree=sc&&sc.querySelector('.cot[open],.cot.open'); if(tree){
+    const top=tree.getBoundingClientRect().top-sc.getBoundingClientRect().top+sc.scrollTop;
+    sc.scrollTop=Math.max(0,top-8);
+  }}
 }
 function toggleCot(){ COTOPEN=!COTOPEN; renderRail();
   if(COTOPEN){ const sc=$('rail'), tree=sc&&sc.querySelector('.cot.open'); if(tree){
@@ -483,10 +492,12 @@ function turnHtml(){                                          // the CURRENT (li
 }
 function turnHtmlBody(){
   if(CONV){ let h='';
-    if(ORCH) h+=cotHtml();                                  // "Reasoning steps" ABOVE the answer (part of THIS turn, not floating near the next prompt)
-    h+='<div class=convmsg>'+conv2html(CONV)+'</div>';       // the plain answer (or a clarify/meta reply), for the end user
+    const reasoning=ORCH?cotHtml():'';
+    const after=!ORCH&&PRESENT?derivLinks():'';
+    h=window.PrereasonerTurnRenderer
+      ? window.PrereasonerTurnRenderer.renderAssistantTurn({reasoningHtml:reasoning,answerHtml:conv2html(CONV),afterHtml:after})
+      : reasoning+'<div class=convmsg>'+conv2html(CONV)+'</div>'+after;
     if(CONVPROP) h+='<div class=convrun><button onclick="runProposed()">Run &ldquo;'+esc(CONVPROP)+'&rdquo;</button></div>';
-    if(!ORCH&&PRESENT) h+=derivLinks();                      // present mode keeps the derivation reachable from the rail
     return h; }
   if(CONVPENDING) return '<div class=statusline><span class=spin></span> '+esc(STATUS)+'</div>';
   // LIVE PROSE: an orchestrated turn streams its growing reply onto the turn's RTDB `reply` node
@@ -579,8 +590,11 @@ async function loadAnalysis(analysisId,revision){
 }
 function renderRail(){
   let h='';
-  for(const t of CHAT) h+='<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
-  h+='<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
+  const shared=window.PrereasonerTurnRenderer;
+  for(const t of CHAT) h+=shared?shared.renderTurn({question:t.q,assistantHtml:t.html})
+    :'<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
+  h+=shared?shared.renderTurn({question:question,assistantHtml:turnHtml()})
+    :'<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
   // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps send
   // disabled until it lands — otherwise the follow-up would POST conversation_id:null and orphan into a fresh

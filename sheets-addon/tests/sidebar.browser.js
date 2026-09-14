@@ -46,7 +46,7 @@ const {chromium} = require('@playwright/test');
   const fixtureContext = JSON.stringify({spreadsheet:'Prereasoner Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers'}],privacyUrl:'https://chat.prereasoner.com/privacy',termsUrl:'https://chat.prereasoner.com/terms',supportUrl:'https://chat.prereasoner.com/support'});
   const prepared = sidebar
     .replace('<script src="https://chat.prereasoner.com/lib/result-wire.js?v=1"></script>', '<script>' + resultWire + '</script>')
-    .replace('<script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=1"></script>', '<script>' + turnRenderer + '</script>')
+    .replace('<script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=2"></script>', '<script>' + turnRenderer + '</script>')
     .replace('<?!= initialContext ?>', fixtureContext)
     .replace('<?!= reasonBase ?>', JSON.stringify('https://chat.prereasoner.com/reason/'));
   await page.setContent(mock + prepared, {waitUntil: 'domcontentloaded'});
@@ -61,6 +61,10 @@ const {chromium} = require('@playwright/test');
   await page.getByText('Streaming now', {exact:false}).waitFor();
   await page.locator('.live-reasoning').waitFor();
   await page.getByText('US$1,240', {exact:false}).waitFor();
+  const completedTurn = page.locator('.turn-pair').last();
+  const reasoningPosition = await completedTurn.locator('.turn-reasoning').evaluate(node => Array.from(node.parentElement.children).indexOf(node));
+  const answerPosition = await completedTurn.locator('.turn-answer').evaluate(node => Array.from(node.parentElement.children).indexOf(node));
+  if (reasoningPosition >= answerPosition) throw new Error('Reasoning must use the shared before-answer turn order');
   const sourceLink = page.getByRole('link', {name:'Open source'});
   if (await sourceLink.getAttribute('href') !== 'https://example.com/source') throw new Error('Markdown link was flattened');
   await page.locator('details.reasoning').click();

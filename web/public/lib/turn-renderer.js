@@ -1,6 +1,6 @@
-// Shared answer + reasoning presentation for the web workspace and Google Sheets add-on.
-// Both surfaces supply their own CSS and actions; this file owns safe inline Markdown and
-// the section-aware reasoning tree so one client cannot silently flatten the other.
+// Shared turn presentation for the web workspace and Google Sheets add-on.
+// Both surfaces supply their own CSS and actions; this file owns the complete turn order,
+// safe inline Markdown, the reasoning disclosure, and the section-aware reasoning tree.
 (function (root) {
   'use strict';
 
@@ -165,12 +165,49 @@
     return '<div class="reasontree">' + html + '</div>';
   }
 
+  function renderReasoningPanel(options) {
+    options = options || {};
+    var body = String(options.bodyHtml || '');
+    if (!body && !options.title && !options.titleHtml) return '';
+    var title = options.titleHtml != null ? String(options.titleHtml) : escapeHtml(options.title || 'Reasoning steps');
+    var url = safeHttpUrl(options.analysisUrl);
+    var className = 'turn-reasoning reasoning' + (options.className ? ' ' + escapeAttribute(options.className) : '');
+    var toggle = options.onToggle ? ' ontoggle="' + escapeAttribute(options.onToggle) + '"' : '';
+    return '<details class="' + className + '"' + (options.open ? ' open' : '') + toggle + '>' +
+      '<summary class="reasoning-header cotbar"><span class="reasoning-toggle cotbtn" aria-hidden="true">' +
+      '<span class="cotchev">&#8250;</span></span><span class="reasoning-title">' + title + '</span></summary>' +
+      '<div class="reasoning-body">' +
+      (url ? '<a class="analysis-open" href="' + escapeAttribute(url) +
+        '" target="_blank" rel="noopener noreferrer">Open full analysis &#8599;</a>' : '') +
+      body + '</div></details>';
+  }
+
+  function renderAssistantTurn(options) {
+    options = options || {};
+    var answer = options.answerHtml != null
+      ? String(options.answerHtml)
+      : renderMarkdown(options.reply || '');
+    return '<div class="turn-content">' + String(options.reasoningHtml || '') +
+      '<div class="turn-answer convmsg answer">' + answer + '</div>' +
+      String(options.afterHtml || '') + '</div>';
+  }
+
+  function renderTurn(options) {
+    options = options || {};
+    return '<div class="turn-pair"><div class="turn user"><div class="msg question">' +
+      escapeHtml(options.question || '') + '</div></div><div class="turn ai">' +
+      String(options.assistantHtml || '') + '</div></div>';
+  }
+
   root.PrereasonerTurnRenderer = {
     analysisName: analysisName,
     escapeAttribute: escapeAttribute,
     escapeHtml: escapeHtml,
+    renderAssistantTurn: renderAssistantTurn,
     renderMarkdown: renderMarkdown,
+    renderReasoningPanel: renderReasoningPanel,
     renderReasoningTree: renderReasoningTree,
+    renderTurn: renderTurn,
     safeHttpUrl: safeHttpUrl
   };
 }(typeof window === 'undefined' ? globalThis : window));

@@ -327,11 +327,16 @@ table.wb{border-collapse:separate;border-spacing:0;font-size:13px;min-width:100%
 .convrun button:hover{background:#eee9fc;border-color:var(--brand)}
 /* orchestrated (Sonnet assist): the collapsible chain of thought + the mode badge */
 .cot{margin-top:7px}
+.cot summary{display:flex;align-items:center;gap:4px;min-width:0;padding:2px 0;color:#9a93ad;font:12px var(--disp);cursor:pointer;list-style:none}
+.cot summary::-webkit-details-marker{display:none}
+.cot .reasoning-title{display:inline-flex;align-items:center;gap:4px;min-width:0}
+.cot .reasoning-body{margin-top:6px}
 .cotbar{display:flex;align-items:center;gap:4px;min-width:0;color:#9a93ad;font:12px var(--disp)}
 .cotbtn{all:unset;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;color:#9a93ad;font:12px var(--disp);flex:0 0 auto}
 .cotbtn:hover{color:var(--brand)}
 .cotchev{display:inline-block;transition:transform .15s;font:600 13px var(--disp)}
 .cot.open .cotchev{transform:rotate(90deg)}
+.cot[open] .cotchev{transform:rotate(90deg)}
 .cotbody{margin-top:6px}
 .analysisprefix{white-space:nowrap}
 .analysislink{all:unset;cursor:pointer;color:var(--brand);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-bottom:1px solid transparent}

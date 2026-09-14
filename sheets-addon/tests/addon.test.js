@@ -46,7 +46,7 @@ assert.strictEqual(reasoning.result.rows[0][0], '200');
 
 assert(sidebar.includes('Ask about this spreadsheet'));
 assert(sidebar.includes('Reasoning steps for '));
-assert(sidebar.includes('Open full analysis'));
+assert(turnRenderer.includes('Open full analysis'));
 assert(sidebar.includes('turn-renderer.js'));
 assert(sidebar.includes('getPrereasonerLiveSession'));
 assert(sidebar.includes('startLiveTurn'));

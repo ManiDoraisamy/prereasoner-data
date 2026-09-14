@@ -83,7 +83,9 @@
         line-height: 1.45;
       }
       .restore-note strong { display: block; margin-bottom: 4px; color: #202124; font-weight: 500; }
-      .turn { margin: 14px 0 18px; }
+      .turn-pair { margin: 14px 0 18px; }
+      .turn.user { display: flex; justify-content: flex-end; }
+      .turn.ai { min-width: 0; }
       .question {
         display: inline-block;
         max-width: 94%;
@@ -117,11 +119,18 @@
         padding-top: 1px;
       }
       details.reasoning summary {
+        display: flex;
+        align-items: center;
+        gap: 4px;
         padding: 6px 2px;
         color: #5f6368;
         cursor: pointer;
-        list-style-position: inside;
+        list-style: none;
       }
+      details.reasoning summary::-webkit-details-marker { display: none; }
+      .reasoning-toggle { display: inline-flex; width: 14px; height: 18px; align-items: center; justify-content: center; flex: 0 0 auto; }
+      .cotchev { display: inline-block; transition: transform .15s; }
+      details.reasoning[open] .cotchev { transform: rotate(90deg); }
       .reasoning-title { color: #4b4167; font-weight: 500; }
       .reasoning-body { padding: 1px 0 4px; color: #5f6368; }
       .analysis-open { display: inline-block; margin: 1px 0 7px 24px; color: #4f2fd0; text-decoration: none; font-size: 11px; }
@@ -211,7 +220,7 @@
     </div>
 
     <script src="https://chat.prereasoner.com/lib/result-wire.js?v=1"></script>
-    <script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=1"></script>
+    <script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=2"></script>
     <script>
       var INITIAL_CONTEXT = <?!= initialContext ?>;
       var REASON_BASE = <?!= reasonBase ?>;
@@ -299,19 +308,31 @@
 
         function addUserTurn(text) {
           var empty = threadEl.querySelector('.empty'); if (empty) empty.remove();
-          var turn = document.createElement('div');
-          turn.className = 'turn';
-          turn.innerHTML = '<div class="question">' + esc(text) + '</div>';
+          var shared = renderer();
+          var holder = document.createElement('div');
+          holder.innerHTML = shared
+            ? shared.renderTurn({question: text})
+            : '<div class="turn-pair"><div class="turn user"><div class="msg question">' + esc(text) + '</div></div><div class="turn ai"></div></div>';
+          var turn = holder.firstElementChild;
           threadEl.appendChild(turn);
           scrollConversation(true);
           return turn;
+        }
+
+        function assistantMount(turn) {
+          return turn.querySelector('.turn.ai') || turn;
+        }
+
+        function turnContentMount(turn) {
+          var mount = assistantMount(turn);
+          return mount.querySelector('.turn-content') || mount;
         }
 
         function addPending(turn) {
           var answer = document.createElement('div');
           answer.className = 'answer pending';
           answer.innerHTML = '<div class="pending-status">Reading your sheet…</div>';
-          turn.appendChild(answer);
+          assistantMount(turn).appendChild(answer);
           scrollConversation(true);
           return answer;
         }
@@ -531,12 +552,10 @@
           return state.conversationId ? REASON_BASE + encodeURIComponent(state.conversationId) : '';
         }
 
-        function renderReasoning(turn, reasoning, analysis, extraClass) {
+        function reasoningMarkup(reasoning, analysis, extraClass) {
           if (!reasoning || !reasoning.length) return;
           var shared = renderer();
           if (!shared) return;
-          var details = document.createElement('details');
-          details.className = 'reasoning' + (extraClass ? ' ' + extraClass : '');
           var url = fullAnalysisUrl();
           var title = 'Reasoning steps for ' + analysisName(analysis);
           var tree = shared.renderReasoningTree(reasoning, {
@@ -550,11 +569,23 @@
                 : '<div class="steplink">' + content + '</div>';
             }
           });
-          details.innerHTML = '<summary><span class="reasoning-title">' + esc(title) + '</span></summary>' +
-            '<div class="reasoning-body">' +
-            (url ? '<a class="analysis-open" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">Open full analysis ↗</a>' : '') +
-            tree + '</div>';
-          turn.appendChild(details);
+          return shared.renderReasoningPanel({
+            title: title,
+            bodyHtml: tree,
+            analysisUrl: url,
+            className: extraClass || ''
+          });
+        }
+
+        function renderReasoning(turn, reasoning, analysis, extraClass) {
+          var html = reasoningMarkup(reasoning, analysis, extraClass);
+          if (!html) return;
+          var holder = document.createElement('div');
+          holder.innerHTML = html;
+          var details = holder.firstElementChild;
+          var mount = assistantMount(turn);
+          var answer = mount.querySelector('.answer');
+          mount.insertBefore(details, answer || null);
           return details;
         }
 
@@ -571,7 +602,7 @@
             return '<tr>' + row.map(function (cell) { return '<td>' + esc(cell) + '</td>'; }).join('') + '</tr>';
           }).join('') + '</tbody></table>';
           wrap.innerHTML = html;
-          turn.appendChild(wrap);
+          turnContentMount(turn).appendChild(wrap);
         }
 
         function completedTurnData(question, response) {
@@ -587,11 +618,12 @@
 
         function renderCompletedTurn(data) {
           var turn = addUserTurn(data.question);
-          var answer = document.createElement('div');
-          answer.className = 'answer';
-          renderAnswer(answer, data.reply);
-          turn.appendChild(answer);
-          renderReasoning(turn, data.reasoning, data.analysis);
+          var shared = renderer();
+          var reasoning = reasoningMarkup(data.reasoning, data.analysis) || '';
+          var answerHtml = shared ? shared.renderMarkdown(data.reply || 'No answer was returned.') : esc(data.reply || 'No answer was returned.');
+          assistantMount(turn).innerHTML = shared
+            ? shared.renderAssistantTurn({reasoningHtml: reasoning, answerHtml: answerHtml})
+            : reasoning + '<div class="turn-answer convmsg answer">' + answerHtml + '</div>';
           if (data.resultTrusted) renderResult(turn, data.result);
           return turn;
         }
@@ -615,16 +647,18 @@
         }
 
         function finishTurn(turn, response, replacing, baseHistory) {
-          if (replacing) while (turn.children.length > 1) turn.removeChild(turn.lastChild);
+          var mount = assistantMount(turn);
+          if (replacing) mount.innerHTML = '';
           var pending = turn.querySelector('.pending');
           if (pending) pending.remove();
           var liveReasoning = turn.querySelector('.live-reasoning');
           if (liveReasoning) liveReasoning.remove();
-          var answer = document.createElement('div');
-          answer.className = 'answer';
-          renderAnswer(answer, response.reply);
-          turn.appendChild(answer);
-          renderReasoning(turn, response.reasoning || response.steps, response.analysis);
+          var shared = renderer();
+          var reasoning = reasoningMarkup(response.reasoning || response.steps, response.analysis) || '';
+          var answerHtml = shared ? shared.renderMarkdown(response.reply || 'No answer was returned.') : esc(response.reply || 'No answer was returned.');
+          mount.innerHTML = shared
+            ? shared.renderAssistantTurn({reasoningHtml: reasoning, answerHtml: answerHtml})
+            : reasoning + '<div class="turn-answer convmsg answer">' + answerHtml + '</div>';
           if (response.resultTrusted === true) renderResult(turn, response.result);
           var turnData = completedTurnData(turn.querySelector('.question').textContent, response);
           if (replacing && state.turns.length) state.turns[state.turns.length - 1] = turnData;
