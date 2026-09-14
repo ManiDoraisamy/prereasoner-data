@@ -4,6 +4,7 @@
   "runtimeVersion": "V8",
   "urlFetchWhitelist": [
     "https://chat.prereasoner.com/",
+    "https://prereasoner-chat-271377281957.us-central1.run.app/",
     "https://identitytoolkit.googleapis.com/"
   ],
   "oauthScopes": [

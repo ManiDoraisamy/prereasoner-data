@@ -249,9 +249,27 @@
         function addPending(turn) {
           var answer = document.createElement('div');
           answer.className = 'answer pending';
-          answer.textContent = 'Thinking…';
+          answer.textContent = 'Reading your sheet…';
           turn.appendChild(answer);
           return answer;
+        }
+
+        function startPendingProgress(answer) {
+          var messages = [
+            'Planning the analysis…',
+            'Calculating and verifying…',
+            'Still working — complex questions can take about a minute.'
+          ];
+          var index = 0;
+          var timer = window.setInterval(function () {
+            if (!answer.isConnected || !answer.classList.contains('pending')) {
+              window.clearInterval(timer);
+              return;
+            }
+            answer.textContent = messages[Math.min(index, messages.length - 1)];
+            index += 1;
+          }, 8000);
+          return function () { window.clearInterval(timer); };
         }
 
         function renderReasoning(turn, reasoning) {
@@ -363,7 +381,8 @@
           if (!text) return;
           questionEl.value = '';
           var turn = addUserTurn(text);
-          addPending(turn);
+          var pendingAnswer = addPending(turn);
+          var stopProgress = startPendingProgress(pendingAnswer);
           setBusy(true);
           renderSyncState('checking');
           try {
@@ -390,6 +409,7 @@
             questionEl.scrollTop = 0;
             renderSyncState(state.stale ? 'stale' : (state.conversationId ? 'current' : null));
           } finally {
+            stopProgress();
             setBusy(false);
             questionEl.focus();
             if (questionEl.value) questionEl.scrollTop = 0;

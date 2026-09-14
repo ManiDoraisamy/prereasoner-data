@@ -1,4 +1,6 @@
-var PREREASONER_CHAT_URL = 'https://chat.prereasoner.com/chat';
+// Apps Script calls Cloud Run directly so requests can use the service's 300-second timeout.
+// Firebase Hosting's rewrite can return a gateway timeout before a cold LLM presentation finishes.
+var PREREASONER_CHAT_URL = 'https://prereasoner-chat-271377281957.us-central1.run.app/chat';
 var PREREASONER_REASON_URL = 'https://chat.prereasoner.com/reason/';
 var PREREASONER_API_URL = 'https://chat.prereasoner.com';
 var PREREASONER_PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
