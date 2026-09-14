@@ -226,6 +226,14 @@
         var sendEl = document.getElementById('send');
         var sheetCountEl = document.getElementById('sheetCount');
         var syncStateEl = document.getElementById('syncState');
+        var scrollEl = document.querySelector('.branding-below');
+
+        function scrollConversation(force) {
+          if (!scrollEl) return;
+          var nearBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight < 90;
+          if (!force && !nearBottom) return;
+          window.requestAnimationFrame(function () { scrollEl.scrollTop = scrollEl.scrollHeight; });
+        }
 
         function renderSyncState(mode) {
           var modes = {
@@ -295,6 +303,7 @@
           turn.className = 'turn';
           turn.innerHTML = '<div class="question">' + esc(text) + '</div>';
           threadEl.appendChild(turn);
+          scrollConversation(true);
           return turn;
         }
 
@@ -303,6 +312,7 @@
           answer.className = 'answer pending';
           answer.innerHTML = '<div class="pending-status">Reading your sheet…</div>';
           turn.appendChild(answer);
+          scrollConversation(true);
           return answer;
         }
 
@@ -464,6 +474,7 @@
             if (previous) previous.remove();
             var details = renderReasoning(turn, data.steps, data.analysis, 'live-reasoning');
             if (details) details.open = open;
+            scrollConversation(false);
           }
 
           async function poll() {
@@ -481,6 +492,7 @@
                   }
                   renderAnswer(reply, root.reply);
                   pendingAnswer.classList.add('has-reply');
+                  scrollConversation(false);
                 }
                 if (root.conversation_id) state.conversationId = String(root.conversation_id);
                 var calls = orderedValues(root.calls).filter(function (call) { return call && call.jobId; });
@@ -568,7 +580,8 @@
             reply: String(response.reply || 'No answer was returned.'),
             reasoning: Array.isArray(response.reasoning || response.steps) ? (response.reasoning || response.steps) : [],
             analysis: response.analysis && typeof response.analysis === 'object' ? response.analysis : null,
-            result: response.result || null
+            result: response.result || null,
+            resultTrusted: response.resultTrusted === true
           };
         }
 
@@ -579,7 +592,7 @@
           renderAnswer(answer, data.reply);
           turn.appendChild(answer);
           renderReasoning(turn, data.reasoning, data.analysis);
-          renderResult(turn, data.result);
+          if (data.resultTrusted) renderResult(turn, data.result);
           return turn;
         }
 
@@ -612,7 +625,7 @@
           renderAnswer(answer, response.reply);
           turn.appendChild(answer);
           renderReasoning(turn, response.reasoning || response.steps, response.analysis);
-          renderResult(turn, response.result);
+          if (response.resultTrusted === true) renderResult(turn, response.result);
           var turnData = completedTurnData(turn.querySelector('.question').textContent, response);
           if (replacing && state.turns.length) state.turns[state.turns.length - 1] = turnData;
           else state.turns.push(turnData);
@@ -626,7 +639,7 @@
           if (response.context) renderContext(response.context, false);
           state.syncedFingerprint = response.context && response.context.fingerprint || state.syncedFingerprint;
           state.stale = false; state.syncError = false; state.errorAction = ''; turn.classList.remove('recalculating'); renderSyncState('current');
-          threadEl.scrollTop = threadEl.scrollHeight;
+          scrollConversation(true);
         }
 
         function setBusy(busy) {
@@ -834,7 +847,7 @@
             state.turns.forEach(function (item) { state.lastTurn = renderCompletedTurn(item); });
             state.lastQuestion = state.turns[state.turns.length - 1].question;
             renderSyncState(state.stale ? 'stale' : 'current');
-            threadEl.scrollTop = threadEl.scrollHeight;
+            scrollConversation(true);
           } else if (state.conversationId) {
             var note = document.createElement('div');
             note.className = 'restore-note';

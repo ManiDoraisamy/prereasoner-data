@@ -78,6 +78,13 @@ class ComposedKnowledgeQuery:
         aggregate. So whether a question needs composition is mostly a MODEL readout, not a keyword list."""
         if WORLD_MEASURES.search(question or ""):
             return True
+        # COUNT(DISTINCT <uploaded column>) is a complete own-data request. The learned primitive head can
+        # occasionally mistake prose such as "across all data rows" for GROUP, after which ComposeEngine is free
+        # to invent a world dimension (the production failure grouped distinct order IDs by country). Route this
+        # explicit shape to KnowledgeQuery, whose world-aware delegate still handles any real place predicate and
+        # whose typed-AST planner emits the exact COUNT(DISTINCT ...) over the named uploaded column.
+        if self._explicit_own_distinct_count(tables, question):
+            return False
         try:
             # A bare COUNT no longer gates to the engine. The delegate's count+world path was strengthened (the
             # entity-count fix: "total/how many <entity> [in <place>]" -> COUNT via the qid world join), and a
@@ -89,6 +96,22 @@ class ComposedKnowledgeQuery:
         except Exception as e:                            # noqa: BLE001 — the gate must never break the world path
             print(f"compose gate failed, delegating: {type(e).__name__}", flush=True)
             return False
+
+    @staticmethod
+    def _explicit_own_distinct_count(tables, question):
+        words = re.findall(r"[a-z0-9]+", str(question or "").lower())
+        word_set = set(words)
+        if not (word_set & {"distinct", "unique", "different"}):
+            return False
+        if not ("count" in word_set or "number" in word_set or ("how" in word_set and "many" in word_set)):
+            return False
+        normalized_question = " ".join(words)
+        for table in tables or ():
+            for column in (table.get("columns") or ()) if isinstance(table, dict) else ():
+                column_words = re.findall(r"[a-z0-9]+", str(column).lower())
+                if column_words and " ".join(column_words) in normalized_question:
+                    return True
+        return False
 
     # A question with a DATA-INTENT word, or that names a schema column/table, or whose token resolves to a
     # world entity, is a query OVER THE DATA. A question with NONE of these ("how does this work?") is almost

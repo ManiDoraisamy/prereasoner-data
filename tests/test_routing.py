@@ -74,6 +74,17 @@ def test_composed_gate_with_no_world_match_delegates_without_crashing():
     print("  PASS  composed cue + empty world lookup -> delegate")
 
 
+def test_explicit_distinct_uploaded_column_bypasses_spurious_group_readout():
+    query = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
+    query.reader = SimpleNamespace(present=lambda question: {"GROUP"})
+    tables = [{"name": "customers", "columns": ["order ID", "customer", "city"], "rows": []}]
+    question = "Count the unique values in the 'order ID' column across all data rows."
+    assert query._explicit_own_distinct_count(tables, question)
+    assert query._composed(tables, question) is False
+    assert query._composed(tables, "Count customers by population") is True
+    print("  PASS  explicit COUNT(DISTINCT uploaded column) -> delegate")
+
+
 def test_world_group_by_stands():
     # a necessary world dependency + a MULTI-column group_agg that produced rows -> per-dimension breakdown -> compose.
     grouped = [{"op": "world_join"}, {"op": "group_agg", "columns": ["continent", "total"]}]
@@ -187,6 +198,7 @@ TESTS = [
     test_redundant_world_join_is_own_data,
     test_plain_world_lookup_defers_to_delegate,
     test_composed_gate_with_no_world_match_delegates_without_crashing,
+    test_explicit_distinct_uploaded_column_bypasses_spurious_group_readout,
     test_world_group_by_stands,
     test_required_op_the_plan_cannot_realize_delegates,
     test_constants_are_coherent,

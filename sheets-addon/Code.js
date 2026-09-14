@@ -420,7 +420,8 @@ function normalizeHistory_(history) {
 function clientResponse_(raw, context, question) {
   raw = raw || {};
   var reasoning = extractReasoning_(raw);
-  var reply = String(raw.reply || '').trim();
+  var authoredReply = String(raw.reply || '').trim();
+  var reply = authoredReply;
   if (!reply) reply = fallbackReply_(reasoning.result);
   return {
     reply: reply,
@@ -430,6 +431,7 @@ function clientResponse_(raw, context, question) {
     reasoning: reasoning.steps,
     analysis: reasoning.analysis,
     result: reasoning.result,
+    resultTrusted: !authoredReply,
     context: context,
     question: question
   };
