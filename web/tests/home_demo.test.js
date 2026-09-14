@@ -184,6 +184,11 @@ assert(!/<div class=sub>/.test(html), 'the hero carries no subline under the hea
 // the app, so "/" is already where the visitor stands.
 assert(html.includes('<a class=brand href="https://prereasoner.com/">'),
   'the header brand must link to the marketing site');
+assert(html.includes('<img class=logo src="https://prereasoner.com/logo.png" alt="">'),
+  'the home header must use the canonical Prereasoner logo');
+const homeStyles = fs.readFileSync(path.join(__dirname, '..', 'public', 'styles.css'), 'utf8');
+assert(!homeStyles.includes('body.signed-in .brand{display:none}'),
+  'the authenticated home header must retain the brand');
 assert(html.includes('placeholder="What question do you have about your spreadsheet?"'),
   'the placeholder must not repeat the headline');
 // Each landing rewrites the headline, placeholder, and the bare "+"'s accessible name to its source.

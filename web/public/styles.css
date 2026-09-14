@@ -458,8 +458,9 @@ body.hasrail .page{margin-left:0}
    restrained visual language. Purple is an action/focus accent, not a page background. ---- */
 body{background:#fff;color:#211d2c}
 .page{background:#fff;transition:margin-left .2s ease}
-.page>.hdr,.app .hdr{height:72px;flex-basis:72px;padding:0 28px;background:#fff;border-bottom:1px solid #e8e6eb;box-shadow:none}
-.brand{color:#211d2c;gap:9px}.brand span{color:#211d2c;font-size:21px;font-weight:600}.brand .logo{height:29px;filter:brightness(0) saturate(100%) invert(27%) sepia(93%) saturate(5347%) hue-rotate(249deg) brightness(100%) contrast(103%)}
+.page>.hdr{height:64px;flex-basis:64px;padding:0 31px;background:#fff;border-bottom:1px solid #e8e6eb;box-shadow:none}
+.app .hdr{height:72px;flex-basis:72px;padding:0 28px;background:#fff;border-bottom:1px solid #e8e6eb;box-shadow:none}
+.brand{color:#21183d;gap:8px}.brand span{color:#21183d;font-size:19px;font-weight:600;letter-spacing:0}.brand .logo{width:30px;height:30px;object-fit:contain;filter:none}
 .ghost{color:var(--brand);border-color:var(--brand);font-size:11px;padding:5px 15px}.ghost:hover{background:#f5f2ff}
 .hero{padding:46px 40px 64px;align-items:center}.hero-left{max-width:780px;gap:22px}
 .hero-left .h1{color:#211d2c;font-size:clamp(32px,3.2vw,46px);font-weight:400;line-height:1.2;letter-spacing:-1.2px}
@@ -483,7 +484,6 @@ body{background:#fff;color:#211d2c}
 .homerail{display:flex}.homerail[hidden]{display:none}
 body.home-nav-open .homerail,.drawer.open{transform:none}
 body.hasrail.home-nav-open .page{margin-left:280px}
-body.signed-in .brand{display:none}
 .homemenubtn:not([hidden]){display:flex}.homemenubtn,.menubtn{color:#4d4658}.homemenubtn:hover,.menubtn:hover{color:var(--brand);background:#f3effd}
 .drawerhd{height:72px;flex:0 0 72px;padding:0 16px 0 18px;border-color:#e7e4ea;color:#706879;font:600 11px var(--disp);letter-spacing:.09em}
 .drawerx{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;font-size:20px}.drawerx:hover{background:#f0edf4}
