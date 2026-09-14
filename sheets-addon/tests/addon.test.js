@@ -98,6 +98,7 @@ assert(!sidebar.includes('Promptrepo'));
 assert(sidebar.includes("callServer('restorePrereasonerSheetConversation')"));
 assert(sidebar.includes("callServer('savePrereasonerSheetConversation'"));
 assert(sidebar.includes("callServer('clearPrereasonerSheetConversation')"));
+assert(sidebar.includes("var source = await callServer('syncPrereasonerConversation'"));
 assert(sidebar.includes("turns: state.turns.slice(-24)"));
 
 console.log('Sheets add-on tests passed.');

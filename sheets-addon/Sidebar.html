@@ -232,7 +232,7 @@
         }
 
         function updateComposerAvailability() {
-          var disabled = state.busy || state.restoring || !state.context || !!state.context.error;
+          var disabled = state.busy || state.restoring || state.checking || !state.context || !!state.context.error;
           questionEl.disabled = disabled;
           sendEl.disabled = disabled;
         }
@@ -376,7 +376,7 @@
         }
 
         async function submit() {
-          if (state.busy || !state.context) return;
+          if (state.busy || state.checking || !state.context) return;
           var text = questionEl.value.trim();
           if (!text) return;
           questionEl.value = '';
@@ -386,6 +386,12 @@
           setBusy(true);
           renderSyncState('checking');
           try {
+            if (state.conversationId) {
+              var source = await callServer('syncPrereasonerConversation', {
+                conversationId: state.conversationId
+              });
+              if (source.context) renderContext(source.context, false);
+            }
             var response = await callServer('askPrereasoner', {
               question: text,
               conversationId: state.conversationId,
@@ -419,7 +425,7 @@
         async function checkSync() {
           if (!state.conversationId || state.busy || state.restoring || state.checking ||
               (state.syncError && state.errorAction === 'save') || document.hidden) return;
-          state.checking = true; renderSyncState('checking');
+          state.checking = true; renderSyncState('checking'); updateComposerAvailability();
           try {
             var result = await callServer('syncPrereasonerConversation', {conversationId: state.conversationId});
             if (result.context) renderContext(result.context, false);
@@ -428,11 +434,11 @@
             renderSyncState(state.stale ? 'stale' : 'current');
           } catch (_) {
             state.syncError = true; state.errorAction = 'sync'; renderSyncState('error');
-          } finally { state.checking = false; }
+          } finally { state.checking = false; updateComposerAvailability(); }
         }
 
         async function recalculateCurrent() {
-          if (state.busy || !state.stale || !state.lastTurn || !state.lastQuestion) return;
+          if (state.busy || state.checking || !state.stale || !state.lastTurn || !state.lastQuestion) return;
           var turn = state.lastTurn, baseHistory = state.history.slice(0, -2);
           turn.classList.add('recalculating'); setBusy(true); renderSyncState('checking');
           try {
