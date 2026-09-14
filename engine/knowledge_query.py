@@ -521,8 +521,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         sch_words = set()
         for c in sch:
             for nm in (str(c["table"]).lower(), str(c["name"]).lower()):
-                for part in {nm} | set(nm.split("_")):
-                    sch_words |= _forms(part)                # incl. plurals: a 'city' column also covers 'cities'
+                # split on ANY non-alphanumeric: Sheets columns are space-named ('order ID'), and an
+                # underscore-only split left 'order' uncovered — 'Count ... Order ID rows' clarified
+                # with 'order' reported dropped even though the column is literally named that (2026-09-14).
+                for part in {nm} | set(_re.split(r"[^a-z0-9]+", nm)):
+                    if part:
+                        sch_words |= _forms(part)            # incl. plurals: a 'city' column also covers 'cities'
         # question / aggregate CUE words are realized by the OPERATOR (has_agg), not by a filter — they are never a
         # world entity, so excluding them stops _best_world_entity from spuriously matching e.g. 'how'/'many' to a
         # town and falsely reporting the COUNT query "dropped" them (which hijacked 'how many … in France' to clarify).
@@ -533,7 +537,15 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                "city", "cities", "country", "countries", "state", "states", "town", "towns", "place", "places",
                "nation", "nations", "element", "elements", "atomic", "has", "highest", "lowest", "largest",
                "smallest", "most", "least", "maximum", "minimum", "max", "min", "top", "bottom",
-               "named", "there", "among"}
+               "named", "there", "among",
+               # The tabular MEDIUM, not data semantics: 'Count all non-empty Order ID rows below the
+               # header in the Customers sheet' asks a plain COUNT — 'rows'/'header'/'sheet'/'non-empty'
+               # describe the spreadsheet, and a weak embedding match to some town once reported them
+               # as dropped filters, hijacking the count to clarify (2026-09-14). Numeric comparators
+               # ('below 100') were never covered by this guard (content words are alphabetic), so
+               # exempting 'below'/'above' loses no real constraint coverage.
+               "row", "rows", "column", "columns", "cell", "cells", "sheet", "sheets", "spreadsheet",
+               "header", "headers", "blank", "empty", "non", "below", "above", "current"}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]

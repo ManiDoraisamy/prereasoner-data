@@ -162,6 +162,26 @@ def test_contrastive_abbreviation_still_needs_world():
     print("  PASS  contrastive: uploaded abbreviation 'FR' -> world resolution still necessary")
 
 
+def test_injected_attribute_cannot_make_its_own_join_necessary():
+    # CIRCULAR-NECESSITY regression: compose can put a world attribute in its OWN group-by; an attribute
+    # the question never names must not make the join that supplied it "necessary". The shipped failure:
+    # 'Count all non-empty Order ID rows below the header in the Customers sheet' — _mentions' loose stem
+    # read the verb 'Count' as naming 'country' ('country'[:5]), compose grouped by customer+country, the
+    # injected column made the join "necessary", compose owned a plain row count, and Sonnet summed the
+    # 9-row breakdown itself (2026-09-14).
+    cities = {"name": "customers", "columns": ["order id", "customer", "city", "amount"],
+              "rows": [["1", "Poirot", "Paris", 100], ["2", "Lupin", "Lyon", 80], ["3", "Kenji", "Tokyo", 50]]}
+    dep = _dep([cities], "Count all non-empty Order ID rows below the header in the Customers sheet")
+    assert not (dep and dep.get("is_necessary")), \
+        f"an attribute the question never names must not create necessity: {dep}"
+    # POSITIVE control: the question NAMING the attribute keeps necessity (whole-word, not the loose stem).
+    dep_named = _dep([cities], "total amount by country")
+    if dep_named is not None:                                # world join fired -> the named attribute is necessary
+        assert dep_named.get("is_necessary") or "country" not in {c.lower() for c in dep_named.get("supplied", [])}, \
+            f"a question that says 'country' keeps country-necessity: {dep_named}"
+    print("  PASS  contrastive: injected world attribute (verb 'Count' != 'country') -> not necessary")
+
+
 _REPEAT_SCRIPT = (
     "import os, sys\n"
     "sys.path.insert(0, os.environ['PR_ROOT'])\n"
@@ -204,6 +224,7 @@ TESTS = [
     test_constants_are_coherent,
     test_contrastive_redundant_world_filter_with_joinable_city,
     test_contrastive_abbreviation_still_needs_world,
+    test_injected_attribute_cannot_make_its_own_join_necessary,
     test_cross_process_sql_repeatability,
 ]
 

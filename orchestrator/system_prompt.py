@@ -16,7 +16,9 @@ clear answer about their data, in plain English.
    replaces, so always call the tool — even when the number is buried inside a broader question.
 2. Follow-up math on a result (a ratio, a change, a percentage, a projection) is ALSO one new tool
    call. Put the complete requested computation in that call; the engine can join tables, filter,
-   group, convert units, and apply typed arithmetic together.
+   group, convert units, and apply typed arithmetic together. Same when a tool result is a per-row
+   or per-group breakdown but the user asked for ONE overall number: call the tool again for the
+   total — never add the rows up yourself.
 3. If the user's message is already a complete, standalone data question, call the tool with their EXACT
    words — do not rephrase, shorten, or "clean it up". The engine reads wording literally, so a paraphrase
    silently changes the computation: dropping "in US dollars" changes the currency of the answer, dropping

@@ -77,6 +77,16 @@ class ComposeEngine:
         plu = (n[:-1] + "ies") if n.endswith("y") else (n + "s")            # singular column -> plural in the question
         return n in low or plu in low or (len(n) >= 5 and n[:len(n) - 2] in low)   # name / plural / loose stem
 
+    @staticmethod
+    def _names_attribute(c, low):
+        """STRICT whole-word naming — the necessity test. _mentions' loose stem is evidence for BUILDING a
+        join, but 'country'[:5] == 'count' made the verb in 'Count all rows...' read as naming the country
+        attribute; necessity demands the question actually say the word (or its plural)."""
+        n = str(c).lower()
+        toks = set(re.findall(r"[a-z]+", low))
+        plu = (n[:-1] + "ies") if n.endswith("y") else (n + "s")
+        return n in toks or plu in toks
+
     # ---------------- decomposition (each detector is a seam for an anchored PRIMITIVE dim) ----------------
     def _pick_measure(self, low, numeric, question=None):
         """The measure column. Explicit name match (data-driven) > COSINE in the unified space (the encoder path —
@@ -496,7 +506,11 @@ class ComposeEngine:
             final = views[-1] if views else None
             # EXPLICIT world-dependency record for the router. A world_join proves world data was JOINED, not that
             # it was NECESSARY. Necessity has two independent sources:
-            #   (a) a world-supplied ATTRIBUTE the upload lacks that the ANSWER actually uses (in the final columns);
+            #   (a) a world-supplied ATTRIBUTE the upload lacks that the QUESTION names and the ANSWER actually
+            #       uses (in the final columns). BOTH conditions are required: this engine can inject a world
+            #       attribute into its own group-by, and an attribute nobody asked for must not make the join
+            #       that supplied it "necessary" — that circularity once made compose own a plain row count
+            #       ('Count all non-empty Order ID rows...') as GROUP BY customer, country (2026-09-14).
             #   (b) a world FILTER whose value could NOT already be bound directly against uploaded data. The direct
             #       value-filter `vf` (base A' above) binds an uploaded (column, value) when the value is present, so
             #       a world_filter on the SAME value is REDUNDANT -> own-data. Uploaded ABBREVIATIONS ('FR') never
@@ -508,7 +522,8 @@ class ComposeEngine:
                 supplied, own_cols, wcol, value, world_filtered = world_grounding
                 supplied = sorted({str(a) for a in supplied if a})
                 final_cols = {str(c).lower() for c in (final["columns"] if final else [])}
-                used_necessary = sorted(a for a in supplied if a.lower() not in own_cols and a.lower() in final_cols)
+                used_necessary = sorted(a for a in supplied if a.lower() not in own_cols
+                                        and a.lower() in final_cols and self._names_attribute(a, low))
                 direct_bound_same_value = bool(vf and value is not None
                                                and str(vf[1]).strip().lower() == str(value).strip().lower())
                 world_filter_necessary = bool(world_filtered and not direct_bound_same_value)

@@ -308,6 +308,26 @@ def main():
     ok("'from Paris' counts like 'in Paris' (1 customer, never 0)",
        got["from"] == got["in"] == 1, f"got={got}")
 
+    # C2b' a plain ROW COUNT over a city-linked sheet stays a scalar count (2026-09-14 regression,
+    # three failure modes at once): (1) compose grouped by customer+country and its OWN injected
+    # 'country' column made the world join "necessary" ('country'[:5] == the verb 'Count'), so a
+    # 9-row breakdown shipped and Sonnet summed it; (2) the 'ID' in the 'order ID' column resolved
+    # as Indonesia's ISO code -> country=Q252 -> count 0; (3) spreadsheet-medium words
+    # ('rows'/'header'/'sheet'/'non-empty') read as dropped filters -> clarify. All three phrasings
+    # must return ONE number from the engine.
+    _SHEET = {"name": "customers", "columns": ["order ID", "customer", "city", "amount"],
+              "rows": [[101, "Poirot", "Brussels", 38], [102, "Lupin", "Paris", 180],
+                       [103, "Holmes", "London", 118], [104, "Bakshi", "Kolkata", 40]]}
+    for cq in ("How many orders are in the current sheet?",
+               "Count all non-empty Order ID rows below the header in the Customers sheet",
+               "how many orders"):
+        rcnt = _retry(lambda q=cq: qc.serve([_SHEET], q, sub))
+        rows = ((rcnt or {}).get("result") or {}).get("rows") or []
+        ok(f"row count stays a scalar 4 from the engine: {cq[:44]!r}",
+           not (rcnt or {}).get("clarify") and len(rows) == 1 and len(rows[0]) == 1
+           and int(rows[0][0]) == 4, f"result={(rcnt or {}).get('result')} clarify={(rcnt or {}).get('clarify')}"
+           f" model={(rcnt or {}).get('model')}")
+
     # C2b conversion serve path with a test-local rate table. The clarify gate must not
     # reinterpret "US" as the country when exact `rate_to_usd` arithmetic realizes it.
     from engine.enrichment import ExplicitKeyEdge

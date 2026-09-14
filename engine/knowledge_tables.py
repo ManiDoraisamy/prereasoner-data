@@ -604,6 +604,15 @@ class KnowledgeTableQuery:
             intent = _ci(question)
             if intent is not None and getattr(intent, "phrase", None):
                 q_for_mf = question.replace(intent.phrase, " ")
+        # Words that name the UPLOADED SCHEMA are CLAIMED by the schema, same as the conversion phrase:
+        # the 'ID' in an 'order ID' column is the column word, not Indonesia's ISO code — that alias once
+        # turned 'Count all non-empty Order ID rows' into country='Q252' and a count of 0 (2026-09-14).
+        # Known trade-off: a column literally named after part of a world value (a 'state' column vs
+        # 'United States') suppresses that phrase too; own data outranks a world reading of its own name.
+        for part in sorted({p for t in norm for nm in [t["name"], *t["columns"]]
+                            for p in re.split(r"[^a-zA-Z0-9]+", str(nm)) if p}, key=len, reverse=True):
+            q_for_mf = re.sub(r"(?<![A-Za-z0-9])" + re.escape(part) + r"(?![A-Za-z0-9])", " ",
+                              q_for_mf, flags=re.IGNORECASE)
         self._q_meaning = q_for_mf                            # the entities layer resolves values from this
         mf = self.meaning_filter(q_for_mf, routes)
         own = self._own_value_matches(question, norm)         # values quoted in the question that live in the upload
