@@ -535,9 +535,10 @@ function archiveTurn(){                                       // freeze the turn
     h='<div class=statusline>&#10003; '+esc(rs?(rs.k==='result'?rs.v:rs.k+': '+rs.v):('answered in '+n+' step'+(n===1?'':'s')))+'</div>'; }
   CHAT.push({q:question, html:h, reply:reply, analysis:TURN_ANALYSIS?Object.assign({},TURN_ANALYSIS):null});
 }
-async function loadAnalysis(analysisId,revision){
+async function loadAnalysis(analysisId,revision,options){
   if(!SETTLED||!convId()||!/^a_[0-9a-f]{32}$/.test(String(analysisId))
       ||!Number.isInteger(Number(revision))||Number(revision)<1||Number(revision)>1000000)return;
+  options=options||{};
   const oldStatus=STATUS, requestRun=RUN, loadToken=++ANALYSIS_LOAD;
   const known=[TURN_ANALYSIS].concat(CHAT.map(turn=>turn.analysis)).find(item=>item&&item.analysis_id===analysisId);
   ANALYSIS_ERROR=null; STATUS='Opening '+analysisName(known)+'…'; renderRail();
@@ -580,7 +581,17 @@ async function loadAnalysis(analysisId,revision){
       output.result=true; ACTIVE=output.id;
     } else ACTIVE=(BOOK.find(s=>s.cls==='input')||BOOK[0]||{}).id||null;
     VIEWED_ANALYSIS=descriptor?Object.assign({},descriptor):null; ANALYSIS_ERROR=null;
-    AUTO=false; STATUS=oldStatus; paint(); saveConvState();return true;
+    if(options.focusTurn){
+      const linked=payload.turn&&typeof payload.turn==='object'?payload.turn:{};
+      const linkedQuestion=String(linked.question||payload.question||answer.question||'').trim();
+      const summary=resultSummary();
+      const linkedReply=String(linked.reply||'').trim()||(summary
+        ? (summary.k==='result'?summary.v:(summary.k+': '+summary.v))
+        : 'This analysis is shown in the workbook.');
+      CHAT=[]; question=linkedQuestion||question; TURN_ANALYSIS=descriptor?Object.assign({},descriptor):null;
+      CONV=linkedReply; COTOPEN=true; setHeaderTitle(question);
+    }
+    AUTO=false; STATUS=oldStatus; paint(); if(options.persist!==false)saveConvState();return true;
   }catch(error){
     if(RUN!==requestRun||loadToken!==ANALYSIS_LOAD)return false;
     STATUS=oldStatus; ANALYSIS_ERROR='Could not open that workbook. Please try again.'; renderRail();
@@ -1310,7 +1321,11 @@ async function run(){
       }else{fail('This saved result needs recovery. The original snapshot is retained; open its analysis from conversation history.');return;}
     }
   } } }catch(error){fail('This saved result could not be restored. The original snapshot is retained.');return;}
-  if(!restored) startRun();
-  else if(linkedAnalysis) await loadAnalysis(linkedAnalysis.analysis_id,linkedAnalysis.revision);
+  if(linkedAnalysis){
+    // An immutable analysis URL is sufficient to restore the workbook even when this browser has no
+    // render snapshot. Never re-run (and potentially bill) the opening question just to open a link.
+    if(!restored){SETTLED=true;DONE=true;STATUS='';}
+    await loadAnalysis(linkedAnalysis.analysis_id,linkedAnalysis.revision,{focusTurn:true,persist:false});
+  }else if(!restored) startRun();
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

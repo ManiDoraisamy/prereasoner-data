@@ -342,10 +342,21 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('.wtab').filter({hasText:'orders'})).toHaveCount(1);
 
   // A Sheets reasoning link carries one immutable analysis revision. Opening it must select that
-  // workbook, not whichever analysis happened to be active in this browser session.
+  // workbook and turn, not whichever analysis happened to be active in this browser session. It
+  // must also work in a fresh tab with no local render snapshot and must not re-run the question.
+  await page.evaluate(()=>sessionStorage.removeItem('pr_conv_state'));
+  const requestsBeforeLinkedOpen=(await (await request.get('/__state')).json()).requestCount;
   await page.goto('/reason/c_0123456789abcdef0123456789abcdef?analysis_id=a_11111111111111111111111111111111&revision=1');
   await expect(page.locator('.wb.result tbody')).toContainText('180');
   await expect(page.locator('.analysislink.on')).toHaveText('total sales');
+  await expect(page.locator('.turn.user')).toHaveCount(1);
+  await expect(page.locator('.turn.user')).toContainText('total amount');
+  await expect(page.locator('.turn-answer')).toHaveText('Your total is 180.');
+  await expect(page.locator('.turn-reasoning')).toHaveAttribute('open','');
+  const linkedParts=page.locator('.turn.ai').locator(':scope > .turn-content').first().locator(':scope > *');
+  await expect(linkedParts.nth(0)).toHaveClass(/turn-reasoning/);
+  await expect(linkedParts.nth(1)).toHaveClass(/turn-answer/);
+  expect((await (await request.get('/__state')).json()).requestCount).toBe(requestsBeforeLinkedOpen);
 
   const deleteChat=page.getByTitle('Delete chat');
   if(!await deleteChat.isVisible())await page.getByRole('button',{name:'Conversations',exact:true}).click();

@@ -543,6 +543,48 @@ def test_historical_revision_uses_its_own_input_hash_and_rejects_zero():
         pass
 
 
+def test_analysis_turn_matches_exact_sheet_revision_before_web_state():
+    analysis_id = "a_" + "1" * 32
+    conversation_id = "c_" + "2" * 32
+    sheet_state = {"turns": [
+        {"question": "old", "reply": "wrong", "analysis": {
+            "analysis_id": analysis_id, "revision": 4}},
+        {"question": "Count distinct orders", "reply": "There are 23.", "analysis": {
+            "analysis_id": analysis_id, "revision": 5}},
+    ]}
+
+    class Cursor:
+        def __init__(self):
+            self.one = None
+            self.rows = []
+
+        def execute(self, statement, _params=None):
+            text = str(statement)
+            self.rows = []
+            if 'FROM "chat"."analysis" a' in text:
+                self.one = (1,)
+            elif 'FROM "chat"."sheet_session" ss' in text:
+                self.one = None
+                self.rows = [(sheet_state,)]
+            elif 'SELECT c.state' in text:
+                self.one = ({"turns": [{"q": "stale web", "reply": "stale", "analysis": {
+                    "analysis_id": analysis_id, "revision": 4}}]},)
+
+        def fetchone(self):
+            return self.one
+
+        def fetchall(self):
+            return self.rows
+
+    connection = _Connection(Cursor())
+    with patch.object(conversations, "_pg", return_value=connection):
+        turn = conversations.get_analysis_turn(
+            "user", conversation_id, analysis_id, revision=5,
+        )
+    assert turn == {"question": "Count distinct orders", "reply": "There are 23."}
+    assert connection.closed
+
+
 TESTS = [
     test_conversation_page_uses_a_stable_timestamp_and_id_cursor,
     test_save_state_locks_and_replaces_only_the_previous_state_bytes,
@@ -559,6 +601,7 @@ TESTS = [
     test_failed_modify_keeps_a_zero_payload_revision_tombstone,
     test_decomposition_probe_cancels_its_empty_revision_without_a_gap,
     test_historical_revision_uses_its_own_input_hash_and_rejects_zero,
+    test_analysis_turn_matches_exact_sheet_revision_before_web_state,
 ]
 
 

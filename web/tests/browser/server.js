@@ -140,7 +140,9 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='GET'&&url.pathname==='/api/analysis'){
     const key=url.searchParams.get('analysis_id')+':'+url.searchParams.get('revision');
     const raw=revisions.get(key);
-    return raw?send(res,200,{analysis:raw.analysis,question:raw.question,response:raw}):send(res,404,{error:'analysis not found'});
+    const reply=raw?(/paris/i.test(raw.question||'')?'The Paris total is 120.':'Your total is 180.') : '';
+    return raw?send(res,200,{analysis:raw.analysis,question:raw.question,
+      turn:{question:raw.question,reply},response:raw}):send(res,404,{error:'analysis not found'});
   }
   if(req.method==='GET'&&url.pathname==='/api/conversations')return send(res,200,{conversations:deleted?[]:[
     {id:conversation,question:'total amount',ts:'2026-09-05T12:00:00Z'}]});

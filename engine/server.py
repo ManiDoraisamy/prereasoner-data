@@ -63,6 +63,7 @@ from engine.conversations import (
     delete_conversation,
     fail_analysis,
     get_analysis_revision,
+    get_analysis_turn,
     get_conversation,
     list_analyses,
     load_dataset_ops,
@@ -273,6 +274,11 @@ class H(BaseHTTPRequestHandler):
             loaded = get_analysis_revision(
                 sub, conversation_id, analysis_id, revision=revision,
             )
+            selected_revision = loaded.get("analysis", {}).get("revision")
+            if isinstance(selected_revision, int):
+                loaded["turn"] = get_analysis_turn(
+                    sub, conversation_id, analysis_id, selected_revision,
+                )
             self._send(200, json.dumps(loaded, default=_json_safe))
         except NotOwned:
             self._send(404, json.dumps({"error": "analysis not found"}))

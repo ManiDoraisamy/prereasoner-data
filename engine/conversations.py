@@ -610,6 +610,86 @@ def get_analysis_revision(user_id, conversation_id, analysis_id, revision=None):
         conn.close()
 
 
+def _analysis_turn_from_state(state, analysis_id, revision):
+    """Return the display turn for one immutable analysis revision, if this snapshot contains it.
+
+    Web conversations store ``q`` while the Sheets sidebar stores ``question``. Both retain the
+    same analysis descriptor, so the immutable id + revision is the only safe association. Never
+    fall back to question text because separate revisions may reuse the same canonical question.
+    """
+    if isinstance(state, str):
+        try:
+            state = json.loads(state)
+        except (TypeError, ValueError):
+            return None
+    if not isinstance(state, dict) or not isinstance(state.get("turns"), list):
+        return None
+    for turn in reversed(state["turns"]):
+        if not isinstance(turn, dict):
+            continue
+        descriptor = turn.get("analysis")
+        if not isinstance(descriptor, dict):
+            continue
+        try:
+            exact_revision = int(descriptor.get("revision")) == int(revision)
+        except (TypeError, ValueError):
+            exact_revision = False
+        if descriptor.get("analysis_id") != analysis_id or not exact_revision:
+            continue
+        question = turn.get("question") if "question" in turn else turn.get("q")
+        return {
+            "question": str(question or "")[:10_000],
+            "reply": str(turn.get("reply") or "")[:100_000],
+        }
+    return None
+
+
+def get_analysis_turn(user_id, conversation_id, analysis_id, revision):
+    """Load the prose turn associated with an owned analysis revision.
+
+    Sheets keeps its iframe transcript in ``sheet_session`` while the web host keeps its transcript
+    in ``conversation.state``. Inspecting both prevents an old web session from showing the right
+    workbook beside an unrelated chat answer.
+    """
+    if (not _ID_RE.fullmatch(conversation_id or "")
+            or not _ANALYSIS_ID_RE.fullmatch(analysis_id or "")):
+        raise NotOwned("analysis not found")
+    if (not isinstance(revision, int) or isinstance(revision, bool)
+            or revision < 1 or revision > 1_000_000):
+        raise AnalysisError("analysis revision is invalid")
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            'SELECT 1 FROM "chat"."analysis" a '
+            'JOIN "chat"."user_conversation" uc ON uc.conversation_id = a.conversation_id '
+            'WHERE uc.user_id = %s AND a.conversation_id = %s AND a.analysis_id = %s',
+            (user_id, conversation_id, analysis_id),
+        )
+        if cur.fetchone() is None:
+            raise NotOwned("analysis not found")
+        cur.execute(
+            'SELECT ss.sidebar_state FROM "chat"."sheet_session" ss '
+            'WHERE ss.user_id = %s AND ss.conversation_id = %s '
+            'ORDER BY ss.updated_at DESC LIMIT 100',
+            (user_id, conversation_id),
+        )
+        for row in cur.fetchall():
+            turn = _analysis_turn_from_state(row[0] if row else None, analysis_id, revision)
+            if turn:
+                return turn
+        cur.execute(
+            'SELECT c.state FROM "chat"."conversation" c '
+            'JOIN "chat"."user_conversation" uc ON uc.conversation_id = c.conversation_id '
+            'WHERE uc.user_id = %s AND c.conversation_id = %s',
+            (user_id, conversation_id),
+        )
+        row = cur.fetchone()
+        return _analysis_turn_from_state(row[0] if row else None, analysis_id, revision)
+    finally:
+        conn.close()
+
+
 def conversation_page(user_id, limit=50, before=None):
     """One cursor page of the user's conversations, newest first."""
     limit = max(1, min(int(limit), MAX_PAGE_SIZE))
