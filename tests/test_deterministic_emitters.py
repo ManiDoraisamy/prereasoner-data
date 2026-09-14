@@ -1538,6 +1538,25 @@ def test_coverage_prose_is_not_a_place_or_an_ignored_status():
     assert dropped('What is the total amount paid?', [dict(schema[0], table='invoices')]) == ['paid']
 
 
+def test_distinct_count_operator_and_sheet_scope_are_covered():
+    from types import SimpleNamespace
+    from engine.knowledge_query import KnowledgeQuery
+    adapter = SimpleNamespace(
+        _is_id=lambda name: str(name).lower().endswith('id'),
+        _encode=lambda words: [[0] for _ in words],
+        _word_qid=lambda word: None,
+        _best_world_entity=lambda words: (words[0], 'Spurious Place', 'city', 0.61),
+    )
+    schema = [
+        {"table": "customers", "name": "order ID", "affinity": "INTEGER", "values": [101, 102]},
+        {"table": "customers", "name": "customer", "affinity": "TEXT", "values": ["Holmes"]},
+    ]
+    sql = 'SELECT COUNT(DISTINCT "customers"."order ID") FROM "customers"'
+    question = "Count the unique values in the 'order ID' column across all data rows."
+    assert KnowledgeQuery._uncovered(adapter, question, schema, sql) == []
+    assert KnowledgeQuery._uncovered(adapter, question + " In France.", schema, sql) == ['france']
+
+
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
     from engine.deterministic.plan import JunctionValue
     from engine.deterministic.runtime import (

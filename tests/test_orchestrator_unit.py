@@ -218,6 +218,10 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
     shaped = {"status": "answered", "answer": {"rows": [[23]], "columns": ["count"]}}
     assert orchestrator._grounded_presentation(shaped, "There are 100 distinct IDs.") == "23"
     assert orchestrator._grounded_presentation(shaped, "There are 23 distinct IDs.") == "There are 23 distinct IDs."
+    clarify = {"status": "clarify", "clarify": {"reason": "Please choose a column."}}
+    assert orchestrator._grounded_presentation(clarify, "There are 100 distinct IDs.") == "Please choose a column."
+    error = {"status": "error", "error": "The calculation failed."}
+    assert orchestrator._grounded_presentation(error, "There are 100 distinct IDs.") == "The calculation failed."
 
 
 def test_named_workbook_tool_contract_and_catalog_boundary():

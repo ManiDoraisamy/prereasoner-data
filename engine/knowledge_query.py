@@ -545,7 +545,16 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                # ('below 100') were never covered by this guard (content words are alphabetic), so
                # exempting 'below'/'above' loses no real constraint coverage.
                "row", "rows", "column", "columns", "cell", "cells", "sheet", "sheets", "spreadsheet",
-               "header", "headers", "blank", "empty", "non", "below", "above", "current"}
+               "header", "headers", "blank", "empty", "non", "below", "above", "current",
+               # Spreadsheet scope prose. These words do not identify a row filter or world entity;
+               # treating them as unresolved predicates turned an exact COUNT(DISTINCT "order ID")
+               # into a clarification about an unrelated numeric column in production.
+               "data", "across"}
+        if _re.search(r'\bcount\s*\(\s*distinct\b', sqll):
+            # These words are realized by COUNT(DISTINCT ...), even though they do not occur
+            # literally in the emitted SQL. A column actually named "value" is already covered by
+            # sch_words, so this only closes the operator-language false-positive.
+            CUE |= {"distinct", "unique", "different", "value", "values"}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1
                    and w not in sch_words and w.rstrip("s") not in sch_words]

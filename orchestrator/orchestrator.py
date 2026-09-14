@@ -259,7 +259,16 @@ def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
     """Never let optional presentation prose contradict a terminal engine outcome."""
     fallback = _terminal_fallback(shaped)
     if shaped.get("status") != "answered":
-        return presentation.strip() or fallback
+        # A presentation model can make a clarification or error friendlier, but it cannot safely
+        # introduce a value. In production it copied a stale "100" from history over an engine
+        # clarification whose proposed SQL was COUNT(DISTINCT ...). Preserve the terminal outcome
+        # whenever the prose adds a numeric claim the engine outcome does not contain.
+        prose = presentation.strip()
+        allowed_numbers = set(re.findall(r"[-+]?\d+(?:[.,]\d+)?", fallback))
+        claimed_numbers = set(re.findall(r"[-+]?\d+(?:[.,]\d+)?", prose))
+        if claimed_numbers - allowed_numbers:
+            return fallback
+        return prose or fallback
     answer = shaped.get("answer") or {}
     rows = answer.get("rows") or []
     if len(rows) != 1 or len(rows[0]) != 1:
