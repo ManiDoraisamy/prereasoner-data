@@ -549,7 +549,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                # Spreadsheet scope prose. These words do not identify a row filter or world entity;
                # treating them as unresolved predicates turned an exact COUNT(DISTINCT "order ID")
                # into a clarification about an unrelated numeric column in production.
-               "data", "across"}
+               "data", "across",
+               # Presentation/provenance language describes how to display the answer, not an
+               # additional row predicate. Schema-named columns still win via sch_words above.
+               "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown"}
+        if _re.search(r'\breturn\s+(?:the|a|an|this|that)\b', question.lower()):
+            CUE.add("return")
         if _re.search(r'\bcount\s*\(\s*distinct\b', sqll):
             # These words are realized by COUNT(DISTINCT ...), even though they do not occur
             # literally in the emitted SQL. A column actually named "value" is already covered by

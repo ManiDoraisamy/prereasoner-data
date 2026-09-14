@@ -1552,7 +1552,8 @@ def test_distinct_count_operator_and_sheet_scope_are_covered():
         {"table": "customers", "name": "customer", "affinity": "TEXT", "values": ["Holmes"]},
     ]
     sql = 'SELECT COUNT(DISTINCT "customers"."order ID") FROM "customers"'
-    question = "Count the unique values in the 'order ID' column across all data rows."
+    question = ("Count the unique values in the 'order ID' column across all data rows. "
+                "Return the count and show the calculation steps.")
     assert KnowledgeQuery._uncovered(adapter, question, schema, sql) == []
     assert KnowledgeQuery._uncovered(adapter, question + " In France.", schema, sql) == ['france']
 

@@ -213,9 +213,22 @@ def _question_words(value: str) -> tuple[str, ...]:
     return tuple(re.findall(r"[a-z0-9]+", str(value).casefold()))
 
 
-def _matching_analysis(user_message: str, catalog: list[dict[str, Any]],
-                       requested: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """Resolve an explicit recalculation target without asking the LLM to guess its identity."""
+_PRESENTATION_SUFFIX_WORDS = frozenset({
+    "a", "an", "and", "answer", "analysis", "also", "as", "breakdown", "calculation",
+    "calculations", "count", "detail", "details", "display", "explain", "give", "include",
+    "method", "please", "provide", "reasoning", "result", "return", "show", "step", "steps",
+    "table", "the", "this", "with", "work", "working", "your",
+})
+
+
+def _matching_analysis_entry(user_message: str, catalog: list[dict[str, Any]],
+                             requested: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Resolve a recalculation to its authoritative catalog row.
+
+    A prior question may be followed by presentation-only prose (for example, "show the
+    calculation steps").  A real qualifier such as "in France" must remain a new question,
+    however, rather than silently reusing the old analysis identity.
+    """
     rows = [item for item in catalog if isinstance(item, dict)]
     if requested:
         match = next((item for item in rows
@@ -223,18 +236,38 @@ def _matching_analysis(user_message: str, catalog: list[dict[str, Any]],
                       and item.get("slug") == requested.get("slug")), None)
         if match is None:
             raise RuntimeError("requested analysis is not in the conversation catalog")
-        return {"action": "modify", "analysis_id": match["analysis_id"], "slug": match["slug"]}
+        return match
 
     words = _question_words(user_message)
     candidates = []
     for item in rows:
         prior = _question_words(item.get("latest_question") or "")
-        if len(prior) >= 6 and (words == prior or words[:len(prior)] == prior):
+        suffix = words[len(prior):] if words[:len(prior)] == prior else ()
+        presentation_suffix = bool(suffix) and set(suffix) <= _PRESENTATION_SUFFIX_WORDS
+        if len(prior) >= 6 and (words == prior or presentation_suffix):
             candidates.append((len(prior), item))
     if not candidates:
         return None
-    match = max(candidates, key=lambda pair: pair[0])[1]
-    return {"action": "modify", "analysis_id": match["analysis_id"], "slug": match["slug"]}
+    return max(candidates, key=lambda pair: pair[0])[1]
+
+
+def _recalculation_target(user_message: str, catalog: list[dict[str, Any]],
+                          requested: dict[str, Any] | None = None) -> tuple[dict[str, Any] | None, str]:
+    """Return the stable analysis identity and the data-only question sent to the engine."""
+    match = _matching_analysis_entry(user_message, catalog, requested)
+    if match is None:
+        return None, user_message
+    analysis = {"action": "modify", "analysis_id": match["analysis_id"], "slug": match["slug"]}
+    # The catalog question is the engine-owned semantic definition. UI instructions appended by
+    # Sheets belong to presentation and must never be reinterpreted as data predicates.
+    question = str(match.get("latest_question") or user_message)
+    return analysis, question
+
+
+def _matching_analysis(user_message: str, catalog: list[dict[str, Any]],
+                       requested: dict[str, Any] | None = None) -> dict[str, Any] | None:
+    """Compatibility wrapper returning only the resolved analysis identity."""
+    return _recalculation_target(user_message, catalog, requested)[0]
 
 
 def _terminal_fallback(shaped: dict[str, Any]) -> str:
@@ -352,7 +385,9 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             )
             if catalog is None:
                 raise RuntimeError("analysis catalog unavailable")
-        forced_analysis = _matching_analysis(user_message, catalog, analysis_override)
+        forced_analysis, forced_question = _recalculation_target(
+            user_message, catalog, analysis_override,
+        )
         system_prompt = _system_with_catalog(catalog)
         # Work on a local copy of the full block-level message list for the tool loop.
         messages: list[dict[str, Any]] = [
@@ -419,7 +454,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         round_query_seen = True
                         # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
-                        question = user_message if forced_analysis else (block.input or {}).get("question", "")
+                        question = forced_question if forced_analysis else (block.input or {}).get("question", "")
                         decomposition = (block.input or {}).get("decomposition")
                         # The system prompt (rules 3-4) owns question fidelity: a standalone question is
                         # passed in the user's exact words, and a follow-up rewrite carries every

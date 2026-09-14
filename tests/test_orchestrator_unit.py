@@ -97,7 +97,7 @@ class _HTTP:
 
 
 async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
-               user_message=None, tables=None):
+               user_message=None, tables=None, catalog=None, analysis_override=None):
     model_calls, engine_calls = [], []
     shaped = {"status": status}
     if status == "answered":
@@ -111,14 +111,19 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
         engine_calls.append((args, kwargs))
         return shaped
 
+    async def get_catalog(*_args, **_kwargs):
+        return catalog or []
+
     original_client = orchestrator.AsyncAnthropic
     original_http = orchestrator.httpx.AsyncClient
     original_query = orchestrator.engine_client.call_query
+    original_catalog = orchestrator.engine_client.call_analysis_catalog
     orchestrator.AsyncAnthropic = lambda **_kwargs: _Client(
         model_calls, fail_presentation, query_input,
     )
     orchestrator.httpx.AsyncClient = lambda **_kwargs: _HTTP()
     orchestrator.engine_client.call_query = query
+    orchestrator.engine_client.call_analysis_catalog = get_catalog
     try:
         result = await orchestrator._run_turn(
             user_message or "reduce the discount from total amount based on customer's tier",
@@ -130,11 +135,14 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
             model="test-model",
             use=use,
             principal="user-a",
+            conversation_id="c_test" if catalog is not None else None,
+            analysis_override=analysis_override,
         )
     finally:
         orchestrator.AsyncAnthropic = original_client
         orchestrator.httpx.AsyncClient = original_http
         orchestrator.engine_client.call_query = original_query
+        orchestrator.engine_client.call_analysis_catalog = original_catalog
     return result, model_calls, engine_calls
 
 
@@ -215,6 +223,29 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
     assert orchestrator._matching_analysis(question, [other, distinct]) == {
         "action": "modify", "analysis_id": distinct["analysis_id"], "slug": distinct["slug"],
     }
+    analysis, engine_question = orchestrator._recalculation_target(question, [other, distinct])
+    assert analysis == {
+        "action": "modify", "analysis_id": distinct["analysis_id"], "slug": distinct["slug"],
+    }
+    assert engine_question == distinct["latest_question"]
+    assert orchestrator._matching_analysis(
+        distinct["latest_question"] + " In France.", [other, distinct],
+    ) is None
+    explicit, explicit_question = orchestrator._recalculation_target(
+        question + " Please show the reasoning.", [other, distinct],
+        {"analysis_id": distinct["analysis_id"], "slug": distinct["slug"]},
+    )
+    assert explicit == analysis
+    assert explicit_question == distinct["latest_question"]
+    _result, _model_calls, engine_calls = asyncio.run(_run(
+        "answered",
+        user_message=question,
+        query_input={"question": question, "action": "create", "slug": "wrong_identity"},
+        catalog=[other, distinct],
+        analysis_override={"analysis_id": distinct["analysis_id"], "slug": distinct["slug"]},
+    ))
+    assert engine_calls[0][0][0] == distinct["latest_question"]
+    assert engine_calls[0][1]["analysis"] == analysis
     shaped = {"status": "answered", "answer": {"rows": [[23]], "columns": ["count"]}}
     assert orchestrator._grounded_presentation(shaped, "There are 100 distinct IDs.") == "23"
     assert orchestrator._grounded_presentation(shaped, "There are 23 distinct IDs.") == "There are 23 distinct IDs."
