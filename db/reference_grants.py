@@ -178,7 +178,9 @@ def apply_shared_read_boundary(cur, runtime_role: str) -> None:
     for signature in _LEGACY_LAZY_FILL_FUNCTIONS:
         cur.execute("SELECT to_regprocedure(%s)", (signature,))
         if cur.fetchone()[0] is not None:
-            cur.execute(sql.SQL("REVOKE EXECUTE ON FUNCTION {} FROM {}").format(
+            # Older databases may still have PostgreSQL's implicit PUBLIC EXECUTE grant.
+            # Revoking only from the runtime role is insufficient because PUBLIC is inherited.
+            cur.execute(sql.SQL("REVOKE EXECUTE ON FUNCTION {} FROM {}, PUBLIC").format(
                 sql.SQL(signature), role_id,
             ))
     for signature in _LEGACY_LAZY_FILL_FUNCTIONS:
