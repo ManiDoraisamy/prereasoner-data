@@ -378,6 +378,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     from deploy.gcp.build_context import (
         SOURCE_ALLOWLIST,
         SOURCE_CHAT_ALLOWLIST,
+        SOURCE_HOSTING_ALLOWLIST,
         SOURCE_SYNC_ALLOWLIST,
         chat_engine_sources,
     )
@@ -397,6 +398,13 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         "orchestrator",
         "tests",
     } <= set(SOURCE_CHAT_ALLOWLIST)
+    assert {
+        "cloudbuild.hosting.yaml",
+        "web",
+    } <= set(SOURCE_HOSTING_ALLOWLIST)
+    assert not {"engine", "training", "tests", "spider", "world_eval", "infra"} & set(
+        SOURCE_HOSTING_ALLOWLIST
+    )
     chat_dockerfile = _text("Dockerfile.orchestrator")
     assert "engine/analysis.py" in chat_dockerfile
     assert set(chat_engine_sources()) == {
@@ -421,8 +429,14 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     sync_dockerfile = _text("Dockerfile.sync")
     assert "COPY engine/enrichment/registry.py" in sync_dockerfile
     assert "COPY engine/ /app/engine/" not in sync_dockerfile
-    assert 'choices=("engine", "chat", "sync")' in source
+    assert 'choices=("engine", "chat", "sync", "hosting")' in source
     assert '"build_target": target' in source
+    hosting = _text("cloudbuild.hosting.yaml")
+    assert "firebase deploy" in hosting
+    assert "--only=hosting" in hosting
+    assert "web/public/lib/config.js" in hosting
+    assert "web/firebase.release.json" in hosting
+    assert "web/" not in _text(".gcloudignore").splitlines()
     workflow = _text(".github/workflows/ci.yml")
     assert "--target chat --output /tmp/prereasoner-chat-build" in workflow
     assert "prereasoner-chat:ci /tmp/prereasoner-chat-build" in workflow

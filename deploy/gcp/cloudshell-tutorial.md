@@ -1,15 +1,16 @@
 # Deploy Prereasoner Community Edition
 
 This walkthrough builds and deploys Prereasoner into **your** Google Cloud project. It creates
-billable resources, including a Zonal Cloud SQL instance. Cloud Run scales to zero; Cloud SQL is
-the main recurring cost.
+billable resources, including a Zonal Cloud SQL instance, required engine and chat Cloud Run
+services, and a Firebase Hosting CDN release. Cloud Run scales to zero; Cloud SQL is the main
+recurring cost.
 
 ## Choose a project
 
 <walkthrough-project-setup></walkthrough-project-setup>
 
 The project must have billing enabled. You need permission to enable APIs, create service accounts,
-manage IAM, build images, and create Cloud Run and Cloud SQL resources.
+manage IAM, build images, create Cloud Run and Cloud SQL resources, and administer Firebase resources.
 
 ## Authenticate this temporary shell
 
@@ -37,24 +38,34 @@ It shows one cost confirmation, then:
 
 1. creates a private, versioned Terraform-state bucket in this project;
 2. enables the required APIs and creates Artifact Registry;
-3. downloads and verifies the public manifested weights;
-4. builds and regression-tests an immutable engine image in Cloud Build;
-5. applies the Zonal, scale-to-zero Community Terraform profile;
-6. loads the minimal Wikidata world tables and current ECB exchange-rate history, then installs
+3. prompts once for the Anthropic API key and stores it in Secret Manager;
+4. downloads and verifies the public manifested weights;
+5. builds and regression-tests immutable engine and chat images in Cloud Build;
+6. applies the Zonal, scale-to-zero Community Terraform profile with chat enabled;
+7. prepares Firebase Hosting and the Firebase Web app, then publishes web/public through the
+   same Cloud Build release;
+8. loads the minimal Wikidata world tables and current ECB exchange-rate history, then installs
    least-privilege serving grants; and
-7. removes the temporary database-bootstrap identity.
+9. removes the temporary database-bootstrap identity and temporary Firebase setup grant.
 
-The image build and minimal Wikidata synchronization normally take tens of minutes. The terminal
-continues to show progress and ends with the Cloud Run service URL.
+The image build, Firebase setup, and minimal Wikidata synchronization normally take tens of minutes.
+The terminal continues to show progress and ends with the Firebase Hosting URL.
 
 ## Browser client
 
-The deployment above is the deterministic engine API. Protected answer endpoints require a Firebase
-ID token. To host the included browser client, follow
-[`web/README.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.3/web/README.md) and attach
-your own Firebase project. External LLM processing remains disabled. The guided profile activates
-only the reviewed IANA country enrichment dataset; other reference datasets remain disabled until
-the operator adds the required source data, grants, and allowlist entry.
+The deployment publishes the browser client at the deployment-scoped Hosting URL printed by the
+script. Firebase Hosting serves the static HTML/CSS/JS from its CDN; `/api/**` and `POST /chat`
+are rewrites to the two Cloud Run services. The
+installer adapts the checked-in Firebase config for the selected project in the ephemeral release
+context, so the repository does not maintain a second UI copy.
+
+External model processing is enabled only for the required chat service, using the key stored in
+Secret Manager. The guided profile activates only the reviewed IANA country dataset; other reference
+datasets remain disabled until the operator adds the required source data, grants, and allowlist entry.
+
+If Firebase reports that its Terms have not been accepted, the project owner must accept them once in
+the Firebase console and rerun the same command. That is a Firebase account/terms boundary, not a
+separate static-file deployment step.
 
 ## Remove the deployment
 

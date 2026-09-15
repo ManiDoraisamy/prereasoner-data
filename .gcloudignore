@@ -27,7 +27,6 @@ engine/data/*.previous
 docs/
 infra/
 training/
-web/
 # The engine image COPYs only engine/ + regress/ (+ tests/ for the orchestrator build); everything
 # below is build-irrelevant and was silently bloating the upload (spider caches/DBs alone were ~1.3 GB).
 spider/

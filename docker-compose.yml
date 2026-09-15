@@ -1,7 +1,7 @@
-# Prereasoner local stack: Postgres (pgvector) + the serving engine.
+# Prereasoner local stack: Postgres (pgvector) + serving engine + required chat/UI service.
 #
 #   cp .env.example .env            # set KB_PG_PASSWORD (defaults to "devpassword" if unset)
-#   docker compose up --build       # db + engine on http://localhost:8080
+#   docker compose up --build       # db + engine + chat/UI (http://localhost:8090)
 #
 # AUTH_TEST_SUB=localdev is set on the engine so reviewers can call /api/reason and
 # /api/knowledge WITHOUT a Firebase ID token (test-only bypass; never set it in production).
@@ -64,10 +64,12 @@ services:
   # in .env. Local: chat UI + /chat on http://localhost:8090; the engine runs with AUTH_TEST_SUB so no
   # Firebase token is needed and RTDB is unset (the reasoning player rebuilds from the returned views).
   chat:
-    profiles: ["chat"]
     build:
       context: .
       dockerfile: Dockerfile.orchestrator
+    volumes:
+      # Reuse the canonical Firebase Hosting source locally; the container does not own a second copy.
+      - ./web/public:/app/web/public:ro
     ports:
       - "8090:8090"
     environment:

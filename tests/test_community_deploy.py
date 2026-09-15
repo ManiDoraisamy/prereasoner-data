@@ -312,11 +312,24 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "engine.release_smoke",
         "--datasets,iana_country",
         'expected 401',
+        "prompt_and_store_chat_key",
+        "--target chat",
+        "--target hosting",
+        "cloudbuild.hosting.yaml",
+        "roles/firebase.admin",
+        "HOSTING_SITE_ID",
+        "_HOSTING_SITE=${HOSTING_SITE}",
+        "firebasehosting.googleapis.com/v1beta1/projects/${PROJECT_ID}/sites/${HOSTING_SITE}",
+        "cleanup_chat_secret",
     ):
         assert required in deploy
     assert "Type %s to continue" in deploy
     assert "gcloud auth login --update-adc" in deploy
     assert "--allow-unauthenticated" not in deploy
+    hosting = _text("cloudbuild.hosting.yaml")
+    assert "hosting:sites:create \"${_HOSTING_SITE}\"" in hosting
+    assert "site.site = process.env.HOSTING_SITE" in hosting
+    assert "firebase deploy" in hosting and "--only=hosting" in hosting
     terraform = _text("infra/main.tf")
     assert 'resource "google_cloud_run_v2_job" "retention_cleanup"' in terraform
     assert 'command = ["python", "-m", "engine.retention_cleanup"]' in terraform

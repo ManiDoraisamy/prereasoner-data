@@ -5,14 +5,15 @@
 # RTDB. Its SA needs the Anthropic key, the shared dataset-attestation key, and RTDB access; it does
 # not receive Cloud SQL access.
 #
-# Deploy order (see infra/README.md):
-#   1. gcloud builds submit --config cloudbuild.orchestrator.yaml   # builds+pushes the chat image (tests-gated)
-#   2. terraform apply -var="enable_orchestrator=true" \
-#        -var="anthropic_secret_id=existing-secret-id"              # this file + main.tf
-#   3. cd web && firebase deploy --only hosting,database            # ships chat.html + the /chat rewrite
+# The guided deployer performs the complete order in one install:
+#   1. prompt once and write the Anthropic key to Secret Manager;
+#   2. build and push the tests-gated chat image;
+#   3. apply this module with enable_orchestrator=true and the immutable image digest; and
+#   4. submit the canonical web/ tree to Firebase Hosting from Cloud Build.
+# Advanced raw Terraform users may still apply this module independently and publish Hosting separately.
 
 variable "enable_orchestrator" {
-  description = "Create the optional third-party chat orchestrator and its secret/IAM resources."
+  description = "Create the third-party chat orchestrator and its secret/IAM resources. The guided installer always enables this service."
   type        = bool
   default     = false
 }

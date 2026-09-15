@@ -102,14 +102,19 @@ change; it contains both shipped foundations and clearly marked future work.
 ## Deploy To Google Cloud
 
 The supported Community Edition path opens a guided tutorial in Google Cloud Shell. It builds the
-public source and weights in your project, applies a cost-reduced Terraform profile, initializes the
-minimal Wikidata and ECB data, and removes its temporary bootstrap identity. A billing-enabled project and
-Google authorization are required; the marketing website never receives those credentials.
+public source and weights in your project, deploys the required engine and chat services to Cloud Run,
+publishes the canonical UI to a deployment-scoped Firebase Hosting CDN site, initializes the minimal Wikidata and ECB data,
+and removes its temporary bootstrap identity. A billing-enabled project, Google authorization, and one
+Anthropic API key are required; the marketing website never receives those credentials.
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.3&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
+[Install on a local machine](#install-on-a-local-machine)
+
 Read the [deployment contract](deploy/gcp/README.md), including cost, state, browser-client, and
 teardown boundaries, before presenting the button as a public install path.
+
+For the repeatable release gate, use [the Community Edition launch test](docs/COMMUNITY_LAUNCH_TEST.md).
 
 ## How A Request Works
 
@@ -177,7 +182,11 @@ The browser does not guess provenance from column names. The server combines sou
 typed AST's output expressions and returns one `column_provenance` record per result column, including qualified
 operands and publisher release IDs when a versioned source was used.
 
-## Local Quickstart
+## Install On A Local Machine
+
+The complete local UI/chat installation runs the engine, the browser-facing chat service, and PostgreSQL
+through Docker Compose. Chat requires an `ANTHROPIC_API_KEY`; keep it in the local `.env` file and never
+commit that file. The deterministic engine-only path does not require this key.
 
 Requirements:
 
@@ -201,17 +210,17 @@ building the engine image, then seed the database before making a world-dependen
 
 ```powershell
 Copy-Item .env.example .env
+# Edit .env and set: ANTHROPIC_API_KEY=...
 python -m engine.fetch_weights
 docker compose up -d db
 docker compose --profile seed run --rm seed
-docker compose up --build engine
+docker compose up --build
 ```
 
-Chat orchestration is optional and is excluded from the default Compose stack. Start it only with an Anthropic key:
+Open the local UI at `http://localhost:8090`.
 
-```powershell
-docker compose --profile chat up --build
-```
+The same Anthropic-key rule applies to a full GCP UI/chat deployment: the installer must receive the key
+once and store it in Secret Manager. It is not needed for an engine-only API deployment.
 
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public;
 `engine.fetch_weights` needs no Hugging Face account or token and verifies the complete bundle against

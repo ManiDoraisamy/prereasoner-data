@@ -17,6 +17,14 @@ BOOTSTRAP_SA=""
 DB_SECRET=""
 SMOKE_JOB=""
 BUILD_CONTEXT=""
+CHAT_BUILD_CONTEXT=""
+HOSTING_BUILD_CONTEXT=""
+CHAT_IMAGE=""
+CHAT_KEY=""
+BUILD_SERVICE_ACCOUNT=""
+FIREBASE_ADMIN_GRANTED=0
+HOSTING_SITE=""
+RELEASE_SUCCEEDED=0
 
 usage() {
   cat <<'EOF'
@@ -27,7 +35,8 @@ Usage: deploy/gcp/deploy.sh [options]
   --name NAME        Deployment prefix, lowercase letters/digits/hyphens (default: prereasoner)
   --skip-bootstrap   Create infrastructure without loading the minimal world database
   --destroy          Destroy a deployment created by this script
-  --yes              Non-interactive confirmation; use only after an external plan approval
+  --yes              Non-interactive confirmation; set ANTHROPIC_API_KEY in the environment
+                     when using this flag
   -h, --help         Show this help
 EOF
 }
@@ -64,6 +73,9 @@ fi
 [[ "$DEPLOYMENT" =~ ^[a-z][a-z0-9-]{1,19}$ ]] || die "--name must be 2-20 lowercase letters, digits, or hyphens"
 
 readonly SERVICE_NAME="${DEPLOYMENT}-api"
+readonly CHAT_SERVICE_NAME="${DEPLOYMENT}-chat"
+readonly ANTHROPIC_SECRET_ID="${DEPLOYMENT}-chat-anthropic-key"
+readonly HOSTING_SITE_ID="${DEPLOYMENT}"
 readonly SQL_INSTANCE="${DEPLOYMENT}-world"
 readonly ARTIFACT_REPO="$DEPLOYMENT"
 readonly STATE_BUCKET="${PROJECT_ID}-${DEPLOYMENT}-tfstate"
@@ -117,13 +129,44 @@ cleanup_bootstrap_identity() {
       --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/cloudsql.client --condition=None --quiet >/dev/null 2>&1
     gcloud iam service-accounts delete "$BOOTSTRAP_SA" --project="$PROJECT_ID" --quiet >/dev/null 2>&1
   fi
+  if [[ "$FIREBASE_ADMIN_GRANTED" == 1 && -n "$BUILD_SERVICE_ACCOUNT" ]]; then
+    gcloud projects remove-iam-policy-binding "$PROJECT_ID" \
+      --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
+      --role=roles/firebase.admin --condition=None --quiet >/dev/null 2>&1
+  fi
+}
+
+cleanup_firebase_release() {
+  # Firebase Hosting is intentionally outside Terraform because it is a CDN release. Remove only
+  # this deployment's site; never touch the project's default site or a shared Web app.
+  if [[ -n "$HOSTING_SITE" ]]; then
+    token="$(gcloud auth print-access-token 2>/dev/null || true)"
+    if [[ -n "$token" ]]; then
+      curl --fail --silent --show-error --request DELETE \
+        --header "Authorization: Bearer ${token}" \
+        "https://firebasehosting.googleapis.com/v1beta1/projects/${PROJECT_ID}/sites/${HOSTING_SITE}" \
+        >/dev/null 2>&1 || true
+    fi
+  fi
+}
+
+cleanup_chat_secret() {
+  if gcloud secrets describe "$ANTHROPIC_SECRET_ID" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    gcloud secrets delete "$ANTHROPIC_SECRET_ID" --project="$PROJECT_ID" --quiet >/dev/null 2>&1 || true
+  fi
 }
 
 cleanup_release() {
+  if [[ "$RELEASE_SUCCEEDED" != 1 ]]; then
+    cleanup_firebase_release
+    cleanup_chat_secret
+  fi
   cleanup_bootstrap_identity
-  case "$BUILD_CONTEXT" in
-    "${TMPDIR:-/tmp}"/prereasoner-build.*) rm -rf -- "$BUILD_CONTEXT" ;;
-  esac
+  for context in "$BUILD_CONTEXT" "$CHAT_BUILD_CONTEXT" "$HOSTING_BUILD_CONTEXT"; do
+    case "$context" in
+      "${TMPDIR:-/tmp}"/prereasoner-build.*) rm -rf -- "$context" ;;
+    esac
+  done
 }
 
 init_state() {
@@ -141,7 +184,7 @@ init_state() {
 }
 
 tf_vars() {
-  local image="$1" protection="$2"
+  local image="$1" protection="$2" chat_enabled="${3:-true}"
   printf '%s\n' \
     "-var=project_id=${PROJECT_ID}" \
     "-var=region=${REGION}" \
@@ -153,19 +196,47 @@ tf_vars() {
     "-var=min_instances=0" \
     "-var=deletion_protection=${protection}" \
     "-var=enable_external_llm=false" \
+    "-var=enable_orchestrator=${chat_enabled}" \
+    "-var=anthropic_secret_id=$([[ "$chat_enabled" == true ]] && printf '%s' "$ANTHROPIC_SECRET_ID" || true)" \
+    "-var=chat_service_name=${CHAT_SERVICE_NAME}" \
+    "-var=chat_image=$([[ "$chat_enabled" == true ]] && printf '%s' "$CHAT_IMAGE" || true)" \
     "-var=enrichment_active_datasets=iana_country" \
     "-var=rtdb_url="
+}
+
+prompt_and_store_chat_key() {
+  CHAT_KEY="${ANTHROPIC_API_KEY:-}"
+  if [[ -z "$CHAT_KEY" ]]; then
+    [[ -t 0 ]] || die "ANTHROPIC_API_KEY must be set when stdin is not interactive (for example with --yes)"
+    printf 'Anthropic API key (input hidden; stored only in Secret Manager): '
+    read -r -s CHAT_KEY
+    printf '\n'
+  fi
+  [[ -n "$CHAT_KEY" ]] || die "an Anthropic API key is required to deploy the chat service"
+
+  if gcloud secrets describe "$ANTHROPIC_SECRET_ID" --project="$PROJECT_ID" >/dev/null 2>&1; then
+    die "secret ${ANTHROPIC_SECRET_ID} already exists; choose a new --name or remove that prior test deployment"
+  fi
+  gcloud secrets create "$ANTHROPIC_SECRET_ID" \
+    --project="$PROJECT_ID" --replication-policy=automatic >/dev/null
+  printf '%s' "$CHAT_KEY" | gcloud secrets versions add "$ANTHROPIC_SECRET_ID" \
+    --project="$PROJECT_ID" --data-file=- >/dev/null
+  unset CHAT_KEY
+  unset ANTHROPIC_API_KEY
 }
 
 destroy_deployment() {
   init_state
   image="$(terraform -chdir="$ROOT/infra" output -raw image 2>/dev/null || true)"
   [[ "$image" == *@sha256:* ]] || die "no ${DEPLOYMENT} deployment exists in gs://${STATE_BUCKET}/${STATE_PREFIX}"
-  mapfile -t variables < <(tf_vars "$image" false)
+  mapfile -t variables < <(tf_vars "$image" false false)
   terraform -chdir="$ROOT/infra" plan -input=false "${variables[@]}"
   confirm DESTROY "This removes ${SERVICE_NAME}, ${SQL_INSTANCE}, its databases, secrets, and images from ${PROJECT_ID}. The versioned Terraform state bucket is retained for audit."
   terraform -chdir="$ROOT/infra" apply -auto-approve -input=false "${variables[@]}"
   terraform -chdir="$ROOT/infra" destroy -auto-approve -input=false "${variables[@]}"
+  HOSTING_SITE="$HOSTING_SITE_ID"
+  cleanup_firebase_release
+  cleanup_chat_secret
   printf '\nDeployment destroyed. State retained at gs://%s/%s\n' "$STATE_BUCKET" "$STATE_PREFIX"
 }
 
@@ -177,7 +248,7 @@ fi
 [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=all)" ]] \
   || die "deployment requires a clean checkout; commit or remove every local change first"
 
-confirm DEPLOY "Prereasoner will create a ZONAL Cloud SQL instance, Artifact Registry, Cloud Run service, Secret Manager secrets, a Cloud Build, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
+confirm DEPLOY "Prereasoner will create a ZONAL Cloud SQL instance, required Cloud Run engine and chat services, Firebase Hosting release, Secret Manager secrets, Cloud Builds, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
 
 # Register cleanup before creating state, build contexts, temporary jobs, or identities.
 # Every failure from this point onward owns its rollback path.
@@ -186,7 +257,7 @@ trap cleanup_release EXIT
 init_state
 
 dummy_image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine@sha256:${ZERO_DIGEST}"
-mapfile -t bootstrap_vars < <(tf_vars "$dummy_image" true)
+mapfile -t bootstrap_vars < <(tf_vars "$dummy_image" true false)
 terraform -chdir="$ROOT/infra" apply -auto-approve -input=false \
   -target=google_project_service.apis \
   -target=google_artifact_registry_repository.engine \
@@ -194,20 +265,30 @@ terraform -chdir="$ROOT/infra" apply -auto-approve -input=false \
 
 cache_dir="${HOME}/.cache/prereasoner-deploy"
 venv="${cache_dir}/venv"
-if [[ ! -x "${venv}/bin/python" ]]; then
-  python3 -m venv "$venv"
+VENV_PYTHON="${venv}/bin/python"
+if [[ ! -x "$VENV_PYTHON" && -x "${venv}/Scripts/python.exe" ]]; then
+  VENV_PYTHON="${venv}/Scripts/python.exe"
 fi
-"${venv}/bin/python" -m pip install --quiet --disable-pip-version-check \
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  python3 -m venv "$venv"
+  if [[ -x "${venv}/bin/python" ]]; then
+    VENV_PYTHON="${venv}/bin/python"
+  else
+    VENV_PYTHON="${venv}/Scripts/python.exe"
+  fi
+fi
+[[ -x "$VENV_PYTHON" ]] || die "python virtual environment did not expose an executable"
+"$VENV_PYTHON" -m pip install --quiet --disable-pip-version-check \
   --require-hashes -r deploy/gcp/requirements.lock.txt
 (
   cd "$ROOT"
-  HF_TOKEN= HF_HUB_DISABLE_IMPLICIT_TOKEN=1 "${venv}/bin/python" -m engine.fetch_weights
+  HF_TOKEN= HF_HUB_DISABLE_IMPLICIT_TOKEN=1 "$VENV_PYTHON" -m engine.fetch_weights
 )
 
 BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/prereasoner-build.XXXXXX")"
 (
   cd "$ROOT"
-  "${venv}/bin/python" deploy/gcp/build_context.py --output "$BUILD_CONTEXT"
+  "$VENV_PYTHON" deploy/gcp/build_context.py --output "$BUILD_CONTEXT"
 )
 
 build_service_account="$(gcloud builds get-default-service-account \
@@ -218,6 +299,9 @@ build_service_account="${build_service_account##*/}"
 gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${build_service_account}" \
   --role=roles/artifactregistry.writer --condition=None --quiet >/dev/null
+BUILD_SERVICE_ACCOUNT="$build_service_account"
+
+prompt_and_store_chat_key
 
 commit="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine:community-${commit}"
@@ -231,7 +315,24 @@ digest="$(gcloud artifacts docker images describe "$image_tag" \
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "could not resolve the built image digest"
 image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine@${digest}"
 
-mapfile -t variables < <(tf_vars "$image" true)
+CHAT_BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/prereasoner-build.XXXXXX")"
+(
+  cd "$ROOT"
+  "$VENV_PYTHON" deploy/gcp/build_context.py --target chat --output "$CHAT_BUILD_CONTEXT"
+)
+chat_tag="community-${commit}"
+chat_image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/chat:${chat_tag}"
+gcloud builds submit "$CHAT_BUILD_CONTEXT" \
+  --project="$PROJECT_ID" \
+  --config="$CHAT_BUILD_CONTEXT/cloudbuild.orchestrator.yaml" \
+  --timeout=900s \
+  --substitutions="_REGION=${REGION},_REPO=${ARTIFACT_REPO},_TAG=${chat_tag}"
+chat_digest="$(gcloud artifacts docker images describe "$chat_image_tag" \
+  --project="$PROJECT_ID" --format='value(image_summary.digest)')"
+[[ "$chat_digest" =~ ^sha256:[0-9a-f]{64}$ ]] || die "could not resolve the built chat image digest"
+CHAT_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/chat@${chat_digest}"
+
+mapfile -t variables < <(tf_vars "$image" true true)
 terraform -chdir="$ROOT/infra" plan -input=false -out="$TF_PLAN" "${variables[@]}"
 terraform -chdir="$ROOT/infra" apply -auto-approve -input=false "$TF_PLAN"
 rm -f "$TF_PLAN"
@@ -280,6 +381,22 @@ if ((!SKIP_BOOTSTRAP)); then
   gcloud run jobs execute "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
 fi
 
+HOSTING_BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/prereasoner-build.XXXXXX")"
+HOSTING_SITE="$HOSTING_SITE_ID"
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:${BUILD_SERVICE_ACCOUNT}" \
+  --role=roles/firebase.admin --condition=None --quiet >/dev/null
+FIREBASE_ADMIN_GRANTED=1
+(
+  cd "$ROOT"
+  "$VENV_PYTHON" deploy/gcp/build_context.py --target hosting --output "$HOSTING_BUILD_CONTEXT"
+)
+gcloud builds submit "$HOSTING_BUILD_CONTEXT" \
+  --project="$PROJECT_ID" \
+  --config="$HOSTING_BUILD_CONTEXT/cloudbuild.hosting.yaml" \
+  --timeout=900s \
+  --substitutions="_REGION=${REGION},_API_SERVICE=${SERVICE_NAME},_CHAT_SERVICE=${CHAT_SERVICE_NAME},_HOSTING_SITE=${HOSTING_SITE}"
+
 service_url="$(terraform -chdir="$ROOT/infra" output -raw service_url)"
 printf '\nWaiting for the model-backed service to become ready...\n'
 for _ in {1..60}; do
@@ -289,9 +406,10 @@ for _ in {1..60}; do
       --data '{"data":"amount\\n1","question":"total amount"}' \
       "${service_url}/api/reason")"
     [[ "$auth_status" == "401" ]] || die "reasoning endpoint auth smoke returned HTTP ${auth_status}, expected 401"
-    printf '\nPrereasoner Community Edition is ready.\nEngine: %s\nState:  gs://%s/%s\n' \
-      "$service_url" "$STATE_BUCKET" "$STATE_PREFIX"
-    printf 'The engine API requires a Firebase ID token. Follow web/README.md to attach your own Firebase web client.\n'
+    printf '\nPrereasoner Community Edition is ready.\nWeb:    https://%s.web.app/\nChat API: /chat\nEngine: %s\nState:  gs://%s/%s\n' \
+      "$HOSTING_SITE" "$service_url" "$STATE_BUCKET" "$STATE_PREFIX"
+    printf 'Firebase Hosting serves the static UI; /chat and /api/** are rewritten to the two Cloud Run services.\n'
+    RELEASE_SUCCEEDED=1
     exit 0
   fi
   sleep 10

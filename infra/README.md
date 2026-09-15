@@ -7,9 +7,10 @@ minimal database bootstrap. The manual production procedure below remains for ex
 deployments and advanced operators.
 
 Terraform creates the core Cloud Run engine (`prereasoner-api`), Cloud SQL Postgres,
-Artifact Registry, secrets, and runtime identity. A separate third-party chat orchestrator
-is optional (`enable_orchestrator=false` by default). Firebase Auth, Realtime Database, and
-Hosting for `web/` are managed outside Terraform; see step 1.
+Artifact Registry, secrets, and runtime identity. A separate third-party chat orchestrator remains
+available as an advanced Terraform option (`enable_orchestrator=false` by default), while the
+guided installer always enables it. Terraform enables the Firebase APIs; the guided Cloud Build release
+prepares Firebase Hosting and publishes the `web/public` CDN files after the Cloud Run revisions exist.
 
 ## Architecture
 
@@ -33,19 +34,15 @@ browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run 
 
 ## Prerequisites
 
-- `gcloud` (authenticated: `gcloud auth login && gcloud config set project <PROJECT>`),
-  Terraform >= 1.5 (CI uses 1.15.8 and the checked-in provider lock), and the `firebase`
-  CLI (`npm i -g firebase-tools`) for the web step.
+- `gcloud` (authenticated: `gcloud auth login && gcloud config set project <PROJECT>`) and
+  Terraform >= 1.5 (CI uses 1.15.8 and the checked-in provider lock). The guided installer runs
+  the Firebase CLI inside Cloud Build; it is not required on the operator's machine.
 - A GCP project with billing enabled.
-- **Manual Firebase step (Terraform does not do this):** add Firebase to the project at
-  <https://console.firebase.google.com> ("Add project" → pick the existing GCP project).
-  Then, in the Firebase console:
-  1. **Authentication** → sign-in method → enable **Google**.
-  2. **Realtime Database** → create a database (us-central1) → note its URL
-     (`https://<project>-default-rtdb.firebaseio.com`) — this becomes the `rtdb_url`
-     Terraform variable. Skippable: without it, trace streaming is disabled and the app
-     still works (full-JSON responses).
-  3. Hosting rewrites to Cloud Run require the **Blaze** (pay-as-you-go) plan.
+- The guided installer enables the Firebase APIs, adds Firebase to the selected project when possible,
+  creates the default Hosting site and Web app, and publishes the static release in Cloud Build.
+  The project owner may still need to accept Firebase Terms once in the Firebase console. Google
+  sign-in provider setup and custom-domain authorization remain operator-owned Firebase settings.
+  Hosting rewrites to Cloud Run require the **Blaze** (pay-as-you-go) plan.
 - A full working copy **including the model weights** in `engine/data/` (`encoder.pt`,
   `encoder_meta.pt`, `anchor_assignment.npz`, `primitives.npz`, `qwen_lora/`). They are
   gitignored; a bare clone builds an image that exits at startup with instructions.
@@ -175,9 +172,9 @@ both services. It authenticates conversation-derived dataset metadata at the eng
 not create a separate value for either service; rotating the Terraform-owned secret rotates both
 bindings together on the next service revision.
 
-### 4. Deploy the web frontend
+### 4. Deploy the web frontend (advanced/manual Terraform workflow)
 
-`web/firebase.json` already rewrites `/api/**` to the Cloud Run service
+`web/firebase.json` rewrites `/api/**` to the Cloud Run service
 (`prereasoner-api`, `us-central1` — keep in sync with `service_name`/`region` vars):
 
 ```bash
@@ -185,6 +182,11 @@ cd web
 firebase use <PROJECT>
 firebase deploy --only hosting,database    # hosting + RTDB security rules
 ```
+
+The supported guided installer does not ask the operator to run this step. It creates an ephemeral
+Hosting release context from the same checked-in `web/` tree and submits the Hosting release from
+Cloud Build after applying Terraform. This manual section is only for operators who deliberately
+manage the raw Terraform workflow themselves.
 
 ### 5. Smoke test
 

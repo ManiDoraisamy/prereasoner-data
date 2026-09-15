@@ -1,0 +1,161 @@
+# Publish the canonical web/public tree to Firebase Hosting from Cloud Build.
+#
+# This is intentionally a build stage, not a second operator command. deploy.sh creates this
+# context from the reviewed Git HEAD and submits it after Terraform has deployed both Cloud Run
+# services. Firebase Hosting remains the CDN and owns the static HTML/CSS/JS; Cloud Run only owns
+# /api/** and /chat through the rewrites in web/firebase.json.
+
+steps:
+  - id: publish-hosting
+    name: node:22-bookworm-slim
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        npm install --global --no-fund --no-audit firebase-tools
+
+        # Firebase resources are prepared in this same release stage. If the selected GCP project
+        # has not been made a Firebase project yet, this is the only automated setup attempt. Firebase
+        # Terms acceptance can still require the project owner once in the Firebase console.
+        firebase_projects="/tmp/firebase-projects.json"
+        firebase projects:list --project="${PROJECT_ID}" --non-interactive --json > "$firebase_projects"
+        if ! TARGET_PROJECT="${PROJECT_ID}" node <<'NODE'
+        const fs = require("fs");
+        const target = process.env.TARGET_PROJECT;
+        const value = JSON.parse(fs.readFileSync("/tmp/firebase-projects.json", "utf8"));
+        function hasProject(item) {
+          if (Array.isArray(item)) return item.some(hasProject);
+          if (!item || typeof item !== "object") return false;
+          if (item.projectId === target) return true;
+          return Object.values(item).some(hasProject);
+        }
+        process.exit(hasProject(value) ? 0 : 1);
+        NODE
+        then
+          firebase projects:addfirebase "${PROJECT_ID}" --non-interactive
+        fi
+
+        # Use a deployment-scoped site so a Community Edition trial never overwrites an existing
+        # project's default site. The site id is passed by deploy.sh and is deliberately not part
+        # of Terraform state: Hosting remains a CDN release artifact owned by this build stage.
+        if ! firebase hosting:sites:get "${_HOSTING_SITE}" --project="${PROJECT_ID}" --non-interactive >/dev/null 2>&1; then
+          firebase hosting:sites:create "${_HOSTING_SITE}" --project="${PROJECT_ID}" --non-interactive
+        fi
+
+        firebase_apps="/tmp/firebase-web-apps.json"
+        firebase apps:list WEB --project="${PROJECT_ID}" --non-interactive --json > "$firebase_apps"
+        web_app_id="$(TARGET_PROJECT="${PROJECT_ID}" node <<'NODE'
+        const fs = require("fs");
+        const value = JSON.parse(fs.readFileSync("/tmp/firebase-web-apps.json", "utf8"));
+        function findApp(item) {
+          if (Array.isArray(item)) {
+            for (const child of item) {
+              const found = findApp(child);
+              if (found) return found;
+            }
+            return "";
+          }
+          if (!item || typeof item !== "object") return "";
+          if (typeof item.appId === "string" &&
+              (!item.platform || String(item.platform).toUpperCase() === "WEB")) return item.appId;
+          for (const child of Object.values(item)) {
+            const found = findApp(child);
+            if (found) return found;
+          }
+          return "";
+        }
+        process.stdout.write(findApp(value));
+        NODE
+        )"
+        if [[ -z "$web_app_id" ]]; then
+          firebase apps:create WEB "Prereasoner Web" --project="${PROJECT_ID}" --non-interactive
+          firebase apps:list WEB --project="${PROJECT_ID}" --non-interactive --json > "$firebase_apps"
+          web_app_id="$(node <<'NODE'
+        const fs = require("fs");
+        const value = JSON.parse(fs.readFileSync("/tmp/firebase-web-apps.json", "utf8"));
+        function findApp(item) {
+          if (Array.isArray(item)) {
+            for (const child of item) {
+              const found = findApp(child);
+              if (found) { process.stdout.write(found); return true; }
+            }
+            return false;
+          }
+          if (!item || typeof item !== "object") return false;
+          if (typeof item.appId === "string" &&
+              (!item.platform || String(item.platform).toUpperCase() === "WEB")) {
+            process.stdout.write(item.appId);
+            return true;
+          }
+          return Object.values(item).some(findApp);
+        }
+        findApp(value);
+        NODE
+          )"
+        fi
+        [[ -n "$web_app_id" ]] || { echo "Firebase Web app could not be created or selected" >&2; exit 1; }
+
+        firebase apps:sdkconfig WEB "$web_app_id" \
+          --project="${PROJECT_ID}" --non-interactive --out=/tmp/firebase-js-config.json
+        TARGET_PROJECT="${PROJECT_ID}" HOSTING_SITE="${_HOSTING_SITE}" node <<'NODE'
+        const fs = require("fs");
+        const sdk = JSON.parse(fs.readFileSync("/tmp/firebase-js-config.json", "utf8"));
+        const projectId = sdk.projectId || process.env.TARGET_PROJECT;
+        const hostingSite = process.env.HOSTING_SITE;
+        const firebaseConfig = {
+          apiKey: sdk.apiKey,
+          authDomain: sdk.authDomain || (projectId + ".firebaseapp.com"),
+          projectId,
+          appId: sdk.appId,
+          databaseURL: sdk.databaseURL || ("https://" + projectId + "-default-rtdb.firebaseio.com"),
+        };
+        const source = fs.readFileSync("web/public/lib/config.js", "utf8");
+        const start = source.indexOf("const HOSTING_DOMAINS =");
+        const end = source.indexOf("// Google Picker credentials", start);
+        if (start < 0 || end < 0) throw new Error("config.js markers are missing");
+        const block = "const HOSTING_DOMAINS = " +
+          JSON.stringify([hostingSite + ".web.app", hostingSite + ".firebaseapp.com"]) + ";\n" +
+          "export const firebaseConfig = {\n" +
+          "  apiKey: " + JSON.stringify(firebaseConfig.apiKey) + ",\n" +
+          "  authDomain: HOSTING_DOMAINS.includes(location.hostname) ? location.hostname : " +
+            JSON.stringify(firebaseConfig.authDomain) + ",\n" +
+          "  projectId: " + JSON.stringify(firebaseConfig.projectId) + ",\n" +
+          "  appId: " + JSON.stringify(firebaseConfig.appId) + ",\n" +
+          "  databaseURL: " + JSON.stringify(firebaseConfig.databaseURL) + "\n};\n\n";
+        fs.writeFileSync("web/public/lib/config.js", source.slice(0, start) + block + source.slice(end));
+        NODE
+
+        # Keep the checked-in firebase.json as the source of truth while adapting only the two
+        # Cloud Run service names and region for this deployment. The generated file stays inside
+        # the ephemeral Cloud Build workspace and is never a second maintained copy.
+        API_SERVICE="${_API_SERVICE}" CHAT_SERVICE="${_CHAT_SERVICE}" REGION="${_REGION}" HOSTING_SITE="${_HOSTING_SITE}" node <<'NODE'
+        const fs = require("fs");
+        const config = JSON.parse(fs.readFileSync("web/firebase.json", "utf8"));
+        const hosting = Array.isArray(config.hosting) ? config.hosting : [config.hosting];
+        for (const site of hosting) {
+          site.site = process.env.HOSTING_SITE;
+        }
+        config.hosting = hosting;
+        for (const rewrite of hosting[0].rewrites || []) {
+          if (!rewrite.run) continue;
+          if (rewrite.run.serviceId === "prereasoner-api") rewrite.run.serviceId = process.env.API_SERVICE;
+          if (rewrite.run.serviceId === "prereasoner-chat") rewrite.run.serviceId = process.env.CHAT_SERVICE;
+          rewrite.run.region = process.env.REGION;
+        }
+        fs.writeFileSync("web/firebase.release.json", JSON.stringify(config, null, 2) + "\n");
+        NODE
+
+        firebase deploy \
+          --project="${PROJECT_ID}" \
+          --config=web/firebase.release.json \
+          --only=hosting \
+          --non-interactive
+
+substitutions:
+  _REGION: us-central1
+  _API_SERVICE: prereasoner-api
+  _CHAT_SERVICE: prereasoner-chat
+  _HOSTING_SITE: prereasoner-community
+
+timeout: 900s

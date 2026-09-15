@@ -18,7 +18,8 @@ The deployer uses:
 - a private versioned bucket named `<project>-<deployment>-tfstate`;
 - the canonical Terraform under `infra/`, with an isolated backend prefix;
 - the public manifest-pinned model bundle;
-- the canonical `cloudbuild.yaml`, including its offline regression gate; and
+- the canonical `cloudbuild.yaml` and `cloudbuild.orchestrator.yaml`, including their regression gates;
+- the Cloud Build Firebase Hosting release for the canonical `web/public` source; and
 - `db.sync.community_bootstrap` in a short-lived Cloud Run Job, including the initial minimal
   Wikidata and ECB builds that later scheduled refreshes maintain.
 
@@ -45,19 +46,22 @@ Options:
 --name NAME         isolated resource/state prefix; default prereasoner
 --skip-bootstrap    create infrastructure without loading the minimal world database
 --destroy           review and remove this deployment
---yes               CI only, after an external plan/cost approval
+--yes               CI only, after an external plan/cost approval; requires ANTHROPIC_API_KEY
 ```
 
-The Community profile uses Zonal Cloud SQL and `min_instances=0`. It keeps deletion protection on,
-external LLM processing off, and activates only the reviewed `iana_country` enrichment dataset. The initial
-bootstrap loads the high-population Wikidata serving projection, IANA country release, and complete current ECB
-history. The deployment creates a functional engine API and a daily PostgreSQL conversation-retention job; the
-included browser client remains a separate Firebase deployment because its Google OAuth identifiers
-and authorized domains belong to each operator.
+The Community profile uses Zonal Cloud SQL and `min_instances=0`. It requires one Anthropic API key
+at install time; the value is piped directly into Secret Manager and never enters Terraform state.
+It keeps deletion protection on,
+activates the required chat service with the one Anthropic key entered during installation, and activates
+only the reviewed `iana_country` enrichment dataset. The initial bootstrap loads the high-population Wikidata
+serving projection, IANA country release, and complete current ECB history. The deployment creates the engine
+API, chat service, Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.
 
 Before reporting success, the deployer runs the current application migrations, reads the required shared tables
 as the non-superuser serving role, executes an exact-decimal calculation and a model-backed reasoning request in
 the built image, checks service readiness, and verifies that an unauthenticated reasoning request is rejected.
+The Hosting release is submitted by the same script after Cloud Run is configured; there is no separate
+manual Firebase deployment step.
 
 ## State And Replays
 

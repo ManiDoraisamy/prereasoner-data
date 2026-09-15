@@ -1,10 +1,15 @@
 # Prereasoner GCP deployment — the core Cloud Run engine + one Cloud SQL Postgres.
-# The optional chat service is declared in orchestrator.tf. Firebase Auth, RTDB, and Hosting are managed
-# OUTSIDE Terraform: enabling Firebase on a project is a one-time console/CLI step and
-# `firebase deploy` owns hosting — see infra/README.md.
+# The chat service is declared in orchestrator.tf. The guided installer enables the Firebase APIs,
+# deploys both Cloud Run services, then publishes the canonical web/ tree in its Cloud Build Hosting
+# release stage. Terraform still does not upload static bytes itself because the Firebase provider's
+# Hosting-version resource does not support static files.
 
 locals {
   required_apis = [
+    "firebase.googleapis.com",         # Firebase project APIs
+    "firebasehosting.googleapis.com",  # Firebase Hosting release stage
+    "identitytoolkit.googleapis.com",  # Firebase Authentication
+    "firebasedatabase.googleapis.com", # Firebase Realtime Database client
     "run.googleapis.com",              # Cloud Run
     "sqladmin.googleapis.com",         # Cloud SQL
     "secretmanager.googleapis.com",    # DB password

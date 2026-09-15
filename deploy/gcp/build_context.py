@@ -69,6 +69,13 @@ SOURCE_SYNC_ALLOWLIST = (
     "engine/enrichment/__init__.py",
     "engine/enrichment/registry.py",
 )
+SOURCE_HOSTING_ALLOWLIST = (
+    ".gcloudignore",
+    "LICENSE",
+    "THIRD_PARTY.md",
+    "cloudbuild.hosting.yaml",
+    "web",
+)
 
 from engine.artifact_provenance import (  # noqa: E402
     load_weights_manifest,
@@ -94,6 +101,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
         "engine": SOURCE_ALLOWLIST,
         "chat": SOURCE_CHAT_ALLOWLIST,
         "sync": SOURCE_SYNC_ALLOWLIST,
+        "hosting": SOURCE_HOSTING_ALLOWLIST,
     }
     if target not in allowlists:
         raise ValueError(f"unknown build target: {target}")
@@ -139,6 +147,9 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     elif target == "sync":
         fingerprint = "source-only"
         provenance = output / "db" / "sync" / "build_provenance.json"
+    elif target == "hosting":
+        fingerprint = "source-only"
+        provenance = output / "web" / "build_provenance.json"
     else:
         fingerprint = "source-only"
         provenance = output / "orchestrator" / "build_provenance.json"
@@ -153,7 +164,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--target", choices=("engine", "chat", "sync"), default="engine")
+    parser.add_argument("--target", choices=("engine", "chat", "sync", "hosting"), default="engine")
     args = parser.parse_args()
     commit, fingerprint = create_context(args.output, args.target)
     print(f"build context ready: target={args.target} commit={commit} weights={fingerprint}")

@@ -96,15 +96,17 @@ the one-time seed, and start the engine:
 ```powershell
 docker compose up -d db
 docker compose --profile seed run --rm seed
-docker compose up --build engine
+docker compose up --build
 ```
 
-The separate conversational orchestrator is not part of the default stack. Set
-`ANTHROPIC_API_KEY` and run `docker compose --profile chat up --build` only when testing it.
+For the complete local UI/chat installation, put `ANTHROPIC_API_KEY` in `.env` before the last
+command. Compose mounts the canonical `web/public` directory into the chat service, so local
+development and Firebase Hosting use one static-file source. The engine-only service remains
+available for backend-only work.
 
 The seed is a one-time operation. It builds the resolution index, taxonomy, and world tables described in
 [../db/README.md](../db/README.md). The engine listens on `http://localhost:8080` and Compose sets the development-
-only `AUTH_TEST_SUB=localdev` identity.
+only `AUTH_TEST_SUB=localdev` identity. The full local UI listens on `http://localhost:8090`.
 
 For native execution, point the `KB_PG_*` variables in `.env` at a PostgreSQL 16 instance, apply `db/init.sql`, seed
 it, then run:
@@ -193,7 +195,7 @@ The lifecycle is:
 Reference selection does not scan question words, use gold SQL, or create a second planner. It uses the same
 relationship graph that will be handed to AST search.
 
-## 7. Run the frontend
+## 7. Preview Firebase Hosting files directly (optional)
 
 ```powershell
 npm install --global firebase-tools
@@ -201,6 +203,8 @@ Set-Location web
 firebase serve --only hosting --project <firebase-project> --port 5057
 ```
 
+The full local UI does not need the Firebase CLI: open `http://localhost:8090` after starting the
+normal Compose stack. Use the Hosting emulator only when testing Firebase Hosting behavior itself.
 Open `http://localhost:5057`. For localhost-only engine testing, set these once in browser developer tools:
 
 ```js

@@ -108,6 +108,12 @@ larger signed-in browser regression against a live `/api/reason` endpoint.
 
 ## Deployment
 
-`firebase.json` is the source of truth for Hosting rewrites. Deploying static files and deploying the Cloud Run
-engine are separate operations. Do not point production Hosting at an unverified engine revision; validate the tagged
-revision first, then update traffic and Hosting deliberately.
+`firebase.json` is the source of truth for Hosting rewrites. The guided GCP installer packages this
+directory into its Cloud Build release after Terraform has deployed the engine and chat Cloud Run revisions.
+Firebase Hosting remains the CDN for the static files; Cloud Run receives only the rewritten `/api/**`
+and `/chat` requests. Do not point production Hosting at an unverified engine revision; the installer
+publishes only after the immutable revisions have been applied.
+
+The release context generates the selected project's public Firebase Web config in the ephemeral build workspace.
+`public/lib/config.js` remains the single checked-in source for the client shape and reference-project defaults;
+local Docker Compose uses the same `web/public` tree without maintaining another copy.
