@@ -328,7 +328,7 @@ Notes:
 
 | Component | Config | Est. monthly |
 |---|---|---|
-| Cloud SQL | `db-custom-1-3840` (1 vCPU / 3.75 GB), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
+| Cloud SQL | `db-perf-optimized-N-2` (Enterprise Plus, 2 vCPU / 16 GB), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
 | Cloud Run | 8 Gi / 4 vCPU, min 0 in Community (scale to zero) | Usage based; verify the current regional price before apply |
 | Artifact Registry | ~3–4 GB image | ~$0.40 |
 | Secret Manager | 1 secret, few accesses | < $0.10 |

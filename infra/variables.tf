@@ -43,9 +43,9 @@ variable "sql_instance_name" {
 }
 
 variable "db_tier" {
-  description = "Cloud SQL machine tier. db-custom-1-3840 (1 vCPU / 3.75 GB) comfortably holds the ~2-3 GB fully-synced world DB + HNSW index."
+  description = "Cloud SQL Enterprise Plus machine tier. db-perf-optimized-N-2 is the smallest predefined tier accepted by current Enterprise Plus projects and provides 2 vCPU / 16 GB for the ~2-3 GB fully-synced world DB + HNSW index."
   type        = string
-  default     = "db-custom-1-3840"
+  default     = "db-perf-optimized-N-2"
 }
 
 variable "db_availability_type" {

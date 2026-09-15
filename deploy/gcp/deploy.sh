@@ -232,7 +232,6 @@ destroy_deployment() {
   mapfile -t variables < <(tf_vars "$image" false false)
   terraform -chdir="$ROOT/infra" plan -input=false "${variables[@]}"
   confirm DESTROY "This removes ${SERVICE_NAME}, ${SQL_INSTANCE}, its databases, secrets, and images from ${PROJECT_ID}. The versioned Terraform state bucket is retained for audit."
-  terraform -chdir="$ROOT/infra" apply -auto-approve -input=false "${variables[@]}"
   terraform -chdir="$ROOT/infra" destroy -auto-approve -input=false "${variables[@]}"
   HOSTING_SITE="$HOSTING_SITE_ID"
   cleanup_firebase_release
