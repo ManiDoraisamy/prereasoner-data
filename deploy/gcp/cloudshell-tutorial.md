@@ -15,7 +15,7 @@ manage IAM, build images, create Cloud Run and Cloud SQL resources, and administ
 ## Authenticate this temporary shell
 
 Google deliberately withholds account credentials from third-party Open-in-Cloud-Shell repositories.
-Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.10/deploy/gcp/deploy.sh),
+Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.11/deploy/gcp/deploy.sh),
 then authorize this shell explicitly:
 
 ```bash

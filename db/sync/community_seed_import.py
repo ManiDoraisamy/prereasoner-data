@@ -93,14 +93,23 @@ def _restore(path: str) -> None:
     try:
         for line in restore.stdout:
             stripped = line.strip()
+            normalized = stripped.upper().replace(b'"PUBLIC"', b"PUBLIC")
             if (
                 stripped == b"SET transaction_timeout = 0;"
                 or stripped.startswith(b"\\restrict")
                 or stripped.startswith(b"\\unrestrict")
                 # Cloud SQL installs serving extensions in the shared public schema.  A
                 # retryable pg_restore must leave that schema in place; dropping it would
-                # also try to remove extensions such as vector and pg_trgm.
-                or stripped in {b"DROP SCHEMA public;", b"CREATE SCHEMA public;"}
+                # also try to remove extensions such as vector and pg_trgm.  Dumps can
+                # spell the schema quoted and can include IF [NOT] EXISTS.
+                or normalized.startswith(
+                    (
+                        b"DROP SCHEMA PUBLIC",
+                        b"CREATE SCHEMA PUBLIC",
+                        b"DROP SCHEMA IF EXISTS PUBLIC",
+                        b"CREATE SCHEMA IF NOT EXISTS PUBLIC",
+                    )
+                )
             ):
                 continue
             psql.stdin.write(line)
