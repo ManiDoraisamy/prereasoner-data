@@ -123,7 +123,10 @@ def main() -> int:
                 repo_id=args.repo,
                 filename=rel,
                 revision=args.revision,
-                token=os.environ.get("HF_TOKEN"),
+                # An empty token is not equivalent to anonymous access for httpx: it produces
+                # an invalid `Authorization: Bearer ` header in a fresh Cloud Shell. Treat the
+                # optional environment variable as absent unless it contains an actual token.
+                token=os.environ.get("HF_TOKEN") or None,
             )
             shutil.copyfile(path, dest)
         fingerprint = validate_weight_bundle(staging, _MANIFEST)

@@ -34,7 +34,7 @@ project, and sufficient IAM permissions.
 
 ```bash
 gcloud auth login --update-adc
-git clone --branch v0.2.5 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
+git clone --branch v0.2.6 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
 cd prereasoner-data
 bash deploy/gcp/deploy.sh --project <PROJECT_ID>
 ```

@@ -160,7 +160,7 @@ def test_external_model_deployment_fails_closed():
     assert 'variable "enable_external_llm"' in variables
     external_var = variables.split('variable "enable_external_llm"', 1)[1].split("}", 1)[0]
     assert re.search(r"default\s*=\s*false", external_var)
-    assert "external_llm_enabled = var.enable_external_llm || var.enable_orchestrator" in main
+    assert "external_llm_enabled = var.enable_external_llm || (var.enable_orchestrator && var.chat_llm_provider == \"anthropic\")" in main
     assert 'value = tostring(local.external_llm_enabled)' in main
     assert 'count     = local.external_llm_enabled ? 1 : 0' in main
     assert 'resource "google_secret_manager_secret" "dataset_attestation"' in main
