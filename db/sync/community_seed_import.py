@@ -97,6 +97,10 @@ def _restore(path: str) -> None:
                 stripped == b"SET transaction_timeout = 0;"
                 or stripped.startswith(b"\\restrict")
                 or stripped.startswith(b"\\unrestrict")
+                # Cloud SQL installs serving extensions in the shared public schema.  A
+                # retryable pg_restore must leave that schema in place; dropping it would
+                # also try to remove extensions such as vector and pg_trgm.
+                or stripped in {b"DROP SCHEMA public;", b"CREATE SCHEMA public;"}
             ):
                 continue
             psql.stdin.write(line)

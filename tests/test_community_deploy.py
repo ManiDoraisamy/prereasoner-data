@@ -335,6 +335,8 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     assert '"--clean", "--if-exists"' in seed_import
     assert 'startswith(b"\\\\restrict")' in seed_import
     assert 'startswith(b"\\\\unrestrict")' in seed_import
+    assert 'b"DROP SCHEMA public;"' in seed_import
+    assert 'b"CREATE SCHEMA public;"' in seed_import
     assert '"psql", "--set=ON_ERROR_STOP=1"' in seed_import
     hosting = _text("cloudbuild.hosting.yaml")
     assert "hosting:sites:create \"${_HOSTING_SITE}\"" in hosting
@@ -436,7 +438,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.7"]
+    assert query["cloudshell_git_branch"] == ["v0.2.10"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
