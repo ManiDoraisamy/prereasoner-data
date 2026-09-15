@@ -78,8 +78,11 @@ def _restore(path: str) -> None:
     # ``SET transaction_timeout`` preamble that older Cloud SQL PostgreSQL
     # versions do not recognize.  Render the custom dump to SQL, remove only
     # that version-specific statement, and let psql stop on every other error.
+    # A failed Cloud Run bootstrap can leave a partial restore in the reusable SQL instance.
+    # Clean the objects represented by this immutable seed before replaying it so retries are
+    # deterministic instead of failing on an already-created schema or table.
     restore_command: Sequence[str] = (
-        "pg_restore", "--no-owner", "--no-privileges", "--file=-", path,
+        "pg_restore", "--clean", "--if-exists", "--no-owner", "--no-privileges", "--file=-", path,
     )
     psql_command: Sequence[str] = ("psql", "--set=ON_ERROR_STOP=1", "--dbname", env["PGDATABASE"])
     print("bootstrap: pg_restore community seed", flush=True)
