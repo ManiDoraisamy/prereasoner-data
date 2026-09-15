@@ -20,8 +20,8 @@ The deployer uses:
 - the public manifest-pinned model bundle;
 - the canonical `cloudbuild.yaml` and `cloudbuild.orchestrator.yaml`, including their regression gates;
 - the Cloud Build Firebase Hosting release for the canonical `web/public` source; and
-- `db.sync.community_bootstrap` in a short-lived Cloud Run Job, including the initial minimal
-  Wikidata and ECB builds that later scheduled refreshes maintain.
+- `db.sync.community_seed_import` in a short-lived Cloud Run Job, restoring the versioned
+  `community-seed-v4.dump` artifact and applying the current application migrations/grants.
 
 No Google credential or database password is sent to prereasoner.com. The database administrator
 password remains in the caller's Secret Manager. The temporary bootstrap identity is granted access
@@ -34,7 +34,7 @@ project, and sufficient IAM permissions.
 
 ```bash
 gcloud auth login --update-adc
-git clone --branch v0.2.3 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
+git clone --branch v0.2.5 --depth 1 https://github.com/ManiDoraisamy/prereasoner-data.git
 cd prereasoner-data
 bash deploy/gcp/deploy.sh --project <PROJECT_ID>
 ```
@@ -46,16 +46,15 @@ Options:
 --name NAME         isolated resource/state prefix; default prereasoner
 --skip-bootstrap    create infrastructure without loading the minimal world database
 --destroy           review and remove this deployment
---yes               CI only, after an external plan/cost approval; requires ANTHROPIC_API_KEY
+--yes               CI only, after an external plan/cost approval
 ```
 
-The Community profile uses Zonal Cloud SQL and `min_instances=0`. It requires one Anthropic API key
-at install time; the value is piped directly into Secret Manager and never enters Terraform state.
-It keeps deletion protection on,
-activates the required chat service with the one Anthropic key entered during installation, and activates
-only the reviewed `iana_country` enrichment dataset. The initial bootstrap loads the high-population Wikidata
-serving projection, IANA country release, and complete current ECB history. The deployment creates the engine
-API, chat service, Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.
+The Community profile uses Zonal Cloud SQL and `min_instances=0`. Its required chat service uses
+Vertex AI `gemini-3.8-flash`; Terraform enables the Vertex AI API and grants the chat service account
+`roles/aiplatform.user`, so no provider key is collected or written to Secret Manager. It keeps deletion
+protection on, activates only the reviewed `iana_country` enrichment dataset, and restores the pinned
+`community-seed-v4.dump` after verifying its SHA-256. The deployment creates the engine API, chat service,
+Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.
 
 Before reporting success, the deployer runs the current application migrations, reads the required shared tables
 as the non-superuser serving role, executes an exact-decimal calculation and a model-backed reasoning request in
@@ -69,8 +68,8 @@ The Terraform backend in `infra/versions.tf` is deliberately partial. `deploy.sh
 bucket and `deployments/<name>` prefix at `terraform init`. This prevents a public checkout from ever
 defaulting to the maintainer's production state.
 
-The database bootstrap records its version and state in `knowledgebase.community_bootstrap`. Repeating
-the bootstrap skips an already-ready version, concurrent runs serialize through a PostgreSQL advisory
+The seed import records its version and state in `knowledgebase.community_bootstrap`. Repeating
+the import skips an already-ready version, concurrent runs serialize through a PostgreSQL advisory
 lock, and failed runs retain an error state while the temporary cloud identity is still removed.
 
 To remove the deployment:
