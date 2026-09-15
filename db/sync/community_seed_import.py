@@ -74,12 +74,42 @@ def _restore(path: str) -> None:
     env["PGPASSWORD"] = password
     if not env["PGHOST"].startswith("/"):
         env["PGSSLMODE"] = os.environ.get("SYNC_PG_SSLMODE") or os.environ.get("KB_PG_SSLMODE", "prefer")
-    command: Sequence[str] = (
-        "pg_restore", "--exit-on-error", "--no-owner", "--no-privileges",
-        "--dbname", env["PGDATABASE"], path,
+    # A dump made by a newer PostgreSQL client can contain a harmless
+    # ``SET transaction_timeout`` preamble that older Cloud SQL PostgreSQL
+    # versions do not recognize.  Render the custom dump to SQL, remove only
+    # that version-specific statement, and let psql stop on every other error.
+    restore_command: Sequence[str] = (
+        "pg_restore", "--no-owner", "--no-privileges", "--file=-", path,
     )
+    psql_command: Sequence[str] = ("psql", "--set=ON_ERROR_STOP=1", "--dbname", env["PGDATABASE"])
     print("bootstrap: pg_restore community seed", flush=True)
-    subprocess.run(command, check=True, env=env)
+    restore = subprocess.Popen(restore_command, stdout=subprocess.PIPE, env=env)
+    assert restore.stdout is not None
+    psql = subprocess.Popen(psql_command, stdin=subprocess.PIPE, env=env)
+    assert psql.stdin is not None
+    try:
+        for line in restore.stdout:
+            if line.strip() == b"SET transaction_timeout = 0;":
+                continue
+            psql.stdin.write(line)
+        psql.stdin.close()
+        psql.stdin = None
+        restore_error = restore.wait()
+        psql_error = psql.wait()
+    finally:
+        restore.stdout.close()
+        if psql.stdin is not None:
+            psql.stdin.close()
+        if restore.poll() is None:
+            restore.kill()
+            restore.wait()
+        if psql.poll() is None:
+            psql.kill()
+            psql.wait()
+    if restore_error:
+        raise subprocess.CalledProcessError(restore_error, restore_command)
+    if psql_error:
+        raise subprocess.CalledProcessError(psql_error, psql_command)
 
 
 def import_seed(connection, role: str, datasets: frozenset[str], uri: str,

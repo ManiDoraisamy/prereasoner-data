@@ -330,6 +330,9 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     assert "Type %s to continue" in deploy
     assert "gcloud auth login --update-adc" in deploy
     assert "--allow-unauthenticated" not in deploy
+    seed_import = _text("db/sync/community_seed_import.py")
+    assert '"SET transaction_timeout = 0;"' in seed_import
+    assert '"psql", "--set=ON_ERROR_STOP=1"' in seed_import
     hosting = _text("cloudbuild.hosting.yaml")
     assert "hosting:sites:create \"${_HOSTING_SITE}\"" in hosting
     assert "site.site = process.env.HOSTING_SITE" in hosting
@@ -430,7 +433,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.6"]
+    assert query["cloudshell_git_branch"] == ["v0.2.7"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
