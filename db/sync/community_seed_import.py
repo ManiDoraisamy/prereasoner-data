@@ -100,14 +100,20 @@ def _restore(path: str) -> None:
                 or stripped.startswith(b"\\unrestrict")
                 # Cloud SQL installs serving extensions in the shared public schema.  A
                 # retryable pg_restore must leave that schema in place; dropping it would
-                # also try to remove extensions such as vector and pg_trgm.  Dumps can
-                # spell the schema quoted and can include IF [NOT] EXISTS.
+                # also try to remove extensions such as vector and pg_trgm.  The
+                # knowledgebase schema contains the bootstrap marker created before the
+                # restore; the seed export deliberately excludes that table.  Dumps can
+                # spell either schema quoted and can include IF [NOT] EXISTS.
                 or normalized.startswith(
                     (
                         b"DROP SCHEMA PUBLIC",
                         b"CREATE SCHEMA PUBLIC",
                         b"DROP SCHEMA IF EXISTS PUBLIC",
                         b"CREATE SCHEMA IF NOT EXISTS PUBLIC",
+                        b"DROP SCHEMA KNOWLEDGEBASE",
+                        b"CREATE SCHEMA KNOWLEDGEBASE",
+                        b"DROP SCHEMA IF EXISTS KNOWLEDGEBASE",
+                        b"CREATE SCHEMA IF NOT EXISTS KNOWLEDGEBASE",
                     )
                 )
             ):
