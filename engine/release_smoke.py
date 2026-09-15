@@ -65,6 +65,18 @@ def run() -> dict:
     executor = _TableQueryPg()
     executor._pg_schema = schema
     reasoning = None
+    connection = _pg()
+    try:
+        # The request path creates this durable identity before loading chat.working_table.
+        # Keep the smoke test on the same production-shaped path so its FK checks are real.
+        cursor = connection.cursor()
+        cursor.execute(
+            "INSERT INTO chat.conversation (conversation_id, initial_prompt) VALUES (%s, %s)",
+            (schema, "release smoke"),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     try:
         columns, rows = executor.execute(
             {"ledger": table}, planner_schema, render_query(query), query=query,
@@ -91,6 +103,7 @@ def run() -> dict:
         try:
             cursor = connection.cursor()
             cursor.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+            cursor.execute("DELETE FROM chat.conversation WHERE conversation_id = %s", (schema,))
             connection.commit()
         finally:
             connection.close()

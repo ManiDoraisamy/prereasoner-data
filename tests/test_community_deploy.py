@@ -390,6 +390,8 @@ def test_release_smoke_checks_current_chat_migration():
     smoke = _text("engine/release_smoke.py")
     for column in ("source_bytes", "state_bytes", "last_active_at", "expires_at"):
         assert column in smoke
+    assert "INSERT INTO chat.conversation" in smoke
+    assert "DELETE FROM chat.conversation" in smoke
 
 
 def test_serving_identity_cannot_read_the_admin_database_secret():
@@ -442,7 +444,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.13"]
+    assert query["cloudshell_git_branch"] == ["v0.2.14"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
