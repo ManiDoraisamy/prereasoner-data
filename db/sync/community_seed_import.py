@@ -89,7 +89,12 @@ def _restore(path: str) -> None:
     assert psql.stdin is not None
     try:
         for line in restore.stdout:
-            if line.strip() == b"SET transaction_timeout = 0;":
+            stripped = line.strip()
+            if (
+                stripped == b"SET transaction_timeout = 0;"
+                or stripped.startswith(b"\\restrict")
+                or stripped.startswith(b"\\unrestrict")
+            ):
                 continue
             psql.stdin.write(line)
         psql.stdin.close()

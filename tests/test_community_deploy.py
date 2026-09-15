@@ -332,6 +332,8 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     assert "--allow-unauthenticated" not in deploy
     seed_import = _text("db/sync/community_seed_import.py")
     assert '"SET transaction_timeout = 0;"' in seed_import
+    assert 'startswith(b"\\\\restrict")' in seed_import
+    assert 'startswith(b"\\\\unrestrict")' in seed_import
     assert '"psql", "--set=ON_ERROR_STOP=1"' in seed_import
     hosting = _text("cloudbuild.hosting.yaml")
     assert "hosting:sites:create \"${_HOSTING_SITE}\"" in hosting
