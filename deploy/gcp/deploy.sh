@@ -20,7 +20,6 @@ BUILD_CONTEXT=""
 CHAT_BUILD_CONTEXT=""
 HOSTING_BUILD_CONTEXT=""
 CHAT_IMAGE=""
-CHAT_KEY=""
 BUILD_SERVICE_ACCOUNT=""
 FIREBASE_ADMIN_GRANTED=0
 HOSTING_SITE=""
@@ -33,10 +32,9 @@ Usage: deploy/gcp/deploy.sh [options]
   --project ID       Billing-enabled target GCP project (defaults to gcloud's project)
   --region REGION    Cloud Run, Cloud SQL, Artifact Registry region (default: us-central1)
   --name NAME        Deployment prefix, lowercase letters/digits/hyphens (default: prereasoner)
-  --skip-bootstrap   Create infrastructure without loading the minimal world database
+  --skip-bootstrap   Create infrastructure without importing the versioned Community seed
   --destroy          Destroy a deployment created by this script
-  --yes              Non-interactive confirmation; set ANTHROPIC_API_KEY in the environment
-                     when using this flag
+  --yes              Non-interactive confirmation
   -h, --help         Show this help
 EOF
 }
@@ -74,13 +72,14 @@ fi
 
 readonly SERVICE_NAME="${DEPLOYMENT}-api"
 readonly CHAT_SERVICE_NAME="${DEPLOYMENT}-chat"
-readonly ANTHROPIC_SECRET_ID="${DEPLOYMENT}-chat-anthropic-key"
 readonly HOSTING_SITE_ID="${DEPLOYMENT}"
 readonly SQL_INSTANCE="${DEPLOYMENT}-world"
 readonly ARTIFACT_REPO="$DEPLOYMENT"
 readonly STATE_BUCKET="${PROJECT_ID}-${DEPLOYMENT}-tfstate"
 readonly STATE_PREFIX="deployments/${DEPLOYMENT}"
 readonly TF_PLAN="${ROOT}/.terraform-${DEPLOYMENT}.tfplan"
+COMMUNITY_SEED_URI="${COMMUNITY_SEED_URI:-https://storage.googleapis.com/prereasoner-community-artifacts/community-seed-v4.dump}"
+COMMUNITY_SEED_SHA256="${COMMUNITY_SEED_SHA256:-2c39e749e2ae87654cca80881cdec4de924e131b1f8199179f6c7ceef2d8840a}"
 # This script shares the infra/ root with whatever deployment the operator already manages, so it
 # must NOT share infra/.terraform: `terraform init -reconfigure` rewrites that cache, and a later
 # `cd infra && terraform apply` (infra/README.md §2) would then resolve the wrong backend and plan
@@ -150,16 +149,9 @@ cleanup_firebase_release() {
   fi
 }
 
-cleanup_chat_secret() {
-  if gcloud secrets describe "$ANTHROPIC_SECRET_ID" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    gcloud secrets delete "$ANTHROPIC_SECRET_ID" --project="$PROJECT_ID" --quiet >/dev/null 2>&1 || true
-  fi
-}
-
 cleanup_release() {
   if [[ "$RELEASE_SUCCEEDED" != 1 ]]; then
     cleanup_firebase_release
-    cleanup_chat_secret
   fi
   cleanup_bootstrap_identity
   for context in "$BUILD_CONTEXT" "$CHAT_BUILD_CONTEXT" "$HOSTING_BUILD_CONTEXT"; do
@@ -197,32 +189,16 @@ tf_vars() {
     "-var=deletion_protection=${protection}" \
     "-var=enable_external_llm=false" \
     "-var=enable_orchestrator=${chat_enabled}" \
-    "-var=anthropic_secret_id=$([[ "$chat_enabled" == true ]] && printf '%s' "$ANTHROPIC_SECRET_ID" || true)" \
+    "-var=anthropic_secret_id=" \
+    "-var=chat_llm_provider=gemini" \
+    "-var=gemini_model=gemini-3.8-flash" \
+    "-var=gemini_location=global" \
+    "-var=community_seed_uri=${COMMUNITY_SEED_URI}" \
+    "-var=community_seed_sha256=${COMMUNITY_SEED_SHA256}" \
     "-var=chat_service_name=${CHAT_SERVICE_NAME}" \
     "-var=chat_image=$([[ "$chat_enabled" == true ]] && printf '%s' "$CHAT_IMAGE" || true)" \
     "-var=enrichment_active_datasets=iana_country" \
     "-var=rtdb_url="
-}
-
-prompt_and_store_chat_key() {
-  CHAT_KEY="${ANTHROPIC_API_KEY:-}"
-  if [[ -z "$CHAT_KEY" ]]; then
-    [[ -t 0 ]] || die "ANTHROPIC_API_KEY must be set when stdin is not interactive (for example with --yes)"
-    printf 'Anthropic API key (input hidden; stored only in Secret Manager): '
-    read -r -s CHAT_KEY
-    printf '\n'
-  fi
-  [[ -n "$CHAT_KEY" ]] || die "an Anthropic API key is required to deploy the chat service"
-
-  if gcloud secrets describe "$ANTHROPIC_SECRET_ID" --project="$PROJECT_ID" >/dev/null 2>&1; then
-    die "secret ${ANTHROPIC_SECRET_ID} already exists; choose a new --name or remove that prior test deployment"
-  fi
-  gcloud secrets create "$ANTHROPIC_SECRET_ID" \
-    --project="$PROJECT_ID" --replication-policy=automatic >/dev/null
-  printf '%s' "$CHAT_KEY" | gcloud secrets versions add "$ANTHROPIC_SECRET_ID" \
-    --project="$PROJECT_ID" --data-file=- >/dev/null
-  unset CHAT_KEY
-  unset ANTHROPIC_API_KEY
 }
 
 destroy_deployment() {
@@ -235,7 +211,6 @@ destroy_deployment() {
   terraform -chdir="$ROOT/infra" destroy -auto-approve -input=false "${variables[@]}"
   HOSTING_SITE="$HOSTING_SITE_ID"
   cleanup_firebase_release
-  cleanup_chat_secret
   printf '\nDeployment destroyed. State retained at gs://%s/%s\n' "$STATE_BUCKET" "$STATE_PREFIX"
 }
 
@@ -248,6 +223,12 @@ fi
   || die "deployment requires a clean checkout; commit or remove every local change first"
 
 confirm DEPLOY "Prereasoner will create a ZONAL Cloud SQL instance, required Cloud Run engine and chat services, Firebase Hosting release, Secret Manager secrets, Cloud Builds, and a small versioned state bucket in ${PROJECT_ID}. These are billable resources. Cloud Run scales to zero; Cloud SQL is the main recurring cost."
+
+if ((!SKIP_BOOTSTRAP)); then
+  [[ "$COMMUNITY_SEED_URI" =~ ^https:// ]] || die "COMMUNITY_SEED_URI must be an HTTPS object URL"
+  [[ "$COMMUNITY_SEED_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] \
+    || die "COMMUNITY_SEED_SHA256 must be the 64-character SHA-256 of community-seed-v4.dump"
+fi
 
 # Register cleanup before creating state, build contexts, temporary jobs, or identities.
 # Every failure from this point onward owns its rollback path.
@@ -299,8 +280,6 @@ gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member="serviceAccount:${build_service_account}" \
   --role=roles/artifactregistry.writer --condition=None --quiet >/dev/null
 BUILD_SERVICE_ACCOUNT="$build_service_account"
-
-prompt_and_store_chat_key
 
 commit="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine:community-${commit}"
@@ -358,9 +337,9 @@ if ((!SKIP_BOOTSTRAP)); then
     --project="$PROJECT_ID" --region="$REGION" --image="$image" \
     --service-account="$BOOTSTRAP_SA" \
     --set-cloudsql-instances="$connection" \
-    --set-env-vars="SYNC_PG_HOST=/cloudsql/${connection},SYNC_PG_DB=world,SYNC_PG_USER=postgres" \
     --set-secrets="SYNC_PG_PASSWORD=${DB_SECRET}:latest" \
-    --command=python --args=-m,db.sync.community_bootstrap,--role,"$serving_role",--datasets,iana_country \
+    --set-env-vars="SYNC_PG_HOST=/cloudsql/${connection},SYNC_PG_DB=world,SYNC_PG_USER=postgres,COMMUNITY_SEED_URI=${COMMUNITY_SEED_URI},COMMUNITY_SEED_SHA256=${COMMUNITY_SEED_SHA256}" \
+    --command=python --args=-m,db.sync.community_seed_import,--role,"$serving_role",--datasets,iana_country \
     --tasks=1 --max-retries=0 --task-timeout=7200s --cpu=4 --memory=8Gi
   gcloud run jobs execute "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
 

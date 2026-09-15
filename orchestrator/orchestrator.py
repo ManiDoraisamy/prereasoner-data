@@ -1,6 +1,6 @@
-"""orchestrator.py — the Sonnet tool loop over the Prereasoner engine.
+"""orchestrator.py — the provider-neutral tool loop over the Prereasoner engine.
 
-Per chat request we: (1) run a manual Anthropic tool loop so we control the jobId per
+Per chat request we: (1) run a manual provider tool loop so we control the jobId per
 `prereasoner_query` call and can capture the full engine trace to return to the browser; (2) call the
 engine through `mcp_server.engine_client` — the same coroutine `mcp_server/server.py` exposes to
 external MCP clients — passing the user's Firebase token EXPLICITLY per call (identity passthrough,
@@ -29,6 +29,7 @@ from engine.analysis import AnalysisError, validate_analysis_spec
 from engine.decomposition import DecompositionError, validate_decomposition
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
+from orchestrator.llm import create_client
 from orchestrator.system_prompt import SYSTEM_PROMPT
 
 # What the USER reads when a split cannot be made to work. Validator internals are
@@ -336,7 +337,9 @@ async def run_chat(user_message: str, tables: list[dict], history: list[dict], *
 
 async def _run_turn(user_message: str, tables: list[dict], history: list[dict], *,
                     engine_base_url: str, bearer_token: str | None,
-                    api_key: str, model: str, turn_id: str | None = None,
+                    api_key: str | None, model: str, provider: str = "anthropic",
+                    provider_project: str | None = None, provider_location: str = "global",
+                    turn_id: str | None = None,
                     emit=None, conversation_id: str | None = None,
                     principal: str | None = None,
                     use: str | None = None,
@@ -374,7 +377,9 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     # clients; it and this path now call the same `engine_client` coroutine, so there is one
     # implementation of the engine contract, not two.
     async with (
-        AsyncAnthropic(api_key=api_key) as client,
+        create_client(provider, api_key=api_key, model=model,
+                      project=provider_project, location=provider_location,
+                      anthropic_client_cls=AsyncAnthropic) as client,
         httpx.AsyncClient(timeout=engine_client.DEFAULT_TIMEOUT) as http,
     ):
         catalog = []
@@ -413,7 +418,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         model=model,
                         max_tokens=MAX_MODEL_TOKENS,
                         system=system_prompt,
-                        thinking={"type": "adaptive"},
+                        thinking={"type": "adaptive"} if provider == "anthropic" else None,
                         tools=CLAUDE_TOOLS,
                         messages=messages,
                     ) as llm_stream:
@@ -646,7 +651,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 model=model,
                                 max_tokens=MAX_MODEL_TOKENS,
                                 system=system_prompt,
-                                thinking={"type": "adaptive"},
+                                thinking={"type": "adaptive"} if provider == "anthropic" else None,
                                 messages=messages,
                             ) as presentation_stream:
                                 async for delta in presentation_stream.text_stream:

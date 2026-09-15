@@ -94,7 +94,7 @@ class H(BaseHTTPRequestHandler):
             # Readiness must check what a turn actually uses. That is the engine client this process
             # calls in-process — NOT mcp_server.server, which is now only the entry point for
             # external MCP clients and whose health says nothing about this service's ability to serve.
-            ready = bool(os.environ.get("ANTHROPIC_API_KEY")) and dataset_attestation.configured()
+            ready = config.external_llm_enabled() and config.llm_configured() and dataset_attestation.configured()
             try:
                 module = importlib.import_module("mcp_server.engine_client")
                 ready = ready and hasattr(module, "call_query")
@@ -134,7 +134,7 @@ class H(BaseHTTPRequestHandler):
             except RequestValidationError as exc:
                 self._send(exc.status_code, json.dumps({"error": str(exc)})); return
             token = self._bearer()
-            # AUTH GATE (required): run_chat drives PAID Sonnet inference on the owner's key, so demand a verified
+            # AUTH GATE (required): run_chat drives external-model inference on the owner's key, so demand a verified
             # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
             # AUTH_TEST_SUB makes _verify_principal accept without a token, so this is a no-op there; in prod it
             # requires a real Firebase token. The browser always sends Authorization: Bearer <token> to /chat.
@@ -168,7 +168,11 @@ class H(BaseHTTPRequestHandler):
             fut = asyncio.run_coroutine_threadsafe(
                 run_chat(message, tables, history,
                          engine_base_url=config.ENGINE_BASE_URL, bearer_token=token,
-                         api_key=config.anthropic_api_key(), model=config.ANTHROPIC_MODEL,
+                         api_key=(config.anthropic_api_key()
+                                  if config.llm_provider() == "anthropic" else None),
+                         model=config.llm_model(), provider=config.llm_provider(),
+                         provider_project=config.GOOGLE_CLOUD_PROJECT,
+                         provider_location=config.GEMINI_LOCATION,
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id,
                          principal=sub, use=use, analysis_override=analysis),
                 _LOOP,

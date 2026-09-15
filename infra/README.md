@@ -133,12 +133,12 @@ Full sync variant (several hours) and per-type syncs: `db/README.md` §3.
 here because the seed is a one-time, long-running, Wikidata-rate-limited task that is
 easier to babysit interactively.
 
-### 3a. Optional chat orchestrator
+### 3a. Chat orchestrator
 
-The engine does not require an Anthropic key. Terraform can create the optional chat service,
-its dedicated service account, and least-privilege access to an **existing** Secret Manager
-secret. The secret value is provisioned out of band and never enters Terraform configuration
-or state.
+The engine does not require an external model. Terraform can create the chat service and its
+dedicated service account. Production-compatible deployments select `chat_llm_provider=anthropic`
+and grant access to an **existing** Secret Manager secret; Community deployments select
+`chat_llm_provider=gemini` and grant the service account `roles/aiplatform.user` instead.
 
 ```bash
 gcloud secrets create prereasoner-chat-anthropic-key --replication-policy=automatic
@@ -160,12 +160,25 @@ terraform -chdir=infra apply \
   -var anthropic_secret_id=prereasoner-chat-anthropic-key
 ```
 
+For Community chat, omit the Anthropic secret and use:
+
+```bash
+terraform -chdir=infra apply \
+  -var project_id=<PROJECT> \
+  -var image=<engine-image@sha256:digest> \
+  -var enable_orchestrator=true \
+  -var chat_image=<chat-image@sha256:digest> \
+  -var chat_llm_provider=gemini \
+  -var gemini_model=gemini-3.8-flash
+```
+
 Enabling the module is the authoritative deployment switch for external model processing. Publish
 an accurate `/privacy` page and complete the operator review in `PRIVACY.md` before exposing the
 Hosting route. Do not add a generic popup or model-provider choice to the reference client.
 
-The chat startup probe calls `/readyz`, which checks the injected key and imports the real MCP
-server module. `/healthz` is liveness only and must not be used as the deployment readiness gate.
+The chat startup probe calls `/readyz`, which checks the selected provider configuration and imports
+the real MCP server module. `/healthz` is liveness only and must not be used as the deployment
+readiness gate.
 
 Terraform also creates `${service_name}-dataset-attestation` and injects its current version into
 both services. It authenticates conversation-derived dataset metadata at the engine boundary. Do
@@ -213,8 +226,8 @@ Community deployment explicitly enables the reviewed `iana_country` dataset.
 - `admin_emails` - explicit Firebase email allowlist for `/api/admin/*`. Empty (the default)
   disables admin API access; forks never inherit a maintainer identity.
 - `enable_external_llm` - explicit opt-in for engine features that call the configured external
-  model. It defaults to false; enabling the optional orchestrator also enables the same processing
-  boundary and requires `anthropic_secret_id`.
+  model. It defaults to false. The chat service has its separate `chat_llm_provider` setting;
+  Gemini chat does not enable the engine's optional Anthropic paths.
 - `enrichment_active_datasets` — the deployment **allowlist** (2nd activation key; the 1st is
   per-dataset code approval in `engine/enrichment/registry.py`). Empty = enrichment off.
 

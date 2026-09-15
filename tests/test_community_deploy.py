@@ -300,6 +300,10 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "-var=db_availability_type=ZONAL",
         "-var=min_instances=0",
         "-var=enable_external_llm=false",
+        "-var=chat_llm_provider=gemini",
+        "-var=gemini_model=gemini-3.8-flash",
+        "community-seed-v4.dump",
+        "db.sync.community_seed_import",
         "-var=enrichment_active_datasets=iana_country",
         "image_summary.digest",
         "@${digest}",
@@ -312,7 +316,6 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "engine.release_smoke",
         "--datasets,iana_country",
         'expected 401',
-        "prompt_and_store_chat_key",
         "--target chat",
         "--target hosting",
         "cloudbuild.hosting.yaml",
@@ -320,9 +323,10 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "HOSTING_SITE_ID",
         "_HOSTING_SITE=${HOSTING_SITE}",
         "firebasehosting.googleapis.com/v1beta1/projects/${PROJECT_ID}/sites/${HOSTING_SITE}",
-        "cleanup_chat_secret",
     ):
         assert required in deploy
+    assert "prompt_and_store_chat_key" not in deploy
+    assert "cleanup_chat_secret" not in deploy
     assert "Type %s to continue" in deploy
     assert "gcloud auth login --update-adc" in deploy
     assert "--allow-unauthenticated" not in deploy
@@ -426,7 +430,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.3"]
+    assert query["cloudshell_git_branch"] == ["v0.2.4"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")

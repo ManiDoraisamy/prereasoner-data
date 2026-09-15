@@ -5,7 +5,7 @@
 # Hosting-version resource does not support static files.
 
 locals {
-  required_apis = [
+  required_apis = concat([
     "firebase.googleapis.com",         # Firebase project APIs
     "firebasehosting.googleapis.com",  # Firebase Hosting release stage
     "identitytoolkit.googleapis.com",  # Firebase Authentication
@@ -17,13 +17,15 @@ locals {
     "cloudbuild.googleapis.com",       # gcloud builds submit
     "iam.googleapis.com",              # dedicated service account
     "cloudscheduler.googleapis.com",   # scheduled conversation and trace retention
-  ]
+    ], var.enable_orchestrator && var.chat_llm_provider == "gemini" ? [
+    "aiplatform.googleapis.com", # Vertex AI Gemini Community chat
+  ] : [])
 
   image = var.image
 
-  # One deployment decision owns every external-model path. The optional chat service
-  # necessarily enables it; engine-only deployments must opt in explicitly.
-  external_llm_enabled = var.enable_external_llm || var.enable_orchestrator
+  # The engine's optional Anthropic paths remain enabled for the production profile. Community
+  # chat uses Gemini in the separate orchestrator, so enabling chat must not require Anthropic.
+  external_llm_enabled = var.enable_external_llm || (var.enable_orchestrator && var.chat_llm_provider == "anthropic")
 
   serving_user                  = var.serving_db_role
   serving_secret_id             = google_secret_manager_secret.serving_db_password.secret_id

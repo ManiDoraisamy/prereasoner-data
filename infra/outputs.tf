@@ -42,3 +42,13 @@ output "enrichment_active_datasets" {
   description = "Deterministic reference-enrichment deployment allowlist in effect (empty = enrichment off)."
   value       = var.enrichment_active_datasets
 }
+
+output "community_seed_uri" {
+  description = "Versioned Community seed artifact URI recorded with this deployment."
+  value       = var.community_seed_uri
+}
+
+output "community_seed_sha256" {
+  description = "Checksum recorded for the Community seed artifact."
+  value       = var.community_seed_sha256
+}

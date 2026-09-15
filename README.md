@@ -103,11 +103,13 @@ change; it contains both shipped foundations and clearly marked future work.
 
 The supported Community Edition path opens a guided tutorial in Google Cloud Shell. It builds the
 public source and weights in your project, deploys the required engine and chat services to Cloud Run,
-publishes the canonical UI to a deployment-scoped Firebase Hosting CDN site, initializes the minimal Wikidata and ECB data,
-and removes its temporary bootstrap identity. A billing-enabled project, Google authorization, and one
-Anthropic API key are required; the marketing website never receives those credentials.
+publishes the canonical UI to a deployment-scoped Firebase Hosting CDN site, restores the versioned Community seed,
+and removes its temporary bootstrap identity. A billing-enabled project and Google authorization are
+required. Community chat uses Vertex AI Gemini through the deployed Cloud Run service account; no
+Anthropic key is requested by this installer. The database is initialized from the versioned
+`community-seed-v4.dump` artifact instead of querying Wikidata interactively.
 
-[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.3&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
+[![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.4&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
 [Install on a local machine](#install-on-a-local-machine)
 
@@ -219,8 +221,9 @@ docker compose up --build
 
 Open the local UI at `http://localhost:8090`.
 
-The same Anthropic-key rule applies to a full GCP UI/chat deployment: the installer must receive the key
-once and store it in Secret Manager. It is not needed for an engine-only API deployment.
+The local Compose profile remains Anthropic-configured through `.env`. The guided GCP Community
+profile uses Vertex AI Gemini through its Cloud Run service account and does not ask for this key;
+raw production-compatible Terraform may still select Anthropic explicitly.
 
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public;
 `engine.fetch_weights` needs no Hugging Face account or token and verifies the complete bundle against

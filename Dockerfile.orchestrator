@@ -1,12 +1,14 @@
-# The Sonnet orchestrator + shared Prereasoner HTTP client (docs/MCP.md).
+# The provider-neutral orchestrator + shared Prereasoner HTTP client (docs/MCP.md).
 #
 # One lean image: the orchestrator calls the shared engine client in-process over HTTP
 # (ENGINE_BASE_URL). The stdio MCP entry point remains in the image for external clients. NO
 # torch/transformers/spaCy here — the
-# heavy model image is the separate engine Dockerfile. This container only needs anthropic + mcp + httpx.
+# heavy model image is the separate engine Dockerfile. This container only needs the selected
+# provider SDK plus mcp + httpx.
 #
 # Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
-# Run:    docker run -p 8090:8090 -e ANTHROPIC_API_KEY=... -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
+# Run:    docker run -p 8090:8090 -e LLM_PROVIDER=gemini -e GOOGLE_CLOUD_PROJECT=... \
+#           -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
 FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
 
 WORKDIR /app

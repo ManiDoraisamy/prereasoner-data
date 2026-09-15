@@ -1,15 +1,13 @@
-# The Sonnet orchestrator chat backend (prereasoner-chat) — docs/MCP.md.
+# The provider-neutral orchestrator chat backend (prereasoner-chat) — docs/MCP.md.
 #
 # A SECOND, lightweight Cloud Run service alongside the engine (google_cloud_run_v2_service.api in
-# main.tf). It calls the engine over HTTP and Anthropic over HTTPS; it does NOT touch Postgres or write
-# RTDB. Its SA needs the Anthropic key, the shared dataset-attestation key, and RTDB access; it does
-# not receive Cloud SQL access.
+# main.tf). It calls the engine over HTTP and either Anthropic or Vertex AI Gemini; it does NOT touch
+# Postgres or write RTDB. Its SA receives only the selected provider's access and the shared attestation key.
 #
 # The guided deployer performs the complete order in one install:
-#   1. prompt once and write the Anthropic key to Secret Manager;
-#   2. build and push the tests-gated chat image;
-#   3. apply this module with enable_orchestrator=true and the immutable image digest; and
-#   4. submit the canonical web/ tree to Firebase Hosting from Cloud Build.
+#   1. build and push the tests-gated chat image;
+#   2. apply this module with enable_orchestrator=true and the immutable image digest; and
+#   3. submit the canonical web/ tree to Firebase Hosting from Cloud Build.
 # Advanced raw Terraform users may still apply this module independently and publish Hosting separately.
 
 variable "enable_orchestrator" {
@@ -19,7 +17,7 @@ variable "enable_orchestrator" {
 }
 
 variable "anthropic_secret_id" {
-  description = "Existing Secret Manager secret ID containing the Anthropic API key. Provision its version out-of-band; required when enable_external_llm or enable_orchestrator is true."
+  description = "Existing Secret Manager secret ID containing the Anthropic API key. Used only when chat_llm_provider is anthropic."
   type        = string
   default     = ""
 }
@@ -42,9 +40,32 @@ variable "chat_image" {
 }
 
 variable "anthropic_model" {
-  description = "Sonnet model id the orchestrator uses."
+  description = "Anthropic model id used when chat_llm_provider is anthropic."
   type        = string
   default     = "claude-sonnet-5"
+}
+
+variable "chat_llm_provider" {
+  description = "Provider used by the required chat service: anthropic for production compatibility or gemini for Community Edition."
+  type        = string
+  default     = "anthropic"
+
+  validation {
+    condition     = contains(["anthropic", "gemini"], var.chat_llm_provider)
+    error_message = "chat_llm_provider must be anthropic or gemini."
+  }
+}
+
+variable "gemini_model" {
+  description = "Vertex AI Gemini model id used when chat_llm_provider is gemini."
+  type        = string
+  default     = "gemini-3.8-flash"
+}
+
+variable "gemini_location" {
+  description = "Vertex AI location used by the Gemini chat client."
+  type        = string
+  default     = "global"
 }
 
 # ---------- Service account for the orchestrator ----------
@@ -56,10 +77,17 @@ resource "google_service_account" "chat_run" {
 }
 
 resource "google_secret_manager_secret_iam_member" "chat_anthropic_key" {
-  count     = var.enable_orchestrator ? 1 : 0
+  count     = var.enable_orchestrator && var.chat_llm_provider == "anthropic" ? 1 : 0
   secret_id = var.anthropic_secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.chat_run[0].email}"
+}
+
+resource "google_project_iam_member" "chat_vertex_ai" {
+  count   = var.enable_orchestrator && var.chat_llm_provider == "gemini" ? 1 : 0
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.chat_run[0].email}"
 }
 
 resource "google_secret_manager_secret_iam_member" "chat_dataset_attestation" {
@@ -87,8 +115,8 @@ resource "google_cloud_run_v2_service" "chat" {
 
   lifecycle {
     precondition {
-      condition     = length(trimspace(var.anthropic_secret_id)) > 0
-      error_message = "anthropic_secret_id must name an out-of-band secret when enable_orchestrator=true."
+      condition     = var.chat_llm_provider != "anthropic" || length(trimspace(var.anthropic_secret_id)) > 0
+      error_message = "anthropic_secret_id must name an out-of-band secret when chat_llm_provider=anthropic."
     }
   }
 
@@ -121,8 +149,24 @@ resource "google_cloud_run_v2_service" "chat" {
       }
 
       env {
+        name  = "LLM_PROVIDER"
+        value = var.chat_llm_provider
+      }
+      env {
         name  = "ANTHROPIC_MODEL"
         value = var.anthropic_model
+      }
+      env {
+        name  = "GEMINI_MODEL"
+        value = var.gemini_model
+      }
+      env {
+        name  = "GEMINI_LOCATION"
+        value = var.gemini_location
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project_id
       }
       env {
         name  = "APP_ENV"
@@ -141,12 +185,15 @@ resource "google_cloud_run_v2_service" "chat" {
         name  = "EXTERNAL_LLM_ENABLED"
         value = "true"
       }
-      env {
-        name = "ANTHROPIC_API_KEY"
-        value_source {
-          secret_key_ref {
-            secret  = var.anthropic_secret_id
-            version = "latest"
+      dynamic "env" {
+        for_each = var.chat_llm_provider == "anthropic" ? [var.anthropic_secret_id] : []
+        content {
+          name = "ANTHROPIC_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
           }
         }
       }
@@ -183,6 +230,7 @@ resource "google_cloud_run_v2_service" "chat" {
   depends_on = [
     google_project_service.apis,
     google_secret_manager_secret_iam_member.chat_anthropic_key,
+    google_project_iam_member.chat_vertex_ai,
     google_secret_manager_secret_iam_member.chat_dataset_attestation,
     google_secret_manager_secret_version.dataset_attestation,
   ]

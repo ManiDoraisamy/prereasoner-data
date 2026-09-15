@@ -83,6 +83,28 @@ variable "enable_external_llm" {
   default     = false
 }
 
+variable "community_seed_uri" {
+  description = "Versioned HTTPS URI for the Community Edition database seed artifact. The guided installer passes this to the one-time import job."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.community_seed_uri == "" || can(regex("^https://", var.community_seed_uri))
+    error_message = "community_seed_uri must be empty or an HTTPS object URL."
+  }
+}
+
+variable "community_seed_sha256" {
+  description = "SHA-256 checksum of community_seed_uri, used to verify the seed before pg_restore."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.community_seed_sha256 == "" || can(regex("^[0-9a-fA-F]{64}$", var.community_seed_sha256))
+    error_message = "community_seed_sha256 must be empty or a 64-character hexadecimal SHA-256."
+  }
+}
+
 variable "rtdb_trace_retention_days" {
   description = "Days before RTDB reasoning traces are removed by the scheduled cleanup job."
   type        = number

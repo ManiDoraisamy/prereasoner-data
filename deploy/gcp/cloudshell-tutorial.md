@@ -15,7 +15,7 @@ manage IAM, build images, create Cloud Run and Cloud SQL resources, and administ
 ## Authenticate this temporary shell
 
 Google deliberately withholds account credentials from third-party Open-in-Cloud-Shell repositories.
-Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.3/deploy/gcp/deploy.sh),
+Review [`deploy/gcp/deploy.sh`](https://github.com/ManiDoraisamy/prereasoner-data/blob/v0.2.4/deploy/gcp/deploy.sh),
 then authorize this shell explicitly:
 
 ```bash
@@ -38,17 +38,18 @@ It shows one cost confirmation, then:
 
 1. creates a private, versioned Terraform-state bucket in this project;
 2. enables the required APIs and creates Artifact Registry;
-3. prompts once for the Anthropic API key and stores it in Secret Manager;
+3. enables Vertex AI for the Community Gemini chat service and grants its Cloud Run service account
+   `roles/aiplatform.user`;
 4. downloads and verifies the public manifested weights;
 5. builds and regression-tests immutable engine and chat images in Cloud Build;
 6. applies the Zonal, scale-to-zero Community Terraform profile with chat enabled;
 7. prepares Firebase Hosting and the Firebase Web app, then publishes web/public through the
    same Cloud Build release;
-8. loads the minimal Wikidata world tables and current ECB exchange-rate history, then installs
-   least-privilege serving grants; and
+8. downloads `community-seed-v4.dump`, verifies its pinned SHA-256, restores the public world/reference
+   schemas, and installs least-privilege serving grants; and
 9. removes the temporary database-bootstrap identity and temporary Firebase setup grant.
 
-The image build, Firebase setup, and minimal Wikidata synchronization normally take tens of minutes.
+The image build, Firebase setup, and seed restore normally take tens of minutes.
 The terminal continues to show progress and ends with the Firebase Hosting URL.
 
 ## Browser client
@@ -59,8 +60,8 @@ are rewrites to the two Cloud Run services. The
 installer adapts the checked-in Firebase config for the selected project in the ephemeral release
 context, so the repository does not maintain a second UI copy.
 
-External model processing is enabled only for the required chat service, using the key stored in
-Secret Manager. The guided profile activates only the reviewed IANA country dataset; other reference
+External model processing is enabled only for the required chat service, using Vertex AI Gemini
+through the Cloud Run service account. The guided profile activates only the reviewed IANA country dataset; other reference
 datasets remain disabled until the operator adds the required source data, grants, and allowlist entry.
 
 If Firebase reports that its Terms have not been accepted, the project owner must accept them once in

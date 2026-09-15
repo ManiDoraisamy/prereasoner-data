@@ -11,8 +11,10 @@ canonical `web/public` tree is used locally and by the Firebase Hosting CDN, whi
 - Deployment name: a fresh, unique lowercase name of 2–20 characters, for example
   `ce-test-0915`. The name scopes Cloud Run, Cloud SQL, Artifact Registry, Secret Manager, state,
   and the Firebase Hosting site.
-- Anthropic API key: supplied once to the installer prompt or through `ANTHROPIC_API_KEY`; never
-  put it in a command transcript, test fixture, Git commit, or browser URL.
+- Community seed artifact: `community-seed-v4.dump`, imported by the installer after its pinned
+  SHA-256 is verified. The dump contains public world/reference schemas only; it must not contain
+  `chat`, `c_*`, or `m_*` schemas.
+- Chat model: Vertex AI `gemini-3.8-flash`, authorized by the Community chat service account.
 - Default browser fixture: `web/public/dataset/customer-orders/orders.csv` with the question
   `total amount in France in US dollars` from `prompt.txt`.
 
@@ -45,8 +47,8 @@ Test ID: `CE-GCP-001`
      --name ce-test-0915
    ```
 
-   Type the Anthropic key at the hidden prompt. The installer must store it in the deployment-
-   scoped Secret Manager secret and must not print it.
+   The installer must not prompt for an Anthropic key. It enables Vertex AI, grants the chat
+   service account `roles/aiplatform.user`, and imports the pinned Community seed artifact.
 3. Record the Hosting URL printed by the installer. Verify:
 
    - `GET /` returns the static home page from the deployment-scoped Firebase Hosting site.
@@ -55,8 +57,8 @@ Test ID: `CE-GCP-001`
    - the UI **Ask (↑)** button is enabled after the demo workbook loads;
    - clicking **Ask (↑)** navigates to `/reason/<conversation-id>`;
    - the result sheet appears without an error and contains a numeric result for France in USD;
-   - browser network activity shows `/api/**` for the engine call and `POST /chat` for the chat
-     call when orchestration is enabled;
+   - browser network activity shows `/api/**` for the engine call and `POST /chat` for the required
+     Gemini chat service;
    - the Hosting rewrite configuration contains the deployment's API and chat Cloud Run service
      IDs and the selected region.
 

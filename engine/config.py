@@ -33,12 +33,16 @@ Env contract:
   BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)
 
-  --- Anthropic / Sonnet (the /api/converse conversational layer — ARCHITECTURE §10 — and the MCP orchestrator) ---
+  --- External model provider (the /api/converse layer and MCP orchestrator) ---
+  LLM_PROVIDER         "anthropic" (default, production) or "gemini" (Community Edition)
   ANTHROPIC_API_KEY    Anthropic key. OPTIONAL for the engine: powers the /api/converse conversational fallback +
                        answer presentation; unset ⇒ /api/converse 503s and the UI degrades gracefully. REQUIRED
-                       only to run the separate MCP orchestrator chat backend (docs/MCP.md). No default.
+                       only when LLM_PROVIDER=anthropic. No default.
   EXTERNAL_LLM_ENABLED Authoritative deployment switch; default false. See PRIVACY.md.
   ANTHROPIC_MODEL      Sonnet model id for /api/converse + the orchestrator   (default claude-sonnet-5)
+  GEMINI_MODEL         Vertex AI Gemini model id (default gemini-3.8-flash)
+  GEMINI_LOCATION      Vertex AI location (default global)
+  GOOGLE_CLOUD_PROJECT Vertex AI project used by the Gemini client
   ENGINE_BASE_URL      where the MCP server reaches this engine over HTTP (default http://127.0.0.1:$PORT)
   ORCH_HOST            bind address for the orchestrator chat server (default 0.0.0.0)
   ORCH_PORT            port for the orchestrator chat server          (default 8090)
@@ -189,10 +193,14 @@ def kb_model_route_enabled():
     return os.environ.get("KB_MODEL_ROUTE", "1") != "0"
 
 
-# ---------- MCP layer: Sonnet orchestrator + Prereasoner MCP server (docs/MCP.md) ----------
+# ---------- MCP layer: external-model orchestrator + Prereasoner MCP server (docs/MCP.md) ----------
 # Static knobs resolve at import (mirrors BASE_MODEL_ID); the security-sensitive key is call-time
 # (mirrors kb_pg_password) so a clear error beats an anthropic auth stack trace.
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic").strip().lower()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_LOCATION = os.environ.get("GEMINI_LOCATION", "global")
+GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT") or None
 # The engine's own port (8080 by default) — NOT the orchestrator's PORT. Kept literal so a launcher that
 # injects PORT for the orchestrator process (e.g. a dev-server manager) can't accidentally point the MCP
 # server at the orchestrator itself. Override ENGINE_BASE_URL explicitly if the engine binds elsewhere.
@@ -209,6 +217,26 @@ ORCH_AUTH_MODE = os.environ.get("ORCH_AUTH_MODE") or (
 def external_llm_enabled() -> bool:
     """Return the operator's authoritative switch for external model processing."""
     return os.environ.get("EXTERNAL_LLM_ENABLED", "").strip().lower() in {"1", "true", "yes"}
+
+
+def llm_provider() -> str:
+    """Return the selected external-model provider."""
+    if LLM_PROVIDER not in {"anthropic", "gemini"}:
+        raise RuntimeError(f"unsupported LLM_PROVIDER: {LLM_PROVIDER}")
+    return LLM_PROVIDER
+
+
+def llm_model() -> str:
+    """Return the model configured for the selected provider."""
+    return GEMINI_MODEL if llm_provider() == "gemini" else ANTHROPIC_MODEL
+
+
+def llm_configured() -> bool:
+    """Return whether the selected provider has the local configuration it needs."""
+    if llm_provider() == "gemini":
+        # Vertex AI uses ADC (the Cloud Run service account in GCP, or the user's ADC locally).
+        return bool(GEMINI_MODEL and GOOGLE_CLOUD_PROJECT)
+    return bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
 def anthropic_api_key():

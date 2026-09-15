@@ -67,6 +67,13 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
+# The one-time Community Edition seed import runs pg_restore inside this same immutable
+# image.  Keeping the client here avoids a second database-tool image or a live Wikidata
+# bootstrap during installation; the serving process never invokes pg_restore.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hf /opt/hf
 COPY LICENSE THIRD_PARTY.md /licenses/
