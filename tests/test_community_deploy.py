@@ -434,6 +434,29 @@ def test_chat_image_copy_list_and_build_context_agree():
         f"only in COPY: {sorted(copied - allowed)}; only in allowlist: {sorted(allowed - copied)}")
 
 
+def test_first_install_waits_for_the_bootstrap_identity_to_resolve():
+    """Regression for an OBSERVED first-install failure (2026-09-16): `gcloud iam
+    service-accounts create` returns before the new identity resolves in the policy APIs, so the
+    binding on the next line aborted the install with "Service account ... does not exist".
+
+    Only a FIRST install is exposed, because a re-run finds the account already there and never
+    waits. That is precisely the path every new user takes and the one path repeated test runs
+    against an existing deployment never exercised."""
+    deploy = _text("deploy/gcp/deploy.sh")
+    assert "grant_bootstrap_role()" in deploy
+    # Fold shell line continuations so each binding is one statement.
+    joined = re.sub(r"\\\n\s*", " ", deploy)
+    grants = [line.strip() for line in joined.splitlines()
+              if "add-iam-policy-binding" in line and "${BOOTSTRAP_SA}" in line
+              and "remove-iam-policy-binding" not in line]
+    assert grants, "the bootstrap identity bindings disappeared"
+    unguarded = [line for line in grants if not line.startswith("grant_bootstrap_role")]
+    assert not unguarded, f"bootstrap role bound without the propagation retry: {unguarded}"
+    assert len(grants) == 2, f"expected the Cloud SQL and secret bindings, got {grants}"
+    # A bounded retry that still fails loudly, never an unbounded wait or a silent skip.
+    assert 'die "could not grant' in deploy
+
+
 def test_hosting_release_authorizes_its_own_sign_in_domains():
     """Regression for an OBSERVED launch blocker (2026-09-16): the hosting release created
     <site>.web.app and pinned the client's authDomain to it, but never added that origin to
@@ -466,7 +489,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.15"]
+    assert query["cloudshell_git_branch"] == ["v0.2.16"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -485,6 +508,7 @@ TESTS = [
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
     test_chat_image_copy_list_and_build_context_agree,
+    test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,
     test_marketing_button_opens_the_pinned_public_walkthrough,
 ]

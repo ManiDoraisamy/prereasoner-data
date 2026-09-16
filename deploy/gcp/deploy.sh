@@ -327,10 +327,27 @@ if ((!SKIP_BOOTSTRAP)); then
     gcloud iam service-accounts create "$bootstrap_account" --project="$PROJECT_ID" \
       --display-name="Temporary Prereasoner database bootstrap"
   fi
-  gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-    --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/cloudsql.client --condition=None --quiet >/dev/null
-  gcloud secrets add-iam-policy-binding "$DB_SECRET" --project="$PROJECT_ID" \
-    --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/secretmanager.secretAccessor --quiet >/dev/null
+  # IAM is eventually consistent: `service-accounts create` returns before the new identity
+  # resolves in the policy APIs, so binding a role on the next line fails with "Service account
+  # ... does not exist" (observed 2026-09-16). Only a FIRST install is exposed — a re-run reuses
+  # the existing account and never waits — which is exactly the path a new user takes. Retry the
+  # binding itself rather than polling `describe`, because `describe` becoming visible does not
+  # prove the policy API can resolve the member yet.
+  grant_bootstrap_role() {
+    local attempts=0
+    until "$@" >/dev/null 2>&1; do
+      attempts=$((attempts + 1))
+      if ((attempts >= 30)); then
+        "$@" >&2 || true   # surface the real error instead of a bare timeout
+        die "could not grant ${BOOTSTRAP_SA} a required role within 60s"
+      fi
+      sleep 2
+    done
+  }
+  grant_bootstrap_role gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+    --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/cloudsql.client --condition=None --quiet
+  grant_bootstrap_role gcloud secrets add-iam-policy-binding "$DB_SECRET" --project="$PROJECT_ID" \
+    --member="serviceAccount:${BOOTSTRAP_SA}" --role=roles/secretmanager.secretAccessor --quiet
 
   gcloud run jobs delete "$BOOTSTRAP_JOB" --project="$PROJECT_ID" --region="$REGION" --quiet >/dev/null 2>&1 || true
   gcloud run jobs create "$BOOTSTRAP_JOB" \
