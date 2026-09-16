@@ -208,6 +208,16 @@ init_state() {
     -backend-config="prefix=${STATE_PREFIX}"
 }
 
+# The Community tier is pinned HERE rather than changed in infra/variables.tf, because the
+# reference deployment runs db-g1-small and takes that value from the default -- moving the
+# default would try to resize production on its next apply.
+#
+# db-custom-2-7680 is bought for ONE reason, measured on the real seed (2026-09-16): restoring it
+# rebuilds a 623k-row, 384-dimension HNSW index over ~957 MB of vectors. On db-g1-small (1.7 GB)
+# that never fits and took 31 MINUTES; on 7.5 GB with a 2 GB private build allocation it takes
+# 3.5. ivfflat would build in 43 seconds but returned NO ROW for ~1% of filtered
+# nearest-neighbour lookups, which engine/entities.py depends on, so speed there would have cost
+# silent entity-resolution failures instead of slow installs.
 tf_vars() {
   local image="$1" protection="$2" chat_enabled="${3:-true}"
   printf '%s\n' \
@@ -217,6 +227,7 @@ tf_vars() {
     "-var=sql_instance_name=${SQL_INSTANCE}" \
     "-var=artifact_repo=${ARTIFACT_REPO}" \
     "-var=image=${image}" \
+    "-var=db_tier=db-custom-2-7680" \
     "-var=db_availability_type=ZONAL" \
     "-var=min_instances=0" \
     "-var=deletion_protection=${protection}" \

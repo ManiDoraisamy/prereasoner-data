@@ -91,6 +91,17 @@ def _restore(path: str) -> None:
     psql = subprocess.Popen(psql_command, stdin=subprocess.PIPE, env=env)
     assert psql.stdin is not None
     try:
+        # This restore rebuilds knowledgebase."words" HNSW graph -- 623k rows of 384-dimension
+        # vectors, about 957 MB -- because a dump carries index DEFINITIONS, never index contents.
+        # Measured 2026-09-16 on the real seed: Cloud SQL's default maintenance_work_mem took 31
+        # MINUTES; a 2 GB build allocation takes 3.5.
+        #
+        # The build must stay SERIAL. pgvector builds HNSW in parallel by default and a parallel
+        # build allocates maintenance_work_mem in SHARED memory, which fails outright with
+        # "could not resize shared memory segment ... No space left on device" -- that is why
+        # raising the setting alone was not enough, and why the default was never revisited.
+        psql.stdin.write(b"SET max_parallel_maintenance_workers = 0;\n")
+        psql.stdin.write(b"SET maintenance_work_mem = '2GB';\n")
         for line in restore.stdout:
             stripped = line.strip()
             normalized = stripped.upper().replace(b'"PUBLIC"', b"PUBLIC")

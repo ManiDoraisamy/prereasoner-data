@@ -465,6 +465,35 @@ def test_uninstall_actually_removes_the_billable_deployment():
         assert 'deletion_policy = "ABANDON"' in block, f"{role} would block the instance delete"
 
 
+def test_seed_restore_builds_the_vector_index_in_memory():
+    """Regression for an OBSERVED 35-minute install (2026-09-16). A dump carries index
+    DEFINITIONS, never contents, so every restore rebuilds knowledgebase."words" HNSW graph --
+    623,396 rows x 384 dimensions, ~957 MB of vectors. Measured on the real seed:
+
+      - db-g1-small (1.7 GB), Cloud SQL default maintenance_work_mem : 31 minutes
+      - raising maintenance_work_mem there                            : fails, "could not resize
+        shared memory segment", because pgvector builds HNSW in PARALLEL and a parallel build
+        allocates that memory in SHARED memory
+      - db-custom-2-7680 (7.5 GB), SERIAL build, 2 GB allocation      : 3.5 minutes
+      - ivfflat instead of HNSW                                       : 43 seconds, but returned
+        NO ROW for ~1% of the FILTERED nearest-neighbour lookups engine/entities.py relies on
+
+    So the installer buys memory rather than trading away recall, and the restore must ask for
+    that memory serially. Either half alone reverts to the 31-minute build."""
+    seed_import = _text("db/sync/community_seed_import.py")
+    assert 'SET max_parallel_maintenance_workers = 0;' in seed_import, \
+        "a parallel pgvector build allocates maintenance_work_mem in shared memory and fails"
+    assert "SET maintenance_work_mem = '2GB';" in seed_import
+    deploy = _text("deploy/gcp/deploy.sh")
+    assert "-var=db_tier=db-custom-2-7680" in deploy, \
+        "the Community tier must be pinned by the installer, not by the shared infra default"
+    # The reference deployment runs db-g1-small from the default; moving it would resize production.
+    tier = _text("infra/variables.tf").split('variable "db_tier"', 1)[1].split("\n}", 1)[0]
+    assert 'default     = "db-g1-small"' in tier
+    # HNSW is the index the engine's filtered NN queries depend on; ivfflat is not a substitute.
+    assert "hnsw" in _text("db/init.sql")
+
+
 def test_database_edition_is_stated_so_a_trial_is_not_20x_overprovisioned():
     """Regression for an OBSERVED cost-and-capacity defect (2026-09-16): `edition` was never set,
     so the API resolved it to ENTERPRISE_PLUS, which rejects every shared-core tier -- forcing
@@ -623,7 +652,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.21"]
+    assert query["cloudshell_git_branch"] == ["v0.2.22"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -644,6 +673,7 @@ TESTS = [
     test_chat_image_copy_list_and_build_context_agree,
     test_community_install_provisions_an_auth_provider_it_can_actually_enable,
     test_uninstall_actually_removes_the_billable_deployment,
+    test_seed_restore_builds_the_vector_index_in_memory,
     test_database_edition_is_stated_so_a_trial_is_not_20x_overprovisioned,
     test_first_install_survives_cloud_build_permission_propagation,
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,

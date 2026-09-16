@@ -342,6 +342,7 @@ Notes:
 | Component | Config | Est. monthly |
 |---|---|---|
 | Cloud SQL | `db-g1-small` (Enterprise, shared core), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
+| Cloud SQL (Community install) | `db-custom-2-7680` (Enterprise, 2 vCPU / 7.5 GB), zonal | Pinned by `deploy/gcp/deploy.sh`, not by the default above. Bought for the seed restore: the HNSW rebuild over ~957 MB of vectors takes 31 min on a shared core and 3.5 min with a 2 GB in-memory build |
 | Cloud Run | 8 Gi / 4 vCPU, min 0 in Community (scale to zero) | Usage based; verify the current regional price before apply |
 | Artifact Registry | ~3–4 GB image | ~$0.40 |
 | Secret Manager | 1 secret, few accesses | < $0.10 |
