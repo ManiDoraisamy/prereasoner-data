@@ -113,6 +113,39 @@ confirm() {
   [[ "$answer" == "$word" ]] || die "cancelled"
 }
 
+submit_build() {
+  # Cloud Build's permissions are eventually consistent with enabling its API. On a FIRST install
+  # the API was turned on seconds earlier, and the first submission fails with PERMISSION_DENIED
+  # before the grant takes effect -- the identical command succeeds minutes later untouched
+  # (observed on a brand-new project, 2026-09-16). A re-install never sees it because the API is
+  # already on, so this is another failure only a real new user would hit.
+  #
+  # Retry ONLY that denial. A build that actually ran and failed must surface immediately instead
+  # of being run again, and `tee` keeps the live build log streaming while still letting the
+  # failure be classified.
+  local attempts=0 status log
+  log="$(mktemp "${TMPDIR:-/tmp}/prereasoner-submit.XXXXXX")"
+  while true; do
+    status=0
+    gcloud builds submit "$@" 2>&1 | tee "$log" || status=$?
+    if [[ "$status" == 0 ]]; then
+      rm -f "$log"
+      return 0
+    fi
+    if ! grep -q 'PERMISSION_DENIED' "$log"; then
+      rm -f "$log"
+      die "Cloud Build failed"
+    fi
+    attempts=$((attempts + 1))
+    if ((attempts >= 20)); then
+      rm -f "$log"
+      die "Cloud Build did not accept a submission within 5 minutes of enabling its API"
+    fi
+    printf '\nCloud Build permissions are still propagating; retrying in 15s (%d/20)\n' "$attempts"
+    sleep 15
+  done
+}
+
 cleanup_bootstrap_identity() {
   set +e
   if [[ -n "$BOOTSTRAP_JOB" ]]; then
@@ -312,7 +345,7 @@ BUILD_SERVICE_ACCOUNT="$build_service_account"
 
 commit="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine:community-${commit}"
-gcloud builds submit "$BUILD_CONTEXT" \
+submit_build "$BUILD_CONTEXT" \
   --project="$PROJECT_ID" \
   --config="$BUILD_CONTEXT/cloudbuild.yaml" \
   --timeout=3600s \
@@ -329,7 +362,7 @@ CHAT_BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/prereasoner-build.XXXXXX")"
 )
 chat_tag="community-${commit}"
 chat_image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/chat:${chat_tag}"
-gcloud builds submit "$CHAT_BUILD_CONTEXT" \
+submit_build "$CHAT_BUILD_CONTEXT" \
   --project="$PROJECT_ID" \
   --config="$CHAT_BUILD_CONTEXT/cloudbuild.orchestrator.yaml" \
   --timeout=900s \
@@ -415,7 +448,7 @@ FIREBASE_ADMIN_GRANTED=1
   cd "$ROOT"
   "$VENV_PYTHON" deploy/gcp/build_context.py --target hosting --output "$HOSTING_BUILD_CONTEXT"
 )
-gcloud builds submit "$HOSTING_BUILD_CONTEXT" \
+submit_build "$HOSTING_BUILD_CONTEXT" \
   --project="$PROJECT_ID" \
   --config="$HOSTING_BUILD_CONTEXT/cloudbuild.hosting.yaml" \
   --timeout=900s \

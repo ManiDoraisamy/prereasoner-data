@@ -465,6 +465,29 @@ def test_uninstall_actually_removes_the_billable_deployment():
         assert 'deletion_policy = "ABANDON"' in block, f"{role} would block the instance delete"
 
 
+def test_first_install_survives_cloud_build_permission_propagation():
+    """Regression for an OBSERVED first-install failure (2026-09-16): the installer enables the
+    Cloud Build API and submits a build seconds later, and the submission was rejected with
+    PERMISSION_DENIED before the grant became effective. The identical command succeeded minutes
+    later with nothing changed, proving propagation rather than a missing role. A re-install never
+    sees it because the API is already on -- the same blind spot as the bootstrap identity race.
+
+    The retry must be narrow: a build that actually ran and FAILED has to surface immediately,
+    never be silently run again."""
+    deploy = _text("deploy/gcp/deploy.sh")
+    assert "submit_build()" in deploy
+    # Every real submission goes through the helper; only the helper calls gcloud directly.
+    assert deploy.count("gcloud builds submit") == 1, \
+        "a build submission bypasses the propagation retry"
+    assert deploy.count("submit_build \"$") == 3, \
+        "expected the engine, chat and hosting builds to share one submit path"
+    # Narrow by construction: retry only on the propagation denial.
+    assert "PERMISSION_DENIED" in deploy
+    assert 'die "Cloud Build failed"' in deploy, \
+        "a genuine build failure must abort instead of retrying"
+    assert "tee" in deploy, "the live build log must keep streaming while failures are classified"
+
+
 def test_first_install_waits_for_the_bootstrap_identity_to_resolve():
     """Regression for an OBSERVED first-install failure (2026-09-16): `gcloud iam
     service-accounts create` returns before the new identity resolves in the policy APIs, so the
@@ -557,7 +580,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.18"]
+    assert query["cloudshell_git_branch"] == ["v0.2.19"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -578,6 +601,7 @@ TESTS = [
     test_chat_image_copy_list_and_build_context_agree,
     test_community_install_provisions_an_auth_provider_it_can_actually_enable,
     test_uninstall_actually_removes_the_billable_deployment,
+    test_first_install_survives_cloud_build_permission_propagation,
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,
     test_marketing_button_opens_the_pinned_public_walkthrough,
