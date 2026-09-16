@@ -101,6 +101,12 @@ resource "google_sql_user" "postgres" {
   name     = "postgres"
   instance = google_sql_database_instance.world.name
   password = random_password.db.result
+  # A seeded database leaves hundreds of objects owned by this role, and PostgreSQL refuses to
+  # DROP ROLE while any of them exist, so an uninstall failed with "role cannot be dropped
+  # because some objects depend on it" and stranded the billable instance (observed 2026-09-16).
+  # The instance is destroyed in the same plan and takes its roles with it, so dropping the role
+  # first is both unnecessary and impossible.
+  deletion_policy = "ABANDON"
 }
 
 # ---------- Non-superuser serving role (least privilege) ----------
@@ -121,6 +127,9 @@ resource "google_sql_user" "serving" {
   name     = var.serving_db_role
   instance = google_sql_database_instance.world.name
   password = random_password.serving.result
+  # Same reason as the postgres role above: the serving role owns the conversation and master
+  # schemas it created at runtime, so it cannot be dropped ahead of the instance.
+  deletion_policy = "ABANDON"
 }
 
 resource "google_secret_manager_secret" "serving_db_password" {

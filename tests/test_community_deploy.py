@@ -434,6 +434,37 @@ def test_chat_image_copy_list_and_build_context_agree():
         f"only in COPY: {sorted(copied - allowed)}; only in allowlist: {sorted(allowed - copied)}")
 
 
+def test_uninstall_actually_removes_the_billable_deployment():
+    """Regression for an OBSERVED uninstall failure (2026-09-16): `deploy.sh --destroy` aborted
+    with three errors and left a running db-perf-optimized Cloud SQL instance behind, after
+    telling the operator the deployment was removed. Three independent causes:
+
+    1. Terraform reads `deletion_protection` from STATE, so passing -var=deletion_protection=false
+       to `destroy` alone leaves the guard armed -- it must be applied first.
+    2. `google_sql_user` tried to DROP ROLE ahead of the instance, which PostgreSQL refuses while
+       the seeded database still has objects owned by that role (362 for postgres, 97 for serving).
+    3. After a partial destroy the root outputs are gone, so the `image` output guard reported
+       "no deployment exists" and refused to clean up the survivors.
+
+    An uninstall that silently leaves the most expensive resource running is worse than one that
+    fails loudly, so all three paths are contract-tested."""
+    deploy = _text("deploy/gcp/deploy.sh")
+    destroy = deploy.split("destroy_deployment() {", 1)[1].split("\n}", 1)[0]
+    # (1) the protection-clearing apply must run BEFORE the destroy.
+    apply_at = destroy.find('apply -auto-approve -input=false "${unprotect[@]}"')
+    destroy_at = destroy.find('destroy -auto-approve -input=false "${variables[@]}"')
+    assert apply_at > 0 and destroy_at > apply_at, \
+        "the uninstall must clear deletion_protection with an apply before destroying"
+    # (3) a missing output must not be read as "nothing to destroy".
+    assert "state list" in destroy, \
+        "the uninstall must fall back to remaining state when the outputs are gone"
+    # (2) the roles are abandoned with the instance instead of being dropped first.
+    terraform = _text("infra/main.tf")
+    for role in ('resource "google_sql_user" "postgres"', 'resource "google_sql_user" "serving"'):
+        block = terraform.split(role, 1)[1].split("\n}", 1)[0]
+        assert 'deletion_policy = "ABANDON"' in block, f"{role} would block the instance delete"
+
+
 def test_first_install_waits_for_the_bootstrap_identity_to_resolve():
     """Regression for an OBSERVED first-install failure (2026-09-16): `gcloud iam
     service-accounts create` returns before the new identity resolves in the policy APIs, so the
@@ -489,7 +520,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.16"]
+    assert query["cloudshell_git_branch"] == ["v0.2.17"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -508,6 +539,7 @@ TESTS = [
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
     test_chat_image_copy_list_and_build_context_agree,
+    test_uninstall_actually_removes_the_billable_deployment,
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,
     test_marketing_button_opens_the_pinned_public_walkthrough,

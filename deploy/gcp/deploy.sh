@@ -204,10 +204,39 @@ tf_vars() {
 destroy_deployment() {
   init_state
   image="$(terraform -chdir="$ROOT/infra" output -raw image 2>/dev/null || true)"
-  [[ "$image" == *@sha256:* ]] || die "no ${DEPLOYMENT} deployment exists in gs://${STATE_BUCKET}/${STATE_PREFIX}"
+  if [[ "$image" != *@sha256:* ]]; then
+    # A destroy that stopped partway clears the root outputs, so a missing `image` output does
+    # NOT mean "nothing to destroy". Refusing here is the worst possible answer: it tells the
+    # operator the deployment is gone while the surviving Cloud SQL instance keeps billing
+    # (observed 2026-09-16). Recover the digest from the running service, and if even that is
+    # gone, destroy on whatever state remains -- the variable only has to satisfy the plan.
+    image="$(gcloud run services describe "$SERVICE_NAME" --project="$PROJECT_ID" \
+      --region="$REGION" --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || true)"
+  fi
+  if [[ "$image" != *@sha256:* ]]; then
+    [[ -n "$(terraform -chdir="$ROOT/infra" state list 2>/dev/null)" ]] \
+      || die "no ${DEPLOYMENT} deployment exists in gs://${STATE_BUCKET}/${STATE_PREFIX}"
+    image="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine@sha256:${ZERO_DIGEST}"
+  fi
   mapfile -t variables < <(tf_vars "$image" false false)
   terraform -chdir="$ROOT/infra" plan -input=false "${variables[@]}"
   confirm DESTROY "This removes ${SERVICE_NAME}, ${SQL_INSTANCE}, its databases, secrets, and images from ${PROJECT_ID}. The versioned Terraform state bucket is retained for audit."
+  # Terraform reads deletion_protection from STATE, not from this run's variables, so passing
+  # -var=deletion_protection=false to `destroy` alone leaves the guard armed and the uninstall
+  # aborts with "cannot destroy service without setting deletion_protection=false", stranding a
+  # billable Cloud SQL instance the operator was told they had removed (observed 2026-09-16).
+  # Clear the flag with an apply that still describes the RUNNING deployment -- chat enabled, its
+  # deployed digest -- so this step only lowers the guard and never changes what is deployed. The
+  # digest comes from the live service rather than Terraform state, so an uninstall also works on
+  # a deployment created by an earlier release.
+  CHAT_IMAGE="$(gcloud run services describe "$CHAT_SERVICE_NAME" --project="$PROJECT_ID" \
+    --region="$REGION" --format='value(spec.template.spec.containers[0].image)' 2>/dev/null || true)"
+  if [[ "$CHAT_IMAGE" == *@sha256:* ]]; then
+    mapfile -t unprotect < <(tf_vars "$image" false true)
+  else
+    mapfile -t unprotect < <(tf_vars "$image" false false)
+  fi
+  terraform -chdir="$ROOT/infra" apply -auto-approve -input=false "${unprotect[@]}"
   terraform -chdir="$ROOT/infra" destroy -auto-approve -input=false "${variables[@]}"
   HOSTING_SITE="$HOSTING_SITE_ID"
   cleanup_firebase_release
