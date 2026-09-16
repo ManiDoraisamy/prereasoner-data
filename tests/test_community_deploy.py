@@ -465,6 +465,25 @@ def test_uninstall_actually_removes_the_billable_deployment():
         assert 'deletion_policy = "ABANDON"' in block, f"{role} would block the instance delete"
 
 
+def test_database_edition_is_stated_so_a_trial_is_not_20x_overprovisioned():
+    """Regression for an OBSERVED cost-and-capacity defect (2026-09-16): `edition` was never set,
+    so the API resolved it to ENTERPRISE_PLUS, which rejects every shared-core tier -- forcing
+    db-perf-optimized-N-2 on a guided install that calls itself cost-aware. That is roughly 20x
+    the machine the reference deployment actually serves the FULL world DB from, and its regional
+    capacity shortage failed a fresh install with "The zone or region does not have sufficient
+    resources"."""
+    variables = _text("infra/variables.tf")
+    main = _text("infra/main.tf")
+    assert 'variable "db_edition"' in variables, "the edition must be explicit, never inferred"
+    edition = variables.split('variable "db_edition"', 1)[1].split("\n}", 1)[0]
+    assert 'default     = "ENTERPRISE"' in edition
+    tier = variables.split('variable "db_tier"', 1)[1].split("\n}", 1)[0]
+    assert "db-perf-optimized" not in tier, "a one-click trial must not default to Enterprise Plus"
+    assert "edition           = var.db_edition" in main or "edition = var.db_edition" in main
+    # The installer must not quietly reintroduce the expensive tier.
+    assert "db-perf-optimized" not in _text("deploy/gcp/deploy.sh")
+
+
 def test_first_install_survives_cloud_build_permission_propagation():
     """Regression for an OBSERVED first-install failure (2026-09-16): the installer enables the
     Cloud Build API and submits a build seconds later, and the submission was rejected with
@@ -580,7 +599,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.19"]
+    assert query["cloudshell_git_branch"] == ["v0.2.20"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -601,6 +620,7 @@ TESTS = [
     test_chat_image_copy_list_and_build_context_agree,
     test_community_install_provisions_an_auth_provider_it_can_actually_enable,
     test_uninstall_actually_removes_the_billable_deployment,
+    test_database_edition_is_stated_so_a_trial_is_not_20x_overprovisioned,
     test_first_install_survives_cloud_build_permission_propagation,
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,

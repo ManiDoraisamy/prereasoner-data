@@ -60,7 +60,11 @@ resource "google_sql_database_instance" "world" {
   deletion_protection = var.deletion_protection
 
   settings {
-    tier              = var.db_tier
+    tier = var.db_tier
+    # Stated explicitly, never inferred: an omitted edition resolves to ENTERPRISE_PLUS, which
+    # rejects shared-core tiers and so silently forces a machine ~20x the cost of the one the
+    # reference deployment runs -- and whose capacity shortages fail installs outright.
+    edition           = var.db_edition
     availability_type = var.db_availability_type
     disk_size         = 20 # GB — full sync is ~2-3 GB (db/README.md §4); 20 GB is comfortable
     disk_autoresize   = true

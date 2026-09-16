@@ -341,7 +341,7 @@ Notes:
 
 | Component | Config | Est. monthly |
 |---|---|---|
-| Cloud SQL | `db-perf-optimized-N-2` (Enterprise Plus, 2 vCPU / 16 GB), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
+| Cloud SQL | `db-g1-small` (Enterprise, shared core), regional HA, 20 GB SSD | Dominant fixed cost; regional HA is roughly twice the equivalent zonal instance. Verify current pricing before apply |
 | Cloud Run | 8 Gi / 4 vCPU, min 0 in Community (scale to zero) | Usage based; verify the current regional price before apply |
 | Artifact Registry | ~3–4 GB image | ~$0.40 |
 | Secret Manager | 1 secret, few accesses | < $0.10 |
@@ -356,3 +356,7 @@ the selected region and tier before launch. To pause spend between demo sessions
 `db-f1-micro` (~$9/mo shared-core) technically works for the minimal seed but is slow
 for HNSW builds and disallowed for some pgvector workloads' memory spikes; `db_tier`
 is a variable — downsize at your own risk.
+State `db_edition` rather than relying on the API: an omitted edition resolves to
+`ENTERPRISE_PLUS`, which rejects every shared-core tier and so forces
+`db-perf-optimized-N-2` — roughly 20x this line item, and a tier whose regional capacity
+shortages fail `terraform apply` outright.

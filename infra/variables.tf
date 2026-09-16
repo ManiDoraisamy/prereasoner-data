@@ -42,10 +42,21 @@ variable "sql_instance_name" {
   default     = "prereasoner-world"
 }
 
-variable "db_tier" {
-  description = "Cloud SQL Enterprise Plus machine tier. db-perf-optimized-N-2 is the smallest predefined tier accepted by current Enterprise Plus projects and provides 2 vCPU / 16 GB for the ~2-3 GB fully-synced world DB + HNSW index."
+variable "db_edition" {
+  description = "Cloud SQL edition. Must be stated explicitly: when it is omitted the API picks ENTERPRISE_PLUS, which bans shared-core tiers and forces a machine roughly 20x the cost of the one the reference deployment actually runs."
   type        = string
-  default     = "db-perf-optimized-N-2"
+  default     = "ENTERPRISE"
+
+  validation {
+    condition     = contains(["ENTERPRISE", "ENTERPRISE_PLUS"], var.db_edition)
+    error_message = "db_edition must be ENTERPRISE or ENTERPRISE_PLUS."
+  }
+}
+
+variable "db_tier" {
+  description = "Cloud SQL machine tier. db-g1-small is what chat.prereasoner.com serves the FULL synced world DB + HNSW index from, so it is sufficient for the smaller Community seed; it also keeps a one-click trial near $25/month and avoids the Enterprise Plus capacity shortages that fail installs outright."
+  type        = string
+  default     = "db-g1-small"
 }
 
 variable "db_availability_type" {
