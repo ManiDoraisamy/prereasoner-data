@@ -3,9 +3,9 @@
 // scripts by publishing window.ensureToken / window.subscribeRun / window.__uid — the same
 // contract the pages have always used. The config lives in lib/config.js (public identifiers).
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, getIdToken } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, getIdToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getDatabase, ref, onValue as watchValue, onChildAdded as watchChild, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
-import { firebaseConfig } from "./config.js";
+import { firebaseConfig, AUTH_PROVIDER } from "./config.js";
 import './result-wire.js';
 
 function watch(watcher,target,cb,handler){
@@ -109,6 +109,16 @@ export async function ensureSignedIn(){
       } catch (_) {}
     }
     if (t) { window.ensureToken = async () => 'local-dev'; window.__uid = 'local-dev'; return 'local-dev'; }
+  }
+  // A Community deployment has only ANONYMOUS auth: its Hosting domain can never be a registered
+  // Google redirect URI, and no public API can create the OAuth client the google.com provider
+  // demands. The uid and ID token are real either way, so everything downstream is unchanged --
+  // only how the user acquires them differs. No redirect, no pending flag, no loop breaker.
+  if (AUTH_PROVIDER === 'anonymous') {
+    await auth.authStateReady();
+    if (!auth.currentUser) await signInAnonymously(auth);
+    window.__uid = auth.currentUser.uid;
+    return auth.currentUser.uid;
   }
   let redirectErr = null;
   try { await getRedirectResult(auth); } catch (e) { redirectErr = e; }   // completes the sign-in when returning from Google

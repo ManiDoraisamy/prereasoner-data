@@ -49,13 +49,19 @@ Test ID: `CE-GCP-001`
 
    The installer must not prompt for an Anthropic key. It enables Vertex AI, grants the chat
    service account `roles/aiplatform.user`, and imports the pinned Community seed artifact.
+
+   It must also complete with NO console work. A Community deployment signs users in with Firebase
+   ANONYMOUS auth, which the hosting release enables over the API. Google sign-in is deliberately
+   not used: the `google.com` provider requires an OAuth client id, and no public API creates an
+   OAuth client for a project outside an organization, so it can never be one-click. If a run ever
+   asks the operator to visit the Firebase console, that is a release-blocking regression.
 3. Record the Hosting URL printed by the installer. Verify:
 
    - `GET /` returns the static home page from the deployment-scoped Firebase Hosting site.
-   - `GET /lib/config.js` and the stylesheet return successfully.
+   - `GET /lib/config.js` returns successfully and declares `AUTH_PROVIDER = "anonymous"`.
    - the HTML shows the `orders` chip and the default question;
    - the UI **Ask (↑)** button is enabled after the demo workbook loads;
-   - clicking **Ask (↑)** navigates to `/reason/<conversation-id>`;
+   - clicking **Ask (↑)** signs in without any prompt and navigates to `/reason/<conversation-id>`;
    - the result sheet appears without an error and contains a numeric result for France in USD;
    - browser network activity shows `/api/**` for the engine call and `POST /chat` for the required
      Gemini chat service;

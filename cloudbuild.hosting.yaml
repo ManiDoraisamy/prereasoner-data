@@ -98,13 +98,12 @@ steps:
 
         firebase apps:sdkconfig WEB "$web_app_id" \
           --project="${PROJECT_ID}" --non-interactive --out=/tmp/firebase-js-config.json
-        # The client pins authDomain to the origin the visitor is already on, and Firebase Auth
-        # only completes a sign-in redirect for an origin the project trusts. Both facts describe
-        # the SAME two domains, so this step derives them once, makes the project trust them, and
-        # only then writes them into the client config. Skipping the trust half is not a cosmetic
-        # gap: a deployment-scoped site is always a new domain, so every install without it dies
-        # on auth/unauthorized-domain the first time a visitor presses Ask
-        # (observed on community-v4-test2.web.app, 2026-09-16).
+        # Derive this deployment's two origins ONCE: they are both what the client pins authDomain
+        # to and what Firebase Auth is told to trust. Anonymous sign-in never redirects, so the
+        # trust half is not what unblocks the default question -- it is what keeps the deployment
+        # internally consistent and lets a self-hoster turn on a redirect-based provider later
+        # without rediscovering auth/unauthorized-domain (observed on community-v4-test2.web.app,
+        # 2026-09-16, back when the install still tried to use Google sign-in).
         TARGET_PROJECT="${PROJECT_ID}" HOSTING_SITE="${_HOSTING_SITE}" node <<'NODE'
         const fs = require("fs");
         const sdk = JSON.parse(fs.readFileSync("/tmp/firebase-js-config.json", "utf8"));
@@ -112,12 +111,42 @@ steps:
         const hostingSite = process.env.HOSTING_SITE;
         const hostingDomains = [hostingSite + ".web.app", hostingSite + ".firebaseapp.com"];
 
-        async function authorizeHostingDomains() {
+        async function buildToken() {
           const metadata = await fetch(
             "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
             { headers: { "Metadata-Flavor": "Google" } });
           if (!metadata.ok) throw new Error("build credential unavailable: HTTP " + metadata.status);
-          const headers = { Authorization: "Bearer " + (await metadata.json()).access_token };
+          return (await metadata.json()).access_token;
+        }
+
+        // A Community install must not ask the operator to configure anything, and Google sign-in
+        // cannot meet that bar: the google.com provider requires an OAuth client id, and no public
+        // API creates an OAuth client for a project outside an organization (IAP brands answers
+        // "Project must belong to an organization"). Anonymous auth needs no client, still issues a
+        // real uid and a verifiable ID token, and is a single enable call -- so it is what this
+        // deployment provisions, and what the client config below is told to use.
+        async function enableAnonymousSignIn() {
+          const headers = { Authorization: "Bearer " + (await buildToken()) };
+          const base = "https://identitytoolkit.googleapis.com/v2/projects/" + projectId;
+          // Auth has to exist before a provider can be turned on; already-initialized is fine.
+          await fetch(base + "/identityPlatform:initializeAuth",
+            { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, headers), body: "{}" });
+          const url = "https://identitytoolkit.googleapis.com/admin/v2/projects/" + projectId +
+            "/config?updateMask=signIn.anonymous.enabled";
+          const res = await fetch(url, {
+            method: "PATCH",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers),
+            body: JSON.stringify({ signIn: { anonymous: { enabled: true } } }),
+          });
+          if (!res.ok) {
+            throw new Error("enabling anonymous sign-in failed: HTTP " + res.status +
+              " " + (await res.text()));
+          }
+          console.log("Firebase Auth: anonymous sign-in enabled");
+        }
+
+        async function authorizeHostingDomains() {
+          const headers = { Authorization: "Bearer " + (await buildToken()) };
           const url = "https://identitytoolkit.googleapis.com/admin/v2/projects/" +
             projectId + "/config";
           const read = await fetch(url, { headers });
@@ -165,15 +194,19 @@ steps:
               JSON.stringify(firebaseConfig.authDomain) + ",\n" +
             "  projectId: " + JSON.stringify(firebaseConfig.projectId) + ",\n" +
             "  appId: " + JSON.stringify(firebaseConfig.appId) + ",\n" +
-            "  databaseURL: " + JSON.stringify(firebaseConfig.databaseURL) + "\n};\n\n";
+            "  databaseURL: " + JSON.stringify(firebaseConfig.databaseURL) + "\n};\n" +
+            'export const AUTH_PROVIDER = "anonymous";\n\n';
           fs.writeFileSync("web/public/lib/config.js",
             source.slice(0, start) + block + source.slice(end));
         }
 
-        authorizeHostingDomains().then(writeClientConfig).catch(function (error) {
-          console.error(String((error && error.message) || error));
-          process.exit(1);
-        });
+        enableAnonymousSignIn()
+          .then(authorizeHostingDomains)
+          .then(writeClientConfig)
+          .catch(function (error) {
+            console.error(String((error && error.message) || error));
+            process.exit(1);
+          });
         NODE
 
         # Keep the checked-in firebase.json as the source of truth while adapting only the two

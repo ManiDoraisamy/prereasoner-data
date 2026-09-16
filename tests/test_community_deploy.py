@@ -488,6 +488,43 @@ def test_first_install_waits_for_the_bootstrap_identity_to_resolve():
     assert 'die "could not grant' in deploy
 
 
+def test_community_install_provisions_an_auth_provider_it_can_actually_enable():
+    """A Community install must need ZERO console configuration, and Google sign-in cannot meet
+    that bar. Measured on a fresh project (pr-ce-probe-0916, 2026-09-16):
+
+      - enabling the google.com provider returns "INVALID_CONFIG : client_id cannot be empty";
+      - creating a Web app does not auto-provision an OAuth client;
+      - the only documented OAuth-client-creation API (IAP brands) answers
+        "Project must belong to an organization", so a personal account cannot use it;
+      - enabling ANONYMOUS sign-in is a single PATCH that succeeds.
+
+    So the installer enables anonymous auth and tells the client to use it. The uid and ID token
+    stay real, so tenant isolation and the engine's Bearer check are untouched."""
+    hosting = _text("cloudbuild.hosting.yaml")
+    assert "signIn.anonymous.enabled" in hosting
+    assert "identityPlatform:initializeAuth" in hosting, \
+        "a provider cannot be enabled before Auth is initialized"
+    assert 'export const AUTH_PROVIDER = "anonymous";' in hosting, \
+        "the generated client config must select the provider the install actually enabled"
+    # Enabling must be fatal, never best-effort: a deployment whose provider is off cannot sign in.
+    assert "enabling anonymous sign-in failed" in hosting
+
+    config = _text("web/public/lib/config.js")
+    # The reference deployment keeps Google sign-in; only the generated Community copy switches.
+    assert 'export const AUTH_PROVIDER = "google";' in config
+    # THE SUBTLE ONE: the hosting build rewrites exactly the span between these two markers. If
+    # AUTH_PROVIDER ever drifts outside it, a Community install would silently publish "google"
+    # and every deployment would be unable to sign in again -- the original launch blocker.
+    start = config.index("const HOSTING_DOMAINS =")
+    end = config.index("// Google Picker credentials", start)
+    assert "AUTH_PROVIDER" in config[start:end], \
+        "AUTH_PROVIDER sits outside the block the hosting release regenerates"
+
+    client = _text("web/public/lib/firebase-init.js")
+    assert "signInAnonymously" in client
+    assert "AUTH_PROVIDER" in client, "the client must honour the provider the install enabled"
+
+
 def test_hosting_release_authorizes_its_own_sign_in_domains():
     """Regression for an OBSERVED launch blocker (2026-09-16): the hosting release created
     <site>.web.app and pinned the client's authDomain to it, but never added that origin to
@@ -520,7 +557,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.17"]
+    assert query["cloudshell_git_branch"] == ["v0.2.18"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -539,6 +576,7 @@ TESTS = [
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
     test_chat_image_copy_list_and_build_context_agree,
+    test_community_install_provisions_an_auth_provider_it_can_actually_enable,
     test_uninstall_actually_removes_the_billable_deployment,
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,
