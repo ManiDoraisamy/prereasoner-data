@@ -434,6 +434,28 @@ def test_chat_image_copy_list_and_build_context_agree():
         f"only in COPY: {sorted(copied - allowed)}; only in allowlist: {sorted(allowed - copied)}")
 
 
+def test_hosting_release_authorizes_its_own_sign_in_domains():
+    """Regression for an OBSERVED launch blocker (2026-09-16): the hosting release created
+    <site>.web.app and pinned the client's authDomain to it, but never added that origin to
+    Firebase Auth's authorized domains. Pressing Ask on community-v4-test2.web.app failed with
+    auth/unauthorized-domain, so the default prompt could not run at all. A deployment-scoped
+    site is ALWAYS a domain the project has never seen, so this broke every Community install;
+    the reference deployment only worked because its domains were authorized by hand long ago."""
+    hosting = _text("cloudbuild.hosting.yaml")
+    assert "identitytoolkit.googleapis.com/admin/v2/projects/" in hosting
+    assert "?updateMask=authorizedDomains" in hosting
+    assert 'method: "PATCH"' in hosting
+    # PATCH replaces the whole list, so the install must merge and never revoke an origin it did
+    # not create (a custom domain, localhost, or another deployment's site).
+    assert "trusted.concat(missing)" in hosting
+    # ONE definition of this deployment's origins feeds BOTH the authorization and the client
+    # config; a second copy would let the trusted set and the pinned authDomain drift apart.
+    assert hosting.count('[hostingSite + ".web.app", hostingSite + ".firebaseapp.com"]') == 1
+    assert "JSON.stringify(hostingDomains)" in hosting
+    # Publishing a UI that cannot sign in is worse than failing the release.
+    assert "process.exit(1)" in hosting
+
+
 def test_marketing_button_opens_the_pinned_public_walkthrough():
     button = _text("deploy/gcp/button.html")
     start = button.index('href="') + len('href="')
@@ -444,7 +466,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.14"]
+    assert query["cloudshell_git_branch"] == ["v0.2.15"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -463,6 +485,7 @@ TESTS = [
     test_serving_identity_cannot_read_the_admin_database_secret,
     test_public_build_needs_no_hugging_face_secret,
     test_chat_image_copy_list_and_build_context_agree,
+    test_hosting_release_authorizes_its_own_sign_in_domains,
     test_marketing_button_opens_the_pinned_public_walkthrough,
 ]
 

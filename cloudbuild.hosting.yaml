@@ -98,32 +98,82 @@ steps:
 
         firebase apps:sdkconfig WEB "$web_app_id" \
           --project="${PROJECT_ID}" --non-interactive --out=/tmp/firebase-js-config.json
+        # The client pins authDomain to the origin the visitor is already on, and Firebase Auth
+        # only completes a sign-in redirect for an origin the project trusts. Both facts describe
+        # the SAME two domains, so this step derives them once, makes the project trust them, and
+        # only then writes them into the client config. Skipping the trust half is not a cosmetic
+        # gap: a deployment-scoped site is always a new domain, so every install without it dies
+        # on auth/unauthorized-domain the first time a visitor presses Ask
+        # (observed on community-v4-test2.web.app, 2026-09-16).
         TARGET_PROJECT="${PROJECT_ID}" HOSTING_SITE="${_HOSTING_SITE}" node <<'NODE'
         const fs = require("fs");
         const sdk = JSON.parse(fs.readFileSync("/tmp/firebase-js-config.json", "utf8"));
         const projectId = sdk.projectId || process.env.TARGET_PROJECT;
         const hostingSite = process.env.HOSTING_SITE;
-        const firebaseConfig = {
-          apiKey: sdk.apiKey,
-          authDomain: sdk.authDomain || (projectId + ".firebaseapp.com"),
-          projectId,
-          appId: sdk.appId,
-          databaseURL: sdk.databaseURL || ("https://" + projectId + "-default-rtdb.firebaseio.com"),
-        };
-        const source = fs.readFileSync("web/public/lib/config.js", "utf8");
-        const start = source.indexOf("const HOSTING_DOMAINS =");
-        const end = source.indexOf("// Google Picker credentials", start);
-        if (start < 0 || end < 0) throw new Error("config.js markers are missing");
-        const block = "const HOSTING_DOMAINS = " +
-          JSON.stringify([hostingSite + ".web.app", hostingSite + ".firebaseapp.com"]) + ";\n" +
-          "export const firebaseConfig = {\n" +
-          "  apiKey: " + JSON.stringify(firebaseConfig.apiKey) + ",\n" +
-          "  authDomain: HOSTING_DOMAINS.includes(location.hostname) ? location.hostname : " +
-            JSON.stringify(firebaseConfig.authDomain) + ",\n" +
-          "  projectId: " + JSON.stringify(firebaseConfig.projectId) + ",\n" +
-          "  appId: " + JSON.stringify(firebaseConfig.appId) + ",\n" +
-          "  databaseURL: " + JSON.stringify(firebaseConfig.databaseURL) + "\n};\n\n";
-        fs.writeFileSync("web/public/lib/config.js", source.slice(0, start) + block + source.slice(end));
+        const hostingDomains = [hostingSite + ".web.app", hostingSite + ".firebaseapp.com"];
+
+        async function authorizeHostingDomains() {
+          const metadata = await fetch(
+            "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token",
+            { headers: { "Metadata-Flavor": "Google" } });
+          if (!metadata.ok) throw new Error("build credential unavailable: HTTP " + metadata.status);
+          const headers = { Authorization: "Bearer " + (await metadata.json()).access_token };
+          const url = "https://identitytoolkit.googleapis.com/admin/v2/projects/" +
+            projectId + "/config";
+          const read = await fetch(url, { headers });
+          if (!read.ok) {
+            throw new Error("reading Firebase Auth config failed: HTTP " + read.status +
+              " " + (await read.text()));
+          }
+          const trusted = (await read.json()).authorizedDomains || [];
+          const missing = hostingDomains.filter(function (domain) {
+            return !trusted.includes(domain);
+          });
+          if (missing.length === 0) return;
+          // Read-modify-write, because PATCH replaces the whole list: the project may already
+          // trust a custom domain, localhost, or another deployment's site, and a Community
+          // install must never revoke an origin it did not create.
+          const write = await fetch(url + "?updateMask=authorizedDomains", {
+            method: "PATCH",
+            headers: Object.assign({ "Content-Type": "application/json" }, headers),
+            body: JSON.stringify({ authorizedDomains: trusted.concat(missing) }),
+          });
+          if (!write.ok) {
+            throw new Error("authorizing " + missing.join(", ") + " failed: HTTP " +
+              write.status + " " + (await write.text()));
+          }
+          console.log("Firebase Auth authorized sign-in from: " + missing.join(", "));
+        }
+
+        function writeClientConfig() {
+          const firebaseConfig = {
+            apiKey: sdk.apiKey,
+            authDomain: sdk.authDomain || (projectId + ".firebaseapp.com"),
+            projectId,
+            appId: sdk.appId,
+            databaseURL: sdk.databaseURL || ("https://" + projectId + "-default-rtdb.firebaseio.com"),
+          };
+          const source = fs.readFileSync("web/public/lib/config.js", "utf8");
+          const start = source.indexOf("const HOSTING_DOMAINS =");
+          const end = source.indexOf("// Google Picker credentials", start);
+          if (start < 0 || end < 0) throw new Error("config.js markers are missing");
+          const block = "const HOSTING_DOMAINS = " +
+            JSON.stringify(hostingDomains) + ";\n" +
+            "export const firebaseConfig = {\n" +
+            "  apiKey: " + JSON.stringify(firebaseConfig.apiKey) + ",\n" +
+            "  authDomain: HOSTING_DOMAINS.includes(location.hostname) ? location.hostname : " +
+              JSON.stringify(firebaseConfig.authDomain) + ",\n" +
+            "  projectId: " + JSON.stringify(firebaseConfig.projectId) + ",\n" +
+            "  appId: " + JSON.stringify(firebaseConfig.appId) + ",\n" +
+            "  databaseURL: " + JSON.stringify(firebaseConfig.databaseURL) + "\n};\n\n";
+          fs.writeFileSync("web/public/lib/config.js",
+            source.slice(0, start) + block + source.slice(end));
+        }
+
+        authorizeHostingDomains().then(writeClientConfig).catch(function (error) {
+          console.error(String((error && error.message) || error));
+          process.exit(1);
+        });
         NODE
 
         # Keep the checked-in firebase.json as the source of truth while adapting only the two
