@@ -641,6 +641,17 @@ def test_cloud_build_steps_stay_within_the_argument_limit():
                     f"(limit {limit}); move the script into a file like "
                     f"deploy/gcp/hosting_release.js instead of growing it inline")
 
+    # Extracting that script broke the line that RUNS it: an edit left a literal two-character
+    # "\n" where a continuation belonged, so bash saw a command named "n" and the release died
+    # with "n: command not found" -- again after the seed restore had already succeeded. Length
+    # alone says nothing about whether the script is valid, so pin the invocation itself.
+    script = yaml.safe_load(_text("cloudbuild.hosting.yaml"))["steps"][0]["args"][-1]
+    invocations = [line for line in script.splitlines() if "hosting_release.js" in line]
+    assert len(invocations) == 1, f"expected exactly one invocation, got {invocations}"
+    assert "\\" not in invocations[0], (
+        f"broken escape in the hosting_release.js invocation: {invocations[0]!r}")
+    assert invocations[0].strip().endswith("node deploy/gcp/hosting_release.js")
+
 
 def test_marketing_button_opens_the_pinned_public_walkthrough():
     button = _text("deploy/gcp/button.html")
@@ -652,7 +663,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.22"]
+    assert query["cloudshell_git_branch"] == ["v0.2.23"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")

@@ -101,7 +101,7 @@ steps:
         # Prepare Firebase Auth and regenerate the client config. This is a FILE, not an
         # inline script: a Cloud Build step argument is capped at 10000 characters and the
         # inline version hit it, failing the release after the database was already seeded.
-        TARGET_PROJECT="${PROJECT_ID}" HOSTING_SITE="${_HOSTING_SITE}" \n          node deploy/gcp/hosting_release.js
+        TARGET_PROJECT="${PROJECT_ID}" HOSTING_SITE="${_HOSTING_SITE}" node deploy/gcp/hosting_release.js
 
         # Keep the checked-in firebase.json as the source of truth while adapting only the two
         # Cloud Run service names and region for this deployment. The generated file stays inside
