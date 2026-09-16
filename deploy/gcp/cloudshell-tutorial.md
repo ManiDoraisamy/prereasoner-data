@@ -43,30 +43,44 @@ It shows one cost confirmation, then:
 4. downloads and verifies the public manifested weights;
 5. builds and regression-tests immutable engine and chat images in Cloud Build;
 6. applies the Zonal, scale-to-zero Community Terraform profile with chat enabled;
-7. prepares Firebase Hosting and the Firebase Web app, then publishes web/public through the
-   same Cloud Build release;
-8. downloads `community-seed-v4.dump`, verifies its pinned SHA-256, restores the public world/reference
-   schemas, and installs least-privilege serving grants; and
+7. downloads `community-seed-v4.dump`, verifies its pinned SHA-256, restores the public world/reference
+   schemas, and installs least-privilege serving grants;
+8. prepares Firebase Hosting and the Firebase Web app, **enables anonymous sign-in, authorizes this
+   deployment's Hosting domains**, and publishes web/public through the same Cloud Build release; and
 9. removes the temporary database-bootstrap identity and temporary Firebase setup grant.
 
-The image build, Firebase setup, and seed restore normally take tens of minutes.
-The terminal continues to show progress and ends with the Firebase Hosting URL.
+Step 8 is why there is nothing left for you to set up: the deployed site can sign users in the moment
+it is published. You will not be asked for an API key, and you do not need to open the Firebase
+console.
 
-## Browser client
+The two image builds dominate a first run. Restoring the seed takes about nine minutes, because a
+PostgreSQL dump stores index definitions rather than index contents, so the vector index is rebuilt in
+your project. The terminal shows progress throughout and ends with the Firebase Hosting URL.
 
-The deployment publishes the browser client at the deployment-scoped Hosting URL printed by the
-script. Firebase Hosting serves the static HTML/CSS/JS from its CDN; `/api/**` and `POST /chat`
-are rewrites to the two Cloud Run services. The
-installer adapts the checked-in Firebase config for the selected project in the ephemeral release
-context, so the repository does not maintain a second UI copy.
+## Try it
+
+Open the Hosting URL the script prints. The home page arrives with a demo spreadsheet already
+attached and a question filled in, so press **Ask (↑)**: you are signed in silently and the answer
+renders as a sheet, with the derivation steps beside it.
+
+Firebase Hosting serves the static HTML/CSS/JS from its CDN; `/api/**` and `POST /chat` are rewrites
+to the two Cloud Run services. The installer adapts the checked-in Firebase config for the selected
+project in the ephemeral release context, so the repository does not maintain a second UI copy.
+
+Sign-in is Firebase **anonymous** auth, enabled for you during the release. Each browser gets its own
+identity and its own conversations, so clearing site data or moving to another device starts fresh.
+Google sign-in is not offered because enabling it requires an OAuth client that no public API can
+create for a project outside an organization — it cannot be automated, and this installer refuses to
+hand you console homework instead.
 
 External model processing is enabled only for the required chat service, using Vertex AI Gemini
 through the Cloud Run service account. The guided profile activates only the reviewed IANA country dataset; other reference
 datasets remain disabled until the operator adds the required source data, grants, and allowlist entry.
 
-If Firebase reports that its Terms have not been accepted, the project owner must accept them once in
-the Firebase console and rerun the same command. That is a Firebase account/terms boundary, not a
-separate static-file deployment step.
+Adding Firebase to a brand-new project succeeded without any Terms prompt when this was last verified
+(2026-09-16), under an account that had used Firebase before. If your account has never accepted the
+Firebase Terms, Firebase may still ask the project owner to accept them once in its console; rerun the
+same command afterwards. That is a Firebase account boundary, not a separate deployment step.
 
 ## Remove the deployment
 

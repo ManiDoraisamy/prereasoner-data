@@ -104,14 +104,32 @@ change; it contains both shipped foundations and clearly marked future work.
 The supported Community Edition path opens a guided tutorial in Google Cloud Shell. It builds the
 public source and weights in your project, deploys the required engine and chat services to Cloud Run,
 publishes the canonical UI to a deployment-scoped Firebase Hosting CDN site, restores the versioned Community seed,
-and removes its temporary bootstrap identity. A billing-enabled project and Google authorization are
-required. Community chat uses Vertex AI Gemini through the deployed Cloud Run service account; no
-Anthropic key is requested by this installer. The database is initialized from the versioned
+and removes its temporary bootstrap identity. Community chat uses Vertex AI Gemini through the deployed
+Cloud Run service account; no Anthropic key is requested. The database is initialized from the versioned
 `community-seed-v4.dump` artifact instead of querying Wikidata interactively.
 
 [![Open in Cloud Shell](https://gstatic.com/cloudssh/images/open-btn.svg)](https://shell.cloud.google.com/cloudshell/editor?cloudshell_git_repo=https%3A%2F%2Fgithub.com%2FManiDoraisamy%2Fprereasoner-data&cloudshell_git_branch=v0.2.23&cloudshell_tutorial=deploy%2Fgcp%2Fcloudshell-tutorial.md&cloudshell_workspace=.&show=terminal)
 
-[Install on a local machine](#install-on-a-local-machine)
+**Nothing is left for you to configure.** The installer provisions sign-in as well as infrastructure:
+it enables Firebase anonymous authentication and authorizes the deployment's own Hosting domains, so
+pressing **Ask** on the published site just works. There is no console step, no OAuth client, and no
+API key to paste. Google sign-in is deliberately not used — that provider requires an OAuth client id,
+and no public API can create an OAuth client for a project outside an organization, so it could never
+be one-click. Each browser still receives a real Firebase uid and a verifiable ID token, so per-user
+isolation is unchanged; identity is per-browser rather than per-person.
+
+What you must still supply is what Google will not delegate: a Google login, a project selection, a
+billing account, and one cost confirmation.
+
+Expect a first install to be dominated by the two Cloud Build image builds. Restoring the seed takes
+about **nine minutes** (measured on a fresh project, 2026-09-16) because a PostgreSQL dump stores index
+definitions rather than index contents, so the pgvector HNSW index over 623k embeddings is rebuilt
+locally. The recurring cost is dominated by Cloud SQL `db-custom-2-7680` (roughly $90/month at list
+price); `deploy.sh --destroy` removes it, and Cloud Run scales to zero.
+
+Prefer a development setup on your own machine? See
+[install on a local machine](#install-on-a-local-machine) — that path is for contributors and still
+uses Docker Compose and an Anthropic key, not the Community profile.
 
 Read the [deployment contract](deploy/gcp/README.md), including cost, state, browser-client, and
 teardown boundaries, before presenting the button as a public install path.

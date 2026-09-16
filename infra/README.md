@@ -39,10 +39,13 @@ browser ── Firebase Hosting (web/) ── /api/** rewrite ──> Cloud Run 
   the Firebase CLI inside Cloud Build; it is not required on the operator's machine.
 - A GCP project with billing enabled.
 - The guided installer enables the Firebase APIs, adds Firebase to the selected project when possible,
-  creates the default Hosting site and Web app, and publishes the static release in Cloud Build.
-  The project owner may still need to accept Firebase Terms once in the Firebase console. Google
-  sign-in provider setup and custom-domain authorization remain operator-owned Firebase settings.
-  Hosting rewrites to Cloud Run require the **Blaze** (pay-as-you-go) plan.
+  creates the deployment-scoped Hosting site and Web app, enables anonymous sign-in, authorizes that
+  site's domains, and publishes the static release in Cloud Build — so a Community install needs no
+  Firebase console work. An account that has never accepted the Firebase Terms may still be asked to
+  do so once. Enabling the **Google** sign-in provider, and authorizing a custom domain, remain
+  operator-owned settings: that provider needs an OAuth client, which no public API can create for a
+  project outside an organization. Hosting rewrites to Cloud Run require the **Blaze**
+  (pay-as-you-go) plan.
 - A full working copy **including the model weights** in `engine/data/` (`encoder.pt`,
   `encoder_meta.pt`, `anchor_assignment.npz`, `primitives.npz`, `qwen_lora/`). They are
   gitignored; a bare clone builds an image that exits at startup with instructions.

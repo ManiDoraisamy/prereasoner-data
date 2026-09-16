@@ -19,9 +19,29 @@ The deployer uses:
 - the canonical Terraform under `infra/`, with an isolated backend prefix;
 - the public manifest-pinned model bundle;
 - the canonical `cloudbuild.yaml` and `cloudbuild.orchestrator.yaml`, including their regression gates;
-- the Cloud Build Firebase Hosting release for the canonical `web/public` source; and
+- the Cloud Build Firebase Hosting release for the canonical `web/public` source, which also
+  provisions sign-in (see below); and
 - `db.sync.community_seed_import` in a short-lived Cloud Run Job, restoring the versioned
   `community-seed-v4.dump` artifact and applying the current application migrations/grants.
+
+## Sign-in Is Provisioned, Not Delegated
+
+The hosting release ([`hosting_release.js`](hosting_release.js)) enables Firebase **anonymous**
+authentication and adds `<site>.web.app` and `<site>.firebaseapp.com` to the project's authorized
+domains, merging with any domains already trusted. The operator configures nothing.
+
+Google sign-in is deliberately not offered here, and that is a measured conclusion rather than a
+preference. On a project with no prior Firebase configuration, enabling the `google.com` provider
+returns `INVALID_CONFIG : client_id cannot be empty`; creating a Firebase Web app does not
+auto-provision an OAuth client; and the only documented OAuth-client-creation API answers
+`Project must belong to an organization`, so a personal account cannot use it at all. A
+deployment-scoped Hosting domain is therefore never a registered redirect URI and no API can make it
+one. Anonymous auth needs no OAuth client and still issues a real Firebase uid and a verifiable ID
+token, so the engine's bearer-token check and per-user schema isolation are unchanged. The trade-off
+is that identity is per-browser: conversations do not follow a user to another device.
+
+`AUTH_PROVIDER` in the generated `web/public/lib/config.js` records which provider a deployment
+actually has, so the reference deployment keeps Google sign-in without a second code path.
 
 No Google credential or database password is sent to prereasoner.com. The database administrator
 password remains in the caller's Secret Manager. The temporary bootstrap identity is granted access
@@ -49,12 +69,23 @@ Options:
 --yes               CI only, after an external plan/cost approval
 ```
 
-The Community profile uses Zonal Cloud SQL and `min_instances=0`. Its required chat service uses
-Vertex AI `gemini-3.8-flash`; Terraform enables the Vertex AI API and grants the chat service account
-`roles/aiplatform.user`, so no provider key is collected or written to Secret Manager. It keeps deletion
-protection on, activates only the reviewed `iana_country` enrichment dataset, and restores the pinned
-`community-seed-v4.dump` after verifying its SHA-256. The deployment creates the engine API, chat service,
-Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.
+The Community profile uses Zonal Cloud SQL `db-custom-2-7680` and `min_instances=0`. Its required chat
+service uses Vertex AI `gemini-3.8-flash`; Terraform enables the Vertex AI API and grants the chat
+service account `roles/aiplatform.user`, so no provider key is collected or written to Secret Manager.
+It keeps deletion protection on, activates only the reviewed `iana_country` enrichment dataset, and
+restores the pinned `community-seed-v4.dump` after verifying its SHA-256. The deployment creates the
+engine API, chat service, Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.
+
+The tier is pinned here rather than in `infra/variables.tf`, because the reference deployment takes
+`db-g1-small` from that default and moving it would resize production. It is bought for one reason: a
+dump carries index definitions, never contents, so the restore rebuilds a 623k-row, 384-dimension
+pgvector HNSW index over ~957 MB of vectors. Measured 2026-09-16 on the real seed — 31 minutes on
+`db-g1-small`, where the index cannot fit in memory and raising `maintenance_work_mem` fails outright
+because pgvector builds HNSW in parallel and parallel builds allocate that memory in *shared* memory;
+3.5 minutes on `db-custom-2-7680` with a serial 2 GB build. Switching the index to `ivfflat` would
+build in 43 seconds but returned no row for about 1% of the filtered nearest-neighbour lookups
+`engine/entities.py` performs, which would surface as silently unresolved entities. The whole seed
+bootstrap measures about nine minutes; the remainder is transferring and copying 1.4 GB.
 
 Before reporting success, the deployer runs the current application migrations, reads the required shared tables
 as the non-superuser serving role, executes an exact-decimal calculation and a model-backed reasoning request in
