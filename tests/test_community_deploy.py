@@ -542,14 +542,19 @@ def test_community_install_provisions_an_auth_provider_it_can_actually_enable():
 
     So the installer enables anonymous auth and tells the client to use it. The uid and ID token
     stay real, so tenant isolation and the engine's Bearer check are untouched."""
-    hosting = _text("cloudbuild.hosting.yaml")
-    assert "signIn.anonymous.enabled" in hosting
-    assert "identityPlatform:initializeAuth" in hosting, \
+    release = _text("deploy/gcp/hosting_release.js")
+    assert "signIn.anonymous.enabled" in release
+    assert "identityPlatform:initializeAuth" in release, \
         "a provider cannot be enabled before Auth is initialized"
-    assert 'export const AUTH_PROVIDER = "anonymous";' in hosting, \
+    assert 'export const AUTH_PROVIDER = "anonymous";' in release, \
         "the generated client config must select the provider the install actually enabled"
     # Enabling must be fatal, never best-effort: a deployment whose provider is off cannot sign in.
-    assert "enabling anonymous sign-in failed" in hosting
+    assert "enabling anonymous sign-in failed" in release
+    # The release stage must actually run it, and it must ship in the build context.
+    assert "node deploy/gcp/hosting_release.js" in _text("cloudbuild.hosting.yaml")
+    from deploy.gcp.build_context import SOURCE_HOSTING_ALLOWLIST
+    assert "deploy/gcp/hosting_release.js" in SOURCE_HOSTING_ALLOWLIST, \
+        "the release script would be missing from the Cloud Build source archive"
 
     config = _text("web/public/lib/config.js")
     # The reference deployment keeps Google sign-in; only the generated Community copy switches.
@@ -574,19 +579,38 @@ def test_hosting_release_authorizes_its_own_sign_in_domains():
     auth/unauthorized-domain, so the default prompt could not run at all. A deployment-scoped
     site is ALWAYS a domain the project has never seen, so this broke every Community install;
     the reference deployment only worked because its domains were authorized by hand long ago."""
-    hosting = _text("cloudbuild.hosting.yaml")
-    assert "identitytoolkit.googleapis.com/admin/v2/projects/" in hosting
-    assert "?updateMask=authorizedDomains" in hosting
-    assert 'method: "PATCH"' in hosting
+    release = _text("deploy/gcp/hosting_release.js")
+    assert "identitytoolkit.googleapis.com/admin/v2/projects/" in release
+    assert "?updateMask=authorizedDomains" in release
+    assert 'method: "PATCH"' in release
     # PATCH replaces the whole list, so the install must merge and never revoke an origin it did
     # not create (a custom domain, localhost, or another deployment's site).
-    assert "trusted.concat(missing)" in hosting
+    assert "trusted.concat(missing)" in release
     # ONE definition of this deployment's origins feeds BOTH the authorization and the client
     # config; a second copy would let the trusted set and the pinned authDomain drift apart.
-    assert hosting.count('[hostingSite + ".web.app", hostingSite + ".firebaseapp.com"]') == 1
-    assert "JSON.stringify(hostingDomains)" in hosting
+    assert release.count('[hostingSite + ".web.app", hostingSite + ".firebaseapp.com"]') == 1
+    assert "JSON.stringify(hostingDomains)" in release
     # Publishing a UI that cannot sign in is worse than failing the release.
-    assert "process.exit(1)" in hosting
+    assert "process.exit(1)" in release
+
+
+def test_cloud_build_steps_stay_within_the_argument_limit():
+    """Regression for an OBSERVED release failure (2026-09-16): a Cloud Build step argument is
+    capped at 10000 characters, and the hosting step's inline script grew to 10256 -- so the
+    release died with "build step 0 arg 1 too long" AFTER the 35-minute seed restore had already
+    run. Inline scripts have no natural pressure to stay small, so the ceiling is asserted here
+    rather than rediscovered at the most expensive possible moment."""
+    import yaml
+
+    limit = 10000
+    for name in ("cloudbuild.yaml", "cloudbuild.hosting.yaml", "cloudbuild.orchestrator.yaml"):
+        document = yaml.safe_load(_text(name))
+        for index, step in enumerate(document.get("steps", [])):
+            for position, argument in enumerate(step.get("args", []) or []):
+                assert len(str(argument)) < limit, (
+                    f"{name} step {index} arg {position} is {len(str(argument))} chars "
+                    f"(limit {limit}); move the script into a file like "
+                    f"deploy/gcp/hosting_release.js instead of growing it inline")
 
 
 def test_marketing_button_opens_the_pinned_public_walkthrough():
@@ -599,7 +623,7 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
     assert query["cloudshell_git_repo"] == [
         "https://github.com/ManiDoraisamy/prereasoner-data"
     ]
-    assert query["cloudshell_git_branch"] == ["v0.2.20"]
+    assert query["cloudshell_git_branch"] == ["v0.2.21"]
     assert query["cloudshell_tutorial"] == ["deploy/gcp/cloudshell-tutorial.md"]
     assert 'target="_blank"' in button and 'rel="noopener noreferrer"' in button
     assert href in _text("README.md")
@@ -624,6 +648,7 @@ TESTS = [
     test_first_install_survives_cloud_build_permission_propagation,
     test_first_install_waits_for_the_bootstrap_identity_to_resolve,
     test_hosting_release_authorizes_its_own_sign_in_domains,
+    test_cloud_build_steps_stay_within_the_argument_limit,
     test_marketing_button_opens_the_pinned_public_walkthrough,
 ]
 

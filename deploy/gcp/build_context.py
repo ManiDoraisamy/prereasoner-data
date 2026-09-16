@@ -74,6 +74,7 @@ SOURCE_HOSTING_ALLOWLIST = (
     "LICENSE",
     "THIRD_PARTY.md",
     "cloudbuild.hosting.yaml",
+    "deploy/gcp/hosting_release.js",
     "web",
 )
 
