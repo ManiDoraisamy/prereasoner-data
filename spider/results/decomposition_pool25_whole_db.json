@@ -1,0 +1,78 @@
+{
+  "five_way_by_difficulty": {
+    "easy": {
+      "n": 248,
+      "correct": 123,
+      "wrong": 97,
+      "error": 5,
+      "lenient_only": 22,
+      "impossible": 1
+    },
+    "medium": {
+      "n": 446,
+      "wrong": 233,
+      "lenient_only": 69,
+      "correct": 130,
+      "error": 14
+    },
+    "hard": {
+      "n": 174,
+      "correct": 64,
+      "impossible": 50,
+      "wrong": 38,
+      "lenient_only": 11,
+      "error": 11
+    },
+    "extra": {
+      "n": 166,
+      "correct": 48,
+      "impossible": 62,
+      "lenient_only": 11,
+      "wrong": 43,
+      "error": 2
+    }
+  },
+  "totals": {
+    "n": 1034,
+    "correct": 365,
+    "wrong": 411,
+    "error": 32,
+    "lenient_only": 113,
+    "impossible": 113
+  },
+  "strict_misses": 669,
+  "error_stage": {
+    "ast_search": 32
+  },
+  "strict_miss_families": {
+    "table-set(superset/over-join)": 215,
+    "projection/row-shape(lenient-only)": 113,
+    "grammar-blocked(static, Probe A)": 113,
+    "projection/other": 111,
+    "operator(wrong-agg)": 8,
+    "projection(forced-agg)": 10,
+    "filter(missing)": 8,
+    "table-set(different)": 17,
+    "table-set(subset/missing-join)": 21,
+    "operator(missing-agg)": 14,
+    "ordering(missing)": 2,
+    "grouping(missing)": 5
+  },
+  "rescuable_in_pool": {
+    "table-set(superset/over-join)": 40,
+    "projection/row-shape(lenient-only)": 16,
+    "grammar-blocked(static, Probe A)": 27,
+    "projection/other": 14,
+    "operator(wrong-agg)": 2,
+    "projection(forced-agg)": 3,
+    "filter(missing)": 0,
+    "table-set(different)": 2,
+    "table-set(subset/missing-join)": 4,
+    "operator(missing-agg)": 5,
+    "ordering(missing)": 0,
+    "grouping(missing)": 0
+  },
+  "strict_correct_by_path": {
+    "ast": 365
+  }
+}

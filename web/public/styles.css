@@ -485,7 +485,9 @@ body{background:#fff;color:#211d2c}
 body.home-nav-open .homerail,.drawer.open{transform:none}
 body.hasrail.home-nav-open .page{margin-left:280px}
 .homemenubtn:not([hidden]){display:flex}.homemenubtn,.menubtn{color:#4d4658}.homemenubtn:hover,.menubtn:hover{color:var(--brand);background:#f3effd}
+body.signed-in:not(.app) .page>.hdr .brand{display:none}
 .drawerhd{height:72px;flex:0 0 72px;padding:0 16px 0 18px;border-color:#e7e4ea;color:#706879;font:600 11px var(--disp);letter-spacing:.09em}
+.homerail .drawerhd{height:64px;flex-basis:64px}
 .drawerx{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;font-size:20px}.drawerx:hover{background:#f0edf4}
 .railtop{padding:14px 12px 8px}.railnew,.convnew{box-sizing:border-box;width:100%;margin:0;padding:10px 13px;text-align:left;border:1px solid #d9d3e5;border-radius:9px;background:#fff;color:#342a48;font:600 13px var(--disp);box-shadow:none}
 .railnew::before,.convnew::before{content:"+";margin-right:8px;color:var(--brand);font-size:16px;font-weight:500}.railnew:hover,.convnew:hover{background:#f6f3fc;border-style:solid;border-color:#c9bfdd}

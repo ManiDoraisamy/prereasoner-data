@@ -14,12 +14,13 @@
 .grid{display:grid;grid-template-columns:44px 104px 184px 144px 112px 170px 170px;font-size:13px;font-family:Arial,sans-serif}
 .cell{height:29px;padding:6px 8px;border-right:1px solid #e1e5eb;border-bottom:1px solid #e1e5eb;overflow:hidden;white-space:nowrap}.corner,.row{background:#f8f9fa;color:#5f6368;text-align:center}.head{font-weight:600;background:#f8f9fa}.selected{outline:2px solid #1a73e8;outline-offset:-2px;background:#e8f0fe}
 .tabs{position:absolute;left:0;bottom:0;width:960px;height:42px;display:flex;align-items:center;gap:9px;padding:0 14px;border-top:1px solid #dadce0;background:#f8f9fa}.tab{padding:8px 18px;background:#fff;border-radius:4px 4px 0 0;color:#174ea6;font-weight:600}.side img{display:block;width:320px;height:800px}
+.menu-demo{display:none;position:absolute;left:371px;top:98px;width:235px;padding:7px 0;background:#fff;border:1px solid #dadce0;border-radius:4px;box-shadow:0 6px 18px rgba(60,64,67,.24);font-size:13px;z-index:4}.menu-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px}.menu-row.active{background:#e8f0fe;color:#174ea6}.submenu{position:absolute;left:228px;top:0;width:205px;padding:7px 0;background:#fff;border:1px solid #dadce0;border-radius:4px;box-shadow:0 6px 18px rgba(60,64,67,.24);color:#202124}.overlay{display:none;position:absolute;inset:0;background:rgba(32,33,36,.35);z-index:5}.previous-card{position:absolute;left:460px;top:140px;width:360px;height:520px;box-shadow:0 10px 30px rgba(32,33,36,.32);background:#fff}.previous-card img{display:block;width:360px;height:520px}.scene-menu .menu-demo,.scene-previous .overlay{display:block}
 </style>
 </head>
 <body>
 <div class="shell">
   <section class="sheet" aria-label="Sample Google Sheet">
-    <div class="top"><div class="mark">▦</div><div><div class="title">Customer orders</div><div class="saved">Saved to Drive</div></div></div>
+    <div class="top"><div class="mark">▦</div><div><div class="title">Customer orders</div><div class="saved">Saved</div></div></div>
     <div class="menus"><span>File</span><span>Edit</span><span>View</span><span>Insert</span><span>Format</span><span>Data</span><span>Tools</span><span>Extensions</span></div>
     <div class="toolbar"><span>↶</span><span>↷</span><span>100%</span><span>Currency</span><span>Percent</span><span>More formats</span></div>
     <div class="grid">
@@ -46,7 +47,29 @@
     </div>
     <div class="tabs"><span>＋</span><span>☰</span><span class="tab">Customers</span></div>
   </section>
-  <aside class="side"><img src="../../test-results/sheets-addon-sidebar.png" alt="Prereasoner Sheets Copilot sidebar showing an answer and reasoning steps"></aside>
+  <aside class="side"><img id="sidebar-image" src="../../test-results/sheets-addon-answer.png" alt="Prereasoner Sheets Copilot sidebar"></aside>
 </div>
+<div class="menu-demo" aria-label="Extensions menu">
+  <div class="menu-row">Add-ons <span>›</span></div>
+  <div class="menu-row active">Prereasoner <span>›</span>
+    <div class="submenu">
+      <div class="menu-row">Ask a question</div>
+      <div class="menu-row">Previous conversations</div>
+    </div>
+  </div>
+</div>
+<div class="overlay"><div class="previous-card"><img src="../../test-results/sheets-addon-previous.png" alt="Prereasoner previous conversations"></div></div>
+<script>
+  const scene = new URLSearchParams(location.search).get('scene') || 'answer';
+  const panels = {
+    menu: 'sheets-addon-empty.png',
+    question: 'sheets-addon-question.png',
+    answer: 'sheets-addon-answer.png',
+    followup: 'sheets-addon-follow-up.png',
+    previous: 'sheets-addon-answer.png'
+  };
+  document.body.className = 'scene-' + scene;
+  document.getElementById('sidebar-image').src = '../../test-results/' + (panels[scene] || panels.answer);
+</script>
 </body>
 </html>

@@ -52,11 +52,17 @@ const {chromium} = require('@playwright/test');
   await page.setContent(mock + prepared, {waitUntil: 'domcontentloaded'});
   await page.locator('#context').waitFor({state:'hidden'});
   await page.getByText('Sherlock Holmes placed 3 orders.').waitFor();
+  const outDir = path.resolve(root, '..', 'test-results');
+  fs.mkdirSync(outDir, {recursive: true});
   if (await page.locator('.legal').count()) throw new Error('The reasoning sidebar must not show legal links');
+  await page.getByLabel('Ask about this spreadsheet').fill('Which customer contributed most to that total?');
+  await page.screenshot({path: path.join(outDir, 'sheets-addon-follow-up.png')});
   await page.getByRole('button', {name: /New chat/}).click();
   await page.getByText('Ask a question about the current sheet.').waitFor();
   if (await page.getByText('Sherlock Holmes placed 3 orders.').count()) throw new Error('New chat did not clear the restored turn');
+  await page.screenshot({path: path.join(outDir, 'sheets-addon-empty.png')});
   await page.getByLabel('Ask about this spreadsheet').fill('total amount in France in US dollars');
+  await page.screenshot({path: path.join(outDir, 'sheets-addon-question.png')});
   await page.getByRole('button', {name: 'Send'}).click();
   await page.getByText('Streaming now', {exact:false}).waitFor();
   await page.locator('.live-reasoning').waitFor();
@@ -77,9 +83,9 @@ const {chromium} = require('@playwright/test');
   if (!saved || saved.turns.length !== 1 || !saved.turns[0].reply.includes('US$1,240') || saved.syncedFingerprint !== 'sheet-v1') {
     throw new Error('The completed sidebar turn was not persisted');
   }
-  const out = path.resolve(root, '..', 'test-results', 'sheets-addon-sidebar.png');
-  fs.mkdirSync(path.dirname(out), {recursive: true});
-  await page.screenshot({path: out, fullPage: true});
+  const out = path.join(outDir, 'sheets-addon-answer.png');
+  await page.screenshot({path: out});
+  fs.copyFileSync(out, path.join(outDir, 'sheets-addon-sidebar.png'));
   console.log(out);
   await browser.close();
 })().catch(error => {

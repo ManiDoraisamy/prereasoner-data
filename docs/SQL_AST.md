@@ -213,6 +213,7 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_recursive.py` | Recursive queries, sets, aliases, and self-joins. |
 | `engine/sql_constraints.py` | `HAVING`, disjunction, scalar, and membership rules. |
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
+| `engine/sql_parsimony.py` | Minimal-join and single-binding projection variants of pooled candidates. |
 | `engine/sql_rank.py` | Hand-written semantic and execution features. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
 | `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |

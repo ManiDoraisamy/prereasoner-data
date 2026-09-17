@@ -84,7 +84,7 @@ class SQLSearcher:
 
     def search(self, question: str, semantic_signals=None, rank_candidates: bool = True,
                expand_recursive: bool = True, expand_constraints: bool = True,
-               expand_extrema: bool = True, rank_model=None,
+               expand_extrema: bool = True, expand_parsimony: bool = True, rank_model=None,
                profile_max_candidates: int = 32,
                profile_per_profile: int = 4,
                profile_generation_penalty: float = 5.0,
@@ -204,15 +204,17 @@ class SQLSearcher:
         pool_size = max(self.beam_size, self.max_candidates * 4)
         base = sorted(dedup.values(), key=lambda c: (-c.score, c.sql))[:pool_size]
         pool = base
-        if expand_recursive or expand_constraints or expand_extrema:
+        if expand_recursive or expand_constraints or expand_extrema or expand_parsimony:
             from engine.sql_constraints import ConstraintQueryExpander
             from engine.sql_extrema import ExtremaQueryExpander
+            from engine.sql_parsimony import ParsimonyQueryExpander
             from engine.sql_recursive import RecursiveQueryExpander
 
             expansion_pipeline = (
                 (expand_recursive, RecursiveQueryExpander),
                 (expand_constraints, ConstraintQueryExpander),
                 (expand_extrema, ExtremaQueryExpander),
+                (expand_parsimony, ParsimonyQueryExpander),
             )
             for enabled, expander_type in expansion_pipeline:
                 if not enabled:

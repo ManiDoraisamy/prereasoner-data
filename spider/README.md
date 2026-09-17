@@ -241,6 +241,11 @@ python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selec
 # Oracle table selection (the product-analogue upper bound): same command with --config gold_tables:
 python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
 
+# Candidate-pool recall (oracle ablation, never serving): every pooled candidate is executed and the
+# EVALUATOR scores the example by its best member — the ceiling any ranking improvement can reach.
+# The summary also reports the same run's serving top-1 and the first-strict-hit rank histogram.
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection pool_oracle --max-candidates 25
+
 # Production Python-preferred policy on the existing scalar-gold contract:
 python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection serving_top1 --max-candidates 25 --backend auto --python-row-limit 10000 --scalar-only
 

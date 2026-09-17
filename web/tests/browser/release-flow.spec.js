@@ -236,7 +236,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await expect(page.locator('body')).not.toHaveClass(/home-nav-open/);
   await expect(page.locator('.page')).toHaveCSS('margin-left','0px');
   await expect(page.locator('.brand')).toBeHidden();
-  const homeMenu=page.getByRole('button',{name:'Conversations'});
+  const homeMenu=page.getByRole('button',{name:'Conversations',exact:true});
   await expect(homeMenu).toHaveAttribute('aria-expanded','false');
   await expect(page.locator('#homerail')).toHaveAttribute('aria-hidden','true');
   expect(await page.locator('#homerail').evaluate(element=>element.inert)).toBe(true);
@@ -543,7 +543,7 @@ test('signed-in conversations remain reachable on mobile home',async({page})=>{
   await mockAuth(page);
   await page.goto('/');
   await page.getByRole('button',{name:'Login'}).click();
-  const menu=page.getByRole('button',{name:'Conversations'});
+  const menu=page.getByRole('button',{name:'Conversations',exact:true});
   await expect(menu).toBeVisible();
   await expect(menu).toHaveAttribute('aria-expanded','false');
   await expect(page.locator('#homerail')).toHaveAttribute('aria-hidden','true');

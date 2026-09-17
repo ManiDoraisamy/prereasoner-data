@@ -244,6 +244,7 @@ The own-data path is one bounded search over a typed SQL AST:
 | `engine/sql_recursive.py` | Subqueries, `EXISTS`/`IN`, set operations, and self-join shapes |
 | `engine/sql_constraints.py` | HAVING, disjunction, and relationship constraints |
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
+| `engine/sql_parsimony.py` | Minimal-join and single-binding projection variants of pooled candidates |
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
 | `engine/sql_rank.py` | Deterministic structural and encoder-derived candidate scoring |
 | `engine/tables.py` | Planner facade, SQL guard, and local SQLite execution |

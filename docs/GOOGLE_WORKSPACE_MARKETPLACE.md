@@ -2,7 +2,7 @@
 
 ## Store listing
 
-- **Application name:** Prereasoner - AI Copilot for Google Sheets™
+- **Application name:** Prereasoner Sheets Copilot
 - **Sheets Extensions menu:** Prereasoner
 - **Category:** Office Applications
 - **Pricing:** Free of charge trial
@@ -94,8 +94,8 @@ need to explain or revisit a result.
 
 Prereasoner reads visible, non-empty tabs from the spreadsheet where the add-on is running. It sends
 the question and bounded workbook data to Prereasoner only after you submit a question. It does not
-request Google Drive access and does not edit spreadsheet cells. Conversations are associated with
-your Google identity so only you can retrieve them.
+request file-storage access and does not edit spreadsheet cells. Conversations are associated with
+your signed-in account so only you can retrieve them.
 
 ❇️ Pricing
 
@@ -109,10 +109,12 @@ Terms: https://chat.prereasoner.com/terms
 
 Support: https://chat.prereasoner.com/support
 
+Google Sheets™ is a trademark of Google LLC.
+
 ### Installation and use
 
 1. Install Prereasoner Sheets Copilot and authorize the requested permissions.
-2. Open a Google Sheet containing a header row and at least one data row.
+2. Open a spreadsheet containing a header row and at least one data row.
 3. Choose **Extensions → Prereasoner → Ask a question**.
 4. Ask a question and review the answer and reasoning steps.
 5. Choose **Extensions → Prereasoner → Previous conversations** to reopen saved work.
@@ -143,14 +145,30 @@ required because the add-on uses the reviewer's Google identity through Firebase
 - `marketplace/icon-96.png`
 - `marketplace/icon-128.png`
 - `marketplace/card-banner-220x140.png`
-- `marketplace/screenshot-1280x800.png`
+- `marketplace/screenshot-1-open-prereasoner-1280x800.png`
+- `marketplace/screenshot-2-ask-question-1280x800.png`
+- `marketplace/screenshot-3-answer-reasoning-1280x800.png`
+- `marketplace/screenshot-4-follow-up-1280x800.png`
+- `marketplace/screenshot-5-previous-conversations-1280x800.png`
 - `marketplace/prereasoner-sheets-copilot-oauth-demo.webm`
 
 ## Release identifiers
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `1`
+- **Apps Script version:** `18`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
 - **Reviewer video:** `uND51puaL8A` (Unlisted)
+
+## Submission status — September 15, 2026
+
+- Marketplace App Configuration is saved with Apps Script version `18`, the developer contact,
+  and the exact six OAuth scopes declared in `appsscript.json`.
+- The Marketplace Store Listing draft is saved with the compliant English copy, five workflow
+  screenshots at 1280 × 800, the unlisted reviewer video, icons, card banner, and post-install tip.
+- OAuth branding is verified. OAuth data-access verification has been submitted and is under review.
+- Do not submit the Marketplace review until OAuth data-access verification is approved. The saved
+  Marketplace draft is otherwise ready for submission.
+- Logo source: `C:\work\FormFacade\public\logo-full.png`. SHA-256:
+  `C8663738280FBF368E3D1768F97FC70C8F1B1F2C8E04DF2684923466DEFFCD41`.

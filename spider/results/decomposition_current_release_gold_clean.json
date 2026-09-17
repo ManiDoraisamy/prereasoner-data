@@ -1,0 +1,62 @@
+{
+  "five_way_by_difficulty": {
+    "easy": {
+      "n": 248,
+      "correct": 133,
+      "wrong": 78,
+      "error": 10,
+      "lenient_only": 26,
+      "impossible": 1
+    },
+    "medium": {
+      "n": 446,
+      "correct": 164,
+      "wrong": 176,
+      "lenient_only": 90,
+      "error": 16
+    },
+    "hard": {
+      "n": 174,
+      "correct": 85,
+      "impossible": 35,
+      "wrong": 29,
+      "lenient_only": 10,
+      "error": 15
+    },
+    "extra": {
+      "n": 166,
+      "correct": 52,
+      "impossible": 58,
+      "lenient_only": 11,
+      "wrong": 38,
+      "error": 7
+    }
+  },
+  "totals": {
+    "n": 1034,
+    "correct": 434,
+    "wrong": 321,
+    "error": 48,
+    "lenient_only": 137,
+    "impossible": 94
+  },
+  "strict_misses": 600,
+  "error_stage": {
+    "ast_search": 48
+  },
+  "strict_miss_families": {
+    "filter(missing)": 19,
+    "grammar-blocked(static, Probe A)": 94,
+    "projection/other": 212,
+    "operator(wrong-agg)": 17,
+    "projection/row-shape(lenient-only)": 137,
+    "table-set(subset/missing-join)": 30,
+    "operator(missing-agg)": 23,
+    "projection(forced-agg)": 14,
+    "grouping(missing)": 5,
+    "ordering(missing)": 1
+  },
+  "strict_correct_by_path": {
+    "ast": 434
+  }
+}

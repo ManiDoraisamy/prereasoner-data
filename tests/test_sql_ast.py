@@ -556,6 +556,75 @@ def test_scalar_aggregate_does_not_group_by_recipient_mention():
         assert execute([payments], candidate.sql) == [("A", 30), ("B", 40)]
 
 
+def test_mentioned_table_join_keeps_minimal_variant_in_pool():
+    """A table the question merely NAMES must not be force-joined into every candidate: the
+    parsimonious variant touching only tables whose columns the query uses has to exist in the
+    pool alongside the mention-widened join (Spider over-join family, 215/669 strict misses)."""
+    dogs = {"name": "dogs", "columns": ["dog_id", "name"],
+            "rows": [[1, "Rex"], [2, "Ace"], [3, "Ivy"]]}
+    treatments = {"name": "treatments", "columns": ["treatment_id", "dog_id", "cost"],
+                  "rows": [[1, 1, 50], [2, 1, 30], [3, 2, 20]]}
+    fks = [{"from_table": "treatments", "from_col": "dog_id",
+            "to_table": "dogs", "to_col": "dog_id"}]
+    candidates = SQLSearcher.from_tables([dogs, treatments], fks).search(
+        "What is the total cost of treatments for dogs?")
+    assert candidates
+    minimal = [c for c in candidates if "tables:minimal" in c.evidence]
+    assert minimal, "parsimonious variant missing from the pool"
+    assert all('"dogs"' not in c.sql for c in minimal), [c.sql for c in minimal]
+    assert any("SUM" in c.sql.upper() for c in minimal), [c.sql for c in minimal]
+    top_minimal = next(c for c in minimal if "SUM" in c.sql.upper())
+    assert execute([dogs, treatments], top_minimal.sql) == [(100,)], top_minimal.sql
+    joined = [c for c in candidates if '"dogs"' in c.sql and "JOIN" in c.sql.upper()]
+    assert joined, "mention-widened join reading must remain pooled"
+
+
+def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
+    """When one canonical column name is projected from several tables, the expander must emit
+    each single-binding reduction, pruning tables the reduction stops using (Spider over-join
+    family: the distractor is bound into the projection, so pruning tables alone cannot reach
+    the gold reading)."""
+    from engine.sql_ast import ColumnRef, Join, SelectItem, SelectQuery, render_query
+    from engine.sql_parsimony import ParsimonyQueryExpander
+
+    templates = {"name": "templates", "columns": ["template_id", "type_code"],
+                 "rows": [[1, "PPT"], [2, "CV"]]}
+    ref_types = {"name": "ref_types", "columns": ["type_code", "type_name"],
+                 "rows": [["PPT", "Presentation"], ["CV", "Resume"]]}
+    fks = [{"from_table": "templates", "from_col": "type_code",
+            "to_table": "ref_types", "to_col": "type_code"}]
+    graph = SchemaGraph.from_tables([templates, ref_types], fks)
+    t_id = ColumnRef("templates", "template_id")
+    t_code = ColumnRef("templates", "type_code")
+    r_code = ColumnRef("ref_types", "type_code")
+    double = SelectQuery(
+        select=(SelectItem(t_id), SelectItem(t_code), SelectItem(r_code)),
+        from_table="templates",
+        joins=(Join("ref_types", t_code, r_code),),
+    )
+    base = ScoredQuery(double, render_query(double), 10.0, ())
+    variants = ParsimonyQueryExpander(graph).expand("show template type codes", [base])
+    assert variants, "no parsimony variants emitted"
+    assert all(v.score < base.score for v in variants)
+    kept_templates = [v for v in variants
+                     if "projection:binding:templates.type_code" in v.evidence]
+    kept_ref = [v for v in variants
+                if "projection:binding:ref_types.type_code" in v.evidence]
+    assert kept_templates and kept_ref, [v.sql for v in variants]
+    minimal = kept_templates[0]
+    assert "tables:minimal" in minimal.evidence
+    assert minimal.sql == 'SELECT "templates"."template_id", "templates"."type_code" FROM "templates"'
+    assert execute([templates, ref_types], minimal.sql) == [(1, "PPT"), (2, "CV")]
+    assert 'JOIN "ref_types"' in kept_ref[0].sql, kept_ref[0].sql
+    dropped = [v for v in variants
+               if "projection:drop:templates.template_id" in v.evidence]
+    assert any(
+        v.sql == 'SELECT "templates"."type_code", "ref_types"."type_code" FROM "templates" '
+                 'JOIN "ref_types" ON "templates"."type_code" = "ref_types"."type_code"'
+        for v in dropped
+    ), [v.sql for v in dropped]
+
+
 def test_order_noun_does_not_request_sort_or_group():
     tables = [{"name": "purchase_orders_over_5000",
                "columns": ["Purchase order", "Supplier name", "Net PO Value"],
@@ -1947,6 +2016,8 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
 
 
 TESTS = [
+    test_mentioned_table_join_keeps_minimal_variant_in_pool,
+    test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
     test_typed_ast_rejects_mismatched_literal_payloads,

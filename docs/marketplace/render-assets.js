@@ -8,8 +8,23 @@ const fs = require('fs');
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 
-  await page.goto(pathToFileURL(path.join(root, 'listing-screenshot.html')).href);
-  await page.screenshot({ path: path.join(root, 'screenshot-1280x800.png') });
+  const listingUrl = pathToFileURL(path.join(root, 'listing-screenshot.html')).href;
+  const screenshots = [
+    ['menu', 'screenshot-1-open-prereasoner-1280x800.png'],
+    ['question', 'screenshot-2-ask-question-1280x800.png'],
+    ['answer', 'screenshot-3-answer-reasoning-1280x800.png'],
+    ['followup', 'screenshot-4-follow-up-1280x800.png'],
+    ['previous', 'screenshot-5-previous-conversations-1280x800.png']
+  ];
+  for (const [scene, filename] of screenshots) {
+    await page.goto(`${listingUrl}?scene=${scene}`, { waitUntil: 'load' });
+    await page.waitForFunction(() => Array.from(document.images).every(image => image.complete && image.naturalWidth > 0));
+    await page.screenshot({ path: path.join(root, filename) });
+  }
+  fs.copyFileSync(
+    path.join(root, 'screenshot-3-answer-reasoning-1280x800.png'),
+    path.join(root, 'screenshot-1280x800.png')
+  );
 
   const logoData = fs.readFileSync(path.join(root, 'logo-source.png')).toString('base64');
   for (const size of [32, 48, 96, 128]) {

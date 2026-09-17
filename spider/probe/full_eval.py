@@ -18,9 +18,12 @@ contract. World resolution is irrelevant to self-contained Spider and the live c
 a refusal would still score wrong, so that omission can only make the benchmark an upper bound.
 
 Serving-faithful selection is --selection serving_top1 (exact live top-1); --selection execution_checks adds
-bounded deterministic execution reranking. Denotation is compared on the REAL gold rows; we report the clean
-SCALAR-gold accuracy (unambiguous), lenient containment (generous UB), and strict row-set equality (harsh LB)
-so the true number is bracketed.
+bounded deterministic execution reranking. --selection pool_oracle executes the ENTIRE candidate pool and lets
+the evaluator score the example by its best member: an explicitly labeled oracle ablation (like --config
+gold_tables) that measures candidate-pool recall — the ceiling any ranking improvement can reach — and is
+never a serving mode; gold rows stay inside the evaluator and never reach prediction. Denotation is compared
+on the REAL gold rows; we report the clean SCALAR-gold accuracy (unambiguous), lenient containment (generous
+UB), and strict row-set equality (harsh LB) so the true number is bracketed.
 """
 from __future__ import annotations
 
@@ -280,6 +283,26 @@ def ast_predict(
     if not candidates:
         return {"ok": False, "error": "no connected AST candidate",
                 "stage": "ast_search", "path": "ast"}
+    if selection == "pool_oracle":
+        # Oracle ablation (never serving): execute EVERY pooled candidate so the EVALUATOR can score
+        # the example by its best member. Gold rows stay in the evaluator; prediction never sees them.
+        pool = []
+        for rank, candidate in enumerate(candidates):
+            try:
+                _, rows = execute(candidate.sql)
+                pool.append({"rank": rank, "sql": candidate.sql,
+                             "rows": [list(row) for row in rows]})
+            except Exception as exc:  # noqa: BLE001 - a failed candidate disqualifies only itself
+                pool.append({"rank": rank, "sql": candidate.sql,
+                             "error": f"{type(exc).__name__}: {exc}"})
+        executed = sum(1 for entry in pool if "rows" in entry)
+        result = {"ok": executed > 0, "path": "ast",
+                  "candidate_count": len(candidates),
+                  "executed_candidate_count": executed,
+                  "pool_execution": pool}
+        if not executed:
+            result.update(error=pool[0]["error"], stage="ast_search")
+        return result
     if selection == "serving_top1":
         candidate = candidates[0]
         try:
@@ -341,6 +364,43 @@ def ast_predict(
     return {"ok": False, "error": detail, "stage": "ast_search", "path": "ast"}
 
 
+def _score_pool_oracle(record, gold_rows):
+    """Reduce a pool_oracle record to (oracle_cmp, top1_cmp) against gold.
+
+    Fresh records carry "pool_execution" (raw rows); those rows are compared here and replaced with
+    compact per-candidate flags under "pool" so checkpoints stay small. Resumed checkpoint records
+    already carry "pool" and are rescored from the stored flags. top1_cmp is the serving-equivalent
+    outcome of the same run's rank-0 candidate (None when it failed to execute)."""
+    raw = record.pop("pool_execution", None)
+    if raw is not None:
+        pool = []
+        for entry in raw:
+            if "rows" in entry:
+                comparison = compare(gold_rows, entry["rows"])
+                pool.append({"rank": entry["rank"], "sql": entry["sql"],
+                             "strict": bool(comparison.get("strict")),
+                             "lenient": bool(comparison.get("lenient")),
+                             "scalar_exact": bool(comparison.get("scalar_exact"))})
+            else:
+                pool.append({"rank": entry["rank"], "sql": entry["sql"],
+                             "error": entry["error"]})
+        record["pool"] = pool
+    pool = record.get("pool") or []
+
+    def first_rank(key):
+        return next((entry["rank"] for entry in pool if entry.get(key)), None)
+
+    record["oracle_rank"] = {key: first_rank(key)
+                             for key in ("strict", "lenient", "scalar_exact")}
+    oracle_cmp = {key: rank is not None for key, rank in record["oracle_rank"].items()}
+    oracle_cmp["gold_scalar"] = is_scalar(gold_rows)
+    top1 = next((entry for entry in pool if entry["rank"] == 0), None)
+    top1_cmp = None
+    if top1 is not None and "error" not in top1:
+        top1_cmp = {key: top1[key] for key in ("strict", "lenient", "scalar_exact")}
+    return oracle_cmp, top1_cmp
+
+
 def compose_predict(eng, tabs, question):
     res = eng.run(tabs, question, world=None)
     ans = res.get("answer")
@@ -395,9 +455,11 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "results"))
     ap.add_argument("--per-diff", type=int, default=0)
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
-    ap.add_argument("--selection", choices=["serving_top1", "execution_checks"],
+    ap.add_argument("--selection",
+                    choices=["serving_top1", "execution_checks", "pool_oracle"],
                     default="serving_top1",
-                    help="serving_top1 matches live AST selection exactly")
+                    help="serving_top1 matches live AST selection exactly; pool_oracle scores the "
+                         "example by the best pooled candidate (oracle ablation, never serving)")
     ap.add_argument(
         "--backend",
         choices=["sql", "python", "auto", "verify"],
@@ -438,6 +500,8 @@ def main():
     if (args.checkpoint_every < 0 or args.max_new < 0
             or args.max_candidates < 1 or args.python_row_limit < 0):
         ap.error("checkpoint cadence, max-new, and row limits must be nonnegative")
+    if args.selection == "pool_oracle" and args.backend != "sql":
+        ap.error("pool_oracle is a SQL-backend oracle ablation; use --backend sql")
 
     with open(os.path.join(args.data, "dev.json"), encoding="utf-8") as handle:
         dev = json.load(handle)
@@ -544,6 +608,7 @@ def main():
     stage_hist = collections.Counter()
     path_hist = collections.Counter()
     path_correct = collections.Counter()
+    oracle_strict_rank_hist = collections.Counter()          # pool_oracle: rank of first strict hit
     per_example = []
     new_predictions = 0
 
@@ -593,13 +658,29 @@ def main():
                      "path": "ast"}
             r["prediction_seconds"] = round(prediction_seconds, 6)
             r["over_budget"] = over_budget
-        cmp = compare(gold_rows, r.get("rows")) if r["ok"] else {}
+        top1_cmp = None
+        if args.selection == "pool_oracle" and (r.get("pool_execution") is not None
+                                                or r.get("pool") is not None):
+            oracle_cmp, top1_cmp = _score_pool_oracle(r, gold_rows)
+            cmp = oracle_cmp if r["ok"] else {}
+        else:
+            cmp = compare(gold_rows, r.get("rows")) if r["ok"] else {}
         path_hist[r["path"]] += 1
         st = stat[diff]; st["n"] += 1
         if gerr:
             st["gold_exec_error"] += 1
         record_integrated_result(st, gold_rows, cmp, bool(r["ok"]))
         st["over_budget"] += bool(r.get("over_budget"))
+        if args.selection == "pool_oracle":
+            st["top1_answered"] += top1_cmp is not None
+            if top1_cmp is not None:
+                st["top1_strict"] += bool(top1_cmp["strict"])
+                st["top1_lenient"] += bool(top1_cmp["lenient"])
+                if is_scalar(gold_rows):
+                    st["top1_scalar_correct"] += bool(top1_cmp["scalar_exact"])
+            strict_rank = (r.get("oracle_rank") or {}).get("strict")
+            if strict_rank is not None:
+                oracle_strict_rank_hist[strict_rank] += 1
         if args.backend != "sql":
             st["python_candidate_total"] += 1
             st["python_lowerable"] += r.get("python_lowerable") is True
@@ -670,6 +751,17 @@ def main():
         "path_correct_lenient": dict(path_correct),
         "by_difficulty": {d: dict(stat[d]) for d in DIFFS},
     }
+    if args.selection == "pool_oracle":
+        summary["pool_oracle"] = {
+            "top1_answered": tot["top1_answered"],
+            "top1_strict": tot["top1_strict"],
+            "top1_lenient": tot["top1_lenient"],
+            "top1_scalar_correct": tot["top1_scalar_correct"],
+            "strict_rank_histogram": {
+                str(rank): count
+                for rank, count in sorted(oracle_strict_rank_hist.items())
+            },
+        }
     if args.backend != "sql":
         summary["python"] = {
             "candidate_n": tot["python_candidate_total"],
@@ -714,7 +806,14 @@ def main():
 
     P = print
     P("\n" + "=" * 78); P("PROBE D+ — FULL OFFLINE SYSTEM (typed-AST planner + compose, live routing)"); P("=" * 78)
-    P(f"config={args.config}   backend={args.backend}   examples={tot['n']}")
+    P(f"config={args.config}   selection={args.selection}   backend={args.backend}   examples={tot['n']}")
+    if args.selection == "pool_oracle":
+        N_all = max(tot["n"], 1)
+        P(f"  POOL-ORACLE ablation: strict/lenient above are the POOL CEILING (best pooled candidate), "
+          f"not serving accuracy.")
+        P(f"  same-run serving top-1 strict: {tot['top1_strict']} ({round(100*tot['top1_strict']/N_all,1)}%)   "
+          f"lenient: {tot['top1_lenient']} ({round(100*tot['top1_lenient']/N_all,1)}%)")
+        P(f"  first-strict-hit rank histogram: {dict(sorted(oracle_strict_rank_hist.items()))}")
     P(f"  routed: {dict(path_hist)}   (correct-lenient by path: {dict(path_correct)})")
     P(f"  answered : {tot['answered']:4d} ({summary['answered_pct']}%)   error {tot['error']} ({summary['error_pct']}%)  stages={dict(stage_hist)}")
     P(f"  CORRECT lenient (generous UB): {tot['correct_lenient']:4d} ({summary['correct_lenient_pct']}%)")
