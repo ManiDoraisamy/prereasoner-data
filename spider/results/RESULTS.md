@@ -161,10 +161,11 @@ engine-validated (tag `pool25_proposer_d1`):
 | Scalar-gold in pool | 283/408 | 342/408 |
 
 553 novel validated proposals, 59.3% strict-precision; 204 examples are strict-covered
-ONLY by the proposer. Counterfactual deterministic policy "a novel validated proposal is
-selected, otherwise the deterministic top-1" scores **568/1,034 (54.9%)** on the same
-records (228 wins / 40 losses vs deterministic 380) — counterfactual pending a
-policy-implemented serving run. Every step stays deterministic and auditable: frozen
+ONLY by the proposer. The deterministic policy "a novel validated proposal is
+selected, otherwise the deterministic top-1" (`--selection proposer_first`) scores
+**568/1,034 (54.9%) strict, serving-faithful** (tag `policy_d1`) — matching the
+record-level counterfactual exactly (552 proposals selected, 59.4% strict when selected;
+228 wins / 40 losses vs deterministic 380), as a fully deterministic pipeline must. Every step stays deterministic and auditable: frozen
 greedy decode, the one importer, the one validator, generation-penalized pools. Serving
 latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
 step-1 measurement requires a quantized runtime). Nothing is promoted.

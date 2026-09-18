@@ -197,6 +197,7 @@ def ast_predict(
     norm, fks, sch, tmap = cached
     candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
                                 use_semantic_signals=use_signals, rank_model=rank_model)
+    novel_proposal = None
     if proposer is not None:
         from engine.sql_schema import SchemaGraph as _ProposalGraph
 
@@ -206,6 +207,7 @@ def ast_predict(
             norm, question, _ProposalGraph.from_planner(sch, fks), min_score=floor,
         ):
             if proposal.sql not in pooled:
+                novel_proposal = proposal
                 candidates = list(candidates) + [proposal]
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
@@ -324,8 +326,11 @@ def ast_predict(
         if not executed:
             result.update(error=pool[0]["error"], stage="ast_search")
         return result
-    if selection == "serving_top1":
-        candidate = candidates[0]
+    if selection in ("serving_top1", "proposer_first"):
+        # proposer_first: a novel validated proposal is selected; otherwise the deterministic
+        # top-1. A deterministic code policy, measured before it is ever a serving mode.
+        selected_proposal = selection == "proposer_first" and novel_proposal is not None
+        candidate = novel_proposal if selected_proposal else candidates[0]
         try:
             rows, backend = execute_selected(candidate)
         except _DeterministicCandidateError as exc:
@@ -346,7 +351,8 @@ def ast_predict(
             "plan": list(candidate.evidence),
             "candidate_count": len(candidates),
             "executed_candidate_count": 1,
-            "selected_candidate_rank": 0,
+            "selected_candidate_rank": (len(candidates) - 1 if selected_proposal else 0),
+            "proposal_selected": selected_proposal,
             "candidate_score": round(candidate.score, 4),
             "rank_features": dict(candidate.features),
         }
@@ -477,10 +483,12 @@ def main():
     ap.add_argument("--per-diff", type=int, default=0)
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
     ap.add_argument("--selection",
-                    choices=["serving_top1", "execution_checks", "pool_oracle"],
+                    choices=["serving_top1", "execution_checks", "pool_oracle", "proposer_first"],
                     default="serving_top1",
                     help="serving_top1 matches live AST selection exactly; pool_oracle scores the "
-                         "example by the best pooled candidate (oracle ablation, never serving)")
+                         "example by the best pooled candidate (oracle ablation, never serving); "
+                         "proposer_first selects a novel validated proposal over the deterministic "
+                         "top-1 (requires --proposer)")
     ap.add_argument(
         "--backend",
         choices=["sql", "python", "auto", "verify"],
@@ -530,6 +538,8 @@ def main():
         ap.error("checkpoint cadence, max-new, and row limits must be nonnegative")
     if args.selection == "pool_oracle" and args.backend != "sql":
         ap.error("pool_oracle is a SQL-backend oracle ablation; use --backend sql")
+    if args.selection == "proposer_first" and not args.proposer:
+        ap.error("proposer_first requires --proposer")
 
     with open(os.path.join(args.data, "dev.json"), encoding="utf-8") as handle:
         dev = json.load(handle)
