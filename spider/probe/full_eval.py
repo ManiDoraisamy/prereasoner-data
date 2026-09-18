@@ -402,14 +402,26 @@ def _score_pool_oracle(record, gold_rows):
     outcome of the same run's rank-0 candidate (None when it failed to execute)."""
     raw = record.pop("pool_execution", None)
     if raw is not None:
+        import hashlib
+
+        from spider.probe.spider_eval import normalize_value
+
         pool = []
         for entry in raw:
             if "rows" in entry:
                 comparison = compare(gold_rows, entry["rows"])
+                normalized = sorted(
+                    tuple(str(normalize_value(value)) for value in row)
+                    for row in entry["rows"]
+                )
                 pool.append({"rank": entry["rank"], "sql": entry["sql"],
                              "strict": bool(comparison.get("strict")),
                              "lenient": bool(comparison.get("lenient")),
-                             "scalar_exact": bool(comparison.get("scalar_exact"))})
+                             "scalar_exact": bool(comparison.get("scalar_exact")),
+                             # denotation identity for offline agreement arbitration:
+                             # equal hashes == equal normalized result multisets
+                             "denotation": hashlib.sha1(
+                                 repr(normalized).encode()).hexdigest()[:10]})
             else:
                 pool.append({"rank": entry["rank"], "sql": entry["sql"],
                              "error": entry["error"]})
