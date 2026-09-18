@@ -144,6 +144,31 @@ dilutes the primary configuration. Feature-head program conclusion across b1–b
 the best whole_db candidate (+30 to 395/1,034), no head passes both gates, and further
 gains require proposal-side change (Phase D), not ranking change. No head is promoted.
 
+## Learned proposer (Phase D experiment, evaluator-injected)
+
+Import ceiling: `training/proposer/import_gold.py` maps Spider TRAIN gold into the engine's
+typed AST with execution-verified round trips at **6,297/7,000 (90.0%)** coverage — the
+AST language was never the wall; enumeration was. Candidate proposer `d1` is a budgeted
+CPU LoRA SFT of Qwen2.5-0.5B on those targets (1,200 steps, seed 7, db-held-out val,
+50% exact-string match on held-out decodes). Injected into the evaluator as ONE greedy,
+frozen, penalized proposal per question — re-imported through the same importer and
+engine-validated (tag `pool25_proposer_d1`):
+
+| Measurement | Without proposer | With d1 proposer |
+|---|---:|---:|
+| Pool ceiling, strict (whole_db @25) | 543 (52.5%) | **747 (72.2%)** |
+| Pool ceiling, lenient | 620 (60.0%) | 789 (76.3%) |
+| Scalar-gold in pool | 283/408 | 342/408 |
+
+553 novel validated proposals, 59.3% strict-precision; 204 examples are strict-covered
+ONLY by the proposer. Counterfactual deterministic policy "a novel validated proposal is
+selected, otherwise the deterministic top-1" scores **568/1,034 (54.9%)** on the same
+records (228 wins / 40 losses vs deterministic 380) — counterfactual pending a
+policy-implemented serving run. Every step stays deterministic and auditable: frozen
+greedy decode, the one importer, the one validator, generation-penalized pools. Serving
+latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
+step-1 measurement requires a quantized runtime). Nothing is promoted.
+
 ## Reproduce
 
 ```bash
