@@ -177,12 +177,14 @@ def ast_predict(
     enc, tabs, question, schema_fks=None, schema_cache=None,
     selection="serving_top1", max_candidates=25, use_signals=True,
     execution_backend="sql", python_row_limit=10_000, rank_model=None,
+    proposer=None,
 ):
     """Run AST search using either exact serving top-1 or bounded execution checks.
 
     use_signals gates the encoder semantic signals (ablation only; serving is always True).
-    rank_model injects a candidate rerank head (engine/sql_rank.py:RankHead) for measurement;
-    the promoted serving default is None until a head ships in the runtime bundle."""
+    rank_model injects a candidate rerank head (engine/sql_rank.py:RankHead) and proposer a
+    candidate source (training/proposer/propose.py) for measurement; the promoted serving
+    default is None for both until an artifact ships in the runtime bundle."""
     cache_key = tuple(id(table) for table in tabs)
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
@@ -195,6 +197,16 @@ def ast_predict(
     norm, fks, sch, tmap = cached
     candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
                                 use_semantic_signals=use_signals, rank_model=rank_model)
+    if proposer is not None:
+        from engine.sql_schema import SchemaGraph as _ProposalGraph
+
+        pooled = {candidate.sql for candidate in candidates}
+        floor = min((candidate.score for candidate in candidates), default=0.0)
+        for proposal in proposer.propose(
+            norm, question, _ProposalGraph.from_planner(sch, fks), min_score=floor,
+        ):
+            if proposal.sql not in pooled:
+                candidates = list(candidates) + [proposal]
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
 
@@ -422,7 +434,7 @@ def compose_predict(eng, tabs, question):
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
             ast_schema_cache=None, selection="serving_top1", max_candidates=25,
             use_signals=True, use_compose=True, execution_backend="sql",
-            python_row_limit=10_000, rank_model=None):
+            python_row_limit=10_000, rank_model=None, proposer=None):
     """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
     EVIDENCE to build a compose plan; the AUTHORITY to stand on it is a grounded world dependency (compose_owns).
     Spider tables are world-less, so compose_owns is always False and every question routes to the typed-AST
@@ -448,7 +460,7 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         return ast_predict(
             enc, tabs, question, schema_fks, ast_schema_cache,
             selection, max_candidates, use_signals,
-            execution_backend, python_row_limit, rank_model,
+            execution_backend, python_row_limit, rank_model, proposer,
         )
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
@@ -494,6 +506,10 @@ def main():
     ap.add_argument("--rank-head", default="",
                     help="path to a candidate RankHead .pt (engine/sql_rank.py) — measurement "
                          "injection for the rank-head experiment, not a serving mode")
+    ap.add_argument("--proposer", default="",
+                    help="path to a candidate proposer adapter dir "
+                         "(training/proposer/propose.py) — measurement injection for the "
+                         "Phase D experiment, not a serving mode")
     # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
@@ -543,6 +559,7 @@ def main():
         "scalar_only": args.scalar_only,
         "max_candidates": args.max_candidates,
         "rank_head": args.rank_head or None,
+        "proposer": args.proposer or None,
         "compose": not args.no_compose,
         "signals": not args.no_signals,
         "cap": args.cap,
@@ -586,6 +603,7 @@ def main():
             },
         }),
         "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
+        **({"proposer_adapter": sha256_tree(args.proposer)} if args.proposer else {}),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
@@ -615,6 +633,11 @@ def main():
         print(f"injected candidate rank head: {args.rank_head} "
               f"(top_k={rank_head.top_k}, {len(rank_head.feature_names)} named features)",
               flush=True)
+    proposer = None
+    if args.proposer:
+        from training.proposer.propose import Proposer
+        proposer = Proposer.load(args.proposer)
+        print(f"injected candidate proposer: {args.proposer}", flush=True)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}
@@ -668,7 +691,7 @@ def main():
                     current_fks, ast_schema_cache,
                     args.selection, args.max_candidates,
                     not args.no_signals, not args.no_compose,
-                    args.backend, args.python_row_limit, rank_head,
+                    args.backend, args.python_row_limit, rank_head, proposer,
                 )
 
             r, terr, prediction_seconds, over_budget = run_with_budget(
