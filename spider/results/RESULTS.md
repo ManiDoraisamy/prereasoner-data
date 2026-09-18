@@ -64,7 +64,8 @@ reports serving top-1, so the ranking gap is apples-to-apples. Note the top-1 at
 | `whole_db` @25 | 478/1,034 (46.2%) | 594 (57.4%) | 365 (35.3%) | 113 (10.9 pts) |
 | `whole_db` @100 | 484/1,034 (46.8%) | 609 (58.9%) | 365 (35.3%) | 119 |
 | `gold_tables` @25 | 504/1,034 (48.7%) | 652 (63.1%) | 437 (42.3%) | 67 (6.5 pts) |
-| `whole_db` @25 + parsimony expander | **533/1,034 (51.5%)** | 612 (59.2%) | 365 (35.3%) | 168 (16.2 pts) |
+| `whole_db` @25 + parsimony expander | 533/1,034 (51.5%) | 612 (59.2%) | 365 (35.3%) | 168 (16.2 pts) |
+| `whole_db` @25 + A4 variant families | **543/1,034 (52.5%)** | 620 (60.0%) | 365 (35.3%) | 178 (17.2 pts) |
 
 The parsimony row is the same evaluation after `engine/sql_parsimony.py` landed (tag
 `pool25_parsimony_a3`): a deterministic expander that adds, per pooled candidate, its
@@ -118,9 +119,16 @@ hidden 64, val-selected margin 0.25. Offline: val pairwise AUC 0.803, held-out-d
 46 wins / 16 losses / 349 unchanged-correct / 623 unchanged-wrong; lenient 477 vs 454.
 The `gold_tables` sanity run (tag `rankhead_b2_gold`, 422 vs 437) executed against newer
 variant-generation code than the head's labels (recorded artifact hashes differ) and is
-not clean evidence; it is re-measured with the next label build. Train gold is training
-data only — no gold-derived signal reaches any serving decision, and dev is never used
-for training.
+not clean evidence. Train gold is training data only — no gold-derived signal reaches any
+serving decision, and dev is never used for training.
+
+Candidate head `b3` (labels rebuilt against the A4 variant families, sha256 `a5b7aab5…`,
+top-15 window, hidden 128, margin 0.75): whole_db strict **394/1,034 (38.1%)** — the same
+plateau as `b2` with a cleaner transition (40 wins / 11 losses vs A4 deterministic 365);
+clean `gold_tables` sanity 427 vs 437 (−10, still regressing). Read together: label volume
+and pool diversity are no longer the constraint — the canonical-feature bottleneck is. The
+A4 ceiling gain (533→543) converted to zero top-1 gain because the 50 canonical features
+cannot separate a correct deep-rank variant from its sibling distractors.
 
 ## Reproduce
 
