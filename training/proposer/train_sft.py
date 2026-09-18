@@ -51,6 +51,9 @@ def main():
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
     torch.manual_seed(SEED)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+    print(f"device: {device} ({dtype})")
     meta = {table["db_id"]: table for table in json.load(open(args.tables, encoding="utf-8"))}
     rows = [json.loads(line) for line in open(args.targets, encoding="utf-8")]
     rows = [row for row in rows if "idx" in row]
@@ -60,7 +63,7 @@ def main():
           f"({len({r['db_id'] for r in val_rows})} val dbs)")
 
     tokenizer = AutoTokenizer.from_pretrained(args.base)
-    model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=torch.float32)
+    model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=dtype).to(device)
     model = get_peft_model(model, LoraConfig(
         r=16, lora_alpha=32, lora_dropout=0.0,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -94,7 +97,8 @@ def main():
         for index in torch.randperm(len(train_rows), generator=generator).tolist():
             input_ids, attention, labels = batch_tensors(
                 train_rows[index:index + args.batch] or [train_rows[index]])
-            loss = model(input_ids=input_ids, attention_mask=attention, labels=labels).loss
+            loss = model(input_ids=input_ids.to(device), attention_mask=attention.to(device),
+                         labels=labels.to(device)).loss
             (loss / args.accum).backward()
             accumulated += 1
             if accumulated % args.accum == 0:
@@ -114,7 +118,7 @@ def main():
     with torch.no_grad():
         for row in sample:
             prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"])
-            inputs = tokenizer(prompt, return_tensors="pt")
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
             output = model.generate(**inputs, max_new_tokens=80, do_sample=False,
                                     pad_token_id=tokenizer.eos_token_id)
             text = tokenizer.decode(output[0][inputs.input_ids.shape[1]:],
