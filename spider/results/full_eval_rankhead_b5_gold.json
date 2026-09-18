@@ -1,0 +1,120 @@
+{
+  "answered_pct": 95.4,
+  "artifacts": {
+    "dev": "30d64a3fccde493226df79687aed9e4a1c0129525baf44f29c0573d914d758a4",
+    "encoder": "53fd3d37c64525be45a372d487b3e4f1e7f39b13fdccb8c9eaacf89e22c953b2",
+    "encoder_adapter": "9083d3ee0376c414d1c5efd1e76eefbc9863ab731225fe75ae4320e3fee95409",
+    "encoder_meta": "0ce503fd3939bf402da992ba05d4605072d08f24f21788a08316809480f3a5cb",
+    "engine/calculations/core.py": "c4e83fd9ae14b9b6cf84ee17f3eab8d4cda06d0a8854b8257a536dac852bb797",
+    "engine/calculations/registry.py": "0bedbdd6d35d9301c520e8f05827165af2e694c776e3d4c1d855ee404f22fe8f",
+    "engine/calculations/search.py": "74776f84d069c6fa20ad17a56f040a07dede22cec3ce8496d7b582691a363200",
+    "engine/calculations/specifications.py": "3ef8fd46f73c629eb50fdac96af55548aa4f929891266373161af0b993bc8492",
+    "engine/compose.py": "a6334d27f0a8e86420b051cd8ce2f6b2ed4edd0e4693dcecb4decea01519e98e",
+    "engine/decomposition.py": "3182cb8d6fca004821b65c48442136906e02a99db160f33770d6cec7c2139cd9",
+    "engine/deterministic/context.py": "b34e25a3d3c69d7f93f0c7a226c383506a7bea899c5bcd1cd552570070bdbe35",
+    "engine/deterministic/emitter/py/__init__.py": "5f78634750aa3dc1b8f6686796184cc907c2b5719d8789fb6cb398fd94126a23",
+    "engine/deterministic/emitter/sql/__init__.py": "9a0d392deb4b912937aa3e81a0c9c037e347190e6966ad6ddd7ac24f6e34a5de",
+    "engine/deterministic/lower.py": "0af03b35b82820fe8ed16f00a15e24e818246b9614feb297a0d454a9c70e0259",
+    "engine/deterministic/operators.py": "280c925c715579b2d75f774167c2246995d88e19e086642d4d65a361b5a801d9",
+    "engine/deterministic/plan.py": "b59ec4443171a2423820a15ae82e1d7560f8494bfffe9708c3647eb956258b82",
+    "engine/deterministic/runtime.py": "11156dd5d102958ad751efba1e76f6414d92c7bc1c2aefdb39a1eaad3d62a5b1",
+    "engine/deterministic/service.py": "3faad770d36dbcb0de77747bd28e37d595cd94e8a52f21f39e5dac91b27e2ada",
+    "engine/encoder_overlay.py": "e62b5312e44eb6fb52add2da93a3f673138515bb3ebdeca2d61cd940a658233c",
+    "engine/knowledge_compose.py": "552ecfa9d5ed352c76b6969fd043c44d7a13a660993dd866af5d45a6e5cf8100",
+    "engine/primitive_head.py": "376fb75bbbe81d11e7ce36899048a088ab7704f87cb9362676a91dd0428ff7b7",
+    "engine/routing.py": "f45cfe78056ee03e044cd69611135b6938244acb6a81809e07e627819fd66818",
+    "engine/sql_ast.py": "60ba8ad9049c4b6906f933cbeac04793e487126b386146017fb1d22cb77591e9",
+    "engine/sql_candidate.py": "0f401dbfb29fbdb86ca54445f9913493d69952dd999c7749af0a395e650f9a3c",
+    "engine/sql_constraints.py": "66bb046ec3399e7427b08c9183113c5f699d9d9dba946cc409ddd5fd3e041176",
+    "engine/sql_expansion.py": "4c88960d5037e9d2e8d8b212acb889d18d25454bda991af58b507324dd48a037",
+    "engine/sql_extrema.py": "13ff55ea54b61b869109949030ad81c4196d6572b79b85193d9bee4e61dd293c",
+    "engine/sql_parsimony.py": "987f95a14662d1b623a5547b0e93f29c32bebbb4ad9d5d8b4e1a2c40b5fb2ab7",
+    "engine/sql_profile.py": "1e718036e793cf0e7329f68f03c3fcab9bcdc00c25b1a327d484b4b64483b18d",
+    "engine/sql_profile_expansion.py": "85f8df12053495a830ae817b9ec4bf0e4a60c98fecc0e672426c107e711547f2",
+    "engine/sql_rank.py": "1f451fa0ba0ee006fdd1836a2d35f98270050d93446c0b426674a93c26e87b78",
+    "engine/sql_recursive.py": "6d4a2e8bf711ecbe6821341010fea697c6a60ff97fdcee7b7679238a2a497d96",
+    "engine/sql_schema.py": "8a0a5a934022e6e688e289aa847298ded9c63cc57dd5755c179330005466e72e",
+    "engine/sql_search.py": "2d9df50dd07fff12931d7bd62efe6ed1afaa095c520e0d9c80f0527c1cda312c",
+    "engine/tables.py": "fea047348be82c26d3ae94270e5acfd5e52267ecf8fcb3710d1b8ae90d0de728",
+    "eval_harness": "3a0e747fd445971398cb2eef976e5d75c5f7b87bee7cc11419d75b967dfb0275",
+    "rank_head": "91f940a0cbdc0295a620b7d012bf28f55bbd803271bd80f19b42b2022b770294",
+    "source_commit": "010e469ccab4ad1d2c35fbf87389873dbf6d1cb6",
+    "tables": "61bb20aa401f03164e2d7f3b16509b7b5f79cc9c943ca7bd159046df1159e2ed",
+    "worktree_dirty": true
+  },
+  "backend": "sql",
+  "by_difficulty": {
+    "easy": {
+      "answered": 238,
+      "correct_lenient": 158,
+      "correct_strict": 135,
+      "error": 10,
+      "n": 248,
+      "over_budget": 0,
+      "scalar_correct": 114,
+      "scalar_total": 173
+    },
+    "extra": {
+      "answered": 159,
+      "correct_lenient": 47,
+      "correct_strict": 44,
+      "error": 7,
+      "n": 166,
+      "over_budget": 0,
+      "scalar_correct": 18,
+      "scalar_total": 57
+    },
+    "hard": {
+      "answered": 159,
+      "correct_lenient": 89,
+      "correct_strict": 74,
+      "error": 15,
+      "n": 174,
+      "over_budget": 0,
+      "scalar_correct": 50,
+      "scalar_total": 77
+    },
+    "medium": {
+      "answered": 430,
+      "correct_lenient": 199,
+      "correct_strict": 150,
+      "error": 16,
+      "n": 446,
+      "over_budget": 0,
+      "scalar_correct": 49,
+      "scalar_total": 101
+    }
+  },
+  "compose": true,
+  "config": "gold_tables",
+  "correct_lenient_pct": 47.7,
+  "correct_strict_pct": 39.0,
+  "error_pct": 4.6,
+  "error_stage_histogram": {
+    "ast_search": 48
+  },
+  "max_candidates": 25,
+  "n": 1034,
+  "path_correct_lenient": {
+    "ast": 493
+  },
+  "path_histogram": {
+    "ast": 1034
+  },
+  "python_row_limit": 10000,
+  "scalar_gold_accuracy_pct": 56.6,
+  "scalar_gold_n": 408,
+  "scalar_only": false,
+  "selection": "serving_top1",
+  "signals": true,
+  "totals": {
+    "answered": 986,
+    "correct_lenient": 493,
+    "correct_strict": 403,
+    "error": 48,
+    "n": 1034,
+    "over_budget": 0,
+    "scalar_correct": 231,
+    "scalar_total": 408
+  }
+}

@@ -130,6 +130,14 @@ and pool diversity are no longer the constraint — the canonical-feature bottle
 A4 ceiling gain (533→543) converted to zero top-1 gain because the 50 canonical features
 cannot separate a correct deep-rank variant from its sibling distractors.
 
+Candidate head `b5` (sum/max/count canonical aggregates, same labels as `b3`) had the best
+offline validation of any head (+4.4 points held-out) and FAILED both Spider gates:
+whole_db 388, `gold_tables` 403 (−34), transition 55 wins / 32 losses. Offline validation
+and dev accuracy anti-correlated across b3→b5, so richer within-distribution features made
+the head less calibrated out of distribution; the vectorizer change was reverted (git is
+the archive). Conclusion: ranking with execution-labeled feature heads converges at `b2`'s
+395/1,034 — further serving gains require proposal-side change, not ranking change.
+
 ## Reproduce
 
 ```bash
