@@ -63,6 +63,10 @@ except ImportError:  # direct `python full_eval.py` from spider/probe remains su
     )
 
 DIFFS = ["easy", "medium", "hard", "extra"]
+# pool_oracle executes EVERY pooled candidate; one pathological join must not stall the run.
+# SQLite VM-op bound: deterministic and machine-independent, generous enough that only
+# runaway candidates trip it (a stalled formula_1 train example motivated this).
+POOL_EXECUTION_OP_LIMIT = 100_000_000
 # Routing is NOT mirrored here — it is IMPORTED from the ONE shared router (engine.routing), the same module
 # live serving uses, so the eval can never drift from production. DEPTH_PRIMS is the primitive-head EVIDENCE to
 # build a compose plan; compose_owns is the AUTHORITY (a grounded world dependency). Spider tables are world-less,
@@ -172,11 +176,13 @@ def _write_json_atomic(path, value):
 def ast_predict(
     enc, tabs, question, schema_fks=None, schema_cache=None,
     selection="serving_top1", max_candidates=25, use_signals=True,
-    execution_backend="sql", python_row_limit=10_000,
+    execution_backend="sql", python_row_limit=10_000, rank_model=None,
 ):
     """Run AST search using either exact serving top-1 or bounded execution checks.
 
-    use_signals gates the encoder semantic signals (ablation only; serving is always True)."""
+    use_signals gates the encoder semantic signals (ablation only; serving is always True).
+    rank_model injects a candidate rerank head (engine/sql_rank.py:RankHead) for measurement;
+    the promoted serving default is None until a head ships in the runtime bundle."""
     cache_key = tuple(id(table) for table in tabs)
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
@@ -188,15 +194,15 @@ def ast_predict(
             schema_cache[cache_key] = cached
     norm, fks, sch, tmap = cached
     candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
-                                use_semantic_signals=use_signals)
+                                use_semantic_signals=use_signals, rank_model=rank_model)
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
 
-    def execute(sql):
+    def execute(sql, progress_limit=None):
         ok, why = enc.guard(sql)
         if not ok:
             raise RuntimeError(f"guard: {why}")
-        return enc.execute(tmap, sch, sql)
+        return enc.execute(tmap, sch, sql, progress_limit=progress_limit)
 
     def execute_selected(candidate, sql_rows=None):
         metadata = {
@@ -288,13 +294,16 @@ def ast_predict(
         # the example by its best member. Gold rows stay in the evaluator; prediction never sees them.
         pool = []
         for rank, candidate in enumerate(candidates):
+            entry = {"rank": rank, "sql": candidate.sql,
+                     "score": round(candidate.score, 6),
+                     "features": dict(candidate.features),
+                     "evidence": list(candidate.evidence)}
             try:
-                _, rows = execute(candidate.sql)
-                pool.append({"rank": rank, "sql": candidate.sql,
-                             "rows": [list(row) for row in rows]})
+                _, rows = execute(candidate.sql, progress_limit=POOL_EXECUTION_OP_LIMIT)
+                entry["rows"] = [list(row) for row in rows]
             except Exception as exc:  # noqa: BLE001 - a failed candidate disqualifies only itself
-                pool.append({"rank": rank, "sql": candidate.sql,
-                             "error": f"{type(exc).__name__}: {exc}"})
+                entry["error"] = f"{type(exc).__name__}: {exc}"
+            pool.append(entry)
         executed = sum(1 for entry in pool if "rows" in entry)
         result = {"ok": executed > 0, "path": "ast",
                   "candidate_count": len(candidates),
@@ -413,7 +422,7 @@ def compose_predict(eng, tabs, question):
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
             ast_schema_cache=None, selection="serving_top1", max_candidates=25,
             use_signals=True, use_compose=True, execution_backend="sql",
-            python_row_limit=10_000):
+            python_row_limit=10_000, rank_model=None):
     """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
     EVIDENCE to build a compose plan; the AUTHORITY to stand on it is a grounded world dependency (compose_owns).
     Spider tables are world-less, so compose_owns is always False and every question routes to the typed-AST
@@ -439,7 +448,7 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         return ast_predict(
             enc, tabs, question, schema_fks, ast_schema_cache,
             selection, max_candidates, use_signals,
-            execution_backend, python_row_limit,
+            execution_backend, python_row_limit, rank_model,
         )
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
@@ -482,6 +491,9 @@ def main():
     )
     ap.add_argument("--max-candidates", type=int, default=25,
                     help="AST candidate pool returned to selection/ranking")
+    ap.add_argument("--rank-head", default="",
+                    help="path to a candidate RankHead .pt (engine/sql_rank.py) — measurement "
+                         "injection for the rank-head experiment, not a serving mode")
     # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
@@ -530,6 +542,7 @@ def main():
         "python_row_limit": args.python_row_limit,
         "scalar_only": args.scalar_only,
         "max_candidates": args.max_candidates,
+        "rank_head": args.rank_head or None,
         "compose": not args.no_compose,
         "signals": not args.no_signals,
         "cap": args.cap,
@@ -543,7 +556,8 @@ def main():
     # this harness must invalidate a --resume checkpoint, or stale predictions get silently reused.
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
-                   "sql_recursive.py", "sql_profile.py", "sql_profile_expansion.py",
+                   "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
+                   "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
                    "calculations/core.py", "calculations/registry.py",
                    "calculations/search.py", "calculations/specifications.py")
@@ -564,6 +578,7 @@ def main():
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
+            **({"rank_head": args.rank_head} if args.rank_head else {}),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
             **{
                 f"engine/{name}": os.path.join(ROOT, "engine", *name.split("/"))
@@ -593,6 +608,13 @@ def main():
     enc = EncoderQuery()
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
+    rank_head = None
+    if args.rank_head:
+        from engine.sql_rank import RankHead
+        rank_head = RankHead.load(args.rank_head)
+        print(f"injected candidate rank head: {args.rank_head} "
+              f"(top_k={rank_head.top_k}, {len(rank_head.feature_names)} named features)",
+              flush=True)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}
@@ -646,7 +668,7 @@ def main():
                     current_fks, ast_schema_cache,
                     args.selection, args.max_candidates,
                     not args.no_signals, not args.no_compose,
-                    args.backend, args.python_row_limit,
+                    args.backend, args.python_row_limit, rank_head,
                 )
 
             r, terr, prediction_seconds, over_budget = run_with_budget(

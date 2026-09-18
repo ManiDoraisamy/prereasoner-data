@@ -97,6 +97,122 @@ def semantic_role_phrases(question: str) -> dict[str, str]:
     return {role: phrase for role, phrase in phrases.items() if phrase.strip()}
 
 
+# Evidence-tag prefixes the rank head counts. Order is part of the head's input contract:
+# a promoted head is only valid for the prefix tuple it was trained with (stored in its file).
+RANK_HEAD_EVIDENCE_PREFIXES = (
+    "join:", "tables:minimal", "projection:drop", "projection:binding:",
+    "projection:add:", "projection:distinct-toggle", "aggregate:operand:",
+    "profile:", "calc:", "rank:", "exec:",
+)
+
+
+def canonical_feature_name(name: str) -> str:
+    """Strip schema-object qualifiers so features transfer across databases.
+
+    ``projection_role:department.Name`` names a db-specific column; a head trained on such
+    names memorizes training schemas and transfers nothing (measured: 1,850 of 1,926 feature
+    names were single-database). The qualifier is dropped and same-name values are summed by
+    the vectorizer; generic compound names without a dotted qualifier stay unchanged.
+    """
+    head, sep, tail = name.partition(":")
+    if sep and "." in tail:
+        return head
+    return name
+
+
+def rank_head_vector(score, rank, features, evidence, pool_best, pool_mean, feature_names,
+                     evidence_prefixes=RANK_HEAD_EVIDENCE_PREFIXES):
+    """The ONE deterministic feature vector for the trained rank head.
+
+    Built from primitives (generation score, deterministic rank, canonicalized named
+    features, evidence tags, pool score context) so training rows (JSONL) and serving
+    candidates (ScoredQuery) vectorize identically — the head can never see different
+    features in the two places.
+    """
+    canonical: dict[str, float] = {}
+    for name, value in features.items():
+        key = canonical_feature_name(name)
+        canonical[key] = canonical.get(key, 0.0) + float(value)
+    return [
+        float(score),
+        float(rank),
+        float(score - pool_best),
+        float(score - pool_mean),
+        float(len(evidence)),
+        *(float(sum(1 for tag in evidence if tag.startswith(prefix)))
+          for prefix in evidence_prefixes),
+        *(canonical.get(name, 0.0) for name in feature_names),
+    ]
+
+
+class RankHead:
+    """Frozen trained scorer over the deterministic candidate order's top-K prefix.
+
+    Deterministic by construction: fixed weights, CPU float32 inference, no sampling, ties
+    broken by the deterministic prior order. Only the prefix reorders; the tail is untouched.
+    Plugs into ``SQLSearcher.search(rank_model=...)``; serving passes it only once a head is
+    promoted into the runtime bundle.
+    """
+
+    def __init__(self, model, feature_names, top_k, evidence_prefixes, margin=0.0):
+        self.model = model
+        self.feature_names = tuple(feature_names)
+        self.top_k = int(top_k)
+        self.evidence_prefixes = tuple(evidence_prefixes)
+        # Confidence gate: the head's order applies only when its best score clears the
+        # deterministic top's score by this logit margin; otherwise the prior order stands.
+        self.margin = float(margin)
+
+    @classmethod
+    def load(cls, path):
+        import torch
+
+        payload = torch.load(path, map_location="cpu", weights_only=True)
+        model = build_rank_head_model(int(payload["input_size"]),
+                                      int(payload["hidden"]))
+        model.load_state_dict(payload["state_dict"])
+        model.eval()
+        return cls(model, payload["feature_names"], payload["top_k"],
+                   payload["evidence_prefixes"], payload.get("margin", 0.0))
+
+    def rerank(self, question: str, ranked: Sequence[ScoredQuery]) -> list[ScoredQuery]:
+        import torch
+
+        prefix = list(ranked[:self.top_k])
+        if len(prefix) < 2:
+            return list(ranked)
+        pool_best = max(candidate.score for candidate in prefix)
+        pool_mean = sum(candidate.score for candidate in prefix) / len(prefix)
+        vectors = [
+            rank_head_vector(candidate.score, position, dict(candidate.features),
+                             candidate.evidence, pool_best, pool_mean,
+                             self.feature_names, self.evidence_prefixes)
+            for position, candidate in enumerate(prefix)
+        ]
+        with torch.no_grad():
+            scores = self.model(torch.tensor(vectors, dtype=torch.float32)).squeeze(1).tolist()
+        order = sorted(range(len(prefix)), key=lambda index: (-scores[index], index))
+        if scores[order[0]] - scores[0] < self.margin:
+            return list(ranked)
+        reordered = [
+            replace(prefix[index],
+                    evidence=prefix[index].evidence + (f"rank-head:{scores[index]:+.4f}",))
+            for index in order
+        ]
+        return reordered + list(ranked[self.top_k:])
+
+
+def build_rank_head_model(input_size: int, hidden: int):
+    """The one rank-head architecture, shared by training and loading."""
+    import torch
+
+    return torch.nn.Sequential(
+        torch.nn.Linear(input_size, hidden),
+        torch.nn.ReLU(),
+        torch.nn.Linear(hidden, 1),
+    )
+
+
 class CandidateRanker:
     def __init__(self, schema: SchemaGraph, signals: SemanticSignals | None = None):
         self.schema = schema

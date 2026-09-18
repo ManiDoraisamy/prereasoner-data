@@ -448,11 +448,14 @@ class TableQuery:
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, rank_candidates=True, expand_recursive=True,
-                   expand_constraints=True, expand_extrema=True):
+                   expand_constraints=True, expand_extrema=True, rank_model=None):
         """Return ranked, typed SQL AST candidates from the deterministic planner.
 
-        Bounded typed-AST search with hand-written, inspectable ranking — no trained proposer or learned
-        ranker. ``tables`` stays in the signature to make the boundary explicit; the rich ``sch`` already
+        Bounded typed-AST search with hand-written, inspectable ranking and no trained proposer.
+        ``rank_model`` is a frozen deterministic rerank head over the top of that order
+        (engine/sql_rank.py:RankHead); serving passes one only when the runtime bundle has a
+        promoted head, and the Spider evaluator may inject a candidate head for measurement.
+        ``tables`` stays in the signature to make the boundary explicit; the rich ``sch`` already
         carries its values and inferred types.
         """
         from engine.sql_search import SQLSearcher, SchemaGraph
@@ -468,6 +471,7 @@ class TableQuery:
             expand_recursive=expand_recursive,
             expand_constraints=expand_constraints,
             expand_extrema=expand_extrema,
+            rank_model=rank_model,
         )
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
@@ -534,7 +538,12 @@ class TableQuery:
             return False, "forbidden keyword"
         return True, "ok"
 
-    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
+    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None,
+                progress_limit=None):
+        """``progress_limit`` bounds the query at that many SQLite VM ops (deterministic,
+        machine-independent) and aborts with OperationalError('interrupted'). Serving passes
+        None (unbounded, live-faithful); the pool_oracle ablation and label building set it so
+        one pathological candidate join cannot stall a whole run."""
         from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
 
         con = sqlite3.connect(":memory:")
@@ -561,6 +570,8 @@ class TableQuery:
                 rd = dict(zip(t["columns"], r))
                 con.execute(ins, [coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
         execution_sql = render_query(query, dialect="sqlite_decimal") if query is not None else sql
+        if progress_limit:
+            con.set_progress_handler(lambda: 1, int(progress_limit))
         cur = con.execute(execution_sql)
         rows = cur.fetchall()
         if query is not None:

@@ -1,22 +1,23 @@
-"""Deterministic parsimony variants of pooled candidates.
+"""Deterministic projection/table variants of pooled candidates.
 
-Measured Spider miss families (spider/results/RESULTS.md) are dominated by candidates that
-join or project MORE than the question asks: distractor tables force-joined by name
-mentions, and one canonical column name projected once per owning table. Ranking cannot
-select a parsimonious reading that was never proposed, so this expander adds, for each
-pooled candidate, (a) the same clauses rebuilt on the minimal join tree covering only the
-tables those clauses actually use, (b) single-binding projection variants when a
-duplicate-named column is projected from several tables, and (c) drop-one-column projection
-reductions for the value-superset miss band — each re-reduced to its minimal join tree.
-A mentioned table can be a semantic restrictor ("names of poker players" joins
-poker_player to FILTER people), which lexical signals cannot separate from join noise, so
-every variant carries a generation penalty: pooled for selection, never outranking its
-parent on the prior alone. Converting pool membership into top-1 wins is ranking's job.
+Measured Spider miss families (spider/results/RESULTS.md) are dominated by candidates whose
+projection or join set differs from the asked reading by ONE bounded edit. Ranking cannot
+select a reading that was never proposed, so this expander adds, for each pooled candidate:
+(a) the same clauses rebuilt on the minimal join tree covering only the tables those clauses
+actually use, (b) single-binding variants when a duplicate-named column is projected from
+several tables, (c) drop-one and drop-two column reductions (value-superset misses),
+(d) add-one-column variants from question-linked columns of already-joined tables
+(value-subset misses), (e) aggregate-operand swaps to question-linked same-table columns,
+and (f) a DISTINCT toggle — each re-reduced to its minimal join tree. A mentioned table can
+be a semantic restrictor ("names of poker players" joins poker_player to FILTER people),
+which lexical signals cannot separate from join noise, so every variant carries a generation
+penalty: pooled for selection, never outranking its parent on the prior alone. Converting
+pool membership into top-1 wins is ranking's job.
 """
 from __future__ import annotations
 
 import itertools
-from typing import Sequence
+from typing import Callable, Sequence
 
 from engine.sql_ast import (
     Aggregate,
@@ -35,7 +36,7 @@ from engine.sql_ast import (
     validate_query,
 )
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import ExpansionSupport
+from engine.sql_expansion import ExpansionSupport, tokens
 
 # Matches the profile-expansion generation_penalty scale (ProfileSearchConfig).
 _PARSIMONY_PENALTY = 5.0
@@ -49,12 +50,23 @@ class ParsimonyQueryExpander(ExpansionSupport):
     """Add minimal-join and single-binding projection variants of pooled candidates."""
 
     def expand(self, question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
+        question_tokens = tokens(question)
+        linked_cache: dict[str, tuple[ColumnRef, ...]] = {}
+
+        def linked(table: str) -> tuple[ColumnRef, ...]:
+            if table not in linked_cache:
+                linked_cache[table] = tuple(
+                    ref for ref, _score, _position
+                    in self.projection_columns(question_tokens, table)
+                )
+            return linked_cache[table]
+
         generated: list[ScoredQuery] = []
         for candidate in candidates:
             query = candidate.query
             if not isinstance(query, SelectQuery) or not _is_flat(query):
                 continue
-            for projected, binding_evidence in _binding_variants(query):
+            for projected, binding_evidence in _projection_variants(query, linked):
                 reduced = self._minimal_tree(projected)
                 if reduced is None:
                     continue
@@ -106,10 +118,25 @@ class ParsimonyQueryExpander(ExpansionSupport):
         return rebuilt, len(query.joins) - len(tree.joins)
 
 
-def _binding_variants(query: SelectQuery):
-    """Yield the query, single-binding reductions of duplicate-named projections, and
-    drop-one-column reductions (the lenient-only miss band: predicted values are a strict
-    superset of gold because an extra column is projected)."""
+def _replaced_select(query: SelectQuery, select, group_by=None, distinct=None):
+    return SelectQuery(
+        select=tuple(select),
+        from_table=query.from_table,
+        joins=query.joins,
+        where=query.where,
+        group_by=query.group_by if group_by is None else tuple(group_by),
+        having=query.having,
+        order_by=query.order_by,
+        limit=query.limit,
+        distinct=query.distinct if distinct is None else distinct,
+    )
+
+
+def _projection_variants(query: SelectQuery, linked: Callable[[str], tuple[ColumnRef, ...]]):
+    """Yield the query plus bounded single-edit projection variants.
+
+    Families and their measured motivation are in the module docstring; yield order decides
+    which derivation's evidence survives SQL dedup, most-specific first."""
     yield query, ()
     plain = [item.expression for item in query.select if isinstance(item.expression, ColumnRef)]
     groups: dict[str, list[ColumnRef]] = {}
@@ -140,38 +167,60 @@ def _binding_variants(query: SelectQuery):
                     seen.add(column)
                     group_by.append(column)
             yield (
-                SelectQuery(
-                    select=select,
-                    from_table=query.from_table,
-                    joins=query.joins,
-                    where=query.where,
-                    group_by=tuple(group_by),
-                    having=query.having,
-                    order_by=query.order_by,
-                    limit=query.limit,
-                    distinct=query.distinct,
-                ),
+                _replaced_select(query, select, group_by=group_by),
                 tuple(f"projection:binding:{column.table}.{column.name}" for column in kept),
             )
+    plain_items = [item for item in query.select if isinstance(item.expression, ColumnRef)]
     if 2 <= len(query.select) <= 6:
-        for item in query.select:
-            if not isinstance(item.expression, ColumnRef):
+        # drop-one and drop-two column reductions (value-superset misses)
+        for removed in itertools.chain(
+            ((item,) for item in plain_items),
+            itertools.islice(itertools.combinations(plain_items, 2),
+                             10 if len(query.select) >= 3 else 0),
+        ):
+            if len(removed) >= len(query.select):
                 continue
-            column = item.expression
+            gone = set(removed)
+            tag = "drop" if len(removed) == 1 else "drop2"
             yield (
-                SelectQuery(
-                    select=tuple(other for other in query.select if other is not item),
-                    from_table=query.from_table,
-                    joins=query.joins,
-                    where=query.where,
-                    group_by=query.group_by,
-                    having=query.having,
-                    order_by=query.order_by,
-                    limit=query.limit,
-                    distinct=query.distinct,
-                ),
-                (f"projection:drop:{column.table}.{column.name}",),
+                _replaced_select(query, (item for item in query.select if item not in gone)),
+                tuple(f"projection:{tag}:{item.expression.table}.{item.expression.name}"
+                      for item in removed),
             )
+    # add-one question-linked column of an already-joined table (value-subset misses);
+    # grouped queries add the column to GROUP BY too, or the validator rejects the variant.
+    if len(query.select) <= 5:
+        projected = {item.expression for item in plain_items}
+        joined_tables = [query.from_table] if isinstance(query.from_table, str) else []
+        joined_tables += [join.table for join in query.joins]
+        additions = [column for table in dict.fromkeys(joined_tables)
+                     for column in linked(table) if column not in projected][:4]
+        for column in additions:
+            group_by = (tuple(query.group_by) + (column,)) if query.group_by else None
+            for select in ((SelectItem(column), *query.select),
+                           (*query.select, SelectItem(column))):
+                yield (
+                    _replaced_select(query, select, group_by=group_by),
+                    (f"projection:add:{column.table}.{column.name}",),
+                )
+    # aggregate-operand swap to a question-linked column of the same table
+    aggregate_items = [item for item in query.select if isinstance(item.expression, Aggregate)]
+    if len(aggregate_items) == 1 and isinstance(aggregate_items[0].expression.operand, ColumnRef):
+        item = aggregate_items[0]
+        operand = item.expression.operand
+        for column in [c for c in linked(operand.table) if c != operand][:2]:
+            swapped = SelectItem(Aggregate(item.expression.function, column,
+                                           item.expression.distinct))
+            yield (
+                _replaced_select(query, (swapped if it is item else it for it in query.select)),
+                (f"aggregate:operand:{column.table}.{column.name}",),
+            )
+    # DISTINCT toggle for plain projections
+    if not aggregate_items and plain_items:
+        yield (
+            _replaced_select(query, query.select, distinct=not query.distinct),
+            ("projection:distinct-toggle",),
+        )
 
 
 def _is_flat(query: SelectQuery) -> bool:

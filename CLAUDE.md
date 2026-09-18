@@ -56,6 +56,7 @@ Extend these owners. Do not build parallel replacements.
 | Runtime model loading and overlay | `engine/encoder_overlay.py` |
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |
 | Property-model training pipeline | `training/props/` |
+| Rank-head training pipeline (execution-labeled Spider-train pools + head training; candidates only, in `training/rank/data/experiments/<id>/`) | `training/rank/` |
 | Schema.org ontology contract (compiled vocabulary + inheritance) | `engine/schema_org.py` + `engine/data/schema_org_v30.json` |
 | Schema.org typing cache/evidence and learned family proposals | `engine/knowledge_typing.py` + `engine/schema_decode.py` + `engine/schema_model.py` + `engine/router.py`; source-key authorization stays in `engine/knowledge_query.py` |
 | Schema.org semantic corpus + named-property-head training | `training/schema_org/` (candidates only, in `training/schema_org/data/experiments/<corpus>/`) |

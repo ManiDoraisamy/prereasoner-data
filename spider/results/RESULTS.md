@@ -107,6 +107,21 @@ examples resurface as projection misses); true retrieval misses (missing or wron
 ~6% of strict misses. Projection misses are right-table queries projecting the wrong columns or
 aggregating the wrong operand.
 
+## Trained rank head (Phase B experiment, evaluator-injected)
+
+Candidate head `b2` (NOT promoted; serving stays deterministic-only): trained on 6,998
+execution-labeled Spider-TRAIN pools built through the production search
+(`training/rank/build_pool_labels.py`, labels sha256 `a9cf0096…`), seed 7, top-10 window,
+hidden 64, val-selected margin 0.25. Offline: val pairwise AUC 0.803, held-out-db top-1
++3.0 points. Serving-faithful whole_db with the head injected (`--rank-head`, tag
+`rankhead_b2`): **strict 395/1,034 (38.2%) vs 365 deterministic (+30)** — transition
+46 wins / 16 losses / 349 unchanged-correct / 623 unchanged-wrong; lenient 477 vs 454.
+The `gold_tables` sanity run (tag `rankhead_b2_gold`, 422 vs 437) executed against newer
+variant-generation code than the head's labels (recorded artifact hashes differ) and is
+not clean evidence; it is re-measured with the next label build. Train gold is training
+data only — no gold-derived signal reaches any serving decision, and dev is never used
+for training.
+
 ## Reproduce
 
 ```bash

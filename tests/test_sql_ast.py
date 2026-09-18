@@ -623,6 +623,22 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
                  'JOIN "ref_types" ON "templates"."type_code" = "ref_types"."type_code"'
         for v in dropped
     ), [v.sql for v in dropped]
+    assert any(any(tag.startswith("projection:drop2:") for tag in v.evidence)
+               for v in variants), "drop-two reductions missing"
+    assert any("projection:distinct-toggle" in v.evidence for v in variants)
+
+    from engine.sql_ast import Aggregate
+    from engine.sql_parsimony import _projection_variants
+
+    cost = ColumnRef("templates", "template_id")
+    weight = ColumnRef("templates", "type_code")
+    total = SelectQuery(select=(SelectItem(Aggregate("SUM", cost)),), from_table="templates")
+    stub_linked = lambda table: (weight,)  # noqa: E731 - question-linking stubbed out
+    tags = [evidence for _, evidence in _projection_variants(total, stub_linked)]
+    assert any("aggregate:operand:templates.type_code" in evidence for evidence in tags), tags
+    plain = SelectQuery(select=(SelectItem(cost),), from_table="templates")
+    tags = [evidence for _, evidence in _projection_variants(plain, stub_linked)]
+    assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
 
 
 def test_order_noun_does_not_request_sort_or_group():
