@@ -28,6 +28,10 @@ training/props/data/*
 training/rank/data/*
 !training/rank/data/.gitkeep
 
+# training/proposer scratch — SFT targets + candidate adapters (rebuild via training/proposer/README.md)
+training/proposer/data/*
+!training/proposer/data/.gitkeep
+
 # training/schema_org scratch — the regenerable semantic corpus + embedding cache (rebuild:
 # python -m training.schema_org.corpus). semantic_manifest.json IS committed: it is the corpus
 # identity/provenance record the model meta and class signatures hash-reference.

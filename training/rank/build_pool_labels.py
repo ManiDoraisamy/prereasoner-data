@@ -25,7 +25,7 @@ if ROOT not in sys.path:
 from spider.probe.evalutil import build_mem_db, exec_sql_timed, load_capped, run_with_budget
 from spider.probe.full_eval import _git_provenance, ast_predict
 from spider.probe.hardness import eval_hardness
-from spider.probe.spider_eval import compare, spider_foreign_keys
+from spider.probe.spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
 
 
 def main():
@@ -38,6 +38,9 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="stop after N new examples (0 = all)")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table")
     ap.add_argument("--max-candidates", type=int, default=25)
+    ap.add_argument("--config", default="whole_db", choices=["whole_db", "gold_tables"],
+                    help="gold_tables labels distractor-free pools (train-gold table sets are "
+                         "training data only) so the head is not brittle to pool distribution")
     ap.add_argument("--timeout", type=float, default=30.0, help="soft per-example budget")
     args = ap.parse_args()
     if args.split.startswith("dev"):
@@ -63,7 +66,7 @@ def main():
         out.write(json.dumps({"_meta": {
             "split": args.split, "cap": args.cap,
             "max_candidates": args.max_candidates,
-            "selection": "pool_oracle", "config": "whole_db",
+            "selection": "pool_oracle", "config": args.config,
             **_git_provenance(ROOT),
         }}) + "\n")
 
@@ -95,7 +98,11 @@ def main():
             stats["gold_error"] += 1
             continue
 
-        tabs = list(capped.values())
+        if args.config == "gold_tables":
+            names = [name.lower() for name in recursive_gold_table_names(example, tables_meta)]
+            tabs = [capped[name] for name in names if name in capped] or list(capped.values())
+        else:
+            tabs = list(capped.values())
         result, error, seconds, over_budget = run_with_budget(
             lambda t=tabs, q=example["question"], f=fks.get(db_id): ast_predict(
                 enc, t, q, f, schema_cache,
