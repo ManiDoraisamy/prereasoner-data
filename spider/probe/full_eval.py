@@ -205,9 +205,11 @@ def ast_predict(
         floor = min((candidate.score for candidate in candidates), default=0.0)
         for proposal in proposer.propose(
             norm, question, _ProposalGraph.from_planner(sch, fks), min_score=floor,
+            beams=getattr(proposer, "beams", 1),
         ):
             if proposal.sql not in pooled:
-                novel_proposal = proposal
+                if novel_proposal is None:  # proposals arrive beam-best first
+                    novel_proposal = proposal
                 candidates = list(candidates) + [proposal]
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
@@ -518,6 +520,8 @@ def main():
                     help="path to a candidate proposer adapter dir "
                          "(training/proposer/propose.py) — measurement injection for the "
                          "Phase D experiment, not a serving mode")
+    ap.add_argument("--proposer-beams", type=int, default=1,
+                    help="deterministic beam count for proposer decoding (1 = greedy)")
     # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
@@ -570,6 +574,7 @@ def main():
         "max_candidates": args.max_candidates,
         "rank_head": args.rank_head or None,
         "proposer": args.proposer or None,
+        "proposer_beams": args.proposer_beams,
         "compose": not args.no_compose,
         "signals": not args.no_signals,
         "cap": args.cap,
@@ -647,7 +652,9 @@ def main():
     if args.proposer:
         from training.proposer.propose import Proposer
         proposer = Proposer.load(args.proposer)
-        print(f"injected candidate proposer: {args.proposer}", flush=True)
+        proposer.beams = max(1, args.proposer_beams)
+        print(f"injected candidate proposer: {args.proposer} (beams={proposer.beams})",
+              flush=True)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}
