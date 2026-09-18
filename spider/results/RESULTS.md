@@ -135,8 +135,14 @@ offline validation of any head (+4.4 points held-out) and FAILED both Spider gat
 whole_db 388, `gold_tables` 403 (−34), transition 55 wins / 32 losses. Offline validation
 and dev accuracy anti-correlated across b3→b5, so richer within-distribution features made
 the head less calibrated out of distribution; the vectorizer change was reverted (git is
-the archive). Conclusion: ranking with execution-labeled feature heads converges at `b2`'s
-395/1,034 — further serving gains require proposal-side change, not ranking change.
+the archive).
+
+Candidate head `b6` (b3 recipe, labels mixed 50/50 with gold_tables-config pools, sha256
+`4c7da516…`): whole_db 385 (below the ≥390 gate) with the `gold_tables` regression reduced
+to 432 vs 437 (−5, from −10). Distribution mixing repairs gold robustness directionally but
+dilutes the primary configuration. Feature-head program conclusion across b1–b6: `b2` is
+the best whole_db candidate (+30 to 395/1,034), no head passes both gates, and further
+gains require proposal-side change (Phase D), not ranking change. No head is promoted.
 
 ## Reproduce
 
