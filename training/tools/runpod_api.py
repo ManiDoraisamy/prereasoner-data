@@ -52,7 +52,13 @@ def rest(method, path, body=None, timeout=90, *, key=None):
     request = urllib.request.Request(
         REST + path,
         method=method,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json",
+            # RunPod's Cloudflare edge bot-blocks Python's default urllib agent with
+            # HTTP 403 error 1010; any self-identifying agent passes (measured 2026-09-19).
+            "User-Agent": "prereasoner-lease/1.0",
+        },
         data=json.dumps(body).encode() if body is not None else None,
     )
     try:
