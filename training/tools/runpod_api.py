@@ -280,7 +280,12 @@ def main(argv=None) -> int:
         terminate(args.pod_id)
     else:
         run_lease(
-            args.max_minutes, args.remote_command, args.keep,
+            args.max_minutes,
+            # argparse REMAINDER keeps an explicit "--" separator; the remote shell must
+            # never see it (a pod once executed literally "--" and burned its lease).
+            args.remote_command[1:] if args.remote_command[:1] == ["--"]
+            else args.remote_command,
+            args.keep,
             tuple(map(tuple, args.upload)), tuple(map(tuple, args.download)),
         )
     return 0
