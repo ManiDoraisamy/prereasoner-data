@@ -9,7 +9,7 @@ torch==2.13.0
 # encoder stack (Qwen2.5-0.5B base + LoRA adapter). The base model downloads from Hugging Face —
 # set HF_TOKEN in the environment (never hardcode it).
 transformers==5.10.4
-tokenizers==0.22.2
+tokenizers==0.23.1
 safetensors==0.7.0
 accelerate==1.14.0
 peft==0.19.1                    # loads / trains the qwen_lora adapter (lib/encoder.LiveQwen)
