@@ -700,9 +700,9 @@ tqdm==4.70.0 \
     #   huggingface-hub
     #   peft
     #   transformers
-transformers==5.10.4 \
-    --hash=sha256:8c5b99b141b53619435a76629b0284f04d27ff46d788b463fc0ecb23b8ff130e \
-    --hash=sha256:de37741509e64ccb88f7f5708beaf5b1914df447f5fe659f9c0fd95950413168
+transformers==5.16.1 \
+    --hash=sha256:17b0eac726ddc55e84ac58946063e0c6d37fd000c456b581f050ea0f4e822869 \
+    --hash=sha256:2f2d5b98a5ad3718713653734298fa620754ed683702a635ebb587df3ed29c7e
     # via
     #   -r training/requirements.txt
     #   peft
