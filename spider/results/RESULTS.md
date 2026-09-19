@@ -165,7 +165,14 @@ ONLY by the proposer. The deterministic policy "a novel validated proposal is
 selected, otherwise the deterministic top-1" (`--selection proposer_first`) scores
 **568/1,034 (54.9%) strict, serving-faithful** (tag `policy_d1`) — matching the
 record-level counterfactual exactly (552 proposals selected, 59.4% strict when selected;
-228 wins / 40 losses vs deterministic 380), as a fully deterministic pipeline must. Every step stays deterministic and auditable: frozen
+228 wins / 40 losses vs deterministic 380), as a fully deterministic pipeline must.
+
+Candidate proposer `d2` (same targets and seed, pod-scale SFT: 6,000 steps at effective
+batch 16 via `training/tools/runpod_api.py lease`): held-out string-exact was flat vs `d1`
+(45/100 vs 25/50) but execution-level dev quality improved — policy serving strict
+**587/1,034 (56.8%)** (tag `policy_d2`; 567 proposals selected, 61.7% strict when
+selected). String-exact undercounts equivalent SQL; execution measures decide. `d2` is
+the standing proposer candidate. Every step stays deterministic and auditable: frozen
 greedy decode, the one importer, the one validator, generation-penalized pools. Serving
 latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
 step-1 measurement requires a quantized runtime). Nothing is promoted.
