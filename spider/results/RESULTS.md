@@ -172,7 +172,8 @@ batch 16 via `training/tools/runpod_api.py lease`): held-out string-exact was fl
 (45/100 vs 25/50) but execution-level dev quality improved — policy serving strict
 **587/1,034 (56.8%)** (tag `policy_d2`; 567 proposals selected, 61.7% strict when
 selected). String-exact undercounts equivalent SQL; execution measures decide. `d2` is
-the standing proposer candidate. Every step stays deterministic and auditable: frozen
+the standing proposer candidate. Its pool ceiling is 751/1,034 (72.6%) vs `d1`'s 747 —
+pod-scale training bought precision, not coverage; coverage is the beam lever. Every step stays deterministic and auditable: frozen
 greedy decode, the one importer, the one validator, generation-penalized pools. Serving
 latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
 step-1 measurement requires a quantized runtime). Nothing is promoted.
