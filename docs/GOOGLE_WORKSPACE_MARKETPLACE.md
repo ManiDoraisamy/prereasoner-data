@@ -126,8 +126,8 @@ Google Sheets™ is a trademark of Google LLC.
 | `openid` | Identifies the signed-in Google user for Prereasoner authentication. |
 | `userinfo.email` | Associates the user with their Prereasoner account and supports account communication. |
 | `userinfo.profile` | Completes Google identity federation through Firebase Authentication. |
-| `script.external_request` | Sends the user's question and bounded current-workbook data to `chat.prereasoner.com` and exchanges the Google token with Firebase Authentication. |
-| `script.container.ui` | Adds the Prereasoner menu, sidebar, and previous-conversations dialog to Google Sheets. |
+| `script.external_request` | Lets server-side Apps Script use `UrlFetchApp` to authenticate through Firebase, send the user's question and bounded current-workbook data to the manifest-allowlisted Prereasoner service, save sidebar state, and retrieve previous conversations. Apps Script offers no narrower per-domain OAuth scope; `urlFetchWhitelist` restricts the destinations. |
+| `script.container.ui` | Adds the Prereasoner Extensions menu, question-and-answer sidebar, and previous-conversations dialog inside Google Sheets. No narrower Apps Script scope provides those container UI capabilities. |
 | `spreadsheets.currentonly` | Reads only the spreadsheet in which the user invokes the add-on. The add-on does not write to it. |
 
 ### Reviewer test path
@@ -156,14 +156,32 @@ required because the add-on uses the reviewer's Google identity through Firebase
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `18`
+- **Apps Script version:** `19`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
-- **Reviewer video:** `uND51puaL8A` (Unlisted)
+- **Previous reviewer video:** `uND51puaL8A` (Unlisted; replacement required)
+- **Replacement reviewer video:** pending the new unlisted URL
 
-## Submission status — September 15, 2026
+## Verification follow-up — September 20, 2026
 
-- Marketplace App Configuration is saved with Apps Script version `18`, the developer contact,
+- The privacy policy now documents concrete data-protection mechanisms and affirmatively states
+  compliance with the Google User Data and Developer Policy, including Limited Use requirements.
+- The policy states that raw or derived Google user data is not used or transferred to train or
+  improve generalized or non-personalized AI/ML models.
+- The add-on shows a concise data-use and no-generalized-training disclosure before the first
+  question is submitted.
+- The updated add-on was pushed with `clasp` and released as immutable Apps Script version `19`.
+- Marketplace App Configuration was saved with Apps Script version `19`; its six OAuth scopes
+  exactly match the Apps Script manifest.
+- Google requested a replacement video that shows the complete expanded consent screen and the full
+  user-facing operation of `script.external_request` and `script.container.ui`. Recording instructions
+  are in `OAUTH_DEMO_SCRIPT_2026-09-20.md`.
+- Do not resubmit OAuth verification until the replacement unlisted video URL has been added to the
+  verification request and `OAUTH_REVIEW_RESPONSE_2026-09-20.md`.
+
+## Previous submission status — September 15, 2026
+
+- Marketplace App Configuration was previously saved with Apps Script version `18`, the developer contact,
   and the exact six OAuth scopes declared in `appsscript.json`.
 - The Marketplace Store Listing draft is saved with the compliant English copy, five workflow
   screenshots at 1280 × 800, the unlisted reviewer video, icons, card banner, and post-install tip.

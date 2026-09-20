@@ -73,6 +73,13 @@
         color: #5f6368;
         line-height: 1.5;
       }
+      .data-notice {
+        margin: 12px 0 0;
+        color: #6f667a;
+        font-size: 11px;
+        line-height: 1.45;
+      }
+      .data-notice a { color: #4f2fd0; }
       .restore-note {
         margin: 16px 0;
         padding: 11px;
@@ -263,6 +270,26 @@
           var node = document.createElement('div');
           node.textContent = value == null ? '' : String(value);
           return node.innerHTML;
+        }
+
+        function renderEmptyState(element, message) {
+          element.textContent = '';
+          var prompt = document.createElement('div');
+          prompt.textContent = message;
+          element.appendChild(prompt);
+          if (message !== 'Ask a question about the current sheet.') return;
+          var notice = document.createElement('p');
+          notice.className = 'data-notice';
+          notice.appendChild(document.createTextNode(
+            'When you send a question, Prereasoner securely processes your question and the visible, non-empty tabs in this spreadsheet to produce and save the answer. This data is not used to train generalized AI models. '
+          ));
+          var link = document.createElement('a');
+          link.href = (state.context && state.context.privacyUrl) || 'https://chat.prereasoner.com/privacy';
+          link.target = '_blank';
+          link.rel = 'noopener';
+          link.textContent = 'Privacy';
+          notice.appendChild(link);
+          element.appendChild(notice);
         }
 
         function callServer(name, arg) {
@@ -853,9 +880,9 @@
           updateComposerAvailability();
           try {
             await callServer('clearPrereasonerSheetConversation');
-            fresh.textContent = 'Ask a question about the current sheet.';
+            renderEmptyState(fresh, 'Ask a question about the current sheet.');
           } catch (_) {
-            fresh.textContent = 'Ask a question about the current sheet.';
+            renderEmptyState(fresh, 'Ask a question about the current sheet.');
             state.syncError = true; state.errorAction = 'clear'; renderSyncState('session-error');
           } finally {
             state.restoring = false;
@@ -909,7 +936,7 @@
           } else {
             var empty = document.createElement('div');
             empty.className = 'empty';
-            empty.textContent = 'Ask a question about the current sheet.';
+            renderEmptyState(empty, 'Ask a question about the current sheet.');
             threadEl.appendChild(empty);
             renderSyncState(null);
           }

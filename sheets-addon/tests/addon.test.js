@@ -45,6 +45,9 @@ assert.deepStrictEqual(Array.from(reasoning.result.columns), ['total']);
 assert.strictEqual(reasoning.result.rows[0][0], '200');
 
 assert(sidebar.includes('Ask about this spreadsheet'));
+assert(sidebar.includes('visible, non-empty tabs in this spreadsheet'));
+assert(sidebar.includes('not used to train generalized AI models'));
+assert(sidebar.includes('https://chat.prereasoner.com/privacy'));
 assert(sidebar.includes('Reasoning steps for '));
 assert(turnRenderer.includes('Open full analysis'));
 assert(sidebar.includes('turn-renderer.js'));

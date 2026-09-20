@@ -318,7 +318,8 @@ for (const page of ['reason.html', 'knowledge.html', 'picker.html', 'chatui.html
   assert(body.includes('href="/privacy"'), `${page} must link to the published privacy policy`);
 }
 for (const required of ['What we process', 'Anthropic', 'Google Cloud and Firebase', 'Why we process data',
-  'Storage and retention', 'Deletion', 'Customer spreadsheet rows are not included']) {
+  'Google API Limited Use and AI/ML', 'Limited Use requirements', 'Data protection', 'encrypted in transit',
+  'encrypted at rest', 'not used to train or improve shared models', 'Storage and retention', 'Deletion']) {
   assert(privacy.includes(required), `the published privacy policy must disclose: ${required}`);
 }
 assert(privacy.includes('toward operating this assistant layer locally'),

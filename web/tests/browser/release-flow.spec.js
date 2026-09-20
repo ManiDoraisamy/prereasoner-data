@@ -145,6 +145,7 @@ const firebaseAuth=`
   export function getAuth(){return {get currentUser(){return window.__uid?currentUser:null},authStateReady:async()=>{}}}
   export class GoogleAuthProvider { addScope(){} }
   export async function signInWithRedirect(){}
+  export async function signInAnonymously(){window.__uid='anonymous-test-user';return {user:currentUser}}
   export async function getRedirectResult(){return null}
   export async function getIdToken(){return 'browser-token'}
 `;

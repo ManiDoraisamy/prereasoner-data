@@ -34,8 +34,38 @@ generated SQL, query results, and reasoning traces. Depending on deployment conf
   full exception messages are not logged by the serving or orchestrator request paths.
 
 Firebase identity is verified server-side. Client-supplied user IDs do not select storage
-ownership. Google Sheets imports use the narrow `drive.file` scope and read only a file the user
-selects.
+ownership. The Marketplace add-on uses `spreadsheets.currentonly` and reads only the spreadsheet in
+which it is invoked. The separate web picker uses the narrow `drive.file` scope and reads only a
+file the user selects.
+
+## Google API Limited Use And AI/ML
+
+The reference service's use of information received from Google Workspace APIs adheres to the
+Google User Data and Developer Policy, including its Limited Use requirements. Raw, aggregated,
+anonymized, and derived Google user data is used only for the visible user-facing features the user
+requests and the security and support needed to operate them. It is not used, transferred, or sold
+to create, train, or improve generalized or non-personalized AI or ML models. External model
+providers receive request data only to produce the requested feature output; the operator must not
+authorize provider or third-party model training on that data.
+
+## Data Protection
+
+The production reference deployment protects user data through the following controls:
+
+- HTTPS/TLS protects browser, Apps Script, service, and provider traffic in transit. Google Cloud's
+  managed encryption controls protect application data stored in Cloud SQL and Firebase at rest.
+- Short-lived Firebase identity tokens are verified server-side. Per-conversation ownership checks
+  and RTDB rules prevent one user from reading another user's stored data.
+- Cloud SQL accepts runtime access through the IAM-authenticated connector with no authorized
+  public networks. Dedicated service accounts and a non-superuser serving role enforce least
+  privilege.
+- Credentials and provider keys are stored in Secret Manager, never in browser code or application
+  logs.
+- Request, row, rate, and storage limits bound exposure. Production logs exclude raw request bodies,
+  questions, conversation history, generated SQL, credentials, spreadsheet rows, source values,
+  and full exception messages.
+- Human access to user content is prohibited except with explicit user permission for support, for
+  a necessary security or abuse investigation, or to comply with law.
 
 ## External LLM Processing
 

@@ -34,7 +34,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 <header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: September 14, 2026</div>
+  <div class="updated">Last updated: September 20, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -42,7 +42,9 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>What we process</h2>
   <ul>
-    <li>Files and Google Sheets you choose, including table names, columns, and cell values.</li>
+    <li>Files and Google Sheets you choose. In the Sheets add-on, this is limited to the visible,
+    non-empty tabs in the current spreadsheet when you submit a question, including table names,
+    columns, and cell values.</li>
     <li>Your questions, conversation history, generated SQL, results, and reasoning traces.</li>
     <li>Account and session identifiers supplied through Google and Firebase Authentication.</li>
     <li>For the Google Sheets add-on, the document ID needed to reopen the conversation associated
@@ -83,12 +85,46 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   the service, and compliance with legal obligations. We do not treat a protocol field or a popup
   click as blanket permission for unrelated uses.</p>
 
+  <h2>Google API Limited Use and AI/ML</h2>
+  <div class="important"><p><strong>Limited Use compliance.</strong> Prereasoner's use of information
+  received from Google Workspace APIs adheres to the
+  <a href="https://developers.google.com/workspace/workspace-api-user-data-developer-policy" rel="noopener">Google
+  User Data and Developer Policy</a>, including its Limited Use requirements.</p></div>
+
+  <p>We use Google user data only to provide the user-facing spreadsheet analysis, saved
+  conversations, and related security and support functions described on this page. We do not use,
+  transfer, or sell raw, aggregated, anonymized, or derived Google user data to create, train, or
+  improve generalized or non-personalized artificial-intelligence or machine-learning models. Data
+  sent to a model provider is used only to process the user's requested feature; it is not sent or
+  authorized for provider or third-party model training.</p>
+
   <h2>Sharing and international processing</h2>
   <p>We do not sell customer spreadsheet data or use it for targeted advertising. We share data with
   the providers above only to operate the service, and may disclose information when required by law
   or needed to protect the service and its users. Those providers can process data in the United
   States and other locations where they operate. We use the applicable contractual safeguards when
   data-protection law requires them.</p>
+
+  <h2>Data protection</h2>
+  <p>Prereasoner uses administrative, technical, and organizational safeguards designed to protect
+  Google user data against unauthorized access, use, alteration, disclosure, loss, or destruction:</p>
+  <ul>
+    <li>Data is encrypted in transit using HTTPS/TLS. Application data stored in Google Cloud SQL
+    and Firebase is encrypted at rest by Google Cloud's managed encryption controls.</li>
+    <li>Every application request requires a short-lived, server-verified Firebase identity token.
+    Server-side ownership checks isolate each user's conversations, and Firebase rules limit
+    reasoning-trace reads to the authenticated owner.</li>
+    <li>Cloud SQL is reached through an IAM-authenticated connector rather than an open database
+    network. Runtime services use dedicated, least-privilege service accounts and a non-superuser
+    database role.</li>
+    <li>Database credentials and provider keys are stored in Google Secret Manager and are not
+    embedded in client code or operational logs.</li>
+    <li>Request-size, row, rate, and storage limits reduce abuse and unnecessary data exposure.
+    Production logs exclude spreadsheet rows, questions, conversation history, generated SQL,
+    credentials, request bodies, and full error messages.</li>
+    <li>Human access to user content is prohibited except with the user's explicit permission for
+    support, when necessary to investigate abuse or a security incident, or when required by law.</li>
+  </ul>
 
   <h2>Storage and retention</h2>
   <p>Uploaded tables are stored in a conversation-scoped PostgreSQL schema. Conversation state and
@@ -111,9 +147,10 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
   <a href="mailto:mani.doraisamy@gmail.com">mani.doraisamy@gmail.com</a>.</p>
 
   <h2>Training and public data</h2>
-  <p>Customer spreadsheet rows are not included in Prereasoner's released training corpora. Public
-  reference facts come from documented sources such as Wikidata and publisher datasets, under their
-  respective terms.</p>
+  <p>Customer spreadsheet rows and data derived from them are not included in Prereasoner's
+  training corpora and are not used to train or improve shared models. The frozen encoder used by
+  the service is not updated from customer data. Public reference facts come from documented sources
+  such as Wikidata and publisher datasets, under their respective terms.</p>
 
   <h2>Your choices and rights</h2>
   <p>You can delete conversations in the product and request access, correction, export, restriction,
