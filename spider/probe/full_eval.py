@@ -390,21 +390,31 @@ def ast_predict(
 
 
 def merge_proposals(candidates, proposals):
-    """Append novel proposals to the pool; return (pool, beam_best_novel, its_index).
+    """Merge proposals into the pool; return (pool, beam_best_novel, its_index).
 
-    Proposals arrive beam-best first; the first NOVEL one is the policy's selection target.
-    Duplicates of pooled SQL are dropped (their endorsement value is future arbitration
-    work). Note the resulting pool is `max_candidates + K proposals`, not capped at
-    max_candidates — results are labeled accordingly."""
-    pooled = {candidate.sql for candidate in candidates}
+    Proposals arrive beam-best first; the first NOVEL one is the proposer_first policy's
+    selection target. A proposal duplicating pooled SQL is retained as an ENDORSEMENT:
+    the pooled candidate gains the proposer's evidence and likelihood features (two
+    independent derivations converging is arbitration signal, not noise). The resulting
+    pool is `max_candidates + K novel proposals`; results are labeled accordingly."""
+    from dataclasses import replace
+
     merged = list(candidates)
+    position = {candidate.sql: index for index, candidate in enumerate(merged)}
     novel_proposal, novel_index = None, None
     for proposal in proposals:
-        if proposal.sql in pooled:
+        existing_index = position.get(proposal.sql)
+        if existing_index is not None:
+            existing = merged[existing_index]
+            merged[existing_index] = replace(
+                existing,
+                evidence=existing.evidence + ("proposer:endorsed",) + proposal.evidence,
+                features=existing.features + proposal.features,
+            )
             continue
         if novel_proposal is None:
             novel_proposal, novel_index = proposal, len(merged)
-        pooled.add(proposal.sql)
+        position[proposal.sql] = len(merged)
         merged.append(proposal)
     return merged, novel_proposal, novel_index
 

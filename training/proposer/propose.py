@@ -60,15 +60,17 @@ class Proposer:
         prompt = schema_prompt(tables, question, values)
         inputs = self.tokenizer(prompt, return_tensors="pt")
         generate_args = dict(max_new_tokens=96, do_sample=False,
-                             pad_token_id=self.tokenizer.eos_token_id)
+                             pad_token_id=self.tokenizer.eos_token_id,
+                             output_scores=True, return_dict_in_generate=True)
         if beams > 1:
             generate_args.update(num_beams=beams, num_return_sequences=beams)
         with torch.no_grad():
             output = self.model.generate(**inputs, **generate_args)
+        prompt_length = inputs.input_ids.shape[1]
         proposals, seen = [], set()
-        for sequence_index, sequence in enumerate(output):
-            text = self.tokenizer.decode(sequence[inputs.input_ids.shape[1]:],
-                                         skip_special_tokens=True).strip()
+        for sequence_index, sequence in enumerate(output.sequences):
+            generated = sequence[prompt_length:]
+            text = self.tokenizer.decode(generated, skip_special_tokens=True).strip()
             sql = text.splitlines()[0].strip() if text else ""
             if not sql:
                 continue
@@ -81,10 +83,51 @@ class Proposer:
             if rendered in seen:
                 continue
             seen.add(rendered)
-            # beam order preserved; later beams sit deeper below the deterministic order
+            tokens = int((generated != self.tokenizer.eos_token_id).sum())
+            if beams > 1:
+                logprob = float(output.sequences_scores[sequence_index]) * max(tokens, 1)
+            else:
+                logprob = 0.0
+                for position, step_scores in enumerate(output.scores):
+                    if position >= len(generated):
+                        break
+                    token = int(generated[position])
+                    if token == self.tokenizer.eos_token_id and position >= tokens:
+                        break
+                    logprob += float(torch.log_softmax(step_scores[0], dim=-1)[token])
+            # Likelihood is a SEPARATE feature: its scale and meaning differ from the
+            # hand-ranked generation score, which stays the penalized pool prior.
             proposals.append(ScoredQuery(
                 query, rendered,
                 min_score - _PROPOSER_PENALTY - 0.1 * sequence_index,
                 (f"proposer:beam{sequence_index}" if beams > 1 else "proposer:greedy",),
+                (("proposer:logprob", logprob), ("proposer:tokens", float(max(tokens, 1)))),
             ))
         return proposals
+
+    def score_sqls(self, tables, question, sqls):
+        """Teacher-forced log-likelihood of each SQL under the SAME prompt the proposer
+        decodes from — so enumerator candidates and generated proposals are comparable.
+        Returns [(logprob, token_count)] aligned with `sqls`."""
+        import torch
+
+        values = (sample_column_values(tables)
+                  if getattr(self, "include_values", False) else None)
+        prompt = schema_prompt(tables, question, values)
+        prompt_ids = self.tokenizer(prompt, add_special_tokens=False).input_ids
+        out = []
+        with torch.no_grad():
+            for sql in sqls:
+                target_ids = self.tokenizer(sql, add_special_tokens=False).input_ids
+                if not target_ids:
+                    out.append((float("-inf"), 0))
+                    continue
+                input_ids = torch.tensor([prompt_ids + target_ids])
+                logits = self.model(input_ids=input_ids).logits[0]
+                logprobs = torch.log_softmax(
+                    logits[len(prompt_ids) - 1:len(prompt_ids) - 1 + len(target_ids)],
+                    dim=-1,
+                )
+                chosen = logprobs[range(len(target_ids)), target_ids]
+                out.append((float(chosen.sum()), len(target_ids)))
+        return out

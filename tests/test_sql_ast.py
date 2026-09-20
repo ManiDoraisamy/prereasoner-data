@@ -666,24 +666,28 @@ def test_gold_import_round_trip_executes_and_matches():
 
 def test_proposal_merge_keeps_beam_best_novel_and_appends_all():
     """merge_proposals must select the FIRST novel proposal (beam-best), record its true
-    index, drop duplicates of pooled SQL, and never cap appended proposals silently."""
+    index, keep duplicates as endorsements, and never cap appended proposals silently."""
     from engine.sql_ast import ColumnRef, SelectItem, SelectQuery
     from spider.probe.full_eval import merge_proposals
 
-    def candidate(sql, score=0.0):
+    def candidate(sql, evidence=(), features=()):
         query = SelectQuery(select=(SelectItem(ColumnRef("t", "a")),), from_table="t")
-        return ScoredQuery(query, sql, score, ())
+        return ScoredQuery(query, sql, 0.0, tuple(evidence), tuple(features))
 
     pool = [candidate("SELECT A"), candidate("SELECT B")]
-    proposals = [candidate("SELECT B"),      # duplicate of pooled -> dropped
+    proposals = [candidate("SELECT B", ("proposer:greedy",), (("proposer:logprob", -1.5),)),
                  candidate("SELECT C"),      # first novel -> selection target
-                 candidate("SELECT C"),      # duplicate of earlier proposal -> dropped
+                 candidate("SELECT C"),      # duplicate of earlier proposal -> endorsement
                  candidate("SELECT D")]      # later beam -> appended after
     merged, novel, index = merge_proposals(pool, proposals)
     assert [c.sql for c in merged] == ["SELECT A", "SELECT B", "SELECT C", "SELECT D"]
     assert novel.sql == "SELECT C" and index == 2
+    endorsed = merged[1]
+    assert "proposer:endorsed" in endorsed.evidence
+    assert ("proposer:logprob", -1.5) in endorsed.features
     merged, novel, index = merge_proposals(pool, [candidate("SELECT B")])
     assert novel is None and index is None and len(merged) == 2
+    assert "proposer:endorsed" in merged[1].evidence
 
 
 def test_order_noun_does_not_request_sort_or_group():

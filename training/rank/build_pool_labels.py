@@ -41,8 +41,20 @@ def main():
     ap.add_argument("--config", default="whole_db", choices=["whole_db", "gold_tables"],
                     help="gold_tables labels distractor-free pools (train-gold table sets are "
                          "training data only) so the head is not brittle to pool distribution")
+    ap.add_argument("--proposer", default="",
+                    help="candidate proposer adapter dir — labels proposer-inclusive pools "
+                         "for arbitration training")
+    ap.add_argument("--proposer-beams", type=int, default=1)
+    ap.add_argument("--proposer-values", action="store_true")
+    ap.add_argument("--score-pool", action="store_true",
+                    help="teacher-force every pooled candidate's SQL under the proposer so "
+                         "enumerator candidates carry comparable likelihood features")
+    ap.add_argument("--dbs-filter", default="",
+                    help="comma-separated db_ids to label (pilot subsets)")
     ap.add_argument("--timeout", type=float, default=30.0, help="soft per-example budget")
     args = ap.parse_args()
+    if args.score_pool and not args.proposer:
+        ap.error("--score-pool requires --proposer")
     if args.split.startswith("dev"):
         ap.error("dev split is evaluation-only; labels come from the train split")
 
@@ -67,24 +79,39 @@ def main():
             "split": args.split, "cap": args.cap,
             "max_candidates": args.max_candidates,
             "selection": "pool_oracle", "config": args.config,
+            "proposer": args.proposer or None,
+            "proposer_beams": args.proposer_beams,
+            "proposer_values": args.proposer_values,
+            "score_pool": args.score_pool,
             **_git_provenance(ROOT),
         }}) + "\n")
 
     print("loading encoder (Qwen LoRA + relational readout, CPU)...", flush=True)
     from engine.encoder_overlay import EncoderQuery
     enc = EncoderQuery()
+    proposer = None
+    if args.proposer:
+        from training.proposer.propose import Proposer
+        proposer = Proposer.load(args.proposer)
+        proposer.beams = max(1, args.proposer_beams)
+        proposer.include_values = args.proposer_values
+        print(f"proposer: {args.proposer} (beams={proposer.beams}, "
+              f"values={proposer.include_values}, score_pool={args.score_pool})", flush=True)
     print(f"labeling {len(examples)} train examples (skipping {len(done)})", flush=True)
 
     db_cache: dict[str, tuple] = {}
     schema_cache: dict = {}
     stats = collections.Counter()
     new = 0
+    dbs_filter = frozenset(filter(None, args.dbs_filter.split(","))) or None
     for i, example in enumerate(examples):
         if i in done:
             continue
         if args.limit and new >= args.limit:
             break
         db_id = example["db_id"]
+        if dbs_filter is not None and db_id not in dbs_filter:
+            continue
         db_path = os.path.join(args.dbs, db_id + ".sqlite")
         if not os.path.exists(db_path):
             stats["missing_db"] += 1
@@ -107,6 +134,7 @@ def main():
             lambda t=tabs, q=example["question"], f=fks.get(db_id): ast_predict(
                 enc, t, q, f, schema_cache,
                 selection="pool_oracle", max_candidates=args.max_candidates,
+                proposer=proposer,
             ),
             args.timeout,
         )
@@ -132,6 +160,17 @@ def main():
                 else:
                     labeled["error"] = entry["error"]
                 record["candidates"].append(labeled)
+            if args.score_pool and record["candidates"]:
+                # Enumerator candidates get the SAME model likelihood proposals carry, so
+                # a likelihood selector can compare every pool member consistently.
+                scores = proposer.score_sqls(
+                    tabs, example["question"],
+                    [labeled["sql"] for labeled in record["candidates"]],
+                )
+                for labeled, (logprob, tokens) in zip(record["candidates"], scores):
+                    labeled["features"] = {**labeled["features"],
+                                           "proposer:scored_logprob": logprob,
+                                           "proposer:scored_tokens": float(tokens)}
             stats["pool_strict_hit"] += any(c.get("strict") for c in record["candidates"])
             stats["labeled"] += 1
         out.write(json.dumps(record) + "\n")

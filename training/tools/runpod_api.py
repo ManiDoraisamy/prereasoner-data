@@ -85,10 +85,11 @@ def ssh_endpoint(pod):
     return (ip, mappings.get("22")) if ip and mappings.get("22") else (None, None)
 
 
-def _record(pid: str, max_minutes: int) -> None:
+def _record(pid: str, max_minutes: int, token: str = "") -> None:
     STATE.parent.mkdir(parents=True, exist_ok=True)
     STATE.write_text(json.dumps({
         "pod_id": pid, "created_at": int(time.time()), "max_minutes": max_minutes,
+        "token": token,
     }, sort_keys=True) + "\n", encoding="utf-8")
 
 
@@ -108,6 +109,16 @@ def create(max_minutes: int) -> str:
     # provider-supplied, pod-scoped CLI before /start.sh instead. Current images use
     # ``pod delete``; the older spelling remains only as a compatibility fallback.
     # The caller's finally block is a second, independent deletion path.
+    # Ownership token recorded BEFORE the POST: if the create response is lost, reconcile()
+    # can identify OUR pod by name without ever touching other machines' leases.
+    import uuid
+
+    token = uuid.uuid4().hex[:12]
+    STATE.parent.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps({
+        "pending_token": token, "created_at": int(time.time()),
+        "max_minutes": max_minutes,
+    }, sort_keys=True) + "\n", encoding="utf-8")
     guard_seconds = max_minutes * 60
     delete_self = (
         f"sleep {guard_seconds}; "
@@ -117,7 +128,7 @@ def create(max_minutes: int) -> str:
         '-H "Authorization: Bearer $RUNPOD_API_KEY"'
     )
     body = {
-        "name": "prereasoner-train", "imageName": IMAGE, "cloudType": "SECURE",
+        "name": f"prereasoner-train-{token}", "imageName": IMAGE, "cloudType": "SECURE",
         "gpuTypeIds": GPU_PRIORITY, "gpuCount": 1, "containerDiskInGb": 25,
         "volumeInGb": 0, "ports": ["22/tcp"],
         "allowedCudaVersions": ["12.8"],
@@ -134,7 +145,7 @@ def create(max_minutes: int) -> str:
     if status not in (200, 201) or not isinstance(response, dict) or not response.get("id"):
         raise RuntimeError(f"RunPod create failed: HTTP {status} {response}")
     pid = response["id"]
-    _record(pid, max_minutes)
+    _record(pid, max_minutes, token)
     print(f"created pod {pid}; lease limit {max_minutes} minutes", flush=True)
     return pid
 
@@ -191,22 +202,36 @@ def _run_transfer(command: list[str], remaining, attempts: int = 3) -> None:
 
 
 def reconcile() -> None:
-    """Terminate any prereasoner-train pod this machine does not have a lease record for.
+    """Terminate only pods THIS machine's lease record owns and lost track of.
 
-    Closes the orphan edge case where creation succeeds remotely but the POST response or
-    local state write is lost before run_lease learns the pod id."""
+    Two owned failure shapes: (a) creation succeeded remotely but the POST response or
+    state write was lost — identified by OUR pre-recorded ownership token in the pod
+    name; (b) a recorded pod outlived its lease deadline despite the watchdog and the
+    lifecycle cleanup. Pods created by other machines or concurrent leases are never
+    touched: a shared display prefix is not ownership evidence."""
+    try:
+        active = json.loads(STATE.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    deadline = active.get("created_at", 0) + active.get("max_minutes", 0) * 60 + 300
+    if active.get("pod_id"):
+        if time.time() > deadline:
+            print(f"reconcile: terminating our expired pod {active['pod_id']}",
+                  file=sys.stderr)
+            terminate(active["pod_id"])
+        return
+    token = active.get("pending_token")
+    if not token:
+        return
     status, response = rest("GET", "/pods")
     if status != 200 or not isinstance(response, list):
         return
-    tracked = set()
-    try:
-        tracked = {json.loads(STATE.read_text())["pod_id"]}
-    except Exception:  # noqa: BLE001 - no local lease record
-        pass
     for pod in response:
-        if pod.get("name") == "prereasoner-train" and pod.get("id") not in tracked:
-            print(f"reconcile: terminating untracked pod {pod['id']}", file=sys.stderr)
+        if pod.get("name") == f"prereasoner-train-{token}":
+            print(f"reconcile: terminating our lost-creation pod {pod['id']}",
+                  file=sys.stderr)
             terminate(pod["id"])
+    STATE.unlink(missing_ok=True)
 
 
 def run_lease(max_minutes: int, command: list[str], keep: bool = False,
