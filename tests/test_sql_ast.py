@@ -641,6 +641,51 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
     assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
 
 
+def test_gold_import_round_trip_executes_and_matches():
+    """The proposer-side importer must map alias-heavy, double-quoted-literal gold SQL into
+    the typed AST such that the engine's own rendering reproduces the gold denotation."""
+    from training.proposer.import_gold import import_gold_sql
+
+    city = {"name": "city", "columns": ["city_id", "cname", "status", "population"],
+            "rows": [[1, "Aa", "Village", 100], [2, "Bb", "City", 5000], [3, "Cc", "Town", 900]]}
+    mayor = {"name": "mayor", "columns": ["mayor_id", "city_id", "mname"],
+             "rows": [[7, 2, "Kim"], [8, 3, "Lee"]]}
+    fks = [{"from_table": "mayor", "from_col": "city_id", "to_table": "city", "to_col": "city_id"}]
+    graph = SchemaGraph.from_tables([city, mayor], fks)
+    for gold in (
+        'SELECT count(*) FROM city WHERE Status != "Village"',
+        "SELECT T2.mname FROM city AS T1 JOIN mayor AS T2 ON T1.city_id = T2.city_id "
+        "WHERE T1.population > 800 ORDER BY T1.population DESC LIMIT 1",
+        "SELECT status, sum(population) FROM city GROUP BY status HAVING sum(population) > 500",
+    ):
+        query = import_gold_sql(gold, graph)
+        from engine.sql_ast import render_query, validate_query
+        validate_query(query)
+        assert execute([city, mayor], render_query(query)) == execute([city, mayor], gold), gold
+
+
+def test_proposal_merge_keeps_beam_best_novel_and_appends_all():
+    """merge_proposals must select the FIRST novel proposal (beam-best), record its true
+    index, drop duplicates of pooled SQL, and never cap appended proposals silently."""
+    from engine.sql_ast import ColumnRef, SelectItem, SelectQuery
+    from spider.probe.full_eval import merge_proposals
+
+    def candidate(sql, score=0.0):
+        query = SelectQuery(select=(SelectItem(ColumnRef("t", "a")),), from_table="t")
+        return ScoredQuery(query, sql, score, ())
+
+    pool = [candidate("SELECT A"), candidate("SELECT B")]
+    proposals = [candidate("SELECT B"),      # duplicate of pooled -> dropped
+                 candidate("SELECT C"),      # first novel -> selection target
+                 candidate("SELECT C"),      # duplicate of earlier proposal -> dropped
+                 candidate("SELECT D")]      # later beam -> appended after
+    merged, novel, index = merge_proposals(pool, proposals)
+    assert [c.sql for c in merged] == ["SELECT A", "SELECT B", "SELECT C", "SELECT D"]
+    assert novel.sql == "SELECT C" and index == 2
+    merged, novel, index = merge_proposals(pool, [candidate("SELECT B")])
+    assert novel is None and index is None and len(merged) == 2
+
+
 def test_order_noun_does_not_request_sort_or_group():
     tables = [{"name": "purchase_orders_over_5000",
                "columns": ["Purchase order", "Supplier name", "Net PO Value"],
@@ -2034,6 +2079,8 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
 TESTS = [
     test_mentioned_table_join_keeps_minimal_variant_in_pool,
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
+    test_gold_import_round_trip_executes_and_matches,
+    test_proposal_merge_keeps_beam_best_novel_and_appends_all,
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
     test_typed_ast_rejects_mismatched_literal_payloads,

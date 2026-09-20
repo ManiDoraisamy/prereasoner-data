@@ -202,6 +202,21 @@ greedy decode, the one importer, the one validator, generation-penalized pools. 
 latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
 step-1 measurement requires a quantized runtime). Nothing is promoted.
 
+## Evaluation-protocol caveats (read before quoting numbers)
+
+- **Spider dev has served as the program's tuning set.** No training ever saw dev, but
+  roughly fifteen branch decisions (adapters, beam counts, selection policies, gates) were
+  made on dev aggregates, so dev numbers are engineering scores with selection bias, not
+  unbiased generalization estimates. Selector/arbiter development happens on train-side
+  held-out databases only.
+- **Final holdout reservation:** the official Spider TEST split is designated as the one
+  final evaluation set. It is deliberately NOT downloaded into this repository until a
+  frozen complete configuration is ready for a single final run; nothing can be tuned on
+  data that is not present.
+- Pool sizes with an injected proposer are `max_candidates + K novel proposals`
+  (proposals append after the deterministic cap); "@25" labels refer to the deterministic
+  pool budget.
+
 ## Reproduce
 
 ```bash

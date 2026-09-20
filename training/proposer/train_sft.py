@@ -18,6 +18,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
+from training.proposer import BASE_MODEL_ID, BASE_MODEL_REVISION
 from training.proposer.serialize import schema_prompt
 from training.rank.train_head import is_validation
 
@@ -36,7 +37,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", required=True)
     ap.add_argument("--out-dir", required=True)
-    ap.add_argument("--base", default="Qwen/Qwen2.5-0.5B")
+    ap.add_argument("--base", default=BASE_MODEL_ID)
+    ap.add_argument("--base-revision", default=BASE_MODEL_REVISION)
     ap.add_argument("--tables", default=os.path.join(ROOT, "spider", "data", "tables.json"))
     ap.add_argument("--max-steps", type=int, default=1200)
     ap.add_argument("--batch", type=int, default=2)
@@ -66,8 +68,9 @@ def main():
     print(f"targets: {len(train_rows)} train / {len(val_rows)} val "
           f"({len({r['db_id'] for r in val_rows})} val dbs)")
 
-    tokenizer = AutoTokenizer.from_pretrained(args.base)
-    model = AutoModelForCausalLM.from_pretrained(args.base, torch_dtype=dtype).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(args.base, revision=args.base_revision)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.base, revision=args.base_revision, torch_dtype=dtype).to(device)
     model = get_peft_model(model, LoraConfig(
         r=16, lora_alpha=32, lora_dropout=0.0,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -99,9 +102,14 @@ def main():
     step = accumulated = 0
     started = time.perf_counter()
     while step < args.max_steps:
-        for index in torch.randperm(len(train_rows), generator=generator).tolist():
-            input_ids, attention, labels = batch_tensors(
-                train_rows[index:index + args.batch] or [train_rows[index]])
+        # Shuffle example indexes, then batch successive chunks of the permutation: every
+        # example appears exactly once per epoch. (The previous contiguous-slice-at-shuffled-
+        # start sampling over-weighted interior examples and coupled weighting to batch size;
+        # adapters d1/d2/d4 were trained under it and stay frozen as recorded baselines.)
+        permutation = torch.randperm(len(train_rows), generator=generator).tolist()
+        for start in range(0, len(permutation), args.batch):
+            chunk = [train_rows[index] for index in permutation[start:start + args.batch]]
+            input_ids, attention, labels = batch_tensors(chunk)
             loss = model(input_ids=input_ids.to(device), attention_mask=attention.to(device),
                          labels=labels.to(device)).loss
             (loss / args.accum).backward()
@@ -131,7 +139,8 @@ def main():
                                     skip_special_tokens=True).strip()
             exact += text.splitlines()[0].strip() == row["sql"] if text else False
     metrics = {
-        "seed": SEED, "base": args.base, "max_steps": args.max_steps,
+        "seed": SEED, "base": args.base, "base_revision": args.base_revision,
+        "max_steps": args.max_steps,
         "lr": args.lr, "batch": args.batch, "accum": args.accum,
         "train_targets": len(train_rows), "val_targets": len(val_rows),
         "val_decode_sample": len(sample), "val_exact_match": exact,

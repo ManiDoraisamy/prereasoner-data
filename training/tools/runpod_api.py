@@ -190,11 +190,31 @@ def _run_transfer(command: list[str], remaining, attempts: int = 3) -> None:
     raise last_error or RuntimeError("transfer failed without an error")
 
 
+def reconcile() -> None:
+    """Terminate any prereasoner-train pod this machine does not have a lease record for.
+
+    Closes the orphan edge case where creation succeeds remotely but the POST response or
+    local state write is lost before run_lease learns the pod id."""
+    status, response = rest("GET", "/pods")
+    if status != 200 or not isinstance(response, list):
+        return
+    tracked = set()
+    try:
+        tracked = {json.loads(STATE.read_text())["pod_id"]}
+    except Exception:  # noqa: BLE001 - no local lease record
+        pass
+    for pod in response:
+        if pod.get("name") == "prereasoner-train" and pod.get("id") not in tracked:
+            print(f"reconcile: terminating untracked pod {pod['id']}", file=sys.stderr)
+            terminate(pod["id"])
+
+
 def run_lease(max_minutes: int, command: list[str], keep: bool = False,
               uploads: tuple[tuple[str, str], ...] = (),
               downloads: tuple[tuple[str, str], ...] = ()) -> str:
     if not 1 <= max_minutes <= 360:
         raise ValueError("--max-minutes must be between 1 and 360")
+    reconcile()
     pid = create(max_minutes)
     try:
         ip, port = poll(pid)

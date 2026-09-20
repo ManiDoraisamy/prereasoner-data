@@ -16,6 +16,7 @@ if ROOT not in sys.path:
 
 from engine.sql_ast import render_query, validate_query
 from engine.sql_candidate import ScoredQuery
+from training.proposer import BASE_MODEL_ID, BASE_MODEL_REVISION
 from training.proposer.import_gold import Unsupported, import_gold_sql
 from training.proposer.serialize import sample_column_values, schema_prompt
 
@@ -32,13 +33,14 @@ class Proposer:
         self.adapter_dir = adapter_dir
 
     @classmethod
-    def load(cls, adapter_dir, base_id="Qwen/Qwen2.5-0.5B"):
+    def load(cls, adapter_dir, base_id=BASE_MODEL_ID, revision=BASE_MODEL_REVISION):
         import torch
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        tokenizer = AutoTokenizer.from_pretrained(base_id)
-        base = AutoModelForCausalLM.from_pretrained(base_id, torch_dtype=torch.float32)
+        tokenizer = AutoTokenizer.from_pretrained(base_id, revision=revision)
+        base = AutoModelForCausalLM.from_pretrained(base_id, revision=revision,
+                                                    torch_dtype=torch.float32)
         model = PeftModel.from_pretrained(base, adapter_dir)
         model.eval()
         return cls(model, tokenizer, base_id, adapter_dir)

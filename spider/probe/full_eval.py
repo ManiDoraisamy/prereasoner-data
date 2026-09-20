@@ -197,20 +197,16 @@ def ast_predict(
     norm, fks, sch, tmap = cached
     candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
                                 use_semantic_signals=use_signals, rank_model=rank_model)
-    novel_proposal = None
+    novel_proposal, novel_index = None, None
     if proposer is not None:
         from engine.sql_schema import SchemaGraph as _ProposalGraph
 
-        pooled = {candidate.sql for candidate in candidates}
         floor = min((candidate.score for candidate in candidates), default=0.0)
-        for proposal in proposer.propose(
+        proposals = proposer.propose(
             norm, question, _ProposalGraph.from_planner(sch, fks), min_score=floor,
             beams=getattr(proposer, "beams", 1),
-        ):
-            if proposal.sql not in pooled:
-                if novel_proposal is None:  # proposals arrive beam-best first
-                    novel_proposal = proposal
-                candidates = list(candidates) + [proposal]
+        )
+        candidates, novel_proposal, novel_index = merge_proposals(candidates, proposals)
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
 
@@ -353,7 +349,7 @@ def ast_predict(
             "plan": list(candidate.evidence),
             "candidate_count": len(candidates),
             "executed_candidate_count": 1,
-            "selected_candidate_rank": (len(candidates) - 1 if selected_proposal else 0),
+            "selected_candidate_rank": (novel_index if selected_proposal else 0),
             "proposal_selected": selected_proposal,
             "candidate_score": round(candidate.score, 4),
             "rank_features": dict(candidate.features),
@@ -391,6 +387,26 @@ def ast_predict(
                 "rank_features": dict(candidate.features)}
     detail = errors[0] if errors else "no connected AST candidate"
     return {"ok": False, "error": detail, "stage": "ast_search", "path": "ast"}
+
+
+def merge_proposals(candidates, proposals):
+    """Append novel proposals to the pool; return (pool, beam_best_novel, its_index).
+
+    Proposals arrive beam-best first; the first NOVEL one is the policy's selection target.
+    Duplicates of pooled SQL are dropped (their endorsement value is future arbitration
+    work). Note the resulting pool is `max_candidates + K proposals`, not capped at
+    max_candidates — results are labeled accordingly."""
+    pooled = {candidate.sql for candidate in candidates}
+    merged = list(candidates)
+    novel_proposal, novel_index = None, None
+    for proposal in proposals:
+        if proposal.sql in pooled:
+            continue
+        if novel_proposal is None:
+            novel_proposal, novel_index = proposal, len(merged)
+        pooled.add(proposal.sql)
+        merged.append(proposal)
+    return merged, novel_proposal, novel_index
 
 
 def _score_pool_oracle(record, gold_rows):
@@ -626,6 +642,9 @@ def main():
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **({"rank_head": args.rank_head} if args.rank_head else {}),
+            **({f"proposer_code/{name}": os.path.join(ROOT, "training", "proposer", name)
+                for name in ("propose.py", "serialize.py", "import_gold.py", "__init__.py")}
+               if args.proposer else {}),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
             **{
                 f"engine/{name}": os.path.join(ROOT, "engine", *name.split("/"))
@@ -816,6 +835,12 @@ def main():
         "compose": not args.no_compose,
         "signals": not args.no_signals,
         "max_candidates": args.max_candidates,
+        "rank_head": args.rank_head or None,
+        "proposer": args.proposer or None,
+        "proposer_beams": args.proposer_beams,
+        "proposer_values": args.proposer_values,
+        "cap": args.cap,
+        "timeout": args.timeout,
         "artifacts": checkpoint_contract["artifacts"],
         "answered_pct": round(100 * tot["answered"] / N, 1),
         "error_pct": round(100 * tot["error"] / N, 1),
