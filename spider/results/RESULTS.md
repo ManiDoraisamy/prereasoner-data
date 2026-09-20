@@ -175,6 +175,18 @@ selected). String-exact undercounts equivalent SQL; execution measures decide. `
 the standing proposer candidate. Its pool ceiling is 751/1,034 (72.6%) vs `d1`'s 747 —
 pod-scale training bought precision, not coverage; coverage is the beam lever.
 
+Value-linked experiment `d4` (same targets/seed, prompts carry sampled column values via
+the shared serialization rule; pod-trained): the strongest adapter of the program —
+held-out string-exact 55/100 (vs `d2`'s 45), precision-when-selected 66.7% (vs 61.7%),
+and `gold_tables` policy **667/1,034 (64.5%)** (vs 619 with `d3` beams, 437 deterministic).
+whole_db policy is 585 — a wash against the 587 gate — because better calibration
+REDUCES novel proposals (508 selected vs 567) and the override-on-novel policy cannot
+express precision gains; greedy pool 745 (vs `d2`'s 751). Three independent measurements
+(the 825 beam ceiling, the failed agreement counterfactuals, and `d4`'s
+precision-without-yield) locate the one remaining bottleneck at SELECTION over
+proposer-inclusive pools; standing serving config remains `d2`-greedy at 587 pending a
+learned arbiter.
+
 Beam experiment `d3` (same `d2` weights, 4 deterministic beams): pool ceiling
 **825/1,034 (79.8%)**, but beam-best selection over-fires (812 selections at 56.9%
 precision) and scores 576 — rejected against the 587 gate. Offline counterfactuals over
