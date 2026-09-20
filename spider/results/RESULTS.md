@@ -173,7 +173,19 @@ batch 16 via `training/tools/runpod_api.py lease`): held-out string-exact was fl
 **587/1,034 (56.8%)** (tag `policy_d2`; 567 proposals selected, 61.7% strict when
 selected). String-exact undercounts equivalent SQL; execution measures decide. `d2` is
 the standing proposer candidate. Its pool ceiling is 751/1,034 (72.6%) vs `d1`'s 747 —
-pod-scale training bought precision, not coverage; coverage is the beam lever. Every step stays deterministic and auditable: frozen
+pod-scale training bought precision, not coverage; coverage is the beam lever.
+
+Beam experiment `d3` (same `d2` weights, 4 deterministic beams): pool ceiling
+**825/1,034 (79.8%)**, but beam-best selection over-fires (812 selections at 56.9%
+precision) and scores 576 — rejected against the 587 gate. Offline counterfactuals over
+the recorded denotation hashes (serving-available signals only): first-novel 576 —
+matching the serving run exactly — agreement-gated variants 428–569; none clears the
++10 confirmation threshold. Finding: beams add ~23 points of pooled-but-unselectable
+headroom (825 vs 587); converting it requires learned arbitration over
+proposer-inclusive pools, not a code policy. `gold_tables` sanity with the proposer
+policy: **619 (59.9%) vs the 437 deterministic baseline (+182)** — the proposer
+transfers across pool distributions because it proposes from question+schema and never
+scores pools; the feature heads' failure mode does not apply. Every step stays deterministic and auditable: frozen
 greedy decode, the one importer, the one validator, generation-penalized pools. Serving
 latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
 step-1 measurement requires a quantized runtime). Nothing is promoted.
