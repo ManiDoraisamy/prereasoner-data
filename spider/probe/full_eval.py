@@ -534,6 +534,8 @@ def main():
                          "Phase D experiment, not a serving mode")
     ap.add_argument("--proposer-beams", type=int, default=1,
                     help="deterministic beam count for proposer decoding (1 = greedy)")
+    ap.add_argument("--proposer-values", action="store_true",
+                    help="value-linked prompts — only for adapters TRAINED with them (d4+)")
     # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
@@ -587,6 +589,7 @@ def main():
         "rank_head": args.rank_head or None,
         "proposer": args.proposer or None,
         "proposer_beams": args.proposer_beams,
+        "proposer_values": args.proposer_values,
         "compose": not args.no_compose,
         "signals": not args.no_signals,
         "cap": args.cap,
@@ -665,8 +668,9 @@ def main():
         from training.proposer.propose import Proposer
         proposer = Proposer.load(args.proposer)
         proposer.beams = max(1, args.proposer_beams)
-        print(f"injected candidate proposer: {args.proposer} (beams={proposer.beams})",
-              flush=True)
+        proposer.include_values = args.proposer_values
+        print(f"injected candidate proposer: {args.proposer} "
+              f"(beams={proposer.beams}, values={proposer.include_values})", flush=True)
     print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
 
     db_cache = {}

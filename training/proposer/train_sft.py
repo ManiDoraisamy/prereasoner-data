@@ -44,6 +44,8 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--seq-len", type=int, default=384)
     ap.add_argument("--val-decode", type=int, default=50)
+    ap.add_argument("--values-file", default="",
+                    help="sampled-values sidecar (build_values.py) — value-linked prompts (d4+)")
     args = ap.parse_args()
 
     import torch
@@ -55,6 +57,8 @@ def main():
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     print(f"device: {device} ({dtype})")
     meta = {table["db_id"]: table for table in json.load(open(args.tables, encoding="utf-8"))}
+    db_values = (json.load(open(args.values_file, encoding="utf-8"))
+                 if args.values_file else {})
     rows = [json.loads(line) for line in open(args.targets, encoding="utf-8")]
     rows = [row for row in rows if "idx" in row]
     train_rows = [row for row in rows if not is_validation(row["db_id"])]
@@ -71,7 +75,8 @@ def main():
     model.train()
 
     def encode(row):
-        prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"])
+        prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"],
+                               db_values.get(row["db_id"]))
         prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
         target_ids = tokenizer(row["sql"] + tokenizer.eos_token,
                                add_special_tokens=False).input_ids
@@ -117,7 +122,8 @@ def main():
     sample = val_rows[:args.val_decode]
     with torch.no_grad():
         for row in sample:
-            prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"])
+            prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"],
+                                   db_values.get(row["db_id"]))
             inputs = tokenizer(prompt, return_tensors="pt").to(device)
             output = model.generate(**inputs, max_new_tokens=80, do_sample=False,
                                     pad_token_id=tokenizer.eos_token_id)
@@ -129,6 +135,7 @@ def main():
         "lr": args.lr, "batch": args.batch, "accum": args.accum,
         "train_targets": len(train_rows), "val_targets": len(val_rows),
         "val_decode_sample": len(sample), "val_exact_match": exact,
+        "values_file": bool(args.values_file),
     }
     os.makedirs(args.out_dir, exist_ok=True)
     model.save_pretrained(args.out_dir)

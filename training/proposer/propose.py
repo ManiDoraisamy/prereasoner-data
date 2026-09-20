@@ -17,7 +17,7 @@ if ROOT not in sys.path:
 from engine.sql_ast import render_query, validate_query
 from engine.sql_candidate import ScoredQuery
 from training.proposer.import_gold import Unsupported, import_gold_sql
-from training.proposer.serialize import schema_prompt
+from training.proposer.serialize import sample_column_values, schema_prompt
 
 # Same scale as the parsimony expander: pooled for selection, never outranking the
 # deterministic order on the prior alone.
@@ -51,7 +51,11 @@ class Proposer:
         first list element is always the beam-best proposal."""
         import torch
 
-        prompt = schema_prompt(tables, question)
+        # include_values must match the prompt format the adapter was TRAINED with
+        # (bare = d1/d2, value-linked = d4+); the evaluator flag sets it per run.
+        values = (sample_column_values(tables)
+                  if getattr(self, "include_values", False) else None)
+        prompt = schema_prompt(tables, question, values)
         inputs = self.tokenizer(prompt, return_tensors="pt")
         generate_args = dict(max_new_tokens=96, do_sample=False,
                              pad_token_id=self.tokenizer.eos_token_id)
