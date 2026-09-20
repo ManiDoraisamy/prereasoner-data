@@ -173,7 +173,10 @@ batch 16 via `training/tools/runpod_api.py lease`): held-out string-exact was fl
 **587/1,034 (56.8%)** (tag `policy_d2`; 567 proposals selected, 61.7% strict when
 selected). String-exact undercounts equivalent SQL; execution measures decide. `d2` is
 the standing proposer candidate. Its pool ceiling is 751/1,034 (72.6%) vs `d1`'s 747 —
-pod-scale training bought precision, not coverage; coverage is the beam lever.
+pod-scale training bought precision, not coverage; coverage is the beam lever. The
+standing configuration's own regression pair is clean: `policy_d2_gold` (greedy) scores
+**656/1,034 (63.4%)** vs the 437 deterministic gold baseline — greedy beats beams on the
+oracle distribution too (656 vs 619).
 
 Value-linked experiment `d4` (same targets/seed, prompts carry sampled column values via
 the shared serialization rule; pod-trained): the strongest adapter of the program —
