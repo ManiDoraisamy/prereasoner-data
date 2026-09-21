@@ -163,10 +163,16 @@ def main():
             if args.score_pool and record["candidates"]:
                 # Enumerator candidates get the SAME model likelihood proposals carry, so
                 # a likelihood selector can compare every pool member consistently.
+                import time as _time
+
+                scoring_started = _time.perf_counter()
                 scores = proposer.score_sqls(
                     tabs, example["question"],
                     [labeled["sql"] for labeled in record["candidates"]],
                 )
+                # prediction_seconds excludes this pass; a likelihood selector's serving
+                # latency is prediction_seconds + scoring_seconds (+ selection/execution).
+                record["scoring_seconds"] = round(_time.perf_counter() - scoring_started, 3)
                 for labeled, (logprob, tokens) in zip(record["candidates"], scores):
                     labeled["features"] = {**labeled["features"],
                                            "proposer:scored_logprob": logprob,

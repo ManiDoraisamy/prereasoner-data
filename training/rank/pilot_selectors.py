@@ -1,12 +1,13 @@
 """Pilot selector replay over cached proposer-inclusive pools (Step 3 of the plan).
 
-Selectors use ONLY serving-available signals (order, scores, likelihoods, endorsements,
-execution success); strict labels score outcomes and fit S2 on FIT databases only.
-Reported per validation database against BOTH required baselines: the frozen d2
-proposer_first policy replay and the deterministic top-1, on identical pools.
+Selectors use ONLY serving-available signals; strict labels score outcomes and fit S2 on
+FIT databases only. Contracts enforced by tests: (1) endorsement never removes a
+candidate's enumerator origin from the deterministic baseline; (2) likelihoods stay
+namespaced per source model — input-file order cannot change any selection; (3) the
+denominator is every labeled example, including empty/failed pools.
 
-Experiment script with expiry: it either funds the full relabel (then its winning
-selector graduates into the rank pipeline) or records a bounded negative result.
+Experiment script with expiry: it either funds the full relabel (the winning selector
+then graduates into the rank pipeline) or records a bounded negative result.
 """
 from __future__ import annotations
 
@@ -24,123 +25,222 @@ SEED = 7
 ALPHA_GRID = (0.0, 0.25, 0.5, 0.75, 1.0)
 
 
+def _decode_tag(evidence):
+    return any(tag == "proposer:greedy" or tag.startswith("proposer:beam")
+               for tag in evidence)
+
+
 def load_pools(paths):
-    """Merge candidates across pool files by (db_id, idx, sql); keep source tags."""
+    """Merge candidates across pool files by (db_id, idx, sql).
+
+    Origin is tracked structurally per source file: an entry is enumerator-origin in a
+    file when the search produced it there (ranked features present / no decode tag /
+    an endorsement, which by definition decorates an enumerator candidate). Features and
+    ranks are kept PER SOURCE — nothing is overwritten across files, so results are
+    invariant to input order (sources are keyed by basename, not position)."""
     examples = {}
     for path in paths:
         source = os.path.basename(path).replace("pools_", "").replace(".jsonl", "")
         for line in open(path, encoding="utf-8"):
             record = json.loads(line)
-            if "idx" not in record or not record.get("candidates"):
+            if "idx" not in record:
                 continue
             key = (record["db_id"], record["idx"])
             example = examples.setdefault(key, {"db_id": record["db_id"], "by_sql": {}})
-            for rank, candidate in enumerate(record["candidates"]):
+            for rank, candidate in enumerate(record.get("candidates") or ()):
                 if "error" in candidate:
                     continue  # unexecutable: never selectable
+                evidence = tuple(candidate.get("evidence") or ())
+                endorsed = "proposer:endorsed" in evidence
+                enumerator_origin = endorsed or not _decode_tag(evidence)
                 entry = example["by_sql"].setdefault(candidate["sql"], {
                     "sql": candidate["sql"], "strict": bool(candidate.get("strict")),
-                    "sources": set(), "ranks": {}, "features": {}, "evidence": set(),
+                    "sources": {}, "from_enumerator": False, "from_proposer": False,
+                    "endorsed": False,
                 })
-                entry["sources"].add(source)
-                entry["ranks"][source] = rank
-                entry["features"].update(candidate.get("features") or {})
-                entry["evidence"].update(candidate.get("evidence") or ())
+                entry["sources"][source] = {
+                    "rank": rank,
+                    "score": candidate.get("score"),
+                    "features": dict(candidate.get("features") or {}),
+                }
+                entry["from_enumerator"] |= enumerator_origin
+                entry["from_proposer"] |= _decode_tag(evidence)
+                entry["endorsed"] |= endorsed
     pools = []
     for (db_id, idx), example in sorted(examples.items()):
-        candidates = list(example["by_sql"].values())
-        if candidates:
-            pools.append({"db_id": db_id, "idx": idx, "candidates": candidates})
+        pools.append({"db_id": db_id, "idx": idx,
+                      "candidates": list(example["by_sql"].values())})
     return pools
 
 
-def is_proposal(entry):
-    return any(tag.startswith("proposer:beam") or tag == "proposer:greedy"
-               for tag in entry["evidence"])
+def _rank_in(entry, source):
+    info = entry["sources"].get(source)
+    return info["rank"] if info else float("inf")
 
 
-def deterministic_top(candidates):
-    ranked = [c for c in candidates if not is_proposal(c)]
-    ranked.sort(key=lambda c: min(c["ranks"].values()))
-    return ranked[0] if ranked else candidates[0]
+def _min_rank(entry):
+    return min(info["rank"] for info in entry["sources"].values())
 
 
-def policy_first_novel(candidates):
-    """Frozen proposer_first replay: first novel proposal, else deterministic top."""
-    proposals = [c for c in candidates if is_proposal(c) and "proposer:endorsed" not in c["evidence"]]
-    proposals.sort(key=lambda c: min(c["ranks"].values()))
-    return proposals[0] if proposals else deterministic_top(candidates)
+def deterministic_top(candidates, source=None):
+    """The enumerator's own first candidate; endorsement must never remove membership."""
+    ranked = [c for c in candidates if c["from_enumerator"]]
+    if not ranked:
+        return None
+    if source is not None:
+        ranked = [c for c in ranked if source in c["sources"]] or ranked
+        return min(ranked, key=lambda c: _rank_in(c, source))
+    return min(ranked, key=_min_rank)
+
+
+def policy_first_novel(candidates, source=None):
+    """proposer_first replay: first NOVEL proposal (never enumerator-origin), else the
+    deterministic top. Over a beam-built source this approximates (not reproduces) the
+    frozen greedy policy; the exact replay uses a greedy-built pool file alone."""
+    proposals = [c for c in candidates if c["from_proposer"] and not c["from_enumerator"]]
+    if source is not None:
+        proposals = [c for c in proposals if source in c["sources"]]
+        if proposals:
+            return min(proposals, key=lambda c: _rank_in(c, source))
+        return deterministic_top(candidates, source)
+    if proposals:
+        return min(proposals, key=_min_rank)
+    return deterministic_top(candidates)
+
+
+def _likelihood(entry, source):
+    info = entry["sources"].get(source)
+    if not info:
+        return None
+    features = info["features"]
+    logprob = features.get("proposer:scored_logprob", features.get("proposer:logprob"))
+    if logprob is None:
+        return None
+    tokens = max(features.get("proposer:scored_tokens",
+                              features.get("proposer:tokens", 1.0)), 1.0)
+    return float(logprob), float(tokens)
+
+
+SOURCES = ("d2beam", "d4greedy")
 
 
 def vector(entry, pool_size):
-    features = entry["features"]
-    logprob = features.get("proposer:scored_logprob", features.get("proposer:logprob", -200.0))
-    tokens = max(features.get("proposer:scored_tokens", features.get("proposer:tokens", 1.0)), 1.0)
-    return [
-        logprob, tokens, logprob / tokens,
-        float(features.get("base", 0.0)),
-        float(min(entry["ranks"].values())),
+    row = []
+    for source in SOURCES:
+        scored = _likelihood(entry, source)
+        if scored is None:
+            row.extend([-200.0, 1.0, -200.0, 1.0])   # value, tokens, per-token, MISSING
+        else:
+            logprob, tokens = scored
+            row.extend([logprob, tokens, logprob / tokens, 0.0])
+    scores = [info["score"] for info in entry["sources"].values()
+              if info["score"] is not None]
+    row.extend([
+        max(scores) if scores else 0.0,
+        float(_min_rank(entry)),
         float(len(entry["sources"])),
-        1.0 if is_proposal(entry) else 0.0,
-        1.0 if "proposer:endorsed" in entry["evidence"] else 0.0,
+        1.0 if entry["from_proposer"] else 0.0,
+        1.0 if entry["from_enumerator"] else 0.0,
+        1.0 if entry["endorsed"] else 0.0,
         float(pool_size),
-    ]
+    ])
+    return row
 
 
-def evaluate(pools, select):
-    by_db = collections.defaultdict(lambda: [0, 0])
+def evaluate(pools, select, expected_by_db):
+    """Denominator = the split manifest's expectation; missing/empty pools count wrong."""
+    by_db = {db: [0, n] for db, n in expected_by_db.items()}
     for pool in pools:
-        chosen = select(pool["candidates"])
+        if pool["db_id"] not in by_db:
+            continue
+        chosen = select(pool["candidates"]) if pool["candidates"] else None
         by_db[pool["db_id"]][0] += bool(chosen and chosen["strict"])
-        by_db[pool["db_id"]][1] += 1
     total = [sum(v[0] for v in by_db.values()), sum(v[1] for v in by_db.values())]
-    return total, dict(by_db)
+    return total, by_db
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pools", nargs="+", required=True)
+    ap.add_argument("--exact-policy-pool", default="",
+                    help="d2-GREEDY-built pool file for the faithful frozen-policy replay")
     ap.add_argument("--split", default="training/rank/data/experiments/pilot/split.json")
     ap.add_argument("--out", default="training/rank/data/experiments/pilot/report.json")
     args = ap.parse_args()
 
+    import collections as _c
     split = json.load(open(args.split, encoding="utf-8"))
+    train = json.load(open(os.path.join(ROOT, "spider", "data", "train_spider.json"),
+                           encoding="utf-8"))
+    counts = _c.Counter(e["db_id"] for e in train)
+    expected_val = {db: counts[db] for db in split["pilot_val_dbs"]}
+    expected_fit = {db: counts[db] for db in split["pilot_fit_dbs"]}
+
     pools = load_pools(args.pools)
-    fit = [p for p in pools if p["db_id"] in set(split["pilot_fit_dbs"])]
-    val = [p for p in pools if p["db_id"] in set(split["pilot_val_dbs"])]
-    print(f"pools: {len(fit)} fit / {len(val)} val")
+    fit = [p for p in pools if p["db_id"] in expected_fit]
+    val = [p for p in pools if p["db_id"] in expected_val]
+    report = {"pools": args.pools,
+              "coverage": {"fit": [len(fit), sum(expected_fit.values())],
+                           "val": [len(val), sum(expected_val.values())]},
+              "selectors": {}}
+    print(f"pools loaded: fit {len(fit)}/{sum(expected_fit.values())}  "
+          f"val {len(val)}/{sum(expected_val.values())}")
 
-    report = {"n_fit": len(fit), "n_val": len(val), "selectors": {}}
-
-    def record(name, select):
-        total, by_db = evaluate(val, select)
+    def record(name, select, description=""):
+        total, by_db = evaluate(val, select, expected_val)
         report["selectors"][name] = {
-            "val_strict": total[0], "val_n": total[1],
+            "val_strict": total[0], "val_n": total[1], "description": description,
             "per_db": {db: {"strict": v[0], "n": v[1]} for db, v in sorted(by_db.items())},
         }
-        print(f"{name:24s} val {total[0]}/{total[1]} ({round(100 * total[0] / max(total[1], 1), 1)}%)")
+        print(f"{name:28s} val {total[0]}/{total[1]} "
+              f"({round(100 * total[0] / max(total[1], 1), 1)}%)")
 
     record("oracle-ceiling", lambda cs: next((c for c in cs if c["strict"]), None))
-    record("deterministic-top", deterministic_top)
-    record("policy-first-novel", policy_first_novel)
+    record("deterministic-top", deterministic_top,
+           "enumerator's own first candidate (endorsements retained)")
+    record("policy-novel(d2beam~)",
+           lambda cs: policy_first_novel(cs, "d2beam"),
+           "beam-pool approximation of the frozen policy")
+    if args.exact_policy_pool:
+        exact = {(p["db_id"], p["idx"]): p for p in load_pools([args.exact_policy_pool])}
 
-    # S1: length-normalized likelihood over ALL candidates; alpha chosen on FIT only.
-    def s1(alpha):
+        def frozen(candidates, _exact=exact):
+            return None  # placeholder; replaced below by pool-keyed replay
+        total = [0, sum(expected_val.values())]
+        by_db = {db: [0, n] for db, n in expected_val.items()}
+        for (db_id, _idx), pool in exact.items():
+            if db_id not in by_db:
+                continue
+            chosen = policy_first_novel(pool["candidates"]) if pool["candidates"] else None
+            hit = bool(chosen and chosen["strict"])
+            by_db[db_id][0] += hit
+            total[0] += hit
+        report["selectors"]["policy-frozen(d2greedy)"] = {
+            "val_strict": total[0], "val_n": total[1],
+            "description": "exact frozen-policy replay over a d2-greedy-built pool",
+            "per_db": {db: {"strict": v[0], "n": v[1]} for db, v in sorted(by_db.items())},
+        }
+        print(f"{'policy-frozen(d2greedy)':28s} val {total[0]}/{total[1]} "
+              f"({round(100 * total[0] / max(total[1], 1), 1)}%)")
+
+    # S1: likelihood under ONE defined scorer (d2beam); missing scores lose by default.
+    def s1(alpha, source="d2beam"):
         def select(candidates):
             def score(entry):
-                features = entry["features"]
-                logprob = features.get("proposer:scored_logprob",
-                                       features.get("proposer:logprob", -1e9))
-                tokens = max(features.get("proposer:scored_tokens",
-                                          features.get("proposer:tokens", 1.0)), 1.0)
+                scored = _likelihood(entry, source)
+                if scored is None:
+                    return float("-inf")
+                logprob, tokens = scored
                 return logprob / (tokens ** alpha)
-            return max(candidates, key=lambda c: (score(c), -min(c["ranks"].values())))
+            return max(candidates, key=lambda c: (score(c), -_min_rank(c)))
         return select
-    alpha = max(ALPHA_GRID, key=lambda a: evaluate(fit, s1(a))[0][0])
+    alpha = max(ALPHA_GRID,
+                key=lambda a: evaluate(fit, s1(a), expected_fit)[0][0])
     report["s1_alpha"] = alpha
-    record(f"S1-likelihood(a={alpha})", s1(alpha))
+    record(f"S1-likelihood-d2(a={alpha})", s1(alpha),
+           "single defined scorer; union members unscored by d2 cannot win")
 
-    # S2: logistic combination fit on FIT candidates only.
+    # S2: logistic over namespaced per-model features with explicit missingness.
     from sklearn.linear_model import LogisticRegression
     from sklearn.preprocessing import StandardScaler
 
@@ -157,9 +257,9 @@ def main():
         rows = scaler.transform([vector(c, len(candidates)) for c in candidates])
         scores = model.decision_function(rows)
         best = max(range(len(candidates)),
-                   key=lambda i: (scores[i], -min(candidates[i]["ranks"].values())))
+                   key=lambda i: (scores[i], -_min_rank(candidates[i])))
         return candidates[best]
-    record("S2-logistic", s2)
+    record("S2-logistic", s2, "feature-only baseline, NOT the semantic-scorer branch")
 
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, default=str)

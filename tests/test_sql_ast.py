@@ -690,6 +690,61 @@ def test_proposal_merge_keeps_beam_best_novel_and_appends_all():
     assert "proposer:endorsed" in merged[1].evidence
 
 
+def test_pilot_replay_contracts_hold():
+    """Selector-replay contracts from the external review: an ENDORSED enumerator
+    candidate stays in the deterministic baseline; per-model likelihoods are namespaced
+    so input-file order cannot change any selection; empty pools stay in the denominator."""
+    import json as json_module
+    import os
+    import tempfile
+
+    from training.rank.pilot_selectors import (
+        deterministic_top, evaluate, load_pools, policy_first_novel,
+    )
+
+    d2_records = [
+        {"idx": 1, "db_id": "dbx", "candidates": [
+            {"sql": "SELECT A", "strict": False, "score": 9.0,
+             "features": {"base": 1.0, "proposer:scored_logprob": -9.0,
+                          "proposer:scored_tokens": 3.0},
+             # endorsed: enumerator candidate the proposer independently generated
+             "evidence": ["rank:base", "proposer:endorsed", "proposer:greedy"]},
+            {"sql": "SELECT B", "strict": True, "score": 3.0,
+             "features": {"proposer:logprob": -2.0, "proposer:tokens": 2.0},
+             "evidence": ["proposer:greedy"]},
+        ]},
+        {"idx": 2, "db_id": "dbx", "candidates": []},  # failed pool: stays in denominator
+    ]
+    d4_records = [
+        {"idx": 1, "db_id": "dbx", "candidates": [
+            {"sql": "SELECT A", "strict": False, "score": 1.0,
+             "features": {"proposer:logprob": -50.0, "proposer:tokens": 3.0},
+             "evidence": ["proposer:greedy"]},
+        ]},
+    ]
+    with tempfile.TemporaryDirectory() as scratch:
+        d2_path = os.path.join(scratch, "pools_d2beam.jsonl")
+        d4_path = os.path.join(scratch, "pools_d4greedy.jsonl")
+        for path, records in ((d2_path, d2_records), (d4_path, d4_records)):
+            with open(path, "w", encoding="utf-8") as handle:
+                for record in records:
+                    handle.write(json_module.dumps(record) + "\n")
+
+        forward = load_pools([d2_path, d4_path])
+        backward = load_pools([d4_path, d2_path])
+        for pools in (forward, backward):
+            pool = next(p for p in pools if p["idx"] == 1)
+            top = deterministic_top(pool["candidates"])
+            assert top["sql"] == "SELECT A", "endorsement erased enumerator origin"
+            novel = policy_first_novel(pool["candidates"])
+            assert novel["sql"] == "SELECT B", "novel proposal misidentified"
+            entry_a = next(c for c in pool["candidates"] if c["sql"] == "SELECT A")
+            assert entry_a["sources"]["d2beam"]["features"]["proposer:scored_logprob"] == -9.0
+            assert entry_a["sources"]["d4greedy"]["features"]["proposer:logprob"] == -50.0
+        total, by_db = evaluate(forward, deterministic_top, {"dbx": 2})
+        assert total == [0, 2], "empty pool left the denominator"
+
+
 def test_order_noun_does_not_request_sort_or_group():
     tables = [{"name": "purchase_orders_over_5000",
                "columns": ["Purchase order", "Supplier name", "Net PO Value"],
@@ -2085,6 +2140,7 @@ TESTS = [
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
     test_gold_import_round_trip_executes_and_matches,
     test_proposal_merge_keeps_beam_best_novel_and_appends_all,
+    test_pilot_replay_contracts_hold,
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
     test_typed_ast_rejects_mismatched_literal_payloads,
