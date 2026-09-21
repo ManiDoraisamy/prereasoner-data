@@ -28,13 +28,13 @@ const {chromium} = require('@playwright/test');
       withSuccessHandler(success) {
         return {withFailureHandler() {
           return {
-            getSheetContext() { success({spreadsheet:'Prereasoner Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers',range:'A1:E24',rows:23,columns:5,preview:[['order ID','customer','city','tier'],['101','Sherlock Holmes','London','Gold'],['102','Sherlock Holmes','London','Gold'],['103','Sherlock Holmes','London','Gold']]}]}); },
+            getSheetContext() { success({spreadsheet:'Prereasoner - Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers',range:'A1:E24',rows:23,columns:5,preview:[['order ID','customer','city','tier'],['101','Sherlock Holmes','London','Gold'],['102','Sherlock Holmes','London','Gold'],['103','Sherlock Holmes','London','Gold']]}]}); },
             restorePrereasonerSheetConversation() { success({conversationId:'c_abcdefabcdefabcdefabcdefabcdefab',state:window.__sheetSessionState,legacy:false,stale:false}); },
             savePrereasonerSheetConversation(payload) { window.__sheetSessionState = payload.state; success({saved:payload.conversationId}); },
             clearPrereasonerSheetConversation() { window.__sheetSessionState = null; success({cleared:'sheet_1234567890'}); },
             syncPrereasonerConversation() { success({changed:false}); },
             getPrereasonerLiveSession() { success({token:'test-token',uid:'test-user',databaseUrl:'https://test.invalid'}); },
-            askPrereasoner(payload) { setTimeout(()=>success({question:payload.question,conversationId:'c_0123456789abcdef0123456789abcdef',history:[],reply:'The total is **US$1,240**. [Open source](https://example.com/source).',analysis:{analysis_id:'a_11111111111111111111111111111111',slug:'france_total',revision:1,display_name:'France total'},reasoning:[{label:'France orders',kind:'filter',detail:'Kept the rows that match the question.',sectionId:'france',sectionLabel:'France orders',sectionQuestion:'Orders in France',sectionInputs:[]},{label:'Total amount',kind:'group_agg',detail:'Grouped the matching rows and calculated the measure.',sectionId:'result',sectionLabel:'Total amount',sectionQuestion:'Total amount in France',sectionInputs:['france'],isOutput:true}],result:{headers:['total_usd'],rows:[['1240']]},context:{spreadsheet:'Prereasoner Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers'}]}}), 500); }
+            askPrereasoner(payload) { setTimeout(()=>success({question:payload.question,conversationId:'c_0123456789abcdef0123456789abcdef',history:[],reply:'The total is **US$1,240**. [Open source](https://example.com/source).',analysis:{analysis_id:'a_11111111111111111111111111111111',slug:'france_total',revision:1,display_name:'France total'},reasoning:[{label:'France orders',kind:'filter',detail:'Kept the rows that match the question.',sectionId:'france',sectionLabel:'France orders',sectionQuestion:'Orders in France',sectionInputs:[]},{label:'Total amount',kind:'group_agg',detail:'Grouped the matching rows and calculated the measure.',sectionId:'result',sectionLabel:'Total amount',sectionQuestion:'Total amount in France',sectionInputs:['france'],isOutput:true}],result:{headers:['total_usd'],rows:[['1240']]},context:{spreadsheet:'Prereasoner - Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers'}]}}), 500); }
           };
         }};
       }
@@ -43,7 +43,7 @@ const {chromium} = require('@playwright/test');
   const browser = await chromium.launch({headless: true});
   const page = await browser.newPage({viewport: {width: 320, height: 800}, deviceScaleFactor: 1});
   page.setDefaultTimeout(5000);
-  const fixtureContext = JSON.stringify({spreadsheet:'Prereasoner Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers'}],privacyUrl:'https://chat.prereasoner.com/privacy',termsUrl:'https://chat.prereasoner.com/terms',supportUrl:'https://chat.prereasoner.com/support'});
+  const fixtureContext = JSON.stringify({spreadsheet:'Prereasoner - Sheets Copilot',activeSheet:'Customers',totalRows:23,fingerprint:'sheet-v1',tables:[{name:'Customers'}],privacyUrl:'https://chat.prereasoner.com/privacy',termsUrl:'https://chat.prereasoner.com/terms',supportUrl:'https://chat.prereasoner.com/support'});
   const prepared = sidebar
     .replace('<script src="https://chat.prereasoner.com/lib/result-wire.js?v=1"></script>', '<script>' + resultWire + '</script>')
     .replace('<script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=2"></script>', '<script>' + turnRenderer + '</script>')

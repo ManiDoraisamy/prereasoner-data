@@ -1,4 +1,4 @@
-# Prereasoner Sheets Copilot
+# Prereasoner - Sheets Copilot
 
 This Apps Script sidebar brings the Prereasoner answer rail into Google Sheets. It reads up to eight visible, non-empty tabs from the current spreadsheet, sends a bounded CSV snapshot to the existing Prereasoner chat endpoint when the user asks a question, displays the returned reasoning steps and result, and keeps the conversation ID for follow-up questions.
 
@@ -24,7 +24,7 @@ session issue, not a Prereasoner API error.
 
 ## Runtime flow
 
-1. `onOpen` adds **Prereasoner → Ask a question** and **Prereasoner → Previous conversations**.
+1. `onOpen` adds **Prereasoner - Sheets Copilot → Ask a question** and **Prereasoner - Sheets Copilot → Previous conversations**.
 2. `showSidebar` reads a bounded workbook summary while the menu action has the active Sheets context and injects that summary into the sidebar; no workbook data is sent externally at startup.
 3. `askPrereasoner` serializes the non-empty tabs and exchanges the Apps Script Google OAuth token for a short-lived Firebase ID token.
 4. The server calls `https://chat.prereasoner.com/chat` with the workbook tables, question, bounded history, and conversation ID.

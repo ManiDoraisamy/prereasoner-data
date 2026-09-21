@@ -1,6 +1,6 @@
 # OAuth verification response — project 271377281957
 
-Replace `[NEW UNLISTED VIDEO URL]` before sending this reply.
+The replacement unlisted demonstration video is available at https://youtu.be/hXyQ9CYCfBM.
 
 ## Email reply
 
@@ -21,8 +21,8 @@ Thank you for the review. We completed the requested remediation for project `27
    aggregated, anonymized, or derived Google user data is not used, transferred, or sold to create,
    train, or improve generalized or non-personalized AI/ML models. The add-on now displays a concise
    version of this disclosure before a user submits a question.
-3. **Replacement demonstration video.** [NEW UNLISTED VIDEO URL]
-4. **Scope matching.** Apps Script version `19` and the Google Cloud OAuth Data Access
+3. **Replacement demonstration video.** https://youtu.be/hXyQ9CYCfBM
+4. **Scope matching.** Apps Script version `20` and the Google Cloud OAuth Data Access
    configuration request the same six scopes:
    - `openid`
    - `https://www.googleapis.com/auth/userinfo.email`
@@ -40,16 +40,16 @@ No separate Prereasoner username, password, phone verification, payment card, or
 account is required. The reviewer can use their Google test account:
 
 1. Open a spreadsheet containing a header row and at least one data row.
-2. Choose **Extensions → Prereasoner → Ask a question**.
+2. Choose **Extensions → Prereasoner - Sheets Copilot → Ask a question**.
 3. Complete the Google consent flow. Expand **Show all services** to review every requested scope.
 4. In the sidebar, ask a question such as `What is the total amount?`.
 5. Review the returned answer and expand **Reasoning steps**.
 6. Ask a follow-up question in the same sidebar.
-7. Choose **Extensions → Prereasoner → Previous conversations** and open the saved conversation.
+7. Choose **Extensions → Prereasoner - Sheets Copilot → Previous conversations** and open the saved conversation.
 
 The two Apps Script scopes called out in the review are necessary as follows:
 
-- `script.container.ui` creates the **Prereasoner** Extensions menu, the question-and-answer sidebar,
+- `script.container.ui` creates the **Prereasoner - Sheets Copilot** Extensions menu, the question-and-answer sidebar,
   and the Previous conversations dialog inside Google Sheets. No narrower Apps Script scope provides
   those container UI capabilities.
 - `script.external_request` lets server-side Apps Script call the allowlisted Prereasoner and Firebase

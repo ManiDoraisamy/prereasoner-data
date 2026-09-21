@@ -6,7 +6,7 @@ every scope and menu label is readable. Do not edit out the consent flow.
 ## Before recording
 
 - Use one Google account in the browser to avoid the Apps Script multi-account authorization issue.
-- Use Apps Script version `19` after the release steps in the Marketplace document are
+- Use Apps Script version `20` after the release steps in the Marketplace document are
   complete.
 - Prepare a spreadsheet with a header row and several data rows, including an `amount` column.
 - Revoke the app's existing Google account authorization so the complete OAuth consent flow appears.
@@ -18,7 +18,7 @@ every scope and menu label is readable. Do not edit out the consent flow.
 1. **Identify the app and source spreadsheet.** Show the spreadsheet title, headers, and values.
    State that the add-on reads only the current spreadsheet through `spreadsheets.currentonly` and
    does not write to it.
-2. **Open the add-on.** Choose **Extensions → Prereasoner → Ask a question**. This demonstrates
+2. **Open the add-on.** Choose **Extensions → Prereasoner - Sheets Copilot → Ask a question**. This demonstrates
    `script.container.ui`: the Prereasoner menu and sidebar are rendered inside Google Sheets.
 3. **Show the complete consent screen.** Continue through OAuth, click **Show all services**, and
    pause while every requested permission is expanded and readable. The recording must show all six
@@ -31,7 +31,7 @@ every scope and menu label is readable. Do not edit out the consent flow.
    Prereasoner endpoint and retrieves the answer. Show the answer and expand **Reasoning steps**.
 6. **Show follow-up functionality.** Ask a follow-up question and show the returned answer in the
    same sidebar.
-7. **Show previous conversations.** Choose **Extensions → Prereasoner → Previous conversations**,
+7. **Show previous conversations.** Choose **Extensions → Prereasoner - Sheets Copilot → Previous conversations**,
    show the server-retrieved list, and open the saved conversation on chat.prereasoner.com. This
    demonstrates both the container dialog and the authenticated external request.
 8. **Show source-account impact.** Return to the spreadsheet and show that the original cells are

@@ -1281,7 +1281,7 @@ function wireChat(){
 }
 
 /* ---- header title = the conversation's opening question (truncates with … via CSS) ---- */
-function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.title=q; } document.title='Prereasoner · '+(q.length>40?q.slice(0,40)+'…':q); }
+function setHeaderTitle(q){ const el=$('htitle'); if(el){ el.textContent=q; el.title=q; } document.title='Prereasoner - Sheets Copilot · '+(q.length>40?q.slice(0,40)+'…':q); }
 
 /* ---- conversations drawer (backed by the engine's chat schema; ownership-scoped) ---- */
 async function run(){

@@ -1,9 +1,9 @@
-# Prereasoner Sheets Copilot — Marketplace release
+# Prereasoner - Sheets Copilot — Marketplace release
 
 ## Store listing
 
-- **Application name:** Prereasoner Sheets Copilot
-- **Sheets Extensions menu:** Prereasoner
+- **Application name:** Prereasoner - Sheets Copilot
+- **Sheets Extensions menu:** Prereasoner - Sheets Copilot
 - **Category:** Office Applications
 - **Pricing:** Free of charge trial
 - **Short description:** Ask questions about your Google Sheets™ data. Check every answer with visible reasoning and source rows.
@@ -12,12 +12,12 @@
 - **Privacy:** https://chat.prereasoner.com/privacy
 - **Terms:** https://chat.prereasoner.com/terms
 - **Support:** https://chat.prereasoner.com/support
-- **Reviewer demo (unlisted):** https://youtu.be/uND51puaL8A
+- **Marketplace promo video (unlisted):** https://youtu.be/uND51puaL8A
 
 ### Detailed description
 
 Spreadsheet answers often require formulas, lookups, pivot tables and queries—and still leave
-reviewers asking how the number was calculated. Prereasoner lets you ask a question in plain
+reviewers asking how the number was calculated. Prereasoner - Sheets Copilot lets you ask a question in plain
 language, review the answer, and inspect the source rows and reasoning behind it. Your source
 spreadsheet stays unchanged.
 
@@ -35,12 +35,12 @@ was produced.
 
 ➤ Analyze multiple tabs
 
-Prereasoner reads visible, non-empty tabs in the current spreadsheet and can connect related records
+Prereasoner - Sheets Copilot reads visible, non-empty tabs in the current spreadsheet and can connect related records
 across sheets.
 
 ➤ Look up missing context
 
-Your sheet has cities, but your question asks by country or currency. Prereasoner can add the exact
+Your sheet has cities, but your question asks by country or currency. Prereasoner - Sheets Copilot can add the exact
 geographic or currency context needed to answer.
 
 ➤ Continue with follow-up questions
@@ -50,15 +50,15 @@ to the original analysis.
 
 ➤ Reopen previous conversations
 
-Choose Extensions → Prereasoner → Previous conversations to open saved analyses directly in
-Prereasoner.
+Choose Extensions → Prereasoner - Sheets Copilot → Previous conversations to open saved analyses directly in
+Prereasoner - Sheets Copilot.
 
 ➤ Keep source data unchanged
 
 The add-on reads the current spreadsheet only when you ask a question. It never edits spreadsheet
 cells.
 
-❇️ Why Prereasoner?
+❇️ Why Prereasoner - Sheets Copilot?
 
 ➤ Answers you can audit
 
@@ -92,8 +92,8 @@ need to explain or revisit a result.
 
 ❇️ Privacy and data use
 
-Prereasoner reads visible, non-empty tabs from the spreadsheet where the add-on is running. It sends
-the question and bounded workbook data to Prereasoner only after you submit a question. It does not
+Prereasoner - Sheets Copilot reads visible, non-empty tabs from the spreadsheet where the add-on is running. It sends
+the question and bounded workbook data to Prereasoner - Sheets Copilot only after you submit a question. It does not
 request file-storage access and does not edit spreadsheet cells. Conversations are associated with
 your signed-in account so only you can retrieve them.
 
@@ -113,11 +113,11 @@ Google Sheets™ is a trademark of Google LLC.
 
 ### Installation and use
 
-1. Install Prereasoner Sheets Copilot and authorize the requested permissions.
+1. Install Prereasoner - Sheets Copilot and authorize the requested permissions.
 2. Open a spreadsheet containing a header row and at least one data row.
-3. Choose **Extensions → Prereasoner → Ask a question**.
+3. Choose **Extensions → Prereasoner - Sheets Copilot → Ask a question**.
 4. Ask a question and review the answer and reasoning steps.
-5. Choose **Extensions → Prereasoner → Previous conversations** to reopen saved work.
+5. Choose **Extensions → Prereasoner - Sheets Copilot → Previous conversations** to reopen saved work.
 
 ### OAuth scope justification
 
@@ -156,11 +156,11 @@ required because the add-on uses the reviewer's Google identity through Firebase
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `19`
+- **Apps Script version:** `20`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
-- **Previous reviewer video:** `uND51puaL8A` (Unlisted; replacement required)
-- **Replacement reviewer video:** pending the new unlisted URL
+- **Previous reviewer video:** `uND51puaL8A` (Unlisted; replaced)
+- **Replacement reviewer video:** https://youtu.be/hXyQ9CYCfBM
 
 ## Verification follow-up — September 20, 2026
 
@@ -170,9 +170,15 @@ required because the add-on uses the reviewer's Google identity through Firebase
   improve generalized or non-personalized AI/ML models.
 - The add-on shows a concise data-use and no-generalized-training disclosure before the first
   question is submitted.
-- The updated add-on was pushed with `clasp` and released as immutable Apps Script version `19`.
-- Marketplace App Configuration was saved with Apps Script version `19`; its six OAuth scopes
-  exactly match the Apps Script manifest.
+- The updated add-on was pushed with `clasp` and released as immutable Apps Script version `20`.
+- Apps Script version `20` standardizes the canonical product name as
+  **Prereasoner - Sheets Copilot** throughout the add-on UI and review materials.
+- The Apps Script project title, OAuth consent branding, Marketplace application name,
+  post-install menu path, card banner, and first listing screenshot now use the same canonical name.
+- Marketplace App Configuration is saved against Apps Script version `20`. The Store Listing changes
+  are saved as a draft; they have not been submitted for Marketplace review.
+- OAuth branding was saved with the canonical name and attached to the verification request that is
+  currently under review. Google may continue showing the unverified-app warning until approval.
 - Google requested a replacement video that shows the complete expanded consent screen and the full
   user-facing operation of `script.external_request` and `script.container.ui`. Recording instructions
   are in `OAUTH_DEMO_SCRIPT_2026-09-20.md`.

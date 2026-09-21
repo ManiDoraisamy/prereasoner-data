@@ -7,6 +7,7 @@ var PREREASONER_RTDB_URL = 'https://prereasoner-inference-default-rtdb.firebasei
 var PREREASONER_PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
 var PREREASONER_TERMS_URL = 'https://chat.prereasoner.com/terms';
 var PREREASONER_SUPPORT_URL = 'https://chat.prereasoner.com/support';
+var ADDON_NAME = 'Prereasoner - Sheets Copilot';
 var FIREBASE_API_KEY = 'AIzaSyAC_Kiqj3lqd52ufpqYDAO17G6T7wfBd9Q';
 var FIREBASE_TOKEN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=' + FIREBASE_API_KEY;
 var ADDON_LIMITS = {
@@ -79,7 +80,7 @@ function showSidebar() {
   }
   template.reasonBase = JSON.stringify(PREREASONER_REASON_URL);
   var html = template.evaluate()
-    .setTitle('Prereasoner');
+    .setTitle(ADDON_NAME);
   SpreadsheetApp.getUi().showSidebar(html);
 }
 

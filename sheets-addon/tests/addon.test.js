@@ -120,5 +120,7 @@ assert(sidebar.includes("var source = await callServer('syncPrereasonerConversat
 assert(sidebar.includes("turns: state.turns.slice(-24)"));
 assert(turnRenderer.includes('renderMarkdown'));
 assert(turnRenderer.includes('renderReasoningTree'));
+assert(source.includes("ADDON_NAME = 'Prereasoner - Sheets Copilot'"));
+assert(source.includes(".setTitle(ADDON_NAME)"));
 
 console.log('Sheets add-on tests passed.');
