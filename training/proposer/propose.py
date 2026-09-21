@@ -117,17 +117,26 @@ class Proposer:
         prompt_ids = self.tokenizer(prompt, add_special_tokens=False).input_ids
         out = []
         with torch.no_grad():
+            # Encode the prompt ONCE; every candidate reuses its KV cache and forwards
+            # only the target tokens (the naive per-candidate full forward measured ~70s
+            # per 25-candidate example on CPU with value-linked prompts).
+            base = self.model(input_ids=torch.tensor([prompt_ids]), use_cache=True)
+            first_logprobs = torch.log_softmax(base.logits[0, -1], dim=-1)
+            prompt_length = len(prompt_ids)
             for sql in sqls:
                 target_ids = self.tokenizer(sql, add_special_tokens=False).input_ids
                 if not target_ids:
                     out.append((float("-inf"), 0))
                     continue
-                input_ids = torch.tensor([prompt_ids + target_ids])
-                logits = self.model(input_ids=input_ids).logits[0]
-                logprobs = torch.log_softmax(
-                    logits[len(prompt_ids) - 1:len(prompt_ids) - 1 + len(target_ids)],
-                    dim=-1,
-                )
-                chosen = logprobs[range(len(target_ids)), target_ids]
-                out.append((float(chosen.sum()), len(target_ids)))
+                total = float(first_logprobs[target_ids[0]])
+                if len(target_ids) > 1:
+                    step = self.model(input_ids=torch.tensor([target_ids[:-1]]),
+                                      past_key_values=base.past_key_values)
+                    logprobs = torch.log_softmax(step.logits[0], dim=-1)
+                    followups = target_ids[1:]
+                    total += float(logprobs[range(len(followups)), followups].sum())
+                    # DynamicCache extends in place; crop back so the next candidate
+                    # sees the pure prompt cache.
+                    base.past_key_values.crop(prompt_length)
+                out.append((total, len(target_ids)))
         return out
