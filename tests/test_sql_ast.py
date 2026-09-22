@@ -714,6 +714,15 @@ def test_pilot_replay_contracts_hold():
              "evidence": ["proposer:greedy"]},
         ]},
         {"idx": 2, "db_id": "dbx", "candidates": []},  # failed pool: stays in denominator
+        {"idx": 3, "db_id": "dbx", "candidates": [
+            {"sql": "SELECT GOOD", "strict": True, "score": 5.0,
+             "features": {"base": 1.0}, "evidence": ["rank:base"]},
+            # the frozen policy must select this failed proposal and return its failure —
+            # execution filtering is a DIFFERENT, separately named policy
+            {"sql": "SELECT BROKEN", "error": "OperationalError: boom",
+             "features": {"proposer:logprob": -1.0, "proposer:tokens": 2.0},
+             "evidence": ["proposer:greedy"]},
+        ]},
     ]
     d4_records = [
         {"idx": 1, "db_id": "dbx", "candidates": [
@@ -730,8 +739,10 @@ def test_pilot_replay_contracts_hold():
                 for record in records:
                     handle.write(json_module.dumps(record) + "\n")
 
-        forward = load_pools([d2_path, d4_path])
-        backward = load_pools([d4_path, d2_path])
+        forward, presence = load_pools([d2_path, d4_path])
+        backward, _ = load_pools([d4_path, d2_path])
+        assert presence["d2beam"] == {("dbx", 1), ("dbx", 2), ("dbx", 3)}
+        assert presence["d4greedy"] == {("dbx", 1)}
         for pools in (forward, backward):
             pool = next(p for p in pools if p["idx"] == 1)
             top = deterministic_top(pool["candidates"])
@@ -741,8 +752,13 @@ def test_pilot_replay_contracts_hold():
             entry_a = next(c for c in pool["candidates"] if c["sql"] == "SELECT A")
             assert entry_a["sources"]["d2beam"]["features"]["proposer:scored_logprob"] == -9.0
             assert entry_a["sources"]["d4greedy"]["features"]["proposer:logprob"] == -50.0
-        total, by_db = evaluate(forward, deterministic_top, {"dbx": 2})
-        assert total == [0, 2], "empty pool left the denominator"
+            failed_pool = next(p for p in pools if p["idx"] == 3)
+            chosen = policy_first_novel(failed_pool["candidates"])
+            assert chosen["sql"] == "SELECT BROKEN" and not chosen["executable"], \
+                "frozen policy must return the failed proposal, not fall back"
+            assert not chosen["strict"]
+        total, by_db = evaluate(forward, deterministic_top, {"dbx": 3})
+        assert total == [1, 3], "empty pool left the denominator or fidelity broke"
 
 
 def test_order_noun_does_not_request_sort_or_group():

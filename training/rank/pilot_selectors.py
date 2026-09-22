@@ -39,6 +39,7 @@ def load_pools(paths):
     ranks are kept PER SOURCE — nothing is overwritten across files, so results are
     invariant to input order (sources are keyed by basename, not position)."""
     examples = {}
+    presence = collections.defaultdict(set)
     for path in paths:
         source = os.path.basename(path).replace("pools_", "").replace(".jsonl", "")
         for line in open(path, encoding="utf-8"):
@@ -46,18 +47,22 @@ def load_pools(paths):
             if "idx" not in record:
                 continue
             key = (record["db_id"], record["idx"])
+            presence[source].add(key)
             example = examples.setdefault(key, {"db_id": record["db_id"], "by_sql": {}})
             for rank, candidate in enumerate(record.get("candidates") or ()):
-                if "error" in candidate:
-                    continue  # unexecutable: never selectable
                 evidence = tuple(candidate.get("evidence") or ())
                 endorsed = "proposer:endorsed" in evidence
                 enumerator_origin = endorsed or not _decode_tag(evidence)
                 entry = example["by_sql"].setdefault(candidate["sql"], {
                     "sql": candidate["sql"], "strict": bool(candidate.get("strict")),
                     "sources": {}, "from_enumerator": False, "from_proposer": False,
-                    "endorsed": False,
+                    "endorsed": False, "executable": False,
                 })
+                # Failed candidates stay SELECTABLE (the frozen policy returns their
+                # failure — no silent fallback); execution success on any source marks
+                # the SQL executable for the separately-named execution-filtered selectors.
+                entry["executable"] |= "error" not in candidate
+                entry["strict"] |= bool(candidate.get("strict"))
                 entry["sources"][source] = {
                     "rank": rank,
                     "score": candidate.get("score"),
@@ -70,7 +75,7 @@ def load_pools(paths):
     for (db_id, idx), example in sorted(examples.items()):
         pools.append({"db_id": db_id, "idx": idx,
                       "candidates": list(example["by_sql"].values())})
-    return pools
+    return pools, dict(presence)
 
 
 def _rank_in(entry, source):
@@ -176,15 +181,32 @@ def main():
     expected_val = {db: counts[db] for db in split["pilot_val_dbs"]}
     expected_fit = {db: counts[db] for db in split["pilot_fit_dbs"]}
 
-    pools = load_pools(args.pools)
+    pools, presence = load_pools(args.pools)
     fit = [p for p in pools if p["db_id"] in expected_fit]
     val = [p for p in pools if p["db_id"] in expected_val]
+    # Per-source completion: EVERY expected pilot question must have a record in EVERY
+    # source before a funding verdict is valid — merged coverage alone can hide an
+    # unfinished source behind a finished one.
+    expected_keys = {(e["db_id"], i) for i, e in enumerate(train)
+                     if e["db_id"] in expected_fit or e["db_id"] in expected_val}
+    completion = {source: {"present": len(keys & expected_keys),
+                           "expected": len(expected_keys),
+                           "missing": len(expected_keys - keys)}
+                  for source, keys in presence.items()}
+    funding_verdict_allowed = all(c["missing"] == 0 for c in completion.values())
     report = {"pools": args.pools,
+              "completion_by_source": completion,
+              "funding_verdict_allowed": funding_verdict_allowed,
               "coverage": {"fit": [len(fit), sum(expected_fit.values())],
                            "val": [len(val), sum(expected_val.values())]},
               "selectors": {}}
     print(f"pools loaded: fit {len(fit)}/{sum(expected_fit.values())}  "
           f"val {len(val)}/{sum(expected_val.values())}")
+    for source, c in sorted(completion.items()):
+        print(f"  source {source}: {c['present']}/{c['expected']} "
+              f"({'COMPLETE' if not c['missing'] else str(c['missing']) + ' MISSING'})")
+    if not funding_verdict_allowed:
+        print("  NOTE: incomplete source(s) — report is diagnostic only, no funding verdict")
 
     def record(name, select, description=""):
         total, by_db = evaluate(val, select, expected_val)
@@ -202,7 +224,8 @@ def main():
            lambda cs: policy_first_novel(cs, "d2beam"),
            "beam-pool approximation of the frozen policy")
     if args.exact_policy_pool:
-        exact = {(p["db_id"], p["idx"]): p for p in load_pools([args.exact_policy_pool])}
+        exact_pools, _ = load_pools([args.exact_policy_pool])
+        exact = {(p["db_id"], p["idx"]): p for p in exact_pools}
 
         def frozen(candidates, _exact=exact):
             return None  # placeholder; replaced below by pool-keyed replay
@@ -224,21 +247,28 @@ def main():
               f"({round(100 * total[0] / max(total[1], 1), 1)}%)")
 
     # S1: likelihood under ONE defined scorer (d2beam); missing scores lose by default.
+    # Execution-filtered: selecting among executed candidates is a DIFFERENT policy from
+    # the frozen one, and its serving cost includes executing the pool.
     def s1(alpha, source="d2beam"):
         def select(candidates):
+            executable = [c for c in candidates if c["executable"]]
+            if not executable:
+                return None
+
             def score(entry):
                 scored = _likelihood(entry, source)
                 if scored is None:
                     return float("-inf")
                 logprob, tokens = scored
                 return logprob / (tokens ** alpha)
-            return max(candidates, key=lambda c: (score(c), -_min_rank(c)))
+            return max(executable, key=lambda c: (score(c), -_min_rank(c)))
         return select
     alpha = max(ALPHA_GRID,
                 key=lambda a: evaluate(fit, s1(a), expected_fit)[0][0])
     report["s1_alpha"] = alpha
-    record(f"S1-likelihood-d2(a={alpha})", s1(alpha),
-           "single defined scorer; union members unscored by d2 cannot win")
+    record(f"S1-likelihood-d2-execfiltered(a={alpha})", s1(alpha),
+           "single defined scorer over EXECUTED candidates; union members unscored "
+           "by d2 cannot win — a restricted baseline, not a full-union likelihood test")
 
     # S2: logistic over namespaced per-model features with explicit missingness.
     from sklearn.linear_model import LogisticRegression
@@ -254,12 +284,16 @@ def main():
         scaler.transform(fit_x), fit_y)
 
     def s2(candidates):
-        rows = scaler.transform([vector(c, len(candidates)) for c in candidates])
+        executable = [c for c in candidates if c["executable"]]
+        if not executable:
+            return None
+        rows = scaler.transform([vector(c, len(executable)) for c in executable])
         scores = model.decision_function(rows)
-        best = max(range(len(candidates)),
-                   key=lambda i: (scores[i], -_min_rank(candidates[i])))
-        return candidates[best]
-    record("S2-logistic", s2, "feature-only baseline, NOT the semantic-scorer branch")
+        best = max(range(len(executable)),
+                   key=lambda i: (scores[i], -_min_rank(executable[i])))
+        return executable[best]
+    record("S2-logistic-execfiltered", s2,
+           "feature-only baseline over EXECUTED candidates, NOT the semantic-scorer branch")
 
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, default=str)
