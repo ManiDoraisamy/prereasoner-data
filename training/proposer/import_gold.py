@@ -27,6 +27,7 @@ from sqlglot import expressions as sge
 
 from engine.sql_ast import (
     Aggregate,
+    BinaryExpr,
     BooleanExpr,
     ColumnRef,
     Comparison,
@@ -100,6 +101,7 @@ _COMPARISONS = {
 }
 _AGGREGATES = {sge.Count: "COUNT", sge.Sum: "SUM", sge.Avg: "AVG",
                sge.Min: "MIN", sge.Max: "MAX"}
+_ARITHMETIC = {sge.Add: "+", sge.Sub: "-", sge.Mul: "*", sge.Div: "/"}
 _SET_OPS = {sge.Union: "UNION", sge.Intersect: "INTERSECT", sge.Except: "EXCEPT"}
 
 
@@ -143,6 +145,15 @@ def _scalar(node, scope: _Scope):
     if isinstance(node, (sge.Subquery, sge.Select)):
         return ScalarSubquery(_select(node.unnest() if isinstance(node, sge.Subquery) else node,
                                       scope.graph, scope))
+    if type(node) in _ARITHMETIC:
+        left = _scalar(node.left, scope)
+        right = _scalar(node.right, scope)
+        # BinaryExpr is numeric row/aggregate arithmetic; its operands may not themselves
+        # be aggregates (the validator enforces this), so a bare Sub of two columns or
+        # literals is in range while SUM(a)-SUM(b) is left to the calculation path.
+        if isinstance(left, Aggregate) or isinstance(right, Aggregate):
+            raise Unsupported("arithmetic:aggregate-operand")
+        return BinaryExpr(left, _ARITHMETIC[type(node)], right)
     if isinstance(node, (sge.Literal, sge.Neg, sge.Boolean, sge.Null)):
         return _literal(node)
     raise Unsupported(f"scalar:{type(node).__name__}")
@@ -248,7 +259,7 @@ def _select(node, graph: SchemaGraph, parent: _Scope | None = None) -> SelectQue
     if order:
         for ordered in order.expressions:
             expression = _scalar(ordered.this, scope)
-            if not isinstance(expression, (ColumnRef, Aggregate)):
+            if not isinstance(expression, (ColumnRef, Aggregate, BinaryExpr)):
                 raise Unsupported("order:expression")
             order_terms.append(OrderTerm(expression, "DESC" if ordered.args.get("desc") else "ASC"))
     limit_value = None

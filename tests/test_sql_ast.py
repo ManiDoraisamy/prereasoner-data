@@ -641,6 +641,31 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
     assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
 
 
+def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
+    """The proposer importer maps row/order arithmetic over numeric columns into BinaryExpr
+    (Spider gold like `max_f - min_f`), while the validator still refuses arithmetic over
+    non-numeric operands — coverage without weakening type semantics."""
+    from engine.sql_ast import render_query, validate_query
+    from training.proposer.import_gold import Unsupported, import_gold_sql
+
+    weather = {"name": "weather", "columns": ["day", "max_f", "min_f"],
+               "rows": [["2019-01-01", 60, 40], ["2019-01-02", 55, 50]]}
+    graph = SchemaGraph.from_tables([weather], [])
+    query = import_gold_sql(
+        "SELECT day, max_f - min_f FROM weather ORDER BY max_f - min_f LIMIT 1", graph)
+    validate_query(query)
+    assert execute([weather], render_query(query)) == [("2019-01-02", 5)]
+    # non-numeric arithmetic (date columns) must remain refused, not silently coerced
+    events = {"name": "events", "columns": ["name", "starts", "ends"],
+              "rows": [["a", "2020-01-01", "2020-01-05"]]}
+    dgraph = SchemaGraph.from_tables([events], [])
+    try:
+        validate_query(import_gold_sql("SELECT avg(ends - starts) FROM events", dgraph))
+        raise AssertionError("non-numeric arithmetic was accepted")
+    except (Unsupported, ValueError):
+        pass
+
+
 def test_gold_import_round_trip_executes_and_matches():
     """The proposer-side importer must map alias-heavy, double-quoted-literal gold SQL into
     the typed AST such that the engine's own rendering reproduces the gold denotation."""
@@ -2154,6 +2179,7 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
 TESTS = [
     test_mentioned_table_join_keeps_minimal_variant_in_pool,
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
+    test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
     test_gold_import_round_trip_executes_and_matches,
     test_proposal_merge_keeps_beam_best_novel_and_appends_all,
     test_pilot_replay_contracts_hold,

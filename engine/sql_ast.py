@@ -144,7 +144,7 @@ class Join:
 
 @dataclass(frozen=True)
 class OrderTerm:
-    expression: ColumnRef | Aggregate
+    expression: ColumnRef | Aggregate | BinaryExpr
     direction: str = "ASC"
 
     def __post_init__(self) -> None:
