@@ -38,12 +38,18 @@ class Proposer:
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
+        # fp32 on EVERY device: the arbiter and all pool labels are fit on fp32-scored
+        # likelihoods, and bf16 scoring would shift that feature distribution between
+        # CPU serving and GPU labeling shards.
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         tokenizer = AutoTokenizer.from_pretrained(base_id, revision=revision)
         base = AutoModelForCausalLM.from_pretrained(base_id, revision=revision,
-                                                    torch_dtype=torch.float32)
+                                                    torch_dtype=torch.float32).to(device)
         model = PeftModel.from_pretrained(base, adapter_dir)
         model.eval()
-        return cls(model, tokenizer, base_id, adapter_dir)
+        proposer = cls(model, tokenizer, base_id, adapter_dir)
+        proposer.device = device
+        return proposer
 
     def propose(self, tables, question, graph, min_score=0.0, beams=1):
         """Return validated typed-AST candidates in beam-score order (possibly empty).
@@ -58,7 +64,8 @@ class Proposer:
         values = (sample_column_values(tables)
                   if getattr(self, "include_values", False) else None)
         prompt = schema_prompt(tables, question, values)
-        inputs = self.tokenizer(prompt, return_tensors="pt")
+        inputs = self.tokenizer(prompt, return_tensors="pt").to(
+            getattr(self, "device", "cpu"))
         generate_args = dict(max_new_tokens=96, do_sample=False,
                              pad_token_id=self.tokenizer.eos_token_id,
                              output_scores=True, return_dict_in_generate=True)
@@ -120,7 +127,9 @@ class Proposer:
             # Encode the prompt ONCE; every candidate reuses its KV cache and forwards
             # only the target tokens (the naive per-candidate full forward measured ~70s
             # per 25-candidate example on CPU with value-linked prompts).
-            base = self.model(input_ids=torch.tensor([prompt_ids]), use_cache=True)
+            device = getattr(self, "device", "cpu")
+            base = self.model(input_ids=torch.tensor([prompt_ids], device=device),
+                              use_cache=True)
             first_logprobs = torch.log_softmax(base.logits[0, -1], dim=-1)
             prompt_length = len(prompt_ids)
             for sql in sqls:
@@ -130,7 +139,8 @@ class Proposer:
                     continue
                 total = float(first_logprobs[target_ids[0]])
                 if len(target_ids) > 1:
-                    step = self.model(input_ids=torch.tensor([target_ids[:-1]]),
+                    step = self.model(input_ids=torch.tensor([target_ids[:-1]],
+                                                             device=device),
                                       past_key_values=base.past_key_values)
                     logprobs = torch.log_softmax(step.logits[0], dim=-1)
                     followups = target_ids[1:]

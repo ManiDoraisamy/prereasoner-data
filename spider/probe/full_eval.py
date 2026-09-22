@@ -724,7 +724,10 @@ def main():
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **({"rank_head": args.rank_head} if args.rank_head else {}),
-            **({"arbiter": args.arbiter} if args.arbiter else {}),
+            **({"arbiter": args.arbiter,
+                "arbiter_vector_code": os.path.join(ROOT, "training", "rank",
+                                                    "pilot_selectors.py")}
+               if args.arbiter else {}),
             **({f"proposer_code/{name}": os.path.join(ROOT, "training", "proposer", name)
                 for name in ("propose.py", "serialize.py", "import_gold.py", "__init__.py")}
                if args.proposer else {}),

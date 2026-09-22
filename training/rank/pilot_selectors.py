@@ -227,7 +227,20 @@ def main():
            lambda cs: policy_first_novel(cs, "d2beam"),
            "beam-pool approximation of the frozen policy")
     if args.exact_policy_pool:
-        exact_pools, _ = load_pools([args.exact_policy_pool])
+        exact_pools, exact_presence = load_pools([args.exact_policy_pool])
+        # The exact-policy file is part of the funding evidence: its completion gates
+        # the verdict exactly like the merged sources do.
+        expected_val_keys = {(e["db_id"], i) for i, e in enumerate(train)
+                             if e["db_id"] in expected_val}
+        for source, keys in exact_presence.items():
+            missing = len(expected_val_keys - keys)
+            completion[f"exact-policy:{source}"] = {
+                "present": len(keys & expected_val_keys),
+                "expected": len(expected_val_keys), "missing": missing}
+            if missing:
+                funding_verdict_allowed = False
+        report["completion_by_source"] = completion
+        report["funding_verdict_allowed"] = funding_verdict_allowed
         exact = {(p["db_id"], p["idx"]): p for p in exact_pools}
 
         def frozen(candidates, _exact=exact):
