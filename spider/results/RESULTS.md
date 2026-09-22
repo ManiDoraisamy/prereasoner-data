@@ -225,8 +225,18 @@ questions, denominators fixed):
 
 S2 gains on ALL five validation databases (+6…+16): the funding gate (≥ +5, spread, all
 sources complete) passes. S2 is a feature-only baseline — the semantic-scorer branch
-stays open regardless. Next per the review: serving-faithful confirmation of the winning
-selector BEFORE the full relabel spend.
+stays open regardless.
+
+**Serving-faithful confirmation (tag `arbiter_s2_d2`): 645/1,034 (62.4%) strict** on
+whole_db through the production entry point — `--selection arbiter` executes the merged
+d2-beams pool (op-bounded), scores every candidate under the proposer prompt, and selects
+by the pure-linear pilot artifact. Transition vs the 587 standing policy: 125 wins /
+67 losses / 520 unchanged-correct. Difficulty slices: easy 78.6%, medium 62.1%,
+hard 56.3% (−0.6 vs policy — the one non-gaining slice), extra 45.2%. The pilot's
+held-out +8.4-point estimate landed at +5.6 on dev: the tuning-set caveat stands, but
+the held-out methodology predicted within range. Selector capture is 645 of the 825
+pooled ceiling (78.2%) — both 90/90 requirements (coverage, capture) remain the
+distance to 80%.
 
 ## Evaluation-protocol caveats (read before quoting numbers)
 
