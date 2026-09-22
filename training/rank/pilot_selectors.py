@@ -171,6 +171,9 @@ def main():
                     help="d2-GREEDY-built pool file for the faithful frozen-policy replay")
     ap.add_argument("--split", default="training/rank/data/experiments/pilot/split.json")
     ap.add_argument("--out", default="training/rank/data/experiments/pilot/report.json")
+    ap.add_argument("--save-arbiter", default="",
+                    help="persist the fitted S2 as a pure-linear JSON artifact "
+                         "(deterministic serving math, no sklearn at load time)")
     args = ap.parse_args()
 
     import collections as _c
@@ -294,6 +297,18 @@ def main():
         return executable[best]
     record("S2-logistic-execfiltered", s2,
            "feature-only baseline over EXECUTED candidates, NOT the semantic-scorer branch")
+    if args.save_arbiter:
+        with open(args.save_arbiter, "w", encoding="utf-8") as handle:
+            json.dump({
+                "sources": list(SOURCES),
+                "scaler_mean": scaler.mean_.tolist(),
+                "scaler_scale": scaler.scale_.tolist(),
+                "coef": model.coef_[0].tolist(),
+                "intercept": float(model.intercept_[0]),
+                "fit_pools": args.pools,
+                "seed": SEED,
+            }, handle, indent=2)
+        print(f"saved arbiter -> {args.save_arbiter}")
 
     with open(args.out, "w", encoding="utf-8") as handle:
         json.dump(report, handle, indent=2, default=str)

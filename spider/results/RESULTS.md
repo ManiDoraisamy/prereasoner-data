@@ -205,6 +205,29 @@ greedy decode, the one importer, the one validator, generation-penalized pools. 
 latency is the open promotion constraint (fp32 CPU decode ~5s/question; the Phase D
 step-1 measurement requires a quantized runtime). Nothing is promoted.
 
+## Arbitration pilot (Step 3): FUNDED
+
+Bounded pilot over 20 train databases (15 fit / 5 validation, validation held out from
+BOTH proposer and selector fitting; split + provenance in
+`training/rank/data/experiments/pilot/`). Pools: deterministic + d2-beams + d4-greedy,
+every candidate teacher-force scored; per-source completion verified (2,041/2,041 each);
+exact frozen-policy replay from a dedicated d2-greedy pool. Held-out validation (416
+questions, denominators fixed):
+
+| Selector | Strict | vs frozen policy |
+|---|---:|---:|
+| Oracle ceiling | 302 (72.6%) | — |
+| Deterministic top | 106 (25.5%) | — |
+| Frozen proposer_first (exact replay) | 189 (45.4%) | baseline |
+| S1 likelihood, exec-filtered | 219 (52.6%) | +7.2 pts |
+| **S2 logistic, exec-filtered (mixed pools)** | **237 (57.0%)** | **+11.5 pts** |
+| S2 on d2-beams pools only | 224 (53.8%) | +8.4 pts |
+
+S2 gains on ALL five validation databases (+6…+16): the funding gate (≥ +5, spread, all
+sources complete) passes. S2 is a feature-only baseline — the semantic-scorer branch
+stays open regardless. Next per the review: serving-faithful confirmation of the winning
+selector BEFORE the full relabel spend.
+
 ## Evaluation-protocol caveats (read before quoting numbers)
 
 - **Spider dev has served as the program's tuning set.** No training ever saw dev, but

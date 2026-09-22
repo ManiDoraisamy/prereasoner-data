@@ -177,7 +177,7 @@ def ast_predict(
     enc, tabs, question, schema_fks=None, schema_cache=None,
     selection="serving_top1", max_candidates=25, use_signals=True,
     execution_backend="sql", python_row_limit=10_000, rank_model=None,
-    proposer=None,
+    proposer=None, arbiter=None,
 ):
     """Run AST search using either exact serving top-1 or bounded execution checks.
 
@@ -197,16 +197,18 @@ def ast_predict(
     norm, fks, sch, tmap = cached
     candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
                                 use_semantic_signals=use_signals, rank_model=rank_model)
-    novel_proposal, novel_index = None, None
+    novel_proposal, novel_index, novel_sqls = None, None, frozenset()
     if proposer is not None:
         from engine.sql_schema import SchemaGraph as _ProposalGraph
 
+        pre_merge = {candidate.sql for candidate in candidates}
         floor = min((candidate.score for candidate in candidates), default=0.0)
         proposals = proposer.propose(
             norm, question, _ProposalGraph.from_planner(sch, fks), min_score=floor,
             beams=getattr(proposer, "beams", 1),
         )
         candidates, novel_proposal, novel_index = merge_proposals(candidates, proposals)
+        novel_sqls = {candidate.sql for candidate in candidates} - pre_merge
     from engine.sql_rank import execute_and_rerank
     from engine.sql_schema import SchemaGraph
 
@@ -324,6 +326,31 @@ def ast_predict(
         if not executed:
             result.update(error=pool[0]["error"], stage="ast_search")
         return result
+    if selection == "arbiter":
+        # Serving-faithful S2 arbitration: execute the merged pool (op-bounded), score
+        # every candidate under the proposer's prompt, select by the pure-linear artifact.
+        pool_rows = []
+        for candidate in candidates:
+            try:
+                _, rows = execute(candidate.sql, progress_limit=POOL_EXECUTION_OP_LIMIT)
+                pool_rows.append([list(row) for row in rows])
+            except Exception:  # noqa: BLE001 - a failed candidate disqualifies only itself
+                pool_rows.append(None)
+        likelihoods = proposer.score_sqls(norm, question,
+                                          [candidate.sql for candidate in candidates])
+        chosen = arbiter_select(candidates, pool_rows, likelihoods, arbiter, novel_sqls)
+        if chosen is None:
+            return {"ok": False, "error": "no executable candidate",
+                    "stage": "ast_search", "path": "ast"}
+        candidate = candidates[chosen]
+        return {"ok": True, "sql": candidate.sql, "rows": pool_rows[chosen], "path": "ast",
+                "candidate_count": len(candidates),
+                "executed_candidate_count": sum(rows is not None for rows in pool_rows),
+                "selected_candidate_rank": chosen,
+                "proposal_selected": candidate.sql in novel_sqls,
+                "plan": list(candidate.evidence),
+                "candidate_score": round(candidate.score, 4),
+                "rank_features": dict(candidate.features)}
     if selection in ("serving_top1", "proposer_first"):
         # proposer_first: a novel validated proposal is selected; otherwise the deterministic
         # top-1. A deterministic code policy, measured before it is ever a serving mode.
@@ -419,6 +446,45 @@ def merge_proposals(candidates, proposals):
     return merged, novel_proposal, novel_index
 
 
+def arbiter_select(candidates, executions, scores, arbiter, novel_sqls):
+    """Deterministic linear arbitration over EXECUTED candidates (pilot S2 contract).
+
+    Vectors reproduce training/rank/pilot_selectors.vector for a single d2beam-shaped
+    source; the artifact is pure linear algebra (means, scales, coefficients), so the
+    selection is auditable arithmetic. Returns the chosen index or None."""
+    from training.rank.pilot_selectors import vector
+
+    entries = []
+    for index, candidate in enumerate(candidates):
+        evidence = tuple(candidate.evidence)
+        proposal_only = candidate.sql in novel_sqls
+        logprob, tokens = scores[index]
+        entries.append({
+            "sql": candidate.sql,
+            "sources": {"d2beam": {"rank": index, "score": candidate.score,
+                                   "features": {"proposer:scored_logprob": logprob,
+                                                "proposer:scored_tokens": float(tokens)}}},
+            "from_enumerator": not proposal_only,
+            "from_proposer": proposal_only or "proposer:endorsed" in evidence,
+            "endorsed": "proposer:endorsed" in evidence,
+            "executable": executions[index] is not None,
+        })
+    executable = [i for i, entry in enumerate(entries) if entry["executable"]]
+    if not executable:
+        return None
+    best_index, best_score = None, None
+    for i in executable:
+        row = vector(entries[i], len(entries))
+        z = sum((value - mean) / (scale or 1.0) * coef
+                for value, mean, scale, coef in zip(
+                    row, arbiter["scaler_mean"], arbiter["scaler_scale"], arbiter["coef"]))
+        z += arbiter["intercept"]
+        key = (z, -i)
+        if best_score is None or key > best_score:
+            best_index, best_score = i, key
+    return best_index
+
+
 def _score_pool_oracle(record, gold_rows):
     """Reduce a pool_oracle record to (oracle_cmp, top1_cmp) against gold.
 
@@ -480,7 +546,7 @@ def compose_predict(eng, tabs, question):
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
             ast_schema_cache=None, selection="serving_top1", max_candidates=25,
             use_signals=True, use_compose=True, execution_backend="sql",
-            python_row_limit=10_000, rank_model=None, proposer=None):
+            python_row_limit=10_000, rank_model=None, proposer=None, arbiter=None):
     """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
     EVIDENCE to build a compose plan; the AUTHORITY to stand on it is a grounded world dependency (compose_owns).
     Spider tables are world-less, so compose_owns is always False and every question routes to the typed-AST
@@ -506,7 +572,7 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
         return ast_predict(
             enc, tabs, question, schema_fks, ast_schema_cache,
             selection, max_candidates, use_signals,
-            execution_backend, python_row_limit, rank_model, proposer,
+            execution_backend, python_row_limit, rank_model, proposer, arbiter,
         )
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
@@ -523,7 +589,8 @@ def main():
     ap.add_argument("--per-diff", type=int, default=0)
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
     ap.add_argument("--selection",
-                    choices=["serving_top1", "execution_checks", "pool_oracle", "proposer_first"],
+                    choices=["serving_top1", "execution_checks", "pool_oracle", "proposer_first",
+                             "arbiter"],
                     default="serving_top1",
                     help="serving_top1 matches live AST selection exactly; pool_oracle scores the "
                          "example by the best pooled candidate (oracle ablation, never serving); "
@@ -562,6 +629,9 @@ def main():
                     help="deterministic beam count for proposer decoding (1 = greedy)")
     ap.add_argument("--proposer-values", action="store_true",
                     help="value-linked prompts — only for adapters TRAINED with them (d4+)")
+    ap.add_argument("--arbiter", default="",
+                    help="pure-linear S2 arbiter JSON (pilot_selectors --save-arbiter) — "
+                         "measurement injection for the arbitration experiment")
     # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
     ap.add_argument("--no-compose", action="store_true",
                     help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
@@ -584,6 +654,8 @@ def main():
         ap.error("pool_oracle is a SQL-backend oracle ablation; use --backend sql")
     if args.selection == "proposer_first" and not args.proposer:
         ap.error("proposer_first requires --proposer")
+    if args.selection == "arbiter" and not (args.proposer and args.arbiter):
+        ap.error("arbiter requires --proposer and --arbiter")
 
     with open(os.path.join(args.data, "dev.json"), encoding="utf-8") as handle:
         dev = json.load(handle)
@@ -652,6 +724,7 @@ def main():
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **({"rank_head": args.rank_head} if args.rank_head else {}),
+            **({"arbiter": args.arbiter} if args.arbiter else {}),
             **({f"proposer_code/{name}": os.path.join(ROOT, "training", "proposer", name)
                 for name in ("propose.py", "serialize.py", "import_gold.py", "__init__.py")}
                if args.proposer else {}),
@@ -691,6 +764,12 @@ def main():
         rank_head = RankHead.load(args.rank_head)
         print(f"injected candidate rank head: {args.rank_head} "
               f"(top_k={rank_head.top_k}, {len(rank_head.feature_names)} named features)",
+              flush=True)
+    arbiter = None
+    if args.arbiter:
+        with open(args.arbiter, encoding="utf-8") as handle:
+            arbiter = json.load(handle)
+        print(f"injected arbiter: {args.arbiter} ({len(arbiter['coef'])} features)",
               flush=True)
     proposer = None
     if args.proposer:
@@ -753,7 +832,7 @@ def main():
                     current_fks, ast_schema_cache,
                     args.selection, args.max_candidates,
                     not args.no_signals, not args.no_compose,
-                    args.backend, args.python_row_limit, rank_head, proposer,
+                    args.backend, args.python_row_limit, rank_head, proposer, arbiter,
                 )
 
             r, terr, prediction_seconds, over_budget = run_with_budget(
@@ -849,6 +928,7 @@ def main():
         "proposer": args.proposer or None,
         "proposer_beams": args.proposer_beams,
         "proposer_values": args.proposer_values,
+        "arbiter": args.arbiter or None,
         "cap": args.cap,
         "timeout": args.timeout,
         "artifacts": checkpoint_contract["artifacts"],
