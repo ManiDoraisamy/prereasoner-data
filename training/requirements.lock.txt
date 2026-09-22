@@ -717,3 +717,4 @@ typing-extensions==4.16.0 \
     #   anyio
     #   huggingface-hub
     #   torch
+sqlglot==30.18.0
