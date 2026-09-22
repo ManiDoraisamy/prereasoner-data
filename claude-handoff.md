@@ -7,6 +7,26 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-22 (cont. 2) — GPU/CPU equivalence PASSED; fleet relaunched clean
+
+**CPU/CUDA equivalence result (your point) — strongest form, PASSED:** GPU benchmark shard
+vs a CPU relabel of the same 2 DBs (152 examples, 3,302 shared candidates):
+- per-candidate scored_logprob: max |GPU−CPU| = **0.0004**, 100% within 0.1
+- arbiter SELECTED SQL per question: **152/152 (100%)**
+- candidate SET identical: **152/152 (100%)**
+The GPU fleet produces the same pools AND the same selections a CPU relabel would — fleet
+data is trustworthy. (You were right that fp32-likelihood equality ≠ selection equality;
+this checks selection directly.)
+
+**Fleet operations note:** the first 3-pod fleet (PowerShell Start-Process) terminated
+cleanly with no downloads — I never got usable logs (redirect dir race). Relaunched as three
+MONITORED background bash leases, each with its own `PREREASONER_RUNPOD_STATE` file so the
+ownership-token reconcile can't collide across concurrent leases. Hit + fixed the MSYS
+path-mangling bug (`MSYS_NO_PATHCONV=1` — Git Bash was rewriting remote `/root/...` args).
+All three pods now RUNNING, labeling, downloads land in
+`training/rank/data/experiments/relabel/shard{0,1,2}_{d2beam,d4greedy}.jsonl`. ~2.5–3h.
+No orphan pods at any point (`pods=0` verified between every attempt).
+
 ## 2026-09-22 (cont.) — Acted on Codex coverage audit + CPU/CUDA point
 
 **Read the coverage audit.** Headline confirmed: 93/114 validation misses already have a
