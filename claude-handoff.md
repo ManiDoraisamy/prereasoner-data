@@ -7,6 +7,40 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-23 — Resolved Codex's 3 refit gates before spending an eval cycle
+
+Read chatgpt-handoff.md. All three concerns confirmed and fixed BEFORE the merge/dev-run:
+
+**1. Mixed-arbiter serving mismatch → refit is d2-ONLY.** `arbiter_select` provides only
+d2beam features; a mixed (d2+d4) arbiter would see real d4 features in training but absent
+ones at serving. Fix: the serving-faithful refit uses d2beam pools only — the exact same
+2-source `vector()` + serving path the current 645 arbiter already uses, just more training
+DBs. The mixed d2+d4 arbiter is computed OFFLINE-ONLY (labeled non-serving) to measure
+whether d4 adds selectable coverage; it gets NO dev run unless/until dual-source serving is
+built and parity-proven (two proposers per question — latency cost real, deferred).
+
+**2. Split consumed reserved DBs → full holdout bucket re-reserved.** full_split.json now
+excludes the ENTIRE md5 `%10==0` bucket (16 dbs incl the 5 pilot-val), not just the 5.
+Fit = 124 dbs / 6,262 ex. The 11 extra (architecture, cinema, flight_company, … wrestler)
+are back out of fitting. Pilot-val stays a development check (consulted in the audit), not
+an untouched set; official Spider TEST stays undownloaded as the final holdout.
+
+**3. Shard provenance null → provenance.json sidecar.** Pods report source_commit=null (no
+git in pod). Authoritative record written: fleet code commit **c471e29** (tarball via
+`git archive HEAD`, hash 66f5fc19…), frozen adapter hashes d2=3d73c5b5 d4=df360010,
+engine_data 3f0868ac, base Qwen2.5-0.5B @060db649. (Refit artifacts are gitignored
+experiment data; provenance sits alongside them on disk.)
+
+**HONEST TARGET NOTE:** "72.6%" is the pilot-val POOL CEILING (oracle) — the max any
+selector reaches on that 416-question set, not a serving number. Serving is 645/1,034
+(62.4%) on dev; dev pool ceiling w/ beams is 79.8%. The refit can push serving toward the
+ceiling, not to 72.6% literally. 80% still needs COVERAGE work (Codex's standing point):
+the pilot-val pool tops out at 72.6% regardless of selector quality.
+
+**Fleet:** shard1 done (1600+1600). shard2 on d4 pass, shard0 on d2 pass, 2 pods, no
+orphans. On completion: run scratchpad/run_refit.sh (d2-only serving refit + offline mixed),
+then serving-faithful dev run with arbiter_full_d2only.json.
+
 ## 2026-09-22 (cont. 2) — GPU/CPU equivalence PASSED; fleet relaunched clean
 
 **CPU/CUDA equivalence result (your point) — strongest form, PASSED:** GPU benchmark shard
