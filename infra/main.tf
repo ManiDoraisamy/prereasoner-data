@@ -403,8 +403,10 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
-      # /healthz reports ok only once both models finished loading; give the cold start
-      # up to ~5 minutes before the instance is killed.
+      # /healthz reports ok only once every model finished loading. Give the cold start Cloud
+      # Run's maximum startup budget (period x threshold <= 600s): an autoscaled instance can
+      # wait 1.5-2 minutes for the image before loading starts, then load for 2-4 minutes, so a
+      # 5-minute budget killed healthy scale-out instances in production (observed 2026-09-23).
       startup_probe {
         http_get {
           path = "/healthz"
@@ -412,7 +414,7 @@ resource "google_cloud_run_v2_service" "api" {
         initial_delay_seconds = 10
         period_seconds        = 10
         timeout_seconds       = 5
-        failure_threshold     = 30
+        failure_threshold     = 60
       }
     }
   }
