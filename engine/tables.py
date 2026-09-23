@@ -473,6 +473,15 @@ class TableQuery:
             expand_extrema=expand_extrema,
         )
 
+    def search_pool(self, question, norm, fks, sch):
+        """The deterministic search's candidates under the pool contract: ``select_query``'s
+        first stage. Its top candidate is the search's structural reading of the question."""
+        if self.sql_arbiter is None:
+            raise RuntimeError("SQL selection models are not loaded - construct the planner through "
+                               "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
+        return self.search_ast(question, sch, norm, fks,
+                               max_candidates=self.sql_arbiter.search_candidates)
+
     def select_query(self, question, norm, fks, sch, tablemap):
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
@@ -485,8 +494,9 @@ class TableQuery:
            (engine/sql_rank.py). A registered calculation intent (engine/calculations) takes the
            best-ranked query that satisfies it, when one exists.
 
-        This is the one own-data selection: serving, the decomposition probe and leaves, the
-        Spider evaluator, the offline regression gate and arbiter training all call it.
+        This is the one own-data selection: serving, decomposition leaves, the Spider evaluator,
+        the offline regression gate and arbiter training all call it. The decomposition probe
+        reads only its first stage (``search_pool``).
         """
         if self.sql_proposer is None or self.sql_arbiter is None:
             raise RuntimeError("SQL selection models are not loaded - construct the planner through "
@@ -496,8 +506,7 @@ class TableQuery:
         from engine.sql_schema import SchemaGraph
 
         arbiter = self.sql_arbiter
-        searched = self.search_ast(question, sch, norm, fks,
-                                   max_candidates=arbiter.search_candidates)
+        searched = self.search_pool(question, norm, fks, sch)
         graph = SchemaGraph.from_planner(sch, fks)
         floor = min((candidate.score for candidate in searched), default=0.0)
         pool, proposed = merge_proposals(
@@ -527,26 +536,33 @@ class TableQuery:
         candidate = selection.candidate
         if candidate is None:
             return None, None, "planner: no executable AST candidate", candidates, selection
-        ok, why = self.guard(candidate.sql)
-        if not ok:
-            return candidate, None, "guard: " + why, candidates, selection
         deterministic_plan = None
         from engine.deterministic.context import current_analysis_context
         analysis_context = current_analysis_context()
         if analysis_context is not None:
-            from engine.deterministic.lower import (
-                UnsupportedDeterministicPlan,
-                lower_select_query,
-            )
-            from engine.decomposition import compound_candidate
+            from engine.decomposition import compound_candidate, single_branch
 
             compound = compound_candidate(selection)
             if compound is not None:
                 # A named compound request needs a branch proposal before it has an
                 # executable dual-emitter plan. Do not run a single query that answers one
-                # fragment of the question, or the incidental set-operation candidate, and
-                # then throw its rows away.
+                # fragment of the question and then throw its rows away.
                 return compound, None, None, candidates, selection
+            # One dual-emitter branch serves a named request. A set operation that only a
+            # proposer beam reads into the question is outranked by the best single query.
+            selection = selection.constrained(single_branch)
+            candidate = selection.candidate
+            if candidate is None:
+                return None, None, "planner: no single-query AST candidate", candidates, selection
+        ok, why = self.guard(candidate.sql)
+        if not ok:
+            return candidate, None, "guard: " + why, candidates, selection
+        if analysis_context is not None:
+            from engine.deterministic.lower import (
+                UnsupportedDeterministicPlan,
+                lower_select_query,
+            )
+
             try:
                 deterministic_plan = lower_select_query(
                     analysis_context.slug, candidate.query, sch, fks,

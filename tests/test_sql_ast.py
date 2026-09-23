@@ -849,6 +849,69 @@ def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_on
     assert named.get("decomposition_required"), named
     assert named["result"] is None and named["error"] is None
 
+    # The compose path's probe asks the same question of the search alone: no proposer decode.
+    from engine.decomposition import compound_decomposition_required
+
+    probe = ScriptedProposer((one_query,))
+    assert compound_decomposition_required(_hermetic_planner(probe), tables, question)
+    assert probe.decodes == 0
+
+
+def test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation():
+    """The live demo gate caught this after the proposer shipped. "total amount for restaurants
+    in United States" is a world question; the catering sheet has no country column. The
+    proposer's top beam read it as an INTERSECT over invented values and the arbiter chose it,
+    so every named request asked for a decomposition and the world join never ran. Compound
+    structure is the search's reading: a named request neither decomposes nor serves that beam,
+    it serves the best-ranked single query. Evaluation still serves the arbiter's choice."""
+    from unittest.mock import patch
+
+    from engine.decomposition import compound_decomposition_required, single_branch
+    from engine.deterministic.context import analysis_execution_context
+    from tests.test_datasets import DATASET_DIR, _tables
+
+    (sheet,) = _tables(DATASET_DIR / "neartail-catering")
+    tables = [dict(sheet, rows=[[name, event, int(amount)] for name, event, amount in sheet["rows"]])]
+    question = "total amount for restaurants in United States"
+    invented = ("SELECT SUM(amount) FROM catering WHERE event = 'breakfast' "
+                "INTERSECT SELECT SUM(amount) FROM catering WHERE event = 'lunch'")
+
+    def proposer():
+        return ScriptedProposer((invented,), likelihood=lambda sql: (
+            (-1.0, 30) if "INTERSECT" in sql else (-90.0, 30)))
+
+    planner = _hermetic_planner(proposer())
+    selection = _select(planner, question, tables)
+    assert isinstance(selection.candidate.query, SetQuery), "the arbiter prefers the beam"
+    assert isinstance(selection.search_top.query, SelectQuery), "the search reads one goal"
+    evaluated = planner.serve(tables, question)
+    assert evaluated["sql"] == selection.candidate.sql, "evaluation serves the arbiter's choice"
+
+    served = selection.constrained(single_branch)
+    assert isinstance(served.candidate.query, SelectQuery) and served.selected != selection.selected
+    ran = []
+
+    def execute(tablemap, sch, sql, query=None, deterministic_plan=None):
+        ran.append(query)
+        return ["total"], [(27000,)]
+
+    with analysis_execution_context({"slug": "catering", "revision": 1}, "c_" + "8" * 32), \
+            patch.object(planner, "execute", side_effect=execute):
+        named = planner.serve(tables, question)
+    assert not named.get("decomposition_required"), named
+    assert ran == [served.candidate.query] and named["error"] is None
+    assert named["selection"]["selected"] == served.selected, "the record names what was served"
+
+    # The compose probe that gates the world path agrees, from the search alone.
+    probe = proposer()
+    assert compound_decomposition_required(_hermetic_planner(probe), tables, question) is None
+    assert probe.decodes == 0
+
+    # A selection whose choice is already one query is left exactly as the arbiter ranked it.
+    simple = _select(_hermetic_planner(ScriptedProposer()), "total amount for Noma", tables)
+    assert isinstance(simple.candidate.query, SelectQuery)
+    assert simple.constrained(single_branch) is simple
+
 
 def test_proposal_import_rejects_malformed_model_text():
     from engine.sql_import import Unsupported, import_sql
@@ -2342,6 +2405,7 @@ TESTS = [
     test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query,
+    test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation,
     test_proposal_import_rejects_malformed_model_text,
     test_evaluator_grades_the_served_selection,
     test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric,

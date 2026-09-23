@@ -266,9 +266,12 @@ The own-data path pools two candidate sources over one typed SQL AST and selects
 4. The arbiter scores each runnable query: a standardized linear function of nine named features
    (proposer likelihood, its length, per-token likelihood, pool score, pool rank, which source produced
    it, endorsement, pool size). The best score wins; the earlier pool position breaks ties. Calculation
-   intents and the decomposition leaf contract constrain this ranking rather than rescoring it.
-5. For a named request, a compound question — the search reads it as a set operation, or the chosen
-   answer is one — requests decomposition instead of executing a single query.
+   intents, the single-branch serving contract and the decomposition leaf contract constrain this
+   ranking rather than rescoring it.
+5. For a named request, a compound question — the search reads it as a set operation — requests
+   decomposition instead of executing a single query. Otherwise one dual-emitter branch serves it: the
+   best-ranked single query, so a set operation that only a proposer beam reads into the question is
+   neither served nor treated as compound.
 
 The response's `planner.selection` records the winner's origin, score, and per-feature contributions.
 The winning AST then executes against the conversation schema through the shared SQL/Python plan.

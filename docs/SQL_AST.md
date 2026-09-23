@@ -27,9 +27,10 @@ one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted ind
 plan; neither source is parsed to create the other. See
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
-When a named request is compound — the search reads the question as a set operation, or the chosen
-answer is one — the engine requests one bounded decomposition retry instead of running a query that
-answers a fragment. A conversational model proposes only natural-language leaf questions and a closed
+When a named request is compound — the search reads the question as a set operation — the engine
+requests one bounded decomposition retry instead of running a query that answers a fragment. A
+proposer beam never makes a question compound: a named request that is not compound is served by the
+best-ranked single query. A conversational model proposes only natural-language leaf questions and a closed
 `cross`/`anti_join` topology. The same planner selects every leaf, under the leaf contract;
 `engine/decomposition.py` fuses their typed outputs into one DAG. No text from the conversational
 model becomes SQL, Python, an identifier, a join key, or an intermediate result.
@@ -108,8 +109,8 @@ feature contributions (`PoolSelection.record`).
 Live serving goes through `engine/tables.py`. `TableQuery.serve(tables, question)` runs the
 full own-data pipeline (ingest → schema → `_serve_ast` → guard → execute) and returns the
 answer plus the winning candidate. `_serve_ast` calls `select_query`, the one own-data selection
-also used by the decomposition probe and leaves, the Spider evaluator, the offline regression gate
-and arbiter training:
+also used by decomposition leaves, the Spider evaluator, the offline regression gate and arbiter
+training. The decomposition probe reads only its first stage, `search_pool`:
 
 ```python
 from engine.encoder_overlay import EncoderQuery

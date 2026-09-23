@@ -647,10 +647,17 @@ class PoolSelection:
     def search_top(self) -> ScoredQuery | None:
         return self.pool[0] if self.searched else None
 
-    def best(self, admissible) -> ScoredQuery | None:
-        """The best-ranked executable member satisfying `admissible` (a caller's contract)."""
-        return next((self.pool[index] for index in self.ranking if admissible(self.pool[index])),
-                    None)
+    def constrained(self, admissible) -> PoolSelection:
+        """This selection under a caller's contract, a filter on the ranking and never a rescore.
+
+        Unchanged when the selected member satisfies ``admissible``; otherwise re-selected to the
+        best-ranked executable member that does (``selected`` is None when none does), so the
+        record always describes the member that was actually served.
+        """
+        if self.selected is not None and admissible(self.pool[self.selected]):
+            return self
+        return replace(self, selected=next(
+            (index for index in self.ranking if admissible(self.pool[index])), None))
 
     def origin(self, index: int) -> str:
         candidate = self.pool[index]

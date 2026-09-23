@@ -45,7 +45,7 @@ Extend these owners. Do not build parallel replacements.
 | Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
-| Own-data query selection (search + proposer + pool execution + arbiter) — the ONE selection used by serving, the decomposition probe and leaves, the Spider evaluator, the offline regression gate, and arbiter training | `engine/tables.py:TableQuery.select_query` |
+| Own-data query selection (search + proposer + pool execution + arbiter) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, the offline regression gate, and arbiter training; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
 | SQL candidate proposer (frozen LoRA on the pinned Qwen base: deterministic beams + likelihoods), its one prompt, and the SQL-to-typed-AST gate every proposal passes | `engine/sql_proposer.py` + `engine/sql_prompt.py` + `engine/sql_import.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |

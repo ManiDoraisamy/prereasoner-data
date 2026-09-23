@@ -351,11 +351,13 @@ def test_leaf_contract_constrains_the_served_ranking():
     assert not admissible(pool[0]) and admissible(pool[1])
     selection = PoolSelection(pool, frozenset({"names only"}), (True, True),
                               ((-1.0, 9), (-30.0, 12)), (2.0, -1.0), (0, 1), 0, 1)
-    assert selection.best(admissible).sql == "with measure"
+    assert selection.constrained(admissible).candidate.sql == "with measure"
+    assert selection.constrained(admissible).selected == 1, "the record names the served member"
     compound = ScoredQuery(SetQuery(with_measure, "EXCEPT", with_measure), "compound", 3.0, ())
     only_compound = PoolSelection((compound,), frozenset(), (True,), ((-1.0, 9),), (2.0,),
                                   (0,), 0, 1)
-    assert only_compound.best(leaf_admissible("top_products", question, (compound,), True)) is None
+    assert only_compound.constrained(
+        leaf_admissible("top_products", question, (compound,), True)).candidate is None
 
 
 TESTS = [

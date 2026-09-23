@@ -128,11 +128,16 @@ def validate_decomposition(value: object) -> dict[str, Any] | None:
     }
 
 
-def selected_decomposition_required(candidate) -> dict[str, Any] | None:
-    """One selected-AST predicate, shared by the delegate and compose probe."""
+def single_branch(candidate) -> bool:
+    """Whether one dual-emitter branch can represent the candidate: a typed SELECT."""
     from engine.sql_ast import SelectQuery
 
-    if candidate is not None and not isinstance(candidate.query, SelectQuery):
+    return isinstance(candidate.query, SelectQuery)
+
+
+def selected_decomposition_required(candidate) -> dict[str, Any] | None:
+    """One selected-AST predicate, shared by the delegate and compose probe."""
+    if candidate is not None and not single_branch(candidate):
         return {
             "reason": "the selected typed AST is compound and cannot be represented by one dual-emitter branch"
         }
@@ -140,17 +145,17 @@ def selected_decomposition_required(candidate) -> dict[str, Any] | None:
 
 
 def compound_candidate(selection):
-    """The compound query that makes a named request need decomposition, or None.
+    """The search's compound reading that makes a named request need decomposition, or None.
 
-    Compound structure is decided by the deterministic search's own reading of the question
-    (its top candidate, whose grammar models set operations) or by the chosen answer. The SQL
-    proposer only ever emits one query, so a single-query answer to a multi-goal question is
-    a fragment of it; the decomposition proposal owns such questions.
+    Compound structure is the deterministic search's own reading of the question: its top
+    candidate, from a grammar that models set operations. The arbiter's choice never decides
+    it. A proposer beam can read a single-goal question as a set operation over invented
+    values (a world question over data that lacks the world attribute), and a single-query
+    answer to a multi-goal question is only a fragment of it; the decomposition proposal owns
+    such questions.
     """
-    for candidate in (selection.search_top, selection.candidate):
-        if selected_decomposition_required(candidate) is not None:
-            return candidate
-    return None
+    top = selection.search_top
+    return top if selected_decomposition_required(top) is not None else None
 
 
 def leaf_admissible(node_id: str, question: str, pool, feeds_cross: bool):
@@ -166,22 +171,21 @@ def leaf_admissible(node_id: str, question: str, pool, feeds_cross: bool):
 
 
 def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
-    """Execution-free probe: does the planner's SELECTED candidate need decomposition?
+    """Execution-free probe: does the search read the question as compound?
 
-    This is the same predicate the own-data serve path applies after selection
-    (engine/tables.py sets `decomposition_required` when the winner is compound).
-    The compose path must consult it BEFORE building a composition: a multi-goal
-    question's surface ("top ...") can satisfy the compose gate, and a composed
-    top-N would then answer one fragment of the question. The probe runs the one
-    own-data selection (`select_query`, whose pool checks run on an in-memory copy)
-    but never executes against the conversation database. A failed probe must not
-    authorize a partial composed answer.
+    This is the same predicate the own-data serve path applies (``compound_candidate``: the
+    search's top candidate is a set operation). The compose path must consult it BEFORE
+    building a composition: a multi-goal question's surface ("top ...") can satisfy the
+    compose gate, and a composed top-N would then answer one fragment of the question.
+    Compound structure is the search's reading alone, so the probe runs only the search stage
+    of the one own-data selection (``search_pool``): no proposer decode, no execution. A
+    failed probe must not authorize a partial composed answer.
     """
     try:
         norm, inferred_fks = planner.ingest(tables)
-        schema, _, tablemap = planner.schema(norm, inferred_fks)
-        selection = planner.select_query(question, norm, inferred_fks, schema, tablemap)
-        return selected_decomposition_required(compound_candidate(selection))
+        schema, _, _ = planner.schema(norm, inferred_fks)
+        searched = planner.search_pool(question, norm, inferred_fks, schema)
+        return selected_decomposition_required(searched[0] if searched else None)
     except Exception as exc:
         raise DecompositionError(
             "could not check the selected query for decomposition"
@@ -298,9 +302,9 @@ def build_decomposed_plan(
             )
         # The leaf contract constrains the served ranking; with no admissible member the
         # ranking's own choice is kept so the rejection below names the concrete defect.
-        candidate = selection.best(leaf_admissible(
+        candidate = selection.constrained(leaf_admissible(
             node["id"], node["question"], candidates, node["id"] in cross_inputs,
-        )) or selection.candidate
+        )).candidate or selection.candidate
         if candidate is None or not isinstance(candidate.query, SelectQuery):
             raise DecompositionError(
                 f"subquestion {node['id']!r} requires an unsupported compound query"

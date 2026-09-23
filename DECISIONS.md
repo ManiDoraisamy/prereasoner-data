@@ -386,16 +386,26 @@ measurement is in `spider/results/RESULTS.md`.
 What stays true: every executed query is a typed AST the engine validated and rendered. Proposer text
 passes the importer (`engine/sql_import.py`), the validator and the renderer, or it is dropped. The
 choice is deterministic arithmetic whose per-feature contributions each response reports
-(`planner.selection`). One function serves, probes and plans decomposition leaves; the Spider
-evaluator, the offline regression gate and arbiter training call it too.
+(`planner.selection`). One function serves and plans decomposition leaves; the Spider evaluator, the
+offline regression gate and arbiter training call it too, and the decomposition probe reads its
+first stage (the search).
 
-The arbiter learned Spider's conventions, not the product's, and two product contracts are therefore
-constraints on its ranking rather than features of it. A named request is compound — and requests
-decomposition instead of executing a fragment — when the search reads the question as a set
-operation or the chosen answer is one; the proposer only emits single queries. A decomposition leaf
-takes the best-ranked candidate that keeps its summed measure and ranked-entity grain. Both mirror the
-existing calculation constraint: they filter the arbiter's order and never rescore it. Spider
-evaluation has no analysis context, so neither changes its numbers.
+The arbiter learned Spider's conventions, not the product's, and three product contracts are
+therefore constraints on its ranking rather than features of it. A named request is compound — and
+requests decomposition instead of executing a fragment — when the search reads the question as a set
+operation; the proposer only emits single queries. A named request that is not compound is served by
+the best-ranked single query (one dual-emitter branch). A decomposition leaf takes the best-ranked
+candidate that keeps its summed measure and ranked-entity grain. All three mirror the existing
+calculation constraint: they filter the arbiter's order and never rescore it. Spider evaluation has no
+analysis context, so none of them changes its numbers.
+
+The first production flip of this release was rolled back after the live demo gate
+(`tests.test_datasets`) found a regression the hermetic suites could not: compound structure was
+also read from the arbiter's CHOICE. For "total amount for restaurants in United States" over a sheet
+with no country column, the proposer's top beam was an `INTERSECT` over invented values, the arbiter
+chose it, and every named request asked for a decomposition, so the world join never ran. Compound
+structure is now the search's reading alone, and the compose path's probe runs only the search, which
+also removes the proposer's decode (about 40 s on CPU) from every composed world question.
 
 Retired rather than kept as alternatives (git holds them): the trained rank head and its search hook,
 execution-feature reranking, the proposer-first policy, the two-proposer pilot layout (its arbiter
