@@ -158,16 +158,56 @@ def compound_candidate(selection):
     return top if selected_decomposition_required(top) is not None else None
 
 
-def leaf_admissible(node_id: str, question: str, pool, feeds_cross: bool):
-    """The leaf contract as a ranking constraint: a SELECT that keeps its summed measure
-    aggregated and, when it feeds a cross merge, stays at the ranked entity's grain."""
-    from engine.sql_ast import SelectQuery
+def ranked_measure_projected(candidate):
+    """The same ranking with its ORDER BY aggregates projected, or None when none is hidden.
 
-    def admissible(candidate) -> bool:
-        return (isinstance(candidate.query, SelectQuery)
-                and leaf_measure_rejection(node_id, question, candidate.query, pool) is None
-                and ranked_leaf_grain_rejection(node_id, candidate.query, feeds_cross) is None)
-    return admissible
+    A names-only ranking ("top 2 categories by revenue" read as ``category ... ORDER BY
+    SUM(line_total)``) is the right reading with its measure hidden, and merges and the final
+    ordering need that measure. Projecting an aggregate the ORDER BY already computes changes
+    no row and no order, so this is the same query, not another reading.
+    """
+    from engine.sql_ast import (
+        Aggregate, ASTValidationError, SelectItem, SelectQuery, render_query, validate_query,
+    )
+    from engine.sql_candidate import ScoredQuery
+
+    query = candidate.query
+    if not isinstance(query, SelectQuery) or not query.group_by:
+        return None
+    shown = {item.expression for item in query.select}
+    hidden = tuple(dict.fromkeys(
+        term.expression for term in query.order_by
+        if isinstance(term.expression, Aggregate) and term.expression not in shown
+    ))
+    if not hidden:
+        return None
+    projected = replace(query, select=query.select + tuple(SelectItem(measure) for measure in hidden))
+    try:
+        validate_query(projected)
+    except ASTValidationError:
+        return None
+    return ScoredQuery(projected, render_query(projected), candidate.score,
+                       candidate.evidence + ("leaf:ranked-measure-projected",))
+
+
+def leaf_candidate(selection, node_id: str, question: str, feeds_cross: bool):
+    """The one query a decomposition leaf serves, or None when no single query can.
+
+    Single queries are read in the arbiter's order, its choice first, each names-only ranking
+    with its measure projected. The first reading that satisfies the leaf contract is served:
+    it sums, and ranks by, the measure the question names, at the ranked entity's grain. When
+    none does, the arbiter's own reading is returned so the contract's rejection names the
+    concrete defect.
+    """
+    order = [selection.selected] if selection.selected is not None else []
+    order += [index for index in selection.ranking if index != selection.selected]
+    readings = [ranked_measure_projected(selection.pool[index]) or selection.pool[index]
+                for index in order if single_branch(selection.pool[index])]
+    for reading in readings:
+        if (leaf_measure_rejection(node_id, question, reading.query, selection.pool) is None
+                and ranked_leaf_grain_rejection(node_id, reading.query, feeds_cross) is None):
+            return reading
+    return readings[0] if readings else None
 
 
 def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
@@ -216,13 +256,13 @@ def ranked_leaf_grain_rejection(node_id: str, selected, feeds_cross: bool) -> st
 
 
 def leaf_measure_rejection(node_id: str, question: str, selected, pool) -> str | None:
-    """Model-facing rejection when a leaf's summed measure lost its aggregation.
+    """Model-facing rejection when a leaf does not sum, or rank by, the measure it names.
 
-    A leaf such as "top 3 products by units sold" names a transactional measure
-    that must be summed. If the selected plan carries no aggregate while the
-    candidate pool proves an aggregated reading of that measure exists, answering
-    would return a confident wrong ranking; the proposal is rejected instead so
-    the proposer can restate the leaf with the aggregation explicit.
+    A leaf such as "top 3 products by units sold" names a transactional measure that must be
+    summed. When the candidate pool proves the named measure can be summed, a plan that sums
+    another column (units where the question says spend) or nothing, or a ranking ordered by
+    anything but that measure, would return a confident wrong answer; the proposal is rejected
+    instead so the proposer can restate the leaf with the aggregation explicit.
     """
     from engine.sql_ast import Aggregate, SelectQuery
     from engine.sql_expansion import implicit_sum_measures, name_tokens, tokens
@@ -230,27 +270,32 @@ def leaf_measure_rejection(node_id: str, question: str, selected, pool) -> str |
     measures = implicit_sum_measures(tokens(question))
     if not measures:
         return None
-
-    def aggregates(query: SelectQuery):
-        return [item.expression for item in query.select
-                if isinstance(item.expression, Aggregate)]
-
-    if aggregates(selected):
-        return None
     wanted = frozenset().union(*(measure.column_words for measure in measures))
-    for candidate in pool:
-        query = getattr(candidate, "query", None)
-        if not isinstance(query, SelectQuery):
-            continue
-        for aggregate in aggregates(query):
-            name = getattr(aggregate.operand, "name", None)
-            if name is not None and set(name_tokens(name)) & wanted:
-                return (
-                    f"subquestion {node_id!r} names a summed measure but its selected "
-                    "plan does not aggregate; restate this subquestion with the "
-                    "aggregation explicit (for example 'total quantity sold' or "
-                    "'total revenue')"
-                )
+
+    def named(expression) -> bool:
+        name = getattr(getattr(expression, "operand", None), "name", None)
+        return (isinstance(expression, Aggregate) and name is not None
+                and bool(set(name_tokens(name)) & wanted))
+
+    def sums_named(query) -> bool:
+        return any(named(item.expression) for item in query.select)
+
+    if not any(isinstance(getattr(candidate, "query", None), SelectQuery)
+               and sums_named(candidate.query) for candidate in pool):
+        return None
+    if not sums_named(selected):
+        return (
+            f"subquestion {node_id!r} names a summed measure but its selected "
+            "plan does not aggregate it; restate this subquestion with the "
+            "aggregation explicit (for example 'total quantity sold' or "
+            "'total revenue')"
+        )
+    if selected.limit is not None and selected.order_by and not any(
+            named(term.expression) for term in selected.order_by):
+        return (
+            f"subquestion {node_id!r} ranks by something other than the summed "
+            "measure it names; restate it as a ranking by that total"
+        )
     return None
 
 
@@ -274,7 +319,6 @@ def build_decomposed_plan(
         CrossView,
         PlanSection,
     )
-    from engine.sql_ast import SelectQuery
 
     proposal = validate_decomposition(proposal)
     if proposal is None:  # pragma: no cover - callers require a proposal
@@ -300,12 +344,10 @@ def build_decomposed_plan(
             raise DecompositionError(
                 f"subquestion {node['id']!r} produced no typed AST candidate"
             )
-        # The leaf contract constrains the served ranking; with no admissible member the
-        # ranking's own choice is kept so the rejection below names the concrete defect.
-        candidate = selection.constrained(leaf_admissible(
-            node["id"], node["question"], candidates, node["id"] in cross_inputs,
-        )).candidate or selection.candidate
-        if candidate is None or not isinstance(candidate.query, SelectQuery):
+        candidate = leaf_candidate(
+            selection, node["id"], node["question"], node["id"] in cross_inputs,
+        )
+        if candidate is None:
             raise DecompositionError(
                 f"subquestion {node['id']!r} requires an unsupported compound query"
             )

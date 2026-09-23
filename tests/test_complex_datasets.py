@@ -39,11 +39,11 @@ def _quote(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
 
-def _run_fixture(planner: EncoderQuery, directory: Path):
+def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None = None):
     raw_tables = _tables(directory)
     tables, foreign_keys = planner.ingest(raw_tables)
     schema, _, _ = planner.schema(tables, foreign_keys)
-    proposal = json.loads(
+    proposal = proposal or json.loads(
         (directory / "decomposition.json").read_text(encoding="utf-8")
     )
     plan = build_decomposed_plan(
@@ -83,6 +83,39 @@ def _run_fixture(planner: EncoderQuery, directory: Path):
             python_row_limit=10_000,
         )
     return plan, result
+
+
+# The decomposition the production model proposed for complex-category-gaps in the Chrome
+# release gate (2026-09-23). Its category leaf asks for category NAMES.
+PRODUCTION_CATEGORY_GAPS_PROPOSAL = {
+    "subquestions": [
+        {"id": "top_customers", "question": "top 2 customer names by total spend"},
+        {"id": "top_categories", "question": "top 2 product category names by total revenue"},
+        {"id": "purchases", "question": "customer name and product category name for each purchase"},
+    ],
+    "merges": [
+        {"id": "candidate_pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
+        {"id": "missing_pairs", "op": "anti_join", "inputs": ["candidate_pairs", "purchases"]},
+    ],
+    "output": "missing_pairs",
+    "grain": "one customer-category pair per top customer and top category where the "
+             "customer has never purchased from that category",
+}
+
+
+def test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure():
+    """The Chrome release gate caught this. For the leaf "top 2 product category names by
+    total revenue" the arbiter chose the right ranking without projecting revenue; the leaf
+    contract then served a lower-ranked pool member that satisfied it but ordered
+    category-product pairs by product name, and the answer listed Home products instead of the
+    one real gap. A leaf now serves the arbiter's own ranking with its measure projected."""
+    planner = EncoderQuery()
+    _plan, result = _run_fixture(
+        planner, DATASET_DIR / "complex-category-gaps", PRODUCTION_CATEGORY_GAPS_PROPOSAL,
+    )
+    _kind, expected = EXPECTED["complex-category-gaps"]
+    actual = [[row[column] for column in expected["columns"]] for row in result.rows]
+    assert actual == expected["rows"], actual
 
 
 def test_shipped_complex_datasets_match_gold_in_python_and_sql():
@@ -204,11 +237,13 @@ TESTS = [
     test_compose_surface_does_not_swallow_a_compound_question,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
+    test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
 ]
 
 
 MODEL_BACKED = (
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
+    test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_compose_surface_does_not_swallow_a_compound_question,
 )

@@ -327,37 +327,70 @@ def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner.serve.assert_not_called()
 
 
-def test_leaf_contract_constrains_the_served_ranking():
-    """A ranking leaf over a summed measure must project that aggregate. When the arbiter ranks
-    a names-only reading first, the leaf takes the best-ranked reading that satisfies the
-    contract; with none, the ranking's own choice is kept so the rejection names the defect."""
-    from engine.decomposition import leaf_admissible
+def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
+    """A decomposition leaf reads single queries in the arbiter's order, its choice first, each
+    names-only ranking with its ORDER BY measure projected (the same rows in the same order),
+    and serves the first reading that sums and ranks by the measure the question names. The
+    Chrome release gate found both failure directions: a lower-ranked member that projected a
+    SUM but ordered category-product pairs by product name, and a choice that ranked customers
+    by units where the question said spend."""
+    from engine.decomposition import leaf_candidate, leaf_measure_rejection
     from engine.sql_ast import Join, OrderTerm
 
     product = ColumnRef("products", "product_name", SQLType.TEXT)
-    quantity = ColumnRef("order_items", "quantity", SQLType.INTEGER)
+    category = ColumnRef("products", "category", SQLType.TEXT)
+    customer = ColumnRef("customers", "customer_name", SQLType.TEXT)
+    quantity = Aggregate("SUM", ColumnRef("order_items", "quantity", SQLType.INTEGER))
+    line_total = Aggregate("SUM", ColumnRef("order_items", "line_total", SQLType.REAL))
     join = Join("products", ColumnRef("order_items", "product_id", SQLType.INTEGER),
                 ColumnRef("products", "product_id", SQLType.INTEGER))
-    ranked = (OrderTerm(Aggregate("SUM", quantity), "DESC"),)
-    names_only = SelectQuery((SelectItem(product),), "order_items", joins=(join,),
-                             group_by=(product,), order_by=ranked, limit=3)
-    with_measure = SelectQuery((SelectItem(product), SelectItem(Aggregate("SUM", quantity))),
-                               "order_items", joins=(join,), group_by=(product,),
-                               order_by=ranked, limit=3)
-    pool = (ScoredQuery(names_only, "names only", 1.0, ("proposer:beam0",)),
-            ScoredQuery(with_measure, "with measure", 2.0, ()))
-    question = "top 3 product names by total quantity sold"
-    admissible = leaf_admissible("top_products", question, pool, True)
-    assert not admissible(pool[0]) and admissible(pool[1])
-    selection = PoolSelection(pool, frozenset({"names only"}), (True, True),
-                              ((-1.0, 9), (-30.0, 12)), (2.0, -1.0), (0, 1), 0, 1)
-    assert selection.constrained(admissible).candidate.sql == "with measure"
-    assert selection.constrained(admissible).selected == 1, "the record names the served member"
-    compound = ScoredQuery(SetQuery(with_measure, "EXCEPT", with_measure), "compound", 3.0, ())
-    only_compound = PoolSelection((compound,), frozenset(), (True,), ((-1.0, 9),), (2.0,),
-                                  (0,), 0, 1)
-    assert only_compound.constrained(
-        leaf_admissible("top_products", question, (compound,), True)).candidate is None
+    buyer = Join("customers", ColumnRef("order_items", "customer_id", SQLType.INTEGER),
+                 ColumnRef("customers", "customer_id", SQLType.INTEGER))
+
+    def ranking(entity, measure, *, show=False, limit=3):
+        items = (SelectItem(entity),) + ((SelectItem(measure),) if show else ())
+        joined = (buyer,) if entity.table == "customers" else (join,)
+        return SelectQuery(items, "order_items", joins=joined, group_by=(entity,),
+                           order_by=(OrderTerm(measure, "DESC"),), limit=limit)
+
+    def pool_selection(*queries):
+        pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
+        n = len(pool)
+        return PoolSelection(pool, frozenset(), (True,) * n, ((-1.0, 9),) * n,
+                             tuple(float(n - index) for index in range(n)), tuple(range(n)), 0, n)
+
+    # The choice names the right measure without showing it: served projected, never the
+    # lower-ranked reading that shows a SUM but orders category-product pairs by name.
+    units = "top 3 product names by total quantity sold"
+    names_only = ranking(product, quantity)
+    other_reading = SelectQuery(
+        (SelectItem(category), SelectItem(product), SelectItem(quantity)), "order_items",
+        joins=(join,), group_by=(category, product), order_by=(OrderTerm(product, "DESC"),), limit=3)
+    selection = pool_selection(names_only, other_reading)
+    served = leaf_candidate(selection, "top_products", units, True)
+    assert served.query == ranking(product, quantity, show=True)
+    assert "leaf:ranked-measure-projected" in served.evidence
+    assert leaf_measure_rejection("top_products", units, names_only, selection.pool) is not None
+    assert "ranks by something other" in leaf_measure_rejection(
+        "top_products", units, other_reading, selection.pool)
+
+    # The choice ranks customers by units where the question says spend: the first reading
+    # that sums and ranks by spend is served instead.
+    spend = "top 2 customer names by total spend"
+    by_units = ranking(customer, quantity, limit=2)
+    by_spend = ranking(customer, line_total, show=True, limit=2)
+    served = leaf_candidate(pool_selection(by_units, by_spend), "top_customers", spend, True)
+    assert served.query == by_spend
+
+    # A choice that already shows the named measure is served as it is.
+    shown = pool_selection(by_spend)
+    assert leaf_candidate(shown, "top_customers", spend, True) is shown.pool[0]
+
+    # A compound choice yields to the best single query; with none, there is no leaf query.
+    compound = SetQuery(names_only, "EXCEPT", names_only)
+    assert leaf_candidate(pool_selection(compound, names_only), "top_products", units, True).query \
+        == ranking(product, quantity, show=True)
+    assert leaf_candidate(pool_selection(compound), "top_products", units, True) is None
 
 
 TESTS = [
@@ -367,7 +400,7 @@ TESTS = [
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
-    test_leaf_contract_constrains_the_served_ranking,
+    test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
     test_an_answer_grain_cannot_repeat_one_physical_dimension,

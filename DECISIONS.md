@@ -394,10 +394,11 @@ The arbiter learned Spider's conventions, not the product's, and three product c
 therefore constraints on its ranking rather than features of it. A named request is compound — and
 requests decomposition instead of executing a fragment — when the search reads the question as a set
 operation; the proposer only emits single queries. A named request that is not compound is served by
-the best-ranked single query (one dual-emitter branch). A decomposition leaf takes the best-ranked
-candidate that keeps its summed measure and ranked-entity grain. All three mirror the existing
-calculation constraint: they filter the arbiter's order and never rescore it. Spider evaluation has no
-analysis context, so none of them changes its numbers.
+the best-ranked single query (one dual-emitter branch). A decomposition leaf reads single queries in
+the arbiter's order, its choice first, each names-only ranking with its ORDER BY measure projected,
+and serves the first reading that sums and ranks by the measure the question names at the ranked
+entity's grain. All three mirror the existing calculation constraint: they filter the arbiter's order
+and never rescore it. Spider evaluation has no analysis context, so none of them changes its numbers.
 
 The first production flip of this release was rolled back after the live demo gate
 (`tests.test_datasets`) found a regression the hermetic suites could not: compound structure was
@@ -406,6 +407,13 @@ with no country column, the proposer's top beam was an `INTERSECT` over invented
 chose it, and every named request asked for a decomposition, so the world join never ran. Compound
 structure is now the search's reading alone, and the compose path's probe runs only the search, which
 also removes the proposer's decode (about 40 s on CPU) from every composed world question.
+
+The Chrome release gate then found the leaf contract too weak in both directions. It accepted any
+aggregate, so for "top 2 product category names by total revenue" a lower-ranked member that summed
+revenue but ordered category-product pairs by product name was served, and the answer was wrong; and
+it could not see that the arbiter ranked "top 2 customers by total spend" by units. The contract now
+requires the named measure to be summed and, for a ranking, ranked by, and a leaf never needs a
+lower-ranked member just to show a measure its choice already ranks by.
 
 Retired rather than kept as alternatives (git holds them): the trained rank head and its search hook,
 execution-feature reranking, the proposer-first policy, the two-proposer pilot layout (its arbiter
