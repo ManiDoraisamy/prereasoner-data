@@ -207,16 +207,46 @@ TESTS = [
 ]
 
 
+MODEL_BACKED = (
+    test_shipped_complex_datasets_match_gold_in_python_and_sql,
+    test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
+    test_compose_surface_does_not_swallow_a_compound_question,
+)
+
+
+def _runtime_bundle_missing() -> str | None:
+    """Why the real planner cannot load here, or None. The weights are external (fetched by
+    engine.fetch_weights and pinned by the manifest), and public CI installs no model stack."""
+    import importlib.util
+
+    if importlib.util.find_spec("torch") is None:
+        return "the model stack (torch) is not installed"
+    from engine.artifact_provenance import validate_weight_bundle
+    from engine.config import DATA_DIR
+
+    try:
+        validate_weight_bundle(DATA_DIR)
+    except RuntimeError as exc:
+        return f"the runtime bundle is not provisioned ({exc})"
+    return None
+
+
 def main() -> int:
-    failed = []
+    failed, skipped = [], []
+    missing = _runtime_bundle_missing()
     for test in TESTS:
+        if missing and test in MODEL_BACKED:
+            skipped.append(test.__name__)
+            print(f"  SKIP {test.__name__}: {missing}")
+            continue
         try:
             test()
             print(f"  ok   {test.__name__}")
         except Exception as exc:  # noqa: BLE001
             failed.append(test.__name__)
             print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
-    print(f"\ncomplex datasets: {len(TESTS) - len(failed)} passed, {len(failed)} failed")
+    passed = len(TESTS) - len(failed) - len(skipped)
+    print(f"\ncomplex datasets: {passed} passed, {len(failed)} failed, {len(skipped)} skipped")
     return 1 if failed else 0
 
 

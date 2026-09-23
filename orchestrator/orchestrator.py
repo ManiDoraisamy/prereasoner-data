@@ -22,7 +22,6 @@ import uuid
 from typing import Any
 
 import httpx
-from anthropic import AsyncAnthropic
 
 from engine import dataset_attestation, request_timing
 from engine.analysis import AnalysisError, validate_analysis_spec
@@ -31,6 +30,10 @@ from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 from orchestrator.llm import create_client
 from orchestrator.system_prompt import SYSTEM_PROMPT
+
+# The Anthropic client class, or None to let create_client import the SDK only when the Anthropic
+# provider is actually selected (Gemini deployments never need it). Tests inject a fake here.
+AsyncAnthropic = None
 
 # What the USER reads when a split cannot be made to work. Validator internals are
 # model-facing tool errors only; they never become the reply.
