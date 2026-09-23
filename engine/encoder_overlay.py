@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from engine.artifact_provenance import sha256_tree, validate_weight_bundle
-from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR
+from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR, DEVICE
 from engine.tables import TableQuery, MODEL_ID
 
 
@@ -63,12 +63,29 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     obj.hdim = base.config.hidden_size
 
 
+def load_sql_selection(obj, deploy_dir=DATA_DIR):
+    """The own-data SQL selection models (engine/data, pinned by weights_manifest.json): the
+    fitted arbiter (sql_arbiter.json) and the proposer adapter it was fit with (sql_proposer/).
+    The arbiter's pool contract fixes how many beams the proposer decodes."""
+    from pathlib import Path
+    from engine.sql_proposer import SQLProposer
+    from engine.sql_rank import SQLArbiter
+    d = Path(deploy_dir)
+    obj.sql_arbiter = SQLArbiter.load(d / "sql_arbiter.json")
+    obj.sql_proposer = SQLProposer.load(
+        d / "sql_proposer", beams=obj.sql_arbiter.proposer_beams,
+        max_new_tokens=obj.sql_arbiter.proposer_max_new_tokens, device=DEVICE,
+    )
+
+
 class EncoderQuery(TableQuery):
-    """TableQuery with the unified (LoRA-fine-tuned) Qwen encoder + the trained relational readout loaded."""
+    """TableQuery with the complete runtime bundle loaded: the unified (LoRA-fine-tuned) Qwen encoder, the
+    trained relational readout, and the SQL proposer + arbiter that select own-data queries."""
 
     def __init__(self, deploy_dir=DATA_DIR):
         super().__init__(deploy_dir)
         load_encoder(self, deploy_dir)
+        load_sql_selection(self, deploy_dir)
 
     # ---------- operator FROM THE MODEL (retires the keyword AGG_CUES) ----------
     INTENT_OPS = {"COUNT": "intent_agg_count", "SUM": "intent_agg_sum", "AVG": "intent_agg_avg"}

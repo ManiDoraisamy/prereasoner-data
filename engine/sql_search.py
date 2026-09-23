@@ -84,7 +84,7 @@ class SQLSearcher:
 
     def search(self, question: str, semantic_signals=None, rank_candidates: bool = True,
                expand_recursive: bool = True, expand_constraints: bool = True,
-               expand_extrema: bool = True, expand_parsimony: bool = True, rank_model=None,
+               expand_extrema: bool = True, expand_parsimony: bool = True,
                profile_max_candidates: int = 32,
                profile_per_profile: int = 4,
                profile_generation_penalty: float = 5.0,
@@ -258,7 +258,7 @@ class SQLSearcher:
             )
             ranked = [fallback] + [candidate for candidate in ranked if candidate.sql != fallback.sql]
             ranked = ranked[:self.max_candidates]
-        return rank_model.rerank(question, ranked) if rank_model is not None else ranked
+        return ranked
 
     def _expand(self, drafts: list[_Draft], choices: list[tuple[tuple, float, tuple[str, ...]]],
                 field: str) -> list[_Draft]:

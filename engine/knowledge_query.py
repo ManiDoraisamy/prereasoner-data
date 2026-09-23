@@ -33,7 +33,7 @@ from engine.tables import qlit
 from engine.entities import EntityQuery, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
-from engine.encoder_overlay import EncoderQuery, load_encoder
+from engine.encoder_overlay import EncoderQuery, load_encoder, load_sql_selection
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.bridge import STOP
@@ -136,13 +136,15 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
     FREETEXT_MIN_AVGLEN = 12       # a non-connected text column is "free text" (embed it) if avg cell length > this
     HYBRID_LIMIT = 10
 
-    _SHARE = ("alloc", "nc", "dims", "sid", "thr", "model", "nL", "tok", "qwen", "hdim")
+    _SHARE = ("alloc", "nc", "dims", "sid", "thr", "model", "nL", "tok", "qwen", "hdim",
+              "sql_proposer", "sql_arbiter")
 
     def __init__(self, deploy_dir=DATA_DIR):
         EntityQuery.__init__(self, deploy_dir)       # bge + Postgres + world metadata + spaCy
         load_encoder(self, deploy_dir)               # ONE MODEL: the trained encoder (operator+bridge+typing)
+        load_sql_selection(self, deploy_dir)         # the own-data query proposer + arbiter
         # The planner composes a TableQuery (self.q11) for the single-table delegate path. Point it at the SAME
-        # encoder (shared refs — ONE Qwen in memory) so EVERY path goes through the one trained model.
+        # models (shared refs — one copy of each in memory) so EVERY path goes through the same weights.
         if getattr(self, "q11", None) is not None:
             for a in self._SHARE:
                 setattr(self.q11, a, getattr(self, a))

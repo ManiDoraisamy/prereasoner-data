@@ -1,14 +1,21 @@
-"""Build execution-verified rerank training labels from Spider TRAIN candidate pools.
+"""Label the served candidate pools of Spider TRAIN questions for arbiter fitting.
 
-Every example runs through the PRODUCTION search path (`spider.probe.full_eval.ast_predict`
-with the pool_oracle selection), so the labeled pools are exactly the pools serving would
-rank. Each pooled candidate is labeled strict/lenient by comparing its executed rows with
-the train gold denotation on the same capped tables. Spider train gold is used as training
-data only; the dev split is never read here and no gold-derived signal reaches serving.
+Every question runs through the production selection (`TableQuery.select_query`, via
+`spider.probe.full_eval.ast_predict` in its pool_oracle mode): deterministic search, proposer
+beams, pool execution. Each pooled candidate is then labeled strict/lenient by comparing its
+executed rows with the train gold denotation on the same capped tables, and carries the proposer
+likelihood the arbiter reads. Spider train gold is training data only; the dev split is never
+read here and no gold-derived signal reaches a serving decision.
 
-Output is JSONL: one `_meta` provenance record, then one record per example with the labeled
-candidate pool (rank, sql, generation score, named features, evidence, strict, lenient).
-Reruns resume: finished example indexes already in the output file are skipped.
+The pools come from the runtime bundle the engine loads (engine/data, or PREREASONER_DATA_DIR).
+To label pools for a candidate proposer, point PREREASONER_DATA_DIR at a candidate bundle
+directory instead of changing engine/data.
+
+Output is JSONL: one `_meta` record (pool contract, bundle fingerprint, code provenance), then one
+record per question with its labeled pool. Reruns resume: finished indexes are skipped.
+
+    python -m training.rank.build_pool_labels \\
+        --out training/rank/data/experiments/<id>/pools.jsonl [--dbs-filter db1,db2]
 """
 from __future__ import annotations
 
@@ -25,7 +32,22 @@ if ROOT not in sys.path:
 from spider.probe.evalutil import build_mem_db, exec_sql_timed, load_capped, run_with_budget
 from spider.probe.full_eval import _git_provenance, ast_predict
 from spider.probe.hardness import eval_hardness
-from spider.probe.spider_eval import compare, recursive_gold_table_names, spider_foreign_keys
+from spider.probe.spider_eval import compare, spider_foreign_keys
+
+
+def pool_contract(enc) -> dict:
+    """How the labeled pools were built: the fields a fitted arbiter must be served under."""
+    from engine.sql_rank import BEAM_STEP, PROPOSAL_PENALTY
+
+    arbiter = enc.sql_arbiter
+    return {
+        "search_candidates": arbiter.search_candidates,
+        "proposer_beams": arbiter.proposer_beams,
+        "proposer_max_new_tokens": arbiter.proposer_max_new_tokens,
+        "execution_op_limit": arbiter.execution_op_limit,
+        "proposal_penalty": PROPOSAL_PENALTY,
+        "beam_step": BEAM_STEP,
+    }
 
 
 def main():
@@ -37,24 +59,10 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--limit", type=int, default=0, help="stop after N new examples (0 = all)")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table")
-    ap.add_argument("--max-candidates", type=int, default=25)
-    ap.add_argument("--config", default="whole_db", choices=["whole_db", "gold_tables"],
-                    help="gold_tables labels distractor-free pools (train-gold table sets are "
-                         "training data only) so the head is not brittle to pool distribution")
-    ap.add_argument("--proposer", default="",
-                    help="candidate proposer adapter dir — labels proposer-inclusive pools "
-                         "for arbitration training")
-    ap.add_argument("--proposer-beams", type=int, default=1)
-    ap.add_argument("--proposer-values", action="store_true")
-    ap.add_argument("--score-pool", action="store_true",
-                    help="teacher-force every pooled candidate's SQL under the proposer so "
-                         "enumerator candidates carry comparable likelihood features")
     ap.add_argument("--dbs-filter", default="",
-                    help="comma-separated db_ids to label (pilot subsets)")
-    ap.add_argument("--timeout", type=float, default=30.0, help="soft per-example budget")
+                    help="comma-separated db_ids to label (shards and pilot subsets)")
+    ap.add_argument("--timeout", type=float, default=60.0, help="soft per-example budget")
     args = ap.parse_args()
-    if args.score_pool and not args.proposer:
-        ap.error("--score-pool requires --proposer")
     if args.split.startswith("dev"):
         ap.error("dev split is evaluation-only; labels come from the train split")
 
@@ -64,8 +72,12 @@ def main():
         tables_meta = {table["db_id"]: table for table in json.load(handle)}
     fks = {db_id: spider_foreign_keys(meta) for db_id, meta in tables_meta.items()}
 
+    print("loading the runtime bundle (encoder, SQL proposer, arbiter)...", flush=True)
+    from engine.encoder_overlay import EncoderQuery
+    enc = EncoderQuery()
+
     done = set()
-    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
     if os.path.exists(args.out):
         with open(args.out, encoding="utf-8") as handle:
             for line in handle:
@@ -76,27 +88,13 @@ def main():
     out = open(args.out, "a", encoding="utf-8")
     if not done:
         out.write(json.dumps({"_meta": {
-            "split": args.split, "cap": args.cap,
-            "max_candidates": args.max_candidates,
-            "selection": "pool_oracle", "config": args.config,
-            "proposer": args.proposer or None,
-            "proposer_beams": args.proposer_beams,
-            "proposer_values": args.proposer_values,
-            "score_pool": args.score_pool,
+            "split": args.split, "cap": args.cap, "config": "whole_db",
+            "pool": pool_contract(enc),
+            "model_bundle_sha256": enc.model_bundle_sha256,
+            "proposer_adapter_sha256": enc.sql_proposer.adapter_sha256,
+            "proposer_device": enc.sql_proposer.device,
             **_git_provenance(ROOT),
         }}) + "\n")
-
-    print("loading encoder (Qwen LoRA + relational readout, CPU)...", flush=True)
-    from engine.encoder_overlay import EncoderQuery
-    enc = EncoderQuery()
-    proposer = None
-    if args.proposer:
-        from training.proposer.propose import Proposer
-        proposer = Proposer.load(args.proposer)
-        proposer.beams = max(1, args.proposer_beams)
-        proposer.include_values = args.proposer_values
-        print(f"proposer: {args.proposer} (beams={proposer.beams}, "
-              f"values={proposer.include_values}, score_pool={args.score_pool})", flush=True)
     print(f"labeling {len(examples)} train examples (skipping {len(done)})", flush=True)
 
     db_cache: dict[str, tuple] = {}
@@ -125,17 +123,10 @@ def main():
             stats["gold_error"] += 1
             continue
 
-        if args.config == "gold_tables":
-            names = [name.lower() for name in recursive_gold_table_names(example, tables_meta)]
-            tabs = [capped[name] for name in names if name in capped] or list(capped.values())
-        else:
-            tabs = list(capped.values())
+        tabs = list(capped.values())
         result, error, seconds, over_budget = run_with_budget(
             lambda t=tabs, q=example["question"], f=fks.get(db_id): ast_predict(
-                enc, t, q, f, schema_cache,
-                selection="pool_oracle", max_candidates=args.max_candidates,
-                proposer=proposer,
-            ),
+                enc, t, q, f, schema_cache, selection="pool_oracle"),
             args.timeout,
         )
         new += 1
@@ -153,6 +144,10 @@ def main():
                 labeled = {"rank": entry["rank"], "sql": entry["sql"],
                            "score": entry["score"], "features": entry["features"],
                            "evidence": entry["evidence"]}
+                if "likelihood" in entry:
+                    labeled["features"] = {**labeled["features"],
+                                           "proposer:scored_logprob": entry["likelihood"],
+                                           "proposer:scored_tokens": float(entry["likelihood_tokens"])}
                 if "rows" in entry:
                     comparison = compare(gold_rows, entry["rows"])
                     labeled["strict"] = bool(comparison.get("strict"))
@@ -160,23 +155,6 @@ def main():
                 else:
                     labeled["error"] = entry["error"]
                 record["candidates"].append(labeled)
-            if args.score_pool and record["candidates"]:
-                # Enumerator candidates get the SAME model likelihood proposals carry, so
-                # a likelihood selector can compare every pool member consistently.
-                import time as _time
-
-                scoring_started = _time.perf_counter()
-                scores = proposer.score_sqls(
-                    tabs, example["question"],
-                    [labeled["sql"] for labeled in record["candidates"]],
-                )
-                # prediction_seconds excludes this pass; a likelihood selector's serving
-                # latency is prediction_seconds + scoring_seconds (+ selection/execution).
-                record["scoring_seconds"] = round(_time.perf_counter() - scoring_started, 3)
-                for labeled, (logprob, tokens) in zip(record["candidates"], scores):
-                    labeled["features"] = {**labeled["features"],
-                                           "proposer:scored_logprob": logprob,
-                                           "proposer:scored_tokens": float(tokens)}
             stats["pool_strict_hit"] += any(c.get("strict") for c in record["candidates"])
             stats["labeled"] += 1
         out.write(json.dumps(record) + "\n")

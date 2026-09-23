@@ -18,12 +18,14 @@ across domains. SQL is the first concrete execution target because it makes each
 inspectable, testable, and useful today.
 
 For a table question, Prereasoner identifies the columns and relationships it needs, searches a
-bounded set of valid SQL queries, and returns the result with the query and supporting rows.
+bounded set of valid SQL queries, adds candidates suggested by a small SQL model, and returns the
+chosen result with the query and supporting rows.
 
-The learned model helps identify intent, column roles, and schema relationships. It does not generate
-SQL, Python, or numeric answers. A typed planner composes the named dimensions, checks the resulting
-query, and executes it against the database. For fixed input data, configuration, database state,
-and model files, the same request produces the same plan and result.
+The learned models identify intent, column roles, and schema relationships, and suggest candidate
+queries. No model writes Python or a numeric answer, and a suggested query runs only after the typed
+planner has mapped it into its own AST, checked it, and chosen it on a recorded score. For fixed input
+data, configuration, database state, and model files, the same request produces the same plan and
+result.
 
 When the data does not support an answer, the engine reports that instead of filling the gap with a
 guess. This is useful when a reviewer needs to reproduce a calculation, check the source rows, or
@@ -56,7 +58,7 @@ applies—the generated Python source and hashes that produced that answer.
 
 ## What Is Deterministic
 
-The answer is computed by a deterministic emitted program, not written by a decoder. The supported
+The answer is computed by a deterministic emitted program, never written by a model. The supported
 shared-plan subset can run readable Python for bounded small inputs and SQL for larger inputs; a
 verification mode executes and compares both at every named stage. The workbook URL can select a
 request-local backend with `?use=sql`, `?use=py`, or `?use=both` (`both` is stage-by-stage verification).
@@ -66,8 +68,13 @@ with a hard materialization bound and recorded SQL fallback. Unsupported queries
 path with `sql` or the default policy; explicit `py` and `both` requests return an error instead of accepting a SQL fallback.
 Responses report the actual backend. Opening a saved conversation does not rerun it in the new mode.
 See [the execution contract](docs/DETERMINISTIC_EMITTERS.md) for coverage, source lifetime, and limits.
-The frozen Qwen model is used as an encoder for intent and schema signals; it
-does not call `generate()` to write a query or a number.
+
+Two frozen adapters on Qwen2.5-0.5B supply model evidence. An encoder reads intent and schema signals. A
+SQL proposer suggests candidate queries for own-data questions with deterministic beam search; a suggestion
+competes only after it imports into the engine's typed AST and validates, so its raw text never reaches a
+database, and no model writes a number. A fitted linear arbiter picks the served query from the
+search's candidates and the proposer's, and every response shows which source won and the arbiter's
+per-feature arithmetic ([how a question becomes SQL](docs/PROMPT_TO_SQL.md)).
 
 Schema.org supplies the semantic vocabulary: classes, properties, domains, ranges, and inheritance.
 It is not the source of mutable facts. Wikidata provides public entity identity and mapped
@@ -137,8 +144,10 @@ engine/server.py                 HTTP/auth/request adapter
         v
 engine/knowledge.py              one serving entry point
         |
-        +--> own-data typed AST search and deterministic ranking
-        |       engine/sql_search.py, engine/sql_ast.py, engine/sql_rank.py
+        +--> own-data typed AST planner: deterministic search + SQL proposer,
+        |       pooled, executed, and chosen by a linear arbiter
+        |       engine/tables.py (select_query), engine/sql_search.py,
+        |       engine/sql_proposer.py, engine/sql_rank.py, engine/sql_ast.py
         |
         +--> world grounding when a public entity relation is required
                 engine/knowledge_query.py, engine/knowledge_compose.py

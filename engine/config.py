@@ -28,7 +28,7 @@ Env contract:
   DATASET_ATTESTATION_KEY shared engine/orchestrator HMAC key for authenticated dataset claims.
   CORS_ORIGINS         comma-separated exact browser origins; empty disables cross-origin responses.
   PREREASONER_DATA_DIR model/data directory                          (default: engine/data in the package)
-  DEVICE               torch device for the encoder                  (default cpu)
+  DEVICE               torch device for the SQL proposer + Schema.org head (default cpu)
   BASE_MODEL_ID        Hugging Face id of the base encoder LM        (default Qwen/Qwen2.5-0.5B)
   BASE_MODEL_REVISION  Immutable Hugging Face commit for that base model
   KB_MODEL_ROUTE    "0" disables model-driven column routing (falls back to value membership; default on)

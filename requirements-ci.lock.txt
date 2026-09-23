@@ -1301,6 +1301,10 @@ sqlalchemy==2.0.52 \
     --hash=sha256:f2b09029ef6f260409eefa5dc2b8276f6c3d7b892bfb50d50e8f852257d4a6b4 \
     --hash=sha256:f4d4f7afc682961dc567db70e00a7b5bd81ccd3743c46199b0257f0744902dde
     # via -r requirements-ci.txt
+sqlglot==30.18.0 \
+    --hash=sha256:e57e1b205e341979d1df5b1212c1435c598a0437e4619e3f428b15d5bc3a5cc6 \
+    --hash=sha256:ee0f9a9f3e2193e763c326e52dfb377b96fdb4292f6305c3ff2d9a220e71c601
+    # via -r requirements-ci.txt
 sse-starlette==3.4.10 \
     --hash=sha256:710f5f5b0527409903a22a91699db02f76f4c2eb9204e882e4ee7cada76bdf75 \
     --hash=sha256:c6c87280d8feb4e55a8d79633782766b9cac6a26da5c79a145d00aa404117a86

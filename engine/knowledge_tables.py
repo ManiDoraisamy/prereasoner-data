@@ -644,6 +644,7 @@ class KnowledgeTableQuery:
                         "ast": r.get("ast"),
                         "candidate_count": r.get("candidate_count"),
                         "evidence": r.get("evidence", []), "features": r.get("features", {}),
+                        "selection": r.get("selection"),
                     },
                     "computation": r.get("computation"),
                     "debug": self._debug_input(norm, question, [],   # own-data path: no world table, no meaning plan

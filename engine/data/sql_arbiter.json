@@ -1,0 +1,83 @@
+{
+  "coef": [
+    1.1341723424918695,
+    0.40198208310332445,
+    0.069308494406517,
+    -0.014558673974782967,
+    -0.17859447320021873,
+    0.23514954296669024,
+    -0.16971328531862645,
+    0.2415118039093066,
+    0.08446634982878999
+  ],
+  "features": [
+    "likelihood",
+    "likelihood_tokens",
+    "likelihood_per_token",
+    "pool_score",
+    "pool_rank",
+    "from_proposer",
+    "from_search",
+    "endorsed",
+    "pool_size"
+  ],
+  "fit": {
+    "fit_candidates": 31086,
+    "fit_questions": 1625,
+    "note": "fit by the arbitration pilot (training/rank/pilot_selectors.py, commit 34051f3) on d2 4-beam pools of 15 Spider TRAIN databases; its two-source layout's six constant, zero-coefficient slots are dropped, which leaves every score bit-identical. training/rank/fit_arbiter.py refits these pools to the same means, scales and intercept, and coefficients within 1e-14 relative.",
+    "pools": {
+      "training/rank/data/experiments/pilot/pools_d2beam.jsonl": "9fe2e4f954adbccb601f3f528a015ebf6eef79b59e4b9829bb4a1577eb69b0a7"
+    },
+    "proposer_adapter_sha256": "d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf",
+    "seed": 7,
+    "source_artifact": {
+      "path": "training/rank/data/experiments/pilot/arbiter_d2.json",
+      "sha256": "7591770f54128edaabab082efdebb1e5ff3f5edfa4497ae5ada0f03143908c84"
+    },
+    "split": {
+      "training/rank/data/experiments/pilot/split.json": "f29355a1701565ff2189b573b03d999d27ca8ff7e5cf5c6bc956359b26b27baf"
+    }
+  },
+  "intercept": -2.043168209555258,
+  "mean": [
+    -72.08475488007528,
+    83.4251431512578,
+    -0.8838306376943721,
+    31.32846562185505,
+    11.662613395097472,
+    0.12906131377468957,
+    0.8807823457504986,
+    0.009843659525188187,
+    24.325226790194943
+  ],
+  "pool": {
+    "beam_step": 0.1,
+    "execution_op_limit": 100000000,
+    "proposal_penalty": 5.0,
+    "proposer_beams": 4,
+    "proposer_max_new_tokens": 96,
+    "search_candidates": 25
+  },
+  "scale": [
+    46.1145723632801,
+    41.03641200463346,
+    0.5348067993197688,
+    27.049644155373286,
+    7.961141167147587,
+    0.335267790074494,
+    0.3240444493657288,
+    0.0987256901335357,
+    6.516144676967551
+  ],
+  "spider_dev_whole_db": {
+    "evidence": "spider/results/full_eval_arbiter_s2_d2.json",
+    "questions": 1034,
+    "strict": 645
+  },
+  "validation": {
+    "note": "pilot validation databases csu_1, manufactory_1, music_1, music_4, soccer_2 (never fit on), replayed with the serving rule",
+    "pool_oracle": 288,
+    "questions": 416,
+    "strict": 224
+  }
+}

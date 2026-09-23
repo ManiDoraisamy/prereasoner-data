@@ -6,6 +6,7 @@ word_*.json) are committed. The large binaries are gitignored and must be fetche
     encoder.pt              the trained RelationalModel readout (~72 MB)
     encoder_meta.pt         {alloc, cfg} for the readout
     qwen_lora/              the LoRA adapter for the Qwen2.5-0.5B encoder (~17 MB)
+    sql_proposer/           the LoRA adapter for the Qwen2.5-0.5B SQL proposer (~9 MB)
     anchor_assignment.npz   per-dim Youden-J thresholds for /api/dimension
     primitives.npz          the learned 10-primitive head
     schema_property_head.pt calibrated Schema.org named-property evidence head
@@ -17,7 +18,7 @@ Usage:
 
 The Hugging Face repo id defaults to the value of PREREASONER_WEIGHTS_REPO (recommended) or the constant
 below. Publish the weights once with `huggingface_hub.upload_folder(folder_path=engine/data, repo_id=...,
-allow_patterns=['*.pt','*.npz','qwen_lora/*'])`, then a clone runs this to provision them.
+allow_patterns=['*.pt','*.npz','qwen_lora/*','sql_proposer/*'])`, then a clone runs this to provision them.
 """
 from __future__ import annotations
 
@@ -50,6 +51,8 @@ WEIGHTS = [
     "schema_property_head.pt",
     "qwen_lora/adapter_config.json",
     "qwen_lora/adapter_model.safetensors",
+    "sql_proposer/adapter_config.json",
+    "sql_proposer/adapter_model.safetensors",
 ]
 
 

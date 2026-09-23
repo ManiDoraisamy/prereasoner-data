@@ -44,7 +44,6 @@ are not public yet.
 | Website claim | Repository evidence |
 |---|---|
 | Apache-2.0 engine source | `LICENSE` and the public source tree |
-| Qwen2.5-0.5B core used without autoregressive SQL generation | `docs/MODEL_CARD.md`; SQL is assembled through the typed AST planner |
 | CPU-capable model size | the 0.5B base and runtime configuration support CPU inference, subject to measured latency |
 | Inspectable query and source-row path | planner, execution trace, and workbook implementation |
 | Deterministic source synchronization | source-specific ETL, releases, checksums, and replay metadata under `db/sync/` |
@@ -52,6 +51,15 @@ are not public yet.
 
 Determinism means fixed inputs, configuration, database snapshot, and model artifacts produce the
 same ranked plan and result. It does not mean every plan is correct.
+
+### No longer supported after the 2026-09-23 planner change
+
+"Qwen2.5-0.5B core used without autoregressive SQL generation" was accurate until the SQL proposer
+shipped. The own-data planner now decodes candidate SQL from a LoRA-adapted Qwen2.5-0.5B with
+deterministic beam search. What remains true, and is the accurate replacement: every candidate is
+mapped into the typed AST and validated before it can run, model text never reaches a database, and a
+fitted linear arbiter with reported per-feature contributions chooses the executed query. This is a
+finding for the website owner; see `docs/MODEL_CARD.md`.
 
 ## Launch Gaps In The Current Marketing Copy
 

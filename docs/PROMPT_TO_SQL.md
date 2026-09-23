@@ -1,10 +1,12 @@
 # From question to SQL
 
 This walkthrough follows one request through Prereasoner. The important boundary is simple:
-the model provides typed signals about the question and the tables; the planner assembles and
-checks the SQL query. It does not write SQL one token at a time.
+every query that runs is a typed AST the engine validated and rendered itself. Models contribute
+evidence: an encoder reads typed signals about the question and the tables, and a small SQL
+proposer suggests candidate queries. A suggestion is text until the importer maps it into the typed
+AST and the validator accepts it; only then can it compete, and a fitted arbiter picks the winner.
 
-![How a question becomes SQL: the model supplies typed signals, a deterministic search builds a typed AST, and the AST renders to SQL.](img/readout-to-sql.svg)
+![The search half of the pipeline: the encoder supplies typed signals, a deterministic search builds typed ASTs, and the chosen AST renders to SQL. Stages 4 and 5 below add the proposer's candidates and the arbiter.](img/readout-to-sql.svg)
 
 We trace **`"total amount in France"`** through the stack. This happens to need public world data,
 but the own-data planning steps are the same for an ordinary table question.
@@ -78,30 +80,69 @@ SelectQuery(
 The node types are a real grammar: `SelectQuery`, `SelectItem`, `Aggregate`, `ColumnRef`, `Comparison`,
 `BooleanExpr`, `OrderTerm`, `Join`, `ScalarSubquery`, `InPredicate`, … Each candidate is wrapped as a
 [`ScoredQuery(query, score, evidence, features)`](../engine/sql_candidate.py) — the `evidence` tuple is the
-human-readable trace (`"extrema:projection"`, `"aggregate:SUM(...)"`, ...). Serving takes **`candidates[0]`**
-([`engine/tables.py:_serve_ast`](../engine/tables.py)); there is **no trained proposer and no learned ranker** —
-the ranking is hand-written and inspectable.
+human-readable trace (`"extrema:projection"`, `"aggregate:SUM(...)"`, ...). The search orders its pool with
+hand-written, named ranking rules.
 
-## Stage 4 — render the tree to a SQL string
+## Stage 4 — the proposer adds candidates the grammar rules missed
 
-Only now does a string appear: the winning `SelectQuery` is rendered to
-`SELECT SUM("amount") FROM "orders" WHERE "country" = 'France'`, guarded (SELECT-only), and executed.
+A bounded search only finds shapes its rules enumerate. [`engine/sql_proposer.py`](../engine/sql_proposer.py)
+covers that gap with a Qwen2.5-0.5B LoRA adapter fine-tuned on Spider TRAIN gold SQL. It reads one compact prompt
+([`engine/sql_prompt.py`](../engine/sql_prompt.py)):
+
+```
+-- schema
+orders(order_id, city, amount)
+-- question
+total amount in France
+-- sql
+```
+
+and decodes **four deterministic beams** (beam search, no sampling). Each beam's first line goes through
+[`engine/sql_import.py:import_sql`](../engine/sql_import.py), which maps it into the same `SelectQuery` nodes
+or raises `Unsupported`; the validator and renderer then run exactly as for search candidates. A line the
+importer cannot map, the validator rejects, or the renderer cannot reproduce is dropped, so model text never
+reaches a database. Accepted proposals join the pool after the search candidates; a proposal identical to a
+search candidate is not added twice but marks that candidate `proposer:endorsed`.
+
+## Stage 5 — the arbiter chooses among the queries that run
+
+[`engine/tables.py:select_query`](../engine/tables.py) runs every pooled query on an in-memory copy of the
+tables (SELECT guard, fixed step budget); a query that fails is out. The proposer then scores each remaining
+query's likelihood under its prompt, and the arbiter ([`engine/sql_rank.py:SQLArbiter`](../engine/sql_rank.py))
+computes one number per query:
+
+```
+score = sum over 9 features of (value - mean) / scale * coefficient  +  intercept
+```
+
+The features are the likelihood, its length and per-token average, the pool score and position, whether the
+search, the proposer, or both produced the query, and the pool size. The highest score is served; the earlier
+pool position breaks ties. The response's `planner.selection` lists the winner's feature values and each
+feature's contribution to its score, so a reader can see why it won.
+
+## Stage 6 — render the tree to a SQL string
+
+The winning AST is rendered to `SELECT SUM("amount") FROM "orders" WHERE "country" = 'France'`, guarded
+(SELECT-only), and executed.
 
 ---
 
 ## Why this shape (the payoff)
 
-Because the model only **types + reads intent** and a deterministic planner **assembles the tree**:
+Because models only **read signals and suggest candidates**, and the engine **validates, arbitrates and
+renders the tree**:
 
-- **Interpretable** — you can see the per-column typing (the matrix) *and* the per-node `evidence` for every
-  choice. Nothing is a black-box string.
+- **Interpretable** — you can see the per-column typing (the matrix), the per-node `evidence` for every
+  candidate, whether the search or the proposer produced the winner, and the arbiter's per-feature arithmetic.
 - **Deterministic** — the same input yields byte-identical SQL. This is enforced by a cross-process repeatability
   test in [`tests/test_routing.py`](../tests/test_routing.py).
 - **Valid by construction** — every candidate is a well-typed AST that passes constraint checks before it can
   win, so the planner cannot emit malformed SQL.
 
-Contrast with a GPT-style pipeline, which decodes SQL **left-to-right as tokens** and can hallucinate columns or
-syntax. Prereasoner trades some raw coverage (it's a 0.5B model) for an auditable, reproducible path.
+Contrast with a pipeline that executes a decoder's SQL directly: a decoded column or table that does not exist, or
+syntax outside the grammar, is simply one rejected suggestion here, and a suggestion that imports still has to beat
+the search's candidates on the arbiter's recorded score. The proposer is small (0.5B), so it adds coverage without
+becoming the authority.
 
 ## The one caveat in this example: world queries
 
@@ -132,5 +173,8 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 | The typed AST node grammar | `engine/sql_ast.py` · `SelectQuery`, `SelectItem`, `Aggregate`, `Comparison`, … |
 | The search that assembles the tree | `engine/sql_search.py` · `SQLSearcher.search` |
 | One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
-| Serving entry point (top-1, render, execute) | `engine/tables.py` · `search_ast`, `_serve_ast` |
+| Proposer: beams + likelihoods | `engine/sql_proposer.py` · `SQLProposer.propose`, `SQLProposer.likelihoods` |
+| Model text → typed AST gate | `engine/sql_import.py` · `import_sql` |
+| Pool merge + arbiter | `engine/sql_rank.py` · `merge_proposals`, `SQLArbiter`, `PoolSelection` |
+| Serving entry point (select, render, execute) | `engine/tables.py` · `select_query`, `_serve_ast` |
 | Own-data vs. world routing | `engine/routing.py` · `route`, `compose_owns` |

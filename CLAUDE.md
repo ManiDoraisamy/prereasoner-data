@@ -44,19 +44,22 @@ Extend these owners. Do not build parallel replacements.
 | Own-data typed SQL AST and rendering | `engine/sql_ast.py` and the focused `engine/sql_*.py` modules |
 | Dual SQL/Python source plan, emission, and parity runtime | `engine/deterministic/`; it consumes the typed-AST winner and never becomes a second planner |
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
-| Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery._serve_ast` |
+| Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
+| Own-data query selection (search + proposer + pool execution + arbiter) — the ONE selection used by serving, the decomposition probe and leaves, the Spider evaluator, the offline regression gate, and arbiter training | `engine/tables.py:TableQuery.select_query` |
+| SQL candidate proposer (frozen LoRA on the pinned Qwen base: deterministic beams + likelihoods), its one prompt, and the SQL-to-typed-AST gate every proposal passes | `engine/sql_proposer.py` + `engine/sql_prompt.py` + `engine/sql_import.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
 | World grounding and knowledge joins | `engine/knowledge_query.py` |
-| Candidate scoring | `engine/sql_rank.py` |
+| Candidate scoring: search ranking, pool merge, and the fitted arbiter (`SQLArbiter`, `PoolSelection`) | `engine/sql_rank.py` |
 | Table normalization and canonical planner table names | `engine/tables.py` |
 | World-table maintenance catalog (what is maintained, its cadence, when it last refreshed) | `db/sync/schedule.py` — the ONE writer of `knowledgebase.schedule`, read at serving time by `engine/pg.py:PgQuery._table_freshness` |
 | Private reference validation, persistence, and request selection | `engine/master.py` |
 | Runtime model loading and overlay | `engine/encoder_overlay.py` |
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |
 | Property-model training pipeline | `training/props/` |
-| Rank-head training pipeline (execution-labeled Spider-train pools + head training; candidates only, in `training/rank/data/experiments/<id>/`) | `training/rank/` |
+| SQL arbiter training pipeline (execution-labeled Spider-train pools from the served selection + linear arbiter fit; candidates only, in `training/rank/data/experiments/<id>/`) | `training/rank/` |
+| Promotion of a SQL selection bundle (proposer adapter + the arbiter fit on its pools) into the runtime | `training/rank/promote.py` — the ONE writer of `engine/data/sql_proposer/` and `engine/data/sql_arbiter.json` |
 | Proposer training pipeline (gold→typed-AST import, SFT targets, adapter training; candidates only, in `training/proposer/data/experiments/<id>/`) | `training/proposer/` |
 | Schema.org ontology contract (compiled vocabulary + inheritance) | `engine/schema_org.py` + `engine/data/schema_org_v30.json` |
 | Schema.org typing cache/evidence and learned family proposals | `engine/knowledge_typing.py` + `engine/schema_decode.py` + `engine/schema_model.py` + `engine/router.py`; source-key authorization stays in `engine/knowledge_query.py` |

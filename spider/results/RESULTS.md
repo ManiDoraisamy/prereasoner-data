@@ -238,6 +238,84 @@ the held-out methodology predicted within range. Selector capture is 645 of the 
 pooled ceiling (78.2%) — both 90/90 requirements (coverage, capture) remain the
 distance to 80%.
 
+### Standing arbiter gold-table sanity (completed 2026-09-23)
+
+`full_eval_arbiter_s2_d2_gold.json` records **689/1,034 (66.6%) strict** for the
+standing d2-beam arbiter on `gold_tables`, versus deterministic 437 and d2 greedy
+proposer policy 656. This is an oracle-schema sanity check, not whole-db accuracy.
+The standing whole-db result remains 645/1,034 (62.4%); nothing is promoted.
+Per-example records and the summary carry the run's original code/artifact identity.
+
+### Relabel takeover: corrected shard feature namespaces (2026-09-23)
+
+The initial partial-data refit reported 223/416 but passed `shard1_d2beam` and
+`shard2_d2beam` as feature namespaces that `vector()` does not recognize. Its flat
+result cannot establish a data ceiling. After canonicalizing shards to `d2beam`,
+the same available data produces **225/416**, versus the frozen pilot's 224.
+This remains diagnostic: 4,672/6,262 fitting questions are present; 1,590 are missing.
+Duplicate records now fail instead of silently replacing source features. The
+unchanged pilot mixed-pool control was refit separately and reproduced **237/416**.
+These are cached validation comparisons, not new serving results. Candidate artifacts
+are under `training/rank/data/experiments/relabel/`; original artifacts are preserved.
+
+The enlarged partial-data **mixed** refit gives **234/416**, versus matched control
+237/416. Neither partial refit demonstrates a useful accuracy gain; these are not
+unbiased generalization estimates and do not establish a definitive data ceiling.
+
+### Rejected planner coverage trial (2026-09-23)
+
+Fresh `whole_db` / `pool_oracle` / 25-candidate run
+`full_eval_takeover_coverage_20260923.json` measured entity-aggregate set alternatives
+and positive-membership cues, without proposer or learned ranker: **544/1,034 pool
+strict (52.6%)**, **364/1,034 same-run top-1 (35.2%)**. Against historical A4's
+543/365, paired pool outcomes are 1 win / 0 losses / 543 unchanged-correct /
+490 unchanged-wrong; top-1 outcomes are 0 wins / 1 loss / 364 unchanged-correct /
+669 unchanged-wrong. All 1,034 records are present; 32 search errors, no over-budget
+examples. Historical evaluator/AST fingerprints also differ, so this comparison
+is not a fully isolated causal ablation.
+
+The trial did not pass the no-regression gate. Both uncommitted production-planner
+edits and their trial-specific tests were removed; existing owners match HEAD again.
+The summary and per-example evidence remain as a rejected experiment, not the current
+planner result. Independently tested importer/source-identity fixes remain. Standing
+proposer/arbiter whole-db score stays **645/1,034**, not remeasured by this trial.
+
+### Semantic scorer pilot: accuracy gate failed (2026-09-23)
+
+The pinned Qwen 0.5B scalar head + rank-8 LoRA completed the preregistered seed-7,
+200-step fp32 schedule (800 sampled question pairs, 578.26 optimizer seconds).
+Five validation DBs were excluded from fitting; these DBs were previously consulted
+and are a development comparison, not a new untouched holdout. Scoring consumed no
+correctness labels and covered every executable candidate on all **416 questions**.
+
+| Cached mixed-pool selector | Strict |
+|---|---:|
+| Matched feature-only control | 237/416 (57.0%) |
+| Semantic scorer | **210/416 (50.5%)** |
+| d2 mean-likelihood control (cannot choose unscored d4-only candidates) | 219/416 (52.6%) |
+| Full-pool oracle | 302/416 (72.6%) |
+
+Against the matched control: **24 wins, 51 losses, 186 unchanged-correct,
+155 unchanged-wrong**. Per-DB semantic/control: csu 28/32, manufactory 53/63,
+music_1 41/35, music_4 45/54, soccer 43/53. The fixed gate required >=247 correct,
+gains on >=3 DBs, and no DB losing >5; all three accuracy conditions failed.
+The two selectors' oracle union is 261/416, not an achievable gold-blind policy.
+Do not tune a switching threshold on these reporting labels.
+
+Scorer-only RTX 4090 timing passed the provisional runtime gate: median **0.234s**,
+p95 **0.575s**, total 111.43s. This excludes proposal generation and SQL execution,
+and provides no CPU/quantized or end-to-end feasibility result.
+
+Training checkpoint was recovered after CUDA became unavailable in the initial
+scoring process. An inference-only recovery lease used identical checkpoint/code,
+dependency versions and hash-verified base bytes; no retraining or checkpoint choice.
+Both pods terminated, zero active pods verified. Estimated compute about USD 0.47,
+not an invoice. Evidence: `training/rank/data/experiments/semantic_launch/` contains
+the approved contracts, complete comparison, decision, downloaded checkpoint and scores.
+Checkpoint manifest SHA256: `91ef6f0ed11f3460cad42d11f20801e0f5e927ab98637a4924e16d289455a1fe`.
+The candidate is **not promoted or integrated**. Standing whole-db remains **645/1,034**.
+This rejects the bounded standalone configuration, not all semantic scoring hypotheses.
+
 ## Evaluation-protocol caveats (read before quoting numbers)
 
 - **Spider dev has served as the program's tuning set.** No training ever saw dev, but
@@ -257,17 +335,14 @@ distance to 80%.
 
 ```bash
 python -m spider.probe.fetch_data
-python -m spider.probe.full_eval \
-  --dbs spider/data/dbs --config whole_db \
-  --selection serving_top1 --max-candidates 25 \
-  --tag current_release_clean
-python -m spider.probe.full_eval \
-  --dbs spider/data/dbs --config gold_tables \
-  --selection serving_top1 --max-candidates 25 \
-  --tag current_release_gold_clean
+python -m engine.fetch_weights
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --tag <tag>
+python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables --tag <tag>_gold
 ```
 
-Run from a clean commit for release evidence. The evaluator intentionally records a dirty-worktree flag
+The evaluator runs the served selection with the runtime bundle; it takes no model or selection-mode
+flags (`--selection pool_oracle` adds the labeled pool-ceiling ablation). Commands recorded with
+earlier results used the evaluator flags of their time. Run from a clean commit for release evidence. The evaluator intentionally records a dirty-worktree flag
 and invalidates mismatched checkpoints so predictions cannot silently be mixed across code or model trees.
 Use [`../README.md`](../README.md) for the probe methodology and [`../../docs/SQL_AST.md`](../../docs/SQL_AST.md)
 for the planner contract.

@@ -42,6 +42,12 @@ aggregate evaluation measurements; questions, gold SQL, databases, and per-examp
 part of the source distribution. Follow the dataset owner's terms and cite the Spider paper when
 downloading it through the instructions in `docs/SQL_AST.md`.
 
+The SQL proposer adapter in the weight bundle (`sql_proposer/`) and the SQL arbiter
+(`engine/data/sql_arbiter.json`) were trained on Spider TRAIN questions and gold SQL (Yu et al.,
+"Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Semantic Parsing and
+Text-to-SQL Task", EMNLP 2018). Spider dev was used only for measurement. Redistributors of those
+artifacts should keep this attribution and review CC BY-SA 4.0's terms for their use.
+
 Python packages installed from the requirement files and browser libraries loaded by the frontend retain their
 upstream licenses. Before publishing a model bundle or container image, preserve the notices shipped by those
 dependencies and review the exact artifact set being distributed.

@@ -130,10 +130,13 @@ precisely what it declines to do.
 to *emit a SQL string* autoregressively (optionally in an agent loop with retries and
 self-critique). That string is a black-box generation: it can hallucinate columns, silently drop
 a clause, or invent a join, and the only "explanation" available is a second after-the-fact
-rationalization from the same model. Prereasoner inverts this. There is **no model that writes
-SQL**. The query is assembled by a deterministic template from (a) the learned-yet-legible
-readout — *what each column/cell is* and *what the question asks for* — and (b) the specified FK
-+ world structure. The operator (`SUM`/`COUNT`/`AVG`) is read off the anchored `intent_agg_*`
+rationalization from the same model. Prereasoner inverts this. **No model's text is executed.** The
+query is assembled from typed parts by (a) the learned-yet-legible readout — *what each column/cell is*
+and *what the question asks for* — and (b) the specified FK + world structure. For own-data
+questions a small proposer (0.5B) also suggests SQL, because a bounded search cannot enumerate every
+shape; a suggestion counts only after it is re-derived into the same typed AST and validated, and it
+must then win a fitted linear arbiter whose per-feature arithmetic is reported with the answer. Its
+role is recall, not authority. The operator (`SUM`/`COUNT`/`AVG`) is read off the anchored `intent_agg_*`
 dims, not decoded as tokens; the world filter is a QID equality, not a generated literal. Because
 every piece is read from a named dimension or computed by an audited rule, a wrong answer is a
 **traceable wrong query**, not an unexplained hallucination — and the **clarify gate** refuses

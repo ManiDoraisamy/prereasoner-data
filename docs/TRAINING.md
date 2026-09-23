@@ -40,7 +40,7 @@ authorizes access to world data. Typed code owns SQL and calculation semantics. 
 class qualifies, the model abstains; deterministic source membership can still recover a grounded
 entity route.
 
-## The Two Model Tracks
+## The Model Tracks
 
 ### Shared encoder (`training/props/`)
 
@@ -74,6 +74,20 @@ and `UnitPriceSpecification`.
 The class layer is deterministic once property probabilities are known. Each class has a fitted
 bias, signed property weights, a validation-calibrated threshold, support, and validation/test
 metrics. Selection uses train and validation only. Test is untouched until final evaluation.
+
+### Own-data SQL selection (`training/proposer/`, `training/rank/`)
+
+Two artifacts that ship and promote together choose own-data queries:
+
+- the **SQL proposer**, a LoRA adapter on the same pinned Qwen2.5-0.5B base, fine-tuned on Spider
+  TRAIN gold SQL that the serving importer maps into the typed AST (`training/proposer/`);
+- the **arbiter**, a logistic regression over nine named features, fit on execution-labeled pools of
+  search candidates plus that adapter's beams (`training/rank/`).
+
+An arbiter is valid only for the adapter whose pools it was fit on, so `training/rank/promote.py`
+installs both at once and refuses a mismatched pair. Spider TRAIN is the only training data; Spider dev
+is the measurement set recorded in `spider/results/RESULTS.md`. See `training/proposer/README.md` and
+`training/rank/README.md` for the commands.
 
 ## Corpus Build
 

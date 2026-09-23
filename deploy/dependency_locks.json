@@ -30,26 +30,26 @@
     },
     "requirements-ci-windows.lock.txt": {
       "input": "requirements-ci.txt",
-      "input_sha256": "6367afa3245049a0a88490355a1f3db375ff394ff2b584796dc6a1c469707446",
-      "lock_sha256": "468a42bacfa8aaf0b0364dded67173744e4329907a1830e5f676de8a5d6cf87e",
+      "input_sha256": "efa090c61507f9f9c6aa5612134093fcd5eb309463d9e1a68ebf75e38c42e26a",
+      "lock_sha256": "0f065c7f7ea420ef1398d43b1c94568616dcc113be08c0701eb39259648555a9",
       "target": "windows-x86_64-python3.11"
     },
     "requirements-ci.lock.txt": {
       "input": "requirements-ci.txt",
-      "input_sha256": "6367afa3245049a0a88490355a1f3db375ff394ff2b584796dc6a1c469707446",
-      "lock_sha256": "6159b8d55244b28d58e6ccb81f756763031b997773a2a06d704384dae1fcccd1",
+      "input_sha256": "efa090c61507f9f9c6aa5612134093fcd5eb309463d9e1a68ebf75e38c42e26a",
+      "lock_sha256": "ae165d7286c49c1fa782c4c5ea55566ad4a6b7fe87e24bdc178106b8fe6c7be6",
       "target": "linux-x86_64-python3.11"
     },
     "requirements.lock.txt": {
       "input": "requirements.txt",
-      "input_sha256": "a060bf60aba297924ca17733833f353dba6fdc0c22869b1b0aa7a965304f8c4b",
-      "lock_sha256": "c8771a9a3e9c6095a55727489ded37d3d4e763ef9161e1e17dca9b49e0a11ba4",
+      "input_sha256": "3fec3d0da74c7d720124dfff5bd7dc9489c091e33cf5ca80f537db9e6678eb8d",
+      "lock_sha256": "6eeb2bbe64dd9f15018ea4353283761f95e429876319895f29cf75bb9e0187e9",
       "target": "linux-x86_64-python3.11"
     },
     "training/requirements.lock.txt": {
       "input": "training/requirements.txt",
-      "input_sha256": "72104d9aca56ff8a0506372cd4b6149091e02cf639817ecaf9cdcc81531dc501",
-      "lock_sha256": "674843c80acb3ff1340fff27b2a2a1f5c5dca584f1e19f357115939e764f550c",
+      "input_sha256": "7fa97ce11ddd26389ed2c4f6e4b690e35ebaf96ff3b5f41feca6cdf914a11834",
+      "lock_sha256": "c18b71503aaa56dc5e3f2a56fc5357b56c8406c66846e7c827dd3932e213d9e2",
       "target": "linux-x86_64-python3.11-cpu"
     }
   },

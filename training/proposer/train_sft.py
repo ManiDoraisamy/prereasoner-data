@@ -1,10 +1,15 @@
 """SFT the proposer: (schema + question) -> execution-verified typed-AST SQL.
 
 Deterministic manual loop (seed 7, seeded shuffle, no sampling anywhere): LoRA on the
-cached Qwen2.5-0.5B base, prompt tokens masked out of the loss, validation split by db_id
-(same rule as the rank head) so validation databases are never trained on. Ends with a
-greedy exact-match decode on a validation sample. Artifacts go ONLY to the experiment
-directory; promotion is a separate user-approved action.
+pinned Qwen2.5-0.5B base, prompt tokens masked out of the loss, validation split by db_id
+(`training.proposer.is_validation_db`) so validation databases are never trained on. The
+prompt is the serving prompt (engine/sql_prompt.py). Ends with a greedy exact-match decode on
+a validation sample. Artifacts go ONLY to the experiment directory; installing an adapter in
+the runtime bundle is training/rank/promote.py's job.
+
+    python -m training.proposer.train_sft \
+        --targets training/proposer/data/experiments/<id>/targets.jsonl \
+        --out-dir training/proposer/data/experiments/<id>
 """
 from __future__ import annotations
 
@@ -18,9 +23,9 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from training.proposer import BASE_MODEL_ID, BASE_MODEL_REVISION
-from training.proposer.serialize import schema_prompt
-from training.rank.train_head import is_validation
+from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
+from engine.sql_prompt import schema_prompt
+from training.proposer import is_validation_db
 
 SEED = 7
 
@@ -37,8 +42,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", required=True)
     ap.add_argument("--out-dir", required=True)
-    ap.add_argument("--base", default=BASE_MODEL_ID)
-    ap.add_argument("--base-revision", default=BASE_MODEL_REVISION)
+    ap.add_argument("--base", default=QWEN_MODEL_ID)
+    ap.add_argument("--base-revision", default=QWEN_REVISION)
     ap.add_argument("--tables", default=os.path.join(ROOT, "spider", "data", "tables.json"))
     ap.add_argument("--max-steps", type=int, default=1200)
     ap.add_argument("--batch", type=int, default=2)
@@ -46,8 +51,6 @@ def main():
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument("--seq-len", type=int, default=384)
     ap.add_argument("--val-decode", type=int, default=50)
-    ap.add_argument("--values-file", default="",
-                    help="sampled-values sidecar (build_values.py) — value-linked prompts (d4+)")
     args = ap.parse_args()
 
     import torch
@@ -59,18 +62,16 @@ def main():
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     print(f"device: {device} ({dtype})")
     meta = {table["db_id"]: table for table in json.load(open(args.tables, encoding="utf-8"))}
-    db_values = (json.load(open(args.values_file, encoding="utf-8"))
-                 if args.values_file else {})
     rows = [json.loads(line) for line in open(args.targets, encoding="utf-8")]
     rows = [row for row in rows if "idx" in row]
-    train_rows = [row for row in rows if not is_validation(row["db_id"])]
-    val_rows = [row for row in rows if is_validation(row["db_id"])]
+    train_rows = [row for row in rows if not is_validation_db(row["db_id"])]
+    val_rows = [row for row in rows if is_validation_db(row["db_id"])]
     print(f"targets: {len(train_rows)} train / {len(val_rows)} val "
           f"({len({r['db_id'] for r in val_rows})} val dbs)")
 
     tokenizer = AutoTokenizer.from_pretrained(args.base, revision=args.base_revision)
     model = AutoModelForCausalLM.from_pretrained(
-        args.base, revision=args.base_revision, torch_dtype=dtype).to(device)
+        args.base, revision=args.base_revision, dtype=dtype).to(device)
     model = get_peft_model(model, LoraConfig(
         r=16, lora_alpha=32, lora_dropout=0.0,
         target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
@@ -78,8 +79,7 @@ def main():
     model.train()
 
     def encode(row):
-        prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"],
-                               db_values.get(row["db_id"]))
+        prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"])
         prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
         target_ids = tokenizer(row["sql"] + tokenizer.eos_token,
                                add_special_tokens=False).input_ids
@@ -130,8 +130,7 @@ def main():
     sample = val_rows[:args.val_decode]
     with torch.no_grad():
         for row in sample:
-            prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"],
-                                   db_values.get(row["db_id"]))
+            prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"])
             inputs = tokenizer(prompt, return_tensors="pt").to(device)
             output = model.generate(**inputs, max_new_tokens=80, do_sample=False,
                                     pad_token_id=tokenizer.eos_token_id)
@@ -144,7 +143,6 @@ def main():
         "lr": args.lr, "batch": args.batch, "accum": args.accum,
         "train_targets": len(train_rows), "val_targets": len(val_rows),
         "val_decode_sample": len(sample), "val_exact_match": exact,
-        "values_file": bool(args.values_file),
     }
     os.makedirs(args.out_dir, exist_ok=True)
     model.save_pretrained(args.out_dir)

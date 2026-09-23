@@ -371,3 +371,34 @@ Complete execution results are separate from 50-row trace previews. When the exe
 the PostgreSQL connection, both backends and stage reads use one REPEATABLE READ transaction.
 Exact source hashes and backend agreement remain distinct from independent answer correctness and
 from knowledgebase release pinning. See `docs/DETERMINISTIC_EMITTERS.md` for the current boundaries.
+
+## Own-data queries are chosen by a fitted arbiter over search and proposer candidates (2026-09-23)
+
+The own-data planner served the deterministic typed-AST search's hand-ranked top candidate. On Spider
+dev (`whole_db`) that answered 365/1,034 strictly, while the search's pool held a correct query for
+543: the grammar rules could not enumerate the missing shapes, and the ranking could not find the
+ones it had. The served selection is now `TableQuery.select_query`: the search's candidates, plus up
+to four beams from a LoRA-adapted Qwen2.5-0.5B proposer fine-tuned on Spider TRAIN gold SQL, executed
+on an in-memory copy of the request's tables and chosen by a logistic arbiter over nine named
+features. The evaluator measured that pipeline at 645/1,034 (62.4%) before it shipped; its served
+measurement is in `spider/results/RESULTS.md`.
+
+What stays true: every executed query is a typed AST the engine validated and rendered. Proposer text
+passes the importer (`engine/sql_import.py`), the validator and the renderer, or it is dropped. The
+choice is deterministic arithmetic whose per-feature contributions each response reports
+(`planner.selection`). One function serves, probes and plans decomposition leaves; the Spider
+evaluator, the offline regression gate and arbiter training call it too.
+
+The arbiter learned Spider's conventions, not the product's, and two product contracts are therefore
+constraints on its ranking rather than features of it. A named request is compound — and requests
+decomposition instead of executing a fragment — when the search reads the question as a set
+operation or the chosen answer is one; the proposer only emits single queries. A decomposition leaf
+takes the best-ranked candidate that keeps its summed measure and ranked-entity grain. Both mirror the
+existing calculation constraint: they filter the arbiter's order and never rescore it. Spider
+evaluation has no analysis context, so neither changes its numbers.
+
+Retired rather than kept as alternatives (git holds them): the trained rank head and its search hook,
+execution-feature reranking, the proposer-first policy, the two-proposer pilot layout (its arbiter
+slots for the second proposer were constant with coefficient 0.0 and are dropped with bit-identical
+scores), and value-linked prompts. `sqlglot` becomes a serving dependency. The proposer's beam search
+dominates own-data request time on CPU; `DEVICE` places it on a GPU when one is provisioned.

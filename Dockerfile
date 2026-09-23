@@ -9,8 +9,8 @@
 # drops pip's wheel/build leftovers and keeps a single apt layer out of the final image.
 #
 # Model weights (engine/data/encoder.pt, encoder_meta.pt, primitives.npz,
-# anchor_assignment.npz, qwen_lora/, schema_property_head.pt) are GITIGNORED: present in a full working copy,
-# absent in a fresh clone/CI. `COPY engine/` succeeds either way, so the *build* never
+# anchor_assignment.npz, qwen_lora/, sql_proposer/, schema_property_head.pt) are GITIGNORED: present in a
+# full working copy, absent in a fresh clone/CI. `COPY engine/` succeeds either way, so the *build* never
 # fails on missing weights — instead the entrypoint checks for them at container START
 # and exits with a clear, actionable message. See engine/data/README.md.
 
@@ -32,26 +32,25 @@ COPY requirements.lock.txt /tmp/requirements.lock.txt
 RUN pip install --require-hashes -r /tmp/requirements.lock.txt \
  && python -c "import spacy; spacy.load('en_core_web_md')"
 
-# Pre-bake the Hugging Face models the engine loads at startup (the Qwen encoder base)
-# and at first embedding (bge-small). Cloud Run containers must NOT download models at
-# boot — the startup probe times out and HF rate limits unauthenticated pulls.
+# Pre-bake the Hugging Face models the engine loads at startup (the Qwen base, used both as the
+# encoder and as the SQL proposer's causal LM) and at first embedding (bge-small). Cloud Run
+# containers must NOT download models at boot — the startup probe times out and HF rate limits
+# unauthenticated pulls.
 ENV HF_HOME=/opt/hf
 COPY engine/model_revisions.py /tmp/prereasoner_model_revisions.py
 # Both pinned base models and the manifested Prereasoner bundle are public. Builds therefore need no
 # maintainer secret and are reproducible by a third-party Cloud Build project. Hugging Face may apply
 # lower anonymous rate limits, so cloudbuild.yaml keeps a generous timeout.
 RUN PYTHONPATH=/tmp python - <<'PY'
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoModel, AutoModelForCausalLM, AutoTokenizer
 from prereasoner_model_revisions import (
     BGE_MODEL_ID, BGE_REVISION, QWEN_MODEL_ID, QWEN_REVISION,
 )
-models = (
-    (QWEN_MODEL_ID, QWEN_REVISION),
-    (BGE_MODEL_ID, BGE_REVISION),
-)
-for mid, revision in models:
-    AutoModel.from_pretrained(mid, revision=revision)
-    AutoTokenizer.from_pretrained(mid, revision=revision)
+# The causal-LM load also caches generation_config.json, the proposer's decoding defaults.
+AutoModelForCausalLM.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
+AutoTokenizer.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
+AutoModel.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
+AutoTokenizer.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
 PY
 
 # ---------- runtime ----------
@@ -105,7 +104,7 @@ if [ "$1" = "python" ] && [ "$2" = "-m" ] && [ "$3" = "engine.retention_cleanup"
     exec "$@"
 fi
 missing=""
-for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora schema_property_head.pt; do
+for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora sql_proposer sql_arbiter.json schema_property_head.pt; do
     [ -e "$DATA_DIR/$f" ] || missing="$missing $f"
 done
 if [ -n "$missing" ]; then

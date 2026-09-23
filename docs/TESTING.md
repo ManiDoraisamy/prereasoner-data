@@ -307,18 +307,21 @@ python -m engine.server
 
 ## Spider Accuracy
 
-Planner behavior changes require a fresh serving-faithful `whole_db` run:
+Planner behavior changes require a fresh serving-faithful `whole_db` run. The evaluator loads the
+runtime bundle from `engine/data` and calls the served selection (`TableQuery.select_query`); it has
+no model flags:
 
 ```powershell
 python spider/probe/fetch_data.py --include-train
 python -m spider.probe.full_eval `
   --dbs spider/data/dbs `
   --config whole_db `
-  --selection serving_top1 `
-  --max-candidates 25 `
   --tag <unique-tag> `
   --out spider/results/<unique-tag>/whole_db/full_eval_whole_db
 ```
+
+On CPU the proposer makes a full run take hours; a CUDA machine with `DEVICE=cuda` runs the same
+fp32 code much faster.
 
 To exercise the production backend policy on the clean scalar-gold subset, keep the same runner and
 comparison contract:
@@ -327,8 +330,6 @@ comparison contract:
 python -m spider.probe.full_eval `
   --dbs spider/data/dbs `
   --config whole_db `
-  --selection serving_top1 `
-  --max-candidates 25 `
   --backend auto `
   --python-row-limit 10000 `
   --scalar-only `

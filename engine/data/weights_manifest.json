@@ -15,6 +15,10 @@
     "schema_training_manifest.json": {
       "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
       "sha256": "3655eb6bfecfca812c99174c914590691edd3b71833eec73273c47c29eb1090a"
+    },
+    "sql_arbiter.json": {
+      "note": "tracked in git (not fetched); fitted SQL arbiter installed only by training/rank/promote.py",
+      "sha256": "fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d"
     }
   },
   "files": {
@@ -24,9 +28,12 @@
     "primitives.npz": "2daecaa89b465dafd65a22427ca144a97018d82a9bf192120bfef5e5366d7ebc",
     "qwen_lora/adapter_config.json": "9e9d1bb22602d4cb1a01b48af9d8ecb460a6c3dfe1320f6840727bdfb086e266",
     "qwen_lora/adapter_model.safetensors": "1ef13f8bf69b6e51d6e2a61d7170a82f32bb6cfb393e7542d28b7bb447c51ce4",
-    "schema_property_head.pt": "cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c"
+    "schema_property_head.pt": "cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c",
+    "sql_proposer/adapter_config.json": "7483ea8692984b33463426038a9489de2089bb45d1ea210f44338b9a1a281d3a",
+    "sql_proposer/adapter_model.safetensors": "5e531eadbeced7536db91a5e23fed8f9aa57eb83132ee19d6314ba3e6e9bd752"
   },
   "repository": "prereasoner/prereasoner-weights",
-  "revision": "0b5c2a5d4de3e488cd366633d95ce922755d3900",
+  "revision": null,
+  "unpublished_local": true,
   "version": 1
 }

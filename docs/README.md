@@ -70,12 +70,14 @@ database releases.
 | SQL representation and expansion | Typed AST and schema graph | Deterministic |
 | Named-analysis SQL/Python emission | One immutable feed-forward plan and two source emitters | Deterministic for the supported subset |
 | Candidate ordering | Named structural and encoder-derived features with stable tie-breaking | Deterministic for fixed artifacts and inputs |
+| Own-data candidate proposals | Frozen SQL proposer, deterministic beams; every proposal imported into the typed AST and validated | Deterministic for fixed artifacts and inputs |
+| Own-data query choice | Fitted linear arbiter over nine named features, among candidates that execute | Deterministic for fixed artifacts and inputs |
 | Joins, calculations, validation, and execution | Typed rules, calculation specifications, guarded emitters, and PostgreSQL | Deterministic |
 | Entity fallback | Exact lookup, then similarity, followed by grounding checks | Retrieval signal plus deterministic gates |
 | Conversational presentation | Optional external orchestrator | Cannot author SQL facts or numeric answers |
 
-Determinism removes decoder sampling variance. It does not remove ambiguous wording, missing
-candidates, schema-linking mistakes, ranking mistakes, source gaps, or entity-resolution errors.
+Determinism removes sampling variance. It does not remove ambiguous wording, missing candidates,
+schema-linking mistakes, selection mistakes, source gaps, or entity-resolution errors.
 
 ## Runtime Status
 

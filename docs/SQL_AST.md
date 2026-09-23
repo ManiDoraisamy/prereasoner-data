@@ -1,9 +1,12 @@
-# Deterministic SQL Planner
+# Own-Data SQL Planner
 
 This is the own-data SQL planner: the path from a question over uploaded tables to executed SQL.
-It searches a bounded set of valid abstract syntax trees (ASTs), then ranks them with named rules
-and stable tie-breaking. It does not sample SQL tokens from a decoder. The frozen encoder contributes
-similarity features, but it is not a SQL writer or a learned candidate ranker.
+Every query it can run is a validated typed abstract syntax tree (AST). Candidates come from two
+sources: a bounded deterministic search over typed ASTs, and a frozen SQL proposer model whose
+decoded lines are accepted only if they import into the same typed AST and validate. An arbiter
+(a fitted linear score over nine named features) chooses among the candidates that execute. No
+step samples: the search is rule-based, the proposer uses deterministic beam search, and the
+arbiter is arithmetic with a stable tie-break.
 
 ## What it does
 
@@ -11,21 +14,25 @@ Given a question, tables, and foreign keys, the planner:
 
 1. Builds a typed schema graph.
 2. Links question roles to tables, columns, operators, and values.
-3. Constructs and validates candidate ASTs.
+3. Constructs, validates and ranks search candidates with named deterministic features.
 4. Expands recursive queries, constraints, extrema, and set operations when applicable.
-5. Ranks candidates with named deterministic features.
-6. Renders only validated ASTs to SQL.
+5. Adds the proposer's beams that import into the typed AST and validate.
+6. Runs every pooled query on an in-memory copy of the tables; a query that fails is ineligible.
+7. Scores each runnable query with the arbiter and serves the best (calculation intents and the
+   decomposition leaf contract constrain that ranking).
+8. Renders only validated ASTs to SQL.
 
 For every direct or named request in the supported dual subset, the winner lowers into
 one immutable `AnalysisPlan`. SQL and readable SQLAlchemy/Python are emitted independently from that
 plan; neither source is parsed to create the other. See
 [DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md).
 
-When the selected winner is a compound query that cannot be represented by one linear branch, the
-engine can request one bounded decomposition retry. A conversational model proposes only
-natural-language leaf questions and a closed `cross`/`anti_join` topology. The same planner searches,
-ranks, and validates every leaf; `engine/decomposition.py` fuses their typed outputs into one DAG.
-No model-authored SQL, Python, identifier, join key, or intermediate result enters execution.
+When a named request is compound — the search reads the question as a set operation, or the chosen
+answer is one — the engine requests one bounded decomposition retry instead of running a query that
+answers a fragment. A conversational model proposes only natural-language leaf questions and a closed
+`cross`/`anti_join` topology. The same planner selects every leaf, under the leaf contract;
+`engine/decomposition.py` fuses their typed outputs into one DAG. No text from the conversational
+model becomes SQL, Python, an identifier, a join key, or an intermediate result.
 
 AST validity is broader than dual-emitter coverage. The lowering adapter requires proven ORM row
 identities and scalar join targets. Unsupported ASTs retain SQL execution under the default policy
@@ -37,32 +44,62 @@ logical graph edge and one `Join`; rendering produces an atomic conjunction such
 `ON child.country = parent.country AND child.postal = parent.postal`. The validator rejects
 any component that does not connect the new table to the existing join graph.
 
-The same inputs produce the same candidate **ordering**. That removes sampling variance, not
-natural-language ambiguity, schema-linking errors, missing search rules, or ranking errors.
+The same inputs produce the same selection. That removes sampling variance, not natural-language
+ambiguity, schema-linking errors, missing search rules, or selection errors.
 
 ## Architecture
 
-The runtime path is:
+The runtime path (`TableQuery.select_query`, engine/tables.py) is:
 
 ```text
 question + tables + foreign keys
           |
           v
-      SchemaGraph
-          |
-          v
-  typed bounded AST search
-          |
-          v
-  deterministic semantic ranking
-          |
-          v
-      validated SQL
+      SchemaGraph ------------------------------+
+          |                                     |
+          v                                     v
+  typed bounded AST search             SQL proposer (Qwen2.5-0.5B + LoRA)
+  + named deterministic ranking        4 deterministic beams, first line each
+          |                                     |
+          |                            import -> validate -> re-render
+          |                                     |
+          +-------------> merged pool <---------+
+                          (search order, then beams; SQL both found is one
+                           member tagged proposer:endorsed)
+                               |
+                               v
+             run each member on an in-memory SQLite copy
+             (SELECT guard, fixed VM-step budget); failures are ineligible
+                               |
+                               v
+             proposer likelihood of each runnable member
+                               |
+                               v
+             arbiter: linear score over 9 named features,
+             best score wins, earlier pool position breaks ties
+                               |
+                               v
+                  validated AST -> SQL (or SQL + Python)
 ```
 
-AST construction and ranking logic are hand-written. The frozen encoder supplies deterministic role
-and schema similarities, but there is no trained SQL proposer, decoder, or learned candidate ranker.
-Every candidate must pass AST validation before it can be rendered to SQL.
+The search's construction and ranking rules are hand-written; the frozen encoder supplies role and
+schema similarities to them. The proposer is a small causal language model fine-tuned on Spider
+TRAIN gold SQL that the importer could map into the typed AST; its raw text never reaches a database
+(anything the importer cannot map, the validator rejects, or the renderer cannot reproduce is
+dropped). The arbiter is a standardized logistic regression, so each selection is explainable as
+feature contributions (`PoolSelection.record`).
+
+| Arbiter feature | Meaning |
+|---|---|
+| `likelihood` | Teacher-forced log-probability of the SQL under the proposer's prompt |
+| `likelihood_tokens` | SQL length in proposer tokens |
+| `likelihood_per_token` | `likelihood / likelihood_tokens` |
+| `pool_score` | Search score, or the proposal's penalized score (below every search candidate) |
+| `pool_rank` | Position in the merged pool |
+| `from_proposer` | The proposer produced this SQL (alone or with the search) |
+| `from_search` | The deterministic search produced this SQL |
+| `endorsed` | Both produced it |
+| `pool_size` | Number of pooled candidates |
 
 ## Public API
 
@@ -70,8 +107,9 @@ Every candidate must pass AST validation before it can be rendered to SQL.
 
 Live serving goes through `engine/tables.py`. `TableQuery.serve(tables, question)` runs the
 full own-data pipeline (ingest → schema → `_serve_ast` → guard → execute) and returns the
-answer plus the winning candidate. `_serve_ast` calls `search_ast`, then
-`select_calculation_candidate` chooses the candidate under the shared calculation contract:
+answer plus the winning candidate. `_serve_ast` calls `select_query`, the one own-data selection
+also used by the decomposition probe and leaves, the Spider evaluator, the offline regression gate
+and arbiter training:
 
 ```python
 from engine.encoder_overlay import EncoderQuery
@@ -89,14 +127,26 @@ tables = [
     },
 ]
 
-engine = EncoderQuery()                       # loads the one shared encoder
+engine = EncoderQuery()          # loads the runtime bundle: encoder, SQL proposer, arbiter
 result = engine.serve(tables, "list each customer name and total order amount")
 print(result["sql"])
+print(result["selection"])       # origin, arbiter score and per-feature contributions
+```
+
+To see the whole decision, call `select_query` on normalized tables:
+
+```python
+norm, fks = engine.ingest(tables)
+sch, colidx, tablemap = engine.schema(norm, fks)
+selection = engine.select_query("list each customer name and total order amount",
+                                norm, fks, sch, tablemap)
+for index in selection.ranking:                 # runnable members, best first
+    print(selection.scores[index], selection.origin(index), selection.pool[index].sql)
 ```
 
 ### Direct AST search
 
-To call the deterministic planner directly, build the typed schema and foreign keys and call
+To call only the deterministic search, build the typed schema and foreign keys and call
 `search_ast`:
 
 ```python
@@ -123,11 +173,12 @@ Trusted internal callers may pass tuple edges to `ingest(tables, explicit_fks=..
 read foreign keys from uploaded table dictionaries.
 
 `search_ast` builds a `SchemaGraph` (`engine/sql_search.py: SchemaGraph.from_planner`), runs
-`SQLSearcher(graph, ...).search(...)`, and returns ranked, validated candidates. There is no
-trained proposer and no learned ranker in this path.
+`SQLSearcher(graph, ...).search(...)`, and returns ranked, validated candidates. The search uses
+the encoder's similarities but no generative model.
 
 The own-data `/api/knowledge` response keeps its existing SQL and result fields and adds a
-`planner` object with `ast`, `candidate_count`, `evidence`, and `features`.
+`planner` object with `ast`, `candidate_count`, `evidence`, `features`, and `selection` (pool
+size, how many ran, the winner's origin, score, feature values and contributions).
 
 ## Deterministic candidate expansion
 
@@ -214,7 +265,10 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_constraints.py` | `HAVING`, disjunction, scalar, and membership rules. |
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT). |
-| `engine/sql_rank.py` | Hand-written semantic and execution features. |
+| `engine/sql_rank.py` | Hand-written search ranking features; the pool merge and the linear arbiter (`SQLArbiter`, `PoolSelection`). |
+| `engine/sql_proposer.py` | The frozen SQL proposer: deterministic beams and teacher-forced likelihoods. |
+| `engine/sql_prompt.py` | The one proposer prompt, shared with training. |
+| `engine/sql_import.py` | SQL text to typed AST; the gate every proposal passes. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |
 | `engine/calculations/specifications.py` | Registered currency, ratio, and rate-application semantics. |
 | `engine/calculations/search.py` | Calculation-plan expansion into validated AST candidates. |
@@ -236,17 +290,11 @@ not depend on one another's private internals.
 [`spider/results/RESULTS.md`](../spider/results/RESULTS.md) is the single authoritative benchmark
 record, including exact configuration, source commit, artifact hashes, and dirty-worktree state.
 Do not copy changing accuracy figures into architecture documentation. The standard comparison is
-the serving-faithful `whole_db` run: all database tables, top-1 selection, 25 candidates, and no gold
-table hints. `gold_tables` is an oracle table-selection diagnostic, not a standard Spider result.
+the serving-faithful `whole_db` run: all database tables, the served selection, and no gold table
+hints. `gold_tables` is an oracle table-selection diagnostic, not a standard Spider result.
 
-The measured accuracy belongs to the deterministic planner. The frozen encoder supplies repeatable
-similarity features, but there is no trained SQL proposer or learned candidate ranker in serving.
-
-> **Historical note.** Earlier "profile-expansion / pool-recall" experiments (a "pool 180" candidate
-> pool reaching ~55% strict pool-oracle) depended on a trained research **proposer** that has since
-> been removed from the tree, along with `build_ast_proposal_data.py`. Those pool numbers were **not**
-> produced by the deterministic serving path and **cannot be reproduced from HEAD**; they are recorded
-> here only as history and are deliberately excluded from the table above.
+The measured accuracy belongs to the whole served pipeline: search, proposer, pool execution and
+arbiter, loaded from the same runtime bundle the service loads.
 
 ## Reproduction
 
@@ -256,26 +304,22 @@ Fetch Spider data:
 python spider/probe/fetch_data.py --include-train
 ```
 
-Run the serving-faithful evaluation — the deterministic AST planner, byte-for-byte the
-serving selector (`engine/tables.py:_serve_ast`). The planner is unconditional: there is no
-planner-mode flag, no proposer, and no learned ranker to pass.
+Run the serving-faithful evaluation. It calls `TableQuery.select_query`, the serving selection,
+with the runtime bundle in `engine/data` (fetch it with `python -m engine.fetch_weights`); there is
+no planner-mode flag and no model to pass.
 
 Standard Spider (whole_db — the headline comparison number):
 
 ```bash
 python -m spider.probe.full_eval \
   --dbs spider/data/dbs --config whole_db \
-  --selection serving_top1 --max-candidates 25 \
-  --tag serving_whole_db \
-  --out spider/results/full_eval_serving_whole_db
+  --tag serving_whole_db
 ```
 
 Oracle table selection (gold_tables — the product-analogue upper bound): rerun the same
-command with `--config gold_tables`.
-
-`--selection serving_top1` reproduces the live selector; `--selection execution_checks`
-enables execution-based candidate checks for diagnosis. Encoder training is unchanged and
-covered in [`docs/TRAINING.md`](TRAINING.md).
+command with `--config gold_tables`. `--selection pool_oracle` additionally executes the whole
+pool and scores each question by its best member: the ceiling any selection change could reach.
+Model training and promotion are covered in [`docs/TRAINING.md`](TRAINING.md).
 
 The same evaluator can execute a lowerable selected AST through the readable Python emitter
 without changing candidate generation, ranking, gold execution, or comparison:
@@ -283,7 +327,6 @@ without changing candidate generation, ranking, gold execution, or comparison:
 ```bash
 python -m spider.probe.full_eval \
   --dbs spider/data/dbs --config whole_db \
-  --selection serving_top1 --max-candidates 25 \
   --backend auto --python-row-limit 10000 --scalar-only \
   --tag serving_python_scalar
 ```
@@ -301,7 +344,8 @@ python -m tests.test_sql_ast
 
 The hermetic tests execute generated SQL against in-memory SQLite and cover AST typing,
 rendering, joins, recursion, constraints, extrema, profiles, deterministic candidate
-expansion, and deterministic ordering.
+expansion, deterministic ordering, the proposal import gate, pool merging and arbitration. They
+replace only the proposer's two model calls, so they need no weights.
 
 Run the repository aggregate suite with:
 
@@ -311,13 +355,14 @@ python -m tests.run_all
 
 ## What remains
 
-The planner is coherent and deterministic, but Spider is not solved. The next work should
-be measured against the current bottlenecks:
+The planner is deterministic and measured, but Spider is not solved. The next work should be
+measured against the current bottlenecks (see RESULTS.md for the numbers):
 
-1. Close the ranking gap between selected and strict-reachable candidates — better
-   hand-written ranking features that convert pool recall into top-1 selections.
-2. Add search rules for examples with no strict-correct candidate in the pool.
-3. Treat larger encoders as controlled capacity experiments after objective and data changes.
+1. Selection: the served pool contains a correct query for many questions the arbiter misses;
+   a better-calibrated arbiter converts that pool recall into answers.
+2. Coverage: add search rules and importer mappings for questions with no correct pool member.
+3. Latency: the proposer's beam search dominates request time on CPU.
+4. Treat larger models as controlled capacity experiments after objective and data changes.
 
 Search controls and evidence use functional names (`recursive`, `constraint`, and `extrema`) rather
 than historical implementation phases; these capabilities are one planner, not separate architectures.

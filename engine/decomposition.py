@@ -139,6 +139,32 @@ def selected_decomposition_required(candidate) -> dict[str, Any] | None:
     return None
 
 
+def compound_candidate(selection):
+    """The compound query that makes a named request need decomposition, or None.
+
+    Compound structure is decided by the deterministic search's own reading of the question
+    (its top candidate, whose grammar models set operations) or by the chosen answer. The SQL
+    proposer only ever emits one query, so a single-query answer to a multi-goal question is
+    a fragment of it; the decomposition proposal owns such questions.
+    """
+    for candidate in (selection.search_top, selection.candidate):
+        if selected_decomposition_required(candidate) is not None:
+            return candidate
+    return None
+
+
+def leaf_admissible(node_id: str, question: str, pool, feeds_cross: bool):
+    """The leaf contract as a ranking constraint: a SELECT that keeps its summed measure
+    aggregated and, when it feeds a cross merge, stays at the ranked entity's grain."""
+    from engine.sql_ast import SelectQuery
+
+    def admissible(candidate) -> bool:
+        return (isinstance(candidate.query, SelectQuery)
+                and leaf_measure_rejection(node_id, question, candidate.query, pool) is None
+                and ranked_leaf_grain_rejection(node_id, candidate.query, feeds_cross) is None)
+    return admissible
+
+
 def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
     """Execution-free probe: does the planner's SELECTED candidate need decomposition?
 
@@ -146,25 +172,16 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
     (engine/tables.py sets `decomposition_required` when the winner is compound).
     The compose path must consult it BEFORE building a composition: a multi-goal
     question's surface ("top ...") can satisfy the compose gate, and a composed
-    top-N would then answer one fragment of the question. The probe selects but
-    never executes. A failed probe must not authorize a partial composed answer.
+    top-N would then answer one fragment of the question. The probe runs the one
+    own-data selection (`select_query`, whose pool checks run on an in-memory copy)
+    but never executes against the conversation database. A failed probe must not
+    authorize a partial composed answer.
     """
-    from engine.calculations import select_calculation_candidate
-    from engine.sql_schema import SchemaGraph
-
     try:
         norm, inferred_fks = planner.ingest(tables)
-        schema, _, _ = planner.schema(norm, inferred_fks)
-        candidates = planner.search_ast(
-            question, schema, norm, inferred_fks, max_candidates=25
-        )
-        if not candidates:
-            return None
-        graph = SchemaGraph.from_planner(schema, inferred_fks)
-        candidate, _, _ = select_calculation_candidate(
-            question, norm, graph, candidates
-        )
-        return selected_decomposition_required(candidate)
+        schema, _, tablemap = planner.schema(norm, inferred_fks)
+        selection = planner.select_query(question, norm, inferred_fks, schema, tablemap)
+        return selected_decomposition_required(compound_candidate(selection))
     except Exception as exc:
         raise DecompositionError(
             "could not check the selected query for decomposition"
@@ -243,7 +260,6 @@ def build_decomposed_plan(
 ) -> AnalysisPlan:
     """Plan every leaf normally, then fuse their typed outputs with validated merges."""
     from engine.analysis import analysis_view_name
-    from engine.calculations import select_calculation_candidate
     from engine.deterministic.lower import (
         UnsupportedDeterministicPlan,
         lower_select_query,
@@ -255,12 +271,10 @@ def build_decomposed_plan(
         PlanSection,
     )
     from engine.sql_ast import SelectQuery
-    from engine.sql_schema import SchemaGraph
 
     proposal = validate_decomposition(proposal)
     if proposal is None:  # pragma: no cover - callers require a proposal
         raise DecompositionError("decomposition is required")
-    graph = SchemaGraph.from_planner(schema, foreign_keys)
     cross_inputs = {
         node_id
         for merge in proposal["merges"] if merge["op"] == "cross"
@@ -272,17 +286,21 @@ def build_decomposed_plan(
     outputs: dict[str, str] = {}
     row_bounds: dict[str, int | None] = {}
 
+    tablemap = {table["name"]: table for table in tables}
     for node in proposal["subquestions"]:
-        candidates = planner.search_ast(
-            node["question"], schema, tables, foreign_keys, max_candidates=25
+        selection = planner.select_query(
+            node["question"], tables, foreign_keys, schema, tablemap
         )
+        candidates = selection.pool
         if not candidates:
             raise DecompositionError(
                 f"subquestion {node['id']!r} produced no typed AST candidate"
             )
-        candidate, _, _ = select_calculation_candidate(
-            node["question"], tables, graph, candidates
-        )
+        # The leaf contract constrains the served ranking; with no admissible member the
+        # ranking's own choice is kept so the rejection below names the concrete defect.
+        candidate = selection.best(leaf_admissible(
+            node["id"], node["question"], candidates, node["id"] in cross_inputs,
+        )) or selection.candidate
         if candidate is None or not isinstance(candidate.query, SelectQuery):
             raise DecompositionError(
                 f"subquestion {node['id']!r} requires an unsupported compound query"

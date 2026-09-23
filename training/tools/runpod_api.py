@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import re
 import shlex
@@ -236,15 +237,41 @@ def reconcile() -> None:
 
 def run_lease(max_minutes: int, command: list[str], keep: bool = False,
               uploads: tuple[tuple[str, str], ...] = (),
-              downloads: tuple[tuple[str, str], ...] = ()) -> str:
+              downloads: tuple[tuple[str, str], ...] = (),
+              max_hourly_cost: float | None = None, resume: bool = False) -> str:
     if not 1 <= max_minutes <= 360:
         raise ValueError("--max-minutes must be between 1 and 360")
+    if max_hourly_cost is not None and (not math.isfinite(max_hourly_cost) or max_hourly_cost <= 0):
+        raise ValueError("max hourly cost must be finite and positive")
     reconcile()
-    pid = create(max_minutes)
+    if resume:
+        active = json.loads(STATE.read_text(encoding="utf-8"))
+        pid, token = active.get("pod_id"), active.get("token")
+        status, details = rest("GET", f"/pods/{pid}") if pid else (0, None)
+        if (not token or status != 200 or not isinstance(details, dict)
+                or details.get("name") != f"prereasoner-train-{token}"):
+            raise RuntimeError("cannot resume: pod ownership is not verified")
+        seconds_left = active["created_at"] + active["max_minutes"] * 60 - time.time()
+        if seconds_left <= 0:
+            terminate(pid)
+            raise TimeoutError("owned pod's original lease deadline has expired")
+        seconds_left = min(seconds_left, max_minutes * 60)
+        print(f"resuming owned pod {pid}; {seconds_left / 60:.1f} minutes remain; deadline not extended", flush=True)
+    else:
+        pid = create(max_minutes)
+        seconds_left = max_minutes * 60
+    deadline = time.monotonic() + seconds_left
+    scp, ip = None, None
+    downloaded = set()
     try:
+        if max_hourly_cost is not None:
+            status, details = rest("GET", f"/pods/{pid}")
+            price = details.get("costPerHr") if isinstance(details, dict) else None
+            if (status != 200 or type(price) not in (int, float)
+                    or not math.isfinite(price) or not 0 <= price <= max_hourly_cost):
+                raise RuntimeError("pod hourly price unavailable or exceeds the approved cap")
+            print(f"pod hourly cost=${price}; maximum lease compute=${price * max_minutes / 60:.2f}", flush=True)
         ip, port = poll(pid)
-        deadline = time.monotonic() + max_minutes * 60
-
         def remaining() -> float:
             seconds = deadline - time.monotonic()
             if seconds <= 0:
@@ -253,7 +280,8 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
 
         ssh = [
             "ssh", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
-            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", f"root@{ip}",
+            "-p", str(port), "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "ServerAliveInterval=30", "-o", "ServerAliveCountMax=6", f"root@{ip}",
         ]
         scp = [
             "scp", "-i", str(Path.home() / ".ssh" / "runpod_prereasoner"),
@@ -276,8 +304,22 @@ def run_lease(max_minutes: int, command: list[str], keep: bool = False,
                 [*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
                 remaining,
             )
+            downloaded.add((remote, local))
         return pid
     finally:
+        # Recover partial artifacts on command/SSH failure before deleting our pod.
+        # Best effort: a dead pod or provider deadline can still prevent recovery.
+        if sys.exc_info()[0] is not None and scp is not None and ip:
+            for remote, local in downloads:
+                if (remote, local) in downloaded:
+                    continue
+                try:
+                    destination = Path(local).resolve()
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    _run_transfer([*scp, f"root@{ip}:{_remote_path(remote)}", str(destination)],
+                                  remaining, attempts=2)
+                except Exception as recovery_error:
+                    print(f"artifact recovery failed: {remote}: {recovery_error}", file=sys.stderr)
         if keep:
             print(
                 f"WARNING: --keep left billable pod {pid} running until its provider deadline; "
@@ -305,6 +347,8 @@ def main(argv=None) -> int:
     lease = commands.add_parser("lease")
     lease.add_argument("--max-minutes", type=int, default=120)
     lease.add_argument("--keep", action="store_true")
+    lease.add_argument("--max-hourly-cost", type=float, default=None)
+    lease.add_argument("--resume", action="store_true", help="resume only this state file's owned pod within its original deadline")
     lease.add_argument("--upload", action="append", nargs=2, default=[],
                        metavar=("LOCAL", "REMOTE"))
     lease.add_argument("--download", action="append", nargs=2, default=[],
@@ -332,6 +376,8 @@ def main(argv=None) -> int:
             else args.remote_command,
             args.keep,
             tuple(map(tuple, args.upload)), tuple(map(tuple, args.download)),
+            args.max_hourly_cost,
+            args.resume,
         )
     return 0
 

@@ -2,11 +2,13 @@
 
 ## Summary
 
-Prereasoner is a tabular question-answering system with a learned semantic layer and a deterministic
-SQL layer. Learned components provide embeddings, Schema.org property probabilities, class scores,
-and structural relevance signals. Typed SQL search, route ownership, source-key authorization,
-calculation semantics, SQL rendering, and execution are deterministic for fixed inputs and pinned
-artifacts.
+Prereasoner is a tabular question-answering system with a learned semantic layer and a typed SQL
+layer. Learned components provide embeddings, Schema.org property probabilities, class scores,
+structural relevance signals, and — for own-data questions — candidate SQL from a small proposer
+model plus a fitted linear arbiter that chooses among candidates. Every executed query is a typed AST
+the engine validated and rendered. Typed SQL search, route ownership, source-key authorization,
+calculation semantics, arbitration, SQL rendering, and execution are deterministic for fixed inputs and
+pinned artifacts.
 
 Schema.org 30.0 is the semantic coordinate system. Wikidata and publisher-owned releases provide
 observations projected into that vocabulary; they do not define it. Mutable facts remain in
@@ -54,6 +56,28 @@ The exact per-property and per-class support, thresholds, precision, recall, F1,
 counts are in `engine/data/schema_property_model.json`. Training identity, dependencies, source
 releases, split policy, seed, and metrics are in `engine/data/schema_training_manifest.json`.
 
+### SQL proposer and arbiter
+
+- Proposer base: the same pinned `Qwen/Qwen2.5-0.5B`, loaded as a causal LM with a separate LoRA
+  adapter (`engine/data/sql_proposer/`, experiment `d2`: rank 16 on q/k/v/o projections, 6,000 steps,
+  seed 7).
+- Training data: Spider TRAIN gold SQL that the serving importer maps into the typed AST and whose
+  rendering reproduces the gold execution (90% of TRAIN); databases in the held-out md5 bucket are
+  excluded. Spider dev is never trained on; it is the measurement set.
+- Use: four deterministic beams per own-data question from a schema-plus-question prompt, plus
+  teacher-forced likelihoods of every runnable candidate. fp32 on every device.
+- Boundary: a proposal is text until `engine/sql_import.py` maps it into the typed AST, the validator
+  accepts it, and the renderer reproduces it; otherwise it is dropped. The model never writes Python
+  or a number, and its text never reaches a database.
+- Arbiter: `engine/data/sql_arbiter.json`, a logistic regression over nine named features (likelihood,
+  length, per-token likelihood, pool score and rank, source flags, pool size), fit on execution-labeled
+  pools of 15 Spider TRAIN databases. The served choice is the highest score among candidates that
+  execute; each response reports the winner's per-feature contributions.
+- Limitation: both were fit on Spider's academic schemas and answer conventions (for example,
+  "top customers by spend" answered with names only). Product conventions are protected by explicit
+  constraints — compound questions route to decomposition, and decomposition leaves must keep their
+  summed measure — not by the model.
+
 ### Entity-resolution embedder
 
 - Model: `BAAI/bge-small-en-v1.5`, pinned at revision
@@ -89,9 +113,10 @@ immutable revision `0b5c2a5d4de3e488cd366633d95ce922755d3900`. The promoted prop
 
 ## Evaluation And Limitations
 
-Determinism removes decoder sampling variance; it does not guarantee correctness. Remaining error
-classes include ambiguous schema linking, missing AST candidates, ranking errors, incomplete entity
-resolution, source gaps, and unsupported Schema.org coordinates.
+Determinism removes sampling variance; it does not guarantee correctness. Remaining error classes
+include ambiguous schema linking, missing AST candidates, arbitration errors, incomplete entity
+resolution, source gaps, and unsupported Schema.org coordinates. The proposer adds CPU latency: its beam
+search dominates own-data request time on CPU.
 
 The Schema.org head has group-disjoint validation and untouched-test metrics. The shared historical
 encoder does not have equivalent original-training provenance, so their metrics must not be merged.

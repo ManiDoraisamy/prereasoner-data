@@ -67,7 +67,7 @@ def test_public_weight_bundle_is_manifested_and_documented():
     manifest = json.loads(_text("engine/data/weights_manifest.json"))
     assert manifest["repository"] == "prereasoner/prereasoner-weights"
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["revision"])
-    assert len(manifest["files"]) == 7
+    assert len(manifest["files"]) == 9
 
     setup_docs = "\n".join(
         _text(path)
@@ -317,6 +317,90 @@ def test_runpod_cleanup_failure_does_not_hide_training_failure():
         assert runpod_api.STATE.exists(), "unconfirmed termination must retain recovery state"
 
 
+def test_runpod_price_cap_terminates_before_any_work():
+    from training.tools import runpod_api
+
+    with patch.object(runpod_api, "reconcile"), \
+            patch.object(runpod_api, "create", return_value="pod-price"), \
+            patch.object(runpod_api, "rest", return_value=(200, {"costPerHr": 3.0})), \
+            patch.object(runpod_api, "terminate") as terminate, \
+            patch.object(runpod_api, "poll") as poll:
+        try:
+            runpod_api.run_lease(30, [], max_hourly_cost=2.0)
+        except RuntimeError as exc:
+            assert "price" in str(exc)
+        else:
+            raise AssertionError("a pod above the approved hourly cap was used")
+        terminate.assert_called_once_with("pod-price")
+        poll.assert_not_called()
+    with patch.object(runpod_api, "create") as create:
+        for price in (float("nan"), float("inf"), -1.0):
+            try:
+                runpod_api.run_lease(30, [], max_hourly_cost=price)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"invalid hourly cap accepted: {price}")
+        create.assert_not_called()
+
+
+def test_runpod_failed_command_downloads_before_termination():
+    from training.tools import runpod_api
+
+    events = []
+    with tempfile.TemporaryDirectory() as directory, \
+            patch.object(runpod_api, "reconcile"), \
+            patch.object(runpod_api, "create", return_value="pod-recover"), \
+            patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
+            patch.object(runpod_api.subprocess, "run",
+                         side_effect=subprocess.CalledProcessError(1, "ssh")), \
+            patch.object(runpod_api, "_run_transfer",
+                         side_effect=lambda *args, **kwargs: events.append("download")), \
+            patch.object(runpod_api, "terminate",
+                         side_effect=lambda *args: events.append("terminate")):
+        try:
+            runpod_api.run_lease(30, ["false"], downloads=(
+                ("/root/result", str(Path(directory) / "result")),))
+        except subprocess.CalledProcessError:
+            pass
+        else:
+            raise AssertionError("the failed remote command was swallowed")
+    assert events == ["download", "terminate"], events
+
+
+def test_runpod_resume_requires_ownership_and_never_creates_a_pod():
+    import time
+
+    from training.tools import runpod_api
+
+    with tempfile.TemporaryDirectory() as directory:
+        state = Path(directory) / "state.json"
+        state.write_text(json.dumps({"pod_id": "pod-owned", "token": "owned",
+                                     "created_at": time.time(), "max_minutes": 30}),
+                         encoding="utf-8")
+        with patch.object(runpod_api, "STATE", state), \
+                patch.object(runpod_api, "reconcile"), \
+                patch.object(runpod_api, "create") as create, \
+                patch.object(runpod_api, "rest",
+                             return_value=(200, {"name": "prereasoner-train-owned"})), \
+                patch.object(runpod_api, "poll", return_value=("127.0.0.1", 22)), \
+                patch.object(runpod_api, "terminate") as terminate:
+            assert runpod_api.run_lease(30, [], resume=True) == "pod-owned"
+            create.assert_not_called()
+            terminate.assert_called_once_with("pod-owned")
+        with patch.object(runpod_api, "STATE", state), \
+                patch.object(runpod_api, "reconcile"), \
+                patch.object(runpod_api, "rest", return_value=(200, {"name": "another-owner"})), \
+                patch.object(runpod_api, "terminate") as terminate:
+            try:
+                runpod_api.run_lease(30, [], resume=True)
+            except RuntimeError as exc:
+                assert "ownership" in str(exc)
+            else:
+                raise AssertionError("resumed a pod this state file does not own")
+            terminate.assert_not_called()
+
+
 def test_runpod_transfers_are_inside_the_owned_lease():
     from training.tools import runpod_api
 
@@ -434,7 +518,9 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     hosting = _text("cloudbuild.hosting.yaml")
     assert "firebase deploy" in hosting
     assert "--only=hosting" in hosting
-    assert "web/public/lib/config.js" in hosting
+    # The Cloud Build step runs the release script; the script owns writing config.js.
+    assert "node deploy/gcp/hosting_release.js" in hosting
+    assert 'writeFileSync("web/public/lib/config.js"' in _text("deploy/gcp/hosting_release.js")
     assert "web/firebase.release.json" in hosting
     assert "web/" not in _text(".gcloudignore").splitlines()
     workflow = _text(".github/workflows/ci.yml")
@@ -699,6 +785,9 @@ TESTS = [
     test_runpod_training_is_an_owned_bounded_lease,
     test_runpod_cleanup_failure_does_not_hide_training_failure,
     test_runpod_transfers_are_inside_the_owned_lease,
+    test_runpod_price_cap_terminates_before_any_work,
+    test_runpod_failed_command_downloads_before_termination,
+    test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_live_database_tests_allocate_production_shaped_schemas,

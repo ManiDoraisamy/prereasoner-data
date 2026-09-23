@@ -43,6 +43,7 @@ from engine.deterministic.context import (
     set_execution_record,
 )
 from engine.deterministic.emitter import PythonEmitter, SQLEmitter
+from engine.sql_rank import PoolSelection, SQLArbiter
 from engine.deterministic.plan import JunctionValue
 from engine.sql_ast import (
     Aggregate,
@@ -728,8 +729,12 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {}
 
-        def search_ast(self, *_args, **_kwargs):
-            return [candidate]
+        sql_arbiter = SQLArbiter.load(
+            Path(__file__).resolve().parents[1] / "engine" / "data" / "sql_arbiter.json")
+
+        def select_query(self, *_args):
+            return PoolSelection((candidate,), frozenset(), (True,), ((-1.0, 1),), (0.0,),
+                                 (0,), 0, 1)
 
         def guard(self, _sql):
             return True, None
@@ -797,8 +802,12 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
         def schema(self, _tables, _foreign_keys):
             return schema, {}, {}
 
-        def search_ast(self, *_args, **_kwargs):
-            return [candidate]
+        sql_arbiter = SQLArbiter.load(
+            Path(__file__).resolve().parents[1] / "engine" / "data" / "sql_arbiter.json")
+
+        def select_query(self, *_args):
+            return PoolSelection((candidate,), frozenset(), (True,), ((-1.0, 1),), (0.0,),
+                                 (0,), 0, 1)
 
         def guard(self, _sql):
             return True, None

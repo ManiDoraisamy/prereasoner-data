@@ -1,23 +1,16 @@
 # Spider Benchmark — Diagnose and Measure
 
-> **Current planner note.** The own-data SQL layer is a **single deterministic typed-AST planner**
-> (`engine/tables.py:search_ast` → `engine/sql_search.py`) with subqueries, aliases, self-joins, set
-> operations, nested aggregation, and bounded AST search. Ranking is hand-written and deterministic.
-> There is no separate slot-filler, `--planner` flag, or learned SQL ranker. Start with
+> **Current planner note.** The own-data SQL layer is one typed-AST planner with two candidate
+> sources and one arbiter (`engine/tables.py:select_query`): a bounded deterministic search over typed
+> ASTs, a frozen SQL proposer whose beams must import into the same typed AST, execution of the pooled
+> queries, and a fitted linear arbiter over nine named features. Start with
 > [`docs/SQL_AST.md`](../docs/SQL_AST.md) for the implementation contract; this document explains the
-> benchmark and its failure taxonomy.
+> benchmark and its failure taxonomy. The probe sections below predate the proposer and describe the
+> deterministic search's failure families.
 
-> **Current whole-database result.** The serving-faithful config (`--selection serving_top1
-> --max-candidates 25`, byte-for-byte `engine/tables.py:_serve_ast`) scores, over all 1,034 Spider dev
-> examples with denotation evaluation, **34.7% strict / 43.8% lenient / 54.9% scalar-gold**
-> (359/1,034, 453/1,034, 224/408). This is the current gold-blind comparison number. The oracle
-> `gold_tables` ablation on the same planner scores **42.0% strict / 53.3% lenient / 60.5% scalar-gold**
-> (434/1,034, 551/1,034, 247/408). The exact evidence commits and table-selection delta are in
-> [`results/RESULTS.md`](results/RESULTS.md).
->
-> The accuracy is entirely the deterministic planner's. Earlier profile-expansion / trained-proposer
-> "pool recall" experiments have been removed from the tree and are not reproducible from HEAD; see the
-> historical note in [`docs/SQL_AST.md`](../docs/SQL_AST.md).
+> **Current whole-database result.** [`results/RESULTS.md`](results/RESULTS.md) is the only place
+> accuracy numbers are maintained; it records the served pipeline's `whole_db` result with its source
+> commit, artifact hashes, and the `gold_tables` oracle ablation.
 
 > **Audience: contributors.** This is both the reproducible benchmark contract and a diagnostic guide.
 > The goal is to localize *why* Prereasoner scores low on Spider before changing anything. This is
@@ -235,19 +228,19 @@ is visible; (d) hand spot-checks gate the histogram.
 python -m spider.probe.fetch_data          # dev.json, tables.json, 20 dev SQLite DBs -> spider/data
 python -m spider.probe.static_probe        # Probe A + B
 
-# Probe D+ — the serving-faithful deterministic typed-AST planner (engine/tables.py:_serve_ast).
+# Probe D+ — the served own-data selection (engine/tables.py:select_query), runtime bundle from engine/data.
 # Standard Spider (the headline comparison number):
-python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection serving_top1 --max-candidates 25
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db
 # Oracle table selection (the product-analogue upper bound): same command with --config gold_tables:
-python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables --selection serving_top1 --max-candidates 25
+python -m spider.probe.full_eval --dbs spider/data/dbs --config gold_tables
 
 # Candidate-pool recall (oracle ablation, never serving): every pooled candidate is executed and the
-# EVALUATOR scores the example by its best member — the ceiling any ranking improvement can reach.
-# The summary also reports the same run's serving top-1 and the first-strict-hit rank histogram.
-python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection pool_oracle --max-candidates 25
+# EVALUATOR scores the example by its best member — the ceiling any selection improvement can reach.
+# The summary also reports the same run's served selection and the first-strict-hit rank histogram.
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection pool_oracle
 
 # Production Python-preferred policy on the existing scalar-gold contract:
-python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --selection serving_top1 --max-candidates 25 --backend auto --python-row-limit 10000 --scalar-only
+python -m spider.probe.full_eval --dbs spider/data/dbs --config whole_db --backend auto --python-row-limit 10000 --scalar-only
 
 # Coverage-only and strict selected-SQL/Python parity diagnostics use --backend python or --backend verify.
 

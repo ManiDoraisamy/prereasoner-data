@@ -1,8 +1,11 @@
-"""Proposer pipeline constants: the ONE pinned base-model identity.
+"""SQL proposer training pipeline (see README.md).
 
-Training and inference must load the same immutable snapshot; a mutable hub name would
-let the base silently change between an adapter's training and its evaluation.
+`is_validation_db` is the one held-out rule for Spider TRAIN databases: a database whose
+md5 bucket is 0 is never used to fit the proposer or the arbiter, so both can be measured on
+schemas they have not seen.
 """
+import hashlib
 
-BASE_MODEL_ID = "Qwen/Qwen2.5-0.5B"
-BASE_MODEL_REVISION = "060db6499f32faf8b98477b0a26969ef7d8b9987"
+
+def is_validation_db(db_id: str) -> bool:
+    return int(hashlib.md5(db_id.encode(), usedforsecurity=False).hexdigest(), 16) % 10 == 0

@@ -52,18 +52,15 @@ class Engine:
         self.compose = ComposeEngine(reader=self.reader)
 
     def _ast(self, tabs, q):
-        """The production own-data path: ranked typed-AST search plus semantic admissibility."""
+        """The production own-data path: the one served selection (engine/tables.py:select_query)."""
         norm, fks = self.enc.ingest(tabs)
         sch, _, tmap = self.enc.schema(norm, fks)
-        candidates = self.enc.search_ast(q, sch, norm, fks, max_candidates=25)
-        if not candidates:
+        selection = self.enc.select_query(q, norm, fks, sch, tmap)
+        if not selection.pool:
             raise RuntimeError("planner: no valid AST candidate")
-        from engine.calculations import select_calculation_candidate
-        from engine.sql_schema import SchemaGraph
-        candidate, _, _ = select_calculation_candidate(
-            q, norm, SchemaGraph.from_planner(sch, fks), candidates,
-        )
-        sql = candidate.sql
+        if selection.candidate is None:
+            raise RuntimeError("planner: no executable AST candidate")
+        sql = selection.candidate.sql
         ok, why = self.enc.guard(sql)
         if not ok:
             raise RuntimeError(f"guard: {why}")

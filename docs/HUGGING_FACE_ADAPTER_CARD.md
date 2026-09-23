@@ -7,12 +7,15 @@ tags:
   - lora
 ---
 
-# Prereasoner Qwen Adapter
+# Prereasoner Qwen Adapters
 
-This LoRA adapter is one component of the
-[Prereasoner runtime bundle](https://huggingface.co/prereasoner/prereasoner-weights). It is not a
-standalone text-to-SQL generator. Prereasoner uses the adapted Qwen2.5-0.5B representation as input
-to named semantic readouts; deterministic planner code owns SQL construction and execution.
+The bundle carries two LoRA adapters on `Qwen/Qwen2.5-0.5B`, each one component of the
+[Prereasoner runtime bundle](https://huggingface.co/prereasoner/prereasoner-weights):
+
+- `qwen_lora/` adapts the base as an encoder whose representation feeds named semantic readouts.
+- `sql_proposer/` adapts the base as a causal LM that decodes candidate SQL for own-data questions.
+  Prereasoner maps each candidate into its typed AST, validates it, and lets a fitted arbiter choose
+  among candidates that execute; the adapter is not a standalone text-to-SQL generator.
 
 Install and validate the complete compatible bundle through the source repository:
 

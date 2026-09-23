@@ -17,13 +17,14 @@ model, candidate pool, ranking, gold query, input cap, or the existing `spider_e
 contract. World resolution is irrelevant to self-contained Spider and the live clarify gate remains omitted;
 a refusal would still score wrong, so that omission can only make the benchmark an upper bound.
 
-Serving-faithful selection is --selection serving_top1 (exact live top-1); --selection execution_checks adds
-bounded deterministic execution reranking. --selection pool_oracle executes the ENTIRE candidate pool and lets
-the evaluator score the example by its best member: an explicitly labeled oracle ablation (like --config
-gold_tables) that measures candidate-pool recall — the ceiling any ranking improvement can reach — and is
-never a serving mode; gold rows stay inside the evaluator and never reach prediction. Denotation is compared
-on the REAL gold rows; we report the clean SCALAR-gold accuracy (unambiguous), lenient containment (generous
-UB), and strict row-set equality (harsh LB) so the true number is bracketed.
+Selection is the served one: `TableQuery.select_query` (search + proposer + pool execution + arbiter), loaded
+from the same runtime bundle the service loads, so the evaluator measures the shipped pipeline and cannot
+drift from it. --selection pool_oracle runs that same selection, then executes the ENTIRE pool and scores the
+example by its best member: an explicitly labeled oracle ablation (like --config gold_tables) that measures
+candidate-pool recall — the ceiling any selection improvement can reach — and is never a serving mode; gold rows
+stay inside the evaluator and never reach prediction. Denotation is compared on the REAL gold rows; we report
+the clean SCALAR-gold accuracy (unambiguous), lenient containment (generous UB), and strict row-set equality
+(harsh LB) so the true number is bracketed.
 """
 from __future__ import annotations
 
@@ -63,10 +64,6 @@ except ImportError:  # direct `python full_eval.py` from spider/probe remains su
     )
 
 DIFFS = ["easy", "medium", "hard", "extra"]
-# pool_oracle executes EVERY pooled candidate; one pathological join must not stall the run.
-# SQLite VM-op bound: deterministic and machine-independent, generous enough that only
-# runaway candidates trip it (a stalled formula_1 train example motivated this).
-POOL_EXECUTION_OP_LIMIT = 100_000_000
 # Routing is NOT mirrored here — it is IMPORTED from the ONE shared router (engine.routing), the same module
 # live serving uses, so the eval can never drift from production. DEPTH_PRIMS is the primitive-head EVIDENCE to
 # build a compose plan; compose_owns is the AUTHORITY (a grounded world dependency). Spider tables are world-less,
@@ -159,6 +156,18 @@ def _git_provenance(root):
             "worktree_dirty": bool(_git("status", "--porcelain"))}
 
 
+def _latency_summary(seconds):
+    """Median / p90 / p95 / max of the recorded per-example prediction seconds."""
+    values = sorted(value for value in seconds if value is not None)
+    if not values:
+        return None
+
+    def quantile(q):
+        return round(values[min(len(values) - 1, int(q * len(values)))], 3)
+    return {"n": len(values), "median": quantile(0.5), "p90": quantile(0.9),
+            "p95": quantile(0.95), "max": round(values[-1], 3)}
+
+
 def _write_json_atomic(path, value):
     temporary = f"{path}.{os.getpid()}.tmp"
     with open(temporary, "wb") as handle:
@@ -175,16 +184,13 @@ def _write_json_atomic(path, value):
 
 def ast_predict(
     enc, tabs, question, schema_fks=None, schema_cache=None,
-    selection="serving_top1", max_candidates=25, use_signals=True,
-    execution_backend="sql", python_row_limit=10_000, rank_model=None,
-    proposer=None, arbiter=None,
+    selection="served", execution_backend="sql", python_row_limit=10_000,
 ):
-    """Run AST search using either exact serving top-1 or bounded execution checks.
+    """Run the served own-data selection, then execute the chosen query for grading.
 
-    use_signals gates the encoder semantic signals (ablation only; serving is always True).
-    rank_model injects a candidate rerank head (engine/sql_rank.py:RankHead) and proposer a
-    candidate source (training/proposer/propose.py) for measurement; the promoted serving
-    default is None for both until an artifact ships in the runtime bundle."""
+    `enc.select_query` is the production selection (engine/tables.py). `selection="pool_oracle"`
+    additionally executes every pooled candidate so the evaluator can score the pool's best
+    member (an oracle ablation, never serving)."""
     cache_key = tuple(id(table) for table in tabs)
     cached = schema_cache.get(cache_key) if schema_cache is not None else None
     if cached is None:
@@ -195,28 +201,20 @@ def ast_predict(
         if schema_cache is not None:
             schema_cache[cache_key] = cached
     norm, fks, sch, tmap = cached
-    candidates = enc.search_ast(question, sch, norm, fks, max_candidates=max_candidates,
-                                use_semantic_signals=use_signals, rank_model=rank_model)
-    novel_proposal, novel_index, novel_sqls = None, None, frozenset()
-    if proposer is not None:
-        from engine.sql_schema import SchemaGraph as _ProposalGraph
+    chosen = enc.select_query(question, norm, fks, sch, tmap)
+    candidates = chosen.pool
+    evidence = {
+        "candidate_count": len(candidates),
+        "executed_candidate_count": sum(chosen.executable),
+        "selected_candidate_rank": chosen.selected,
+        "selection": chosen.record(enc.sql_arbiter),
+    }
 
-        pre_merge = {candidate.sql for candidate in candidates}
-        floor = min((candidate.score for candidate in candidates), default=0.0)
-        proposals = proposer.propose(
-            norm, question, _ProposalGraph.from_planner(sch, fks), min_score=floor,
-            beams=getattr(proposer, "beams", 1),
-        )
-        candidates, novel_proposal, novel_index = merge_proposals(candidates, proposals)
-        novel_sqls = {candidate.sql for candidate in candidates} - pre_merge
-    from engine.sql_rank import execute_and_rerank
-    from engine.sql_schema import SchemaGraph
-
-    def execute(sql, progress_limit=None):
+    def execute(sql):
         ok, why = enc.guard(sql)
         if not ok:
             raise RuntimeError(f"guard: {why}")
-        return enc.execute(tmap, sch, sql, progress_limit=progress_limit)
+        return enc.execute(tmap, sch, sql)
 
     def execute_selected(candidate, sql_rows=None):
         metadata = {
@@ -302,187 +300,67 @@ def ast_predict(
 
     if not candidates:
         return {"ok": False, "error": "no connected AST candidate",
-                "stage": "ast_search", "path": "ast"}
+                "stage": "ast_search", "path": "ast", **evidence}
     if selection == "pool_oracle":
         # Oracle ablation (never serving): execute EVERY pooled candidate so the EVALUATOR can score
         # the example by its best member. Gold rows stay in the evaluator; prediction never sees them.
+        import sqlite3
+
+        # Arbiter training labels every pooled candidate, so the oracle scores the whole pool
+        # (the served selection already scored the executable members; those come from cache).
+        likelihoods = enc.sql_proposer.likelihoods(norm, question,
+                                                   [candidate.sql for candidate in candidates])
+        connection = enc._sqlite_tables(tmap, sch)
+        connection.set_progress_handler(lambda: 1, enc.sql_arbiter.execution_op_limit)
         pool = []
         for rank, candidate in enumerate(candidates):
             entry = {"rank": rank, "sql": candidate.sql,
                      "score": round(candidate.score, 6),
                      "features": dict(candidate.features),
-                     "evidence": list(candidate.evidence)}
-            try:
-                _, rows = execute(candidate.sql, progress_limit=POOL_EXECUTION_OP_LIMIT)
-                entry["rows"] = [list(row) for row in rows]
-            except Exception as exc:  # noqa: BLE001 - a failed candidate disqualifies only itself
-                entry["error"] = f"{type(exc).__name__}: {exc}"
+                     "evidence": list(candidate.evidence),
+                     "proposed": candidate.sql in chosen.proposed}
+            entry["likelihood"], entry["likelihood_tokens"] = likelihoods[rank]
+            ok, why = enc.guard(candidate.sql)
+            if not ok:
+                entry["error"] = f"guard: {why}"
+            else:
+                try:
+                    entry["rows"] = [list(row) for row in connection.execute(candidate.sql).fetchall()]
+                except sqlite3.Error as exc:
+                    entry["error"] = f"{type(exc).__name__}: {exc}"
             pool.append(entry)
+        connection.close()
         executed = sum(1 for entry in pool if "rows" in entry)
-        result = {"ok": executed > 0, "path": "ast",
-                  "candidate_count": len(candidates),
-                  "executed_candidate_count": executed,
-                  "pool_execution": pool}
+        result = {"ok": executed > 0, "path": "ast", "pool_execution": pool, **evidence}
         if not executed:
             result.update(error=pool[0]["error"], stage="ast_search")
         return result
-    if selection == "arbiter":
-        # Serving-faithful S2 arbitration: execute the merged pool (op-bounded), score
-        # every candidate under the proposer's prompt, select by the pure-linear artifact.
-        pool_rows = []
-        for candidate in candidates:
-            try:
-                _, rows = execute(candidate.sql, progress_limit=POOL_EXECUTION_OP_LIMIT)
-                pool_rows.append([list(row) for row in rows])
-            except Exception:  # noqa: BLE001 - a failed candidate disqualifies only itself
-                pool_rows.append(None)
-        likelihoods = proposer.score_sqls(norm, question,
-                                          [candidate.sql for candidate in candidates])
-        chosen = arbiter_select(candidates, pool_rows, likelihoods, arbiter, novel_sqls)
-        if chosen is None:
-            return {"ok": False, "error": "no executable candidate",
-                    "stage": "ast_search", "path": "ast"}
-        candidate = candidates[chosen]
-        return {"ok": True, "sql": candidate.sql, "rows": pool_rows[chosen], "path": "ast",
-                "candidate_count": len(candidates),
-                "executed_candidate_count": sum(rows is not None for rows in pool_rows),
-                "selected_candidate_rank": chosen,
-                "proposal_selected": candidate.sql in novel_sqls,
-                "plan": list(candidate.evidence),
-                "candidate_score": round(candidate.score, 4),
-                "rank_features": dict(candidate.features)}
-    if selection in ("serving_top1", "proposer_first"):
-        # proposer_first: a novel validated proposal is selected; otherwise the deterministic
-        # top-1. A deterministic code policy, measured before it is ever a serving mode.
-        selected_proposal = selection == "proposer_first" and novel_proposal is not None
-        candidate = novel_proposal if selected_proposal else candidates[0]
-        try:
-            rows, backend = execute_selected(candidate)
-        except _DeterministicCandidateError as exc:
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
-                    "stage": "deterministic_execution", "path": "ast",
-                    **exc.metadata}
-        except Exception as exc:                  # noqa: BLE001
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
-                    "stage": ("ast_search" if execution_backend == "sql"
-                              else "deterministic_execution"), "path": "ast",
-                    "execution_backend_requested": execution_backend}
-        return {
-            "ok": True,
-            "sql": candidate.sql,
-            "rows": [list(row) for row in rows],
-            "path": "ast",
-            **backend,
-            "plan": list(candidate.evidence),
-            "candidate_count": len(candidates),
-            "executed_candidate_count": 1,
-            "selected_candidate_rank": (novel_index if selected_proposal else 0),
-            "proposal_selected": selected_proposal,
-            "candidate_score": round(candidate.score, 4),
-            "rank_features": dict(candidate.features),
-        }
-
-    graph = SchemaGraph.from_planner(sch, fks)
-    executions = execute_and_rerank(
-        question, candidates, graph, execute, max_candidates=5, preserve_top=True
-    )
-    errors = [execution.error for execution in executions if execution.error]
-    for selected_rank, execution in enumerate(executions):
-        candidate = execution.candidate
-        if execution.error:
-            continue
-        rows = execution.rows
-        ok, why = enc.guard(candidate.sql)
-        if not ok:
-            errors.append(f"guard: {why}")
-            continue
-        try:
-            selected_rows, backend = execute_selected(candidate, rows)
-        except _DeterministicCandidateError as exc:
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
-                    "stage": "deterministic_execution", "path": "ast",
-                    **exc.metadata}
-        except Exception as exc:                  # noqa: BLE001
-            return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
-                    "stage": "deterministic_execution", "path": "ast",
-                    "execution_backend_requested": execution_backend}
-        return {"ok": True, "sql": candidate.sql, "rows": [list(row) for row in selected_rows], "path": "ast",
-                **backend,
-                "plan": list(candidate.evidence), "candidate_count": len(candidates),
-                "executed_candidate_count": len(executions), "candidate_score": round(candidate.score, 4),
-                "selected_candidate_rank": selected_rank,
-                "rank_features": dict(candidate.features)}
-    detail = errors[0] if errors else "no connected AST candidate"
-    return {"ok": False, "error": detail, "stage": "ast_search", "path": "ast"}
-
-
-def merge_proposals(candidates, proposals):
-    """Merge proposals into the pool; return (pool, beam_best_novel, its_index).
-
-    Proposals arrive beam-best first; the first NOVEL one is the proposer_first policy's
-    selection target. A proposal duplicating pooled SQL is retained as an ENDORSEMENT:
-    the pooled candidate gains the proposer's evidence and likelihood features (two
-    independent derivations converging is arbitration signal, not noise). The resulting
-    pool is `max_candidates + K novel proposals`; results are labeled accordingly."""
-    from dataclasses import replace
-
-    merged = list(candidates)
-    position = {candidate.sql: index for index, candidate in enumerate(merged)}
-    novel_proposal, novel_index = None, None
-    for proposal in proposals:
-        existing_index = position.get(proposal.sql)
-        if existing_index is not None:
-            existing = merged[existing_index]
-            merged[existing_index] = replace(
-                existing,
-                evidence=existing.evidence + ("proposer:endorsed",) + proposal.evidence,
-                features=existing.features + proposal.features,
-            )
-            continue
-        if novel_proposal is None:
-            novel_proposal, novel_index = proposal, len(merged)
-        position[proposal.sql] = len(merged)
-        merged.append(proposal)
-    return merged, novel_proposal, novel_index
-
-
-def arbiter_select(candidates, executions, scores, arbiter, novel_sqls):
-    """Deterministic linear arbitration over EXECUTED candidates (pilot S2 contract).
-
-    Vectors reproduce training/rank/pilot_selectors.vector for a single d2beam-shaped
-    source; the artifact is pure linear algebra (means, scales, coefficients), so the
-    selection is auditable arithmetic. Returns the chosen index or None."""
-    from training.rank.pilot_selectors import vector
-
-    entries = []
-    for index, candidate in enumerate(candidates):
-        evidence = tuple(candidate.evidence)
-        proposal_only = candidate.sql in novel_sqls
-        logprob, tokens = scores[index]
-        entries.append({
-            "sql": candidate.sql,
-            "sources": {"d2beam": {"rank": index, "score": candidate.score,
-                                   "features": {"proposer:scored_logprob": logprob,
-                                                "proposer:scored_tokens": float(tokens)}}},
-            "from_enumerator": not proposal_only,
-            "from_proposer": proposal_only or "proposer:endorsed" in evidence,
-            "endorsed": "proposer:endorsed" in evidence,
-            "executable": executions[index] is not None,
-        })
-    executable = [i for i, entry in enumerate(entries) if entry["executable"]]
-    if not executable:
-        return None
-    best_index, best_score = None, None
-    for i in executable:
-        row = vector(entries[i], len(entries))
-        z = sum((value - mean) / (scale or 1.0) * coef
-                for value, mean, scale, coef in zip(
-                    row, arbiter["scaler_mean"], arbiter["scaler_scale"], arbiter["coef"]))
-        z += arbiter["intercept"]
-        key = (z, -i)
-        if best_score is None or key > best_score:
-            best_index, best_score = i, key
-    return best_index
+    candidate = chosen.candidate
+    if candidate is None:
+        return {"ok": False, "error": "no executable candidate",
+                "stage": "ast_search", "path": "ast", **evidence}
+    try:
+        rows, backend = execute_selected(candidate)
+    except _DeterministicCandidateError as exc:
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                "stage": "deterministic_execution", "path": "ast",
+                **exc.metadata, **evidence}
+    except Exception as exc:                  # noqa: BLE001
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                "stage": ("ast_search" if execution_backend == "sql"
+                          else "deterministic_execution"), "path": "ast",
+                "execution_backend_requested": execution_backend, **evidence}
+    return {
+        "ok": True,
+        "sql": candidate.sql,
+        "rows": [list(row) for row in rows],
+        "path": "ast",
+        **backend,
+        "plan": list(candidate.evidence),
+        "proposal_selected": candidate.sql in chosen.proposed,
+        "candidate_score": round(candidate.score, 4),
+        **evidence,
+    }
 
 
 def _score_pool_oracle(record, gold_rows):
@@ -491,7 +369,7 @@ def _score_pool_oracle(record, gold_rows):
     Fresh records carry "pool_execution" (raw rows); those rows are compared here and replaced with
     compact per-candidate flags under "pool" so checkpoints stay small. Resumed checkpoint records
     already carry "pool" and are rescored from the stored flags. top1_cmp is the serving-equivalent
-    outcome of the same run's rank-0 candidate (None when it failed to execute)."""
+    outcome of the same run's served selection (None when nothing was selectable)."""
     raw = record.pop("pool_execution", None)
     if raw is not None:
         import hashlib
@@ -527,7 +405,8 @@ def _score_pool_oracle(record, gold_rows):
                              for key in ("strict", "lenient", "scalar_exact")}
     oracle_cmp = {key: rank is not None for key, rank in record["oracle_rank"].items()}
     oracle_cmp["gold_scalar"] = is_scalar(gold_rows)
-    top1 = next((entry for entry in pool if entry["rank"] == 0), None)
+    top1 = next((entry for entry in pool if entry["rank"] == record.get("selected_candidate_rank")),
+                None)
     top1_cmp = None
     if top1 is not None and "error" not in top1:
         top1_cmp = {key: top1[key] for key in ("strict", "lenient", "scalar_exact")}
@@ -544,16 +423,15 @@ def compose_predict(eng, tabs, question):
 
 
 def predict(enc, eng, reader, tabs, question, schema_fks=None,
-            ast_schema_cache=None, selection="serving_top1", max_candidates=25,
-            use_signals=True, use_compose=True, execution_backend="sql",
-            python_row_limit=10_000, rank_model=None, proposer=None, arbiter=None):
+            ast_schema_cache=None, selection="served", use_compose=True,
+            execution_backend="sql", python_row_limit=10_000):
     """Route exactly like live serving, via the SHARED router (engine.routing): primitive-head depth cues are
     EVIDENCE to build a compose plan; the AUTHORITY to stand on it is a grounded world dependency (compose_owns).
     Spider tables are world-less, so compose_owns is always False and every question routes to the typed-AST
     planner. Any unrecovered exception is caught and attributed to a stage.
 
-    use_compose / use_signals gate compose routing and encoder signals (ablation only; serving is always
-    True/True). use_compose=False isolates the pure typed-AST planner."""
+    use_compose gates compose routing (ablation only; serving is always True). use_compose=False isolates
+    the own-data planner."""
     if use_compose:
         try:
             depth = bool(reader.present(question) & DEPTH_PRIMS)
@@ -571,8 +449,7 @@ def predict(enc, eng, reader, tabs, question, schema_fks=None,
     try:
         return ast_predict(
             enc, tabs, question, schema_fks, ast_schema_cache,
-            selection, max_candidates, use_signals,
-            execution_backend, python_row_limit, rank_model, proposer, arbiter,
+            selection, execution_backend, python_row_limit,
         )
     except Exception as e:                        # noqa: BLE001
         msg = f"{type(e).__name__}: {e}"
@@ -588,14 +465,10 @@ def main():
     ap.add_argument("--out", default=os.path.join(os.path.dirname(__file__), "..", "results"))
     ap.add_argument("--per-diff", type=int, default=0)
     ap.add_argument("--config", default="gold_tables", choices=["gold_tables", "whole_db"])
-    ap.add_argument("--selection",
-                    choices=["serving_top1", "execution_checks", "pool_oracle", "proposer_first",
-                             "arbiter"],
-                    default="serving_top1",
-                    help="serving_top1 matches live AST selection exactly; pool_oracle scores the "
-                         "example by the best pooled candidate (oracle ablation, never serving); "
-                         "proposer_first selects a novel validated proposal over the deterministic "
-                         "top-1 (requires --proposer)")
+    ap.add_argument("--selection", choices=["served", "pool_oracle"], default="served",
+                    help="served runs the production selection exactly; pool_oracle also executes "
+                         "the whole pool and scores the example by its best member (oracle "
+                         "ablation, never serving)")
     ap.add_argument(
         "--backend",
         choices=["sql", "python", "auto", "verify"],
@@ -616,27 +489,9 @@ def main():
         action="store_true",
         help="evaluate only examples whose independently executed gold result is scalar",
     )
-    ap.add_argument("--max-candidates", type=int, default=25,
-                    help="AST candidate pool returned to selection/ranking")
-    ap.add_argument("--rank-head", default="",
-                    help="path to a candidate RankHead .pt (engine/sql_rank.py) — measurement "
-                         "injection for the rank-head experiment, not a serving mode")
-    ap.add_argument("--proposer", default="",
-                    help="path to a candidate proposer adapter dir "
-                         "(training/proposer/propose.py) — measurement injection for the "
-                         "Phase D experiment, not a serving mode")
-    ap.add_argument("--proposer-beams", type=int, default=1,
-                    help="deterministic beam count for proposer decoding (1 = greedy)")
-    ap.add_argument("--proposer-values", action="store_true",
-                    help="value-linked prompts — only for adapters TRAINED with them (d4+)")
-    ap.add_argument("--arbiter", default="",
-                    help="pure-linear S2 arbiter JSON (pilot_selectors --save-arbiter) — "
-                         "measurement injection for the arbitration experiment")
-    # --- ablation knobs (NOT serving; serving is always compose+signals). Attribute where accuracy comes from. ---
+    # --- ablation knob (NOT serving; serving always routes through compose). ---
     ap.add_argument("--no-compose", action="store_true",
-                    help="ablation: isolate the pure typed-AST planner (skip DEPTH compose routing)")
-    ap.add_argument("--no-signals", action="store_true",
-                    help="ablation: run the AST search WITHOUT encoder semantic signals")
+                    help="ablation: isolate the own-data planner (skip DEPTH compose routing)")
     ap.add_argument("--cap", type=int, default=5000, help="row cap per table (bounds exec; only wta_1 is capped)")
     ap.add_argument("--timeout", type=float, default=12.0,
                     help="soft prediction latency budget; evaluation is never abandoned")
@@ -647,15 +502,10 @@ def main():
     ap.add_argument("--max-new", type=int, default=0,
                     help="checkpoint and exit cleanly after this many new predictions")
     args = ap.parse_args()
-    if (args.checkpoint_every < 0 or args.max_new < 0
-            or args.max_candidates < 1 or args.python_row_limit < 0):
+    if args.checkpoint_every < 0 or args.max_new < 0 or args.python_row_limit < 0:
         ap.error("checkpoint cadence, max-new, and row limits must be nonnegative")
     if args.selection == "pool_oracle" and args.backend != "sql":
         ap.error("pool_oracle is a SQL-backend oracle ablation; use --backend sql")
-    if args.selection == "proposer_first" and not args.proposer:
-        ap.error("proposer_first requires --proposer")
-    if args.selection == "arbiter" and not (args.proposer and args.arbiter):
-        ap.error("arbiter requires --proposer and --arbiter")
 
     with open(os.path.join(args.data, "dev.json"), encoding="utf-8") as handle:
         dev = json.load(handle)
@@ -683,13 +533,7 @@ def main():
         "backend": args.backend,
         "python_row_limit": args.python_row_limit,
         "scalar_only": args.scalar_only,
-        "max_candidates": args.max_candidates,
-        "rank_head": args.rank_head or None,
-        "proposer": args.proposer or None,
-        "proposer_beams": args.proposer_beams,
-        "proposer_values": args.proposer_values,
         "compose": not args.no_compose,
-        "signals": not args.no_signals,
         "cap": args.cap,
         "timeout": args.timeout,
     }
@@ -702,6 +546,7 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
+                   "sql_proposer.py", "sql_prompt.py", "sql_import.py", "model_revisions.py",
                    "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
                    "calculations/core.py", "calculations/registry.py",
@@ -722,15 +567,8 @@ def main():
             "tables": os.path.join(args.data, "tables.json"),
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
+            "sql_arbiter": DATA_DIR / "sql_arbiter.json",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
-            **({"rank_head": args.rank_head} if args.rank_head else {}),
-            **({"arbiter": args.arbiter,
-                "arbiter_vector_code": os.path.join(ROOT, "training", "rank",
-                                                    "pilot_selectors.py")}
-               if args.arbiter else {}),
-            **({f"proposer_code/{name}": os.path.join(ROOT, "training", "proposer", name)
-                for name in ("propose.py", "serialize.py", "import_gold.py", "__init__.py")}
-               if args.proposer else {}),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
             **{
                 f"engine/{name}": os.path.join(ROOT, "engine", *name.split("/"))
@@ -738,7 +576,7 @@ def main():
             },
         }),
         "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
-        **({"proposer_adapter": sha256_tree(args.proposer)} if args.proposer else {}),
+        "proposer_adapter": sha256_tree(DATA_DIR / "sql_proposer"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
@@ -754,35 +592,15 @@ def main():
         }
         print(f"resuming from {len(completed)} checkpointed examples", flush=True)
 
-    print("loading encoder (Qwen LoRA + relational readout, CPU)...", flush=True)
+    print("loading the runtime bundle (encoder, SQL proposer, arbiter)...", flush=True)
     from engine.compose import ComposeEngine
     from engine.encoder_overlay import EncoderQuery
     from engine.primitive_head import PrimitiveReader
     enc = EncoderQuery()
     reader = PrimitiveReader(encoder=enc)
     eng = ComposeEngine(reader=reader)
-    rank_head = None
-    if args.rank_head:
-        from engine.sql_rank import RankHead
-        rank_head = RankHead.load(args.rank_head)
-        print(f"injected candidate rank head: {args.rank_head} "
-              f"(top_k={rank_head.top_k}, {len(rank_head.feature_names)} named features)",
-              flush=True)
-    arbiter = None
-    if args.arbiter:
-        with open(args.arbiter, encoding="utf-8") as handle:
-            arbiter = json.load(handle)
-        print(f"injected arbiter: {args.arbiter} ({len(arbiter['coef'])} features)",
-              flush=True)
-    proposer = None
-    if args.proposer:
-        from training.proposer.propose import Proposer
-        proposer = Proposer.load(args.proposer)
-        proposer.beams = max(1, args.proposer_beams)
-        proposer.include_values = args.proposer_values
-        print(f"injected candidate proposer: {args.proposer} "
-              f"(beams={proposer.beams}, values={proposer.include_values})", flush=True)
-    print(f"loaded. evaluating {len(picked)} examples (config={args.config})\n", flush=True)
+    print(f"loaded. evaluating {len(picked)} examples (config={args.config}, "
+          f"proposer device={enc.sql_proposer.device})\n", flush=True)
 
     db_cache = {}
     ast_schema_cache = {}
@@ -833,9 +651,8 @@ def main():
                 return predict(
                     enc, eng, reader, current_tabs, current_question,
                     current_fks, ast_schema_cache,
-                    args.selection, args.max_candidates,
-                    not args.no_signals, not args.no_compose,
-                    args.backend, args.python_row_limit, rank_head, proposer, arbiter,
+                    args.selection, not args.no_compose,
+                    args.backend, args.python_row_limit,
                 )
 
             r, terr, prediction_seconds, over_budget = run_with_budget(
@@ -925,15 +742,11 @@ def main():
         "python_row_limit": args.python_row_limit,
         "scalar_only": args.scalar_only,
         "compose": not args.no_compose,
-        "signals": not args.no_signals,
-        "max_candidates": args.max_candidates,
-        "rank_head": args.rank_head or None,
-        "proposer": args.proposer or None,
-        "proposer_beams": args.proposer_beams,
-        "proposer_values": args.proposer_values,
-        "arbiter": args.arbiter or None,
+        "proposer_device": enc.sql_proposer.device,
         "cap": args.cap,
         "timeout": args.timeout,
+        "prediction_seconds": _latency_summary(
+            [record.get("prediction_seconds") for record in checkpoint_records()]),
         "artifacts": checkpoint_contract["artifacts"],
         "answered_pct": round(100 * tot["answered"] / N, 1),
         "error_pct": round(100 * tot["error"] / N, 1),
@@ -1005,8 +818,8 @@ def main():
     P(f"config={args.config}   selection={args.selection}   backend={args.backend}   examples={tot['n']}")
     if args.selection == "pool_oracle":
         N_all = max(tot["n"], 1)
-        P(f"  POOL-ORACLE ablation: strict/lenient above are the POOL CEILING (best pooled candidate), "
-          f"not serving accuracy.")
+        P("  POOL-ORACLE ablation: strict/lenient above are the POOL CEILING (best pooled candidate), "
+          "not serving accuracy.")
         P(f"  same-run serving top-1 strict: {tot['top1_strict']} ({round(100*tot['top1_strict']/N_all,1)}%)   "
           f"lenient: {tot['top1_lenient']} ({round(100*tot['top1_lenient']/N_all,1)}%)")
         P(f"  first-strict-hit rank histogram: {dict(sorted(oracle_strict_rank_hist.items()))}")

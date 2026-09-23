@@ -25,8 +25,14 @@ from engine.deterministic import (
 )
 from engine.deterministic.context import analysis_execution_context
 from engine.knowledge_compose import ComposedKnowledgeQuery
-from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SQLType, Star
+from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SetQuery, SQLType, Star
 from engine.sql_candidate import ScoredQuery
+from engine.sql_rank import PoolSelection
+
+
+def _served(candidate):
+    """What select_query returns when `candidate` is the only, executable pool member."""
+    return PoolSelection((candidate,), frozenset(), (True,), ((-1.0, 1),), (0.0,), (0,), 0, 1)
 
 
 def _proposal():
@@ -174,9 +180,9 @@ def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
     )
     planner = Mock()
     planner.postgres_row_identity = False
-    planner.search_ast.return_value = [
+    planner.select_query.return_value = _served(
         ScoredQuery(query, "SELECT id FROM products", 1, ())
-    ]
+    )
     planner.guard.return_value = (True, None)
     proposal = _proposal()
     ids = ["branch_" + "a" * 33, "branch_" + "a" * 32 + "b"]
@@ -202,9 +208,9 @@ def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
     query = SelectQuery((SelectItem(Star()),), "products")
     planner = Mock()
     planner.postgres_row_identity = False
-    planner.search_ast.return_value = [
+    planner.select_query.return_value = _served(
         ScoredQuery(query, "SELECT * FROM products", 1, ())
-    ]
+    )
     planner.guard.return_value = (True, None)
     plan = build_decomposed_plan(planner, "wildcard", tables, schema, (), _proposal())
     assert [view.name for view in plan.views].count("wildcard_missing") == 1
@@ -321,6 +327,37 @@ def test_failed_compound_probe_cannot_authorize_a_partial_composed_answer():
     planner.serve.assert_not_called()
 
 
+def test_leaf_contract_constrains_the_served_ranking():
+    """A ranking leaf over a summed measure must project that aggregate. When the arbiter ranks
+    a names-only reading first, the leaf takes the best-ranked reading that satisfies the
+    contract; with none, the ranking's own choice is kept so the rejection names the defect."""
+    from engine.decomposition import leaf_admissible
+    from engine.sql_ast import Join, OrderTerm
+
+    product = ColumnRef("products", "product_name", SQLType.TEXT)
+    quantity = ColumnRef("order_items", "quantity", SQLType.INTEGER)
+    join = Join("products", ColumnRef("order_items", "product_id", SQLType.INTEGER),
+                ColumnRef("products", "product_id", SQLType.INTEGER))
+    ranked = (OrderTerm(Aggregate("SUM", quantity), "DESC"),)
+    names_only = SelectQuery((SelectItem(product),), "order_items", joins=(join,),
+                             group_by=(product,), order_by=ranked, limit=3)
+    with_measure = SelectQuery((SelectItem(product), SelectItem(Aggregate("SUM", quantity))),
+                               "order_items", joins=(join,), group_by=(product,),
+                               order_by=ranked, limit=3)
+    pool = (ScoredQuery(names_only, "names only", 1.0, ("proposer:beam0",)),
+            ScoredQuery(with_measure, "with measure", 2.0, ()))
+    question = "top 3 product names by total quantity sold"
+    admissible = leaf_admissible("top_products", question, pool, True)
+    assert not admissible(pool[0]) and admissible(pool[1])
+    selection = PoolSelection(pool, frozenset({"names only"}), (True, True),
+                              ((-1.0, 9), (-30.0, 12)), (2.0, -1.0), (0, 1), 0, 1)
+    assert selection.best(admissible).sql == "with measure"
+    compound = ScoredQuery(SetQuery(with_measure, "EXCEPT", with_measure), "compound", 3.0, ())
+    only_compound = PoolSelection((compound,), frozenset(), (True,), ((-1.0, 9),), (2.0,),
+                                  (0,), 0, 1)
+    assert only_compound.best(leaf_admissible("top_products", question, (compound,), True)) is None
+
+
 TESTS = [
     test_validation_is_closed_and_idempotent_at_transport_boundaries,
     test_size_limit_counts_utf8_bytes_not_characters,
@@ -328,6 +365,7 @@ TESTS = [
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
+    test_leaf_contract_constrains_the_served_ranking,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
     test_an_answer_grain_cannot_repeat_one_physical_dimension,

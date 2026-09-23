@@ -5,7 +5,9 @@ Run: python -m tests.test_sql_ast
 from __future__ import annotations
 
 from collections import Counter
+import json
 import os
+from pathlib import Path
 import sqlite3
 import sys
 import tempfile
@@ -35,12 +37,14 @@ from engine.sql_ast import (
 )
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
 from engine.sql_rank import (
-    CandidateRanker,
-    ExecutedCandidate,
+    ARBITER_FEATURES,
+    SQLArbiter,
     SemanticSignals,
     analyze_question,
-    execute_and_rerank,
+    arbitrate,
+    merge_proposals,
 )
+from engine.sql_proposer import SQLProposer
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
 from spider.probe.evalutil import run_with_budget
@@ -641,17 +645,250 @@ def test_duplicate_named_projection_keeps_single_binding_variant_in_pool():
     assert any("projection:add:templates.type_code" in evidence for evidence in tags), tags
 
 
+SHIPPED_ARBITER = SQLArbiter.load(Path(__file__).resolve().parents[1] / "engine" / "data" / "sql_arbiter.json")
+
+
+class ScriptedProposer(SQLProposer):
+    """The production proposer with only its two model calls replaced.
+
+    `beam_lines` stands in for beam search and `likelihood` for the teacher-forced score, so
+    import, validation, rendering, de-duplication, pool scoring and caching all run for real.
+    """
+
+    def __init__(self, beam_lines=(), likelihood=None):
+        super().__init__(None, None, beams=4, max_new_tokens=96, device="cpu",
+                         adapter_sha256="scripted")
+        self.lines = tuple(beam_lines)
+        self.likelihood = likelihood or (lambda sql: (-10.0, 10))
+        self.decodes = 0
+        self.scored = []
+
+    def _decode(self, prompt):
+        self.decodes += 1
+        return self.lines
+
+    def _score(self, prompt, sqls):
+        self.scored.append(tuple(sqls))
+        return [self.likelihood(sql) for sql in sqls]
+
+
+def _hermetic_planner(proposer, arbiter=None):
+    class HermeticPlanner(TableQuery):
+        def schema(self, tables, fks):
+            columns, index = [], 0
+            for table in tables:
+                for name in table["columns"]:
+                    values = [row[table["columns"].index(name)] for row in table["rows"]]
+                    numeric = values and all(isinstance(value, (int, float)) for value in values)
+                    columns.append({
+                        "table": table["name"], "name": name, "idx": index, "struct": set(),
+                        "affinity": "INTEGER" if numeric else "TEXT", "ace": [],
+                        "is_date": False, "qvec": np.zeros(2, dtype=np.float32), "values": values,
+                    })
+                    index += 1
+            return columns, {}, {table["name"]: table for table in tables}
+
+        def ast_semantic_signals(self, question, sch):
+            return SemanticSignals.empty()
+
+    planner = HermeticPlanner()
+    planner.sql_proposer = proposer
+    planner.sql_arbiter = arbiter or SHIPPED_ARBITER
+    return planner
+
+
+def _select(planner, question, tables=None):
+    norm, fks = planner.ingest(tables or [PEOPLE])
+    sch, _, tablemap = planner.schema(norm, fks)
+    return planner.select_query(question, norm, fks, sch, tablemap)
+
+
+def test_proposal_merge_endorses_search_sql_and_appends_novel_beams():
+    query = SelectQuery((SelectItem(ColumnRef("t", "a")),), "t")
+
+    def candidate(sql, evidence=(), score=0.0):
+        return ScoredQuery(query, sql, score, tuple(evidence))
+
+    search = [candidate("SELECT A", ("search:a",), 3.0), candidate("SELECT B", ("search:b",), 2.0)]
+    proposals = [candidate("SELECT B", ("proposer:beam0",)), candidate("SELECT C", ("proposer:beam1",)),
+                 candidate("SELECT D", ("proposer:beam3",))]
+    pool, proposed = merge_proposals(search, proposals)
+    assert [c.sql for c in pool] == ["SELECT A", "SELECT B", "SELECT C", "SELECT D"]
+    assert proposed == frozenset({"SELECT C", "SELECT D"})
+    assert pool[1].evidence == ("search:b", "proposer:endorsed", "proposer:beam0")
+    assert pool[1].score == 2.0, "an endorsement keeps the search candidate's score and position"
+    pool, proposed = merge_proposals(search, [candidate("SELECT B", ("proposer:beam0",))])
+    assert len(pool) == 2 and proposed == frozenset()
+
+
+def _toy_arbiter(coef=(1.0, 0, 0, 0, 0, 0, 0, 0, 0), op_limit=100_000_000):
+    return SQLArbiter.from_payload({
+        "features": list(ARBITER_FEATURES), "mean": [0.0] * 9, "scale": [1.0] * 9,
+        "coef": list(coef), "intercept": 0.5,
+        "pool": {"search_candidates": 25, "proposer_beams": 4, "proposer_max_new_tokens": 96,
+                 "execution_op_limit": op_limit, "proposal_penalty": 5.0, "beam_step": 0.1},
+    })
+
+
+def test_arbiter_score_is_named_linear_arithmetic_with_pool_order_ties():
+    arbiter = _toy_arbiter(coef=(1.0, 0, 0, 0, -0.5, 0, 0, 0, 0))
+    features = (-3.0, 4.0, -0.75, 1.0, 2.0, 0.0, 1.0, 0.0, 3.0)
+    assert arbiter.score(features) == -3.0 - 1.0 + 0.5
+    contributions = arbiter.contributions(features)
+    assert list(contributions) == list(ARBITER_FEATURES)
+    assert sum(contributions.values()) + arbiter.intercept == arbiter.score(features)
+    query = SelectQuery((SelectItem(ColumnRef("t", "a")),), "t")
+    pool = [ScoredQuery(query, sql, 0.0, ()) for sql in ("S0", "S1", "S2", "S3")]
+    # S1 cannot run (no likelihood); S0 and S3 tie after S3's rank penalty cancels; pool order wins.
+    likelihoods = [(-3.0, 3), None, (-9.0, 3), (-1.5, 3)]
+    scores, ranking = arbitrate(pool, frozenset(), likelihoods, arbiter)
+    assert scores[1] is None and scores[0] == scores[3]
+    assert ranking == (0, 3, 2)
+
+
+def test_arbiter_refuses_an_artifact_fit_under_another_contract():
+    good = {"features": list(ARBITER_FEATURES), "mean": [0.0] * 9, "scale": [1.0] * 9,
+            "coef": [0.0] * 9, "intercept": 0.0,
+            "pool": {"search_candidates": 25, "proposer_beams": 4, "proposer_max_new_tokens": 96,
+                     "execution_op_limit": 1, "proposal_penalty": 5.0, "beam_step": 0.1}}
+    SQLArbiter.from_payload(good)
+    for bad in ({**good, "features": list(ARBITER_FEATURES)[::-1]},
+                {**good, "pool": {**good["pool"], "proposal_penalty": 4.0}},
+                {**good, "coef": [0.0] * 15}):
+        try:
+            SQLArbiter.from_payload(bad)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("an arbiter fit under a different contract was accepted")
+
+
+def test_shipped_arbiter_is_the_manifested_served_contract():
+    data = Path(__file__).resolve().parents[1] / "engine" / "data"
+    payload = json.loads((data / "sql_arbiter.json").read_text(encoding="utf-8"))
+    manifest = json.loads((data / "weights_manifest.json").read_text(encoding="utf-8"))
+    assert manifest["committed_artifacts"]["sql_arbiter.json"]["sha256"] == sha256_file(
+        data / "sql_arbiter.json")
+    assert {"sql_proposer/adapter_config.json", "sql_proposer/adapter_model.safetensors"} <= set(
+        manifest["files"])
+    assert (SHIPPED_ARBITER.search_candidates, SHIPPED_ARBITER.proposer_beams,
+            SHIPPED_ARBITER.proposer_max_new_tokens) == (25, 4, 96)
+    assert payload["fit"]["proposer_adapter_sha256"], "the arbiter must name the adapter it was fit on"
+
+
+def test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose():
+    lines = (
+        'SELECT COUNT(*) FROM "people"',               # beam 0: the search found it too -> endorse
+        'SELEC name FRM people',                       # beam 1: does not parse -> dropped
+        'SELECT COUNT(*) FROM people WHERE age > 30',  # beam 2: novel, valid
+        'SELECT salary FROM people',                   # beam 3: unknown column -> dropped
+    )
+    favored = 'SELECT COUNT(*) FROM "people" WHERE "people"."Age" > 30'
+    proposer = ScriptedProposer(lines, likelihood=lambda sql: (-1.0, 12) if sql == favored
+                                else (-80.0, 12))
+    planner = _hermetic_planner(proposer)
+    selection = _select(planner, "how many people are older than 30")
+    novel = [c for c in selection.pool if c.sql in selection.proposed]
+    assert [c.sql for c in novel] == [favored]
+    floor = min(c.score for c in selection.pool if c.sql not in selection.proposed)
+    assert novel[0].score == floor - 5.0 - 0.1 * 2, "beam position counts rejected lines"
+    assert novel[0].evidence == ("proposer:beam2",)
+    endorsed = [c for c in selection.pool if "proposer:endorsed" in c.evidence]
+    assert [c.evidence[-1] for c in endorsed] == ["proposer:beam0"]
+    assert all(selection.executable) and selection.candidate.sql == favored
+    assert selection.origin(selection.selected) == "proposer"
+    assert set(proposer.scored[-1]) == {c.sql for c in selection.pool}
+
+    # The same question over the same tables is decoded and scored once (request-memo).
+    decodes = proposer.decodes
+    again = _select(planner, "how many people are older than 30")
+    assert again.candidate.sql == favored and proposer.decodes == decodes
+    assert len(proposer.scored) == 1
+
+
+def test_select_query_never_chooses_a_query_that_does_not_run():
+    planner = _hermetic_planner(ScriptedProposer(), _toy_arbiter(op_limit=1))
+    selection = _select(planner, "list person names")
+    assert selection.pool and not any(selection.executable)
+    assert selection.selected is None and selection.candidate is None
+    assert not planner.sql_proposer.scored, "a query that cannot run is never scored"
+    response = planner.serve([PEOPLE], "list person names")
+    assert response["valid"] is False
+    assert response["error"] == "planner: no executable AST candidate"
+
+
+def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query():
+    """The search reads "products no Paris customer bought" as a set difference; the proposer
+    offers one join that lists what Paris DID buy, and the arbiter prefers it. Evaluation (no
+    analysis context) serves the arbiter's choice. A named product request must instead ask for
+    decomposition and execute nothing: a single query cannot answer a compound question."""
+    from unittest.mock import patch
+
+    from engine.deterministic.context import analysis_execution_context
+    from tests.test_datasets import DATASET_DIR, _tables
+
+    tables = _tables(DATASET_DIR / "complex-unsold-products")
+    question = "List the product names that no customer from Paris has bought, ordered by product name."
+    one_query = ("SELECT products.product_name FROM products JOIN purchases "
+                 "ON products.product_name = purchases.product_name "
+                 "WHERE purchases.city = 'Paris' ORDER BY products.product_name")
+    proposer = ScriptedProposer((one_query,), likelihood=lambda sql: (
+        (-1.0, 40) if sql.startswith('SELECT "products"."product_name" FROM "products" JOIN')
+        else (-90.0, 40)))
+    planner = _hermetic_planner(proposer)
+    selection = _select(planner, question, tables)
+    assert isinstance(selection.search_top.query, SetQuery)
+    assert selection.origin(selection.selected) == "proposer"
+
+    evaluated = planner.serve(tables, question)
+    assert evaluated["valid"] and evaluated["result"]["rows"], "evaluation serves the choice"
+
+    with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32), \
+            patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
+        named = planner.serve(tables, question)
+    assert named.get("decomposition_required"), named
+    assert named["result"] is None and named["error"] is None
+
+
+def test_proposal_import_rejects_malformed_model_text():
+    from engine.sql_import import Unsupported, import_sql
+
+    graph = SchemaGraph.from_tables([PEOPLE], [])
+    for text in ("SELECT * FROM", "EXISTS", "SELECT Name FROM people LIMIT NULL",
+                 "SELECT -'x' FROM people", "SELECT Name FROM people LIMIT 'a'",
+                 "SELECT " + "(" * 400 + "1" + ")" * 400 + " FROM people",
+                 "SELECT Name FROM people; DROP TABLE people", "-- a comment"):
+        try:
+            import_sql(text, graph)
+        except Unsupported:
+            continue
+        raise AssertionError(f"malformed model text imported: {text[:40]}")
+
+
+def test_evaluator_grades_the_served_selection():
+    from spider.probe.full_eval import ast_predict
+
+    planner = _hermetic_planner(ScriptedProposer())
+    served = _select(planner, "list person names")
+    record = ast_predict(planner, [PEOPLE], "list person names")
+    assert record["ok"] and record["sql"] == served.candidate.sql
+    assert record["selected_candidate_rank"] == served.selected
+    assert record["selection"] == served.record(planner.sql_arbiter)
+    oracle = ast_predict(planner, [PEOPLE], "list person names", selection="pool_oracle")
+    assert [entry["sql"] for entry in oracle["pool_execution"]] == [c.sql for c in served.pool]
+    assert all("likelihood" in entry for entry in oracle["pool_execution"])
+
 def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
     """The proposer importer maps row/order arithmetic over numeric columns into BinaryExpr
     (Spider gold like `max_f - min_f`), while the validator still refuses arithmetic over
     non-numeric operands — coverage without weakening type semantics."""
     from engine.sql_ast import render_query, validate_query
-    from training.proposer.import_gold import Unsupported, import_gold_sql
+    from engine.sql_import import Unsupported, import_sql
 
     weather = {"name": "weather", "columns": ["day", "max_f", "min_f"],
                "rows": [["2019-01-01", 60, 40], ["2019-01-02", 55, 50]]}
     graph = SchemaGraph.from_tables([weather], [])
-    query = import_gold_sql(
+    query = import_sql(
         "SELECT day, max_f - min_f FROM weather ORDER BY max_f - min_f LIMIT 1", graph)
     validate_query(query)
     assert execute([weather], render_query(query)) == [("2019-01-02", 5)]
@@ -660,16 +897,53 @@ def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
               "rows": [["a", "2020-01-01", "2020-01-05"]]}
     dgraph = SchemaGraph.from_tables([events], [])
     try:
-        validate_query(import_gold_sql("SELECT avg(ends - starts) FROM events", dgraph))
+        validate_query(import_sql("SELECT avg(ends - starts) FROM events", dgraph))
         raise AssertionError("non-numeric arithmetic was accepted")
     except (Unsupported, ValueError):
         pass
 
 
+def test_gold_import_preserves_distinct_self_join_roles():
+    from engine.sql_import import Unsupported, import_sql
+
+    employees = {"name": "employees", "columns": ["id", "name"],
+                 "rows": [[1, "Approver"], [2, "Operator"]]}
+    documents = {"name": "documents", "columns": ["id", "approved_by", "destroyed_by"],
+                 "rows": [[10, 1, 2], [11, 2, 1]]}
+    tables = [employees, documents]
+    graph = SchemaGraph.from_tables(tables, [])
+    sql = ("SELECT a.name, b.name FROM documents AS d "
+           "JOIN employees AS a ON d.approved_by=a.id "
+           "JOIN employees AS b ON d.destroyed_by=b.id ORDER BY d.id")
+    query = import_sql(sql, graph)
+    validate_query(query)
+    assert execute(tables, render_query(query)) == [("Approver", "Operator"), ("Operator", "Approver")]
+    assert query.select[0].expression.table == "a" and query.select[1].expression.table == "b"
+    for bad in (
+        sql.replace("SELECT a.name, b.name", "SELECT name"),
+        sql.replace("SELECT a.name, b.name", 'SELECT "name"'),
+        sql.replace("employees AS b", "employees AS a"),
+        sql.replace("d.destroyed_by=b.id", "a.id=a.id"),
+        sql.replace("b.name", "missing.name"),
+    ):
+        try:
+            validate_query(import_sql(bad, graph))
+        except (Unsupported, ValueError):
+            pass
+        else:
+            raise AssertionError(f"invalid/ambiguous self join accepted: {bad}")
+    movies = {"name": "movie", "columns": ["title", "director"],
+              "rows": [["A", "X"], ["B", "X"], ["C", "Y"]]}
+    mgraph = SchemaGraph.from_tables([movies], [])
+    gold = ("SELECT a.title, a.director FROM movie a JOIN movie b ON a.director=b.director "
+            "WHERE a.title != b.title ORDER BY a.title")
+    assert execute([movies], render_query(import_sql(gold, mgraph))) == [("A", "X"), ("B", "X")]
+
+
 def test_gold_import_round_trip_executes_and_matches():
     """The proposer-side importer must map alias-heavy, double-quoted-literal gold SQL into
     the typed AST such that the engine's own rendering reproduces the gold denotation."""
-    from training.proposer.import_gold import import_gold_sql
+    from engine.sql_import import import_sql
 
     city = {"name": "city", "columns": ["city_id", "cname", "status", "population"],
             "rows": [[1, "Aa", "Village", 100], [2, "Bb", "City", 5000], [3, "Cc", "Town", 900]]}
@@ -683,107 +957,11 @@ def test_gold_import_round_trip_executes_and_matches():
         "WHERE T1.population > 800 ORDER BY T1.population DESC LIMIT 1",
         "SELECT status, sum(population) FROM city GROUP BY status HAVING sum(population) > 500",
     ):
-        query = import_gold_sql(gold, graph)
+        query = import_sql(gold, graph)
         from engine.sql_ast import render_query, validate_query
         validate_query(query)
         assert execute([city, mayor], render_query(query)) == execute([city, mayor], gold), gold
 
-
-def test_proposal_merge_keeps_beam_best_novel_and_appends_all():
-    """merge_proposals must select the FIRST novel proposal (beam-best), record its true
-    index, keep duplicates as endorsements, and never cap appended proposals silently."""
-    from engine.sql_ast import ColumnRef, SelectItem, SelectQuery
-    from spider.probe.full_eval import merge_proposals
-
-    def candidate(sql, evidence=(), features=()):
-        query = SelectQuery(select=(SelectItem(ColumnRef("t", "a")),), from_table="t")
-        return ScoredQuery(query, sql, 0.0, tuple(evidence), tuple(features))
-
-    pool = [candidate("SELECT A"), candidate("SELECT B")]
-    proposals = [candidate("SELECT B", ("proposer:greedy",), (("proposer:logprob", -1.5),)),
-                 candidate("SELECT C"),      # first novel -> selection target
-                 candidate("SELECT C"),      # duplicate of earlier proposal -> endorsement
-                 candidate("SELECT D")]      # later beam -> appended after
-    merged, novel, index = merge_proposals(pool, proposals)
-    assert [c.sql for c in merged] == ["SELECT A", "SELECT B", "SELECT C", "SELECT D"]
-    assert novel.sql == "SELECT C" and index == 2
-    endorsed = merged[1]
-    assert "proposer:endorsed" in endorsed.evidence
-    assert ("proposer:logprob", -1.5) in endorsed.features
-    merged, novel, index = merge_proposals(pool, [candidate("SELECT B")])
-    assert novel is None and index is None and len(merged) == 2
-    assert "proposer:endorsed" in merged[1].evidence
-
-
-def test_pilot_replay_contracts_hold():
-    """Selector-replay contracts from the external review: an ENDORSED enumerator
-    candidate stays in the deterministic baseline; per-model likelihoods are namespaced
-    so input-file order cannot change any selection; empty pools stay in the denominator."""
-    import json as json_module
-    import os
-    import tempfile
-
-    from training.rank.pilot_selectors import (
-        deterministic_top, evaluate, load_pools, policy_first_novel,
-    )
-
-    d2_records = [
-        {"idx": 1, "db_id": "dbx", "candidates": [
-            {"sql": "SELECT A", "strict": False, "score": 9.0,
-             "features": {"base": 1.0, "proposer:scored_logprob": -9.0,
-                          "proposer:scored_tokens": 3.0},
-             # endorsed: enumerator candidate the proposer independently generated
-             "evidence": ["rank:base", "proposer:endorsed", "proposer:greedy"]},
-            {"sql": "SELECT B", "strict": True, "score": 3.0,
-             "features": {"proposer:logprob": -2.0, "proposer:tokens": 2.0},
-             "evidence": ["proposer:greedy"]},
-        ]},
-        {"idx": 2, "db_id": "dbx", "candidates": []},  # failed pool: stays in denominator
-        {"idx": 3, "db_id": "dbx", "candidates": [
-            {"sql": "SELECT GOOD", "strict": True, "score": 5.0,
-             "features": {"base": 1.0}, "evidence": ["rank:base"]},
-            # the frozen policy must select this failed proposal and return its failure —
-            # execution filtering is a DIFFERENT, separately named policy
-            {"sql": "SELECT BROKEN", "error": "OperationalError: boom",
-             "features": {"proposer:logprob": -1.0, "proposer:tokens": 2.0},
-             "evidence": ["proposer:greedy"]},
-        ]},
-    ]
-    d4_records = [
-        {"idx": 1, "db_id": "dbx", "candidates": [
-            {"sql": "SELECT A", "strict": False, "score": 1.0,
-             "features": {"proposer:logprob": -50.0, "proposer:tokens": 3.0},
-             "evidence": ["proposer:greedy"]},
-        ]},
-    ]
-    with tempfile.TemporaryDirectory() as scratch:
-        d2_path = os.path.join(scratch, "pools_d2beam.jsonl")
-        d4_path = os.path.join(scratch, "pools_d4greedy.jsonl")
-        for path, records in ((d2_path, d2_records), (d4_path, d4_records)):
-            with open(path, "w", encoding="utf-8") as handle:
-                for record in records:
-                    handle.write(json_module.dumps(record) + "\n")
-
-        forward, presence = load_pools([d2_path, d4_path])
-        backward, _ = load_pools([d4_path, d2_path])
-        assert presence["d2beam"] == {("dbx", 1), ("dbx", 2), ("dbx", 3)}
-        assert presence["d4greedy"] == {("dbx", 1)}
-        for pools in (forward, backward):
-            pool = next(p for p in pools if p["idx"] == 1)
-            top = deterministic_top(pool["candidates"])
-            assert top["sql"] == "SELECT A", "endorsement erased enumerator origin"
-            novel = policy_first_novel(pool["candidates"])
-            assert novel["sql"] == "SELECT B", "novel proposal misidentified"
-            entry_a = next(c for c in pool["candidates"] if c["sql"] == "SELECT A")
-            assert entry_a["sources"]["d2beam"]["features"]["proposer:scored_logprob"] == -9.0
-            assert entry_a["sources"]["d4greedy"]["features"]["proposer:logprob"] == -50.0
-            failed_pool = next(p for p in pools if p["idx"] == 3)
-            chosen = policy_first_novel(failed_pool["candidates"])
-            assert chosen["sql"] == "SELECT BROKEN" and not chosen["executable"], \
-                "frozen policy must return the failed proposal, not fall back"
-            assert not chosen["strict"]
-        total, by_db = evaluate(forward, deterministic_top, {"dbx": 3})
-        assert total == [1, 3], "empty pool left the denominator or fidelity broke"
 
 
 def test_order_noun_does_not_request_sort_or_group():
@@ -1385,21 +1563,6 @@ def test_profile_fallback_applies_when_no_compatible_variant_exists():
     assert "profile:fallback-top" in expanded[0].evidence
 
 
-def test_execution_rerank_penalizes_empty_candidate():
-    query_a = SelectQuery((SelectItem(Star()),), "empty_table")
-    query_b = SelectQuery((SelectItem(Star()),), "nonempty_table")
-    first = ScoredQuery(query_a, render_query(query_a), 10.0, ())
-    second = ScoredQuery(query_b, render_query(query_b), 9.0, ())
-    ranked = CandidateRanker(SQLSearcher.from_tables(
-        [{"name": "empty_table", "columns": ["x"], "rows": []},
-         {"name": "nonempty_table", "columns": ["x"], "rows": [[1]]}],
-        [],
-    ).schema).rank_executions("show rows", [
-        ExecutedCandidate(first, ("x",), ()),
-        ExecutedCandidate(second, ("x",), ((1,),)),
-    ])
-    assert ranked[0].candidate.sql == second.sql
-
 
 def test_profile_generation_requires_explicit_configuration():
     searcher = SQLSearcher.from_tables([PEOPLE], [], max_candidates=25)
@@ -1420,23 +1583,6 @@ def test_profile_generation_requires_explicit_configuration():
     assert any("profile-expand:" in evidence for candidate in expanded
                for evidence in candidate.evidence)
 
-
-def test_execution_checks_preserve_successful_semantic_winner():
-    schema = SQLSearcher.from_tables(
-        [{"name": "empty_table", "columns": ["x"], "rows": []},
-         {"name": "nonempty_table", "columns": ["x"], "rows": [[1]]}],
-        [],
-    ).schema
-    query_a = SelectQuery((SelectItem(Star()),), "empty_table")
-    query_b = SelectQuery((SelectItem(Star()),), "nonempty_table")
-    first = ScoredQuery(query_a, render_query(query_a), 10.0, ())
-    second = ScoredQuery(query_b, render_query(query_b), 9.0, ())
-
-    def execute(sql):
-        return (("x",), ()) if "empty_table" in sql else (("x",), ((1,),))
-
-    ranked = execute_and_rerank("show rows", [first, second], schema, execute)
-    assert ranked[0].candidate.sql == first.sql
 
 
 def test_soft_prediction_budget_does_not_abandon_work():
@@ -1889,13 +2035,21 @@ def test_live_table_query_ast_mode_executes_typed_candidate():
         def ast_semantic_signals(self, question, sch):
             return SemanticSignals.empty()
 
-    response = HermeticTableQuery().serve([PEOPLE], "list person names")
+    planner = HermeticTableQuery()
+    planner.sql_proposer = ScriptedProposer()
+    planner.sql_arbiter = SHIPPED_ARBITER
+    response = planner.serve([PEOPLE], "list person names")
     assert response["valid"] is True
     assert response["error"] is None
     assert response["result"]["rows"] == [["Alice"], ["Bob"], ["Cara"]]
     assert response["candidate_count"] > 0
     assert response["ast"].startswith("SelectQuery(")
     assert "AST planner" in response["model"]
+    selection = response["selection"]
+    assert selection["origin"] == "search" and selection["executable"] == selection["pool_size"]
+    assert set(selection["contributions"]) == set(ARBITER_FEATURES)
+    assert abs(sum(selection["contributions"].values()) + selection["intercept"]
+               - selection["score"]) < 1e-5
     assert compare_spider_rows([["1"], [None]], [[None], [1.0]])["strict"]
     assert not compare_spider_rows([[1, 2]], [[2, 1]])["strict"]
     assert not compare_spider_rows([[1, 1]], [[1]])["strict"]
@@ -1960,6 +2114,7 @@ def test_world_own_data_route_preserves_ast_observability():
                 "candidate_count": 7,
                 "evidence": ["extrema:projection"],
                 "features": {"projection": 1.0},
+                "selection": {"origin": "proposer", "pool_size": 7},
                 "calculations": [{"specification": "ratio", "status": "satisfied"}],
                 "model": "typed planner",
             }
@@ -1999,6 +2154,7 @@ def test_world_own_data_route_preserves_ast_observability():
         "candidate_count": 7,
         "evidence": ["extrema:projection"],
         "features": {"projection": 1.0},
+        "selection": {"origin": "proposer", "pool_size": 7},
     }
     assert response["model"] == "typed planner"
     assert response["calculations"] == [{"specification": "ratio", "status": "satisfied"}]
@@ -2179,10 +2335,18 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
 TESTS = [
     test_mentioned_table_join_keeps_minimal_variant_in_pool,
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
+    test_proposal_merge_endorses_search_sql_and_appends_novel_beams,
+    test_arbiter_score_is_named_linear_arithmetic_with_pool_order_ties,
+    test_arbiter_refuses_an_artifact_fit_under_another_contract,
+    test_shipped_arbiter_is_the_manifested_served_contract,
+    test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
+    test_select_query_never_chooses_a_query_that_does_not_run,
+    test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query,
+    test_proposal_import_rejects_malformed_model_text,
+    test_evaluator_grades_the_served_selection,
     test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric,
     test_gold_import_round_trip_executes_and_matches,
-    test_proposal_merge_keeps_beam_best_novel_and_appends_all,
-    test_pilot_replay_contracts_hold,
+    test_gold_import_preserves_distinct_self_join_roles,
     test_typed_ast_rejects_invalid_aggregate,
     test_grouped_ast_rejects_ungrouped_ordering,
     test_typed_ast_rejects_mismatched_literal_payloads,
@@ -2240,9 +2404,7 @@ TESTS = [
     test_profile_expansion_caps_variants_and_penalizes_transformation,
     test_profile_expansion_preserves_hand_ranked_fallback_top,
     test_profile_fallback_applies_when_no_compatible_variant_exists,
-    test_execution_rerank_penalizes_empty_candidate,
     test_profile_generation_requires_explicit_configuration,
-    test_execution_checks_preserve_successful_semantic_winner,
     test_soft_prediction_budget_does_not_abandon_work,
     test_recursive_ast_scalar_subquery_executes,
     test_recursive_ast_correlated_exists_executes,

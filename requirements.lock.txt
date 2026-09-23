@@ -1886,6 +1886,10 @@ sqlalchemy==2.0.52 \
     --hash=sha256:f2b09029ef6f260409eefa5dc2b8276f6c3d7b892bfb50d50e8f852257d4a6b4 \
     --hash=sha256:f4d4f7afc682961dc567db70e00a7b5bd81ccd3743c46199b0257f0744902dde
     # via -r requirements.txt
+sqlglot==30.18.0 \
+    --hash=sha256:e57e1b205e341979d1df5b1212c1435c598a0437e4619e3f428b15d5bc3a5cc6 \
+    --hash=sha256:ee0f9a9f3e2193e763c326e52dfb377b96fdb4292f6305c3ff2d9a220e71c601
+    # via -r requirements.txt
 srsly==2.5.3 \
     --hash=sha256:0017c7d2a0cd9a4f1bdc00d946b45edcf90bb0e271e8f084c1ce542bf6708c32 \
     --hash=sha256:06a43d63bde2e8cccadb953d7fff70b18196ca286b65dd2ad16006d65f3f8166 \

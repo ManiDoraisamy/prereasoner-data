@@ -231,6 +231,8 @@ class TableQuery:
         self.tok = None
         self.qwen = None
         self.hdim = None
+        self.sql_proposer = None
+        self.sql_arbiter = None
 
     @staticmethod
     def _is_id(name):
@@ -448,13 +450,11 @@ class TableQuery:
 
     def search_ast(self, question, sch, tables, fks, beam_size=64, max_candidates=25,
                    use_semantic_signals=True, rank_candidates=True, expand_recursive=True,
-                   expand_constraints=True, expand_extrema=True, rank_model=None):
-        """Return ranked, typed SQL AST candidates from the deterministic planner.
+                   expand_constraints=True, expand_extrema=True):
+        """Return ranked, typed SQL AST candidates from the deterministic search.
 
-        Bounded typed-AST search with hand-written, inspectable ranking and no trained proposer.
-        ``rank_model`` is a frozen deterministic rerank head over the top of that order
-        (engine/sql_rank.py:RankHead); serving passes one only when the runtime bundle has a
-        promoted head, and the Spider evaluator may inject a candidate head for measurement.
+        Bounded typed-AST search with hand-written, inspectable ranking. This is the first half of
+        own-data planning; ``select_query`` adds the proposer's candidates and arbitrates.
         ``tables`` stays in the signature to make the boundary explicit; the rich ``sch`` already
         carries its values and inferred types.
         """
@@ -471,27 +471,65 @@ class TableQuery:
             expand_recursive=expand_recursive,
             expand_constraints=expand_constraints,
             expand_extrema=expand_extrema,
-            rank_model=rank_model,
         )
 
-    def _serve_ast(self, question, norm, fks, sch, tablemap):
-        # The pure DETERMINISTIC, fully-interpretable AST planner: bounded typed-AST search + hand-written
-        # inspectable ranking, no trained proposer / learned ranker. This is the one and only own-data planner.
-        candidates = self.search_ast(
-            question, sch, norm, fks,
-            max_candidates=25,
-            use_semantic_signals=True,
-        )
-        if not candidates:
-            return None, None, "planner: no valid AST candidate", ()
+    def select_query(self, question, norm, fks, sch, tablemap):
+        """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
+
+        1. The deterministic search proposes up to ``search_candidates`` typed ASTs.
+        2. The SQL proposer adds its validated beams (engine/sql_proposer.py); SQL both found is
+           pooled once and marked endorsed.
+        3. Every pooled query that passes the guard is run on an in-memory SQLite copy of the
+           request's tables under a fixed step budget. A query that fails cannot be chosen.
+        4. The proposer scores each executable query's likelihood and the arbiter ranks them
+           (engine/sql_rank.py). A registered calculation intent (engine/calculations) takes the
+           best-ranked query that satisfies it, when one exists.
+
+        This is the one own-data selection: serving, the decomposition probe and leaves, the
+        Spider evaluator, the offline regression gate and arbiter training all call it.
+        """
+        if self.sql_proposer is None or self.sql_arbiter is None:
+            raise RuntimeError("SQL selection models are not loaded - construct the planner through "
+                               "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
         from engine.calculations import select_calculation_candidate
+        from engine.sql_rank import PoolSelection, arbitrate, merge_proposals
         from engine.sql_schema import SchemaGraph
-        candidate, _, _ = select_calculation_candidate(
-            question, norm, SchemaGraph.from_planner(sch, fks), candidates,
-        )
+
+        arbiter = self.sql_arbiter
+        searched = self.search_ast(question, sch, norm, fks,
+                                   max_candidates=arbiter.search_candidates)
+        graph = SchemaGraph.from_planner(sch, fks)
+        floor = min((candidate.score for candidate in searched), default=0.0)
+        pool, proposed = merge_proposals(
+            searched, self.sql_proposer.propose(norm, question, graph, floor))
+        executable = self._executable(pool, tablemap, sch, arbiter.execution_op_limit)
+        runnable = [index for index, ok in enumerate(executable) if ok]
+        scored = self.sql_proposer.likelihoods(norm, question, [pool[i].sql for i in runnable])
+        likelihoods = [None] * len(pool)
+        for index, value in zip(runnable, scored):
+            likelihoods[index] = value
+        scores, ranking = arbitrate(pool, proposed, likelihoods, arbiter)
+        selected = None
+        if ranking:
+            _, _, position = select_calculation_candidate(
+                question, norm, graph, [pool[index] for index in ranking])
+            selected = ranking[position]
+        request_timing.count("pool", len(pool))
+        return PoolSelection(tuple(pool), proposed, executable, tuple(likelihoods), scores,
+                             ranking, selected, len(searched))
+
+    def _serve_ast(self, question, norm, fks, sch, tablemap):
+        """Select the own-data query (``select_query``) and execute it through this executor."""
+        selection = self.select_query(question, norm, fks, sch, tablemap)
+        candidates = selection.pool
+        if not candidates:
+            return None, None, "planner: no valid AST candidate", candidates, selection
+        candidate = selection.candidate
+        if candidate is None:
+            return None, None, "planner: no executable AST candidate", candidates, selection
         ok, why = self.guard(candidate.sql)
         if not ok:
-            return candidate, None, "guard: " + why, candidates
+            return candidate, None, "guard: " + why, candidates, selection
         deterministic_plan = None
         from engine.deterministic.context import current_analysis_context
         analysis_context = current_analysis_context()
@@ -500,13 +538,15 @@ class TableQuery:
                 UnsupportedDeterministicPlan,
                 lower_select_query,
             )
-            from engine.decomposition import selected_decomposition_required
+            from engine.decomposition import compound_candidate
 
-            if selected_decomposition_required(candidate):
+            compound = compound_candidate(selection)
+            if compound is not None:
                 # A named compound request needs a branch proposal before it has an
-                # executable dual-emitter plan. Do not run the planner's incidental
-                # set-operation candidate and then throw its rows away.
-                return candidate, None, None, candidates
+                # executable dual-emitter plan. Do not run a single query that answers one
+                # fragment of the question, or the incidental set-operation candidate, and
+                # then throw its rows away.
+                return compound, None, None, candidates, selection
             try:
                 deterministic_plan = lower_select_query(
                     analysis_context.slug, candidate.query, sch, fks,
@@ -523,9 +563,9 @@ class TableQuery:
                 "columns": cols,
                 "rows": [["" if value is None else value for value in row] for row in rows[:50]],
             }
-            return candidate, result, None, candidates
+            return candidate, result, None, candidates, selection
         except Exception as exc:  # execution errors are returned in the serving envelope
-            return candidate, None, f"{type(exc).__name__}: {exc}", candidates
+            return candidate, None, f"{type(exc).__name__}: {exc}", candidates, selection
 
     # ---------- guard + execute ----------
     def guard(self, sql):
@@ -538,14 +578,8 @@ class TableQuery:
             return False, "forbidden keyword"
         return True, "ok"
 
-    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None,
-                progress_limit=None):
-        """``progress_limit`` bounds the query at that many SQLite VM ops (deterministic,
-        machine-independent) and aborts with OperationalError('interrupted'). Serving passes
-        None (unbounded, live-faithful); the pool_oracle ablation and label building set it so
-        one pathological candidate join cannot stall a whole run."""
-        from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
-
+    def _sqlite_tables(self, tablemap, sch):
+        """An in-memory SQLite database holding the request's normalized tables."""
         con = sqlite3.connect(":memory:")
         register_sqlite_decimal(con)
         by_t = {}
@@ -569,9 +603,38 @@ class TableQuery:
             for r in t["rows"]:
                 rd = dict(zip(t["columns"], r))
                 con.execute(ins, [coerce(rd.get(c["name"]), c["affinity"]) for c in cols])
+        return con
+
+    def _executable(self, pool, tablemap, sch, op_limit):
+        """Which pooled queries pass the guard and run to completion within ``op_limit`` SQLite
+        VM steps on one in-memory copy of the request's tables. The step budget is deterministic
+        and machine-independent; it stops a pathological join, not a normal query. Success only
+        makes a query eligible; it is not evidence that the query answers the question."""
+        if not pool:
+            return ()
+        con = self._sqlite_tables(tablemap, sch)
+        con.set_progress_handler(lambda: 1, int(op_limit))
+        outcomes = []
+        with request_timing.span("pool_execute"):
+            for candidate in pool:
+                if not self.guard(candidate.sql)[0]:
+                    outcomes.append(False)
+                    continue
+                try:
+                    con.execute(candidate.sql).fetchall()
+                    outcomes.append(True)
+                except sqlite3.Error:
+                    outcomes.append(False)
+        con.close()
+        return tuple(outcomes)
+
+    def execute(self, tablemap, sch, sql, query=None, deterministic_plan=None):
+        """Run one query on an in-memory SQLite copy of the tables (the local executor; the live
+        service executes on PostgreSQL through engine.pg)."""
+        from engine.sql_ast import SetQuery, SQLType, expression_type, render_query
+
+        con = self._sqlite_tables(tablemap, sch)
         execution_sql = render_query(query, dialect="sqlite_decimal") if query is not None else sql
-        if progress_limit:
-            con.set_progress_handler(lambda: 1, int(progress_limit))
         cur = con.execute(execution_sql)
         rows = cur.fetchall()
         if query is not None:
@@ -649,11 +712,11 @@ class TableQuery:
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
         try:
-            candidate, result, err, candidates = self._serve_ast(
+            candidate, result, err, candidates, selection = self._serve_ast(
                 question, norm, fks, sch, tablemap
             )
         except Exception as exc:
-            candidate, result, candidates = None, None, ()
+            candidate, result, candidates, selection = None, None, (), None
             err = f"{type(exc).__name__}: {exc}"
         sql = candidate.sql if candidate is not None else None
         computation = None
@@ -686,7 +749,8 @@ class TableQuery:
             "evidence": list(candidate.evidence) if candidate is not None else [],
             "features": dict(candidate.features) if candidate is not None else {},
             "computation": computation.record() if computation is not None else None,
-            "model": "engine - deterministic typed SQL AST planner",
+            "selection": selection.record(self.sql_arbiter) if selection is not None else None,
+            "model": "engine - typed SQL AST planner (search + proposer, linear arbiter)",
         }
         if candidate is not None:
             from engine.calculations import assess_calculations

@@ -8,10 +8,12 @@ Prereasoner represents a question, its data, and its source evidence as named di
 runtime composes those dimensions into a checked query plan, runs it, and returns the result with its
 rows and trace. For the supported own-data subset, one immutable plan emits both a SQL view
 stack and readable SQLAlchemy/Python source; see
-[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). A frozen Qwen model supplies signals about
-intent and schema. It does not generate SQL, Python, or numeric answers. AST construction, routing,
-joins, validation, ranking, emission, and execution are deterministic for fixed inputs,
-configuration, database state, and model files.
+[DETERMINISTIC_EMITTERS.md](DETERMINISTIC_EMITTERS.md). Two frozen LoRA adapters on Qwen2.5-0.5B
+supply model evidence: an encoder reads intent and schema signals, and a SQL proposer suggests
+candidate queries for own-data questions. A proposed query is used only if it imports into the typed
+AST and validates; no model writes Python or a numeric answer, and model text never reaches a
+database. AST construction, routing, joins, validation, arbitration, emission, and execution are
+deterministic for fixed inputs, configuration, database state, and model files.
 
 Read [GETTING_STARTED.md](GETTING_STARTED.md) first when setting up the repository. Read
 [SQL_AST.md](SQL_AST.md) for planner internals, [SOURCE_DATA.md](SOURCE_DATA.md) for
@@ -205,7 +207,7 @@ replay. The legacy Wikidata schema migration is still pending.
    decomposition retry described above; all leaf planning and merge binding remains inside the engine. Other
    unsupported shapes remain on guarded, quoted, read-only SQL.
 10. Cross-route calculation verifiers inspect typed planner evidence before a result is released. Without changing
-   scores, the shared registry selects the highest-ranked candidate that realizes every detected calculation. An
+   scores, the shared registry selects the best-ranked candidate that realizes every detected calculation. An
    unmet or ambiguous calculation replaces the numeric result with a structured clarification.
 11. `engine.provenance` maps typed output expressions to their exact table/column operands and propagates source
     identity through emitted views. Publisher adapters provide release IDs. The browser renders this contract and
@@ -234,7 +236,8 @@ correct interpretation of the question.
 
 ## Own-Data SQL Planner
 
-The own-data path is one bounded search over a typed SQL AST:
+The own-data path pools two candidate sources over one typed SQL AST and selects with one arbiter
+(`engine/tables.py:TableQuery.select_query`):
 
 | Owner | Responsibility |
 |---|---|
@@ -246,16 +249,29 @@ The own-data path is one bounded search over a typed SQL AST:
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
-| `engine/sql_rank.py` | Deterministic structural and encoder-derived candidate scoring |
-| `engine/tables.py` | Planner facade, SQL guard, and local SQLite execution |
+| `engine/sql_proposer.py` | Frozen SQL proposer: deterministic beams, teacher-forced likelihoods |
+| `engine/sql_prompt.py` / `engine/sql_import.py` | The proposer's one prompt; the SQL-to-typed-AST gate every proposal passes |
+| `engine/sql_rank.py` | Search ranking features; pool merge and the linear arbiter over executed candidates |
+| `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
 | `engine/decomposition.py` | Closed model proposal validation and fusion of planner-selected leaf ASTs into one shared DAG |
 
-The planner supports multi-table and multi-hop joins. Candidate execution can reject invalid or failing SQL, but
-execution success is not treated as proof that a query matches the question. Every deterministic ranking feature
-is named in candidate evidence.
+1. The deterministic search builds up to 25 validated candidates and orders them with named rules;
+   the encoder contributes table, column-role, and structural-profile similarities.
+2. The SQL proposer decodes four deterministic beams from a compact schema-plus-question prompt. Each
+   beam's first line is imported into the typed AST, validated, and re-rendered; anything else is
+   dropped. A proposal that renders to SQL the search already found marks that candidate endorsed.
+3. Every pooled query runs on an in-memory SQLite copy of the request's tables under the SELECT guard
+   and a fixed VM-step budget. A query that fails cannot be chosen. Execution success only makes a
+   query eligible; it is not evidence that the query answers the question.
+4. The arbiter scores each runnable query: a standardized linear function of nine named features
+   (proposer likelihood, its length, per-token likelihood, pool score, pool rank, which source produced
+   it, endorsement, pool size). The best score wins; the earlier pool position breaks ties. Calculation
+   intents and the decomposition leaf contract constrain this ranking rather than rescoring it.
+5. For a named request, a compound question — the search reads it as a set operation, or the chosen
+   answer is one — requests decomposition instead of executing a single query.
 
-Model inference on this path is encoder-only. The encoder supplies similarities for table, column-role, and
-structural-profile features. It does not call `generate()` and does not bypass AST validation.
+The response's `planner.selection` records the winner's origin, score, and per-feature contributions.
+The winning AST then executes against the conversation schema through the shared SQL/Python plan.
 
 ## World Grounding And Composition
 
@@ -451,8 +467,10 @@ planner implementation modules.
 
 `engine/config.py` is the owner for runtime environment variables. `.env.example` documents deployable defaults.
 Runtime model artifacts live under `engine/data/` and are validated by a manifest; they are not source files and are
-not duplicated under versioned names. Training output becomes serving input only through the documented promotion
-process in [TRAINING.md](TRAINING.md).
+not duplicated under versioned names. The bundle holds the encoder (`qwen_lora/`, `encoder.pt`, heads) and the
+own-data selection pair: the SQL proposer adapter (`sql_proposer/`) and the arbiter fit on its pools
+(`sql_arbiter.json`). `DEVICE` selects where the proposer runs (`cpu` by default). Training output becomes
+serving input only through the documented promotion process in [TRAINING.md](TRAINING.md).
 
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public. The
 source manifest pins an immutable revision and every runtime-file hash, so a fresh clone can provision and
@@ -466,6 +484,7 @@ The repository has one owner per decision:
 - routing: `engine.routing.route()`;
 - relationship discovery: `engine.relations.discover_fks()`;
 - own-data SQL representation: the typed AST;
+- own-data query selection (search, proposer, pool execution, arbiter): `engine.tables.TableQuery.select_query`;
 - dual SQL/Python plan, source emission, and parity: `engine.deterministic`;
 - bounded compound-question proposal validation and typed-plan fusion: `engine.decomposition`;
 - private-reference behavior: `engine.master`;

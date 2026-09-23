@@ -1,15 +1,23 @@
-"""Deterministic semantic and execution-aware ranking for SQL AST candidates.
+"""Candidate scoring for the own-data SQL planner.
 
-The ranker is deliberately separate from candidate generation.  Every adjustment is
-recorded as a named feature, so model similarity can improve ordering without hiding
-the structural reasons a candidate won.
+Two deterministic stages, each recorded as named features:
+
+1. ``CandidateRanker`` orders the typed-AST search pool with hand-written structural rules
+   and encoder similarities (engine/sql_search.py applies it). Every adjustment is a named
+   feature, so model similarity can improve ordering without hiding why a candidate won.
+2. ``SQLArbiter`` chooses the served query from the executed pool of search candidates plus
+   the SQL proposer's suggestions (engine/sql_proposer.py): a fitted linear score over the
+   nine ``ARBITER_FEATURES``. The highest-scoring candidate that executes wins; a tie goes to
+   the earlier pool position. ``PoolSelection`` records the whole decision.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+import json
 import math
+from pathlib import Path
 import re
-from typing import Any, Callable, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from engine.sql_ast import Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery
 from engine.sql_candidate import ScoredQuery
@@ -32,14 +40,6 @@ class SemanticSignals:
     @classmethod
     def empty(cls) -> "SemanticSignals":
         return cls({}, {}, (), {}, {})
-
-
-@dataclass(frozen=True)
-class ExecutedCandidate:
-    candidate: ScoredQuery
-    columns: tuple[str, ...] = ()
-    rows: tuple[tuple[Any, ...], ...] = ()
-    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,122 +97,6 @@ def semantic_role_phrases(question: str) -> dict[str, str]:
     return {role: phrase for role, phrase in phrases.items() if phrase.strip()}
 
 
-# Evidence-tag prefixes the rank head counts. Order is part of the head's input contract:
-# a promoted head is only valid for the prefix tuple it was trained with (stored in its file).
-RANK_HEAD_EVIDENCE_PREFIXES = (
-    "join:", "tables:minimal", "projection:drop", "projection:binding:",
-    "projection:add:", "projection:distinct-toggle", "aggregate:operand:",
-    "profile:", "calc:", "rank:", "exec:",
-)
-
-
-def canonical_feature_name(name: str) -> str:
-    """Strip schema-object qualifiers so features transfer across databases.
-
-    ``projection_role:department.Name`` names a db-specific column; a head trained on such
-    names memorizes training schemas and transfers nothing (measured: 1,850 of 1,926 feature
-    names were single-database). The qualifier is dropped and same-name values are summed by
-    the vectorizer; generic compound names without a dotted qualifier stay unchanged.
-    """
-    head, sep, tail = name.partition(":")
-    if sep and "." in tail:
-        return head
-    return name
-
-
-def rank_head_vector(score, rank, features, evidence, pool_best, pool_mean, feature_names,
-                     evidence_prefixes=RANK_HEAD_EVIDENCE_PREFIXES):
-    """The ONE deterministic feature vector for the trained rank head.
-
-    Built from primitives (generation score, deterministic rank, canonicalized named
-    features, evidence tags, pool score context) so training rows (JSONL) and serving
-    candidates (ScoredQuery) vectorize identically — the head can never see different
-    features in the two places.
-    """
-    canonical: dict[str, float] = {}
-    for name, value in features.items():
-        key = canonical_feature_name(name)
-        canonical[key] = canonical.get(key, 0.0) + float(value)
-    return [
-        float(score),
-        float(rank),
-        float(score - pool_best),
-        float(score - pool_mean),
-        float(len(evidence)),
-        *(float(sum(1 for tag in evidence if tag.startswith(prefix)))
-          for prefix in evidence_prefixes),
-        *(canonical.get(name, 0.0) for name in feature_names),
-    ]
-
-
-class RankHead:
-    """Frozen trained scorer over the deterministic candidate order's top-K prefix.
-
-    Deterministic by construction: fixed weights, CPU float32 inference, no sampling, ties
-    broken by the deterministic prior order. Only the prefix reorders; the tail is untouched.
-    Plugs into ``SQLSearcher.search(rank_model=...)``; serving passes it only once a head is
-    promoted into the runtime bundle.
-    """
-
-    def __init__(self, model, feature_names, top_k, evidence_prefixes, margin=0.0):
-        self.model = model
-        self.feature_names = tuple(feature_names)
-        self.top_k = int(top_k)
-        self.evidence_prefixes = tuple(evidence_prefixes)
-        # Confidence gate: the head's order applies only when its best score clears the
-        # deterministic top's score by this logit margin; otherwise the prior order stands.
-        self.margin = float(margin)
-
-    @classmethod
-    def load(cls, path):
-        import torch
-
-        payload = torch.load(path, map_location="cpu", weights_only=True)
-        model = build_rank_head_model(int(payload["input_size"]),
-                                      int(payload["hidden"]))
-        model.load_state_dict(payload["state_dict"])
-        model.eval()
-        return cls(model, payload["feature_names"], payload["top_k"],
-                   payload["evidence_prefixes"], payload.get("margin", 0.0))
-
-    def rerank(self, question: str, ranked: Sequence[ScoredQuery]) -> list[ScoredQuery]:
-        import torch
-
-        prefix = list(ranked[:self.top_k])
-        if len(prefix) < 2:
-            return list(ranked)
-        pool_best = max(candidate.score for candidate in prefix)
-        pool_mean = sum(candidate.score for candidate in prefix) / len(prefix)
-        vectors = [
-            rank_head_vector(candidate.score, position, dict(candidate.features),
-                             candidate.evidence, pool_best, pool_mean,
-                             self.feature_names, self.evidence_prefixes)
-            for position, candidate in enumerate(prefix)
-        ]
-        with torch.no_grad():
-            scores = self.model(torch.tensor(vectors, dtype=torch.float32)).squeeze(1).tolist()
-        order = sorted(range(len(prefix)), key=lambda index: (-scores[index], index))
-        if scores[order[0]] - scores[0] < self.margin:
-            return list(ranked)
-        reordered = [
-            replace(prefix[index],
-                    evidence=prefix[index].evidence + (f"rank-head:{scores[index]:+.4f}",))
-            for index in order
-        ]
-        return reordered + list(ranked[self.top_k:])
-
-
-def build_rank_head_model(input_size: int, hidden: int):
-    """The one rank-head architecture, shared by training and loading."""
-    import torch
-
-    return torch.nn.Sequential(
-        torch.nn.Linear(input_size, hidden),
-        torch.nn.ReLU(),
-        torch.nn.Linear(hidden, 1),
-    )
-
-
 class CandidateRanker:
     def __init__(self, schema: SchemaGraph, signals: SemanticSignals | None = None):
         self.schema = schema
@@ -228,20 +112,6 @@ class CandidateRanker:
             ranked.append(replace(candidate, score=score, evidence=evidence,
                                   features=candidate.features + features))
         return sorted(ranked, key=lambda candidate: (-candidate.score, candidate.sql))
-
-    def rank_executions(self, question: str, executions: Sequence[ExecutedCandidate]) -> list[ExecutedCandidate]:
-        ranked = []
-        for execution in executions:
-            features = execution_features(execution.candidate.query, execution.rows, execution.error)
-            candidate = replace(
-                execution.candidate,
-                score=execution.candidate.score + sum(value for _, value in features),
-                evidence=execution.candidate.evidence
-                         + tuple(f"exec:{name}={value:+.3f}" for name, value in features if value),
-                features=execution.candidate.features + features,
-            )
-            ranked.append(replace(execution, candidate=candidate))
-        return sorted(ranked, key=lambda item: (-item.candidate.score, item.candidate.sql))
 
     def _semantic_features(self, query: Query, roles: QuestionRoles) -> tuple[tuple[str, float], ...]:
         if isinstance(query, SetQuery):
@@ -529,54 +399,6 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
     )
 
 
-def execution_features(query: Query, rows: Sequence[Sequence[Any]], error: str | None) -> tuple[tuple[str, float], ...]:
-    if error is not None:
-        return (("error", -1000.0),)
-    materialized = tuple(tuple(row) for row in rows)
-    features: list[tuple[str, float]] = []
-    if not materialized:
-        features.append(("empty_result", -1.25))
-        return tuple(features)
-    features.append(("nonempty_result", 0.25))
-    values = [value for row in materialized for value in row]
-    if values and all(value is None for value in values):
-        features.append(("all_null_result", -2.0))
-    if isinstance(query, SelectQuery):
-        aggregates = [item.expression for item in query.select if isinstance(item.expression, Aggregate)]
-        if aggregates and not query.group_by:
-            features.append(("scalar_aggregate_shape", 0.5 if len(materialized) == 1 else -1.0))
-        if query.group_by and len(materialized) > 1:
-            features.append(("grouped_shape", 0.2))
-        if query.limit is not None and len(materialized) <= query.limit:
-            features.append(("limit_shape", 0.1))
-    return tuple(features)
-
-
-def execute_and_rerank(question: str, candidates: Sequence[ScoredQuery], schema: SchemaGraph,
-                       executor: Callable[[str], tuple[Sequence[str], Sequence[Sequence[Any]]]],
-                       max_candidates: int = 5,
-                       preserve_top: bool = True) -> list[ExecutedCandidate]:
-    """Execute a bounded semantic prefix without silently changing semantic top-1.
-
-    Result-shape features remain useful for ordering fallback candidates after an
-    execution failure. A merely nonempty result is not evidence that a lower-ranked
-    query answers the question, so the successful semantic winner stays first.
-    """
-    observed = []
-    for candidate in candidates[:max(1, max_candidates)]:
-        try:
-            columns, rows = executor(candidate.sql)
-            observed.append(ExecutedCandidate(candidate, tuple(columns), tuple(tuple(row) for row in rows)))
-        except Exception as exc:  # noqa: BLE001 - failed SQL is evidence against only that candidate
-            observed.append(ExecutedCandidate(candidate, error=f"{type(exc).__name__}: {exc}"))
-    ranked = CandidateRanker(schema).rank_executions(question, observed)
-    if preserve_top and observed and observed[0].error is None:
-        top_sql = observed[0].candidate.sql
-        top = next(item for item in ranked if item.candidate.sql == top_sql)
-        return [top] + [item for item in ranked if item.candidate.sql != top_sql]
-    return ranked
-
-
 def _columns_in_windows(schema: SchemaGraph, tokens: tuple[str, ...], windows: Sequence[tuple[int, int]]) -> set[ColumnRef]:
     out = set()
     for start, end in windows:
@@ -663,3 +485,217 @@ def _is_name(name: str) -> bool:
 
 def _column_label(column: ColumnRef) -> str:
     return f"{column.table}.{column.name}"
+
+
+# ---------------------------------------------------------------------------------------------
+# Pool arbitration: the served choice among search candidates and proposer suggestions.
+# ---------------------------------------------------------------------------------------------
+
+ENDORSED = "proposer:endorsed"
+# A proposal enters the pool below every search candidate and below the beams decoded before
+# it (`proposal_score`). The arbiter reads pool score and pool rank as features, so both
+# constants belong to its fitted contract: engine/data/sql_arbiter.json records them and
+# SQLArbiter.load refuses an artifact fit under different values.
+PROPOSAL_PENALTY = 5.0
+BEAM_STEP = 0.1
+
+ARBITER_FEATURES = (
+    "likelihood",            # log p(SQL | schema, question) under the proposer model
+    "likelihood_tokens",     # SQL length in proposer tokens
+    "likelihood_per_token",  # likelihood / likelihood_tokens
+    "pool_score",            # search score, or the penalized proposal score
+    "pool_rank",             # position in the merged pool (search order, then beam order)
+    "from_proposer",         # 1 when the proposer produced this SQL (alone or with the search)
+    "from_search",           # 1 when the deterministic search produced this SQL
+    "endorsed",              # 1 when both produced it
+    "pool_size",             # number of pooled candidates, executable or not
+)
+
+
+def proposal_score(floor: float, beam: int) -> float:
+    """Pool score of the proposal decoded at beam position `beam` (0 = best beam)."""
+    return floor - PROPOSAL_PENALTY - BEAM_STEP * beam
+
+
+def merge_proposals(candidates: Sequence[ScoredQuery], proposals: Sequence[ScoredQuery]
+                    ) -> tuple[list[ScoredQuery], frozenset[str]]:
+    """Append proposals to the search pool; return (pool, SQL only the proposer produced).
+
+    A proposal that renders to SQL the search already found is not pooled twice: that search
+    candidate keeps its position and gains the ``proposer:endorsed`` tag plus the proposal's
+    evidence, because two independent derivations agreeing is a signal the arbiter weighs.
+    Novel proposals are appended in beam order.
+    """
+    pool = list(candidates)
+    position = {candidate.sql: index for index, candidate in enumerate(pool)}
+    proposed = set()
+    for proposal in proposals:
+        index = position.get(proposal.sql)
+        if index is not None:
+            existing = pool[index]
+            pool[index] = replace(
+                existing,
+                evidence=existing.evidence + (ENDORSED,) + proposal.evidence,
+                features=existing.features + proposal.features,
+            )
+            continue
+        position[proposal.sql] = len(pool)
+        pool.append(proposal)
+        proposed.add(proposal.sql)
+    return pool, frozenset(proposed)
+
+
+def arbiter_features(candidate: ScoredQuery, rank: int, pool_size: int, likelihood: float,
+                     tokens: int, proposed: bool) -> tuple[float, ...]:
+    """The arbiter's input for one pooled candidate, in ARBITER_FEATURES order."""
+    tokens = max(float(tokens), 1.0)
+    likelihood = float(likelihood)
+    endorsed = ENDORSED in candidate.evidence
+    return (
+        likelihood,
+        tokens,
+        likelihood / tokens,
+        float(candidate.score),
+        float(rank),
+        1.0 if proposed or endorsed else 0.0,
+        0.0 if proposed else 1.0,
+        1.0 if endorsed else 0.0,
+        float(pool_size),
+    )
+
+
+@dataclass(frozen=True)
+class SQLArbiter:
+    """A fitted linear score over standardized ARBITER_FEATURES.
+
+    ``score = sum((value - mean) / scale * coef) + intercept``: plain arithmetic, so every
+    selection can be explained feature by feature (``contributions``). The pool fields are the
+    candidate-pool contract the coefficients were fit under; serving builds pools that way.
+    """
+    mean: tuple[float, ...]
+    scale: tuple[float, ...]
+    coef: tuple[float, ...]
+    intercept: float
+    search_candidates: int
+    proposer_beams: int
+    proposer_max_new_tokens: int
+    execution_op_limit: int
+
+    @classmethod
+    def load(cls, path: str | Path) -> "SQLArbiter":
+        return cls.from_payload(json.loads(Path(path).read_text(encoding="utf-8")), str(path))
+
+    @classmethod
+    def from_payload(cls, data: Mapping, path: str = "arbiter") -> "SQLArbiter":
+        if tuple(data.get("features") or ()) != ARBITER_FEATURES:
+            raise ValueError(f"{path}: arbiter features differ from ARBITER_FEATURES")
+        pool = data["pool"]
+        if (pool["proposal_penalty"], pool["beam_step"]) != (PROPOSAL_PENALTY, BEAM_STEP):
+            raise ValueError(f"{path}: arbiter was fit under a different proposal scoring")
+        arbiter = cls(
+            mean=tuple(float(value) for value in data["mean"]),
+            scale=tuple(float(value) for value in data["scale"]),
+            coef=tuple(float(value) for value in data["coef"]),
+            intercept=float(data["intercept"]),
+            search_candidates=int(pool["search_candidates"]),
+            proposer_beams=int(pool["proposer_beams"]),
+            proposer_max_new_tokens=int(pool["proposer_max_new_tokens"]),
+            execution_op_limit=int(pool["execution_op_limit"]),
+        )
+        width = len(ARBITER_FEATURES)
+        if not (len(arbiter.mean) == len(arbiter.scale) == len(arbiter.coef) == width):
+            raise ValueError(f"{path}: arbiter parameters must each have {width} values")
+        return arbiter
+
+    def score(self, features: Sequence[float]) -> float:
+        return sum((value - mean) / (scale or 1.0) * coef
+                   for value, mean, scale, coef in zip(features, self.mean, self.scale, self.coef)
+                   ) + self.intercept
+
+    def contributions(self, features: Sequence[float]) -> dict[str, float]:
+        """Each feature's additive share of the score (the intercept is the remainder)."""
+        return {name: (value - mean) / (scale or 1.0) * coef
+                for name, value, mean, scale, coef in zip(
+                    ARBITER_FEATURES, features, self.mean, self.scale, self.coef)}
+
+
+@dataclass(frozen=True)
+class PoolSelection:
+    """How one question's query was chosen. Serving, evaluation and training read this record.
+
+    ``likelihoods`` and ``scores`` are None for pool members that did not execute; those can
+    never be selected. ``ranking`` lists the executable members best first. ``selected`` is
+    usually ``ranking[0]``; a question with a registered calculation intent takes the best
+    ranked member that satisfies it (engine/calculations), when one exists. The first
+    ``searched`` pool members are the deterministic search's, in its order, so ``search_top``
+    is the search's own structural reading of the question.
+    """
+    pool: tuple[ScoredQuery, ...]
+    proposed: frozenset[str]
+    executable: tuple[bool, ...]
+    likelihoods: tuple[tuple[float, int] | None, ...]
+    scores: tuple[float | None, ...]
+    ranking: tuple[int, ...]
+    selected: int | None
+    searched: int
+
+    @property
+    def candidate(self) -> ScoredQuery | None:
+        return None if self.selected is None else self.pool[self.selected]
+
+    @property
+    def search_top(self) -> ScoredQuery | None:
+        return self.pool[0] if self.searched else None
+
+    def best(self, admissible) -> ScoredQuery | None:
+        """The best-ranked executable member satisfying `admissible` (a caller's contract)."""
+        return next((self.pool[index] for index in self.ranking if admissible(self.pool[index])),
+                    None)
+
+    def origin(self, index: int) -> str:
+        candidate = self.pool[index]
+        if candidate.sql in self.proposed:
+            return "proposer"
+        return "search+proposer" if ENDORSED in candidate.evidence else "search"
+
+    def features(self, index: int) -> tuple[float, ...]:
+        likelihood, tokens = self.likelihoods[index]
+        return arbiter_features(self.pool[index], index, len(self.pool), likelihood, tokens,
+                                self.pool[index].sql in self.proposed)
+
+    def record(self, arbiter: SQLArbiter) -> dict:
+        """JSON evidence: pool counts and the winner's score, broken down by feature."""
+        evidence = {
+            "pool_size": len(self.pool),
+            "proposed": len(self.proposed),
+            "executable": sum(self.executable),
+            "selected": self.selected,
+        }
+        if self.selected is not None:
+            features = self.features(self.selected)
+            evidence.update(
+                origin=self.origin(self.selected),
+                score=round(self.scores[self.selected], 6),
+                features={name: round(value, 6) for name, value in zip(ARBITER_FEATURES, features)},
+                contributions={name: round(value, 6)
+                               for name, value in arbiter.contributions(features).items()},
+                intercept=round(arbiter.intercept, 6),
+            )
+        return evidence
+
+
+def arbitrate(pool: Sequence[ScoredQuery], proposed: frozenset[str],
+              likelihoods: Sequence[tuple[float, int] | None], arbiter: SQLArbiter
+              ) -> tuple[tuple[float | None, ...], tuple[int, ...]]:
+    """Score every executable member (likelihood present); rank best first, pool order on ties."""
+    scores: list[float | None] = []
+    for index, (candidate, scored) in enumerate(zip(pool, likelihoods)):
+        if scored is None:
+            scores.append(None)
+            continue
+        likelihood, tokens = scored
+        scores.append(arbiter.score(arbiter_features(
+            candidate, index, len(pool), likelihood, tokens, candidate.sql in proposed)))
+    ranking = sorted((index for index, score in enumerate(scores) if score is not None),
+                     key=lambda index: (-scores[index], index))
+    return tuple(scores), tuple(ranking)
