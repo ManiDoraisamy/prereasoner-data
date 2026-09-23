@@ -93,13 +93,15 @@ def verify_quotes(raw_ops, user_message, history=None):
 
 
 def bind_unambiguous_columns(raw_ops, tables):
-    """Repair only the model's unambiguous column-as-table transcription error.
+    """Repair only the model's unambiguous transcription errors in a table/column pair.
 
     The model does not receive uploaded CSV contents, so a statement such as
     ``budget is in EUR`` can occasionally put ``budget`` in both the table and column
-    fields. If that column occurs in exactly one uploaded table, bind the operation to
-    that table before signing it. Ambiguous or otherwise invalid operations remain
-    unchanged and are rejected by the engine's existing validator.
+    fields, or capitalize it (``Budget``). If that column occurs in exactly one uploaded
+    table, bind the operation to that table and to the header's own spelling before
+    signing it; a case-only difference counts when exactly one header column matches.
+    Ambiguous or otherwise invalid operations remain unchanged and are rejected by the
+    engine's existing validator.
     """
     if not isinstance(raw_ops, list) or not isinstance(tables, list):
         return raw_ops
@@ -115,6 +117,15 @@ def bind_unambiguous_columns(raw_ops, tables):
                 header = []
         schemas[table["name"]] = tuple(str(column) for column in header)
 
+    def spelled(columns, name):
+        """The header's own spelling of ``name``: exact, else its one case-insensitive match."""
+        if not isinstance(name, str):
+            return None
+        if name in columns:
+            return name
+        folded = [column for column in columns if column.casefold() == name.casefold()]
+        return folded[0] if len(folded) == 1 else None
+
     bound = []
     for raw in raw_ops:
         if not isinstance(raw, dict):
@@ -122,12 +133,18 @@ def bind_unambiguous_columns(raw_ops, tables):
             continue
         op = dict(raw)
         table_name, column = op.get("table"), op.get("column")
-        if table_name not in schemas and isinstance(table_name, str):
+        if table_name in schemas:
+            # "responses"/"Budget": the table is right, only the column's case is not.
+            header_column = spelled(schemas[table_name], column)
+            if header_column is not None:
+                op["column"] = header_column
+        elif isinstance(table_name, str):
+            # "Budget"/"Budget": the column was also written as the table.
             candidates = [
-                name for name, columns in schemas.items()
-                if table_name in columns and column in columns
+                (name, spelled(columns, column)) for name, columns in schemas.items()
+                if spelled(columns, table_name) is not None and spelled(columns, column) is not None
             ]
             if len(candidates) == 1:
-                op["table"] = candidates[0]
+                op["table"], op["column"] = candidates[0]
         bound.append(op)
     return bound

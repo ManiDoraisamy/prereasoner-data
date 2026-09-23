@@ -262,6 +262,26 @@ def test_orchestrator_binds_only_unambiguous_column_as_table_errors():
     valid = [_set(table="responses")]
     assert dataset_attestation.bind_unambiguous_columns(valid, csv_tables) == valid
 
+    # The Chrome release gate caught the capitalized form: the model wrote "Budget" for both
+    # fields, the exact-spelling repair missed it, and "This is in euros" became a clarify
+    # ("names a table that is not uploaded: 'Budget'"). A case-only difference is the same
+    # unambiguous transcription error, bound to the header's own spelling.
+    capital = dataset_attestation.bind_unambiguous_columns(
+        [_set(table="Budget", column="Budget")], csv_tables)[0]
+    assert (capital["table"], capital["column"]) == ("responses", "budget")
+    right_table = dataset_attestation.bind_unambiguous_columns(
+        [_set(table="responses", column="BUDGET")], csv_tables)[0]
+    assert (right_table["table"], right_table["column"]) == ("responses", "budget")
+    # Still no guessing: two tables with the column, or two header columns differing only by
+    # case, stay as the model wrote them for the engine's validator to reject.
+    assert dataset_attestation.bind_unambiguous_columns(
+        [_set(table="Budget", column="Budget")], ambiguous)[0]["table"] == "Budget"
+    twins = [{"name": "responses", "data": "Budget,budget\n1,2"}]
+    assert dataset_attestation.bind_unambiguous_columns(
+        [_set(table="responses", column="BUDGET")], twins)[0]["column"] == "BUDGET"
+    assert dataset_attestation.bind_unambiguous_columns(
+        [_set(table="Revenue", column="Revenue")], csv_tables)[0]["table"] == "Revenue"
+
 
 def test_synthesized_currency_column_is_never_world_routed():
     """Regression for an OBSERVED wrong answer (2026-09-08). The synthesized measure-currency column

@@ -418,7 +418,9 @@ lower-ranked member just to show a measure its choice already ranks by.
 The same gate found an orchestrator defect older than this release: a model tool call without a
 question reached the engine, and the engine's validation error became the user's reply. The
 orchestrator now validates the question with the engine's own `validate_question` and returns a
-malformed call to the model to repair. Capacity is the known limit of the CPU deployment: the engine
+malformed call to the model to repair, and its repair of a column written as the table now also
+accepts a case-only difference ("Budget" for the header's "budget"), which had turned "This is in
+euros" into a clarify. Capacity is the known limit of the CPU deployment: the engine
 serves one request at a time per instance, a decomposition costs about a minute of proposer CPU, and
 three concurrent complex questions exceeded the orchestrator's 240 s turn budget during the gate. The
 lever is inference hardware, not the budget.
