@@ -415,6 +415,20 @@ it could not see that the arbiter ranked "top 2 customers by total spend" by uni
 requires the named measure to be summed and, for a ranking, ranked by, and a leaf never needs a
 lower-ranked member just to show a measure its choice already ranks by.
 
+The same gate found an orchestrator defect older than this release: a model tool call without a
+question reached the engine, and the engine's validation error became the user's reply. The
+orchestrator now validates the question with the engine's own `validate_question` and returns a
+malformed call to the model to repair. Capacity is the known limit of the CPU deployment: the engine
+serves one request at a time per instance, a decomposition costs about a minute of proposer CPU, and
+three concurrent complex questions exceeded the orchestrator's 240 s turn budget during the gate. The
+lever is inference hardware, not the budget.
+
+The live geo suite found the last one: for "total order amount in KWD" (a currency neither the sheet
+nor the knowledgebase covers) the arbiter chose a beam that dropped the SUM and filtered
+`currency = 'KWD'`, and the currency specification read any query without a value output as a filter
+reading, so an empty table replaced the decline. Only the parser's row-selection intents are filters
+now; an output-unit request is realized by a monetary aggregate or declined.
+
 Retired rather than kept as alternatives (git holds them): the trained rank head and its search hook,
 execution-feature reranking, the proposer-first policy, the two-proposer pilot layout (its arbiter
 slots for the second proposer were constant with coefficient 0.0 and are dropped with bit-identical

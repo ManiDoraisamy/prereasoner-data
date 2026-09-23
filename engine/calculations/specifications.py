@@ -291,9 +291,10 @@ class CurrencySpecification:
             and output.aggregate_functions
             and "COUNT" not in output.aggregate_functions
         ]
-        has_value_output = bool(numeric_outputs)
-        effective_filter = intent.operation == "filter" or not has_value_output
-        if effective_filter:
+        # Only the parser's row-selection readings are filters. An output-unit request ("total
+        # order amount in KWD") is realized by a monetary aggregate or not at all: a query that
+        # dropped the requested aggregate and filtered rows instead does not answer it.
+        if intent.operation == "filter":
             return {
                 **base,
                 "status": "satisfied" if filter_satisfied else "unmet",

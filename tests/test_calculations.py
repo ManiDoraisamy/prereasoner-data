@@ -163,6 +163,40 @@ def test_filter_conversion_and_annotation_matrix():
        "typed direct-rate conversion works for any pinned ISO currency code")
 
 
+def test_an_output_unit_request_is_not_satisfied_by_a_query_that_drops_its_aggregate():
+    """The live suite caught this after the SQL proposer shipped: for "total order amount in KWD"
+    the arbiter chose a proposer beam that dropped the SUM and filtered currency = 'KWD'. A query
+    without a value output was treated as a filter reading, so the unit request looked satisfied
+    and the answer was an empty table instead of a decline. Only the parser's row-selection
+    intents are filters; an output-unit request needs a monetary aggregate."""
+    graph = SchemaGraph.from_tables((ORDERS, USD_RATES), (EDGE,))
+    amount = ColumnRef("orders", "amount", SQLType.REAL)
+    currency = ColumnRef("orders", "currency", SQLType.TEXT)
+
+    def filtered(select, code):
+        return SelectQuery(select, "orders", where=Comparison(currency, "=", Literal(code, SQLType.TEXT)))
+
+    dropped = filtered((SelectItem(amount),), "KWD")
+    output = _currency_assessment("total order amount in KWD", (ORDERS, USD_RATES), graph,
+                                  describe_computation(dropped))
+    ok(output["status"] != "satisfied",
+       "an output-unit request is not satisfied by a filter that dropped the aggregate")
+
+    # Contrast: a COUNT is a row selection, so the same filter still satisfies it.
+    counted = filtered((SelectItem(Aggregate("COUNT", amount)),), "EUR")
+    count = _currency_assessment("how many orders in EUR", (ORDERS, USD_RATES), graph,
+                                 describe_computation(counted))
+    ok(count["status"] == "satisfied" and count["realization"] == "currency_filter",
+       "a count filtered to EUR still satisfies its row-filter intent")
+
+    # Negative: an aggregate filtered to the unit stays the explicit ambiguity it always was.
+    summed = filtered((SelectItem(Aggregate("SUM", amount)),), "EUR")
+    ambiguous = _currency_assessment("total order amount in EUR", (ORDERS, USD_RATES), graph,
+                                     describe_computation(summed))
+    ok(ambiguous["status"] == "ambiguous" and ambiguous["realization"] == "currency_filter",
+       "a summed measure filtered to the unit remains an explicit convert-or-filter question")
+
+
 def test_set_query_requires_every_numeric_branch_to_convert():
     amount = ColumnRef("orders", "amount", SQLType.REAL)
     rate = ColumnRef("fx", "rate_to_usd", SQLType.REAL)
@@ -1009,6 +1043,7 @@ def test_training_database_adapter_preserves_postgres_decimal():
 
 
 TESTS = [
+    test_an_output_unit_request_is_not_satisfied_by_a_query_that_drops_its_aggregate,
     test_intent_is_not_a_bare_currency_phrase,
     test_filter_conversion_and_annotation_matrix,
     test_set_query_requires_every_numeric_branch_to_convert,
