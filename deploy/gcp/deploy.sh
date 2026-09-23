@@ -445,7 +445,7 @@ if ((!SKIP_BOOTSTRAP)); then
     --set-env-vars="KB_PG_HOST=/cloudsql/${connection},KB_PG_DB=world,KB_PG_USER=${serving_role}" \
     --set-secrets="KB_PG_PASSWORD=${serving_secret}:latest" \
     --command=python --args=-m,engine.release_smoke \
-    --tasks=1 --max-retries=0 --task-timeout=900s --cpu=4 --memory=8Gi
+    --tasks=1 --max-retries=0 --task-timeout=900s --cpu=4 --memory=16Gi
   gcloud run jobs execute "$SMOKE_JOB" --project="$PROJECT_ID" --region="$REGION" --wait
 fi
 

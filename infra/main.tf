@@ -281,14 +281,15 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
-      # Sizing: the production instance runs 4 vCPU / 8Gi. The two model stacks (world reasoner +
-      # dimension) sit at ~2-3 GB resident and load CPU-bound in ~96s on 4 vCPU — halving the CPU
-      # roughly doubles that, and 8Gi keeps headroom for request-time tensors, 10 MB bodies, and
-      # the in-memory SQLite copies of uploaded sheets.
+      # Sizing: 8 vCPU / 16Gi. The world reasoner, the dimension encoder and the SQL proposer are
+      # three Qwen2.5-0.5B fp32 stacks (~7.5 GB resident together), so 8Gi no longer leaves headroom
+      # for request-time tensors, 10 MB bodies, and the in-memory SQLite copies of uploaded sheets.
+      # The proposer's beam search dominates own-data latency on CPU: measured on Cloud Run over the
+      # offline regression questions, median 9.5 s per question at 8 vCPU vs 14.0 s at 4 vCPU.
       resources {
         limits = {
-          cpu    = "4"
-          memory = "8Gi"
+          cpu    = "8"
+          memory = "16Gi"
         }
         startup_cpu_boost = true # model load is CPU-bound; boost cuts cold-start time
       }
