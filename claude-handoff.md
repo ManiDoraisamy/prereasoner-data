@@ -7,6 +7,56 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-23 (night) — RELEASED: the 645 planner serves production; the gates found four defects
+
+**Production now** (project `prereasoner-inference`, us-central1; one revision per service, no tags):
+- engine `prereasoner-api-00215-xey` = `engine@sha256:8dbf68ad…` built from `e993476`,
+  8 vCPU / 16 GiB, min 1 / max 3, startup probe 60 x 10 s (Cloud Run's maximum budget).
+- chat `prereasoner-chat-00111-wuc` = `chat@sha256:56d0e305…` built from `959b40d`.
+- jobs `prereasoner-api-ecb-rates-refresh`, `prereasoner-api-retention-cleanup`,
+  `prereasoner-api-release-smoke` on the `e993476` engine image. Hosting was already at HEAD.
+- Rollback to the pre-release pair (each revision keeps its own 4 vCPU/8 GiB config):
+  `gcloud run services update-traffic prereasoner-api --to-revisions prereasoner-api-00107-ck8=100`
+  and `... prereasoner-chat --to-revisions prereasoner-chat-00058-4l7=100`.
+
+**Spider, served path:** 645/1,034 (62.4%) strict, 693 lenient, 304/408 scalar — identical SQL to the
+candidate on 1,034/1,034 (clean commit `6c39942`; `select_query` unchanged since, no dev question has a
+currency intent). Summary JSON `spider/results/full_eval_served_whole_db.json` is written but NOT
+committed (CLAUDE.md: generated benchmark output needs the user's approval).
+
+**What happened, in order**
+1. `d993e91` was flipped while the live demo gate was still running; the gate then failed
+   neartail-catering (the proposer read a world question as an INTERSECT over invented values and
+   `compound_candidate` asked for a decomposition). Rolled back. Fixed in `896e081`: compound = the
+   search's reading only; the compose probe runs only the search (~40 s saved per composed world
+   question); named requests serve the best single query. Full live gate PASS, then flipped.
+2. The stale `rc-c206f8d` tag had kept a warm 4 vCPU engine instance since 09-14 (tagged revisions keep
+   min instances); all tags removed. Autoscaled instances failed the 5-minute startup probe on old and
+   new revisions alike; raised to 600 s (`f234ae0`).
+3. Chrome gate (Claude in Chrome on the owner's signed-in session; 23 conversations opened on the OLD
+   revision first, then continued on the new one) found:
+   - `72cc357` orchestrator: an empty-question tool call surfaced "question is required" as the reply.
+   - `5ade6c3` WRONG answer on complex-category-gaps: the leaf contract accepted any aggregate, so a
+     product-name ordering was served for "top 2 category names by revenue" (and a units-for-spend
+     customer ranking went unnoticed). Leaves now sum and rank by the measure the question names.
+   - `959b40d` orchestrator: "This is in euros" failed when the model wrote the table as "Budget";
+     the column-as-table repair now accepts a case-only difference.
+4. `tests.run_all` (all 32 suites incl. live Anthropic) PASS; the live engine suites found the fourth:
+   `e993476` "total order amount in KWD" served an empty table instead of declining (a beam dropped
+   the SUM and the currency spec read any aggregate-less query as a filter). Live test_geo 61/61.
+5. Final Chrome evidence: existing conversations 48/48 follow-ups correct (5 after one retry: 4 complex
+   turns timed out under three concurrent complex sessions, 1 Sonnet rewrite); fresh non-complex 61/63
+   first pass, both misses 8/8 on re-run; complex on the fixed engine 11/11; formfacade-leads 5/5 on the
+   final pair. Old revision baseline: 22/24 prompts. 55 gate conversations remain in the owner's account.
+6. Production latency (147 gate turns): one engine call median 13.3 s (p90 35.3 s); decompositions
+   median 60.2 s (p90 140.4 s).
+
+**Open / for the user**
+- Capacity: one request at a time per engine instance; concurrent complex questions can exceed the
+  240 s turn budget. GPU or a quantized runtime is the lever (user decision; cost vs latency).
+- Pre-existing: "schema interpreter unavailable: ValueError" in every container since 09-14 (task chip).
+- Approve (or not) committing `full_eval_served_whole_db.json`; delete or keep the 55 gate conversations.
+
 ## 2026-09-23 (late) — Took over from Codex: the 645 candidate becomes the ONE served planner
 
 User asked: use the 62.4% candidate, one clean source of truth, understandable docs, deploy in

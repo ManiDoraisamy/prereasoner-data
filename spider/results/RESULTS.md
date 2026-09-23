@@ -1,11 +1,49 @@
 # Spider Results
 
-This is the current, reproducible measurement for the deterministic typed-AST planner. Both summary
-artifacts were generated with the serving-faithful selector (`serving_top1`, max 25 candidates) over the
-Spider dev set: 1,034 examples and 20 databases. Each JSON records its exact source commit, code hashes,
-model hashes, settings, and `worktree_dirty=false`.
+This is the current, reproducible measurement of the served own-data planner:
+`engine/tables.py:TableQuery.select_query` — the deterministic typed-AST search (25 candidates), the
+d2 SQL proposer (4 beams, every line imported, validated and re-rendered), in-memory pool execution, and
+the linear arbiter (`engine/data/sql_arbiter.json`). It was measured through the production entry point
+(`spider/probe/full_eval.py`, `--selection served`, SQL backend) over the Spider dev set: 1,034 examples
+and 20 databases. The summary JSON records its exact source commit, code and model hashes, settings, and
+`worktree_dirty=false`.
 
-Last reproduced: **2026-09-06** from clean source commit `93bc1b3`.
+Measured: **2026-09-23** from clean source commit `6c39942` (tag `served_whole_db`). This planner serves
+production since 2026-09-23 (engine revision built from `e993476`).
+
+| Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
+|---|---|---:|---:|---:|
+| `whole_db` — all tables, gold-blind (standard Spider comparison) | `6c39942` | **645/1,034 (62.4%)** | **693/1,034 (67.0%)** | **304/408 (74.5%)** |
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 246 | 195 | 197 | 142/173 |
+| medium | 446 | 443 | 277 | 309 | 73/101 |
+| hard | 174 | 170 | 98 | 113 | 55/77 |
+| extra | 166 | 165 | 75 | 74 | 34/57 |
+| **all** | **1,034** | **1,024** | **645** | **693** | **304/408** |
+
+Ten examples raise in the AST search stage (the pool is empty or nothing executes); all 1,034 route to the
+own-data planner, as Spider exercises no world knowledge.
+
+**Parity with the measured candidate.** The served selection reproduces the evaluator-injected candidate
+(`arbiter_s2_d2`, 645/1,034, below) on every example: identical SQL on **1,034/1,034**. The strict
+transition matrix is therefore 0 wins, 0 losses, 645 unchanged-correct and 389 unchanged-wrong. The
+commits after `6c39942` changed serving only under an analysis context (compound questions, the
+single-query serving contract, decomposition leaves), the orchestrator, and the currency calculation
+check. `select_query` itself is unchanged, and no dev question carries a currency intent, so this
+measurement applies to the deployed code.
+
+**Latency.** The run's per-question `prediction_seconds` on a shared 8-core workstation CPU (fp32, other
+jobs running): median 23.1 s, mean 25.4 s, p90 42.0 s, max 96.3 s. Production on Cloud Run
+(8 vCPU / 16 GiB) during the release gate, end to end including the conversational model: turns with one
+engine call median 13.3 s (p90 35.3 s, n=117); decomposed questions median 60.2 s (p90 140.4 s, n=27).
+Beam generation dominates; inference hardware is the lever.
+
+### Previous planner: deterministic search only (2026-09-06)
+
+Measured from clean source commit `93bc1b3` with the serving-faithful selector of its time
+(`serving_top1`, max 25 candidates). Kept as the baseline of the tables below.
 
 | Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
 |---|---|---:|---:|---:|
@@ -18,7 +56,7 @@ oracle removes **75 strict misses (7.3 percentage points)**, **98 lenient misses
 scalar misses (5.6 points)**. This is the measured table-selection opportunity, not a claim that oracle
 tables are available in production.
 
-## Difficulty
+## Difficulty (previous planner, `93bc1b3`)
 
 ### `whole_db`
 
@@ -243,7 +281,7 @@ distance to 80%.
 `full_eval_arbiter_s2_d2_gold.json` records **689/1,034 (66.6%) strict** for the
 standing d2-beam arbiter on `gold_tables`, versus deterministic 437 and d2 greedy
 proposer policy 656. This is an oracle-schema sanity check, not whole-db accuracy.
-The standing whole-db result remains 645/1,034 (62.4%); nothing is promoted.
+The standing whole-db result was 645/1,034 (62.4%); it was promoted later the same day and reproduced through the served path (top of this file).
 Per-example records and the summary carry the run's original code/artifact identity.
 
 ### Relabel takeover: corrected shard feature namespaces (2026-09-23)
