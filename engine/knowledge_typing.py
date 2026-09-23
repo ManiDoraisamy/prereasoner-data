@@ -32,18 +32,17 @@ class KnowledgeTypingMixin:
         return router
 
     def _schema_interpreter(self):
-        """Load the class interpreter once; source grounding survives a load failure."""
+        """Load the class interpreter once. It is part of the promoted bundle, so a load failure
+        is an error: ``KnowledgeQuery`` loads it at construction (a broken bundle fails the
+        container's startup probe) and the in-image regression gate loads it at build.
+        Swallowing that failure once hid a broken bundle in production for at least nine days
+        (2026-09-14 to 2026-09-23) while every health check passed."""
         interpreter = self.__dict__.get("_schema_interp")
         if interpreter is None:
-            try:
-                from engine.schema_model import SchemaInterpreter
+            from engine.schema_model import SchemaInterpreter
 
-                interpreter = SchemaInterpreter(shared=(self.qwen, self.tok))
-            except Exception as error:  # noqa: BLE001 - deterministic grounding remains available
-                print(f"[knowledge_query] schema interpreter unavailable: {type(error).__name__}", flush=True)
-                interpreter = False
-            self._schema_interp = interpreter
-        return interpreter or None
+            interpreter = self._schema_interp = SchemaInterpreter(shared=(self.qwen, self.tok))
+        return interpreter
 
     def _grounds(self, cells, world_type):
         """Return whether enough distinct cells have exact keys for ``world_type``."""
@@ -138,22 +137,21 @@ class KnowledgeTypingMixin:
             routes, typing = {}, []
 
         interpreter = self._schema_interpreter()
-        if interpreter is not None:
-            try:
-                report = interpreter.interpret_table(table)
-                typing.append(
-                    {
-                        "table": table["name"],
-                        "column": "*",
-                        "kind": "schema_class",
-                        "classes": report["classes"],
-                        "properties": [prop for prop in report["properties"] if prop["fired"]],
-                        "abstained": report["abstained"],
-                        "ontology_version": report["ontology_version"],
-                        "model_artifact_sha256": report["model_artifact_sha256"],
-                        "input_sha256": report["input_sha256"],
-                    }
-                )
-            except Exception as error:  # noqa: BLE001 - class evidence never authorizes a join
-                print(f"[knowledge_query] schema class evidence failed: {type(error).__name__}", flush=True)
+        try:
+            report = interpreter.interpret_table(table)
+            typing.append(
+                {
+                    "table": table["name"],
+                    "column": "*",
+                    "kind": "schema_class",
+                    "classes": report["classes"],
+                    "properties": [prop for prop in report["properties"] if prop["fired"]],
+                    "abstained": report["abstained"],
+                    "ontology_version": report["ontology_version"],
+                    "model_artifact_sha256": report["model_artifact_sha256"],
+                    "input_sha256": report["input_sha256"],
+                }
+            )
+        except Exception as error:  # noqa: BLE001 - class evidence never authorizes a join
+            print(f"[knowledge_query] schema class evidence failed: {type(error).__name__}", flush=True)
         return routes, typing

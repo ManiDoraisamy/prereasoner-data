@@ -436,3 +436,40 @@ execution-feature reranking, the proposer-first policy, the two-proposer pilot l
 slots for the second proposer were constant with coefficient 0.0 and are dropped with bit-identical
 scores), and value-linked prompts. `sqlglot` becomes a serving dependency. The proposer's beam search
 dominates own-data request time on CPU; `DEVICE` places it on a GPU when one is provisioned.
+
+## A LoRA adapter's identity is its model files; the Schema.org interpreter must load (2026-09-23)
+
+From at least 2026-09-14, every production engine container logged `[knowledge_query] schema
+interpreter unavailable: ValueError` when it first routed a table. `SchemaInterpreter` refused the
+promoted head as "trained against a different encoder adapter". The encoder identity the head
+records hashed every file in `engine/data/qwen_lora`. The machine that trained and promoted the head
+held a stale `README.md` there, a PEFT model card from an earlier adapter, which
+`weights_manifest.json` neither pins nor fetches, so no image could reproduce the identity. The
+serving loader caught every exception, printed only its type name, and served without the
+interpreter. Both the learned column router and table-level class evidence were off. The health
+check, the release smoke and the live gates still passed, because exact source keys, not the class
+model, authorize a world join.
+
+A LoRA adapter's identity is now its model files: `engine/artifact_provenance.py:adapter_sha256`
+hashes exactly `adapter_config.json` and `adapter_model.safetensors` and raises when either is
+missing; `semantic_encoder_fingerprint` is the base-model pin plus that identity. Every adapter
+identity uses it: the interpreter's check, Schema.org training and promotion, the unified-encoder
+promotion (its inline copy of the formula is gone), the SQL proposer and its promotion (its private
+file list and temporary-directory hash are gone), and the Spider evaluator's provenance. For a
+directory holding exactly those files the digest equals the old whole-directory hash, so the
+proposer/arbiter pairing and every identity recorded from a clean directory stay valid.
+
+The promoted head's identity was re-recorded through `training/schema_org/promote.py`, the one
+writer, which re-ran every gate: `c3f61d5e…` became `ea5bdbf0…`. The head weights (`cef8a43c…`),
+thresholds and class signatures are byte-identical, and `schema_training_manifest.json` carries an
+`identity_corrections` record. The correction is sound because the old whole-directory hash of
+today's adapter files plus that README reproduces the recorded `c3f61d5e…` exactly: the head was
+trained on these adapter files.
+
+A silent downgrade can no longer ship. The interpreter is part of the bundle: `KnowledgeQuery`
+loads it at construction, so a bundle it cannot load fails the container's startup probe, and the
+in-image regression gate (`regress/run_regression.py:run_bundle_checks`) loads it at build, so such
+an image is never pushed. The documented "degrades safely without the head" contract is withdrawn:
+bundle validation already requires the head, so that path was reachable only through integrity
+failures like this one. With the interpreter restored, production again runs learned column routing
+and records class evidence; exact source keys still authorize every world join.

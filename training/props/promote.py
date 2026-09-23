@@ -14,7 +14,7 @@ import shutil
 import tempfile
 
 from engine.artifact_provenance import (
-    canonical_json_sha256, sha256_file, sha256_tree, validate_weight_bundle,
+    semantic_encoder_fingerprint, sha256_file, sha256_tree, validate_weight_bundle,
 )
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 
@@ -95,11 +95,10 @@ def promote(source: Path, destination: Path, *, revision: str | None, local_only
         raise ValueError("release report encoder metadata hash differs from candidate")
     if artifacts.get("qwen_lora_props") != sha256_tree(source / "qwen_lora_props"):
         raise ValueError("release report LoRA hash differs from candidate")
-    expected_encoder = canonical_json_sha256({
-        "base_model_id": QWEN_MODEL_ID,
-        "base_model_revision": QWEN_REVISION,
-        "qwen_lora_sha256": artifacts["qwen_lora_props"],
-    })
+    # The identity serving computes after this promotion installs the adapter's model files.
+    expected_encoder = semantic_encoder_fingerprint(
+        source / "qwen_lora_props", QWEN_MODEL_ID, QWEN_REVISION
+    )
     schema_meta_path = destination / "schema_property_model.json"
     if not schema_meta_path.is_file():
         raise ValueError("runtime Schema.org head metadata is missing")

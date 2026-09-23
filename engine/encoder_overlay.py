@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from engine.artifact_provenance import sha256_tree, validate_weight_bundle
+from engine.artifact_provenance import validate_weight_bundle
 from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR, DEVICE
 from engine.tables import TableQuery, MODEL_ID
 
@@ -24,7 +24,6 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     from engine.encoder_model import RelationalModel
     d = Path(deploy_dir)
     obj.model_bundle_sha256 = validate_weight_bundle(d)
-    obj.encoder_adapter_sha256 = sha256_tree(d / "qwen_lora")
     obj.encoder_data_dir = str(d.resolve())
     pt = torch.load(d / "encoder_meta.pt", map_location="cpu", weights_only=True)
     obj.alloc = pt["alloc"]; obj.nc = obj.alloc["n_content"]

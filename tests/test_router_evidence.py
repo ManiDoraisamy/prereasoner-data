@@ -187,6 +187,49 @@ def test_attach_typing_is_additive_and_safe():
     print("  PASS  _attach_typing additive (present iff typed), safe on non-dict")
 
 
+def _broken_interpreter(*_args, **_kwargs):
+    raise ValueError("Schema.org property head was trained against a different encoder adapter")
+
+
+def test_interpreter_load_failure_raises_instead_of_disabling_evidence():
+    # The loader used to catch this, print only the exception's type name, and cache the interpreter as
+    # unavailable: production served every world question without class evidence while health checks passed.
+    qw = _bare_qw()
+    qw.qwen = qw.tok = None
+    with patch("engine.schema_model.SchemaInterpreter", _broken_interpreter):
+        try:
+            qw._schema_interpreter()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a Schema.org interpreter load failure was swallowed")
+    assert "_schema_interp" not in qw.__dict__, "a failed load was cached"
+    print("  PASS  an interpreter load failure raises instead of disabling class evidence")
+
+
+def test_engine_construction_loads_the_interpreter():
+    # KnowledgeQuery loads the interpreter with the rest of its models, so a bundle the interpreter
+    # cannot load fails the container's startup probe instead of the first world question.
+    import engine.knowledge_query as knowledge_query
+
+    def _encoder(obj, _deploy_dir):
+        obj.qwen = obj.tok = None
+
+    with (
+        patch.object(knowledge_query.EntityQuery, "__init__", lambda self, _deploy_dir: None),
+        patch.object(knowledge_query, "load_encoder", _encoder),
+        patch.object(knowledge_query, "load_sql_selection", lambda obj, _deploy_dir: None),
+        patch("engine.schema_model.SchemaInterpreter", _broken_interpreter),
+    ):
+        try:
+            KnowledgeQuery()
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("KnowledgeQuery was constructed without its Schema.org interpreter")
+    print("  PASS  constructing the engine loads the Schema.org interpreter")
+
+
 TESTS = [
     test_evidence_reconstructs_the_decode,
     test_evidence_is_ordered_fired_first,
@@ -196,6 +239,8 @@ TESTS = [
     test_emit_is_noop_without_a_buffer_and_dedups,
     test_table_sig_is_value_sensitive,
     test_source_grounding_is_the_only_model_abstention_fallback,
+    test_interpreter_load_failure_raises_instead_of_disabling_evidence,
+    test_engine_construction_loads_the_interpreter,
     test_attach_typing_is_additive_and_safe,
 ]
 

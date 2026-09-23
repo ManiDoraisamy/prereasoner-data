@@ -102,7 +102,7 @@ def gate(candidate: Path) -> list[str]:
     if meta.get("base_model") != BASE_MODEL_ID or meta.get("base_model_revision") != BASE_MODEL_REVISION:
         problems.append("candidate base model identity differs from the pinned training/serving identity")
     expected_encoder = semantic_encoder_fingerprint(
-        RUNTIME_DIR, BASE_MODEL_ID, BASE_MODEL_REVISION
+        RUNTIME_DIR / "qwen_lora", BASE_MODEL_ID, BASE_MODEL_REVISION
     )
     if meta.get("encoder_artifact_sha256") != expected_encoder:
         problems.append(

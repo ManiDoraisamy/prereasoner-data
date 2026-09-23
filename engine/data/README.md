@@ -67,7 +67,10 @@ engine.fetch_weights` retrieves it and `validate_weight_bundle` verifies it. It 
 required-artifact assertion, so a container that somehow lacks it fails at start rather than serving
 silently degraded.
 
-A working copy that has not fetched weights still degrades safely rather than crashing:
-`SchemaInterpreter` fails to construct, `engine/knowledge_query` logs it loudly, and exact source-key
-grounding remains available. Class-based family proposals and class evidence require the head, which is
-why `tests/test_route_wired.py` asserts them only when that manifested artifact is present.
+The head records the encoder it was trained on (`encoder_artifact_sha256`):
+`engine/artifact_provenance.py:semantic_encoder_fingerprint`, the base-model pin plus the adapter's model
+files (`qwen_lora/adapter_config.json` and `adapter_model.safetensors`, never a README or other stray file).
+`SchemaInterpreter` refuses any other adapter. The interpreter is part of the bundle, not an optional extra:
+`KnowledgeQuery` loads it at construction, so a bundle it cannot load fails the container's startup probe,
+and the in-image regression gate (`regress/run_regression.py:run_bundle_checks`) loads it at build, so such
+an image is never pushed.

@@ -537,7 +537,7 @@ def main():
         "cap": args.cap,
         "timeout": args.timeout,
     }
-    from engine.artifact_provenance import fingerprint_paths, sha256_tree
+    from engine.artifact_provenance import adapter_sha256, fingerprint_paths
     from engine.config import DATA_DIR
 
     # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
@@ -575,8 +575,8 @@ def main():
                 for name in deterministic_code
             },
         }),
-        "encoder_adapter": sha256_tree(DATA_DIR / "qwen_lora"),
-        "proposer_adapter": sha256_tree(DATA_DIR / "sql_proposer"),
+        "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
+        "proposer_adapter": adapter_sha256(DATA_DIR / "sql_proposer"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}

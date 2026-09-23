@@ -13,6 +13,9 @@ from typing import Any
 from engine.numeric import wire_value
 
 WEIGHTS_MANIFEST = "weights_manifest.json"
+# The files that ARE a PEFT LoRA adapter. `save_pretrained` also writes a README.md model card, which
+# is neither pinned by weights_manifest.json nor shipped in the image.
+ADAPTER_FILES = ("adapter_config.json", "adapter_model.safetensors")
 
 
 def sha256_file(path: str | Path) -> str:
@@ -40,14 +43,34 @@ def sha256_tree(path: str | Path) -> str:
     return digest.hexdigest()
 
 
+def adapter_sha256(adapter_dir: str | Path) -> str:
+    """Identity of a LoRA adapter: its model files, and nothing else in the directory.
+
+    Hashing the whole directory made the identity depend on files that never ship. A stale local
+    README.md in engine/data/qwen_lora entered the Schema.org head's recorded encoder identity, so
+    every production container, which holds only the manifest-pinned files, refused to load that
+    head (seen from 2026-09-14 until 2026-09-23). For a directory holding exactly ADAPTER_FILES the
+    digest equals ``sha256_tree``, so identities recorded from clean directories stay valid.
+    """
+    root = Path(adapter_dir)
+    missing = [name for name in ADAPTER_FILES if not (root / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"LoRA adapter {root} is missing {missing}")
+    digest = hashlib.sha256()
+    for name in sorted(ADAPTER_FILES):
+        digest.update(name.encode("utf-8"))
+        digest.update(sha256_file(root / name).encode("ascii"))
+    return digest.hexdigest()
+
+
 def semantic_encoder_fingerprint(
-    data_dir: str | Path, base_model_id: str, base_model_revision: str
+    adapter_dir: str | Path, base_model_id: str, base_model_revision: str
 ) -> str:
-    """Identity of the encoder inputs a separately trained head depends on."""
+    """Identity of the encoder a separately trained head depends on: base model pin + adapter."""
     return canonical_json_sha256({
         "base_model_id": base_model_id,
         "base_model_revision": base_model_revision,
-        "qwen_lora_sha256": sha256_tree(Path(data_dir) / "qwen_lora"),
+        "qwen_lora_sha256": adapter_sha256(adapter_dir),
     })
 
 

@@ -73,11 +73,13 @@ class SchemaInterpreter:
         recorded_encoder = meta.get("encoder_artifact_sha256")
         if recorded_encoder is not None:
             live_encoder = semantic_encoder_fingerprint(
-                DATA_DIR, BASE_MODEL_ID, BASE_MODEL_REVISION
+                DATA_DIR / "qwen_lora", BASE_MODEL_ID, BASE_MODEL_REVISION
             )
             if recorded_encoder != live_encoder:
                 raise ValueError(
-                    "Schema.org property head was trained against a different encoder adapter"
+                    "Schema.org property head was trained against a different encoder adapter: "
+                    f"the head records {recorded_encoder[:12]}, the bundle's adapter is "
+                    f"{live_encoder[:12]}"
                 )
         self.meta = meta
         # The head's thresholds and the class signatures are calibrated together against ONE corpus.

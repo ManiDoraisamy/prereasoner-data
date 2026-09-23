@@ -419,7 +419,7 @@ def main() -> None:
                 labels[row, index] = 1.0
 
     encoder_artifact_sha256 = semantic_encoder_fingerprint(
-        DATA_DIR, BASE_MODEL_ID, BASE_MODEL_REVISION
+        DATA_DIR / "qwen_lora", BASE_MODEL_ID, BASE_MODEL_REVISION
     )
     embeddings = _embeddings(
         instances, cache_path=Path(args.cache), device=device,

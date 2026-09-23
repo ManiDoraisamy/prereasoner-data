@@ -23,8 +23,15 @@ from types import SimpleNamespace
 
 import numpy as np
 
-from engine.artifact_provenance import canonical_json_sha256, sha256_file
-from engine.config import DATA_DIR
+from engine.artifact_provenance import (
+    ADAPTER_FILES,
+    adapter_sha256,
+    canonical_json_sha256,
+    semantic_encoder_fingerprint,
+    sha256_file,
+    sha256_tree,
+)
+from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR
 from engine.fetch_weights import WEIGHTS
 
 MANIFEST = Path("training/schema_org/data/semantic_manifest.json")
@@ -368,6 +375,56 @@ def test_source_entity_cannot_span_semantic_splits():
     print("  PASS  source entity identities cannot cross semantic splits")
 
 
+def test_encoder_identity_is_the_adapter_model_files():
+    # PEFT's save_pretrained writes a README.md beside the adapter. The identity used to hash the whole
+    # directory, so a stale local README entered the Schema.org head's recorded encoder identity, and every
+    # production container (which holds only the manifest-pinned files) refused to load the head.
+    with tempfile.TemporaryDirectory() as directory:
+        adapter = Path(directory) / "qwen_lora"
+        adapter.mkdir()
+        (adapter / "adapter_config.json").write_bytes(b'{"r": 16}')
+        (adapter / "adapter_model.safetensors").write_bytes(b"weights")
+        clean = semantic_encoder_fingerprint(adapter, "base", "revision")
+        assert adapter_sha256(adapter) == sha256_tree(adapter), (
+            "an identity recorded from a clean adapter directory must stay valid"
+        )
+        (adapter / "README.md").write_text("model card", encoding="utf-8")
+        assert semantic_encoder_fingerprint(adapter, "base", "revision") == clean, (
+            "a file that is not part of the adapter model changed the encoder identity"
+        )
+        (adapter / "adapter_model.safetensors").write_bytes(b"retrained")
+        assert semantic_encoder_fingerprint(adapter, "base", "revision") != clean, (
+            "changed adapter weights kept the old encoder identity"
+        )
+        (adapter / "adapter_model.safetensors").unlink()
+        try:
+            adapter_sha256(adapter)
+        except FileNotFoundError:
+            pass
+        else:
+            raise AssertionError("an incomplete adapter produced an identity")
+    print("  PASS  encoder identity = base model pin + the adapter's model files; a README cannot change it")
+
+
+def test_promoted_head_is_paired_with_the_promoted_adapter():
+    # SchemaInterpreter refuses a head whose recorded encoder identity is not the bundle's adapter.
+    adapter = DATA_DIR / "qwen_lora"
+    if not all((adapter / name).is_file() for name in ADAPTER_FILES):
+        print("  SKIP  runtime adapter not fetched (python -m engine.fetch_weights)")
+        return
+    live = semantic_encoder_fingerprint(adapter, BASE_MODEL_ID, BASE_MODEL_REVISION)
+    meta = json.loads(MODEL_META.read_text(encoding="utf-8"))
+    training = json.loads((DATA_DIR / "schema_training_manifest.json").read_text(encoding="utf-8"))
+    assert meta["encoder_artifact_sha256"] == live, (
+        f"the promoted Schema.org head records encoder {meta['encoder_artifact_sha256'][:12]}, "
+        f"but the promoted adapter is {live[:12]}: the interpreter cannot load"
+    )
+    assert training["model"]["encoder_artifact_sha256"] == live, (
+        "the Schema.org training manifest and the promoted adapter disagree on the encoder"
+    )
+    print(f"  PASS  the promoted head is paired with the promoted adapter ({live[:12]})")
+
+
 TESTS = [
     test_legacy_basis_is_the_documented_size,
     test_trained_basis_covers_the_legacy_one,
@@ -380,6 +437,8 @@ TESTS = [
     test_split_is_drawn_per_derivation_group,
     test_artifacts_agree_on_corpus_identity,
     test_runtime_bundle_is_fully_fetchable_and_pinned,
+    test_encoder_identity_is_the_adapter_model_files,
+    test_promoted_head_is_paired_with_the_promoted_adapter,
     test_schema_embedding_cache_is_bound_to_its_encoder,
     test_source_entity_cannot_span_semantic_splits,
 ]

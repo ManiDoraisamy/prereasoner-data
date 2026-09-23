@@ -10,11 +10,11 @@
     },
     "schema_property_model.json": {
       "note": "tracked in git (not fetched); calibrated runtime artifact installed only by training/schema_org/promote.py",
-      "sha256": "c8819d6bdcd218879ce4aa0768a51ccbc7c50af8c2600c63f7a097d3c7208d86"
+      "sha256": "25ef39d1daed9e6b66eb9f84855eb35250de7b27f9b955c707adc62151b28ba3"
     },
     "schema_training_manifest.json": {
       "note": "tracked in git; immutable Schema.org training provenance installed only by promotion",
-      "sha256": "3655eb6bfecfca812c99174c914590691edd3b71833eec73273c47c29eb1090a"
+      "sha256": "9c8d92e288d706b3095db729bb42279d4f7d502976119678345ba521fdba7b96"
     },
     "sql_arbiter.json": {
       "note": "tracked in git (not fetched); fitted SQL arbiter installed only by training/rank/promote.py",

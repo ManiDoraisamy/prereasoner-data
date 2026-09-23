@@ -5,6 +5,8 @@ Two tiers, run together:
     REAL engine (live routing: compose view-stack vs typed-AST planner) on in-memory SQLite. No Postgres needed.
   * WORLD (iff KB_PG_PASSWORD): the world-model-join golden cases (regress/world_cases.py) against a seeded
     world Postgres — the product's differentiator (city->country resolution, "total amount in France"=270).
+The offline run loads the encoder, SQL proposer and arbiter (Engine) and the Schema.org class interpreter
+(run_bundle_checks) from the image's bundle, so a bundle serving cannot load fails the build.
 
 Exit non-zero if ANY case regresses. Designed to be the test step in cloudbuild.yaml (runs inside the built
 engine image, where torch + the model weights live — GitHub CI can only compile-check, see .github/workflows).
@@ -180,6 +182,37 @@ def run_unit_checks():
     return ["unit:" + f.split()[0] for f in fails]
 
 
+def run_bundle_checks(eng):
+    """The Schema.org class interpreter must load from the bundle baked into THIS image.
+
+    Serving loads it when KnowledgeQuery is constructed, which needs Postgres; the build has none, so
+    this runs the same serving loader on the gate's encoder and decodes one table. Every production
+    container failed this load from 2026-09-14 to 2026-09-23 (the head's recorded encoder identity
+    included a README.md that never ships) while serving swallowed the error."""
+    import math
+
+    from engine.knowledge_typing import KnowledgeTypingMixin
+    print("\n=== MODEL BUNDLE (Schema.org class interpreter) ===")
+    table = {"name": "offices", "columns": ["city", "country"],
+             "rows": [["Paris", "France"], ["Berlin", "Germany"], ["Madrid", "Spain"]]}
+    try:
+        interpreter = KnowledgeTypingMixin._schema_interpreter(eng.enc)
+        report = interpreter.interpret_table(table)
+    except Exception as exc:  # noqa: BLE001 - a load failure is THE failure this gate reports
+        print(f"  FAIL schema_interpreter_loads: {type(exc).__name__}: {exc}")
+        return ["bundle:schema_interpreter_loads"]
+    scores = [prop["score"] for prop in report["properties"]]
+    if len(scores) != len(interpreter.properties) or not all(
+        math.isfinite(score) and 0.0 <= score <= 1.0 for score in scores
+    ):
+        print(f"  FAIL schema_interpreter_decodes: {len(scores)} property scores for "
+              f"{len(interpreter.properties)} trained properties, or a score outside [0, 1]")
+        return ["bundle:schema_interpreter_decodes"]
+    print(f"  ok   schema_interpreter_loads (head {interpreter.identity[:12]}, "
+          f"{len(report['classes'])} class(es) decoded)")
+    return []
+
+
 def run_offline(eng):
     from regress import offline_cases
     print("\n=== OFFLINE tier (non-world text-to-SQL) ===")
@@ -229,7 +262,7 @@ def main():
 
     print("\nloading engine (Qwen LoRA + relational readout)...", flush=True)
     eng = Engine()
-    off_failed = run_offline(eng) + unit_failed
+    off_failed = run_bundle_checks(eng) + run_offline(eng) + unit_failed
 
     world_failed, skipped = ([], True)
     if not args.offline:

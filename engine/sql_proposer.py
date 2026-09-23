@@ -22,7 +22,7 @@ import copy
 from pathlib import Path
 
 from engine import request_timing
-from engine.artifact_provenance import sha256_tree
+from engine.artifact_provenance import adapter_sha256
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 from engine.sql_ast import render_query, validate_query
 from engine.sql_candidate import ScoredQuery
@@ -70,7 +70,7 @@ class SQLProposer:
         ).to(device)
         model = PeftModel.from_pretrained(base, str(adapter_dir)).eval()
         return cls(model, tokenizer, beams=beams, max_new_tokens=max_new_tokens,
-                   device=device, adapter_sha256=sha256_tree(adapter_dir))
+                   device=device, adapter_sha256=adapter_sha256(adapter_dir))
 
     def propose(self, tables: list[dict], question: str, graph, floor: float) -> list[ScoredQuery]:
         """Validated proposals in beam order (best first); possibly empty.

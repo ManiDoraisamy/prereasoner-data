@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import os
 import sys
-from pathlib import Path
 
 CUST = {"name": "customers", "columns": ["name", "city", "remarks"], "rows": [
     ["Ada", "Paris", "package arrived late and damaged, terrible delivery"],
@@ -106,21 +105,13 @@ def main():
 
     # (5) the TABLE-level schema.org class decode is captured too (kind=schema_class). A customers upload is
     # not a servable class, so the honest outcome is abstained=True (or a genuine servable decode) — what must
-    # NEVER happen is the record being absent (evidence off) or internally inconsistent.
-    # The head is gitignored (engine/data/*.pt) but is part of the external manifest-pinned bundle.
-    # Source-only CI deliberately has no large weights, so serving degrades loudly with evidence off and
-    # answers unaffected. A provisioned runtime must carry the head; source-only test runs may skip it.
-    head_present = (Path(__file__).resolve().parents[1]
-                    / "engine" / "data" / "schema_property_head.pt").exists()
+    # NEVER happen is the record being absent (evidence off) or internally inconsistent. The interpreter is
+    # part of the bundle: KnowledgeQuery cannot be constructed without it, so evidence is always expected.
     tbl_t = next((t for t in typing if t.get("kind") == "schema_class"), None)
     print(f"table-level class evidence: "
           f"{ {k: tbl_t[k] for k in ('table', 'abstained', 'ontology_version')} if tbl_t else None }")
     if not tbl_t:
-        if head_present:
-            fails.append("(5) schema head IS present but no schema_class evidence was captured")
-        else:
-            print("   (skipped: schema_property_head.pt absent — evidence-off degradation is the "
-                  "documented contract; see engine/data/README.md)")
+        fails.append("(5) no schema_class evidence was captured")
     else:
         if tbl_t.get("abstained") and tbl_t.get("classes"):
             fails.append(f"(5) abstained but classes non-empty: {tbl_t['classes']}")

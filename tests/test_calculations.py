@@ -32,7 +32,9 @@ from engine.sql_rank import SemanticSignals
 from engine.sql_search import SQLSearcher
 from engine.tables import TableQuery, table_from_rows
 from engine.trace import stream_final
-from engine.artifact_provenance import canonical_json_sha256, sha256_file, sha256_tree
+from engine.artifact_provenance import (
+    semantic_encoder_fingerprint, sha256_file, sha256_tree,
+)
 from engine.model_revisions import QWEN_MODEL_ID, QWEN_REVISION
 from mcp_server.engine_client import shape_reason_response
 from training.props.calculation_contrastive import build_rows, write_rows
@@ -924,6 +926,7 @@ def test_model_promotion_is_atomic_and_marks_unpublished_candidates():
             "encoder_props_meta.pt": b"meta",
             "qwen_lora_props/adapter_config.json": b"{}",
             "qwen_lora_props/adapter_model.safetensors": b"adapter",
+            "qwen_lora_props/README.md": b"model card written by save_pretrained",
         }
         for relative, payload in payloads.items():
             path = source / relative
@@ -954,12 +957,11 @@ def test_model_promotion_is_atomic_and_marks_unpublished_candidates():
             },
         }
         (source / "release_report.json").write_text(json.dumps(report), encoding="utf-8")
+        head_encoder = semantic_encoder_fingerprint(
+            source / "qwen_lora_props", QWEN_MODEL_ID, QWEN_REVISION
+        )
         (destination / "schema_property_model.json").write_text(json.dumps({
-            "encoder_artifact_sha256": canonical_json_sha256({
-                "base_model_id": QWEN_MODEL_ID,
-                "base_model_revision": QWEN_REVISION,
-                "qwen_lora_sha256": report["artifacts"]["qwen_lora_props"],
-            })
+            "encoder_artifact_sha256": head_encoder,
         }), encoding="utf-8")
         files = {
             "encoder.pt": "",
@@ -978,6 +980,10 @@ def test_model_promotion_is_atomic_and_marks_unpublished_candidates():
         ok((destination / "unified_release_report.json").is_file()
            and manifest["training_run"]["code_commit"] == "a" * 40,
            "promotion binds trainer-generated provenance into the runtime manifest")
+        ok(semantic_encoder_fingerprint(destination / "qwen_lora", QWEN_MODEL_ID, QWEN_REVISION)
+           == head_encoder,
+           "the head/adapter pairing promotion checks is the identity serving computes, "
+           "though the candidate adapter carries a README the runtime never receives")
 
 
 def test_decimal_execution_is_exact_and_backend_compatible():

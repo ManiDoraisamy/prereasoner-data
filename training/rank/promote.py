@@ -22,12 +22,13 @@ from pathlib import Path
 import shutil
 import tempfile
 
-from engine.artifact_provenance import sha256_file, sha256_tree, validate_weight_bundle
+from engine.artifact_provenance import (
+    ADAPTER_FILES, adapter_sha256, sha256_file, validate_weight_bundle,
+)
 from engine.sql_rank import SQLArbiter
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_DESTINATION = REPO / "engine" / "data"
-ADAPTER_FILES = ("adapter_config.json", "adapter_model.safetensors")
 
 
 def _atomic_copy(source: Path, destination: Path) -> None:
@@ -46,22 +47,13 @@ def promote(adapter: Path, arbiter_path: Path, destination: Path, *,
             revision: str | None, local_only: bool) -> dict:
     if bool(revision) == local_only:
         raise ValueError("provide exactly one of an immutable revision or local_only=True")
-    missing = [name for name in ADAPTER_FILES if not (adapter / name).is_file()]
-    if missing:
-        raise FileNotFoundError(f"adapter is incomplete: {missing}")
-    staged = Path(tempfile.mkdtemp(prefix=".sql-proposer-", dir=destination))
-    try:
-        for name in ADAPTER_FILES:
-            shutil.copyfile(adapter / name, staged / name)
-        adapter_sha256 = sha256_tree(staged)
-    finally:
-        shutil.rmtree(staged, ignore_errors=True)
+    adapter_identity = adapter_sha256(adapter)       # raises when a model file is missing
     payload = json.loads(arbiter_path.read_text(encoding="utf-8"))
     SQLArbiter.from_payload(payload, str(arbiter_path))       # features + pool contract
     fitted_on = (payload.get("fit") or {}).get("proposer_adapter_sha256")
-    if fitted_on != adapter_sha256:
+    if fitted_on != adapter_identity:
         raise ValueError(f"arbiter was fit on proposer {fitted_on}, not this adapter "
-                         f"({adapter_sha256}); label pools with this adapter and refit")
+                         f"({adapter_identity}); label pools with this adapter and refit")
     manifest_path = destination / "weights_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     if manifest.get("version") != 1 or not isinstance(manifest.get("files"), dict):
@@ -89,7 +81,7 @@ def promote(adapter: Path, arbiter_path: Path, destination: Path, *,
         temporary = Path(handle.name)
     os.replace(temporary, manifest_path)
     fingerprint = validate_weight_bundle(destination)
-    return {"adapter_sha256": adapter_sha256, "bundle": fingerprint, "revision": revision}
+    return {"adapter_sha256": adapter_identity, "bundle": fingerprint, "revision": revision}
 
 
 def main() -> int:

@@ -143,6 +143,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         EntityQuery.__init__(self, deploy_dir)       # bge + Postgres + world metadata + spaCy
         load_encoder(self, deploy_dir)               # ONE MODEL: the trained encoder (operator+bridge+typing)
         load_sql_selection(self, deploy_dir)         # the own-data query proposer + arbiter
+        self._schema_interpreter()                   # Schema.org head: a bundle it cannot load fails here
         # The planner composes a TableQuery (self.q11) for the single-table delegate path. Point it at the SAME
         # models (shared refs — one copy of each in memory) so EVERY path goes through the same weights.
         if getattr(self, "q11", None) is not None:
