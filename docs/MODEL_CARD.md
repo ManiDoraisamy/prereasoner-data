@@ -92,8 +92,9 @@ committed Schema.org artifacts. Runtime validation rejects missing or mismatched
 
 The public bundle is
 [`prereasoner/prereasoner-weights`](https://huggingface.co/prereasoner/prereasoner-weights) at
-immutable revision `0b5c2a5d4de3e488cd366633d95ce922755d3900`. The promoted property-head SHA-256 is
-`cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c`.
+immutable revision `3455714f98cb253ec787473af8a5204c72ad3290`. The promoted property-head SHA-256 is
+`cef8a43cfa1c5f719b9b1a7ef6e977197890d4c86236035049e1be91e9550e0c`; the SQL proposer adapter directory's
+(`sql_proposer/`) tree SHA-256 is `d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf`.
 `python -m engine.fetch_weights` downloads that revision without a token and verifies every digest.
 
 ## Intended Uses

@@ -167,7 +167,7 @@ behavior. Never use an ad hoc pod-creation command for repository training.
 | `engine/data/weights_manifest.json` | public weight revision and every runtime SHA-256 |
 
 The public bundle is `prereasoner/prereasoner-weights` at immutable revision
-`0b5c2a5d4de3e488cd366633d95ce922755d3900`. `python -m engine.fetch_weights` downloads and verifies
+`3455714f98cb253ec787473af8a5204c72ad3290`. `python -m engine.fetch_weights` downloads and verifies
 it without requiring a token.
 
 ## Changing The Model

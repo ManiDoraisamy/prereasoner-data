@@ -33,7 +33,6 @@
     "sql_proposer/adapter_model.safetensors": "5e531eadbeced7536db91a5e23fed8f9aa57eb83132ee19d6314ba3e6e9bd752"
   },
   "repository": "prereasoner/prereasoner-weights",
-  "revision": null,
-  "unpublished_local": true,
+  "revision": "3455714f98cb253ec787473af8a5204c72ad3290",
   "version": 1
 }
