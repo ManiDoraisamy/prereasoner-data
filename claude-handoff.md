@@ -7,6 +7,45 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-23 — CURRENT STATE / HANDOFF (relabel blocked on shard0; interim number in)
+
+Factual status only. Nothing running; `pods=0` verified; nothing promoted; deterministic
+serving path untouched.
+
+**Standing serving config: 645/1,034 (62.4%) strict whole_db**, `--selection arbiter` +
+`arbiter_d2.json` over d2-beam pools. **NEW: its gold_tables sanity = 689/1,034 (66.6%)**
+(vs deterministic 437, proposer-policy d2 656) — best gold number of the program; NOT yet
+written to RESULTS.md — please record it.
+
+**Relabel fleet status:**
+- shard1 DONE + downloaded: `relabel/shard1_d2beam.jsonl` (1600), `shard1_d4greedy.jsonl` (1600)
+- shard2 DONE + downloaded: `shard2_d2beam.jsonl` (1597), `shard2_d4greedy.jsonl` (1597)
+- shard0 NOT DONE: labeled ~1.5h then its pod dropped SSH; partial output was on the pod and
+  is LOST. Relaunch then failed HTTP 500 "no instances available" (RunPod capacity, no cost,
+  no pod). shard0 must be rebuilt: ~40 dbs (its list + tracking_grants_for_research, inn_1;
+  staged at C:/tmp/shard0_dbs). Options: pod when capacity frees, OR local CPU (~6h for the
+  d2beam pass the serving refit needs; d4greedy pass only feeds the offline-mixed analysis).
+
+**Interim serving-faithful refit (shards 1+2+pilot d2beam, missing shard0), diagnostic-only:**
+S2 held-out val = **223/416 (53.6%)** vs the pilot's 224 (d2-only) and 237 (mixed). Reading:
+more d2 training data did NOT move held-out selection — the d2-only arbiter is at its data
+ceiling. The relabel's remaining value is the MIXED/coverage tracks, not more d2 labels.
+Artifacts: `relabel/arbiter_interim.json`, `refit_interim_report.json`.
+
+**To finish (one path to the next serving number):**
+1. Rebuild shard0 d2beam (pod or local) → 3 complete d2beam sources.
+2. `scratchpad/run_refit.sh` → `arbiter_full_d2only.json` + `refit_d2only_report.json`
+   (serving-faithful) and `refit_mixed_offline_report.json` (offline-only, NOT servable).
+3. Serving-faithful dev run: `full_eval --selection arbiter --proposer .../d2 --proposer-beams 4
+   --arbiter relabel/arbiter_full_d2only.json --tag arbiter_full_d2only`.
+4. Record vs 645; gold sanity pair; RESULTS.md + memory.
+
+**All 3 Codex gates resolved (details in the dated section below):** d2-only refit (concern 1);
+full 16-db holdout re-reserved, 124 fit dbs, `relabel/full_split.json` (concern 2);
+`relabel/provenance.json` = fleet code c471e29 + frozen hashes (concern 3).
+
+**Note:** this log stays factual (status/results/decisions); no reasoning/transcript extraction.
+
 ## 2026-09-23 — Resolved Codex's 3 refit gates before spending an eval cycle
 
 Read chatgpt-handoff.md. All three concerns confirmed and fixed BEFORE the merge/dev-run:
