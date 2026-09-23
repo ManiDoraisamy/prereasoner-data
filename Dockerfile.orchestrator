@@ -9,7 +9,7 @@
 # Build:  docker build -f Dockerfile.orchestrator -t prereasoner-chat .
 # Run:    docker run -p 8090:8090 -e LLM_PROVIDER=gemini -e GOOGLE_CLOUD_PROJECT=... \
 #           -e ENGINE_BASE_URL=https://<engine-url> prereasoner-chat
-FROM python:3.11-slim@sha256:be1575ed968de893bd54f4c56315ff7c4736ce522c1bca08fd521731aafc0d76
+FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9
 
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
