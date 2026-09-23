@@ -6,7 +6,7 @@
 torch==2.13.0
 transformers==5.10.4
 tokenizers==0.22.2
-safetensors==0.7.0
+safetensors==0.8.0
 accelerate==1.15.0
 peft==0.19.1                    # loads the qwen_lora and sql_proposer adapters onto the base Qwen
 sqlglot==30.18.0                # parses proposer SQL into the typed AST (engine/sql_import.py)
