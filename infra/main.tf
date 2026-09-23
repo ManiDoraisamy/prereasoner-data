@@ -261,7 +261,7 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.run.email
 
     scaling {
-      min_instance_count = var.min_instances # default 1: see the variable — cold start is ~96s
+      min_instance_count = var.min_instances # default 1: see the variable — cold start is 2-3 min
       max_instance_count = 3
     }
 

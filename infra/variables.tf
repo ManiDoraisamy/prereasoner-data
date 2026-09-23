@@ -217,11 +217,11 @@ variable "enrichment_active_datasets" {
 
 variable "min_instances" {
   description = <<-EOT
-    Minimum warm engine instances. 1 is the production default: the engine loads its models at
-    cold start (about 35s on 8 vCPU; past Firebase Hosting's ~60s proxy timeout on smaller
-    instances, so a first visitor's answer falls back to the RTDB stream). A warm 4-CPU/8Gi
-    instance cost roughly $30-35/month at idle rates; the 8-CPU/16Gi instance idles at about
-    twice that. It removes the cold-start first impression. Use 0 for disposable dev environments.
+    Minimum warm engine instances. 1 is the production default: a cold start pulls the image and
+    loads three model stacks, 2-3 minutes on 8 vCPU (measured on Cloud Run 2026-09-23), far past
+    Firebase Hosting's ~60s proxy timeout, so a first visitor's answer would fall back to the RTDB
+    stream. A warm 4-CPU/8Gi instance cost roughly $30-35/month at idle rates; the 8-CPU/16Gi
+    instance idles at about twice that. Use 0 for disposable dev environments.
   EOT
   type        = number
   default     = 1
