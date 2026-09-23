@@ -26,6 +26,7 @@ import httpx
 from engine import dataset_attestation, request_timing
 from engine.analysis import AnalysisError, validate_analysis_spec
 from engine.decomposition import DecompositionError, validate_decomposition
+from engine.request_validation import RequestValidationError, validate_question
 from mcp_server import engine_client
 from mcp_server.descriptions import DESCRIBE_DESC, QUERY_DESC
 from orchestrator.llm import create_client
@@ -463,6 +464,20 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # Derivable per-call jobId so the browser can subscribe live; announce BEFORE the call.
                         job_id = f"{turn_id}_{call_idx}" if turn_id else uuid.uuid4().hex
                         question = forced_question if forced_analysis else (block.input or {}).get("question", "")
+                        try:
+                            question = validate_question(question)
+                        except RequestValidationError as exc:
+                            # The model repairs its own malformed call. Sent on, the engine would
+                            # reject it, and that terminal error would become the user's reply.
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": block.id,
+                                "content": json.dumps({
+                                    "status": "error",
+                                    "error": f"{exc}: call the tool again with the question to answer",
+                                }),
+                                "is_error": True,
+                            })
+                            continue
                         decomposition = (block.input or {}).get("decomposition")
                         # The system prompt (rules 3-4) owns question fidelity: a standalone question is
                         # passed in the user's exact words, and a follow-up rewrite carries every

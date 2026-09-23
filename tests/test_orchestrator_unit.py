@@ -367,6 +367,68 @@ def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
     assert len(result["traces"]) == 2
 
 
+def test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_the_engine():
+    """The Chrome release gate caught this: the model called the query tool with an empty
+    question, the engine rejected it, and the engine's validation message became the reply
+    ("question is required"). The malformed call now returns to the model as a tool error it
+    repairs in the same turn; the engine only ever sees the corrected question."""
+    question = "total amount in France in US dollars after customer tier discount"
+    analysis = {"action": "create", "slug": "discounted_total"}
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            model_calls.append(kwargs)
+            if len(model_calls) == 1:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="empty",
+                    input={"question": "  ", **analysis},
+                )])
+            elif len(model_calls) == 2:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="repaired",
+                    input={"question": question, **analysis},
+                )])
+            else:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="The discounted total is ready.",
+                )])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        return {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["1000.17"]]}}
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query):
+            return await orchestrator._run_turn(
+                "reduce the discount from total amount based on customer's tier",
+                [{"name": "orders", "data": "tier,amount\nGold,100\n"}], [],
+                engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model",
+            )
+
+    result = asyncio.run(run())
+    assert [call[0][0] for call in engine_calls] == [question]
+    repair = next(
+        block
+        for message in model_calls[1]["messages"]
+        if message["role"] == "user" and isinstance(message["content"], list)
+        for block in message["content"]
+        if block.get("tool_use_id") == "empty"
+    )
+    assert repair["is_error"] and "question is required" in repair["content"]
+    assert result["reply"] == "1000.17"
+    assert "question is required" not in result["reply"]
+    assert len(result["traces"]) == 1
+
+
 def test_decomposition_contract_has_no_schema_or_code_escape_hatch():
     schema = next(
         tool for tool in orchestrator.CLAUDE_TOOLS
@@ -766,6 +828,7 @@ TESTS = [
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,
+    test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_the_engine,
     test_decomposition_contract_has_no_schema_or_code_escape_hatch,
     test_an_invalid_proposal_gets_one_correction_then_a_plain_clarification,
     test_an_engine_rejected_proposal_gets_one_correction_then_answers,
