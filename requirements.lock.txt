@@ -2070,9 +2070,9 @@ tqdm==4.70.0 \
     #   peft
     #   spacy
     #   transformers
-transformers==5.10.4 \
-    --hash=sha256:8c5b99b141b53619435a76629b0284f04d27ff46d788b463fc0ecb23b8ff130e \
-    --hash=sha256:de37741509e64ccb88f7f5708beaf5b1914df447f5fe659f9c0fd95950413168
+transformers==5.17.0 \
+    --hash=sha256:78ec1ce21579b38dfb83950a0658cd119f87212a2fcfdff478096ce9d6c03801 \
+    --hash=sha256:a153be279169b55b92d8000bf4af294aed684503d091cca7804da2dd8a9de000
     # via
     #   -r requirements.txt
     #   peft
