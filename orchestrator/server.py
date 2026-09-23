@@ -18,7 +18,6 @@ import asyncio
 from concurrent.futures import TimeoutError as FutureTimeoutError
 import importlib
 import json
-import os
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
