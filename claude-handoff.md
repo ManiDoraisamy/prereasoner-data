@@ -7,6 +7,42 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-24 — FIXED + RELEASED: the Schema.org interpreter loads in production again
+
+**Production now:** engine `prereasoner-api-00217-zom` = `engine@sha256:6d56ab80…` built from `c228cfb`
+(8 vCPU / 16 GiB, unchanged). The jobs `prereasoner-api-ecb-rates-refresh`,
+`prereasoner-api-retention-cleanup` and `prereasoner-api-release-smoke` run the same image. No tags.
+The chat service is unchanged (`prereasoner-chat-00111-wuc`): its image carries none of the changed modules.
+Rollback: `gcloud run services update-traffic prereasoner-api --to-revisions prereasoner-api-00215-xey=100`
+(and point the three jobs back at `engine@sha256:8dbf68ad…`). That restores the silent fallback.
+
+**Root cause.** From at least 2026-09-14, every container logged `schema interpreter unavailable:
+ValueError` then `model routing failed: ValueError` (both seen on `00215-xey`), so learned column routing and
+table class evidence were off. The Schema.org head's recorded encoder identity hashed every file in
+`engine/data/qwen_lora`, including a stale local PEFT `README.md` that the manifest never pins; no image
+could reproduce it. The serving loader swallowed the error, printing only the exception type.
+
+**Fix (`c228cfb`, details in `DECISIONS.md`).** Adapter identity = its model files
+(`engine/artifact_provenance.py:adapter_sha256`), used by every adapter-identity site. The promoted head's
+identity was re-recorded through `training/schema_org/promote.py` (`c3f61d5e…` -> `ea5bdbf0…`); head,
+thresholds and signatures are byte-identical. `KnowledgeQuery` loads the interpreter at construction and
+the in-image gate (`run_bundle_checks`) loads it at build, so a bundle it cannot load fails the build or the
+startup probe instead of degrading silently.
+
+**Evidence**
+- Red/green in an image-like worktree (manifest files only): old code raised the production ValueError; new
+  code + old artifacts failed the new pairing test and the bundle gate; new code + re-recorded artifacts passed.
+- Cloud Build in-image gate: `schema_interpreter_loads` ok (head `4bb30c5612ee`), offline 13/13.
+- `tests.run_all` 39/39 suites (live Postgres + Anthropic). `test_datasets`: 24/24 prompts and 40 non-chat
+  follow-ups correct (incl. neartail-catering 9,600 with the learned router back on); the 13 `chat:`
+  follow-ups were SKIPPED (Chrome-only). `test_geo` 61/61, `test_route_wired` now captures class evidence.
+- `regress.run_regression --require-world` PASS (total amount in France = 270).
+- New revision: boot 101 s to ready (old 112 s), no interpreter/routing errors, release smoke ok, healthz ok.
+
+**Open.** No Chrome pass this time (not a major release; the orchestrated `chat:` follow-ups were not
+re-verified). Watch the `[timing]` lines on world questions: learned routing adds one encoder pass per
+short-text column, cached per table.
+
 ## 2026-09-23 (night) — RELEASED: the 645 planner serves production; the gates found four defects
 
 **Production now** (project `prereasoner-inference`, us-central1; one revision per service, no tags):
