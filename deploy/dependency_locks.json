@@ -42,14 +42,14 @@
     },
     "requirements.lock.txt": {
       "input": "requirements.txt",
-      "input_sha256": "3fec3d0da74c7d720124dfff5bd7dc9489c091e33cf5ca80f537db9e6678eb8d",
-      "lock_sha256": "6eeb2bbe64dd9f15018ea4353283761f95e429876319895f29cf75bb9e0187e9",
+      "input_sha256": "5799ec055c0b917051851b2e3ac761d12dcc7e601c99ab2c6cb7cdb8db892e55",
+      "lock_sha256": "94db2ce6d92388a17f0a6010aad07fd7135ccbe600f2a9edd7fecfdc7aa66f42",
       "target": "linux-x86_64-python3.11"
     },
     "training/requirements.lock.txt": {
       "input": "training/requirements.txt",
-      "input_sha256": "7fa97ce11ddd26389ed2c4f6e4b690e35ebaf96ff3b5f41feca6cdf914a11834",
-      "lock_sha256": "c18b71503aaa56dc5e3f2a56fc5357b56c8406c66846e7c827dd3932e213d9e2",
+      "input_sha256": "d5a930bf3b917d6d0a58750f7e91700f195ab8246c651bc841a99882daef6115",
+      "lock_sha256": "063c9bef06219638c783f91da47f08f51bc1be9c8205ae2d5a15cee806be3301",
       "target": "linux-x86_64-python3.11-cpu"
     }
   },
