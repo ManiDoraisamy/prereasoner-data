@@ -7,6 +7,36 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-23 (late) — Took over from Codex: the 645 candidate becomes the ONE served planner
+
+User asked: use the 62.4% candidate, one clean source of truth, understandable docs, deploy in
+production (no limited rollout, no parallel engine versions).
+
+**Done in the tree (committed on main):**
+- One selection, `engine/tables.py:TableQuery.select_query` = search (25) + d2 proposer (4 beams,
+  every line imported/validated/re-rendered) + in-memory pool execution + linear arbiter. Used by
+  serving, the decomposition probe and leaves, `spider/probe/full_eval.py` (no injection flags now),
+  `regress/run_regression.py`, and `training/rank/build_pool_labels.py`.
+- Arbiter = 9 named features (`engine/sql_rank.py:ARBITER_FEATURES`); the pilot's 6 constant
+  zero-coefficient d4/missing slots dropped with bit-identical scores. `fit_arbiter.py` refits the pilot
+  pools to identical means/scales/intercept, coef within 9e-15. Replay on pilot-val = 224/416 (= pilot).
+- Parity: production `select_query` picks the recorded 645-run SQL on 21/21 sampled dev questions.
+- Runtime bundle: `engine/data/sql_proposer/` (adapter, gitignored, fetched) + `sql_arbiter.json`
+  (committed); `training/rank/promote.py` is the one writer. Manifest is local-only until the HF upload.
+- Product finding + fix: the Spider-fit arbiter swapped compound prompts to single proposer queries and
+  picked names-only ranking leaves. Now: named requests decompose when the search reads a set operation
+  OR the answer is one; leaves take the best-ranked candidate meeting the leaf contract. Complex
+  datasets 4/4 pass with real models. Spider eval has no analysis context, so unaffected.
+- Retired: RankHead + hook, execution_checks, proposer_first, pilot_selectors, train_head,
+  build_values/value prompts. Failed semantic pilot code moved OUT of the repo to
+  `C:/work/prereasoner-experiments/semantic_pilot` (its 3 lease tests ported to tests/test_release.py).
+- CI was red since 09-21 (dependency-lock identity + a stale hosting assertion + an unused import);
+  all fixed. sqlglot added to serving + CI locks (only change in those locks).
+
+**Open:** fresh full whole_db run through the production path; live test_datasets rerun on final code;
+HF upload + manifest pin; image build; latency on Cloud Run (CPU vs GPU is the user's call — local CPU
+median 17.5s/question for selection alone); deploy + Chrome dataset sweep.
+
 ## 2026-09-23 — CURRENT STATE / HANDOFF (relabel blocked on shard0; interim number in)
 
 Factual status only. Nothing running; `pods=0` verified; nothing promoted; deterministic
