@@ -364,76 +364,96 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
     assert orchestrator._grounded_presentation(error, "There are 100 distinct IDs.") == "The calculation failed."
 
 
+def _answered_from_memory_turn(user_message, history, memory_reply, catalog=()):
+    """A turn whose model first answers ``memory_reply`` without the tool, calls the tool when the
+    correction arrives, then presents. Returns (result, model_calls, engine_calls); each model call
+    records the kwargs of its round."""
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            model_calls.append(dict(kwargs, last=kwargs["messages"][-1]))
+            if kwargs["messages"][-1]["content"] == orchestrator.RECALCULATION_NOTE:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id="q1",
+                    input={"question": user_message, "action": "create", "slug": "recalculated"},
+                )])
+            elif len(model_calls) == 1:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text=memory_reply)])
+            else:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="That comes to 366.0174 US dollars.")])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        return {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["366.0174"]]}}
+
+    async def get_catalog(*_args, **_kwargs):
+        return list(catalog)
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query), \
+                patch.object(orchestrator.engine_client, "call_analysis_catalog", get_catalog):
+            return await orchestrator._run_turn(
+                user_message, [{"name": "orders", "data": "country,amount\nBelgium,10\n"}],
+                history, engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model", principal="user-a", conversation_id="c_test",
+            )
+
+    return asyncio.run(run()), model_calls, engine_calls
+
+
 def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
-    """Chrome pass (2026-09-24): in a reopened conversation, re-asking "total amount in Belgium in
-    US dollars" returned the morning's 367.4342 with no engine call, although today's rate gives
-    366.0174. A message that restates a catalog analysis's question is a recalculation: a model
-    that answers it from memory gets one correction, and the engine answers."""
+    """Chrome pass (2026-09-24): in reopened conversations, re-asked questions came back as the
+    earlier replies with no engine call: "total amount in Belgium in US dollars" as the morning's
+    367.4342 (today's rate gives 366.0174), and "minimum notice_days" as "Still 5 days". Once, the
+    model ignored a plain correction note. A message that restates a catalog analysis's question,
+    or repeats an earlier question and is answered with a number, is a recalculation: the model
+    gets one correction round that forces the query call, and the engine answers."""
     entry = {"analysis_id": "a_" + "4" * 32, "slug": "belgium_total_usd",
              "latest_question": "total amount in Belgium in US dollars"}
-    history = [{"role": "user", "content": entry["latest_question"]},
+    belgium = [{"role": "user", "content": entry["latest_question"]},
                {"role": "assistant", "content": "367.4342"}]
-
-    def turn(user_message):
-        model_calls, engine_calls = [], []
-
-        class Messages:
-            def stream(self, **kwargs):
-                last = kwargs["messages"][-1]
-                model_calls.append(last)
-                if last["content"] == orchestrator.RECALCULATION_NOTE:
-                    response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
-                        type="tool_use", name="prereasoner_query", id="q1",
-                        input={"question": user_message, "action": "modify",
-                               "analysis_id": entry["analysis_id"], "slug": entry["slug"]},
-                    )])
-                elif len(model_calls) == 1:
-                    # Answered from the conversation instead of calling the tool.
-                    response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
-                        type="text", text="367.4342" if user_message == entry["latest_question"]
-                        else "You're welcome!")])
-                else:
-                    response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
-                        type="text", text="That comes to 366.0174 US dollars.")])
-                return _MessageStream(response)
-
-        class Client(_Client):
-            def __init__(self):
-                self.messages = Messages()
-
-        async def query(*args, **kwargs):
-            engine_calls.append((args, kwargs))
-            return {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["366.0174"]]}}
-
-        async def get_catalog(*_args, **_kwargs):
-            return [entry]
-
-        async def run():
-            with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
-                    patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
-                    patch.object(orchestrator.engine_client, "call_query", query), \
-                    patch.object(orchestrator.engine_client, "call_analysis_catalog", get_catalog):
-                return await orchestrator._run_turn(
-                    user_message, [{"name": "orders", "data": "country,amount\nBelgium,10\n"}],
-                    history, engine_base_url="http://engine.invalid", bearer_token=None,
-                    api_key="test", model="test-model", principal="user-a",
-                    conversation_id="c_test",
-                )
-
-        return asyncio.run(run()), model_calls, engine_calls
-
-    result, model_calls, engine_calls = turn(entry["latest_question"])
+    result, model_calls, engine_calls = _answered_from_memory_turn(
+        entry["latest_question"], belgium, "367.4342", catalog=[entry])
     assert len(engine_calls) == 1, "the recalculation reached the engine"
     assert engine_calls[0][0][0] == entry["latest_question"]
     assert engine_calls[0][1]["analysis"] == {
         "action": "modify", "analysis_id": entry["analysis_id"], "slug": entry["slug"]}
-    assert model_calls[1]["content"] == orchestrator.RECALCULATION_NOTE
+    forced = model_calls[1]
+    assert forced["last"]["content"] == orchestrator.RECALCULATION_NOTE
+    assert forced["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
+    assert "thinking" not in forced, "a forced tool call cannot run with thinking on"
+    assert "tool_choice" not in model_calls[0] and "tool_choice" not in model_calls[2]
     assert "367.4342" not in result["reply"] and "366.0174" in result["reply"]
     assert orchestrator.RECALCULATION_NOTE not in json.dumps(result["history"])
-    # A message that restates no analysis keeps its plain reply: no correction, no engine call.
-    result, model_calls, engine_calls = turn("thanks, that is all")
-    assert (len(model_calls), len(engine_calls)) == (1, 0)
-    assert result["reply"] == "You're welcome!"
+
+    # A short question the catalog does not hold is caught as a repeat of the user's own words.
+    notice = [{"role": "user", "content": "minimum notice_days"},
+              {"role": "assistant", "content": "The shortest notice period in your data is 5 days."}]
+    _result, model_calls, engine_calls = _answered_from_memory_turn(
+        "minimum notice_days", notice, "Still 5 days.")
+    assert len(engine_calls) == 1 and engine_calls[0][0][0] == "minimum notice_days"
+    assert model_calls[1]["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
+
+    # Contrasts: a repeated message answered without a number, and a new message answered from
+    # the conversation, keep their replies. No correction, no engine call.
+    thanks = [{"role": "user", "content": "thanks, that is all"},
+              {"role": "assistant", "content": "You're welcome!"}]
+    for user_message, history, reply in (
+            ("thanks, that is all", thanks, "You're welcome!"),
+            ("what was the minimum you told me?", notice, "I said 5 days.")):
+        result, model_calls, engine_calls = _answered_from_memory_turn(user_message, history, reply)
+        assert (len(model_calls), len(engine_calls)) == (1, 0), user_message
+        assert result["reply"] == reply
 
 
 def test_named_workbook_tool_contract_and_catalog_boundary():

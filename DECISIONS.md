@@ -557,7 +557,20 @@ neither reply had a workbook step.
 
 The orchestrator already treated such a message as a recalculation: `_recalculation_target` matches a
 message that restates a catalog analysis's question and pins the engine call to that analysis. It only
-applied when the model chose to call the tool. `_run_turn` now enforces that call. When a recalculation
-round ends with no engine call, the model gets one correction (`RECALCULATION_NOTE`) and the loop
-continues. The note never reaches the saved transcript, which keeps only the user's words and the final
-reply. A message that restates no analysis still ends on the model's own reply.
+applied when the model chose to call the tool. `_run_turn` now enforces that call.
+
+The first version (`dedfb27`) added a correction note when a recalculation round ended with no engine
+call. The re-check on that release found 7 more of 50 re-asked turns answered from memory. Six were
+short questions ("minimum notice_days", "total quantity for VIP customers") that the catalog does not
+match: its match needs six words, and its latest question is often the model's paraphrase or a later
+question on the same analysis. In the seventh, the model ignored the note. Two changes followed:
+
+- A message that repeats one of the user's earlier messages word for word, and is answered with a
+  number, also counts as a recalculation. The number keeps a repeated "thanks" from being turned into a
+  query.
+- The correction round forces the `prereasoner_query` call with `tool_choice`. The API cannot force a
+  tool call with thinking on, so that single round runs without thinking. A probe against the API
+  showed that the presentation round afterwards works with or without thinking.
+
+The note never reaches the saved transcript, which keeps only the user's words and the final reply. A new
+message that is answered from the conversation ("what was the minimum you told me?") keeps its reply.

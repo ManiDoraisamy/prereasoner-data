@@ -54,10 +54,10 @@ MAX_TOOL_ROUNDS = 6
 # journey. Three proposals stay well inside MAX_TOOL_ROUNDS and remain terminal.
 MAX_DECOMPOSITION_PROPOSALS = 3
 MAX_MODEL_TOKENS = 4096
-# A message that restates a catalog analysis's question asks for that analysis again. A model that
-# answers it from an earlier reply gets this one correction (see _run_turn).
+# A message that asks again for an earlier result is a recalculation. A model that answers it from
+# an earlier reply gets this one correction, in a round that forces the query call (see _run_turn).
 RECALCULATION_NOTE = (
-    "This message asks again for an analysis already in this conversation's workbook, so it is a "
+    "This message asks again for a result already computed in this conversation, so it is a "
     "recalculation: call prereasoner_query for it. An earlier reply is not a result, and the data "
     "or exchange rates behind it may have changed since."
 )
@@ -228,6 +228,16 @@ def _question_words(value: str) -> tuple[str, ...]:
     return tuple(re.findall(r"[a-z0-9]+", str(value).casefold()))
 
 
+def _repeats_an_earlier_question(user_message: str, history: list[dict] | None) -> bool:
+    """Whether the user already sent this message, word for word, earlier in the conversation."""
+    words = _question_words(user_message)
+    return bool(words) and any(
+        item.get("role") == "user" and isinstance(item.get("content"), str)
+        and _question_words(item["content"]) == words
+        for item in history or ()
+    )
+
+
 def _verbatim_standalone(question: str, user_message: str) -> str:
     """Prompt rule 3 for the one rewrite shape the model keeps producing: the user's complete
     question with context from earlier turns appended. "What is the highest amount paid?" went to
@@ -391,6 +401,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     pending_decomposition: dict[str, Any] | None = None
     dataset_ops_repaired = False
     recalculation_requested = False
+    recalculation_forced = False
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
     def _emit(node, value):
@@ -423,6 +434,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
         forced_analysis, forced_question = _recalculation_target(
             user_message, catalog, analysis_override,
         )
+        repeated_question = _repeats_an_earlier_question(user_message, history)
         system_prompt = _system_with_catalog(catalog)
         # Work on a local copy of the full block-level message list for the tool loop.
         messages: list[dict[str, Any]] = [
@@ -443,15 +455,19 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
             final_text = ""
             for _ in range(MAX_TOOL_ROUNDS):
                 round_text = ""
+                round_args: dict[str, Any] = {
+                    "model": model, "max_tokens": MAX_MODEL_TOKENS, "system": system_prompt,
+                    "thinking": {"type": "adaptive"} if provider == "anthropic" else None,
+                    "tools": CLAUDE_TOOLS, "messages": messages,
+                }
+                if recalculation_forced:
+                    # The API cannot force a tool call while thinking is on; this one round
+                    # runs without it.
+                    del round_args["thinking"]
+                    round_args["tool_choice"] = {"type": "tool", "name": "prereasoner_query"}
+                    recalculation_forced = False
                 with request_timing.span("llm"):
-                    async with client.messages.stream(
-                        model=model,
-                        max_tokens=MAX_MODEL_TOKENS,
-                        system=system_prompt,
-                        thinking={"type": "adaptive"} if provider == "anthropic" else None,
-                        tools=CLAUDE_TOOLS,
-                        messages=messages,
-                    ) as llm_stream:
+                    async with client.messages.stream(**round_args) as llm_stream:
                         async for delta in llm_stream.text_stream:
                             round_text += delta
                             if stream_buffer is not None and round_text:
@@ -464,20 +480,25 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                 messages.append({"role": "assistant", "content": resp.content})
 
                 if resp.stop_reason != "tool_use":
-                    if forced_analysis and not traces and not recalculation_requested:
-                        # Chrome pass (2026-09-24): re-asked in a reopened conversation, "total
-                        # amount in Belgium in US dollars" came back as the morning's number at the
-                        # morning's exchange rate, with no engine call and no workbook step. A
-                        # message that restates a catalog analysis's question is a recalculation,
-                        # and only the engine answers it. One correction round; the note never
-                        # reaches the saved transcript, which keeps only the user's words and the
-                        # final reply.
+                    text = "".join(b.text for b in resp.content if b.type == "text").strip()
+                    if (not traces and not recalculation_requested
+                            and (forced_analysis or (repeated_question and re.search(r"\d", text)))):
+                        # Chrome pass (2026-09-24): re-asked in reopened conversations, questions
+                        # such as "total amount in Belgium in US dollars" and "minimum notice_days"
+                        # came back as the earlier numbers, the Belgium one at the morning's
+                        # exchange rate, with no engine call and no workbook step. A message that
+                        # restates a catalog analysis's question, or repeats an earlier question
+                        # and is answered with a number, is a recalculation, and only the engine
+                        # answers it. A note alone was ignored once, so the correction round
+                        # forces the query call. The note never reaches the saved transcript,
+                        # which keeps only the user's words and the final reply.
                         recalculation_requested = True
+                        recalculation_forced = True
                         if stream_buffer is not None and round_text:
                             stream_buffer.update("")
                         messages.append({"role": "user", "content": RECALCULATION_NOTE})
                         continue
-                    final_text = "".join(b.text for b in resp.content if b.type == "text").strip()
+                    final_text = text
                     break
                 if stream_buffer is not None and round_text:
                     stream_buffer.update("")             # tool-round preamble is not the answer

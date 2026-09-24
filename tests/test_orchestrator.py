@@ -216,6 +216,16 @@ def main():
         ok(sent_r == [belgium["latest_question"]],
            f"the re-asked question reaches the engine once (got {sent_r})")
 
+        # A short re-asked question the catalog does not hold ("Still 5 days" in the 2026-09-24
+        # re-check) is caught as a repeat of the user's own words.
+        print("[1h] a short re-asked question recalculates too")
+        r1h = asyncio.run(chat("minimum notice_days", history=[
+            {"role": "user", "content": "minimum notice_days"},
+            {"role": "assistant", "content": "The shortest notice period in your data is 5 days."}]))
+        sent_h = [t.get("question", "") for t in r1h["traces"]]
+        ok(len(sent_h) == 1 and "notice" in sent_h[0].lower(),
+           f"the short re-asked question reaches the engine once (got {sent_h})")
+
         # Production regression (2026-09-08): this follow-up was decomposed into five progressively
         # weaker queries, ended on a grouped COUNT, and discarded all useful terminal results with
         # "step budget". The shipped workbook now includes the exact tier schedule as a fixture.
