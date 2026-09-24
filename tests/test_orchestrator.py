@@ -193,6 +193,29 @@ def main():
         ok(bool(sent_g) and "top 2 customer" in sent_g[0].lower() and "top 3 categor" in sent_g[0].lower(),
            f"the rewrite keeps the top 3 categories and changes customers to 2 (got {sent_g})")
 
+        # A re-asked question restates a catalog analysis, so it is a recalculation and reaches the
+        # engine. Chrome pass (2026-09-24): in a reopened conversation the morning's Belgium total
+        # came back at the morning's exchange rate, with no engine call.
+        print("[1g] a re-asked question recalculates instead of repeating the earlier reply")
+        belgium = {"analysis_id": "a_" + "5" * 32, "slug": "belgium_total_usd",
+                   "latest_question": "total amount in Belgium in US dollars",
+                   "revision": 1, "stale": False}
+
+        async def belgium_catalog(*_args, **_kwargs):
+            return [belgium]
+
+        with patch("orchestrator.orchestrator.engine_client.call_analysis_catalog", belgium_catalog):
+            r1g = asyncio.run(run_chat(
+                belgium["latest_question"], TABLES,
+                [{"role": "user", "content": belgium["latest_question"]},
+                 {"role": "assistant", "content": "367.4342"}],
+                engine_base_url=base, bearer_token=None, api_key=key, model=model,
+                conversation_id="c_" + "5" * 32,
+            ))
+        sent_r = [t.get("question", "") for t in r1g["traces"]]
+        ok(sent_r == [belgium["latest_question"]],
+           f"the re-asked question reaches the engine once (got {sent_r})")
+
         # Production regression (2026-09-08): this follow-up was decomposed into five progressively
         # weaker queries, ended on a grouped COUNT, and discarded all useful terminal results with
         # "step budget". The shipped workbook now includes the exact tier schedule as a fixture.

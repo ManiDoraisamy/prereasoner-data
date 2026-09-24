@@ -546,3 +546,18 @@ cross-limit message now says the limits must be stated by the question. The ship
 whose cutoffs are all stated, compile unchanged. The wrong pair shape itself is rare: 42 of 42 stubbed
 proposals for this prompt used the correct anti-join. This rule makes the rare case end in a repair or
 a clarification instead of an answer to a different question.
+
+## A re-asked analysis is recalculated, never repeated (2026-09-24)
+
+The existing-conversation half of the second Chrome pass of 2026-09-24 re-asked follow-ups in
+conversations that had already answered them that morning. For "total amount in Belgium in US dollars"
+and "What is the highest Net PO Value?", the model repeated the earlier reply and made no engine call.
+The Belgium reply used the morning's exchange rate (367.4342), where today's rate gives 366.0174, and
+neither reply had a workbook step.
+
+The orchestrator already treated such a message as a recalculation: `_recalculation_target` matches a
+message that restates a catalog analysis's question and pins the engine call to that analysis. It only
+applied when the model chose to call the tool. `_run_turn` now enforces that call. When a recalculation
+round ends with no engine call, the model gets one correction (`RECALCULATION_NOTE`) and the loop
+continues. The note never reaches the saved transcript, which keeps only the user's words and the final
+reply. A message that restates no analysis still ends on the model's own reply.

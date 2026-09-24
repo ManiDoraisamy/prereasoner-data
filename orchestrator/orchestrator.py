@@ -54,6 +54,13 @@ MAX_TOOL_ROUNDS = 6
 # journey. Three proposals stay well inside MAX_TOOL_ROUNDS and remain terminal.
 MAX_DECOMPOSITION_PROPOSALS = 3
 MAX_MODEL_TOKENS = 4096
+# A message that restates a catalog analysis's question asks for that analysis again. A model that
+# answers it from an earlier reply gets this one correction (see _run_turn).
+RECALCULATION_NOTE = (
+    "This message asks again for an analysis already in this conversation's workbook, so it is a "
+    "recalculation: call prereasoner_query for it. An earlier reply is not a result, and the data "
+    "or exchange rates behind it may have changed since."
+)
 TOOL_EXHAUSTED_REPLY = (
     "I couldn't complete that request. Please try one specific question about the attached data."
 )
@@ -383,6 +390,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     decomposition_rejections = 0
     pending_decomposition: dict[str, Any] | None = None
     dataset_ops_repaired = False
+    recalculation_requested = False
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
     def _emit(node, value):
@@ -456,6 +464,19 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                 messages.append({"role": "assistant", "content": resp.content})
 
                 if resp.stop_reason != "tool_use":
+                    if forced_analysis and not traces and not recalculation_requested:
+                        # Chrome pass (2026-09-24): re-asked in a reopened conversation, "total
+                        # amount in Belgium in US dollars" came back as the morning's number at the
+                        # morning's exchange rate, with no engine call and no workbook step. A
+                        # message that restates a catalog analysis's question is a recalculation,
+                        # and only the engine answers it. One correction round; the note never
+                        # reaches the saved transcript, which keeps only the user's words and the
+                        # final reply.
+                        recalculation_requested = True
+                        if stream_buffer is not None and round_text:
+                            stream_buffer.update("")
+                        messages.append({"role": "user", "content": RECALCULATION_NOTE})
+                        continue
                     final_text = "".join(b.text for b in resp.content if b.type == "text").strip()
                     break
                 if stream_buffer is not None and round_text:
