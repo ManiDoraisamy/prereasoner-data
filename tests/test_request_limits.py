@@ -137,6 +137,32 @@ def test_chat_validation_normalizes_and_bounds_inputs():
             pass
 
 
+def test_a_long_conversation_keeps_its_most_recent_history_window():
+    """Chrome pass (2026-09-24): a conversation past twelve turns failed every new message with
+    "history is too long", because the browser sends the whole transcript and the limit rejected
+    it. The chat request now keeps the most recent window, starting at a user message."""
+    from engine.request_validation import MAX_HISTORY_CHARS, MAX_HISTORY_ITEMS
+
+    turns = [{"role": role, "content": f"{role} {i}"}
+             for i in range(17) for role in ("user", "assistant")]
+    history = validate_chat_request({"message": "total", "history": turns})[2]
+    assert history == turns[-MAX_HISTORY_ITEMS:] and history[0]["role"] == "user"
+    # A character budget cut keeps whole messages and still starts at a user message.
+    wide = [{"role": role, "content": role[0] * 9_000} for _ in range(6)
+            for role in ("user", "assistant")]
+    history = validate_chat_request({"message": "total", "history": wide})[2]
+    assert sum(len(item["content"]) for item in history) <= MAX_HISTORY_CHARS
+    assert history == wide[-len(history):] and history[0]["role"] == "user" and len(history) == 8
+    # Malformed input inside the window is still refused.
+    for bad in ([{"role": "system", "content": "x"}], "not a list",
+                [{"role": "user", "content": "x" * 20_001}]):
+        try:
+            validate_chat_request({"message": "total", "history": bad})
+            raise AssertionError(bad)
+        except ValueError:
+            pass
+
+
 def test_table_names_are_canonical_bounded_and_unique_at_every_boundary():
     long_name = "Quarterly Revenue " * 20
     canonical = canonical_table_name(long_name)
@@ -345,6 +371,7 @@ TESTS = [
     test_admin_access_fails_closed_without_an_explicit_allowlist,
     test_postgres_connect_retries_transport_errors_but_not_authentication,
     test_chat_validation_normalizes_and_bounds_inputs,
+    test_a_long_conversation_keeps_its_most_recent_history_window,
     test_table_names_are_canonical_bounded_and_unique_at_every_boundary,
     test_reason_validation_rejects_unbounded_or_invalid_fields,
     test_uploaded_row_limit_rejects_without_truncating_at_the_public_boundary,

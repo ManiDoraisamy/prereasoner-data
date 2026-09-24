@@ -257,11 +257,15 @@ def validate_chat_request(req: object):
     tables = validate_tables(req.get("tables"))
 
     history = req.get("history") or []
-    if not isinstance(history, list) or len(history) > MAX_HISTORY_ITEMS:
-        raise RequestValidationError("history is too long", 413)
+    if not isinstance(history, list):
+        raise RequestValidationError("history must be a list")
+    # The model sees the conversation's most recent window: at most MAX_HISTORY_ITEMS messages
+    # and MAX_HISTORY_CHARS characters, starting at a user message. Rejecting a longer history
+    # instead ended every conversation past twelve turns: the browser sends the whole transcript,
+    # and each new message then failed with "history is too long" (Chrome pass, 2026-09-24).
     normalized_history = []
     history_chars = 0
-    for item in history:
+    for item in reversed(history[-MAX_HISTORY_ITEMS:]):
         if not isinstance(item, dict) or item.get("role") not in {"user", "assistant"}:
             raise RequestValidationError("history contains an invalid message")
         content = item.get("content")
@@ -269,8 +273,11 @@ def validate_chat_request(req: object):
             raise RequestValidationError("history message is too long", 413)
         history_chars += len(content)
         if history_chars > MAX_HISTORY_CHARS:
-            raise RequestValidationError("history is too large", 413)
+            break
         normalized_history.append({"role": item["role"], "content": content})
+    normalized_history.reverse()
+    while normalized_history and normalized_history[0]["role"] != "user":
+        normalized_history.pop(0)
 
     analysis = None
     if req.get("analysis") is not None:
