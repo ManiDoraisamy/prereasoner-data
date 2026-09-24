@@ -39,9 +39,23 @@ startup probe instead of degrading silently.
 - `regress.run_regression --require-world` PASS (total amount in France = 270).
 - New revision: boot 101 s to ready (old 112 s), no interpreter/routing errors, release smoke ok, healthz ok.
 
-**Open.** No Chrome pass this time (not a major release; the orchestrated `chat:` follow-ups were not
-re-verified). Watch the `[timing]` lines on world questions: learned routing adds one encoder pass per
-short-text column, cached per table.
+**Chrome pass (2026-09-24, owner's signed-in Chrome, 00217-zom).** All 24 datasets, every
+`prompt.txt` + `eval.txt` case graded by `regress.browser_gold` / `tests.test_datasets.grade_answer`:
+fresh conversations 71/74, existing conversations (created 09-23 on older revisions) 46/50 follow-ups.
+None of the 7 misses comes from this release:
+- Engine, pre-existing: "how about customers from Lyon?" (complex-unsold-products). The orchestrator's
+  leaf read "... Lyon customers" and the planner bound 'Lyon' to `customer_name`, a column that never
+  holds it (`WHERE purchases__customer_name = 'Lyon'`). Reproduced hermetically with the planner alone
+  (no router): "customers from/in Lyon" is right, "Lyon customers" is wrong. Value grounding fix pending.
+- Orchestrator rewording/context carry-over (the engine answers the verbatim questions correctly, router
+  on and off identical): "How many payments are listed?" sent as "... payments to suppliers ..." (3, not
+  30) and "What is the highest amount paid?" as "... to suppliers?" (two rows); in existing conversations
+  the Phoenix scope (2), the USD presentation for "total budget in Germany" (37,656.3 for 33,000), and
+  "only use the top 2 customers" read as top 2 categories too.
+- Existing formfacade-leads: "This is in euros" -> "dataset operation names a table that is not
+  uploaded: 'budget'" (passed there on 09-23). Not yet diagnosed.
+Watch the `[timing]` lines on world questions: learned routing adds one encoder pass per short-text
+column, cached per table.
 
 ## 2026-09-23 (night) — RELEASED: the 645 planner serves production; the gates found four defects
 
