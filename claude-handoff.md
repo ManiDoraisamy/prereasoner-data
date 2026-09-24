@@ -7,6 +7,74 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-24 (evening) — RELEASED: literal grounding, question fidelity, and four defects the Chrome passes found
+
+**Production now** (one revision per service, no tags):
+- engine `prereasoner-api-00223-vas` = `engine@sha256:e9170f8a…` built from `dedfb27` (8 vCPU / 16 GiB).
+  The jobs `prereasoner-api-ecb-rates-refresh`, `prereasoner-api-retention-cleanup` and
+  `prereasoner-api-release-smoke` run the same image.
+- chat `prereasoner-chat-00120-huq` = `chat@sha256:afad5e36…` built from `1be4c6e`.
+- Rollback: engine `00220-kud` (`900f3b1`, image `0a77b9f5…`; point the three jobs back at it), chat
+  `00118-sok` (`9180169`), `00116-xav` (`dedfb27`) or `00113-tid` (`900f3b1`).
+
+**What shipped, in order**
+1. `841f08c` literal grounding: a pool member is eligible only if every text literal it tests occurs
+   in its own column, or in no column (the Lyon miss). `900f3b1` question fidelity: a complete question
+   reaches the engine as typed, and a rejected dataset op gets one repair. Served Spider `whole_db` on
+   `841f08c`: 647/1,034 strict (62.6%), 696 lenient, 304/408 scalar (RESULTS.md). Released as engine
+   `00220-kud` and chat `00113-tid`.
+2. Second full Chrome pass on that release (all 24 datasets): fresh conversations 73/74 (morning
+   71/74), existing conversations 48/50 (morning 46/50). The Lyon, supplier and 'budget' misses are
+   gone. The three new misses:
+   - "List the product names that no customer from Paris has bought": the model decomposed it as Paris
+     customers crossed with products. The engine answered that cross inputs need explicit limits, and
+     the model resubmitted with "the top 100" on both lists, which was served as 14 pairs. Fixed in
+     `1073c01`: a leaf keeps only a cutoff the question states. The wrong shape itself is rare (42/42
+     stubbed proposals for this prompt used the right anti-join).
+   - Two re-asked questions answered from memory with no engine call. Belgium came back at the
+     morning's exchange rate (367.4342; today 366.0174). Fixed in `dedfb27`.
+3. Released `dedfb27` (engine `00223-vas`, chat `00116-xav`). Re-check in Chrome: the four
+   decomposition datasets fresh 11/11 (Paris now answers Delta and Omega); existing conversations
+   43/50. All 7 misses were re-asks answered from memory. Six were short questions the catalog does not
+   match, and in one the model ignored the correction note. Fixed in `9180169`: a word-for-word repeat
+   answered with a number also counts, and the correction round forces the query call
+   (`tool_choice`, thinking off for that one round). Released as chat `00118-sok`.
+4. The re-check also found that a conversation past 12 turns rejected every message with "history is
+   too long", because the browser sends the whole transcript. Fixed in `1be4c6e`: the chat request
+   keeps the most recent window (24 messages, 80,000 characters). Released as chat `00120-huq`.
+5. Final targeted re-check on the live release: 13/13 re-asked turns correct, every one with an
+   engine call (termination 3, assets 2, customer-orders 2, procurement 2, and the 17-turn ecommerce
+   conversation 4).
+
+**Gates run this evening:**
+- `test_decomposition` 12/12
+- `test_complex_datasets` 7/7
+- `test_deterministic_emitters` 46/46
+- `test_compose` 14/14
+- `test_orchestrator_unit` 19/19
+- `test_request_limits` 16/16
+- live `test_orchestrator` 25/25 (an earlier run was 23/24: the [1f] cutoff follow-up once changed
+  both cutoffs; that case measured 12/12 in isolation)
+- live `test_datasets` PASS: 24 prompts and 40 standalone follow-ups; the 13 `chat:` follow-ups are
+  skipped by design and covered by Chrome
+- `compileall` OK
+- Cloud Build offline regression 13/13
+- release smoke OK
+
+Not run after these commits: `tests.run_all` as one sweep, and Spider. The new code is decomposition,
+orchestrator and request validation, none of which is on the Spider path, and `select_query` is
+unchanged since `841f08c`.
+
+**Open**
+- `spider/results/full_eval_served_grounding_whole_db.json` is untracked, waiting for the owner's
+  approval; RESULTS.md already cites it.
+- One user's requests run one at a time behind a per-user advisory lock. In the re-check, three
+  compound questions fired at once in three tabs queued behind each other, and two exceeded the chat's
+  180 s engine timeout; one at a time they were correct. A user who runs parallel compound questions
+  would see the same.
+- The gates left many conversations in the owner's account, including the junk `c_f9de7d7c…` from an
+  earlier pass. None were deleted.
+
 ## 2026-09-24 — FIXED + RELEASED: the Schema.org interpreter loads in production again
 
 **Production now:** engine `prereasoner-api-00217-zom` = `engine@sha256:6d56ab80…` built from `c228cfb`
