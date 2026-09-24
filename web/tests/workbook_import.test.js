@@ -2,6 +2,7 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 const {execFileSync}=require('node:child_process');
 const XLSX=require('../public/vendor/xlsx-0.20.3.full.min.js');
+require('../public/lib/number-format.js');
 require('../public/lib/workbook-import.js');
 const {readWorkbook}=require('../../tests/workbook_fixture.js');
 const normalize=rows=>WORKBOOK_IMPORT.normalize(XLSX.utils.aoa_to_sheet(rows,{UTC:true}),XLSX);
@@ -39,4 +40,25 @@ for(const zone of ['UTC','America/Los_Angeles','Pacific/Auckland']){
     {encoding:'utf8',env:{...process.env,TZ:zone}});
   assert.equal(csv,original,'worksheet dates changed in '+zone);
 }
-console.log('workbook layout: 16 checks passed (including 3 downloaded originals and 3 timezones)');
+// An elapsed duration ([h]:mm) keeps Excel's stored day count, as the Excel add-in keeps it; it
+// used to become a timestamp near 1900. Dates and [Red] amounts read as before, in both systems.
+const os=require('node:os'),fs=require('node:fs');
+for(const date1904 of [false,true]){
+  const ws=XLSX.utils.aoa_to_sheet([['worked','day','amount']]);
+  const put=(r,c,v,z)=>{ws[XLSX.utils.encode_cell({r,c})]={t:'n',v,z};};
+  put(1,0,55/48,'[h]:mm');put(1,1,45292,'yyyy-mm-dd');put(1,2,-1234.5,'#,##0.00;[Red]-#,##0.00');
+  put(2,0,0.75,'[mm]:ss');put(2,1,45293,'yyyy-mm-dd');put(2,2,20,'#,##0.00;[Red]-#,##0.00');
+  ws['!ref']='A1:C3';
+  const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,ws,'Hours');
+  if(date1904)book.Workbook={WBProps:{date1904:true}};
+  const file=path.join(os.tmpdir(),`elapsed-${date1904?1904:1900}-${process.pid}.xlsx`);
+  fs.writeFileSync(file,Buffer.from(XLSX.write(book,{type:'array',bookType:'xlsx'})));
+  try{
+    const [worked,second]=readWorkbook(file)[0].csv.trim().split('\n').slice(1).map(line=>line.split(','));
+    assert.ok(Math.abs(Number(worked[0])-55/48)<1e-9,`elapsed hours stay a day count: ${worked[0]}`);
+    assert.ok(Math.abs(Number(second[0])-0.75)<1e-9,`elapsed minutes stay a day count: ${second[0]}`);
+    assert.equal(worked[1],date1904?'2028-01-02':'2024-01-01');
+    assert.equal(worked[2],'-1234.5');
+  }finally{fs.unlinkSync(file);}
+}
+console.log('workbook layout: 18 checks passed (including 3 downloaded originals, 3 timezones and 2 date systems)');

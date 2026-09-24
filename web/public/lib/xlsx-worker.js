@@ -5,6 +5,7 @@
 // and cap both the compressed input (in xlsx-reader.js) and expanded output here.
 importScripts('/vendor/xlsx-0.20.3.full.min.js');
 importScripts('/lib/upload-limits.js');
+importScripts('/lib/number-format.js');
 importScripts('/lib/workbook-import.js');
 
 const MAX_SHEETS=UPLOAD_LIMITS.sheets;
@@ -25,8 +26,10 @@ self.onmessage=function(event){
     const bytes=new Uint8Array(event.data.buffer);
     const workbook=XLSX.read(bytes,{
       type:'array',dense:true,sheetRows:MAX_ROWS+2,
-      cellFormula:true,cellDates:true,cellHTML:false,cellNF:false,cellStyles:false,bookVBA:false,
+      cellFormula:true,cellDates:true,cellHTML:false,cellNF:true,cellStyles:false,bookVBA:false,
     });
+    // Number formats are kept (cellNF) so an elapsed duration can be told from a date.
+    const date1904=Boolean(workbook.Workbook&&workbook.Workbook.WBProps&&workbook.Workbook.WBProps.date1904);
     if(workbook.SheetNames.length>MAX_SHEETS)throw new Error('workbooks may contain at most 8 worksheets');
     let total=0;
     const sheets=[];
@@ -35,7 +38,7 @@ self.onmessage=function(event){
       const size=dimensions(sheet);
       if(size.rows>MAX_ROWS+1)throw new Error('each worksheet may contain at most 10,000 data rows');
       if(size.columns>MAX_COLUMNS)throw new Error('each worksheet may contain at most 256 columns');
-      const normalized=WORKBOOK_IMPORT.normalize(sheet,XLSX);
+      const normalized=WORKBOOK_IMPORT.normalize(sheet,XLSX,{date1904});
       if(!normalized)continue;
       const csv=normalized.csv;
       if(csv.length>MAX_SHEET_CHARS)throw new Error('an expanded worksheet is too large');

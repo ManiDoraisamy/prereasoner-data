@@ -9,10 +9,16 @@ question, so it is never eligible for selection (``TableQuery.select_query``). A
 occurs in no column is left alone: the question may name a value the data does not hold, and the
 honest answer is then empty.
 
-Matching is case- and whitespace-insensitive, and only positive equality and membership tests of a
-text column against a text literal are checked. Negative predicates intentionally remain eligible:
-absence from a column is a normal, meaningful value for an exclusion and is not evidence of a bad
-binding. Numeric, date and pattern comparisons are out of scope.
+Checked: a text column tested against a text literal with `=`, `!=`, `<>`, `IN` or `NOT IN`, in
+either operand order (`'Lyon' = city` is the same test as `city = 'Lyon'`). Matching is case- and
+whitespace-insensitive. Numeric, date and pattern (`LIKE`) comparisons are out of scope.
+
+Exclusions are checked like equality. `customer_name != 'Lyon'` on data where Lyon is only a city
+excludes nothing: it is the Lyon mis-binding in negated form, and "customers not from Lyon" would list
+everyone. The accepted cost: when two columns share a domain (a ship city and a billing city) and the
+question names the one that legitimately lacks the value while its sibling holds it, the right reading
+is ineligible, so a grounded member is selected instead or the question is not answered. The proposer
+mis-binds values far more often than a question names an empty value of one of two same-kind columns.
 """
 from __future__ import annotations
 
@@ -33,7 +39,7 @@ from engine.sql_ast import (
     SubquerySource,
 )
 
-_POSITIVE_EQUALITY = frozenset({"="})
+_EQUALITY = frozenset({"=", "!=", "<>"})
 _TEXT_COLUMNS = frozenset({SQLType.TEXT, SQLType.UNKNOWN})
 
 # (physical table, column, literal text)
@@ -41,9 +47,9 @@ Binding = tuple[str, str, str]
 
 
 def literal_bindings(query) -> tuple[Binding, ...]:
-    """Every positive equality or membership test of a text column against a text literal in ``query``,
-    with the column's qualifier resolved to its physical table. Columns of derived tables are
-    skipped: their values are computed, not uploaded."""
+    """Every equality, exclusion or membership test of a text column against a text literal in
+    ``query``, with the column's qualifier resolved to its physical table. Columns of derived tables
+    are skipped: their values are computed, not uploaded."""
     out: list[Binding] = []
     _walk_query(query, {}, out)
     return tuple(out)
@@ -129,16 +135,15 @@ def _walk_predicate(predicate, scope: Mapping[str, str | None], out: list[Bindin
     elif isinstance(predicate, InPredicate):
         _walk_expr(predicate.left, scope, out)
         if isinstance(predicate.source, tuple):
-            if not predicate.negated:
-                for value in predicate.source:
-                    _bind(predicate.left, value, scope, out)
+            for value in predicate.source:
+                _bind(predicate.left, value, scope, out)
         else:
             _walk_query(predicate.source, scope, out)
     elif isinstance(predicate, Comparison):
         _walk_expr(predicate.left, scope, out)
         _walk_expr(predicate.right, scope, out)
-        if predicate.operator in _POSITIVE_EQUALITY:
-            # SQL equality is symmetric. Imported/proposed SQL may put the literal first.
+        if predicate.operator in _EQUALITY:
+            # Both operand orders: imported proposer SQL may put the literal first.
             _bind(predicate.left, predicate.right, scope, out)
             _bind(predicate.right, predicate.left, scope, out)
 

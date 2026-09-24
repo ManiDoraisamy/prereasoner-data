@@ -5,12 +5,28 @@
   'use strict';
   const filled=v=>v!==null&&v!==undefined&&v!=='';
   const text=v=>typeof v==='string'&&v.trim()!=='';
-  function normalize(sheet,XLSX){
+  const DAY=86400000;
+  // SheetJS reads an elapsed-time cell ([h]:mm) as a Date near its epoch. Give back the day count
+  // Excel stores, so a duration stays the number the Excel add-in (office/excel/host.js) also
+  // keeps; root.NUMBER_FORMAT (lib/number-format.js) decides which formats are elapsed. In the
+  // 1900 system SheetJS counts Excel's fictitious 1900-02-29, so counts below 61 days read one high.
+  function elapsedDays(date,date1904){
+    const ms=date.getTime()-(date1904?Date.UTC(1904,0,1):Date.UTC(1899,11,30));
+    return (!date1904&&ms<61*DAY?ms-DAY:ms)/DAY;
+  }
+  function normalize(sheet,XLSX,options){
     if(!sheet['!ref'])return null;
+    const date1904=Boolean(options&&options.date1904);
     const bounds=XLSX.utils.decode_range(sheet['!ref']);
+    const cellAt=(r,c)=>sheet['!data']?sheet['!data'][r+bounds.s.r]?.[c+bounds.s.c]
+      :sheet[XLSX.utils.encode_cell({r:r+bounds.s.r,c:c+bounds.s.c})];
     // SheetJS otherwise localizes date objects during extraction. Excel/Sheets
     // cells are timezone-free: keep their wall-clock value across browser zones.
     const raw=XLSX.utils.sheet_to_json(sheet,{header:1,raw:true,defval:null,blankrows:true,UTC:true});
+    raw.forEach((r,i)=>r.forEach((v,c)=>{
+      const cell=v instanceof Date&&cellAt(i,c);
+      if(cell&&root.NUMBER_FORMAT.isElapsed(cell.z))r[c]=elapsedDays(v,date1904);
+    }));
     let width=0;
     raw.forEach(r=>r.forEach((v,c)=>{if(filled(v))width=Math.max(width,c+1);}));
     if(!width)return null;
@@ -63,8 +79,7 @@
     }
     // The input file's cached values are authoritative; no formula is executed.
     for(let r=start+1;r<validationEnd;r++)for(let c=0;c<width;c++){
-      const cell=sheet['!data']?sheet['!data'][r+bounds.s.r]?.[c+bounds.s.c]
-        :sheet[XLSX.utils.encode_cell({r:r+bounds.s.r,c:c+bounds.s.c})];
+      const cell=cellAt(r,c);
       if(cell&&cell.f&&cell.v==null)throw new Error('A formula has no cached value. Recalculate and save the workbook in Excel first.');
       if(cell&&cell.t==='e')throw new Error('The table contains an Excel formula error. Correct it before uploading.');
     }

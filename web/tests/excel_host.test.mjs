@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import '../public/lib/number-format.js';
 import {readWorkbook} from '../public/office/excel/host.js';
 
 const types = {string: 'string', integer: 'integer', double: 'double', boolean: 'boolean', error: 'error'};
@@ -78,6 +79,23 @@ const elapsedDuration = await runWorkbook([sheet('Durations', 'Visible', [
 ])]);
 assert.equal(elapsedDuration.tables[0].data, 'elapsed\n1.1458333333',
   'elapsed hours remain numeric instead of becoming an 1899 calendar timestamp');
+
+// Only real date/time codes make a date. `#,##0.00;[Red]-#,##0.00` once turned amounts into
+// dates through the "d" of [Red]; colours, currencies, conditions, padding and escapes are not codes.
+const formats = await runWorkbook([sheet('Formats', 'Visible', [
+  ['red', 'accounting', 'currency', 'condition', 'escaped', 'minutes', 'localeDate', 'clock'],
+  [{value: 1234.5, format: '#,##0.00;[Red]-#,##0.00'},
+   {value: 1234.5, format: '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'},
+   {value: 1234.5, format: '[$USD] #,##0.00'},
+   {value: 150, format: '[Blue][>=100]0;[Magenta]0'},
+   {value: 12, format: '0 \\d\\a\\y\\s'},
+   {value: 0.0017361111, format: '[mm]:ss'},
+   {value: 45292, format: '[$-409]m/d/yyyy'},
+   {value: 0.5625, format: 'h:mm AM/PM'}]
+])]);
+assert.equal(formats.tables[0].data,
+  'red,accounting,currency,condition,escaped,minutes,localeDate,clock\n' +
+  '1234.5,1234.5,1234.5,150,12,0.0017361111,2024-01-01T00:00:00Z,1899-12-30T13:30:00Z');
 
 await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', [], {rowCount: 1000, columnCount: 256})]),
   /too large to analyze/);

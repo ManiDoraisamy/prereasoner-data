@@ -10,7 +10,10 @@ and 20 databases. The summary JSON (`full_eval_served_grounding_whole_db.json`) 
 commit, code and model hashes, settings, and `worktree_dirty=false`.
 
 Measured: **2026-09-24** from clean source commit `841f08c` (tag `served_grounding_whole_db`). The
-engine built from `900f3b1` serves it; that commit changes nothing the selection reads.
+engine built from `900f3b1` serves it; that commit changes nothing the selection reads. The 2026-09-25
+release also checks reversed literal comparisons (`'Lyon' = city`). That only removes eligibility, and
+none of the 1,034 selected queries contains such a comparison, so every dev answer and this result are
+unchanged (DECISIONS.md).
 
 | Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
 |---|---|---:|---:|---:|

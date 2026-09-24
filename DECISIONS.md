@@ -591,3 +591,34 @@ both services derive the UID from the same token, and the chat cannot resolve th
 without a database. Giving the chat service database access, or an engine lookup per turn, was rejected.
 The first widens a service that has no database privileges today, and the second adds a request to
 every turn.
+
+## Grounding checks both operand orders and keeps exclusions (2026-09-25)
+
+A review of `engine/sql_grounding.py` found two gaps. First, it bound only `column = 'literal'`, and the
+production importer accepts `'Lyon' = customer_name` from the proposer, so the reversed form escaped the
+check. Second, the policy for `!=`, `<>` and `NOT IN` was not stated where the rule lives. An interim
+change (`db9a1d8`) stopped checking exclusions. The owner chose to keep checking them: excluding a value
+its column never holds excludes nothing, which is the Lyon mis-binding in negated form. The module now
+checks `=`, `!=`, `<>`, `IN` and `NOT IN` in either operand order, and states the accepted cost. When two
+columns share a domain and the question names the one that lacks the value, that reading is ineligible.
+The tests pin that case alongside the contrasting ones.
+
+The served Spider result stays 647/1,034. The exclusion policy is the one measured at `841f08c`, and the
+reversed-order check only adds bindings, so a member can only lose eligibility. A dev answer can change
+only when its selected query contains a reversed text-literal comparison, and none of the 1,034 selected
+queries does, in either recorded run. `LIKE` remains unchecked; extending the rule to it could change the
+11 dev questions whose selected query uses `LIKE`.
+
+## One number-format rule for the Excel add-in and the workbook upload (2026-09-25)
+
+The Excel add-in (`c8533ca`) counted a format as a date when it contained a date letter anywhere. So
+`#,##0.00;[Red]-#,##0.00`, `[$USD] #,##0.00` and `[Blue][>=100]0` turned amounts into dates (1,234.50
+became `1903-05-18T12:00:00Z`), and `[h]:mm` durations became timestamps. The web upload decides dates
+with SheetJS, which skips bracket sections, but it also read `[h]:mm` as a date: 27:30 became
+`1900-01-01T03:30:00`.
+
+`web/public/lib/number-format.js` now owns the rule for both importers. It keeps only real date and
+time codes, dropping quoted text, escapes, padding and bracket sections other than `[h]`, `[m]` and
+`[s]`. An elapsed duration keeps the day count Excel stores, in both importers. The upload keeps cell
+formats (`cellNF`) and returns elapsed cells to that count. SheetJS's 1900-02-29 shift is undone, and
+the 1904 date system has no shift. All 9 shipped workbooks convert to byte-identical CSV.

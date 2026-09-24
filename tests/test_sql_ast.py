@@ -851,12 +851,18 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
     assert grounded(query(Comparison(city, "=", Literal("  lyon ", text)))), "case and spacing fold"
     assert grounded(query(Comparison(customer, "=", Literal("Tokyo", text)))), (
         "a value no column holds is left alone: the honest answer is empty")
-    assert grounded(query(Comparison(customer, "!=", lyon))), (
-        "an exclusion is valid even when the excluded value is absent from that column")
-    assert not grounded(query(InPredicate(customer, (Literal("Alice", text), lyon))))
-    assert grounded(query(InPredicate(customer, (Literal("Alice", text), Literal("Bob", text)))))
-    assert grounded(query(InPredicate(customer, (lyon,), negated=True))), (
-        "NOT IN must not treat an absent exclusion value as a misbinding")
+    # Exclusions are checked like equality: excluding a city from a name column excludes nothing.
+    alice = Literal("Alice", text)
+    for exclusion in (Comparison(customer, "!=", lyon), Comparison(customer, "<>", lyon),
+                      Comparison(lyon, "!=", customer),
+                      InPredicate(customer, (lyon,), negated=True)):
+        assert not grounded(query(exclusion)), exclusion
+    assert grounded(query(Comparison(customer, "!=", alice))), "a held value is a real exclusion"
+    assert grounded(query(Comparison(city, "<>", lyon)))
+    assert grounded(query(Comparison(customer, "<>", Literal("Tokyo", text)))), "held nowhere: left alone"
+    assert grounded(query(InPredicate(customer, (alice,), negated=True)))
+    assert not grounded(query(InPredicate(customer, (alice, lyon))))
+    assert grounded(query(InPredicate(customer, (alice, Literal("Bob", text)))))
     assert grounded(query(Comparison(customer, "LIKE", Literal("%Lyon%", text)))), "patterns are out of scope"
     assert grounded(query(Comparison(ColumnRef("purchases", "purchase_id", SQLType.INTEGER), "=",
                                      Literal(3, SQLType.INTEGER)))), "numbers are out of scope"
@@ -873,6 +879,17 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
         unsold = SelectQuery((SelectItem(products),), "products",
                              where=InPredicate(products, inner, negated=True))
         assert grounded(unsold) is sound, column
+
+    # The accepted cost, pinned: with two columns of one domain, a value only the sibling column
+    # holds makes the named column's test ineligible, even where the question meant that column.
+    orders = {"name": "orders", "columns": ["order_id", "ship_city", "billing_city"],
+              "rows": [[1, "Lyon", "Paris"], [2, "Berlin", "Paris"]]}
+    ship = ColumnRef("orders", "ship_city", text)
+    shipped = SelectQuery((SelectItem(ship),), "orders",
+                          where=Comparison(ship, "=", Literal("Paris", text)))
+    validate_query(shipped)
+    assert not grounded_members([ScoredQuery(shipped, render_query(shipped), 0.0, ())],
+                                {"orders": orders})[0]
 
 
 def test_select_query_never_serves_a_misgrounded_proposal():
