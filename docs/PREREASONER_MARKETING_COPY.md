@@ -85,7 +85,7 @@ one side, and a checked query with its input path on the other.
 3. Read the result and the query.
 4. Open the matched rows or derivation view when you need to check it.
 
-## Sheets Copilot
+## Prereasoner for Google Sheets™
 
 ### Heading
 
@@ -192,7 +192,7 @@ Use these short labels in the product menu:
 |---|---|
 | Prereasoner | Auditable answers from your data |
 | Excel Copilot | Ask Excel. Read the calculation. |
-| Sheets Copilot | Ask a Sheet. Check the result. |
+| Prereasoner for Google Sheets™ | Ask a Sheet. Check the result. |
 | Structured RAG | Join rows by key, not similarity |
 | Community Edition | Run the engine on your own data |
 

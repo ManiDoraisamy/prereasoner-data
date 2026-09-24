@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Prereasoner - Sheets Copilot — chat</title>
+<title>Prereasoner — chat</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
@@ -83,7 +83,7 @@ table.rtab{border-collapse:separate;border-spacing:0;font:13px var(--mono)}
 <body>
 <div class="appwrap">
   <aside class="chatpane">
-    <div class="chdr"><img src="login_logo.svg" alt=""><span>Prereasoner - Sheets Copilot</span><a class="privacy" href="/privacy">Privacy</a></div>
+    <div class="chdr"><img src="login_logo.svg" alt=""><span>Prereasoner</span><a class="privacy" href="/privacy">Privacy</a></div>
     <div class="datachips"><span id="tablechips"></span>
       <label class="addcsv">+ CSV<input id="csvfile" type="file" accept=".csv" hidden></label></div>
     <div class="chatscroll" id="chat"></div>
@@ -98,7 +98,7 @@ table.rtab{border-collapse:separate;border-spacing:0;font:13px var(--mono)}
   <main class="playpane">
     <div class="stage"><div class="badge" id="badge">The reasoning for each answer replays here</div></div>
     <div class="gridwrap"><div id="gridcard">
-      <div id="empty">Ask a question on the left. When Prereasoner - Sheets Copilot answers, press ▶ on that reply to
+      <div id="empty">Ask a question on the left. When Prereasoner answers, press ▶ on that reply to
         watch it resolve → join → filter → aggregate → result.</div>
     </div></div>
     <div class="controls">
@@ -229,7 +229,7 @@ $("play").innerHTML = PLAY;
 // ============================ chat ============================
 function addTurn(role, text){
   const d = document.createElement("div"); d.className = "turn " + role;
-  d.innerHTML = '<div class="who">'+(role==="user"?"You":"Prereasoner - Sheets Copilot")+'</div><div class="msg"></div>';
+  d.innerHTML = '<div class="who">'+(role==="user"?"You":"Prereasoner")+'</div><div class="msg"></div>';
   d.querySelector(".msg").textContent = text;
   $("chat").appendChild(d); $("chat").scrollTop = $("chat").scrollHeight;
   return d;

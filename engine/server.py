@@ -378,7 +378,7 @@ class H(BaseHTTPRequestHandler):
             self._send(500, json.dumps({"error": "internal server error"}))
 
     def _post_sheet_session(self, path):
-        """Restore, save, or explicitly clear one authenticated Google Sheets sidebar session."""
+        """Restore, save, or explicitly clear one authenticated workbook sidebar session."""
         try:
             req = self._read_json()
             if req is None:
@@ -387,18 +387,19 @@ class H(BaseHTTPRequestHandler):
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required"})); return
             spreadsheet_id = req.get("spreadsheet_id", "")
+            host = req.get("host", "sheets")
             try:
                 if path.endswith("/restore"):
                     tables = validate_tables(req.get("tables"))
                     if not tables:
                         raise ValueError("at least one source table is required")
-                    result = restore_sheet_session(sub, spreadsheet_id, tables)
+                    result = restore_sheet_session(sub, spreadsheet_id, tables, host=host)
                 elif path.endswith("/state"):
                     result = save_sheet_session(
-                        sub, spreadsheet_id, req.get("conversation_id", ""), req.get("state"),
+                        sub, spreadsheet_id, req.get("conversation_id", ""), req.get("state"), host=host,
                     )
                 else:
-                    result = clear_sheet_session(sub, spreadsheet_id)
+                    result = clear_sheet_session(sub, spreadsheet_id, host=host)
                 self._send(200, json.dumps(result))
             except RequestValidationError as exc:
                 self._send(exc.status_code, json.dumps({"error": str(exc)}))

@@ -144,6 +144,8 @@ const firebaseAuth=`
   const currentUser={displayName:'Test User',email:'test@example.com'};
   export function getAuth(){return {get currentUser(){return window.__uid?currentUser:null},authStateReady:async()=>{}}}
   export class GoogleAuthProvider { addScope(){} }
+  export class OAuthProvider { setCustomParameters(){} }
+  export async function signOut(){}
   export async function signInWithRedirect(){}
   export async function signInAnonymously(){window.__uid='anonymous-test-user';return {user:currentUser}}
   export async function getRedirectResult(){return null}

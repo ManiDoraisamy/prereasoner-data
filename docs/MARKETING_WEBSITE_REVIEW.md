@@ -30,7 +30,7 @@ The website history contains seven deliberate Prereasoner revisions from 2026-08
 
 - Prereasoner;
 - Excel Copilot;
-- Sheets Copilot;
+- Prereasoner for Google Sheets™;
 - Structured RAG; and
 - **Community Edition**.
 

@@ -1,9 +1,8 @@
-"""auth.py — Firebase (Google) token verification, shared by /api/reason and /api/knowledge.
+"""Firebase token verification and stable storage-principal resolution.
 
-The per-user Postgres schema is ALWAYS the verified Google sub (never client-supplied), and the RTDB stream
-key is the verified Firebase uid — a client cannot choose another user's schema OR another user's stream.
-These helpers are security-critical and are kept exactly as they ran in production; only the module name and
-the test-bypass env var (AUTH_TEST_SUB) changed.
+The Postgres owner is derived once from verified identity claims and then kept immutable;
+existing Google users retain their Google subject. The RTDB trace key remains the verified Firebase UID.
+Neither owner key is client-selectable.
 
 Non-prod bypass: AUTH_TEST_SUB -> fixed sub, skips token verification (test-only).
 """
@@ -14,11 +13,9 @@ _FB_AUTH = None
 
 
 def _verify_principal(token):
-    """Verify a Firebase ID token; return (schema_sub, firebase_uid) from ONE verify, or (None, None).
-    schema_sub = the Google sub (the per-user Postgres schema — stable across devices/sessions).
-    firebase_uid = dec['uid'] = the browser's auth.uid = the RTDB /runs/{uid} key the security rules gate on
-    (auth.uid === $uid). Both are derived from the verified token — a client cannot choose another user's schema
-    OR another user's RTDB stream."""
+    """Verify a Firebase ID token; return (storage_principal, firebase_uid) or (None, None).
+    Existing Google users retain their Google subject as the storage principal; users without a Google
+    identity use a server-recorded Firebase UID mapping. RTDB remains keyed by the verified Firebase UID."""
     test = auth_test_sub()
     if test:
         return test, test
@@ -41,7 +38,43 @@ def _verify_principal(token):
     ident = (dec.get("firebase") or {}).get("identities") or {}
     g = ident.get("google.com") or []
     uid = dec.get("uid")
-    return (str(g[0]) if g else uid), uid
+    if not uid:
+        return None, None
+    return _storage_principal(str(uid), str(g[0]) if g else None), str(uid)
+
+
+def _storage_principal(firebase_uid, google_sub):
+    """Keep database ownership stable when a user adds or removes a sign-in provider.
+
+    Existing Google accounts keep their historical Google subject. New accounts without a Google
+    identity use their Firebase UID. Once recorded, the mapping is immutable for that Firebase UID.
+    RTDB remains keyed by the verified Firebase UID, independently of this database subject.
+    """
+    from engine.pg import _pg
+
+    fallback = google_sub or firebase_uid
+    conn = _pg()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            'INSERT INTO "chat"."auth_principal" (firebase_uid, principal_id) '
+            'VALUES (%s, %s) ON CONFLICT (firebase_uid) DO NOTHING',
+            (firebase_uid, fallback),
+        )
+        cur.execute(
+            'SELECT principal_id FROM "chat"."auth_principal" WHERE firebase_uid = %s',
+            (firebase_uid,),
+        )
+        row = cur.fetchone()
+        if not row or not row[0]:
+            raise RuntimeError("account principal mapping is unavailable")
+        conn.commit()
+        return str(row[0])
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _bearer(headers, body):

@@ -68,7 +68,14 @@ def _check_new_session_limit(cur, user_id):
         raise QuotaExceeded("spreadsheet session limit reached")
 
 
-def restore_sheet_session(user_id, spreadsheet_id, sheets):
+def _session_host(value):
+    host = str(value or "sheets").strip().lower()
+    if host not in ("sheets", "excel"):
+        raise ValueError("spreadsheet host is invalid")
+    return host
+
+
+def restore_sheet_session(user_id, spreadsheet_id, sheets, host="sheets"):
     """Return the current sidebar session for one sheet, creating a durable blank marker if absent.
 
     Existing deployments did not record spreadsheet ids.  On the first open after this feature is
@@ -77,6 +84,7 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets):
     conversation marker and therefore never resurrects an older conversation on reload.
     """
     sid = _spreadsheet_id(spreadsheet_id)
+    host = _session_host(host)
     current_hash = source_snapshot_hash(sheets)
     conn = _pg()
     try:
@@ -89,12 +97,12 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets):
                 'SELECT ss.conversation_id, ss.sidebar_state, c.initial_prompt, c.source_hash, '
                 'c.dataset_version FROM "chat"."sheet_session" ss '
                 'LEFT JOIN "chat"."conversation" c ON c.conversation_id = ss.conversation_id '
-                'WHERE ss.user_id = %s AND ss.spreadsheet_id = %s FOR UPDATE OF ss',
-                (user_id, sid),
+                'WHERE ss.user_id = %s AND ss.spreadsheet_id = %s AND ss.host = %s FOR UPDATE OF ss',
+                (user_id, sid, host),
             )
             row = cur.fetchone()
             legacy = False
-            if row is None:
+            if row is None and host == "sheets":
                 cur.execute(
                     'SELECT c.conversation_id, c.initial_prompt, c.source_hash, c.dataset_version '
                     'FROM "chat"."conversation" c '
@@ -112,14 +120,24 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets):
                     row = (None, None, "", "", 0)
                 cur.execute(
                     'INSERT INTO "chat"."sheet_session" '
-                    '(user_id, spreadsheet_id, conversation_id, expires_at) VALUES (%s, %s, %s, %s)',
-                    (user_id, sid, row[0], _expiry()),
+                    '(user_id, spreadsheet_id, host, conversation_id, expires_at) '
+                    'VALUES (%s, %s, %s, %s, %s)',
+                    (user_id, sid, host, row[0], _expiry()),
+                )
+            elif row is None:
+                _check_new_session_limit(cur, user_id)
+                row = (None, None, "", "", 0)
+                cur.execute(
+                    'INSERT INTO "chat"."sheet_session" '
+                    '(user_id, spreadsheet_id, host, conversation_id, expires_at) '
+                    'VALUES (%s, %s, %s, NULL, %s)',
+                    (user_id, sid, host, _expiry()),
                 )
             else:
                 cur.execute(
                     'UPDATE "chat"."sheet_session" SET updated_at = now(), expires_at = %s '
-                    'WHERE user_id = %s AND spreadsheet_id = %s',
-                    (_expiry(), user_id, sid),
+                    'WHERE user_id = %s AND spreadsheet_id = %s AND host = %s',
+                    (_expiry(), user_id, sid, host),
                 )
 
             conversation_id, sidebar_state, question, stored_hash, dataset_version = row
@@ -138,6 +156,7 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets):
                 "dataset_version": int(dataset_version or 0),
                 "source_changed": bool(conversation_id and stored_hash and stored_hash != current_hash),
                 "legacy": bool(conversation_id and (legacy or sidebar_state is None)),
+                "host": host,
             }
         except Exception:
             try:
@@ -149,9 +168,10 @@ def restore_sheet_session(user_id, spreadsheet_id, sheets):
         conn.close()
 
 
-def save_sheet_session(user_id, spreadsheet_id, conversation_id, state):
+def save_sheet_session(user_id, spreadsheet_id, conversation_id, state, host="sheets"):
     """Select an owned conversation for a sheet and atomically persist its renderable sidebar."""
     sid = _spreadsheet_id(spreadsheet_id)
+    host = _session_host(host)
     cid = str(conversation_id or "")
     if not _CONVERSATION_ID_RE.fullmatch(cid):
         raise NotOwned("conversation not found")
@@ -172,19 +192,19 @@ def save_sheet_session(user_id, spreadsheet_id, conversation_id, state):
                 raise NotOwned("conversation not found")
             cur.execute(
                 'SELECT state_bytes FROM "chat"."sheet_session" '
-                'WHERE user_id = %s AND spreadsheet_id = %s FOR UPDATE',
-                (user_id, sid),
+                'WHERE user_id = %s AND spreadsheet_id = %s AND host = %s FOR UPDATE',
+                (user_id, sid, host),
             )
             if cur.fetchone() is None:
                 _check_new_session_limit(cur, user_id)
             cur.execute(
                 'INSERT INTO "chat"."sheet_session" '
-                '(user_id, spreadsheet_id, conversation_id, sidebar_state, state_bytes, expires_at) '
-                'VALUES (%s, %s, %s, %s::jsonb, %s, %s) '
-                'ON CONFLICT (user_id, spreadsheet_id) DO UPDATE SET '
-                'conversation_id = EXCLUDED.conversation_id, sidebar_state = EXCLUDED.sidebar_state, '
+                '(user_id, spreadsheet_id, host, conversation_id, sidebar_state, state_bytes, expires_at) '
+                'VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s) '
+                'ON CONFLICT (user_id, host, spreadsheet_id) DO UPDATE SET '
+                'host = EXCLUDED.host, conversation_id = EXCLUDED.conversation_id, sidebar_state = EXCLUDED.sidebar_state, '
                 'state_bytes = EXCLUDED.state_bytes, updated_at = now(), expires_at = EXCLUDED.expires_at',
-                (user_id, sid, cid, encoded, state_bytes, _expiry()),
+                (user_id, sid, host, cid, encoded, state_bytes, _expiry()),
             )
             conn.commit()
             return {"saved": cid, "spreadsheet_id": sid}
@@ -198,9 +218,10 @@ def save_sheet_session(user_id, spreadsheet_id, conversation_id, state):
         conn.close()
 
 
-def clear_sheet_session(user_id, spreadsheet_id):
+def clear_sheet_session(user_id, spreadsheet_id, host="sheets"):
     """Persist an explicit blank sidebar so reload does not revive an older matching conversation."""
     sid = _spreadsheet_id(spreadsheet_id)
+    host = _session_host(host)
     conn = _pg()
     try:
         try:
@@ -209,19 +230,19 @@ def clear_sheet_session(user_id, spreadsheet_id):
                         (f"prereasoner-sheet-session:{user_id}:{sid}",))
             _ensure_user(cur, user_id)
             cur.execute(
-                'SELECT 1 FROM "chat"."sheet_session" WHERE user_id = %s AND spreadsheet_id = %s',
-                (user_id, sid),
+                'SELECT 1 FROM "chat"."sheet_session" WHERE user_id = %s AND spreadsheet_id = %s AND host = %s',
+                (user_id, sid, host),
             )
             if cur.fetchone() is None:
                 _check_new_session_limit(cur, user_id)
             cur.execute(
                 'INSERT INTO "chat"."sheet_session" '
-                '(user_id, spreadsheet_id, conversation_id, sidebar_state, state_bytes, expires_at) '
-                'VALUES (%s, %s, NULL, NULL, 0, %s) '
-                'ON CONFLICT (user_id, spreadsheet_id) DO UPDATE SET '
-                'conversation_id = NULL, sidebar_state = NULL, state_bytes = 0, '
+                '(user_id, spreadsheet_id, host, conversation_id, sidebar_state, state_bytes, expires_at) '
+                'VALUES (%s, %s, %s, NULL, NULL, 0, %s) '
+                'ON CONFLICT (user_id, host, spreadsheet_id) DO UPDATE SET '
+                'host = EXCLUDED.host, conversation_id = NULL, sidebar_state = NULL, state_bytes = 0, '
                 'updated_at = now(), expires_at = EXCLUDED.expires_at',
-                (user_id, sid, _expiry()),
+                (user_id, sid, host, _expiry()),
             )
             conn.commit()
             return {"cleared": sid}

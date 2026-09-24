@@ -69,10 +69,10 @@ class _Connection:
 
 
 def test_chat_migration_is_admin_run_and_idempotent():
-    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5, 6, 7]
+    assert [migration.version for migration in CHAT_MIGRATIONS] == [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     assert CHAT_MIGRATIONS[0].name == "conversation_state"
     connection = _Connection()
-    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
     assert migrate_chat(connection) == ()
     assert connection.commits == 2 and connection.rollbacks == 0
     assert any("ALTER TABLE \"chat\".\"conversation\"" in statement
@@ -105,6 +105,18 @@ def test_chat_migration_is_admin_run_and_idempotent():
     assert constraint_fix.name == "google_sheets_spreadsheet_id_constraint"
     assert "char_length(spreadsheet_id) BETWEEN 10 AND 256" in "\n".join(constraint_fix.statements)
     assert "char_length(spreadsheet_id) BETWEEN 10 AND 256" in init
+    excel_sessions = CHAT_MIGRATIONS[7]
+    assert excel_sessions.name == "excel_document_sessions"
+    assert "host IN ('sheets', 'excel')" in "\n".join(excel_sessions.statements)
+    assert "host text NOT NULL DEFAULT 'sheets'" in init
+    principal = CHAT_MIGRATIONS[8]
+    assert principal.name == "stable_firebase_account_principal"
+    assert '"chat"."auth_principal"' in "\n".join(principal.statements)
+    assert '"chat"."auth_principal"' in init
+    host_sessions = CHAT_MIGRATIONS[9]
+    assert host_sessions.name == "host_scoped_spreadsheet_sessions"
+    assert "PRIMARY KEY (user_id, host, spreadsheet_id)" in "\n".join(host_sessions.statements)
+    assert "PRIMARY KEY (user_id, host, spreadsheet_id)" in init
 
 
 def test_knowledgebase_migration_installs_definer_functions():
@@ -126,7 +138,7 @@ def test_knowledgebase_migration_installs_definer_functions():
     assert migrate_knowledgebase(connection) == (1, 2, 3)
     assert migrate_knowledgebase(connection) == ()
     # Separate ledgers: the chat and knowledgebase entries must not collide on version numbers.
-    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7)
+    assert migrate_chat(connection) == (1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
 
 def test_serving_path_has_no_direct_knowledgebase_writes():

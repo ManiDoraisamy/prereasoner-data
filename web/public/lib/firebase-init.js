@@ -3,7 +3,7 @@
 // scripts by publishing window.ensureToken / window.subscribeRun / window.__uid — the same
 // contract the pages have always used. The config lives in lib/config.js (public identifiers).
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithRedirect, getRedirectResult, getIdToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithRedirect, getRedirectResult, getIdToken, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getDatabase, ref, onValue as watchValue, onChildAdded as watchChild, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { firebaseConfig, AUTH_PROVIDER } from "./config.js";
 import './result-wire.js';
@@ -120,6 +120,15 @@ export async function ensureSignedIn(){
     window.__uid = auth.currentUser.uid;
     return auth.currentUser.uid;
   }
+  // A Prereasoner conversation link opened from an Excel session may explicitly request the
+  // same Microsoft identity used by that add-in. This preserves owner-scoped conversation access
+  // without matching accounts by email or merging unrelated Google/Microsoft identities.
+  const selectedProvider = new URLSearchParams(location.search).get('auth') === 'microsoft'
+    ? 'microsoft' : 'google';
+  if (selectedProvider === 'microsoft' && auth.currentUser &&
+      !auth.currentUser.providerData.some(item => item.providerId === 'microsoft.com')) {
+    await signOut(auth);
+  }
   let redirectErr = null;
   try { await getRedirectResult(auth); } catch (e) { redirectErr = e; }   // completes the sign-in when returning from Google
   await auth.authStateReady();
@@ -128,14 +137,19 @@ export async function ensureSignedIn(){
     // out, the redirect flow failed (cancelled, or the browser dropped the pending sign-in).
     // Never re-redirect in that state — throw so the page can show a retry UI instead of
     // bouncing the user to the Google account chooser forever.
-    if (sessionStorage.getItem('pr_auth_pending')) {
-      sessionStorage.removeItem('pr_auth_pending');
-      throw new Error('Google sign-in did not complete' + (redirectErr ? ` (${redirectErr.code || redirectErr.message})` : '') + ' — please try again.');
+    const pendingKey = `pr_auth_pending_${selectedProvider}`;
+    if (sessionStorage.getItem(pendingKey)) {
+      sessionStorage.removeItem(pendingKey);
+      throw new Error(`${selectedProvider === 'microsoft' ? 'Microsoft' : 'Google'} sign-in did not complete` + (redirectErr ? ` (${redirectErr.code || redirectErr.message})` : '') + ' — please try again.');
     }
-    sessionStorage.setItem('pr_auth_pending', '1');
-    await signInWithRedirect(auth, new GoogleAuthProvider()); return null;  // -> Google -> back here
+    sessionStorage.setItem(pendingKey, '1');
+    const provider = selectedProvider === 'microsoft' ? new OAuthProvider('microsoft.com') : new GoogleAuthProvider();
+    if (selectedProvider === 'microsoft') {
+      provider.setCustomParameters({prompt: 'select_account'});
+    }
+    await signInWithRedirect(auth, provider); return null;  // -> identity provider -> back here
   }
-  sessionStorage.removeItem('pr_auth_pending');
+  sessionStorage.removeItem(`pr_auth_pending_${selectedProvider}`);
   window.__uid = auth.currentUser.uid;
   return auth.currentUser.uid;
 }

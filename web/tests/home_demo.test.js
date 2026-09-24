@@ -330,13 +330,13 @@ assert(privacy.includes('<a class="brand" href="https://prereasoner.com/">'),
   'the privacy page brand must link to the marketing site');
 assert(privacy.includes('<a class="back" href="/">'),
   'the privacy page must keep a distinct link back to the app');
-assert(privacy.includes('<title>Privacy - Prereasoner - Sheets Copilot</title>'),
+assert(privacy.includes('<title>Privacy - Prereasoner</title>'),
   'the privacy page must use the canonical add-on name');
-assert(terms.includes('<title>Terms of Service - Prereasoner - Sheets Copilot</title>'),
+assert(terms.includes('<title>Terms of Service - Prereasoner</title>'),
   'the terms page must use the canonical add-on name');
-assert(support.includes('<title>Support - Prereasoner - Sheets Copilot</title>'),
+assert(support.includes('<title>Support - Prereasoner</title>'),
   'the support page must use the canonical add-on name');
-assert(support.includes('Extensions → Prereasoner - Sheets Copilot → Ask a question'),
+assert(support.includes('Extensions → Prereasoner → Ask a question'),
   'support navigation must use the canonical add-on name');
 for (const [body, name, required] of [
   [terms, 'terms', ['Terms of Service', 'Google Sheets add-on', 'Your data', 'Contact']],
@@ -348,7 +348,7 @@ for (const [body, name, required] of [
 }
 
 console.log("home demo + landing routes + picker + privacy: passed");
-assert(html.includes('<title>Ask your spreadsheet a question | Prereasoner - Sheets Copilot</title>'),
+assert(html.includes('<title>Ask your spreadsheet a question | Prereasoner</title>'),
   'the application website must use the canonical add-on name');
-assert(html.includes('<span>Prereasoner - Sheets Copilot</span>'),
+assert(html.includes('<span>Prereasoner</span>'),
   'the application header must use the canonical add-on name');

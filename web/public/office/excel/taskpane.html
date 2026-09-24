@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Prereasoner - Excel Copilot</title>
+  <link rel="stylesheet" href="taskpane.css">
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script src="../../lib/result-wire.js?v=1"></script>
+  <script src="../../lib/turn-renderer.js?v=2"></script>
+  <script type="module" src="taskpane.js"></script>
+</head>
+<body>
+  <main id="app" aria-live="polite">
+    <header class="topline">
+      <div class="workbook"><span id="sheetCount">Excel workbook</span><span id="dataState" class="data-state"></span></div>
+      <button id="previousChats" class="quiet" type="button" hidden>Previous conversations</button>
+      <button id="newChat" class="quiet" type="button" hidden>+ New chat</button>
+    </header>
+    <section id="notice" class="notice" hidden></section>
+    <section id="thread" class="thread" aria-label="Conversation">
+      <div id="empty" class="empty">Ask a question about this workbook.</div>
+    </section>
+    <section id="history" class="history" aria-label="Previous conversations" hidden>
+      <h1>Previous conversations</h1>
+      <div id="historyList" class="history-list"></div>
+      <button id="loadMore" class="quiet load-more" type="button" hidden>Load older conversations</button>
+    </section>
+    <form id="composer" class="composer">
+      <label class="sr-only" for="question">Ask a question about this workbook</label>
+      <textarea id="question" rows="1" placeholder="Ask a question about this workbook…" maxlength="20000" disabled></textarea>
+      <button id="send" type="submit" aria-label="Send question" disabled>↑</button>
+    </form>
+  </main>
+  <dialog id="authDialog" class="auth-dialog" aria-labelledby="authTitle">
+    <h2 id="authTitle">Sign in to Prereasoner</h2>
+    <p>Sign in to ask questions and reopen your saved conversations.</p>
+    <button id="signInMicrosoft" class="auth-button" type="button">Continue with Microsoft</button>
+    <button id="signInGoogle" class="auth-button secondary" type="button">Continue with Google</button>
+    <p id="authError" class="error" role="alert"></p>
+  </dialog>
+</body>
+</html>

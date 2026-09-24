@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+  xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
+  xsi:type="TaskPaneApp">
+  <Id>29a43de1-c071-45d3-9c43-7ce8ba8de91f</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>MailRecipe LLC</ProviderName>
+  <DefaultLocale>en-US</DefaultLocale>
+  <DisplayName DefaultValue="Prereasoner - Excel Copilot" />
+  <Description DefaultValue="Ask questions about Excel workbooks and inspect the reasoning behind each answer." />
+  <IconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-32.png" />
+  <HighResolutionIconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-128.png" />
+  <SupportUrl DefaultValue="https://chat.prereasoner.com/support" />
+  <AppDomains>
+    <AppDomain>https://chat.prereasoner.com</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Workbook" />
+  </Hosts>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://chat.prereasoner.com/office/excel/taskpane.html" />
+  </DefaultSettings>
+  <!-- Excel JavaScript APIs require read/write document permission, even when this add-in only reads. -->
+  <Permissions>ReadWriteDocument</Permissions>
+  <Requirements>
+    <Sets DefaultMinVersion="1.2">
+      <Set Name="ExcelApi" MinVersion="1.2" />
+    </Sets>
+  </Requirements>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Hosts>
+      <Host xsi:type="Workbook">
+        <DesktopFormFactor>
+          <GetStarted>
+            <Title resid="Commands.Title" />
+            <Description resid="Commands.Description" />
+            <LearnMoreUrl resid="Resources.SupportUrl" />
+          </GetStarted>
+          <ExtensionPoint xsi:type="PrimaryCommandSurface">
+            <OfficeTab id="TabHome">
+              <Group id="Prereasoner.Group">
+                <Label resid="Group.Label" />
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16" />
+                  <bt:Image size="32" resid="Icon.32" />
+                  <bt:Image size="80" resid="Icon.128" />
+                </Icon>
+                <Control xsi:type="Button" id="Prereasoner.Ask">
+                  <Label resid="Ask.Label" />
+                  <Supertip>
+                    <Title resid="Ask.Label" />
+                    <Description resid="Ask.Description" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.128" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Prereasoner.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.AskUrl" />
+                  </Action>
+                </Control>
+                <Control xsi:type="Button" id="Prereasoner.Previous">
+                  <Label resid="Previous.Label" />
+                  <Supertip>
+                    <Title resid="Previous.Label" />
+                    <Description resid="Previous.Description" />
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16" />
+                    <bt:Image size="32" resid="Icon.32" />
+                    <bt:Image size="80" resid="Icon.128" />
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <TaskpaneId>Prereasoner.Taskpane</TaskpaneId>
+                    <SourceLocation resid="Taskpane.HistoryUrl" />
+                  </Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="Icon.16" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-32.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-48.png" />
+        <bt:Image id="Icon.128" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-128.png" />
+      </bt:Images>
+      <bt:Urls>
+        <bt:Url id="Taskpane.AskUrl" DefaultValue="https://chat.prereasoner.com/office/excel/taskpane.html?view=ask" />
+        <bt:Url id="Taskpane.HistoryUrl" DefaultValue="https://chat.prereasoner.com/office/excel/taskpane.html?view=history" />
+        <bt:Url id="Resources.SupportUrl" DefaultValue="https://chat.prereasoner.com/support" />
+      </bt:Urls>
+      <bt:ShortStrings>
+        <bt:String id="Group.Label" DefaultValue="Prereasoner" />
+        <bt:String id="Ask.Label" DefaultValue="Ask a question" />
+        <bt:String id="Previous.Label" DefaultValue="Previous conversations" />
+        <bt:String id="Commands.Title" DefaultValue="Prereasoner - Excel Copilot" />
+      </bt:ShortStrings>
+      <bt:LongStrings>
+        <bt:String id="Ask.Description" DefaultValue="Ask about this workbook and inspect the reasoning steps." />
+        <bt:String id="Previous.Description" DefaultValue="Open a previous Prereasoner conversation." />
+        <bt:String id="Commands.Description" DefaultValue="Ask questions about your workbook and inspect each answer." />
+      </bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>

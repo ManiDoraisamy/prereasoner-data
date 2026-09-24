@@ -1,25 +1,24 @@
-# Prereasoner - Sheets Copilot — Marketplace release
+# Prereasoner — Marketplace release
 
 ## Store listing
 
-- **Application name:** Prereasoner - Sheets Copilot
-- **Sheets Extensions menu:** Prereasoner - Sheets Copilot
+- **Application name:** Prereasoner
+- **Sheets Extensions menu:** Prereasoner
 - **Category:** Office Applications
 - **Pricing:** Free of charge trial
-- **Short description:** Ask questions about your Google Sheets™ data. Check every answer with visible reasoning and source rows.
+- **Short description:** Ask questions about your Google Sheets™ in plain language. See how the answer is calculated, step by step.
 - **Developer:** MailRecipe LLC
 - **Website:** https://chat.prereasoner.com/
 - **Privacy:** https://chat.prereasoner.com/privacy
 - **Terms:** https://chat.prereasoner.com/terms
 - **Support:** https://chat.prereasoner.com/support
-- **Marketplace promo video (unlisted):** https://youtu.be/uND51puaL8A
+- **Marketplace promo video:** omitted; the listing uses three workflow illustrations.
 
 ### Detailed description
 
-Spreadsheet answers often require formulas, lookups, pivot tables and queries—and still leave
-reviewers asking how the number was calculated. Prereasoner - Sheets Copilot lets you ask a question in plain
-language, review the answer, and inspect the source rows and reasoning behind it. Your source
-spreadsheet stays unchanged.
+You can use formulas, lookups and pivot tables to calculate results in Google Sheets™. Or, you can upload it in ChatGPT, ask a question in plain English and get the answer without knowing how it was calculated. What if you could ask a question in plain English and see how it was calculated step by step?
+
+Prereasoner lets you ask a question in plain language, review the answer, and inspect the source rows and reasoning behind it. Your source spreadsheet stays unchanged, while each calculation can be inspected step by step as sheets.
 
 ❇️ Features
 
@@ -35,12 +34,12 @@ was produced.
 
 ➤ Analyze multiple tabs
 
-Prereasoner - Sheets Copilot reads visible, non-empty tabs in the current spreadsheet and can connect related records
+Prereasoner reads visible, non-empty tabs in the current spreadsheet and can connect related records
 across sheets.
 
 ➤ Look up missing context
 
-Your sheet has cities, but your question asks by country or currency. Prereasoner - Sheets Copilot can add the exact
+Your sheet has cities, but your question asks by country or currency. Prereasoner can add the exact
 geographic or currency context needed to answer.
 
 ➤ Continue with follow-up questions
@@ -50,15 +49,15 @@ to the original analysis.
 
 ➤ Reopen previous conversations
 
-Choose Extensions → Prereasoner - Sheets Copilot → Previous conversations to open saved analyses directly in
-Prereasoner - Sheets Copilot.
+Choose Extensions → Prereasoner → Previous conversations to open saved analyses directly in
+Prereasoner.
 
 ➤ Keep source data unchanged
 
 The add-on reads the current spreadsheet only when you ask a question. It never edits spreadsheet
 cells.
 
-❇️ Why Prereasoner - Sheets Copilot?
+❇️ Why Prereasoner?
 
 ➤ Answers you can audit
 
@@ -90,13 +89,6 @@ worksheet tabs using exact identifiers.
 Management questions: Ask follow-ups, compare segments and reopen previous conversations when you
 need to explain or revisit a result.
 
-❇️ Privacy and data use
-
-Prereasoner - Sheets Copilot reads visible, non-empty tabs from the spreadsheet where the add-on is running. It sends
-the question and bounded workbook data to Prereasoner - Sheets Copilot only after you submit a question. It does not
-request file-storage access and does not edit spreadsheet cells. Conversations are associated with
-your signed-in account so only you can retrieve them.
-
 ❇️ Pricing
 
 Start free with 50 questions per month. Paid plans start at $18 per month when billed annually. For
@@ -113,11 +105,11 @@ Google Sheets™ is a trademark of Google LLC.
 
 ### Installation and use
 
-1. Install Prereasoner - Sheets Copilot and authorize the requested permissions.
+1. Install Prereasoner and authorize the requested permissions.
 2. Open a spreadsheet containing a header row and at least one data row.
-3. Choose **Extensions → Prereasoner - Sheets Copilot → Ask a question**.
+3. Choose **Extensions → Prereasoner → Ask a question**.
 4. Ask a question and review the answer and reasoning steps.
-5. Choose **Extensions → Prereasoner - Sheets Copilot → Previous conversations** to reopen saved work.
+5. Choose **Extensions → Prereasoner → Previous conversations** to reopen saved work.
 
 ### OAuth scope justification
 
@@ -139,28 +131,39 @@ required because the add-on uses the reviewer's Google identity through Firebase
 
 ## Assets
 
-- The Marketplace icons use the Prereasoner purple-mask artwork from `C:\work\FormFacade\public`.
-- `marketplace/icon-32.png`
-- `marketplace/icon-48.png`
-- `marketplace/icon-96.png`
-- `marketplace/icon-128.png`
-- `marketplace/card-banner-220x140.png`
-- `marketplace/screenshot-1-open-prereasoner-1280x800.png`
-- `marketplace/screenshot-2-ask-question-1280x800.png`
-- `marketplace/screenshot-3-answer-reasoning-1280x800.png`
-- `marketplace/screenshot-4-follow-up-1280x800.png`
-- `marketplace/screenshot-5-previous-conversations-1280x800.png`
-- `marketplace/prereasoner-sheets-copilot-oauth-demo.webm`
+- The uploaded Marketplace logos use the Prereasoner artwork from
+  `C:\work\FormFacade\public\logo-full.png` (SHA-256 recorded below).
+- `docs/marketplace/icon-32.png`, `icon-48.png`, `icon-96.png`, `icon-128.png`
+- `docs/marketplace/card-banner.svg`, `card-banner-220x140.png`
+- `docs/marketplace/review-1-ask.svg`, `review-1-ask-1280x800.png`
+- `docs/marketplace/review-2-answer.svg`, `review-2-answer-1280x800.png`
+- `docs/marketplace/review-3-previous.svg`, `review-3-previous-1280x800.png`
 
 ## Release identifiers
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `20`
+- **Apps Script version:** `21`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
-- **Previous reviewer video:** `uND51puaL8A` (Unlisted; replaced)
-- **Replacement reviewer video:** https://youtu.be/hXyQ9CYCfBM
+- **OAuth reviewer video:** https://youtu.be/hXyQ9CYCfBM (provided for OAuth verification)
+- **Marketplace promo video:** omitted from the Store Listing draft; three workflow images remain.
+
+## Branding and screenshot resubmission — September 24, 2026
+
+- Marketplace application name and Apps Script menu name are **Prereasoner**. References to
+  Google Sheets in the listing use **Google Sheets™**, with the Google LLC trademark attribution.
+- Apps Script project title, OAuth consent-screen app name, Apps Script `ADDON_NAME`, and hosted
+  Prereasoner page titles and product labels use the canonical name **Prereasoner**.
+- Apps Script version `21` was pushed with `clasp`; the existing Marketplace deployment now points
+  to version `21`. Marketplace App Configuration is saved against version `21`.
+- The saved, unsubmitted Marketplace draft uses the Prereasoner card banner and three 1280 × 800
+  illustrations rendered from the actual add-on UI: question, answer with reasoning, and previous
+  conversations. All use the approved logo source `C:\work\FormFacade\public\logo-full.png`.
+- The OAuth branding name is saved as **Prereasoner**. Google marks the earlier verified branding
+  as modified and requires re-verification before it displays the new name; no OAuth verification
+  request has been submitted.
+- The Marketplace listing is saved as a draft and has not been submitted for review.
 
 ## Verification follow-up — September 20, 2026
 
@@ -171,28 +174,32 @@ required because the add-on uses the reviewer's Google identity through Firebase
 - The add-on shows a concise data-use and no-generalized-training disclosure before the first
   question is submitted.
 - The updated add-on was pushed with `clasp` and released as immutable Apps Script version `20`.
-- Apps Script version `20` standardizes the canonical product name as
-  **Prereasoner - Sheets Copilot** throughout the add-on UI and review materials.
-- The Apps Script project title, OAuth consent branding, Marketplace application name,
-  post-install menu path, card banner, and first listing screenshot now use the same canonical name.
-- Marketplace App Configuration is saved against Apps Script version `20`. The Store Listing changes
-  are saved as a draft; they have not been submitted for Marketplace review.
-- OAuth branding was saved with the canonical name and attached to the verification request that is
-  currently under review. Google may continue showing the unverified-app warning until approval.
-- Google requested a replacement video that shows the complete expanded consent screen and the full
-  user-facing operation of `script.external_request` and `script.container.ui`. Recording instructions
-  are in `OAUTH_DEMO_SCRIPT_2026-09-20.md`.
-- Do not resubmit OAuth verification until the replacement unlisted video URL has been added to the
-  verification request and `OAUTH_REVIEW_RESPONSE_2026-09-20.md`.
+- Apps Script version `20` was the earlier verification build; version `21` carries the corrected
+  canonical name throughout the add-on UI and review materials.
+- The OAuth consent branding was verified under its previous name. The updated OAuth brand name is
+  saved as **Prereasoner** and requires re-verification before Google shows it on the consent screen.
+- OAuth verification was approved on September 22, 2026 for
+  `script.external_request` and `script.container.ui`. The approved scopes are the two sensitive
+  Apps Script scopes; the identity and current-spreadsheet scopes remain in the app configuration.
+- The replacement OAuth demo video was provided to Google at https://youtu.be/hXyQ9CYCfBM.
+- The Marketplace Store Listing draft omits its optional YouTube promo video and retains the
+  workflow images documented above.
+- The prior Marketplace rejection requested trademark attribution and clearer representative
+  screenshots. The listing uses **Google Sheets™** and includes the Google LLC trademark attribution;
+  its three current images show the add-on workflow at 1280 × 800. They replace the earlier set
+  of five low-legibility screenshots.
+- Marketplace changes are saved in a draft and have **not** been submitted for review. OAuth
+  data-access verification was approved September 22; only re-verification of the changed OAuth
+  branding name remains pending, and that branding request has **not** been submitted.
 
 ## Previous submission status — September 15, 2026
 
 - Marketplace App Configuration was previously saved with Apps Script version `18`, the developer contact,
   and the exact six OAuth scopes declared in `appsscript.json`.
-- The Marketplace Store Listing draft is saved with the compliant English copy, five workflow
-  screenshots at 1280 × 800, the unlisted reviewer video, icons, card banner, and post-install tip.
-- OAuth branding is verified. OAuth data-access verification has been submitted and is under review.
-- Do not submit the Marketplace review until OAuth data-access verification is approved. The saved
-  Marketplace draft is otherwise ready for submission.
+- The earlier Marketplace Store Listing draft had five workflow screenshots at 1280 × 800, icons,
+  card banner, and post-install tip. The screenshots and product naming have since been updated as
+  described above.
+- OAuth data-access verification was approved September 22, 2026. OAuth branding had been verified
+  under the previous name; the changed **Prereasoner** name now awaits branding re-verification.
 - Logo source: `C:\work\FormFacade\public\logo-full.png`. SHA-256:
   `C8663738280FBF368E3D1768F97FC70C8F1B1F2C8E04DF2684923466DEFFCD41`.

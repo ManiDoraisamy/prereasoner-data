@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Privacy - Prereasoner - Sheets Copilot</title>
-<meta name="description" content="How Prereasoner - Sheets Copilot processes spreadsheet, account, and conversation data.">
+<title>Privacy - Prereasoner</title>
+<meta name="description" content="How Prereasoner processes spreadsheet, account, and conversation data.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -31,10 +31,10 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 </style>
 </head>
 <body>
-<header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner - Sheets Copilot</a><a class="back" href="/">Back to the app</a></nav></header>
+<header><nav class="nav" aria-label="Primary"><a class="brand" href="https://prereasoner.com/">Prereasoner</a><a class="back" href="/">Back to the app</a></nav></header>
 <main>
   <h1>Privacy</h1>
-  <div class="updated">Last updated: September 20, 2026</div>
+  <div class="updated">Last updated: September 24, 2026</div>
 
   <p class="plain">Prereasoner analyzes the spreadsheet data and questions you submit so it can
   compute an answer and show the steps used to reach it. The reference service at
@@ -42,13 +42,17 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>What we process</h2>
   <ul>
-    <li>Files and Google Sheets you choose. In the Sheets add-on, this is limited to the visible,
+    <li>Files and spreadsheets you choose. In the Google Sheets™ add-on, this is limited to the visible,
     non-empty tabs in the current spreadsheet when you submit a question, including table names,
-    columns, and cell values.</li>
+    columns, and cell values. The Excel add-in reads visible, used ranges in the open workbook when
+    you submit a question, including values and column labels; filtered or hidden rows in a visible
+    worksheet are included. It does not edit cells.</li>
     <li>Your questions, conversation history, generated SQL, results, and reasoning traces.</li>
-    <li>Account and session identifiers supplied through Google and Firebase Authentication.</li>
-    <li>For the Google Sheets add-on, the document ID needed to reopen the conversation associated
+    <li>Account and session identifiers supplied through Google, Microsoft, and Firebase Authentication.</li>
+    <li>For the Google Sheets™ add-on, the document ID needed to reopen the conversation associated
     with that spreadsheet for your signed-in account.</li>
+    <li>For the Excel add-in, a one-way hash of the workbook URL is used to reopen its associated
+    conversation; the workbook URL itself is not stored for this purpose.</li>
     <li>Operational data needed to secure, debug, and operate the service.</li>
   </ul>
 
@@ -77,6 +81,10 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
     <a href="https://firebase.google.com/support/privacy" rel="noopener">Firebase privacy and security</a>.</li>
     <li><strong>Anthropic:</strong> language processing for the hosted assistant features described above.</li>
   </ul>
+
+  <p>Microsoft sign-in for Excel uses Microsoft's standard identity response through Firebase
+  Authentication. Prereasoner receives the resulting Firebase account/session identity; it does
+  not call Microsoft Graph or store a Microsoft access token.</p>
 
   <h2>Why we process data</h2>
   <p>We process this data to provide the analysis you request, maintain your account and saved work,
@@ -128,7 +136,7 @@ footer{border-top:1px solid var(--line);padding-top:24px;margin-top:52px;color:v
 
   <h2>Storage and retention</h2>
   <p>Uploaded tables are stored in a conversation-scoped PostgreSQL schema. Conversation state and
-  named workbook revisions, and Google Sheets conversation links are stored in application tables with
+  named workbook revisions, and spreadsheet conversation links are stored in application tables with
   verified user ownership. Conversations and Sheets conversation links
   expire after 90 days without activity by default. The service also limits each account to 100 stored
   conversations, 256 MiB of serialized source and workbook state, and 1 MiB per saved snapshot. Reasoning traces stored in Firebase Realtime

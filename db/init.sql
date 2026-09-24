@@ -356,9 +356,17 @@ CREATE TABLE IF NOT EXISTS "chat"."schema_migration" (
 );
 
 CREATE TABLE IF NOT EXISTS "chat"."user_profile" (
-  user_id     text PRIMARY KEY,                    -- the verified Google sub (stable across devices)
+  user_id     text PRIMARY KEY,                    -- stable storage principal; legacy Google sub or Firebase UID
   created_at  timestamptz NOT NULL DEFAULT now(),
   last_seen   timestamptz NOT NULL DEFAULT now()
+);
+
+-- Map a verified Firebase identity to its immutable database owner. Existing Google accounts keep
+-- their historical Google subject; Microsoft-only accounts begin with their Firebase UID.
+CREATE TABLE IF NOT EXISTS "chat"."auth_principal" (
+  firebase_uid text PRIMARY KEY CHECK (length(firebase_uid) BETWEEN 1 AND 128),
+  principal_id text NOT NULL UNIQUE CHECK (length(principal_id) BETWEEN 1 AND 256),
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS "chat"."conversation" (
@@ -401,10 +409,12 @@ CREATE TABLE IF NOT EXISTS "chat"."sheet_session" (
   sidebar_state jsonb,
   state_bytes bigint NOT NULL DEFAULT 0
     CONSTRAINT chat_sheet_session_state_bytes_nonnegative CHECK (state_bytes >= 0),
+  host text NOT NULL DEFAULT 'sheets'
+    CONSTRAINT chat_sheet_session_host_shape CHECK (host IN ('sheets', 'excel')),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   expires_at timestamptz NOT NULL DEFAULT (now() + interval '90 days'),
-  PRIMARY KEY (user_id, spreadsheet_id),
+  PRIMARY KEY (user_id, host, spreadsheet_id),
   FOREIGN KEY (user_id, conversation_id)
     REFERENCES "chat"."user_conversation"(user_id, conversation_id) ON DELETE CASCADE
 );

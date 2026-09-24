@@ -13,6 +13,40 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-24 — Proposed 7B-led accuracy program with CPU-only serving
+
+User request (excerpt, formatting normalized): "Ok, go ahead and propose the full plan for 7-8B-led accuracy
+development, CPU-only serving as a requirement, and 3B as a measured alternative."
+
+Canonical proposal: [training/proposer/README.md](training/proposer/README.md#proposed-cpu-only-accuracy-program-2026-09-24).
+This is a documentation task; no training, paid jobs, model downloads, commits, or deployments
+were started. Existing production ownership and the measured 645/1,034 baseline are unchanged.
+
+Key planning decisions:
+- Lead: Qwen2.5-Coder-7B-Instruct, Apache-2.0, upstream revision
+  `c03e6d358207e414f1eca0bb1891e29f1db0e242`.
+- Smaller comparison: SmolLM3-3B, Apache-2.0, upstream revision
+  `a07cc9a04f16550a088caea529712d1d335b0ac1`, extended thinking disabled.
+  Qwen Coder's 3B sibling has a research-only license and is excluded from the default public
+  shortlist. This comparison changes model family as well as size; claims must reflect that.
+- Test CPU feasibility first: local 8-core Ryzen / approximately 32 GB; Cloud Run job
+  initially 8 vCPU / 24 GiB, actual complete-engine timings and quantized-runtime scores.
+- Freeze new data splits and runtime contracts; preserve the consulted-set caveat. Fix the
+  training pipeline's target-truncation risk before fitting longer-schema prompts.
+- Refit selection on each actual new-model/quantization pool. Do not transplant old arbiter
+  coefficients or assume llama.cpp offers the current beam and teacher-forced scoring APIs.
+- Improve coverage and selection separately; optional 7B-to-3B distillation only after useful
+  teacher measurements. Final result must satisfy both CPU and accuracy gates.
+- Proposed $300 staged research cap and 1-3 week development-cycle estimate are planning
+  assumptions, not approved spend or a guarantee of 80%. Earlier $25 approval is not reused.
+- One final implementation and one promoted bundle; 100% replacement after image gates,
+  no tagged public candidate or split traffic. Existing semantic encoder and world-grounding
+  owners remain in place; a larger SQL proposer does not replace their shared base pin.
+
+No new accuracy measurement. Validation for this update: documentation/link review and
+`git diff --check`; runtime suites are unnecessary for documentation-only changes.
+Pre-existing marketplace document/SVG and untracked served Spider summary are preserved.
+
 ## 2026-09-23 11:03 UTC — Complete semantic pilot: FAILED accuracy gate; pods=0
 
 All 416 score records downloaded and passed exact question/candidate completeness,

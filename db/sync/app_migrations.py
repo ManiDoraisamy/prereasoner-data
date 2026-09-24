@@ -199,6 +199,39 @@ CHAT_MIGRATIONS = (
             "AND spreadsheet_id ~ '^[A-Za-z0-9_-]+$')",
         ),
     ),
+    ApplicationMigration(
+        8,
+        "excel_document_sessions",
+        (
+            'ALTER TABLE "chat"."sheet_session" ADD COLUMN IF NOT EXISTS host text NOT NULL DEFAULT \'sheets\'',
+            'ALTER TABLE "chat"."sheet_session" DROP CONSTRAINT IF EXISTS chat_sheet_session_host_shape',
+            'ALTER TABLE "chat"."sheet_session" ADD CONSTRAINT chat_sheet_session_host_shape '
+            "CHECK (host IN ('sheets', 'excel'))",
+        ),
+    ),
+    ApplicationMigration(
+        9,
+        "stable_firebase_account_principal",
+        (
+            """
+            CREATE TABLE IF NOT EXISTS "chat"."auth_principal" (
+              firebase_uid text PRIMARY KEY CHECK (length(firebase_uid) BETWEEN 1 AND 128),
+              principal_id text NOT NULL UNIQUE CHECK (length(principal_id) BETWEEN 1 AND 256),
+              created_at timestamptz NOT NULL DEFAULT now()
+            )
+            """,
+        ),
+    ),
+    ApplicationMigration(
+        10,
+        "host_scoped_spreadsheet_sessions",
+        (
+            'ALTER TABLE "chat"."sheet_session" '
+            'DROP CONSTRAINT IF EXISTS sheet_session_pkey',
+            'ALTER TABLE "chat"."sheet_session" '
+            'ADD CONSTRAINT sheet_session_pkey PRIMARY KEY (user_id, host, spreadsheet_id)',
+        ),
+    ),
 )
 
 # Legacy compatibility functions from the former request-time Wikidata fill path.

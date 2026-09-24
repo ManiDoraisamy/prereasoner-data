@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Prereasoner</title>
+  <link rel="stylesheet" href="taskpane.css">
+  <style>.auth-page{min-height:100%;display:grid;place-items:center;padding:20px;background:var(--soft)}.auth-card{width:min(400px,100%);padding:26px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}.auth-card h1{font-size:20px;margin:14px 0 0}.auth-card p{color:var(--muted);font-size:14px}</style>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <script type="module" src="auth-dialog.js"></script>
+</head>
+<body class="auth-page">
+  <main class="auth-card">
+    <img src="assets/logo-48.png" width="40" height="40" alt="">
+    <h1>Sign in to Prereasoner</h1>
+    <p id="status">Continue securely with the account you use for Prereasoner.</p>
+    <button id="retry" type="button" hidden>Try again</button>
+  </main>
+</body>
+</html>

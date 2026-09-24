@@ -1,0 +1,120 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" role="img" aria-labelledby="title desc">
+  <title id="title">Prereasoner: an answer you can audit</title>
+  <desc id="desc">A simplified Google Sheets-style spreadsheet with a Prereasoner sidebar showing a plain-language question, its answer, the calculation steps, and supporting source rows.</desc>
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="2" stdDeviation="5" flood-color="#202124" flood-opacity=".10"/>
+    </filter>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #202124; }
+      .muted { fill: #5f6368; }
+      .small { font-size: 14px; }
+      .medium { font-size: 17px; }
+      .large { font-size: 23px; }
+      .mono { font-family: Consolas, 'Courier New', monospace; }
+    </style>
+  </defs>
+
+  <!-- Sheets window -->
+  <rect width="1280" height="800" fill="#f8f9fa"/>
+  <rect x="0" y="0" width="1280" height="78" fill="#fff"/>
+  <path d="M0 77.5H1280" stroke="#dadce0"/>
+  <rect x="20" y="19" width="39" height="43" rx="5" fill="#0f9d58"/>
+  <path d="M31 30h17M31 38h17M31 46h11" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="74" y="42" font-size="22" font-weight="600">Q3 Sales</text>
+  <text x="74" y="63" class="small muted">Saved to Drive</text>
+  <text x="360" y="35" class="small muted">File　Edit　View　Insert　Format　Data　Tools　Extensions</text>
+  <rect x="20" y="88" width="1240" height="49" rx="8" fill="#fff" stroke="#e0e3e7"/>
+  <text x="43" y="119" class="medium muted">↶　↷　　▣　　100%　　$　　%　　123　　⋮</text>
+
+  <!-- Spreadsheet area -->
+  <rect x="0" y="148" width="748" height="652" fill="#fff"/>
+  <rect x="0" y="148" width="748" height="45" fill="#f8f9fa"/>
+  <text x="34" y="177" class="small muted">Name box　 A1</text>
+  <text x="190" y="177" class="small muted">fx　 Country</text>
+  <path d="M0 193H748" stroke="#dadce0"/>
+
+  <!-- Column headings -->
+  <rect x="0" y="194" width="748" height="48" fill="#f1f3f4"/>
+  <rect x="0" y="194" width="48" height="48" fill="#f8f9fa"/>
+  <text x="114" y="224" text-anchor="middle" class="small muted">A</text>
+  <text x="289" y="224" text-anchor="middle" class="small muted">B</text>
+  <text x="484" y="224" text-anchor="middle" class="small muted">C</text>
+  <text x="667" y="224" text-anchor="middle" class="small muted">D</text>
+  <path d="M48 194V800M180 194V800M398 194V800M570 194V800M748 194V800" stroke="#dadce0"/>
+
+  <!-- Table header -->
+  <rect x="48" y="242" width="700" height="54" fill="#e6f4ea"/>
+  <text x="17" y="276" class="small muted">1</text>
+  <text x="67" y="276" class="medium" font-weight="700">Country</text>
+  <text x="199" y="276" class="medium" font-weight="700">Product</text>
+  <text x="417" y="276" class="medium" font-weight="700">Amount (USD)</text>
+  <text x="588" y="276" class="medium" font-weight="700">Quarter</text>
+
+  <!-- Data rows -->
+  <rect x="48" y="296" width="700" height="65" fill="#f1f8f3"/>
+  <rect x="48" y="361" width="700" height="65" fill="#f1f8f3"/>
+  <rect x="48" y="426" width="700" height="65" fill="#fff"/>
+  <rect x="48" y="491" width="700" height="65" fill="#fff"/>
+  <rect x="48" y="296" width="4" height="130" fill="#34a853"/>
+  <g stroke="#e0e3e7">
+    <path d="M0 242H748M0 296H748M0 361H748M0 426H748M0 491H748M0 556H748"/>
+  </g>
+  <g class="medium">
+    <text x="17" y="330" class="small muted">2</text><text x="17" y="395" class="small muted">3</text><text x="17" y="460" class="small muted">4</text><text x="17" y="525" class="small muted">5</text>
+    <text x="67" y="337">France</text><text x="199" y="337">Desk lamp</text><text x="417" y="337">$840</text><text x="588" y="337">Q3</text>
+    <text x="67" y="402">France</text><text x="199" y="402">Notebook</text><text x="417" y="402">$400</text><text x="588" y="402">Q3</text>
+    <text x="67" y="467">Germany</text><text x="199" y="467">Desk lamp</text><text x="417" y="467">$620</text><text x="588" y="467">Q3</text>
+    <text x="67" y="532">Spain</text><text x="199" y="532">Notebook</text><text x="417" y="532">$260</text><text x="588" y="532">Q3</text>
+  </g>
+  <rect x="48" y="296" width="700" height="130" fill="none" stroke="#34a853" stroke-width="2"/>
+
+  <!-- Subtle sheet tabs -->
+  <path d="M0 746H748" stroke="#dadce0"/>
+  <rect x="48" y="746" width="145" height="54" fill="#e6f4ea"/>
+  <text x="75" y="779" class="medium" fill="#137333">Sales data</text>
+  <text x="217" y="779" class="medium muted">＋</text>
+
+  <!-- Add-on sidebar -->
+  <rect x="748" y="78" width="532" height="722" fill="#fff"/>
+  <path d="M748 78V800" stroke="#dadce0" stroke-width="2"/>
+  <rect x="748" y="78" width="532" height="65" fill="#fff"/>
+  <path d="M748 142.5H1280" stroke="#dadce0"/>
+  <rect x="774" y="96" width="31" height="31" rx="8" fill="#6f4bf2"/>
+  <text x="789.5" y="118" text-anchor="middle" font-size="18" font-weight="700" style="fill:#fff">P</text>
+  <text x="817" y="118" font-size="20" font-weight="600">Prereasoner</text>
+  <text x="1239" y="118" text-anchor="middle" font-size="23" class="muted">×</text>
+
+  <text x="778" y="181" class="small muted" font-weight="700" letter-spacing="1">ASK A QUESTION</text>
+  <rect x="774" y="195" width="480" height="74" rx="10" fill="#f8f6ff" stroke="#d9d0ff"/>
+  <text x="795" y="225" class="medium">What were Q3 sales in France?</text>
+  <text x="795" y="251" class="small muted">Using the visible rows in this spreadsheet</text>
+
+  <text x="778" y="306" class="small muted" font-weight="700" letter-spacing="1">ANSWER</text>
+  <rect x="774" y="319" width="480" height="91" rx="10" fill="#fff" stroke="#dadce0" filter="url(#shadow)"/>
+  <text x="796" y="354" class="small muted">Total sales in France for Q3</text>
+  <text x="796" y="389" font-size="31" font-weight="700" fill="#202124">$1,240</text>
+  <rect x="1137" y="341" width="94" height="30" rx="15" fill="#e6f4ea"/>
+  <circle cx="1153" cy="356" r="5" fill="#188038"/>
+  <text x="1165" y="361" class="small" style="fill:#137333">Verified</text>
+
+  <text x="778" y="447" class="small muted" font-weight="700" letter-spacing="1">HOW IT WAS CALCULATED</text>
+  <rect x="774" y="461" width="480" height="83" rx="9" fill="#fff" stroke="#e0e3e7"/>
+  <circle cx="800" cy="487" r="14" fill="#eee9ff"/><text x="800" y="493" text-anchor="middle" class="small" font-weight="700" fill="#5e35d5">1</text>
+  <text x="825" y="489" class="medium" font-weight="600">Filter matching rows</text>
+  <text x="825" y="519" class="small muted">Country = France · Quarter = Q3 · 2 rows</text>
+
+  <path d="M800 545V559" stroke="#c9c0e8" stroke-width="2"/>
+  <rect x="774" y="560" width="480" height="83" rx="9" fill="#fff" stroke="#e0e3e7"/>
+  <circle cx="800" cy="586" r="14" fill="#eee9ff"/><text x="800" y="592" text-anchor="middle" class="small" font-weight="700" fill="#5e35d5">2</text>
+  <text x="825" y="588" class="medium" font-weight="600">Add the source amounts</text>
+  <text x="825" y="618" class="small muted">$840 + $400 = $1,240</text>
+
+  <text x="778" y="680" class="small muted" font-weight="700" letter-spacing="1">SOURCE ROWS</text>
+  <rect x="774" y="694" width="480" height="75" rx="8" fill="#f8f9fa" stroke="#e0e3e7"/>
+  <text x="791" y="722" class="small" font-weight="600">Sales data · rows 2–3</text>
+  <text x="791" y="749" class="small muted">France · Desk lamp · $840　 /　 France · Notebook · $400</text>
+
+  <!-- Bottom-sheet-like prompt, as in the add-on -->
+  <rect x="748" y="800" width="532" height="0" fill="#fff"/>
+</svg>

@@ -46,7 +46,7 @@
       {
         "source": "**",
         "headers": [
-          { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
+          { "key": "Content-Security-Policy", "value": "frame-ancestors 'self' https://excel.cloud.microsoft https://*.office.com https://*.office365.com https://*.officeapps.live.com https://*.microsoft365.com https://*.sharepoint.com" },
           { "key": "X-Content-Type-Options", "value": "nosniff" },
           { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
         ]

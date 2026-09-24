@@ -7,7 +7,7 @@ var PREREASONER_RTDB_URL = 'https://prereasoner-inference-default-rtdb.firebasei
 var PREREASONER_PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
 var PREREASONER_TERMS_URL = 'https://chat.prereasoner.com/terms';
 var PREREASONER_SUPPORT_URL = 'https://chat.prereasoner.com/support';
-var ADDON_NAME = 'Prereasoner - Sheets Copilot';
+var ADDON_NAME = 'Prereasoner';
 var FIREBASE_API_KEY = 'AIzaSyAC_Kiqj3lqd52ufpqYDAO17G6T7wfBd9Q';
 var FIREBASE_TOKEN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=' + FIREBASE_API_KEY;
 var ADDON_LIMITS = {
@@ -128,7 +128,7 @@ function savePrereasonerSheetConversation(request) {
     throw new Error('The sidebar conversation could not be saved.');
   }
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  if (!spreadsheet) throw new Error('Open a Google Sheet before using Prereasoner.');
+  if (!spreadsheet) throw new Error('Open a spreadsheet before using Prereasoner.');
   return spreadsheetSessionRequest_('/api/spreadsheet/conversation/state', {
     spreadsheet_id: spreadsheet.getId(),
     conversation_id: conversationId,
@@ -138,7 +138,7 @@ function savePrereasonerSheetConversation(request) {
 
 function clearPrereasonerSheetConversation() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  if (!spreadsheet) throw new Error('Open a Google Sheet before using Prereasoner.');
+  if (!spreadsheet) throw new Error('Open a spreadsheet before using Prereasoner.');
   return spreadsheetSessionRequest_('/api/spreadsheet/conversation/clear', {
     spreadsheet_id: spreadsheet.getId()
   });
@@ -240,7 +240,7 @@ function syncPrereasonerConversation(request) {
 
 function collectWorkbook_() {
   var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  if (!spreadsheet) throw new Error('Open a Google Sheet before using Prereasoner.');
+  if (!spreadsheet) throw new Error('Open a spreadsheet before using Prereasoner.');
 
   var activeSheet = spreadsheet.getActiveSheet();
   var sheets = spreadsheet.getSheets().filter(function(sheet) {

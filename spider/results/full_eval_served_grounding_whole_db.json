@@ -1,0 +1,133 @@
+{
+  "answered_pct": 98.7,
+  "artifacts": {
+    "dev": "30d64a3fccde493226df79687aed9e4a1c0129525baf44f29c0573d914d758a4",
+    "encoder": "53fd3d37c64525be45a372d487b3e4f1e7f39b13fdccb8c9eaacf89e22c953b2",
+    "encoder_adapter": "b5954d98028ccb300cb8ef266c543ada68c1cda88947b9c48637088a4f5330ed",
+    "encoder_meta": "0ce503fd3939bf402da992ba05d4605072d08f24f21788a08316809480f3a5cb",
+    "engine/calculations/core.py": "c4e83fd9ae14b9b6cf84ee17f3eab8d4cda06d0a8854b8257a536dac852bb797",
+    "engine/calculations/registry.py": "0bedbdd6d35d9301c520e8f05827165af2e694c776e3d4c1d855ee404f22fe8f",
+    "engine/calculations/search.py": "74776f84d069c6fa20ad17a56f040a07dede22cec3ce8496d7b582691a363200",
+    "engine/calculations/specifications.py": "e029781f88d14f7d19dbebeee9271488a49dfa4652cad348e753bcd8f5261e0e",
+    "engine/compose.py": "a6334d27f0a8e86420b051cd8ce2f6b2ed4edd0e4693dcecb4decea01519e98e",
+    "engine/decomposition.py": "f46b58ecc61d57bef239bab9fd547fdbf969370c10247859ec7a79a703a60518",
+    "engine/deterministic/context.py": "b34e25a3d3c69d7f93f0c7a226c383506a7bea899c5bcd1cd552570070bdbe35",
+    "engine/deterministic/emitter/py/__init__.py": "5f78634750aa3dc1b8f6686796184cc907c2b5719d8789fb6cb398fd94126a23",
+    "engine/deterministic/emitter/sql/__init__.py": "9a0d392deb4b912937aa3e81a0c9c037e347190e6966ad6ddd7ac24f6e34a5de",
+    "engine/deterministic/lower.py": "0af03b35b82820fe8ed16f00a15e24e818246b9614feb297a0d454a9c70e0259",
+    "engine/deterministic/operators.py": "280c925c715579b2d75f774167c2246995d88e19e086642d4d65a361b5a801d9",
+    "engine/deterministic/plan.py": "b59ec4443171a2423820a15ae82e1d7560f8494bfffe9708c3647eb956258b82",
+    "engine/deterministic/runtime.py": "11156dd5d102958ad751efba1e76f6414d92c7bc1c2aefdb39a1eaad3d62a5b1",
+    "engine/deterministic/service.py": "3faad770d36dbcb0de77747bd28e37d595cd94e8a52f21f39e5dac91b27e2ada",
+    "engine/encoder_overlay.py": "683c4f92eb74e7f14f5e12921c4973127dae088a46ec939c7c37b380f3070cc2",
+    "engine/knowledge_compose.py": "552ecfa9d5ed352c76b6969fd043c44d7a13a660993dd866af5d45a6e5cf8100",
+    "engine/model_revisions.py": "d1ba257a9011ebadf4eefd0b17ec4e4f5a527b59a875dbd0fae75234057b5a8f",
+    "engine/primitive_head.py": "376fb75bbbe81d11e7ce36899048a088ab7704f87cb9362676a91dd0428ff7b7",
+    "engine/routing.py": "f45cfe78056ee03e044cd69611135b6938244acb6a81809e07e627819fd66818",
+    "engine/sql_ast.py": "8f2f52c41177f63fb8797aaaac2362a07a11967d7339a56f3cb4de92742c69b0",
+    "engine/sql_candidate.py": "0f401dbfb29fbdb86ca54445f9913493d69952dd999c7749af0a395e650f9a3c",
+    "engine/sql_constraints.py": "66bb046ec3399e7427b08c9183113c5f699d9d9dba946cc409ddd5fd3e041176",
+    "engine/sql_expansion.py": "4c88960d5037e9d2e8d8b212acb889d18d25454bda991af58b507324dd48a037",
+    "engine/sql_extrema.py": "13ff55ea54b61b869109949030ad81c4196d6572b79b85193d9bee4e61dd293c",
+    "engine/sql_import.py": "fce3dce5780e473dcdd97d884a1e57d196c29c3ae76a2aaac8a41d88e63e3b2a",
+    "engine/sql_parsimony.py": "987f95a14662d1b623a5547b0e93f29c32bebbb4ad9d5d8b4e1a2c40b5fb2ab7",
+    "engine/sql_profile.py": "1e718036e793cf0e7329f68f03c3fcab9bcdc00c25b1a327d484b4b64483b18d",
+    "engine/sql_profile_expansion.py": "85f8df12053495a830ae817b9ec4bf0e4a60c98fecc0e672426c107e711547f2",
+    "engine/sql_prompt.py": "6ecb14c325ce5bc492d2d40db84e37b2eec7daa91912c1256835756686f4d0bb",
+    "engine/sql_proposer.py": "ba696b7ff40c2804026c143f72799b82f839d2bae168012c0998c42a12cf259f",
+    "engine/sql_rank.py": "8457627af2af34485424e0c6afed22b9276f6e177b674c135a77033d8e613404",
+    "engine/sql_recursive.py": "6d4a2e8bf711ecbe6821341010fea697c6a60ff97fdcee7b7679238a2a497d96",
+    "engine/sql_schema.py": "8a0a5a934022e6e688e289aa847298ded9c63cc57dd5755c179330005466e72e",
+    "engine/sql_search.py": "384061fa8df2441e235398c1a91302691692355ede5bc19e6f408b43c005f0b7",
+    "engine/tables.py": "f33feb29ca9072f66b448f86ab0d9fb626de421f124ad06e43c259d1a4e0025e",
+    "eval_harness": "453c23d55258e55b43692fa83df62148a82b927221d060240a9630735df772b1",
+    "proposer_adapter": "d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf",
+    "source_commit": "841f08c5b96f283313f8c2151de2593f3a2e2155",
+    "sql_arbiter": "fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d",
+    "tables": "61bb20aa401f03164e2d7f3b16509b7b5f79cc9c943ca7bd159046df1159e2ed",
+    "worktree_dirty": false
+  },
+  "backend": "sql",
+  "by_difficulty": {
+    "easy": {
+      "answered": 246,
+      "correct_lenient": 200,
+      "correct_strict": 198,
+      "error": 2,
+      "n": 248,
+      "over_budget": 182,
+      "scalar_correct": 145,
+      "scalar_total": 173
+    },
+    "extra": {
+      "answered": 165,
+      "correct_lenient": 74,
+      "correct_strict": 75,
+      "error": 1,
+      "n": 166,
+      "over_budget": 166,
+      "scalar_correct": 34,
+      "scalar_total": 57
+    },
+    "hard": {
+      "answered": 168,
+      "correct_lenient": 112,
+      "correct_strict": 96,
+      "error": 6,
+      "n": 174,
+      "over_budget": 174,
+      "scalar_correct": 53,
+      "scalar_total": 77
+    },
+    "medium": {
+      "answered": 442,
+      "correct_lenient": 310,
+      "correct_strict": 278,
+      "error": 4,
+      "n": 446,
+      "over_budget": 413,
+      "scalar_correct": 72,
+      "scalar_total": 101
+    }
+  },
+  "cap": 5000,
+  "compose": true,
+  "config": "whole_db",
+  "correct_lenient_pct": 67.3,
+  "correct_strict_pct": 62.6,
+  "error_pct": 1.3,
+  "error_stage_histogram": {
+    "ast_search": 13
+  },
+  "n": 1034,
+  "path_correct_lenient": {
+    "ast": 696
+  },
+  "path_histogram": {
+    "ast": 1034
+  },
+  "prediction_seconds": {
+    "max": 108.165,
+    "median": 30.254,
+    "n": 1034,
+    "p90": 56.266,
+    "p95": 65.079
+  },
+  "proposer_device": "cpu",
+  "python_row_limit": 10000,
+  "scalar_gold_accuracy_pct": 74.5,
+  "scalar_gold_n": 408,
+  "scalar_only": false,
+  "selection": "served",
+  "timeout": 12.0,
+  "totals": {
+    "answered": 1021,
+    "correct_lenient": 696,
+    "correct_strict": 647,
+    "error": 13,
+    "n": 1034,
+    "over_budget": 935,
+    "scalar_correct": 304,
+    "scalar_total": 408
+  }
+}
