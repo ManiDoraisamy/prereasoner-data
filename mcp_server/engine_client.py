@@ -86,6 +86,10 @@ def shape_reason_response(engine_json: dict[str, Any], job_id: str | None) -> di
             # bounded retry instead of ending the turn on the humanized reason.
             out["decomposition_rejected"] = True
             out["rejection_detail"] = str(j.get("detail") or "")
+        if j.get("dataset_ops_rejected"):
+            # A rejected dataset op is correctable too: the orchestrator grants one repair.
+            out["dataset_ops_rejected"] = True
+            out["rejection_detail"] = str(j.get("reason") or "")
         out["trace"] = {"jobId": job_id}
         if j.get("conversation_id"):
             out["conversation_id"] = j["conversation_id"]

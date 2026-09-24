@@ -187,6 +187,115 @@ def test_unambiguous_column_as_table_is_rebound_before_attestation():
         )
 
 
+def test_a_complete_question_reaches_the_engine_without_appended_context():
+    """Chrome pass (2026-09-24): "What is the highest amount paid?" reached the engine as
+    "... paid to suppliers?", which it reads as a per-supplier ranking. A question that is the
+    user's own words plus appended context is sent as the user's words; a shorthand rewrite is
+    not the user's words extended, so it passes unchanged."""
+    cases = (
+        ("What is the highest amount paid?", "What is the highest amount paid to suppliers?",
+         "What is the highest amount paid?"),
+        ("total budget in Germany", "total budget in Germany in US dollars", "total budget in Germany"),
+        ("how about Germany?", "total amount in Germany in US dollars",
+         "total amount in Germany in US dollars"),
+        ("average?", "average order value in France", "average order value in France"),
+    )
+    for user_message, model_question, expected in cases:
+        _result, _model_calls, engine_calls = asyncio.run(_run(
+            "answered", user_message=user_message,
+            query_input={"question": model_question, "action": "create", "slug": "q"},
+        ))
+        assert engine_calls[0][0][0] == expected, (user_message, engine_calls[0][0][0])
+
+
+def _dataset_op_repair_turn(engine_answers):
+    """A turn whose first dataset op names a sheet the upload lacks; ``engine_answers`` scripts
+    the engine's reply to each call. Returns (result, model_calls, engine_calls)."""
+    user_message = "This is in euros. Whats in USD"
+    question = "total budget in Germany in US dollars"
+    tables = [{"name": "responses", "data": "country,budget\nGermany,100\n"}]
+
+    def op(table, column):
+        return {"op": "set_measure_metadata", "table": table, "column": column,
+                "metadata": {"currency": "EUR"},
+                "basis": {"source": "conversation", "text": "This is in euros"}}
+
+    attempts = [op("budget", "amount"), op("responses", "budget")]
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            # The message list keeps growing after this call: read the tool result now.
+            seen = (json.loads(kwargs["messages"][-1]["content"][0]["content"])
+                    if len(model_calls) else None)
+            model_calls.append({**kwargs, "tool_result": seen})
+            repairing = seen is not None and seen.get("status") == "repair_required"
+            if len(model_calls) == 1 or repairing:
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id=f"q{len(model_calls)}",
+                    input={"question": question, "action": "create", "slug": "budget_usd",
+                           "dataset_ops": [attempts[len(engine_calls)]]},
+                )])
+            else:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="That comes to about 114 US dollars.")])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args, kwargs))
+        return engine_answers[len(engine_calls) - 1]
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query), \
+                patch.dict("os.environ", {"DATASET_ATTESTATION_KEY": "unit-test-secret"}):
+            return await orchestrator._run_turn(
+                user_message, tables, [], engine_base_url="http://engine.invalid",
+                bearer_token=None, api_key="test", model="test-model", principal="user-a",
+            )
+
+    return asyncio.run(run()), model_calls, engine_calls
+
+
+REJECTED_OP = {
+    "status": "clarify",
+    "clarify": {"reason": "dataset operation names a table that is not uploaded: 'budget'"},
+    "dataset_ops_rejected": True,
+    "rejection_detail": "dataset operation names a table that is not uploaded: 'budget'",
+}
+
+
+def test_a_rejected_dataset_op_gets_one_repair_with_the_uploaded_columns():
+    """Chrome pass (2026-09-24): in a reopened conversation "This is in euros. Whats in USD" ended
+    on the engine's validator sentence as the reply. The rejection now goes back to the model
+    once, with the uploaded sheets and columns, and the corrected op is answered."""
+    answered = {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["114.11"]]}}
+    result, model_calls, engine_calls = _dataset_op_repair_turn([REJECTED_OP, answered])
+    assert len(engine_calls) == 2, engine_calls
+    repair = model_calls[1]["tool_result"]
+    assert repair["status"] == "repair_required" and repair["code"] == "invalid_dataset_ops", repair
+    assert "not uploaded: 'budget'" in repair["detail"]
+    assert "responses (country, budget)" in repair["detail"], repair["detail"]
+    corrected = engine_calls[1][1]["dataset_ops"][0]
+    assert (corrected["table"], corrected["column"]) == ("responses", "budget")
+    with patch.dict("os.environ", {"DATASET_ATTESTATION_KEY": "unit-test-secret"}):
+        assert dataset_attestation.verify("user-a", engine_calls[1][1]["dataset_ops"],
+                                          engine_calls[1][1]["dataset_attestation"])
+    assert "not uploaded" not in result["reply"]
+    assert result["traces"][0]["engine"].get("dataset_ops_rejected") is True
+
+
+def test_a_second_dataset_op_rejection_is_terminal():
+    result, _model_calls, engine_calls = _dataset_op_repair_turn([REJECTED_OP, REJECTED_OP])
+    assert len(engine_calls) == 2, "one repair, then the rejection is terminal"
+    assert result["traces"][1]["engine"].get("dataset_ops_rejected") is True
+
+
 def test_terminal_fallback_preserves_the_engine_outcome():
     assert orchestrator._terminal_fallback({
         "status": "answered", "answer": {"rows": [["876.50"]]},
@@ -822,6 +931,9 @@ def test_tool_exhaustion_never_exposes_an_internal_budget():
 TESTS = [
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
     test_unambiguous_column_as_table_is_rebound_before_attestation,
+    test_a_complete_question_reaches_the_engine_without_appended_context,
+    test_a_rejected_dataset_op_gets_one_repair_with_the_uploaded_columns,
+    test_a_second_dataset_op_rejection_is_terminal,
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_recalculation_identity_and_scalar_presentation_are_grounded,

@@ -101,6 +101,20 @@ def test_shape():
     ok("detail" not in rejected.get("clarify", {}),
        "the user-facing clarify still hides validator internals")
 
+    rejected_op = engine_client.shape_reason_response(
+        {
+            "question": "q",
+            "clarify": True,
+            "reason": "dataset operation names a table that is not uploaded: 'budget'",
+            "dataset_ops_rejected": True,
+        },
+        "j-op",
+    )
+    ok(rejected_op["status"] == "clarify" and rejected_op.get("dataset_ops_rejected") is True,
+       "a rejected dataset op keeps status 'clarify' and carries the correctable marker")
+    ok("not uploaded: 'budget'" in rejected_op.get("rejection_detail", ""),
+       "a rejected dataset op forwards the validator's sentence as the repair detail")
+
     err_field = engine_client.shape_reason_response({"question": "q", "error": "guard: no", "result": None}, "j")
     ok(err_field["status"] == "error", "error field -> status 'error'")
     ok(err_field["error"] == "guard: no", "error message surfaced")

@@ -736,6 +736,11 @@ class H(BaseHTTPRequestHandler):
                 res = {"question": req.get("question", ""), "clarify": True, "reason": str(exc),
                        "conversation_id": conv,
                        "model": "engine - dataset semantics (op rejected)"}
+                if isinstance(exc, DatasetOpError):
+                    # The op names a table or column the upload lacks, or breaks the grammar: the
+                    # orchestrator's model can correct it (one bounded repair) instead of the
+                    # validation sentence becoming the user's reply.
+                    res["dataset_ops_rejected"] = True
                 emit = emitter(uid, req.get("jobId"))
                 stream_final(emit, res)
                 self._send(200, json.dumps(res)); return

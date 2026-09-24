@@ -158,6 +158,41 @@ def main():
                and "2025" not in q for q in sent_d),
            f"the rewritten follow-up changes the year and keeps grouping/limit qualifiers (got {sent_d})")
 
+        # Chrome pass (2026-09-24): a complete question asked after related turns reached the engine
+        # with those turns' context added ("... for PHOENIX SOFTWARE LTD", "... to suppliers",
+        # "... in US dollars"), and the engine read the extra words literally.
+        print("[1e] a complete question stays verbatim after related turns")
+        for message, history in (
+            ("How many payments are listed?", [
+                {"role": "user", "content": "What is the total amount paid to PHOENIX SOFTWARE LTD?"},
+                {"role": "assistant", "content": "You've paid a total of 445,494.54 to Phoenix Software Ltd."},
+            ]),
+            ("What is the highest amount paid?", [
+                {"role": "user", "content": "What is the total amount paid to suppliers?"},
+                {"role": "assistant", "content": "You've paid 2,128,324.96 to suppliers."},
+            ]),
+            ("total budget in Germany", [
+                {"role": "user", "content": "total budget in Europe"},
+                {"role": "assistant", "content": "62000"},
+                {"role": "user", "content": "This is in euros. Whats in USD"},
+                {"role": "assistant", "content": "About 70,748.20 US dollars."},
+            ]),
+        ):
+            sent_s = [t.get("question", "") for t in asyncio.run(chat(message, history=history))["traces"]]
+            ok(sent_s == [message], f"{message!r} reaches the engine as typed (got {sent_s})")
+
+        print("[1f] a cutoff follow-up changes only the cutoff it names")
+        gaps = ("Find the top 3 categories by revenue and the top 3 customers by total spend, then list "
+                "each customer-category pair where that customer has never bought from that category. "
+                "Order customers by spend descending and categories by revenue descending.")
+        r1g = asyncio.run(chat("only use the top 2 customers", history=[
+            {"role": "user", "content": gaps},
+            {"role": "assistant", "content": "Cleo has never bought Home; Ava has never bought Travel "
+                                             "or Home; Ben has never bought Office or Travel."}]))
+        sent_g = [t.get("question", "") for t in r1g["traces"]]
+        ok(bool(sent_g) and "top 2 customer" in sent_g[0].lower() and "top 3 categor" in sent_g[0].lower(),
+           f"the rewrite keeps the top 3 categories and changes customers to 2 (got {sent_g})")
+
         # Production regression (2026-09-08): this follow-up was decomposed into five progressively
         # weaker queries, ended on a grouped COUNT, and discarded all useful terminal results with
         # "step budget". The shipped workbook now includes the exact tier schedule as a fixture.

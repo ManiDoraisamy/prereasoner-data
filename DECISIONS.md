@@ -473,3 +473,32 @@ an image is never pushed. The documented "degrades safely without the head" cont
 bundle validation already requires the head, so that path was reachable only through integrity
 failures like this one. With the interpreter restored, production again runs learned column routing
 and records class evidence; exact source keys still authorize every world join.
+
+## Complete questions reach the engine as typed; a rejected dataset op is repaired once (2026-09-24)
+
+The Chrome pass of 2026-09-24 found three orchestrator-side misses. A complete question asked after
+related turns reached the engine with those turns' context appended: "How many payments are listed?"
+as "... for PHOENIX SOFTWARE LTD", "What is the highest amount paid?" as "... to suppliers?", and
+"total budget in Germany" with the currency of an earlier conversion. The engine reads the added words
+literally, so each answered a different question. "only use the top 2 customers" sometimes changed
+both cutoffs or made no call. In a reopened conversation "This is in euros. Whats in USD" ended on the
+engine's validator sentence ("names a table that is not uploaded: 'budget'") as the reply. On the live
+model, before any change, the first three shapes went through verbatim 0/5, 0/5 and 2/5 times, and
+the cutoff shape was right 3/5 times.
+
+Prompt rules 3 and 4 now draw the boundary explicitly. A message that says on its own what to compute
+is standalone, also mid-conversation, and is sent as typed. Only a message that cannot be answered on
+its own is rewritten, and the rewrite changes only what the message names. The tool's `question`
+description says the same. One code guard enforces rule 3 for the shape the model kept producing:
+when its question is the user's own words (three or more) with words appended, the user's words are
+sent (`orchestrator._verbatim_standalone`). The guard is structural. It does not look at what was
+appended, so it is not the currency-only guard the prompt-owned design rejected, and a shorthand
+rewrite, which never starts with the user's words, passes untouched. After both changes each of the
+five shapes, including the qualifier carry-over rule 4 requires, went through 8/8 times, and
+`tests.test_orchestrator` asserts them against the live model.
+
+The engine now marks a dataset-op rejection (`DatasetOpError`) as `dataset_ops_rejected`. The engine
+client forwards it, and the orchestrator grants the model one `repair_required` round that lists the
+uploaded sheets and their columns (`engine/dataset_attestation.py:uploaded_columns`, the one header
+parser, which the column-as-table repair also uses). A second rejection is terminal. The engine
+persists no op it rejects, so the retry replays nothing.

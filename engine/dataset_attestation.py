@@ -92,6 +92,22 @@ def verify_quotes(raw_ops, user_message, history=None):
     return out, verified
 
 
+def uploaded_columns(tables) -> dict[str, tuple[str, ...]]:
+    """Each uploaded sheet's header: its ``columns``, else the first CSV row of its ``data``."""
+    schemas: dict[str, tuple[str, ...]] = {}
+    for table in tables if isinstance(tables, list) else []:
+        if not isinstance(table, dict) or not isinstance(table.get("name"), str):
+            continue
+        header = table.get("columns")
+        if not isinstance(header, (list, tuple)):
+            try:
+                header = next(csv.reader(io.StringIO(str(table.get("data") or ""))))
+            except (StopIteration, csv.Error):
+                header = []
+        schemas[table["name"]] = tuple(str(column) for column in header)
+    return schemas
+
+
 def bind_unambiguous_columns(raw_ops, tables):
     """Repair only the model's unambiguous transcription errors in a table/column pair.
 
@@ -105,17 +121,7 @@ def bind_unambiguous_columns(raw_ops, tables):
     """
     if not isinstance(raw_ops, list) or not isinstance(tables, list):
         return raw_ops
-    schemas: dict[str, tuple[str, ...]] = {}
-    for table in tables:
-        if not isinstance(table, dict) or not isinstance(table.get("name"), str):
-            continue
-        header = table.get("columns")
-        if not isinstance(header, (list, tuple)):
-            try:
-                header = next(csv.reader(io.StringIO(str(table.get("data") or ""))))
-            except (StopIteration, csv.Error):
-                header = []
-        schemas[table["name"]] = tuple(str(column) for column in header)
+    schemas = uploaded_columns(tables)
 
     def spelled(columns, name):
         """The header's own spelling of ``name``: exact, else its one case-insensitive match."""

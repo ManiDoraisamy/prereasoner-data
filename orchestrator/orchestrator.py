@@ -70,9 +70,12 @@ CLAUDE_TOOLS = [
             "properties": {
                 "question": {
                     "type": "string",
-                    "description": "One complete data question over the user's uploaded tables. Include "
-                                   "all requested joins, filters, grouping, conversions, and calculations "
-                                   "in this single call, e.g. 'total amount in France in US dollars after "
+                    "description": "One complete data question over the user's uploaded tables: the "
+                                   "user's exact words when their message is a complete question on its "
+                                   "own (add nothing from earlier turns), otherwise their shorthand "
+                                   "rewritten with every qualifier it keeps. Include all the joins, "
+                                   "filters, grouping, conversions, and calculations the user asked for in "
+                                   "this single call, e.g. 'total amount in France in US dollars after "
                                    "the customer tier discount'.",
                 },
                 "decomposition": {
@@ -216,6 +219,20 @@ def _system_with_catalog(catalog: list[dict[str, Any]]) -> str:
 
 def _question_words(value: str) -> tuple[str, ...]:
     return tuple(re.findall(r"[a-z0-9]+", str(value).casefold()))
+
+
+def _verbatim_standalone(question: str, user_message: str) -> str:
+    """Prompt rule 3 for the one rewrite shape the model keeps producing: the user's complete
+    question with context from earlier turns appended. "What is the highest amount paid?" went to
+    the engine as "... paid to suppliers?", which the engine reads literally as a per-supplier
+    ranking (Chrome pass, 2026-09-24). When the model's question is the user's own words (three or
+    more) plus appended words, the user's words are sent. A rewrite that restates shorthand never
+    starts with the user's words, and one- or two-word messages ("average?") are left to rule 4."""
+    typed = _question_words(user_message)
+    sent = _question_words(question)
+    if len(typed) >= 3 and len(sent) > len(typed) and sent[:len(typed)] == typed:
+        return validate_question(user_message)
+    return question
 
 
 _PRESENTATION_SUFFIX_WORDS = frozenset({
@@ -365,6 +382,7 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     decomposition_attempted = False
     decomposition_rejections = 0
     pending_decomposition: dict[str, Any] | None = None
+    dataset_ops_repaired = False
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
     def _emit(node, value):
@@ -466,6 +484,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         question = forced_question if forced_analysis else (block.input or {}).get("question", "")
                         try:
                             question = validate_question(question)
+                            if not forced_analysis:
+                                question = _verbatim_standalone(question, user_message)
                         except RequestValidationError as exc:
                             # The model repairs its own malformed call. Sent on, the engine would
                             # reject it, and that terminal error would become the user's reply.
@@ -484,9 +504,10 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         # qualifier from the conversation. A rewrite that dropped "in US dollars" shipped
                         # an unconverted total on 2026-09-06 — the prompt then had no such rule. The
                         # boundary is asserted where it matters: test_orchestrator checks the
-                        # engine-RECEIVED question on both shapes (measured 10/10 prompt-only), so a
-                        # prompt regression fails the live suite instead of shipping. No per-dimension
-                        # code guard: it covered only currency and could never cover qualifier carry-over.
+                        # engine-RECEIVED question on both shapes, so a prompt regression fails the live
+                        # suite instead of shipping. The one code guard is structural, not per dimension:
+                        # a question that is the user's own words plus appended context is sent as the
+                        # user's words (_verbatim_standalone), whatever was appended.
                         raw_dataset_ops = dataset_attestation.bind_unambiguous_columns(
                             (block.input or {}).get("dataset_ops"), tables,
                         )
@@ -590,6 +611,37 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                                               # turn node on 'status:done' (workbook settle()), so the
                                                               # post-'done' emit below would be MISSED: no URL, no snapshot save
                         traces.append({"jobId": job_id, "question": question, "engine": shaped})
+                        if (shaped.get("status") == "clarify" and shaped.get("dataset_ops_rejected")
+                                and not dataset_ops_repaired):
+                            # A rejected dataset op (a sheet or column the upload lacks, a code the
+                            # engine refuses) is the model's to correct once, with the uploaded
+                            # columns in hand. The engine persisted nothing it rejected; without this
+                            # the validator's sentence became the reply (Chrome pass, 2026-09-24:
+                            # "names a table that is not uploaded: 'budget'"). The raw clarify stays
+                            # in the trace, and a second rejection is terminal.
+                            dataset_ops_repaired = True
+                            detail = str(shaped.get("rejection_detail") or "the engine rejected it")
+                            sheets = "; ".join(
+                                f"{name} ({', '.join(header)})"
+                                for name, header in dataset_attestation.uploaded_columns(tables).items()
+                            )
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": block.id,
+                                "content": json.dumps({
+                                    "status": "repair_required",
+                                    "code": "invalid_dataset_ops",
+                                    "attempts_remaining": 1,
+                                    "retry": {"question": identity["question"], **identity["analysis"]},
+                                    "detail": "invalid dataset_ops: " + detail
+                                             + ". Uploaded sheets and columns: " + sheets
+                                             + ". Call the tool again with the same question and "
+                                               "analysis and dataset_ops that name one of these sheets "
+                                               "and columns, or without dataset_ops if the user's "
+                                               "statement is not about one of them.",
+                                }),
+                                "is_error": False,
+                            })
+                            continue
                         if shaped.get("status") == "clarify" and shaped.get("decomposition_rejected"):
                             # An engine-side proposal rejection gets the SAME bounded correction
                             # contract as local validation: an actionable retry while the shared
