@@ -38,6 +38,10 @@ function cellValue(value, type, numberFormat, date1904) {
   if (type === Excel.RangeValueType.error) return String(value);
   if (typeof value === 'number') {
     const format = String(numberFormat || '').replace(/"[^"]*"|\\./g, '').toLowerCase();
+    // Excel stores elapsed durations as day fractions too, but [h]/[m]/[s] means
+    // accumulated time rather than a calendar date. Preserve the numeric value so it
+    // cannot become a bogus timestamp near Excel's 1899 epoch.
+    if (/\[(?:h+|m+|s+)\]/i.test(format)) return String(value);
     if (/[ydhms]/.test(format) && /[ymd]/.test(format)) return dateSerialToIso(value, date1904);
     return String(value);
   }

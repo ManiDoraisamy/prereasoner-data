@@ -61,6 +61,7 @@ def test_spider_evaluator_supports_module_invocation():
     source = _text("spider/probe/full_eval.py")
     assert "json.dump(" not in source
     assert source.count("_write_json_atomic(") >= 6
+    assert "sql_grounding.py" in source, "grounding must invalidate Spider resume checkpoints"
 
 
 def test_public_weight_bundle_is_manifested_and_documented():
@@ -187,6 +188,28 @@ def test_orchestrator_prompt_owns_generic_question_fidelity():
     assert "currency_conversion_target" not in orchestrator
     assert "REQUIRE_ORCHESTRATOR_TESTS" in live_test
     assert "REQUIRE_ORCHESTRATOR_TESTS" in release_guide
+
+
+def test_proposer_training_refuses_to_truncate_sql_supervision():
+    from training.proposer.train_sft import encode_training_example
+
+    class Tokenizer:
+        eos_token_id = 99
+
+        def __call__(self, text, add_special_tokens=False):
+            assert not add_special_tokens
+            return {"input_ids": list(range(len(text)))}
+
+    ids, labels = encode_training_example(Tokenizer(), "ab", "SQL", seq_len=6)
+    assert ids == [0, 1, 0, 1, 2, 99]
+    assert labels == [-100, -100, 0, 1, 2, 99]
+    try:
+        encode_training_example(Tokenizer(), "ab", "SQL", seq_len=5)
+    except ValueError as exc:
+        assert "target was not truncated" in str(exc)
+        assert "combined 6 exceeds --seq-len 5" in str(exc)
+    else:
+        raise AssertionError("overlength supervision was silently truncated")
 
 
 def test_wikidata_precreator_is_non_destructive():
@@ -779,6 +802,7 @@ TESTS = [
     test_privacy_is_a_published_route_not_a_request_dialog,
     test_external_model_deployment_fails_closed,
     test_orchestrator_prompt_owns_generic_question_fidelity,
+    test_proposer_training_refuses_to_truncate_sql_supervision,
     test_wikidata_precreator_is_non_destructive,
     test_local_documentation_links_resolve,
     test_public_test_imports_do_not_require_model_stack,

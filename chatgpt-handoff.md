@@ -13,6 +13,44 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-24 — Continued the single-path accuracy work after review
+
+User direction: keep progressing toward higher accuracy and a cleaner integrated release; do not
+stop at listing caveats or introduce parallel engine implementations. `CLAUDE.md` already makes
+single ownership/non-duplication and serving-faithful evaluation explicit. No `agent.md` or
+`AGENTS.md` exists; the repository says not to create a competing rules file. The additional
+expectation is now explicit in `CLAUDE.md` under “Accuracy and forward progress”: actionable
+findings lead to in-owner fixes, regression tests, evaluation, and the next measured bottleneck;
+single-path architecture and authorization gates remain intact.
+
+Codex changes in progress (uncommitted):
+- Positive literal grounding now handles symmetric `literal = column` as well as `column = literal`.
+- Exclusions (`!=`, `<>`, `NOT IN`) are no longer rejected solely because the excluded string is
+  absent from the target column; regression cases pin this policy.
+- Excel elapsed formats such as `[h]:mm` preserve the stored numeric duration instead of turning it
+  into a date near Excel's 1899 epoch; regression case added.
+- Updated the terms-page smoke assertion to tolerate the trademarked “Google Sheets™” wording.
+- Proposer SFT now preflights complete train/validation prompt+SQL token budgets before loading model
+  weights, appends the EOS token by ID, and refuses overlength targets instead of slicing them at
+  the sequence boundary. The README now describes the gate and its default-384 caveat. No training
+  or model download was started.
+
+Checks: SQL AST 114/114, release suite 32/32, `npm run test:web` passed, Ruff on changed Python
+owners passed, Python compile and `git diff --check` passed. The first web-suite run found the
+stale exact-string terms assertion; it now checks the stable “Google Sheets” phrase.
+
+A fresh serving-faithful Spider whole_db run is active under tag `codex_positive_grounding` to
+measure the planner-selection effect. At 75/1,034: 48 strict, with 0 wins and 0 losses vs the prior
+grounded run on those same examples (median 25.9s, p90 37.8s). This is only an early slice, not an
+accuracy conclusion. The run was started before discovering that `full_eval.py` omitted
+`sql_grounding.py` from its resume fingerprint. The evaluator now includes that owner and a release
+test pins the contract, but the active process has the pre-fix fingerprint in memory; record this
+run as diagnostic and use the exact grounder SHA256 `AA5977C15152B7E1CD8F69E278BB514288F426B649E6D2F2B80B3B348E460168`
+alongside its dirty-tree provenance. The process had not checkpointed its first 25 examples at the
+last inspection. No release, model promotion, deployment, or commit was made. Next: collect the
+complete per-example transition, decide whether a clean fingerprinted confirmation is needed, then
+prioritize the largest validated miss family in the same existing planner path.
+
 ## 2026-09-24 — Proposed 7B-led accuracy program with CPU-only serving
 
 User request (excerpt, formatting normalized): "Ok, go ahead and propose the full plan for 7-8B-led accuracy

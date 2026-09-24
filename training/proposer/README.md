@@ -225,9 +225,12 @@ it does not establish that the join paths or schema interpretation are correct.
   log truncation as a failure/limitation rather than silently dropping parts of the question.
   Retrieval may use the supplied database, never gold SQL, gold tables, or answer-derived data.
 - Train SQL adapters through `training/proposer/train_sft.py`, extending that owner for the
-  pinned new model/template and verified token budgets. Fix the current 384-token truncation
-  risk before larger-schema training: require intact targets and at least one supervised
-  token, report exclusions, and measure length coverage. No adapter transfer from 0.5B to 7B.
+  pinned new model/template and verified token budgets. The trainer now performs a tokenizer-only
+  preflight over train and validation before loading model weights; any example whose complete
+  schema/question prompt plus SQL/EOS target exceeds `--seq-len` fails with its DB/index and token
+  counts. It never truncates a target or silently trains an example with no supervised SQL tokens.
+  The default remains 384, so larger-schema runs must choose a measured sufficient context budget
+  and report length coverage. No adapter transfer from 0.5B to 7B.
 - Use one seed-7 pilot with an epoch-based schedule fixed in its contract, then confirm a
   promising recipe with an additional seed (17) within budget. Freeze learning rate, effective
   batch, LoRA configuration, epochs, and checkpoint selection using fitting/development data

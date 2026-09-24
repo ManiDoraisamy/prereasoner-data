@@ -35,6 +35,20 @@ wrapper, flag, artifact, route, test, configuration key, or document that
 competes with its replacement. "Keep both for now" requires explicit user
 approval and a documented removal condition.
 
+## Accuracy and forward progress
+
+- Treat the user's stated accuracy objective as an active engineering goal, not a reason to stop
+  after producing a plan or listing risks. When a review finds an actionable defect, fix it in the
+  current owner, add a regression test, run the relevant evaluation, and continue to the next
+  measured bottleneck.
+- Keep improving the same integrated engine and serving path. Do not add side-by-side engines,
+  temporary production versions, or a second evaluator to make progress appear faster.
+- State what a change is expected to affect, then report measured wins, losses, latency, and
+  uncertainty. A correctness hardening that does not raise accuracy is still useful, but is not an
+  accuracy gain and must not be presented as one.
+- Approval gates remain in force: do not incur new paid training/compute spend, promote a model,
+  commit, push, publish, or deploy without the user's explicit authorization for that action.
+
 ## Current ownership map
 
 Extend these owners. Do not build parallel replacements.

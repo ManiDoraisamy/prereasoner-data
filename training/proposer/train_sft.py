@@ -38,6 +38,50 @@ def db_tables(meta: dict) -> list[dict]:
     return tables
 
 
+def encode_training_example(tokenizer, prompt: str, sql: str, seq_len: int):
+    """Encode one complete prompt/SQL pair or fail; never silently truncate supervision."""
+    prompt_ids = tokenizer(prompt, add_special_tokens=False)["input_ids"]
+    target_ids = tokenizer(sql, add_special_tokens=False)["input_ids"]
+    eos_token_id = tokenizer.eos_token_id
+    if eos_token_id is not None:
+        target_ids = [*target_ids, eos_token_id]
+    if not target_ids:
+        raise ValueError("SQL target has no tokens")
+    total = len(prompt_ids) + len(target_ids)
+    if total > seq_len:
+        raise ValueError(
+            f"prompt has {len(prompt_ids)} tokens and SQL target has {len(target_ids)}; "
+            f"combined {total} exceeds --seq-len {seq_len} (target was not truncated)"
+        )
+    labels = [-100] * len(prompt_ids) + target_ids
+    if not any(label != -100 for label in labels):
+        raise ValueError("encoded example has no supervised SQL tokens")
+    return prompt_ids + target_ids, labels
+
+
+def validate_sequence_budget(rows, metadata, tokenizer, seq_len: int, split: str) -> None:
+    """Fail before model loading if any complete schema/question/SQL example cannot fit."""
+    overlength = []
+    longest = 0
+    for row in rows:
+        prompt = schema_prompt(db_tables(metadata[row["db_id"]]), row["question"])
+        try:
+            ids, _labels = encode_training_example(tokenizer, prompt, row["sql"], seq_len)
+        except ValueError as exc:
+            overlength.append(f"{row['db_id']}[{row.get('idx', '?')}]: {exc}")
+        else:
+            longest = max(longest, len(ids))
+    if overlength:
+        examples = "; ".join(overlength[:8])
+        suffix = " …" if len(overlength) > 8 else ""
+        raise ValueError(
+            f"{split} has {len(overlength)}/{len(rows)} examples exceeding --seq-len "
+            f"{seq_len}; no prompt or SQL targets were truncated. Examples: {examples}{suffix}"
+        )
+    print(f"{split} length gate: {len(rows)} complete examples fit; longest={longest}/{seq_len} tokens",
+          flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--targets", required=True)
@@ -61,8 +105,10 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
     print(f"device: {device} ({dtype})")
-    meta = {table["db_id"]: table for table in json.load(open(args.tables, encoding="utf-8"))}
-    rows = [json.loads(line) for line in open(args.targets, encoding="utf-8")]
+    with open(args.tables, encoding="utf-8") as handle:
+        meta = {table["db_id"]: table for table in json.load(handle)}
+    with open(args.targets, encoding="utf-8") as handle:
+        rows = [json.loads(line) for line in handle]
     rows = [row for row in rows if "idx" in row]
     train_rows = [row for row in rows if not is_validation_db(row["db_id"])]
     val_rows = [row for row in rows if is_validation_db(row["db_id"])]
@@ -70,6 +116,8 @@ def main():
           f"({len({r['db_id'] for r in val_rows})} val dbs)")
 
     tokenizer = AutoTokenizer.from_pretrained(args.base, revision=args.base_revision)
+    validate_sequence_budget(train_rows, meta, tokenizer, args.seq_len, "train")
+    validate_sequence_budget(val_rows, meta, tokenizer, args.seq_len, "validation")
     model = AutoModelForCausalLM.from_pretrained(
         args.base, revision=args.base_revision, dtype=dtype).to(device)
     model = get_peft_model(model, LoraConfig(
@@ -80,12 +128,7 @@ def main():
 
     def encode(row):
         prompt = schema_prompt(db_tables(meta[row["db_id"]]), row["question"])
-        prompt_ids = tokenizer(prompt, add_special_tokens=False).input_ids
-        target_ids = tokenizer(row["sql"] + tokenizer.eos_token,
-                               add_special_tokens=False).input_ids
-        ids = (prompt_ids + target_ids)[:args.seq_len]
-        labels = ([-100] * len(prompt_ids) + list(target_ids))[:args.seq_len]
-        return ids, labels
+        return encode_training_example(tokenizer, prompt, row["sql"], args.seq_len)
 
     def batch_tensors(batch_rows):
         encoded = [encode(row) for row in batch_rows]

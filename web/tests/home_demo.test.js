@@ -339,7 +339,7 @@ assert(support.includes('<title>Support - Prereasoner</title>'),
 assert(support.includes('Extensions → Prereasoner → Ask a question'),
   'support navigation must use the canonical add-on name');
 for (const [body, name, required] of [
-  [terms, 'terms', ['Terms of Service', 'Google Sheets add-on', 'Your data', 'Contact']],
+  [terms, 'terms', ['Terms of Service', 'Google Sheets', 'Your data', 'Contact']],
   [support, 'support', ['Support', 'Multiple Google accounts', 'Previous conversations', 'Remove access or delete data']],
 ]) {
   assert(body.includes('Prereasoner'), `${name} must use the Prereasoner product name`);

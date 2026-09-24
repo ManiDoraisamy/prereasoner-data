@@ -73,6 +73,12 @@ const date1904Epoch = await runWorkbook([sheet('Dates', 'Visible', [
 ])], 'Book1904', true);
 assert.equal(date1904Epoch.tables[0].data, 'date\n1904-01-01T00:00:00Z');
 
+const elapsedDuration = await runWorkbook([sheet('Durations', 'Visible', [
+  ['elapsed'], [{value: 1.1458333333, format: '[h]:mm'}]
+])]);
+assert.equal(elapsedDuration.tables[0].data, 'elapsed\n1.1458333333',
+  'elapsed hours remain numeric instead of becoming an 1899 calendar timestamp');
+
 await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', [], {rowCount: 1000, columnCount: 256})]),
   /too large to analyze/);
 await assert.rejects(() => runWorkbook([sheet('No data', 'Visible', [['header']])]),

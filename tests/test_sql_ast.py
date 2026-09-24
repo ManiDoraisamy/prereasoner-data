@@ -845,13 +845,18 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
 
     lyon = Literal("Lyon", text)
     assert not grounded(query(Comparison(customer, "=", lyon))), "a city bound to a name column"
+    assert not grounded(query(Comparison(lyon, "=", customer))), (
+        "literal-on-left equality must receive the same grounding check")
     assert grounded(query(Comparison(city, "=", lyon)))
     assert grounded(query(Comparison(city, "=", Literal("  lyon ", text)))), "case and spacing fold"
     assert grounded(query(Comparison(customer, "=", Literal("Tokyo", text)))), (
         "a value no column holds is left alone: the honest answer is empty")
-    assert not grounded(query(Comparison(customer, "!=", lyon)))
+    assert grounded(query(Comparison(customer, "!=", lyon))), (
+        "an exclusion is valid even when the excluded value is absent from that column")
     assert not grounded(query(InPredicate(customer, (Literal("Alice", text), lyon))))
     assert grounded(query(InPredicate(customer, (Literal("Alice", text), Literal("Bob", text)))))
+    assert grounded(query(InPredicate(customer, (lyon,), negated=True))), (
+        "NOT IN must not treat an absent exclusion value as a misbinding")
     assert grounded(query(Comparison(customer, "LIKE", Literal("%Lyon%", text)))), "patterns are out of scope"
     assert grounded(query(Comparison(ColumnRef("purchases", "purchase_id", SQLType.INTEGER), "=",
                                      Literal(3, SQLType.INTEGER)))), "numbers are out of scope"
