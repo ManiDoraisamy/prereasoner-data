@@ -299,6 +299,29 @@ def leaf_measure_rejection(node_id: str, question: str, selected, pool) -> str |
     return None
 
 
+def unstated_cutoff_rejection(node_id: str, question: str, limit: int | None) -> str | None:
+    """Model-facing rejection when a leaf keeps a row cutoff the question never states.
+
+    A cross merge needs explicit limits on both inputs, and a proposer told so will invent
+    them. The Chrome pass of 2026-09-24 answered "products no customer from Paris has bought"
+    by crossing "the top 100 customer names from Paris" with "the top 100 product names": a
+    question nobody asked. A leaf may keep only a cutoff that the decomposed question states,
+    in digits or in words. One row is the planner's reading of a singular superlative ("the
+    best-selling product") and needs no number.
+    """
+    from engine.sql_expansion import parse_number, tokens
+
+    if limit is None or limit == 1:
+        return None
+    if limit in {parse_number(token) for token in tokens(question)}:
+        return None
+    return (
+        f"subquestion {node_id!r} keeps only {limit} rows, a cutoff the question does not "
+        "state; a subquestion may keep only the cutoffs the question names, so a question "
+        "that names none is not answered by crossing two lists"
+    )
+
+
 def build_decomposed_plan(
     planner,
     slug: str,
@@ -306,8 +329,14 @@ def build_decomposed_plan(
     schema: list[dict],
     foreign_keys: list[dict] | tuple[dict, ...],
     proposal: dict[str, Any],
+    *,
+    question: str,
 ) -> AnalysisPlan:
-    """Plan every leaf normally, then fuse their typed outputs with validated merges."""
+    """Plan every leaf normally, then fuse their typed outputs with validated merges.
+
+    `question` is the question the proposal decomposes: a leaf may keep only a row cutoff it
+    states (`unstated_cutoff_rejection`).
+    """
     from engine.analysis import analysis_view_name
     from engine.deterministic.lower import (
         UnsupportedDeterministicPlan,
@@ -360,6 +389,8 @@ def build_decomposed_plan(
             node["id"], node["question"], candidate.query, candidates
         ) or ranked_leaf_grain_rejection(
             node["id"], candidate.query, node["id"] in cross_inputs
+        ) or unstated_cutoff_rejection(
+            node["id"], question, candidate.query.limit
         )
         if rejection is not None:
             raise DecompositionError(rejection)
@@ -426,7 +457,8 @@ def build_decomposed_plan(
                 or left_bound * right_bound > MAX_INTERMEDIATE_ROWS
             ):
                 raise DecompositionError(
-                    "cross inputs require explicit limits whose product is at most 10,000 rows"
+                    "cross inputs require explicit limits, stated by the question, whose "
+                    "product is at most 10,000 rows"
                 )
             view = CrossView(name, left, right, right_prefix=f"{right_id}_")
             row_bounds[merge["id"]] = left_bound * right_bound

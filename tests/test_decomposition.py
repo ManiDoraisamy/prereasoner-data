@@ -12,6 +12,7 @@ from engine.decomposition import (
     compound_decomposition_required,
     leaf_measure_rejection,
     ranked_leaf_grain_rejection,
+    unstated_cutoff_rejection,
     validate_decomposition,
 )
 from engine.deterministic import (
@@ -190,7 +191,8 @@ def test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug():
         node["id"] = node_id
     proposal["merges"][0]["inputs"] = ids
     slug = "analysis_" + "s" * 31
-    plan = build_decomposed_plan(planner, slug, tables, schema, (), proposal)
+    plan = build_decomposed_plan(planner, slug, tables, schema, (), proposal,
+                                 question="available products never purchased")
     names = [view.name for view in plan.views]
     assert all(
         name.startswith(slug + "_") and len(name.encode("utf-8")) <= 63
@@ -212,7 +214,8 @@ def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
         ScoredQuery(query, "SELECT * FROM products", 1, ())
     )
     planner.guard.return_value = (True, None)
-    plan = build_decomposed_plan(planner, "wildcard", tables, schema, (), _proposal())
+    plan = build_decomposed_plan(planner, "wildcard", tables, schema, (), _proposal(),
+                                 question="available products never purchased")
     assert [view.name for view in plan.views].count("wildcard_missing") == 1
     assert any(
         getattr(view, "values", ())
@@ -275,6 +278,50 @@ def test_ranked_cross_input_must_stay_at_the_ranked_entity_grain():
     assert ranked_leaf_grain_rejection(
         "evidence", SelectQuery((SelectItem(category), SelectItem(product)), "purchases"), True
     ) is None
+
+
+def test_a_leaf_keeps_only_a_cutoff_the_question_states():
+    """The Chrome pass (2026-09-24) caught this. Told that cross inputs need explicit limits,
+    the proposer answered "products no customer from Paris has bought" by crossing "the top 100
+    customer names from Paris" with "the top 100 product names", and the engine served 14
+    customer-product pairs. A leaf may keep only a row cutoff the decomposed question states."""
+    from engine.sql_ast import OrderTerm
+
+    paris = "List the product names that no customer from Paris has bought, ordered by product name."
+    rejection = unstated_cutoff_rejection("products", paris, 100)
+    assert rejection is not None and "100" in rejection and "does not state" in rejection
+    # A stated cutoff passes in digits or in words; any other cutoff does not.
+    ranked = "Find the top three products by units sold and the top 2 customers by total spend."
+    assert unstated_cutoff_rejection("top_products", ranked, 3) is None
+    assert unstated_cutoff_rejection("top_customers", ranked, 2) is None
+    assert unstated_cutoff_rejection("top_customers", ranked, 5) is not None
+    # One row is a singular superlative's reading; an unlimited leaf has no cutoff at all.
+    assert unstated_cutoff_rejection(
+        "best", "customers who never bought the best-selling product", 1) is None
+    assert unstated_cutoff_rejection("products", paris, None) is None
+
+    # The compiler applies it to every leaf, whichever merge consumes it.
+    product_id = ColumnRef("products", "id", SQLType.INTEGER)
+    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
+    schema = [
+        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
+    ]
+    capped = SelectQuery((SelectItem(product_id, "id"),), "products",
+                         order_by=(OrderTerm(product_id, "ASC"),), limit=100)
+    planner = Mock()
+    planner.postgres_row_identity = False
+    planner.select_query.return_value = _served(
+        ScoredQuery(capped, "SELECT id FROM products ORDER BY id LIMIT 100", 1, ())
+    )
+    planner.guard.return_value = (True, None)
+    _reject(lambda: build_decomposed_plan(
+        planner, "capped", tables, schema, (), _proposal(), question=paris,
+    ))
+    plan = build_decomposed_plan(
+        planner, "capped", tables, schema, (), _proposal(),
+        question="the first 100 available products never purchased",
+    )
+    assert plan.output
 
 
 def test_an_answer_grain_cannot_repeat_one_physical_dimension():
@@ -403,6 +450,7 @@ TESTS = [
     test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,
+    test_a_leaf_keeps_only_a_cutoff_the_question_states,
     test_an_answer_grain_cannot_repeat_one_physical_dimension,
     test_failed_compound_probe_cannot_authorize_a_partial_composed_answer,
 ]

@@ -683,6 +683,7 @@ class ComposedKnowledgeQuery:
             schema,
             inferred_fks,
             decomposition,
+            question=question,
         )
         # Execute through the own-data PG executor (q11): it uploads the normalized
         # tables into the conversation schema and routes the plan to the ONE

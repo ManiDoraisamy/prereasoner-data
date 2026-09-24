@@ -527,3 +527,22 @@ flight_2, whose gold queries return nothing because of leading spaces in its cod
 that also returned nothing used to score as correct. Three flight_2 questions have no grounded member and
 now raise. Preferring grounded members only when one exists would win those artifacts back and serve
 mis-bound filters to users. `spider/results/RESULTS.md` has the transition matrix.
+
+## A decomposition keeps only the cutoffs its question states (2026-09-24)
+
+The second Chrome pass of 2026-09-24 served 14 customer-product pairs for "List the product names that
+no customer from Paris has bought". The model decomposed it as Paris customers crossed with products,
+minus purchases. The engine rejected that because cross inputs need explicit limits. The model then
+resubmitted with "the top 100 customer names from Paris" and "the top 100 product names", and the
+engine compiled it. The limit exists to bound the Cartesian product, and the model met it by inventing
+a cutoff the user never asked for.
+
+`engine/decomposition.py:build_decomposed_plan` now takes the decomposed question and rejects any leaf
+that keeps N rows (N other than 1) unless the question states N in digits or words, parsed with the
+planner's own `parse_number`. One row is exempt because it is the planner's reading of a singular
+superlative ("the best-selling product"). The rejection reaches the model through the existing bounded
+repair round, and it says that a question naming no cutoff is not answered by crossing two lists. The
+cross-limit message now says the limits must be stated by the question. The shipped complex fixtures,
+whose cutoffs are all stated, compile unchanged. The wrong pair shape itself is rare: 42 of 42 stubbed
+proposals for this prompt used the correct anti-join. This rule makes the rare case end in a repair or
+a clarification instead of an answer to a different question.

@@ -39,7 +39,9 @@ def _quote(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
 
 
-def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None = None):
+def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None = None,
+                 question: str | None = None):
+    """Compile `proposal` (default: the shipped fixture) for `question` (default: the prompt)."""
     raw_tables = _tables(directory)
     tables, foreign_keys = planner.ingest(raw_tables)
     schema, _, _ = planner.schema(tables, foreign_keys)
@@ -53,6 +55,7 @@ def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None =
         schema,
         foreign_keys,
         proposal,
+        question=question or (directory / "prompt.txt").read_text(encoding="utf-8").strip(),
     )
     source_tables = {table["name"]: table for table in tables}
     engine = create_engine("sqlite+pysqlite:///:memory:")
@@ -130,12 +133,46 @@ def test_a_value_binds_to_the_column_that_holds_it():
                     if chat and "Lyon" in question)
     proposal = json.loads((directory / "decomposition.json").read_text(encoding="utf-8"))
     planner = EncoderQuery()
+    lyon = "List the product names that no customer from Lyon has bought, ordered by product name."
     for wording in ("product names bought by Lyon customers",
                     "product names bought by customers from Lyon"):
         proposal["subquestions"][1]["question"] = wording
-        _plan, result = _run_fixture(planner, directory, proposal)
+        _plan, result = _run_fixture(planner, directory, proposal, lyon)
         actual = [[row[column] for column in expected["columns"]] for row in result.rows]
         assert actual == expected["rows"], (wording, actual)
+
+
+def test_a_decomposition_cannot_invent_a_cutoff():
+    """The Chrome pass (2026-09-24) caught this. For "List the product names that no customer
+    from Paris has bought" the model crossed Paris customers with products. The engine answered
+    that cross inputs need explicit limits, the model resubmitted with "the top 100" on both
+    lists, and 14 customer-product pairs were served: a question nobody asked. The replayed
+    production proposal is now rejected with the cutoff named, so the model gets the correction
+    instead of the user getting the pairs."""
+    from engine.decomposition import DecompositionError
+
+    directory = DATASET_DIR / "complex-unsold-products"
+    capped = {
+        "subquestions": [
+            {"id": "products", "question": "List the top 100 product names."},
+            {"id": "paris_customers", "question": "List the top 100 customer names from Paris."},
+            {"id": "purchases",
+             "question": "List each customer name and the product name they have bought."},
+        ],
+        "merges": [
+            {"id": "m1", "op": "cross", "inputs": ["paris_customers", "products"]},
+            {"id": "m2", "op": "anti_join", "inputs": ["m1", "purchases"]},
+        ],
+        "output": "m2",
+        "grain": "one Paris customer-product pair not purchased",
+    }
+    planner = EncoderQuery()
+    try:
+        _run_fixture(planner, directory, capped)
+    except DecompositionError as exc:
+        assert "100" in str(exc) and "does not state" in str(exc), exc
+    else:
+        raise AssertionError("an invented cutoff was compiled and answered")
 
 
 def test_shipped_complex_datasets_match_gold_in_python_and_sql():
@@ -259,6 +296,7 @@ TESTS = [
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
     test_a_value_binds_to_the_column_that_holds_it,
+    test_a_decomposition_cannot_invent_a_cutoff,
 ]
 
 
@@ -266,6 +304,7 @@ MODEL_BACKED = (
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
     test_a_value_binds_to_the_column_that_holds_it,
+    test_a_decomposition_cannot_invent_a_cutoff,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_compose_surface_does_not_swallow_a_compound_question,
 )
