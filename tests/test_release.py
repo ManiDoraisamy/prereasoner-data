@@ -180,9 +180,10 @@ def test_orchestrator_prompt_owns_generic_question_fidelity():
     live_test = _text("tests/test_orchestrator.py")
     release_guide = _text("docs/OPEN_SOURCE_RELEASE.md")
 
-    assert "EXACT\n   words" in prompt
-    assert "Carry over EVERY qualifier" in prompt
-    assert "currency, time\n   period, top-N, filters" in prompt
+    flat = " ".join(prompt.split())                      # the rules' words, not their line wrapping
+    assert "call the tool with their EXACT words" in flat
+    assert "add NOTHING from earlier turns" in flat
+    assert "Carry over EVERY qualifier from the conversation — currency, time period, top-N, filters" in flat
     assert "currency_conversion_target" not in orchestrator
     assert "REQUIRE_ORCHESTRATOR_TESTS" in live_test
     assert "REQUIRE_ORCHESTRATOR_TESTS" in release_guide
