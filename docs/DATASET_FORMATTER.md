@@ -45,7 +45,9 @@ column is denominated in EUR."
 
 Every operation carries a `basis` object with `source: "conversation"` and the user's quoted text.
 The orchestrator checks the quote against the current user message and signs the exact operation
-list together with the authenticated principal. The engine verifies that HMAC and persists its own
+list together with the verified Firebase UID, which both services derive from the user's token (the
+chat service has no database, so it cannot resolve the storage principal). The engine verifies that
+HMAC and persists its own
 `attested: true` marker. A model field or direct browser request cannot create that marker.
 
 Everything else abstains. In particular: a REAL currency column in the upload beats conversation
@@ -56,8 +58,8 @@ rejected with a clarify; no op ever changes a cell.
 
 A tool-using chat turn is two Sonnet rounds (tool request, then final prose). The op rides the
 EXISTING first round — the query tool's schema gains `dataset_ops` next to `question` — so v1 adds
-ZERO new model calls. The orchestrator verifies the user quote and passes a principal-bound
-attestation; the engine validates the closed grammar and table binding, then persists the operations
+ZERO new model calls. The orchestrator verifies the user quote and passes an attestation bound to
+the verified Firebase UID; the engine validates the closed grammar and table binding, then persists the operations
 with the conversation. The true direct path
 (`?chat=0`, no model in front of the engine) stays deterministic: it accepts already-persisted
 metadata but never mints it.

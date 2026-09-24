@@ -574,3 +574,20 @@ question on the same analysis. In the seventh, the model ignored the note. Two c
 
 The note never reaches the saved transcript, which keeps only the user's words and the final reply. A new
 message that is answered from the conversation ("what was the minimum you told me?") keeps its reply.
+
+## The chat service verifies sign-in; only the engine resolves the storage principal (2026-09-24)
+
+`c8533ca` (Excel add-in) made the storage principal stable across sign-in providers. It is now mapped
+once from verified claims into `chat.auth_principal`: existing Google accounts keep their Google subject,
+and accounts without Google use their Firebase UID. `engine.auth._verify_principal` resolves that mapping
+in Postgres, and the chat server called it on every turn. The chat image ships no database driver and no
+`engine/pg.py`, and the chat service has no Cloud SQL connection, so every chat turn would have failed
+with "sign in required". The release review caught this before deploy.
+
+`engine.auth.verified_identity` now only verifies the token and returns the Firebase UID and Google
+subject. The chat server authenticates with it alone, and only the engine resolves the storage
+principal. Dataset attestations are keyed by the verified Firebase UID rather than the storage principal:
+both services derive the UID from the same token, and the chat cannot resolve the storage principal
+without a database. Giving the chat service database access, or an engine lookup per turn, was rejected.
+The first widens a service that has no database privileges today, and the second adds a request to
+every turn.

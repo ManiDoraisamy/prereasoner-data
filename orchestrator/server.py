@@ -135,22 +135,24 @@ class H(BaseHTTPRequestHandler):
             token = self._bearer()
             # AUTH GATE (required): run_chat drives external-model inference on the owner's key, so demand a verified
             # identity BEFORE any work — otherwise an anonymous caller is denial-of-wallet. In local dev the engine's
-            # AUTH_TEST_SUB makes _verify_principal accept without a token, so this is a no-op there; in prod it
+            # AUTH_TEST_SUB makes verified_identity accept without a token, so this is a no-op there; in prod it
             # requires a real Firebase token. The browser always sends Authorization: Bearer <token> to /chat.
+            # Verification only: this service has no database, so the storage principal stays the engine's
+            # (engine.auth._verify_principal), and the verified Firebase UID keys the gate, the trace stream
+            # and the dataset attestation.
             try:
-                from engine.auth import _verify_principal
-                sub, uid = _verify_principal(token)
+                from engine.auth import verified_identity
+                uid, _google_sub = verified_identity(token)
             except Exception as e:                           # noqa: BLE001
                 print(f"orchestrator auth verify failed: {type(e).__name__}", flush=True)
-                sub, uid = None, None
-            if not sub:
+                uid = None
+            if not uid:
                 self._send(401, json.dumps({"error": "sign in required"})); return
             if not config.external_llm_enabled():
                 self._send(503, json.dumps({
                     "error": "assistant processing is unavailable for this request"
                 })); return
-            key = uid or sub or self.client_address[0]
-            lease, retry_after, reason = CHAT_GATE.acquire(key)
+            lease, retry_after, reason = CHAT_GATE.acquire(uid)
             if lease is None:
                 self._send(429, json.dumps({"error": "chat request budget exceeded", "reason": reason}),
                            retry_after=retry_after)
@@ -173,7 +175,7 @@ class H(BaseHTTPRequestHandler):
                          provider_project=config.GOOGLE_CLOUD_PROJECT,
                          provider_location=config.GEMINI_LOCATION,
                          turn_id=turn_id, emit=emit, conversation_id=conversation_id,
-                         principal=sub, use=use, analysis_override=analysis),
+                         principal=uid, use=use, analysis_override=analysis),
                 _LOOP,
             )
             res = fut.result(timeout=CHAT_TIMEOUT_SECONDS)

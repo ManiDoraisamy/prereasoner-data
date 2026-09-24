@@ -2,9 +2,10 @@
 
 The browser-facing engine accepts ordinary data questions directly, but only the orchestrator is
 allowed to mint conversation claims. Both services share one deployment secret and sign the exact
-operation list together with the authenticated user's stable principal. The stored operation keeps
-only the server-generated ``attested`` marker; the transport signature never enters conversation
-state or the model context.
+operation list together with the verified Firebase UID. Both derive that UID from the same ID token;
+the storage principal would not do, because only the engine can resolve it (engine.auth). The stored
+operation keeps only the server-generated ``attested`` marker; the transport signature never enters
+conversation state or the model context.
 """
 from __future__ import annotations
 

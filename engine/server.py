@@ -714,8 +714,10 @@ class H(BaseHTTPRequestHandler):
             semantics = []
             try:
                 raw_ops = req.get("dataset_ops")
+                # Keyed by the verified Firebase UID: the chat service signs with it because it cannot
+                # resolve `sub`, the storage principal, which lives in Postgres (engine.auth).
                 attested = (not raw_ops or dataset_attestation.verify(
-                    sub, raw_ops, self.headers.get(dataset_attestation.HEADER)))
+                    uid, raw_ops, self.headers.get(dataset_attestation.HEADER)))
                 incoming = dataset_semantics.validate_ops(
                     raw_ops, tabs[:uploaded_count], attested=attested)
                 if incoming:

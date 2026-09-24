@@ -52,6 +52,65 @@ def test_server_500_logs_where_it_failed_without_user_data():
         "the exception MESSAGE may quote user data — log positions only")
 
 
+def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid():
+    """Release review of c8533ca (2026-09-24): the storage principal moved into Postgres
+    (chat.auth_principal), and the chat server resolved it on every turn. The chat image ships no
+    database driver and the chat service has no database, so every chat turn would have answered
+    "sign in required". The chat now only verifies the token, the engine alone resolves the storage
+    principal, and dataset attestations are keyed by the verified Firebase UID both sides know."""
+    import json
+    import pathlib
+    import re
+    import sys
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from engine import auth
+    from orchestrator import server
+
+    class Firebase:
+        @staticmethod
+        def verify_id_token(token):
+            assert token == "id-token"
+            return {"uid": "fb-uid-1", "firebase": {"identities": {"google.com": ["google-sub-1"]}}}
+
+    def storage_principal(*_args):
+        raise AssertionError("the chat service must not resolve the storage principal")
+
+    seen = {}
+
+    async def run_chat(message, tables, history, **kwargs):
+        seen.update(kwargs)
+        return {"reply": "ok", "traces": [], "history": [], "conversation_id": None}
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    body = json.dumps({"message": "total amount",
+                       "tables": [{"name": "orders", "data": "id,amount\n1,2\n"}]}).encode()
+    try:
+        with patch.object(auth, "_FB_AUTH", Firebase), \
+                patch.object(auth, "auth_test_sub", lambda: None), \
+                patch.object(auth, "_storage_principal", storage_principal), \
+                patch.dict(sys.modules, {"engine.pg": None}), \
+                patch.object(config, "external_llm_enabled", lambda: True), \
+                patch.object(server, "run_chat", run_chat):
+            request = urllib.request.Request(
+                f"http://127.0.0.1:{httpd.server_address[1]}/chat", data=body, method="POST",
+                headers={"Authorization": "Bearer id-token", "Content-Type": "application/json"})
+            with urllib.request.urlopen(request, timeout=30) as response:
+                assert response.status == 200
+            assert seen["principal"] == "fb-uid-1", seen
+            # The engine maps the same identity to its storage principal.
+            with patch.object(auth, "_storage_principal", lambda uid, google: f"owner:{google}"):
+                assert auth._verify_principal("id-token") == ("owner:google-sub-1", "fb-uid-1")
+    finally:
+        httpd.shutdown()
+    source = pathlib.Path("engine/server.py").read_text(encoding="utf-8")
+    assert re.search(r"dataset_attestation\.verify\(\s*uid\b", source), \
+        "the engine must verify a dataset attestation against the key the chat signs with"
+
+
 def test_cors_requires_exact_configured_origin():
     assert allowed_origin("https://app.example", "https://app.example") == "https://app.example"
     assert allowed_origin("https://evil.example", "https://app.example") is None
@@ -365,6 +424,7 @@ def test_distributed_paid_budget_is_atomic_and_releases_lease():
 TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
     test_server_500_logs_where_it_failed_without_user_data,
+    test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid,
     test_cors_requires_exact_configured_origin,
     test_auth_test_sub_is_ignored_outside_explicit_nonproduction,
     test_conversation_lifecycle_limits_are_bounded_and_configurable,

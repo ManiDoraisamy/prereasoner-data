@@ -1,8 +1,10 @@
 """Firebase token verification and stable storage-principal resolution.
 
-The Postgres owner is derived once from verified identity claims and then kept immutable;
-existing Google users retain their Google subject. The RTDB trace key remains the verified Firebase UID.
-Neither owner key is client-selectable.
+`verified_identity` only verifies the token, and the chat service authenticates with it alone: that
+service has no database. `_verify_principal` is the engine's: it also maps the identity to the
+Postgres owner, which is derived once from verified claims and then kept immutable, so existing Google
+users retain their Google subject. The RTDB trace key and the dataset-attestation key are the verified
+Firebase UID, which both services derive from the same token. Neither key is client-selectable.
 
 Non-prod bypass: AUTH_TEST_SUB -> fixed sub, skips token verification (test-only).
 """
@@ -12,10 +14,8 @@ from engine.config import auth_test_sub
 _FB_AUTH = None
 
 
-def _verify_principal(token):
-    """Verify a Firebase ID token; return (storage_principal, firebase_uid) or (None, None).
-    Existing Google users retain their Google subject as the storage principal; users without a Google
-    identity use a server-recorded Firebase UID mapping. RTDB remains keyed by the verified Firebase UID."""
+def verified_identity(token):
+    """Verify a Firebase ID token; return (firebase_uid, google_sub) or (None, None). No database."""
     test = auth_test_sub()
     if test:
         return test, test
@@ -35,12 +35,26 @@ def _verify_principal(token):
         dec = _FB_AUTH.verify_id_token(token)
     except Exception:                                    # noqa: BLE001
         return None, None
-    ident = (dec.get("firebase") or {}).get("identities") or {}
-    g = ident.get("google.com") or []
     uid = dec.get("uid")
     if not uid:
         return None, None
-    return _storage_principal(str(uid), str(g[0]) if g else None), str(uid)
+    ident = (dec.get("firebase") or {}).get("identities") or {}
+    g = ident.get("google.com") or []
+    return str(uid), (str(g[0]) if g else None)
+
+
+def _verify_principal(token):
+    """Verify a Firebase ID token; return (storage_principal, firebase_uid) or (None, None).
+    Existing Google users retain their Google subject as the storage principal; users without a Google
+    identity use a server-recorded Firebase UID mapping. RTDB remains keyed by the verified Firebase UID.
+    Engine only: the mapping lives in Postgres."""
+    test = auth_test_sub()
+    if test:
+        return test, test
+    uid, google_sub = verified_identity(token)
+    if not uid:
+        return None, None
+    return _storage_principal(uid, google_sub), uid
 
 
 def _storage_principal(firebase_uid, google_sub):
