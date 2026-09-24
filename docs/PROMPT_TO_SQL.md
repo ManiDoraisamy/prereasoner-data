@@ -107,7 +107,9 @@ search candidate is not added twice but marks that candidate `proposer:endorsed`
 ## Stage 5 — the arbiter chooses among the queries that run
 
 [`engine/tables.py:select_query`](../engine/tables.py) runs every pooled query on an in-memory copy of the
-tables (SELECT guard, fixed step budget); a query that fails is out. The proposer then scores each remaining
+tables (SELECT guard, fixed step budget); a query that fails is out, and so is one that compares a text
+column with a literal the column never holds while another column does
+([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The proposer then scores each remaining
 query's likelihood under its prompt, and the arbiter ([`engine/sql_rank.py:SQLArbiter`](../engine/sql_rank.py))
 computes one number per query:
 

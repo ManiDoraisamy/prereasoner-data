@@ -22,6 +22,7 @@ from engine.sql_ast import (
     ColumnRef,
     Comparison,
     ExistsPredicate,
+    InPredicate,
     Join,
     Literal,
     OrderTerm,
@@ -36,6 +37,7 @@ from engine.sql_ast import (
     validate_query,
 )
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
+from engine.sql_grounding import grounded_members, literal_bindings
 from engine.sql_rank import (
     ARBITER_FEATURES,
     SQLArbiter,
@@ -815,6 +817,85 @@ def test_select_query_never_chooses_a_query_that_does_not_run():
     response = planner.serve([PEOPLE], "list person names")
     assert response["valid"] is False
     assert response["error"] == "planner: no executable AST candidate"
+
+
+# complex-unsold-products: 'Lyon' occurs only in purchases.city.
+PURCHASES = {
+    "name": "purchases",
+    "columns": ["purchase_id", "customer_name", "city", "product_name"],
+    "rows": [[1, "Alice", "Paris", "Alpha"], [2, "Alice", "Paris", "Beta"],
+             [3, "Bob", "Lyon", "Gamma"], [4, "Cara", "Paris", "Gamma"],
+             [5, "Dan", "Berlin", "Delta"], [6, "Eve", "Paris", "Alpha"]],
+}
+
+
+def test_literal_grounding_names_the_column_a_value_actually_occupies():
+    text = SQLType.TEXT
+    customer = ColumnRef("purchases", "customer_name", text)
+    city = ColumnRef("purchases", "city", text)
+    product = ColumnRef("purchases", "product_name", text)
+    tables = {"purchases": PURCHASES}
+
+    def query(where, **scope):
+        return SelectQuery((SelectItem(product),), "purchases", where=where, **scope)
+
+    def grounded(q):
+        validate_query(q)
+        return grounded_members([ScoredQuery(q, render_query(q), 0.0, ())], tables)[0]
+
+    lyon = Literal("Lyon", text)
+    assert not grounded(query(Comparison(customer, "=", lyon))), "a city bound to a name column"
+    assert grounded(query(Comparison(city, "=", lyon)))
+    assert grounded(query(Comparison(city, "=", Literal("  lyon ", text)))), "case and spacing fold"
+    assert grounded(query(Comparison(customer, "=", Literal("Tokyo", text)))), (
+        "a value no column holds is left alone: the honest answer is empty")
+    assert not grounded(query(Comparison(customer, "!=", lyon)))
+    assert not grounded(query(InPredicate(customer, (Literal("Alice", text), lyon))))
+    assert grounded(query(InPredicate(customer, (Literal("Alice", text), Literal("Bob", text)))))
+    assert grounded(query(Comparison(customer, "LIKE", Literal("%Lyon%", text)))), "patterns are out of scope"
+    assert grounded(query(Comparison(ColumnRef("purchases", "purchase_id", SQLType.INTEGER), "=",
+                                     Literal(3, SQLType.INTEGER)))), "numbers are out of scope"
+
+    # Aliases resolve to their table; nested subqueries are checked in their own scope.
+    aliased = SelectQuery((SelectItem(ColumnRef("p", "product_name", text)),), "purchases",
+                          from_alias="p",
+                          where=Comparison(ColumnRef("p", "customer_name", text), "=", lyon))
+    assert literal_bindings(aliased) == (("purchases", "customer_name", "Lyon"),)
+    assert not grounded(aliased)
+    products = ColumnRef("products", "product_name", text)
+    for column, sound in ((customer, False), (city, True)):
+        inner = query(Comparison(column, "=", lyon))
+        unsold = SelectQuery((SelectItem(products),), "products",
+                             where=InPredicate(products, inner, negated=True))
+        assert grounded(unsold) is sound, column
+
+
+def test_select_query_never_serves_a_misgrounded_proposal():
+    """The proposer reads the schema, never the values. For "Lyon customers" its favored beam
+    filtered customer_name = 'Lyon', which matches no row, and the arbiter ranked it first."""
+    misbound, bound = "\"customer_name\" = 'Lyon'", "\"city\" = 'Lyon'"
+    lines = ("SELECT product_name FROM purchases WHERE customer_name = 'Lyon'",
+             "SELECT product_name FROM purchases WHERE city = 'Lyon'")
+
+    def likelihood(sql):
+        return (-1.0, 12) if misbound in sql else (-2.0, 12) if bound in sql else (-80.0, 12)
+
+    planner = _hermetic_planner(ScriptedProposer(lines, likelihood=likelihood))
+    selection = _select(planner, "product names bought by Lyon customers", [PURCHASES])
+    wrong = next(index for index, candidate in enumerate(selection.pool)
+                 if misbound in candidate.sql)
+    assert selection.executable[wrong] and not selection.grounded[wrong]
+    assert selection.scores[wrong] is None and wrong not in selection.ranking
+    assert bound in selection.candidate.sql, selection.candidate.sql
+    assert selection.record(planner.sql_arbiter)["misgrounded"] == 1
+
+    # Same profile, a value the column does hold: the proposal is served as before.
+    alice = "\"customer_name\" = 'Alice'"
+    planner = _hermetic_planner(ScriptedProposer(
+        ("SELECT product_name FROM purchases WHERE customer_name = 'Alice'",),
+        likelihood=lambda sql: (-1.0, 12) if alice in sql else (-80.0, 12)))
+    selection = _select(planner, "product names bought by Alice", [PURCHASES])
+    assert alice in selection.candidate.sql and all(selection.grounded)
 
 
 def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query():
@@ -2404,6 +2485,8 @@ TESTS = [
     test_shipped_arbiter_is_the_manifested_served_contract,
     test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
     test_select_query_never_chooses_a_query_that_does_not_run,
+    test_literal_grounding_names_the_column_a_value_actually_occupies,
+    test_select_query_never_serves_a_misgrounded_proposal,
     test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query,
     test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation,
     test_proposal_import_rejects_malformed_model_text,

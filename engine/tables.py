@@ -489,8 +489,10 @@ class TableQuery:
         2. The SQL proposer adds its validated beams (engine/sql_proposer.py); SQL both found is
            pooled once and marked endorsed.
         3. Every pooled query that passes the guard is run on an in-memory SQLite copy of the
-           request's tables under a fixed step budget. A query that fails cannot be chosen.
-        4. The proposer scores each executable query's likelihood and the arbiter ranks them
+           request's tables under a fixed step budget. A query that fails cannot be chosen, and
+           neither can one that tests a text column against a literal the column never holds
+           while another column does (engine/sql_grounding.py).
+        4. The proposer scores each eligible query's likelihood and the arbiter ranks them
            (engine/sql_rank.py). A registered calculation intent (engine/calculations) takes the
            best-ranked query that satisfies it, when one exists.
 
@@ -502,6 +504,7 @@ class TableQuery:
             raise RuntimeError("SQL selection models are not loaded - construct the planner through "
                                "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
         from engine.calculations import select_calculation_candidate
+        from engine.sql_grounding import grounded_members
         from engine.sql_rank import PoolSelection, arbitrate, merge_proposals
         from engine.sql_schema import SchemaGraph
 
@@ -512,7 +515,10 @@ class TableQuery:
         pool, proposed = merge_proposals(
             searched, self.sql_proposer.propose(norm, question, graph, floor))
         executable = self._executable(pool, tablemap, sch, arbiter.execution_op_limit)
-        runnable = [index for index, ok in enumerate(executable) if ok]
+        with request_timing.span("pool_grounding"):
+            grounded = grounded_members(pool, tablemap)
+        runnable = [index for index, (ran, sound) in enumerate(zip(executable, grounded))
+                    if ran and sound]
         scored = self.sql_proposer.likelihoods(norm, question, [pool[i].sql for i in runnable])
         likelihoods = [None] * len(pool)
         for index, value in zip(runnable, scored):
@@ -524,8 +530,8 @@ class TableQuery:
                 question, norm, graph, [pool[index] for index in ranking])
             selected = ranking[position]
         request_timing.count("pool", len(pool))
-        return PoolSelection(tuple(pool), proposed, executable, tuple(likelihoods), scores,
-                             ranking, selected, len(searched))
+        return PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
+                             scores, ranking, selected, len(searched))
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""

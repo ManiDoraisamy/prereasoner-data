@@ -70,7 +70,9 @@ question + tables + foreign keys
                                |
                                v
              run each member on an in-memory SQLite copy
-             (SELECT guard, fixed VM-step budget); failures are ineligible
+             (SELECT guard, fixed VM-step budget); failures are ineligible,
+             and so are text literals bound to a column that never
+             holds them while another column does (sql_grounding.py)
                                |
                                v
              proposer likelihood of each runnable member

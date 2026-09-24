@@ -733,7 +733,7 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
             Path(__file__).resolve().parents[1] / "engine" / "data" / "sql_arbiter.json")
 
         def select_query(self, *_args):
-            return PoolSelection((candidate,), frozenset(), (True,), ((-1.0, 1),), (0.0,),
+            return PoolSelection((candidate,), frozenset(), (True,), (True,), ((-1.0, 1),), (0.0,),
                                  (0,), 0, 1)
 
         def guard(self, _sql):
@@ -806,7 +806,7 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
             Path(__file__).resolve().parents[1] / "engine" / "data" / "sql_arbiter.json")
 
         def select_query(self, *_args):
-            return PoolSelection((candidate,), frozenset(), (True,), ((-1.0, 1),), (0.0,),
+            return PoolSelection((candidate,), frozenset(), (True,), (True,), ((-1.0, 1),), (0.0,),
                                  (0,), 0, 1)
 
         def guard(self, _sql):

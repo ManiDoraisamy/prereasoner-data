@@ -32,7 +32,7 @@ from engine.sql_rank import PoolSelection
 
 def _served(candidate):
     """What select_query returns when `candidate` is the only, executable pool member."""
-    return PoolSelection((candidate,), frozenset(), (True,), ((-1.0, 1),), (0.0,), (0,), 0, 1)
+    return PoolSelection((candidate,), frozenset(), (True,), (True,), ((-1.0, 1),), (0.0,), (0,), 0, 1)
 
 
 def _proposal():
@@ -356,7 +356,7 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
     def pool_selection(*queries):
         pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
         n = len(pool)
-        return PoolSelection(pool, frozenset(), (True,) * n, ((-1.0, 9),) * n,
+        return PoolSelection(pool, frozenset(), (True,) * n, (True,) * n, ((-1.0, 9),) * n,
                              tuple(float(n - index) for index in range(n)), tuple(range(n)), 0, n)
 
     # The choice names the right measure without showing it: served projected, never the

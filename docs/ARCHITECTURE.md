@@ -261,8 +261,11 @@ The own-data path pools two candidate sources over one typed SQL AST and selects
    beam's first line is imported into the typed AST, validated, and re-rendered; anything else is
    dropped. A proposal that renders to SQL the search already found marks that candidate endorsed.
 3. Every pooled query runs on an in-memory SQLite copy of the request's tables under the SELECT guard
-   and a fixed VM-step budget. A query that fails cannot be chosen. Execution success only makes a
-   query eligible; it is not evidence that the query answers the question.
+   and a fixed VM-step budget. A query that fails cannot be chosen. Neither can one that tests a text
+   column against a literal the column never holds while another column does
+   (`engine/sql_grounding.py`): the proposer reads the schema, never the values, and once wrote
+   `customer_name = 'Lyon'` for "Lyon customers". Eligibility is not evidence that the query answers
+   the question.
 4. The arbiter scores each runnable query: a standardized linear function of nine named features
    (proposer likelihood, its length, per-token likelihood, pool score, pool rank, which source produced
    it, endorsement, pool size). The best score wins; the earlier pool position breaks ties. Calculation

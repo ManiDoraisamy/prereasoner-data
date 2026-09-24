@@ -18,7 +18,7 @@ from engine.decomposition import build_decomposed_plan
 from engine.deterministic import DeterministicAnalysis
 from engine.deterministic.context import analysis_execution_context
 from engine.encoder_overlay import EncoderQuery
-from tests.test_datasets import DATASET_DIR, EXPECTED, _tables
+from tests.test_datasets import DATASET_DIR, EXPECTED, _eval_cases, _tables
 
 
 COMPLEX_DATASETS = ("complex-promotions", "complex-category-gaps",
@@ -116,6 +116,26 @@ def test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure():
     _kind, expected = EXPECTED["complex-category-gaps"]
     actual = [[row[column] for column in expected["columns"]] for row in result.rows]
     assert actual == expected["rows"], actual
+
+
+def test_a_value_binds_to_the_column_that_holds_it():
+    """The Chrome pass (2026-09-24) caught this. For "how about customers from Lyon?" the
+    orchestrator proposed the leaf "product names bought by Lyon customers"; the SQL proposer,
+    which reads the schema and never the values, wrote ``customer_name = 'Lyon'`` and the arbiter
+    ranked it first, so no purchase matched and every product was listed as never bought in
+    Lyon. 'Lyon' occurs only in ``purchases.city``. A mis-grounded filter is never eligible now
+    (engine/sql_grounding.py), whichever way the leaf is worded."""
+    directory = DATASET_DIR / "complex-unsold-products"
+    expected = next(want for question, want, _fx, chat in _eval_cases(directory)
+                    if chat and "Lyon" in question)
+    proposal = json.loads((directory / "decomposition.json").read_text(encoding="utf-8"))
+    planner = EncoderQuery()
+    for wording in ("product names bought by Lyon customers",
+                    "product names bought by customers from Lyon"):
+        proposal["subquestions"][1]["question"] = wording
+        _plan, result = _run_fixture(planner, directory, proposal)
+        actual = [[row[column] for column in expected["columns"]] for row in result.rows]
+        assert actual == expected["rows"], (wording, actual)
 
 
 def test_shipped_complex_datasets_match_gold_in_python_and_sql():
@@ -238,12 +258,14 @@ TESTS = [
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
+    test_a_value_binds_to_the_column_that_holds_it,
 ]
 
 
 MODEL_BACKED = (
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
+    test_a_value_binds_to_the_column_that_holds_it,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_compose_surface_does_not_swallow_a_compound_question,
 )

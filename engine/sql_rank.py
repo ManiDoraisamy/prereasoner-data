@@ -623,8 +623,10 @@ class SQLArbiter:
 class PoolSelection:
     """How one question's query was chosen. Serving, evaluation and training read this record.
 
-    ``likelihoods`` and ``scores`` are None for pool members that did not execute; those can
-    never be selected. ``ranking`` lists the executable members best first. ``selected`` is
+    ``executable`` records which members ran within the step budget and ``grounded`` which
+    compare every text literal with a column that can hold it (engine/sql_grounding.py). A
+    member is eligible when both hold; ``likelihoods`` and ``scores`` are None for the rest, and
+    those can never be selected. ``ranking`` lists the eligible members best first. ``selected`` is
     usually ``ranking[0]``; a question with a registered calculation intent takes the best
     ranked member that satisfies it (engine/calculations), when one exists. The first
     ``searched`` pool members are the deterministic search's, in its order, so ``search_top``
@@ -633,6 +635,7 @@ class PoolSelection:
     pool: tuple[ScoredQuery, ...]
     proposed: frozenset[str]
     executable: tuple[bool, ...]
+    grounded: tuple[bool, ...]
     likelihoods: tuple[tuple[float, int] | None, ...]
     scores: tuple[float | None, ...]
     ranking: tuple[int, ...]
@@ -676,6 +679,8 @@ class PoolSelection:
             "pool_size": len(self.pool),
             "proposed": len(self.proposed),
             "executable": sum(self.executable),
+            "misgrounded": sum(ran and not sound
+                               for ran, sound in zip(self.executable, self.grounded)),
             "selected": self.selected,
         }
         if self.selected is not None:
