@@ -2,14 +2,46 @@
 
 This is the current, reproducible measurement of the served own-data planner:
 `engine/tables.py:TableQuery.select_query` — the deterministic typed-AST search (25 candidates), the
-d2 SQL proposer (4 beams, every line imported, validated and re-rendered), in-memory pool execution, and
-the linear arbiter (`engine/data/sql_arbiter.json`). It was measured through the production entry point
+d2 SQL proposer (4 beams, every line imported, validated and re-rendered), in-memory pool execution, the
+literal-grounding eligibility rule (`engine/sql_grounding.py`), and the linear arbiter
+(`engine/data/sql_arbiter.json`). It was measured through the production entry point
 (`spider/probe/full_eval.py`, `--selection served`, SQL backend) over the Spider dev set: 1,034 examples
-and 20 databases. The summary JSON records its exact source commit, code and model hashes, settings, and
-`worktree_dirty=false`.
+and 20 databases. The summary JSON (`full_eval_served_grounding_whole_db.json`) records its exact source
+commit, code and model hashes, settings, and `worktree_dirty=false`.
 
-Measured: **2026-09-23** from clean source commit `6c39942` (tag `served_whole_db`). This planner serves
-production since 2026-09-23 (engine revision built from `e993476`).
+Measured: **2026-09-24** from clean source commit `841f08c` (tag `served_grounding_whole_db`). The
+engine built from `900f3b1` serves it; that commit changes nothing the selection reads.
+
+| Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
+|---|---|---:|---:|---:|
+| `whole_db` — all tables, gold-blind (standard Spider comparison) | `841f08c` | **647/1,034 (62.6%)** | **696/1,034 (67.3%)** | **304/408 (74.5%)** |
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 246 | 198 | 200 | 145/173 |
+| medium | 446 | 442 | 278 | 310 | 72/101 |
+| hard | 174 | 168 | 96 | 112 | 53/77 |
+| extra | 166 | 165 | 75 | 74 | 34/57 |
+| **all** | **1,034** | **1,021** | **647** | **696** | **304/408** |
+
+**What the grounding rule changed, against `6c39942` (below).** A pool member is ineligible when it tests a
+text column against a literal the column never holds while another column of the database does. The rule
+rejected at least one pool member on 97 questions and changed the served query on 45. Strict transition:
+**7 wins, 5 losses**, 640 unchanged-correct, 382 unchanged-wrong. Lenient: 8 wins, 5 losses, 688, 333. The
+wins are real mis-bindings the arbiter had preferred (world_1 2, orchestra 2, cre_Doc_Template_Mgt 1,
+student_transcripts_tracking 1, tvshow 1). All five losses are in flight_2, whose airport codes carry
+leading spaces so most gold queries return nothing: the mis-bound filters also returned nothing and scored
+as correct, while their grounded replacements match rows or have another shape. Three flight_2 questions
+now have no eligible member and raise in the search stage (13 raise in all, up from 10).
+
+**Latency.** Not comparable with the previous run: this one shared the CPU with the full release test suite
+for about three hours (median 30.3 s, p90 56.1 s per question). The rule itself scans cell values only when
+a pool member compares a column with a text literal.
+
+### Previous served measurement (2026-09-23)
+
+Measured from clean source commit `6c39942` (tag `served_whole_db`), before the grounding rule. This was
+the planner that shipped on 2026-09-23 (engine revision built from `e993476`).
 
 | Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
 |---|---|---:|---:|---:|
@@ -34,7 +66,7 @@ single-query serving contract, decomposition leaves), the orchestrator, and the 
 check. `select_query` itself is unchanged, and no dev question carries a currency intent, so this
 measurement applies to the deployed code.
 
-**Latency.** The run's per-question `prediction_seconds` on a shared 8-core workstation CPU (fp32, other
+**Latency (this run).** Per-question `prediction_seconds` on a shared 8-core workstation CPU (fp32, other
 jobs running): median 23.1 s, mean 25.4 s, p90 42.0 s, max 96.3 s. Production on Cloud Run
 (8 vCPU / 16 GiB) during the release gate, end to end including the conversational model: turns with one
 engine call median 13.3 s (p90 35.3 s, n=117); decomposed questions median 60.2 s (p90 140.4 s, n=27).

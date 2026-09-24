@@ -502,3 +502,28 @@ client forwards it, and the orchestrator grants the model one `repair_required` 
 uploaded sheets and their columns (`engine/dataset_attestation.py:uploaded_columns`, the one header
 parser, which the column-as-table repair also uses). A second rejection is terminal. The engine
 persists no op it rejects, so the retry replays nothing.
+
+## A text literal must be grounded in the column it filters (2026-09-24)
+
+The Chrome pass of 2026-09-24 served every product for "how about customers from Lyon?". The
+orchestrator's leaf read "product names bought by Lyon customers". The SQL proposer, which reads the
+schema and never the values, bound 'Lyon' to `purchases.customer_name`, and the arbiter ranked that beam
+first. The deterministic search, which links values against the data, had bound it to `purchases.city`
+in every one of its candidates.
+
+A pool member is now eligible for selection only when it runs within the step budget AND every text
+literal it tests with `=`, `!=`, `IN` or `NOT IN` is grounded: the literal occurs in its own column, or in
+no column of the request's tables (`engine/sql_grounding.py`, called by `TableQuery.select_query`).
+Matching folds case and whitespace. Aliases resolve to their tables, subqueries are checked in their own
+scope, and derived-table columns are skipped. A literal that no column holds is left alone, because the
+question may name a value the data lacks and the honest answer is then empty. Numeric, date and pattern
+comparisons are out of scope. Eligible members keep their arbiter scores, so the choice changes only when
+the arbiter's pick was mis-grounded, and `PoolSelection` records `grounded` next to `executable`.
+
+When no member is grounded the selection is empty and the request is not answered, rather than served a
+filter that answers a different question. Served Spider `whole_db` (`841f08c`) measured 647/1,034 strict
+(62.6%) and 696 lenient against 645 and 693 before: 7 strict wins and 5 losses. All five losses are
+flight_2, whose gold queries return nothing because of leading spaces in its codes, so a mis-bound filter
+that also returned nothing used to score as correct. Three flight_2 questions have no grounded member and
+now raise. Preferring grounded members only when one exists would win those artifacts back and serve
+mis-bound filters to users. `spider/results/RESULTS.md` has the transition matrix.
