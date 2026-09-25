@@ -7,6 +7,37 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-25 (evening) — RELEASED: the engine checks its cached connection (the Sheets add-on's HTTP 500)
+
+**Production now:**
+- engine `prereasoner-api-00230-rax` = `engine@sha256:8906537e…` built from `5bb21a2` (8 vCPU / 16 GiB).
+  Traffic switched at 17:52 UTC. The three jobs run the same image; the release smoke job passed
+  (execution `hxqmg`), and `/api/healthz` returns 200.
+- chat is unchanged: `prereasoner-chat-00124-yad` (`3d7189e`).
+- Hosting matches no commit. This session deployed `3d7189e` at 00:25 UTC. Another session then deployed
+  four times, from 00:49 to 01:16 UTC (latest version `d1f1edcf`), from its uncommitted Excel add-in work
+  in the main worktree. Live `office/excel/{taskpane,auth-bridge,turn-bridge}.js` equal that working
+  tree, not HEAD; `lib/workbook.js` equals HEAD. A Hosting deploy from a clean commit would roll back
+  the live Excel changes.
+- Rollback: engine `00227-xey` (`3d7189e`, image `2069c274…`; point the three jobs back at it). This
+  release has no migration.
+
+**The defect:** the Google Sheets add-on answered "Prereasoner request failed (HTTP 500)" (the owner's
+screenshot). `EntityQuery._rconn` keeps one Postgres connection per engine instance across requests.
+Cloud Run's Cloud SQL connector drops that connection around its certificate refresh: each of the 5
+failures from 08-30 to 09-25 came 5-57 s after a `cloudsql.instances.connect` audit event, and 8 s to
+41 min after the connection was last used. psycopg2 marks a connection closed only after a statement
+fails, so the next request's first statement failed. In `5bb21a2`, a connection idle for more than
+1 s runs `SELECT 1` before a request gets it. A dropped connection is replaced, and that request's
+`[timing]` line shows `pg_stale_reconnect_ms`.
+
+**Gates:**
+- The regression test `test_cached_connection_dropped_between_requests_is_replaced_before_use` fails on
+  `92d78a5` and passes on `5bb21a2`. `tests.test_request_limits`: 18/18.
+- Live `test_datasets` against `5bb21a2` passed: 24 prompts, 40 standalone follow-ups and 1 rewrite.
+  The 13 `chat:` follow-ups are skipped by design.
+- The revision was deployed with no traffic, checked for health through its tag, then switched.
+
 ## 2026-09-25 — RELEASED: the Excel add-in and three review fixes; full Chrome gate 124/124
 
 **Production now** (one revision per service, no tags):
@@ -14,7 +45,9 @@ results, and open questions. Newest section at the top. Committed evidence lives
   The jobs `prereasoner-api-ecb-rates-refresh`, `prereasoner-api-retention-cleanup` and
   `prereasoner-api-release-smoke` run the same image.
 - chat `prereasoner-chat-00124-yad` = `chat@sha256:ec248a5c…` built from `3d7189e`.
-- Hosting deployed from `3d7189e`. The later `11ed076` and `3a57b0f` change only `docs/marketplace/`.
+- Hosting deployed from `3d7189e` at 00:25 UTC. The later `11ed076` and `3a57b0f` change only
+  `docs/marketplace/`. Another session redeployed Hosting from uncommitted work afterwards (see the
+  evening entry above).
 - Database: chat migrations 8-10 applied (8: the host column on Excel document sessions; 9:
   `chat.auth_principal`; 10: spreadsheet sessions keyed by user, host and spreadsheet), then the serving
   grants (`db.reference_grants --role serving`).
