@@ -7,6 +7,68 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-25 (night) — The Sheets add-on is the web workbook; one import rule; "sales" is a money total
+
+The owner asked why the Google Sheets add-on failed, why its sidebar was worse than chat.prereasoner.com,
+and why it showed no live progress. The HTTP 500 was the engine's cached connection (released as
+`5bb21a2`, entry below). The sidebar was a separate hand-written UI (`Sidebar.html`, `Previous.html`),
+not `workbook.js`. Its Apps Script server called `/chat` and returned only the final JSON, so nothing
+could follow the RTDB trace. The owner chose to embed the web app's sidebar, one import rule for
+uploads and add-ins, and "sales" as a money total.
+
+**What changed** (DECISIONS.md has the three entries):
+- `sheets-addon/` is a host. `Sidebar.html` frames `/embed/sheets` (`reason.html` + `workbook.js`,
+  compact layout), and `Code.js` answers `context` / `grids` with the Google token, the spreadsheet id
+  and cell grids. The page side is `web/public/lib/host-bridge.js`: origin checks, Firebase
+  `signInWithCredential`, the upload importer, the spreadsheet session and a re-read before each
+  question. The add-on dropped `script.external_request` and its URL allowlist. Only `/embed/**` may be
+  framed by `docs.google.com` / `*.googleusercontent.com` (`web/firebase.json`).
+- Opening the sidebar is one page load: the boot writes the frame's session before the workbook runs,
+  and `workbook.js:adoptSession` re-reads the three values the page captures at load (`SHEETS`,
+  `TABNAMES`, `question`). Only a sheet changed mid-conversation and New chat reload the frame, once.
+- The Excel add-in and the Sheets add-on send grids to `xlsx-worker.js`
+  (`WORKBOOK_IMPORT.gridWorkbook`), so a sheet reads exactly as its upload. A populated column without a
+  header is refused, not named `column_N`, and every import error names the worksheet. Both add-ins
+  check the upload's per-worksheet limits (`upload-limits.js`); they used to cap all tabs' rows together.
+- Found while testing the embed, each fixed with a browser test that fails without the fix:
+  - With an empty session the page fell back to the web demo question and tables, and asked "top 3
+    cities by total amount" on its own.
+  - `settle()` never repainted the source chip, so a Google-sourced answer in chat mode kept showing
+    "Checking source data". This was a web app bug as well.
+  - A sheet changed within the 700 ms before an answer's snapshot reached the server lost that answer
+    from view. The rebuild now keeps the tab's own snapshot for the same conversation.
+- The empty sidebar keeps the old add-on's data-use notice word for word, because Google's OAuth
+  verification relied on it (docs/GOOGLE_WORKSPACE_MARKETPLACE.md).
+- The sales rule (regress B6): a money noun that names its table reads as that table's money total
+  unless the question counts or lists it. Neither the Spider dev set nor the shipped demo questions can
+  fire it: 0 of 1,034 dev questions (no dev table name contains a money noun) and 0 of 91 demo questions.
+
+**Gates** (dev worktree, then main):
+- compileall.
+- `npm run test:web`: 7 suites, including `Sheets add-on` 29 and `Excel workbook reader` 14.
+- `npm run test:browser` 32/32. The three embed journeys run against a stand-in host
+  (`/__sheets-host`). They cover sign-in, the first question, reopening in the same tab and in another
+  browser, a changed sheet (sync plus pending question), a change right after an answer, New chat,
+  Previous conversations and an unreadable sheet. The existing picker journeys flake about 1 in 30 runs
+  on unmodified main as well; a separate task was suggested.
+- `tests.run_all` on the dev worktree: 44 of 45 suites OK, among them `test_sql_ast` 119/119,
+  `test_compose` 14/14, `test_calculations` 104/104 and live `test_orchestrator` 25/25. `test_datasets`
+  passed 61 of 65 checks. The other 4 could not connect to the local database proxy (Windows
+  `WSAEADDRINUSE` on 127.0.0.1:5432 while browser suites ran alongside), and their 3 datasets pass on a
+  rerun (`EVAL_DATASETS=customer-orders,customers-orders,eval-formesign-assets-xls`).
+
+**Open**
+- Deploy order: Hosting first (the CSP must allow the frame before the add-on points at it), then
+  `clasp push` and a new Apps Script version. Verify `/embed/sheets` sends exactly one
+  `Content-Security-Policy`, the Google `frame-ancestors`.
+- Hosting currently serves another session's uncommitted Excel files (entry below). A deploy from a
+  clean commit rolls them back.
+- The three review images are rendered from the embed. The saved Marketplace draft keeps the old ones
+  until they are uploaded, and the OAuth demo video shows the old sidebar
+  (docs/GOOGLE_WORKSPACE_MARKETPLACE.md).
+- `docs/EXCEL_COPILOT_PLAN.md` (another session's uncommitted edits) still describes the old Sheets
+  sidebar; DECISIONS.md records that the embed supersedes it.
+
 ## 2026-09-25 (evening) — RELEASED: the engine checks its cached connection (the Sheets add-on's HTTP 500)
 
 **Production now:**

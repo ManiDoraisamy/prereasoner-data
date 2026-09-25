@@ -13,7 +13,9 @@ Measured: **2026-09-24** from clean source commit `841f08c` (tag `served_groundi
 engine built from `900f3b1` serves it; that commit changes nothing the selection reads. The 2026-09-25
 release also checks reversed literal comparisons (`'Lyon' = city`). That only removes eligibility, and
 none of the 1,034 selected queries contains such a comparison, so every dev answer and this result are
-unchanged (DECISIONS.md).
+unchanged (DECISIONS.md). The money-noun rule added later that day ("the sales" in a table named `sales`
+is its money total) fires only when a money noun names a table. None of the 20 dev databases has such a
+table and 0 of the 1,034 dev questions fire it, so it cannot change a dev answer either.
 
 | Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
 |---|---|---:|---:|---:|

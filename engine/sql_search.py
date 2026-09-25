@@ -31,7 +31,12 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import implicit_sum_measures, measure_words_after, ordering_requested
+from engine.sql_expansion import (
+    implicit_sum_measures,
+    measure_words_after,
+    money_total_position,
+    ordering_requested,
+)
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph
 
@@ -421,10 +426,12 @@ class SQLSearcher:
         if not cues:
             # "top 3 products by units sold" and "customers by revenue" imply SUM over
             # a measure column even without an aggregate word. The cue fires only when
-            # the schema has a matching measure column; a bare money noun that names a
-            # real table ("sales") or appears in a mentioned column's own vocabulary
-            # ("revenue" column, "sale price") stays an entity or column mention with
-            # its current raw interpretation. A participle form always asserts the sum.
+            # the schema has a matching measure column. A bare money noun that appears
+            # in a mentioned column's own vocabulary ("revenue" column, "sale price")
+            # stays a column mention with its raw interpretation, and one that names a
+            # real table stays the entity when the question counts or lists it ("how
+            # many sales", "list the sales"). Otherwise the table's name is its money
+            # total ("what's the sales in London"). A participle always asserts the sum.
             table_words = {
                 _canon(word) for table in self.schema.tables for word in _name_words(table)
             }
@@ -433,9 +440,12 @@ class SQLSearcher:
                 for mention in mentions for option in mention.options
                 for word in _name_words(option.column.name)
             }
+            money_total = money_total_position(tokens, table_words)
             for measure in implicit_sum_measures(tokens):
-                if not measure.participle and tokens[measure.position] in (
-                    table_words | mention_words
+                word = tokens[measure.position]
+                if not measure.participle and (
+                    word in mention_words
+                    or (word in table_words and measure.position != money_total)
                 ):
                     continue
                 if self._measure_targets(mentions, measure.position, measure.column_words):

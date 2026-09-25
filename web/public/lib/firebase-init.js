@@ -3,7 +3,7 @@
 // scripts by publishing window.ensureToken / window.subscribeRun / window.__uid — the same
 // contract the pages have always used. The config lives in lib/config.js (public identifiers).
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithRedirect, getRedirectResult, getIdToken, signInAnonymously, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getAuth, GoogleAuthProvider, OAuthProvider, signInWithRedirect, getRedirectResult, getIdToken, signInAnonymously, signInWithCredential, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { getDatabase, ref, onValue as watchValue, onChildAdded as watchChild, off } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
 import { firebaseConfig, AUTH_PROVIDER } from "./config.js";
 import './result-wire.js';
@@ -152,6 +152,17 @@ export async function ensureSignedIn(){
   sessionStorage.removeItem(`pr_auth_pending_${selectedProvider}`);
   window.__uid = auth.currentUser.uid;
   return auth.currentUser.uid;
+}
+
+// Inside the Google Sheets add-in (lib/host-bridge.js) Google's sign-in page cannot be framed, so
+// the add-in hands over the user's Google access token and this exchanges it for the same Firebase
+// account a web sign-in reaches (the Google provider, the same uid). Always the host's account: a
+// frame that still holds another account's session is signed in again.
+export async function signInWithHostToken(accessToken){
+  await auth.authStateReady();
+  const result = await signInWithCredential(auth, GoogleAuthProvider.credential(null, accessToken));
+  window.__uid = result.user.uid;
+  return result.user.uid;
 }
 
 export async function signOutUser(){

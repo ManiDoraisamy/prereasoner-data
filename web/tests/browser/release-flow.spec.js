@@ -143,11 +143,12 @@ const firebaseApp='export function initializeApp(){return {}}';
 const firebaseAuth=`
   const currentUser={displayName:'Test User',email:'test@example.com'};
   export function getAuth(){return {get currentUser(){return window.__uid?currentUser:null},authStateReady:async()=>{}}}
-  export class GoogleAuthProvider { addScope(){} }
+  export class GoogleAuthProvider { addScope(){} static credential(idToken,accessToken){return {idToken,accessToken}} }
   export class OAuthProvider { setCustomParameters(){} }
   export async function signOut(){}
   export async function signInWithRedirect(){}
   export async function signInAnonymously(){window.__uid='anonymous-test-user';return {user:currentUser}}
+  export async function signInWithCredential(_auth,credential){window.__hostToken=credential.accessToken;window.__uid='sheets-user';return {user:{uid:'sheets-user'}}}
   export async function getRedirectResult(){return null}
   export async function getIdToken(){return 'browser-token'}
 `;
@@ -581,3 +582,132 @@ for(const use of ['sql','py','both']){
     });
   }
 }
+
+// The Google Sheets add-in frames this web workbook at /embed/sheets (lib/host-bridge.js); the
+// test host page stands in for sheets-addon/Sidebar.html and answers with window.__SHEETS_HOST's
+// cells, as the add-in's Apps Script server would.
+const sheetsConversation='c_0123456789abcdef0123456789abcdef';
+async function mockSheetsHost(page,rows){
+  await mockAuth(page);
+  await page.route('https://www.gstatic.com/firebasejs/**/firebase-auth.js',route=>route.fulfill({contentType:'text/javascript',
+    body:firebaseAuth.replace("getIdToken(){return 'browser-token'}","getIdToken(){return 'local-dev'}")}));
+  await page.addInitScript(rows=>{
+    if(location.pathname!=='/__sheets-host')return;
+    const grid=cells=>({name:'orders',rows:cells,formats:cells.map(row=>row.map(()=>'General')),
+      errors:cells.map(row=>row.map(()=>false)),merges:[],date1904:false});
+    window.__SHEETS_HOST={rows,grids(){return [grid(this.rows)];}};
+  },rows);
+}
+const sheetRows=[['order_id','city','amount'],[1,'Paris',120],[2,'Lyon',60]];
+const sheetState=async request=>(await request.get('/__sheets')).json();
+const requestCount=async request=>(await (await request.get('/__state')).json()).requestCount;
+
+test('the Sheets add-in shows the web workbook: first question, reopen, changed sheet, new chat',async({page,browser,request})=>{
+  await request.get('/__sheets?reset=1');
+  await mockSheetsHost(page,sheetRows);
+  await page.goto('/__sheets-host');
+  const frame=page.frameLocator('#prereasoner');
+  await expect(frame.locator('.embedempty')).toContainText('Ask a question about this spreadsheet.');
+  await expect(frame.locator('.embedempty')).toContainText('visible, non-empty tabs');
+  await expect(frame.locator('.embednotice')).toContainText('not used to train generalized AI models');
+  await expect(frame.locator('.embednotice a')).toHaveAttribute('href','/privacy');
+  await expect(frame.locator('.embedprivacy')).toHaveAttribute('href','/privacy');
+  await expect(frame.locator('.embedprivacy')).toBeVisible();
+  await expect(frame.locator('#chatq')).toHaveAttribute('placeholder','Ask a question…');
+  expect(await page.frame({url:/\/embed\/sheets$/}).evaluate(()=>window.__hostToken)).toBe('host-google-token');
+  const [restore]=(await sheetState(request)).calls;
+  expect(restore).toMatchObject({path:'/api/spreadsheet/conversation/restore',body:{spreadsheet_id:'sheet-1',host:'sheets'}});
+  expect(restore.body.tables.map(table=>[table.name,table.data,table.source.kind]))
+    .toEqual([['orders','order_id,city,amount\n1,Paris,120\n2,Lyon,60','google-sheets-addon']]);
+
+  // The first question runs through the web workbook and binds its conversation to the spreadsheet.
+  const before=await requestCount(request);
+  await frame.locator('#chatq').fill('total amount');
+  await frame.locator('#chatq').press('Enter');
+  await expect(frame.locator('.turn-answer').last()).toHaveText('Your total is 180.');
+  await expect(frame.locator('#syncstate')).toHaveClass(/current/);           // a settled answer is not still "checking"
+  await expect(frame.locator('#chatq')).toHaveAttribute('placeholder','Ask a follow-up…');
+  await expect.poll(async()=>(await sheetState(request)).bound).toBe(sheetsConversation);
+  expect(await requestCount(request)).toBe(before+1);
+  await expect.poll(async()=>(await sheetState(request)).saved).toBe(true);   // the snapshot reached the server
+
+  // Reopening the sidebar restores the conversation without asking again: in the same browser tab
+  // from its session, and in another browser from the server.
+  await page.reload();
+  await expect(frame.locator('.turn-answer').last()).toHaveText('Your total is 180.');
+  const other=await browser.newContext();
+  try{
+    const second=await other.newPage();
+    await mockSheetsHost(second,sheetRows);
+    await second.goto('/__sheets-host');
+    await expect(second.frameLocator('#prereasoner').locator('.turn-answer').last()).toHaveText('Your total is 180.');
+  }finally{await other.close();}
+  expect(await requestCount(request)).toBe(before+1);
+
+  // A changed sheet is re-read before the next question: the conversation's source is synced and
+  // the question waits for the frame to reload with the new cells.
+  await page.evaluate(()=>window.__SHEETS_HOST.rows.push([3,'Paris',30]));
+  await frame.locator('#chatq').fill('total amount in Paris');
+  await frame.locator('#chatq').press('Enter');
+  await expect(frame.locator('.turn-answer').last()).toHaveText('The Paris total is 120.');
+  await expect(frame.locator('.turn.user')).toHaveText(['total amount','total amount in Paris']);
+  const sync=(await sheetState(request)).calls.find(call=>call.path==='/api/conversation/sync');
+  expect(sync.body).toMatchObject({id:sheetsConversation});
+  expect(sync.body.tables[0].data).toBe('order_id,city,amount\n1,Paris,120\n2,Lyon,60\n3,Paris,30');
+  expect(await page.frame({url:/\/embed\/sheets$/}).evaluate(()=>SHEETS[0].data)).toContain('3,Paris,30');
+  expect(await requestCount(request)).toBe(before+2);
+
+  // Previous conversations open in their own tab; New chat unbinds the spreadsheet.
+  await frame.getByRole('button',{name:'Conversations',exact:true}).click();
+  await frame.getByRole('button',{name:'New chat'}).click();
+  await expect(frame.locator('.embedempty')).toContainText('Ask a question about this spreadsheet.');
+  expect((await sheetState(request)).calls.some(call=>call.path==='/api/spreadsheet/conversation/clear')).toBe(true);
+  expect((await sheetState(request)).bound).toBeNull();
+
+  // The add-on's "Previous conversations" opens the same sidebar with its list open; a past
+  // conversation opens in its own tab, and the sidebar stays on this spreadsheet.
+  await page.goto('/__sheets-host?view=conversations');
+  await expect(frame.locator('#drawer')).toHaveAttribute('aria-hidden','false');
+  const [opened]=await Promise.all([page.context().waitForEvent('page'),frame.locator('.convitem').first().click()]);
+  await expect(opened).toHaveURL(new RegExp('/reason/'+sheetsConversation));
+  expect(page.frame({url:/\/embed\/sheets/}).url()).toMatch(/\/embed\/sheets\?view=conversations$/);
+  await opened.close();
+});
+
+test('a sheet changed right after an answer keeps that answer on screen',async({page,request})=>{
+  // The server copy of the snapshot is saved after a delay; until it lands, the tab's own copy is the
+  // only record of the answer, and the rebuild for the changed sheet must keep it.
+  await request.get('/__sheets?reset=1&dropState=1');
+  await mockSheetsHost(page,sheetRows);
+  await page.goto('/__sheets-host');
+  const frame=page.frameLocator('#prereasoner');
+  await frame.locator('#chatq').fill('total amount');
+  await frame.locator('#chatq').press('Enter');
+  await expect(frame.locator('.turn-answer').last()).toHaveText('Your total is 180.');
+  await page.evaluate(()=>window.__SHEETS_HOST.rows.push([3,'Paris',30]));
+  await frame.locator('#chatq').fill('total amount in Paris');
+  await frame.locator('#chatq').press('Enter');
+  await expect(frame.locator('.turn-answer').last()).toHaveText('The Paris total is 120.');
+  await expect(frame.locator('.turn.user')).toHaveText(['total amount','total amount in Paris']);
+  expect((await sheetState(request)).saved).toBe(false);
+});
+
+test('the Sheets add-in shows the upload importer message for a sheet it cannot read, and asking again re-reads it',async({page,request})=>{
+  await request.get('/__sheets?reset=1');
+  // Column C has values but no header: the one import rule refuses it instead of naming it.
+  await mockSheetsHost(page,[['order_id','amount'],[1,'Paris',120],[2,'Lyon',60]]);
+  const before=await requestCount(request);
+  await page.goto('/__sheets-host');
+  const frame=page.frameLocator('#prereasoner');
+  await expect(frame.locator('.embedempty.failed')).toContainText('Sheet "orders": No unambiguous header found');
+  await expect(frame.locator('.embedempty.failed')).toContainText('Fix the spreadsheet, then ask again.');
+  expect((await sheetState(request)).calls).toEqual([]);
+  await page.evaluate(()=>{window.__SHEETS_HOST.rows[0]=['order_id','city','amount'];});
+  await frame.locator('#chatq').fill('total amount');
+  await expect(frame.locator('#chatsend')).toBeEnabled();
+  await frame.locator('#chatq').press('Enter');
+  await expect(frame.locator('.turn-answer').last()).toHaveText('Your total is 180.');
+  await expect(frame.locator('.embedempty')).toHaveCount(0);
+  await expect(frame.locator('.turn.user')).toHaveText(['total amount']);
+  expect(await requestCount(request)).toBe(before+1);                        // only the user's question ran
+});

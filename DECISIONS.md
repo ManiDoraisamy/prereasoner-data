@@ -622,3 +622,75 @@ time codes, dropping quoted text, escapes, padding and bracket sections other th
 `[s]`. An elapsed duration keeps the day count Excel stores, in both importers. The upload keeps cell
 formats (`cellNF`) and returns elapsed cells to that count. SheetJS's 1900-02-29 shift is undone, and
 the 1904 date system has no shift. All 9 shipped workbooks convert to byte-identical CSV.
+
+## A money noun that names its table asks for that table's money total (2026-09-25)
+
+"Whats the sales in france" on a sheet named `sales` (columns including `amount`) answered 5, the
+number of orders. On the world path the intent head read COUNT, and for "total sales in France" it
+read SUM, but the table-noun rule in `EncoderQuery.read_op_all` turned both into `COUNT(sales)`
+(regress B6). The own-data search deliberately kept a money noun that names a table as the entity, so
+"what's the sales in London" listed rows. The owner decided the everyday reading: a money noun
+(`sql_expansion.MONEY_MEASURE_NOUNS`) that names the table reads as its money total, `SUM` of the
+table's money-named column (`MONEY_MEASURE_COLUMN_WORDS`), unless the question counts it ("how many
+sales", "number of sales") or lists it ("list", "show", "display the sales").
+
+One predicate serves both planners, `sql_expansion.money_total_position` / `money_total_columns`.
+The world operand choice applies it whatever the intent head reads. In the own-data selection it is a
+contract after the calculation intents: the best-ranked pool member that aggregates a money column is
+served when one exists, otherwise the ranking stands. A converted total (`SUM(amount * rate)`) satisfies
+the contract, so a currency intent's choice is never displaced. A money-named table with no money column,
+an entity noun ("total customers") and a column literally named for the measure keep their readings.
+
+No Spider dev database has a table named with a money noun, so none of the 1,034 dev questions can
+trigger the rule and the served result is unchanged (spider/results/RESULTS.md).
+
+## The Google Sheets add-on frames the web workbook (2026-09-25)
+
+The add-on had its own sidebar (`Sidebar.html`, `Previous.html`). Its Apps Script server converted the
+tabs to CSV, exchanged the user's Google token for a Firebase ID token, called `/chat`, and rendered the
+reply in a compact rail. That was a second presentation of the workbook. It showed nothing until the whole
+answer returned, because an Apps Script call cannot follow the RTDB trace, and it trailed the web rail's
+features. The owner chose to embed the web app's sidebar.
+
+The sidebar frames `/embed/sheets`, which is `reason.html` running `workbook.js` with `WB.embed='sheets'`
+in a compact layout: the same rendering, live trace and conversations as chat.prereasoner.com. The
+add-on is a host. `Code.js` answers two `postMessage` requests (`context`, `grids`) with the Google
+token, the spreadsheet's identity and its cell grids, and `Sidebar.html` relays only between its frame
+and the Prereasoner origin. The page's side is `web/public/lib/host-bridge.js`. It accepts replies only
+from its parent at an Apps Script content origin, and signs in with the token (`signInWithCredential`).
+It imports the grids with the upload importer and restores the spreadsheet's conversation
+(`/api/spreadsheet/conversation/*`) before the workbook runs, so opening the sidebar is one page load.
+Before each question it re-reads the grids. A changed sheet syncs the
+conversation's source, which marks the old answer stale as for any reopened conversation whose data
+changed. The frame then reloads once with the question pending.
+
+- `web/` is the one presentation owner. The add-on dropped `script.external_request` and its URL
+  allowlist, and it never holds a Prereasoner token.
+- Only `/embed/**` may be framed by `docs.google.com` and `*.googleusercontent.com`
+  (`web/firebase.json`); every other route keeps the `**` frame-ancestors.
+- A `web/public/` change reaches the sidebar with a Hosting deploy; the add-on needs a new version only
+  when `Code.js`, `Sidebar.html` or its manifest change.
+- In the frame, a previous conversation opens in its own tab; the frame keeps the spreadsheet's
+  conversation, and New chat unbinds it.
+- This supersedes the Sheets sidebar parts of `docs/EXCEL_COPILOT_PLAN.md`. The Excel add-in keeps its
+  own task pane.
+- The data-use notice the OAuth verification describes stays word for word in the empty sidebar.
+- `docs/marketplace/render-review-assets.js` renders the review images from the embedded page; the OAuth
+  demo video still shows the old sidebar.
+
+## One import rule for uploads and host grids (2026-09-25)
+
+The Excel add-in (`web/public/office/excel/host.js`) and the Sheets add-on (`sheets-addon/Code.js`) each
+converted cells to CSV with their own header rule, and named a populated column without a header
+`column_N`. In the owner's screenshot an inserted index column had shifted every header one to the left,
+so "amount" labeled the currency codes and the amounts had no header, and the add-on answered from those
+labels.
+
+Both hosts now send grids to the upload worker (`web/public/lib/xlsx-worker.js`). A grid carries values,
+number formats, failed-formula flags, merged ranges and the date system. `WORKBOOK_IMPORT.gridWorkbook`
+writes the grids as the `.xlsx` those cells would export to, and the worker applies the upload's read,
+limits and `normalize` rule. A populated column without a header is refused with the upload's message,
+which now names the worksheet. Host grids and an upload of the same cells produce identical CSV and import
+metadata in both date systems (`web/tests/workbook_import.test.js`). The Sheets add-on checks the upload's
+per-worksheet limits (10,000 data rows, 256 columns) before it reads a tab; it used to cap the rows of all
+tabs together at 10,000, which the server does not.

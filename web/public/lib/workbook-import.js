@@ -91,5 +91,31 @@
       prefixRows:start,suffixRows:rows.length-end,formulaValues:'cached-only',
     }};
   }
-  root.WORKBOOK_IMPORT={normalize};
+  // A host that reads live cells (the Excel task pane, the Sheets sidebar) passes grids instead of
+  // file bytes: [{name, rows, formats, errors, merges, date1904}]. They are written as the .xlsx an
+  // export of those cells would be, and the worker reads it like any upload, so ONE reader and ONE
+  // normalize() decide headers, dates, durations, merged cells, totals and errors for every source.
+  const ERROR_CODES={'#NULL!':0x00,'#DIV/0!':0x07,'#VALUE!':0x0F,'#REF!':0x17,'#NAME?':0x1D,'#NUM!':0x24,'#N/A':0x2A};
+  function gridWorkbook(grids,XLSX){
+    const book=XLSX.utils.book_new();
+    let date1904=false;
+    grids.forEach((grid,index)=>{
+      const rows=grid.rows||[],formats=grid.formats||[],errors=grid.errors||[];
+      const sheet=XLSX.utils.aoa_to_sheet(rows.map(r=>r.map(v=>v===''?null:v)));
+      rows.forEach((row,r)=>row.forEach((value,c)=>{
+        const address=XLSX.utils.encode_cell({r,c});
+        if(errors[r]&&errors[r][c]){
+          sheet[address]={t:'e',v:ERROR_CODES[String(value)]??0x0F,w:String(value)};return;
+        }
+        const format=formats[r]&&formats[r][c];
+        if(typeof value==='number'&&sheet[address]&&format&&format!=='General')sheet[address].z=format;
+      }));
+      if(Array.isArray(grid.merges)&&grid.merges.length)sheet['!merges']=grid.merges;
+      date1904=date1904||Boolean(grid.date1904);
+      XLSX.utils.book_append_sheet(book,sheet,String(grid.name||'Sheet'+(index+1)).slice(0,31));
+    });
+    if(date1904)book.Workbook={WBProps:{date1904:true}};
+    return XLSX.write(book,{type:'array',bookType:'xlsx'});
+  }
+  root.WORKBOOK_IMPORT={normalize,gridWorkbook};
 })(typeof window==='undefined'?globalThis:window);

@@ -61,4 +61,39 @@ for(const date1904 of [false,true]){
     assert.equal(worked[2],'-1234.5');
   }finally{fs.unlinkSync(file);}
 }
-console.log('workbook layout: 18 checks passed (including 3 downloaded originals, 3 timezones and 2 date systems)');
+// Live hosts (the Excel task pane, the Sheets sidebar) post cell grids to the same worker. A grid
+// must import exactly like an upload of the same cells, and fail the same way.
+const {normalizeGrids}=require('../../tests/workbook_fixture.js');
+const cells=[['worked','day','amount','paid'],[55/48,45292,-1234.5,true],[0.75,45293,20,false]];
+const cellFormats=[[],['[h]:mm','yyyy-mm-dd','#,##0.00;[Red]-#,##0.00','General'],
+  ['[mm]:ss','yyyy-mm-dd','#,##0.00;[Red]-#,##0.00','General']];
+for(const date1904 of [false,true]){
+  const ws=XLSX.utils.aoa_to_sheet(cells);
+  cellFormats.forEach((row,r)=>row.forEach((z,c)=>{if(z&&z!=='General')ws[XLSX.utils.encode_cell({r,c})].z=z;}));
+  const book=XLSX.utils.book_new();XLSX.utils.book_append_sheet(book,ws,'Hours');
+  if(date1904)book.Workbook={WBProps:{date1904:true}};
+  const file=path.join(os.tmpdir(),`grid-${date1904?1904:1900}-${process.pid}.xlsx`);
+  fs.writeFileSync(file,Buffer.from(XLSX.write(book,{type:'array',bookType:'xlsx'})));
+  try{
+    const uploaded=readWorkbook(file)[0];
+    const [grid]=normalizeGrids([{name:'Hours',rows:cells,formats:cellFormats,date1904}]);
+    assert.equal(grid.csv,uploaded.csv,'a host grid imports exactly like an upload of the same cells');
+    assert.equal(JSON.stringify(grid.import),JSON.stringify(uploaded.import));   // results from separate VM realms
+  }finally{fs.unlinkSync(file);}
+}
+// The Sheets add-on screenshot: an index column A was inserted but the header row was not moved, so
+// "amount" labels the currency codes and the amounts in H have no header. The add-ins used to name
+// that column "column_8" and answer from shifted labels; the one rule refuses the layout instead.
+const shifted=[['order ID','customer','city','tier','ordered','currency','amount'],
+  [1,101,'Sherlock Holmes','London','Gold','Magnifying Glass','GBP',118],
+  [2,102,'Sherlock Holmes','London','Gold','Calabash Pipe','GBP',95]];
+// The message names the worksheet: a spreadsheet's tabs are all read, and the user has to find this one.
+assert.throws(()=>normalizeGrids([{name:'notes',rows:[['note'],['ok']]},{name:'sales',rows:shifted}]),
+  /^Error: Sheet "sales": No unambiguous header found/);
+assert.throws(()=>normalizeGrids([{name:'dupes',rows:[['id','customer','customer'],[1,'A','B']]}]),/Duplicate column headers/);
+assert.throws(()=>normalizeGrids([{name:'errors',rows:[['id','ratio'],[1,'#DIV/0!']],errors:[[false,false],[false,true]]}]),
+  /formula error/);
+const [groupedGrid]=normalizeGrids([{name:'grouped',rows:[['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]],
+  merges:[{s:{r:0,c:1},e:{r:0,c:2}}]}]);
+assert.match(groupedGrid.csv,/"?ID"?,Amounts Net,Amounts Tax/);
+console.log('workbook layout: 26 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

@@ -1588,6 +1588,106 @@ def test_explicit_total_quantity_sold_phrasing_is_unchanged():
     assert execute(RETAIL, candidate.sql) == [("Beta", 9), ("Alpha", 8)]
 
 
+SALES_LEDGER = {
+    "name": "sales",
+    "columns": ["order_id", "customer", "city", "currency", "amount"],
+    "rows": [
+        [101, "Sherlock Holmes", "London", "GBP", 118],
+        [102, "Sherlock Holmes", "London", "GBP", 95],
+        [104, "Dr. John Watson", "London", "GBP", 340],
+        [109, "Inspector Clouseau", "Paris", "EUR", 310],
+        [121, "Arsene Lupin", "Paris", "EUR", 180],
+    ],
+}
+
+
+def test_money_noun_naming_the_table_reads_as_its_money_total():
+    # "sales" names the table AND is a money noun. Asked as a quantity it is the money total, the
+    # way "total amount" is: the Sheets add-on's "Whats the sales in france" counted rows (5)
+    # instead of summing amount (970). The count and listing phrasings below keep the entity.
+    candidate = best("What's the sales in London", [SALES_LEDGER])
+    assert 'SUM("sales"."amount")' in candidate.sql, candidate.sql
+    assert execute([SALES_LEDGER], candidate.sql) == [(553,)]
+
+
+def test_counting_or_listing_a_money_named_table_keeps_the_entity():
+    counted = best("how many sales in London", [SALES_LEDGER])
+    assert "COUNT(" in counted.sql and "SUM(" not in counted.sql, counted.sql
+    assert execute([SALES_LEDGER], counted.sql) == [(3,)]
+    listed = best("list the sales in London", [SALES_LEDGER])
+    assert "SUM(" not in listed.sql and "COUNT(" not in listed.sql, listed.sql
+
+
+def test_money_named_table_without_a_money_column_keeps_the_entity():
+    # Same profile, but nothing in the table carries money vocabulary: there is no money total to
+    # read, so the question keeps its current interpretation instead of summing a quantity.
+    units = {"name": "sales", "columns": ["sale_id", "city", "units"],
+             "rows": [[1, "London", 3], [2, "Paris", 4]]}
+    candidate = best("What's the sales in London", [units])
+    assert "SUM(" not in candidate.sql, candidate.sql
+
+
+def test_served_selection_contract_keeps_money_totals_and_converted_totals():
+    """select_query serves the best-ranked member that aggregates the money column when the rule
+    fires, so the arbiter's preference for a listing beam cannot turn "what's the sales in
+    London" back into rows. A converted total (SUM(amount * rate)) satisfies the contract, so a
+    currency intent's choice is never displaced."""
+    from engine.sql_ast import Aggregate, BinaryExpr, ColumnRef, SelectItem, SelectQuery
+    from engine.sql_expansion import aggregates_money_column, money_total_columns
+
+    sch = [{"table": "sales", "name": name, "affinity": affinity}
+           for name, affinity in (("order_id", "INTEGER"), ("city", "TEXT"), ("amount", "REAL"))]
+    assert money_total_columns("What's the sales in London", sch) == ("sales", [sch[2]])
+    assert money_total_columns("how many sales in London", sch) is None
+    assert money_total_columns("list the sales in London", sch) is None
+    assert money_total_columns("What's the sales in London",
+                               [dict(entry, table="orders") for entry in sch]) is None
+    summed = best("What's the sales in London", [SALES_LEDGER]).query
+    listed = best("list the sales in London", [SALES_LEDGER]).query
+    assert aggregates_money_column(summed, "sales", ["amount"])
+    assert not aggregates_money_column(listed, "sales", ["amount"])
+    converted = SelectQuery(select=(SelectItem(Aggregate("SUM", BinaryExpr(
+        ColumnRef("sales", "amount"), "*", ColumnRef("rates", "rate")))),), from_table="sales")
+    assert aggregates_money_column(converted, "sales", ["amount"])
+
+
+def test_world_path_money_noun_naming_the_table_sums_its_money_column():
+    """The world-join operand choice (EncoderQuery.read_op_all) follows the same rule. The intent
+    head's operator reading is stubbed: it read COUNT for "Whats the sales in france" and SUM for
+    "total sales in France", and both used to return COUNT(sales) through the table-noun rule."""
+    import numpy as np
+
+    from engine.encoder_overlay import EncoderQuery
+
+    def reader(op):
+        query = EncoderQuery.__new__(EncoderQuery)
+        query.ingest = lambda tables: (tables, [])
+        query.read_op_model = lambda norm, question, fks: (op, None)
+        query._encode = lambda texts: np.eye(len(texts), 8, dtype=np.float32)
+        return query
+
+    ledger = [{"table": "sales", "name": name, "affinity": affinity} for name, affinity in (
+        ("order ID", "INTEGER"), ("customer", "TEXT"), ("city", "TEXT"), ("currency", "TEXT"),
+        ("amount", "REAL"))]
+    assert reader("COUNT").read_op_all("Whats the sales in france", ledger) == ("SUM", "sales", "amount")
+    assert reader("SUM").read_op_all("total sales in France", ledger) == ("SUM", "sales", "amount")
+    assert reader("AVG").read_op_all("average sales in France", ledger) == ("AVG", "sales", "amount")
+    # The head reads no aggregate for "What's the sales in London"; the money noun still asks for the
+    # total, while a listing command keeps the rows.
+    assert reader(None).read_op_all("What's the sales in London", ledger) == ("SUM", "sales", "amount")
+    assert reader(None).read_op_all("show the sales in London", ledger) is None
+    # Contrasts: a count cue keeps the count; an entity noun still counts its rows; a money-named
+    # table with nothing monetary to sum keeps the table-noun count.
+    assert reader("COUNT").read_op_all("how many sales in France", ledger) == ("COUNT", "sales", None)
+    assert reader("COUNT").read_op_all("number of sales in France", ledger) == ("COUNT", "sales", None)
+    customers = [{"table": "customers", "name": "name", "affinity": "TEXT"},
+                 {"table": "customers", "name": "amount", "affinity": "REAL"}]
+    assert reader("SUM").read_op_all("total customers in France", customers) == ("COUNT", "customers", None)
+    units = [{"table": "sales", "name": "city", "affinity": "TEXT"},
+             {"table": "sales", "name": "units", "affinity": "INTEGER"}]
+    assert reader("SUM").read_op_all("total sales in France", units) == ("COUNT", "sales", None)
+
+
 def test_literal_measure_column_keeps_raw_interpretation():
     # A schema that names its own "revenue" column keeps the raw reading; the
     # implicit measure fires only when the vocabulary has no direct column.
@@ -2565,6 +2665,11 @@ TESTS = [
     test_unit_price_ranking_stays_a_raw_rate_order,
     test_total_spend_binds_the_amount_measure_deterministically,
     test_explicit_total_quantity_sold_phrasing_is_unchanged,
+    test_money_noun_naming_the_table_reads_as_its_money_total,
+    test_counting_or_listing_a_money_named_table_keeps_the_entity,
+    test_money_named_table_without_a_money_column_keeps_the_entity,
+    test_served_selection_contract_keeps_money_totals_and_converted_totals,
+    test_world_path_money_noun_naming_the_table_sums_its_money_column,
     test_literal_measure_column_keeps_raw_interpretation,
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,

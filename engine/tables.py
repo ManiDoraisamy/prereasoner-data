@@ -495,6 +495,9 @@ class TableQuery:
         4. The proposer scores each eligible query's likelihood and the arbiter ranks them
            (engine/sql_rank.py). A registered calculation intent (engine/calculations) takes the
            best-ranked query that satisfies it, when one exists.
+        5. A money noun that names its table ("what's the sales in London") asks for that table's
+           money total (engine/sql_expansion.money_total_columns): the best-ranked query that
+           aggregates a money column is served when one exists; otherwise the ranking stands.
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator,
         the offline regression gate and arbiter training all call it. The decomposition probe
@@ -504,6 +507,7 @@ class TableQuery:
             raise RuntimeError("SQL selection models are not loaded - construct the planner through "
                                "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
         from engine.calculations import select_calculation_candidate
+        from engine.sql_expansion import aggregates_money_column, money_total_columns
         from engine.sql_grounding import grounded_members
         from engine.sql_rank import PoolSelection, arbitrate, merge_proposals
         from engine.sql_schema import SchemaGraph
@@ -530,8 +534,19 @@ class TableQuery:
                 question, norm, graph, [pool[index] for index in ranking])
             selected = ranking[position]
         request_timing.count("pool", len(pool))
-        return PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
-                             scores, ranking, selected, len(searched))
+        selection = PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
+                                  scores, ranking, selected, len(searched))
+        money = money_total_columns(question, sch)
+        if money is not None:
+            table, columns = money
+            names = [column["name"] for column in columns]
+
+            def aggregates_money(candidate):
+                return aggregates_money_column(candidate.query, table, names)
+
+            if any(aggregates_money(pool[index]) for index in ranking):
+                selection = selection.constrained(aggregates_money)
+        return selection
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""

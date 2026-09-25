@@ -1,58 +1,47 @@
-const MAX_SHEETS = 8;
-const MAX_ROWS = 10000;
-const MAX_COLUMNS = 256;
+import '../../lib/upload-limits.js';
+
+// The upload's worksheet limits hold per tab before any cell is read; the cell cap bounds what one
+// task-pane read requests from Excel.
+const {sheets: MAX_SHEETS, rows: MAX_ROWS, columns: MAX_COLUMNS} = globalThis.UPLOAD_LIMITS;
 const MAX_CELLS = 250000;
 const VALUE_CHUNK_ROWS = 200;
 const MAX_TABLE_BYTES = 2 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 6 * 1024 * 1024;
 
-function csvCell(value) {
-  const text = value == null ? '' : String(value);
-  return /[",\r\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
-}
-
-function headers(values) {
-  const seen = new Map();
-  return values.map((v, i) => {
-    const label = String(v == null ? '' : v).trim() || `column_${i + 1}`;
-    const count = (seen.get(label.toLowerCase()) || 0) + 1;
-    seen.set(label.toLowerCase(), count);
-    return count === 1 ? label : `${label}_${count}`;
+// The workbook upload's importer decides headers, dates, durations, merged cells, totals and errors
+// (lib/workbook-import.js through lib/xlsx-worker.js). The task pane reads the cells and hands the
+// grids to that same worker, so an Excel workbook and its uploaded .xlsx become the same tables.
+function normalizeInWorker(grids) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('../../lib/xlsx-worker.js', import.meta.url));
+    worker.onmessage = event => {
+      worker.terminate();
+      if (event.data && event.data.ok) resolve(event.data.sheets);
+      else reject(new Error((event.data && event.data.error) || 'The workbook could not be read.'));
+    };
+    worker.onerror = event => {
+      worker.terminate();
+      reject(new Error(event.message || 'The workbook could not be read.'));
+    };
+    worker.postMessage({grids});
   });
 }
 
-function dateSerialToIso(value, date1904) {
-  const whole = Math.floor(value);
-  const milliseconds = Math.round((value - whole) * 86400000);
-  const base = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
-  // Excel serial 0 is 1899-12-30; only serials 1–59 need shifting around
-  // Excel's fictitious 1900-02-29.
-  const adjusted = whole + (!date1904 && value >= 1 && value < 60 ? 1 : 0);
-  const date = new Date(base + adjusted * 86400000 + milliseconds);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString().replace(/\.000Z$/, 'Z');
+// Merged areas need ExcelApi 1.13; older hosts send no merge information, so a merged area arrives
+// as its value plus blank cells, exactly as a merged range reads without formatting.
+function mergesSupported() {
+  const requirements = Office.context && Office.context.requirements;
+  return Boolean(requirements && requirements.isSetSupported('ExcelApi', '1.13'));
 }
 
-function cellValue(value, type, numberFormat, date1904) {
-  if (value == null) return '';
-  if (typeof value === 'number' && !Number.isFinite(value)) return '';
-  if (type === Excel.RangeValueType.error) return String(value);
-  if (typeof value === 'number') {
-    // lib/number-format.js owns which formats are dates; an elapsed duration keeps its number.
-    if (globalThis.NUMBER_FORMAT.isDate(numberFormat)) return dateSerialToIso(value, date1904);
-    return String(value);
-  }
-  if (type === Excel.RangeValueType.boolean) return value ? 'TRUE' : 'FALSE';
-  if (type === Excel.RangeValueType.string) return String(value);
-  if (type === Excel.RangeValueType.empty) return '';
-  if (type === Excel.RangeValueType.integer && typeof value === 'number') return String(value);
-  if (type === Excel.RangeValueType.unknown && typeof value === 'number') return String(value);
-  if (type === Excel.RangeValueType.formula && typeof value === 'number') return String(value);
-  // Excel API marks date-formatted cells as `double` in some builds. The number format
-  // identifies date/time sections without relying on the user's display locale.
-  return value instanceof Date ? value.toISOString() : String(value);
+function cellValue(value, type) {
+  if (value == null) return null;
+  if (typeof value === 'number' && !Number.isFinite(value)) return null;
+  if (type === Excel.RangeValueType.boolean) return Boolean(value);
+  return value;
 }
 
-export async function readWorkbook() {
+export async function readWorkbook(normalize = normalizeInWorker) {
   await Office.onReady();
   const collected = await Excel.run(async context => {
     const workbook = context.workbook;
@@ -68,49 +57,75 @@ export async function readWorkbook() {
       targets.push({sheet, used});
     }
     await context.sync();
-    let rowTotal = 0;
     let cellTotal = 0;
     const candidates = targets.filter(({used}) => used.rowCount > 1 && used.columnCount > 0);
     if (candidates.length > MAX_SHEETS) throw new Error(`This workbook has more than ${MAX_SHEETS} visible tabs with data.`);
-    for (const {used} of candidates) {
-      rowTotal += used.rowCount - 1;
+    for (const {sheet, used} of candidates) {
+      if (used.rowCount - 1 > MAX_ROWS) {
+        throw new Error(`Sheet "${sheet.name}": each worksheet may contain at most ${MAX_ROWS.toLocaleString('en-US')} data rows`);
+      }
+      if (used.columnCount > MAX_COLUMNS) {
+        throw new Error(`Sheet "${sheet.name}": each worksheet may contain at most ${MAX_COLUMNS} columns`);
+      }
       cellTotal += used.rowCount * used.columnCount;
-      if (rowTotal > MAX_ROWS || used.columnCount > MAX_COLUMNS || cellTotal > MAX_CELLS) {
+      if (cellTotal > MAX_CELLS) {
         throw new Error('This workbook is too large to analyze in one request. Reduce its used range and try again.');
       }
     }
-    let byteTotal = 0;
-    const tables = [];
+    const date1904 = Boolean(workbook.use1904DateSystem);
+    const readMerges = mergesSupported();
+    const grids = [];
     for (const {sheet, used} of candidates) {
       // Fetch bounded chunks so a wide worksheet cannot exceed Excel on the web's
       // request/response limit just because several Office.js matrices are returned together.
-      const lines = [];
-      let tableBytes = 0;
+      const rows = [];
+      const formats = [];
+      const errors = [];
       let hasValues = false;
       for (let offset = 0; offset < used.rowCount; offset += VALUE_CHUNK_ROWS) {
         const count = Math.min(VALUE_CHUNK_ROWS, used.rowCount - offset);
         const range = sheet.getRangeByIndexes(used.rowIndex + offset, used.columnIndex, count, used.columnCount);
         range.load('values,valueTypes,numberFormat');
         await context.sync();
-        const rows = range.values.map((row, r) => row.map((value, c) => {
-          if (value !== null && value !== '') hasValues = true;
-          return cellValue(value, range.valueTypes?.[r]?.[c], range.numberFormat?.[r]?.[c], Boolean(workbook.use1904DateSystem));
-        }));
-        if (offset === 0) rows[0] = headers(rows[0]);
-        const chunk = rows.map(row => row.map(csvCell).join(',')).join('\n');
-        tableBytes += new TextEncoder().encode(chunk).byteLength + (lines.length ? 1 : 0);
-        if (tableBytes > MAX_TABLE_BYTES) throw new Error(`The tab “${sheet.name}” is larger than 2 MB.`);
-        lines.push(chunk);
+        range.values.forEach((row, r) => {
+          const types = range.valueTypes?.[r] || [];
+          rows.push(row.map((value, c) => {
+            if (value !== null && value !== '') hasValues = true;
+            return cellValue(value, types[c]);
+          }));
+          formats.push(range.numberFormat?.[r] || []);
+          errors.push(row.map((_, c) => types[c] === Excel.RangeValueType.error));
+        });
       }
       if (!hasValues) continue;
-      byteTotal += tableBytes;
-      if (byteTotal > MAX_TOTAL_BYTES) throw new Error('Combined workbook data is larger than 6 MB.');
-      tables.push({name: sheet.name, data: lines.join('\n'), source: {kind: 'excel'}});
+      const merges = [];
+      if (readMerges) {
+        const areas = used.getMergedAreasOrNullObject();
+        areas.load('isNullObject,areas/items/rowIndex,areas/items/columnIndex,areas/items/rowCount,areas/items/columnCount');
+        await context.sync();
+        if (!areas.isNullObject) {
+          for (const area of areas.areas.items) {
+            const r = area.rowIndex - used.rowIndex;
+            const c = area.columnIndex - used.columnIndex;
+            merges.push({s: {r, c}, e: {r: r + area.rowCount - 1, c: c + area.columnCount - 1}});
+          }
+        }
+      }
+      grids.push({name: sheet.name, rows, formats, errors, merges, date1904});
     }
-    if (!tables.length) throw new Error('This workbook has no visible table with a header and data rows.');
-    return {tables, name: workbook.name || 'Excel workbook'};
+    return {grids, name: workbook.name || 'Excel workbook'};
   });
-  return collected;
+  const sheets = collected.grids.length ? await normalize(collected.grids) : [];
+  let byteTotal = 0;
+  const tables = sheets.map(sheet => {
+    const bytes = new TextEncoder().encode(sheet.csv).byteLength;
+    if (bytes > MAX_TABLE_BYTES) throw new Error(`The tab “${sheet.name}” is larger than 2 MB.`);
+    byteTotal += bytes;
+    if (byteTotal > MAX_TOTAL_BYTES) throw new Error('Combined workbook data is larger than 6 MB.');
+    return {name: sheet.name, data: sheet.csv, import: sheet.import, source: {kind: 'excel'}};
+  });
+  if (!tables.length) throw new Error('This workbook has no visible table with a header and data rows.');
+  return {tables, name: collected.name};
 }
 
 export async function workbookKey() {

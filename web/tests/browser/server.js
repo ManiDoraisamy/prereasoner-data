@@ -12,6 +12,8 @@ const totalSalesId='a_11111111111111111111111111111111';
 const topProductsId='a_22222222222222222222222222222222';
 const promotionGapsId='a_33333333333333333333333333333333';
 const revisions=new Map();
+let savedState=null, sheetBound=null, sheetTables=null, dropState=false;
+const sheetCalls=[];
 
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.csv':'text/csv; charset=utf-8',
@@ -146,16 +148,59 @@ const server=http.createServer(async(req,res)=>{
   }
   if(req.method==='GET'&&url.pathname==='/api/conversations')return send(res,200,{conversations:deleted?[]:[
     {id:conversation,question:'total amount',ts:'2026-09-05T12:00:00Z'}]});
-  if(req.method==='POST'&&url.pathname==='/api/conversation/state')return send(res,200,{saved:conversation});
+  if(req.method==='POST'&&url.pathname==='/api/conversation/state'){
+    const body=await readJson(req);if(body&&body.state&&!dropState)savedState=body.state;return send(res,200,{saved:conversation});
+  }
   if(req.method==='POST'&&url.pathname==='/api/conversation/delete'){
     const body=await readJson(req);deleted=body.id===conversation;return send(res,200,{deleted:body.id});
+  }
+  // The Google Sheets add-in's frame (/embed/sheets, lib/host-bridge.js): a spreadsheet's bound
+  // conversation, the conversation it restores, and source sync after the sheet changed.
+  if(req.method==='POST'&&url.pathname.startsWith('/api/spreadsheet/conversation/')){
+    const body=await readJson(req);
+    if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
+    sheetCalls.push({path:url.pathname,body});
+    if(url.pathname.endsWith('/restore')){sheetTables=body.tables;return send(res,200,{conversation_id:sheetBound,state:{}});}
+    if(url.pathname.endsWith('/state')){sheetBound=body.conversation_id;return send(res,200,{saved:true});}
+    sheetBound=null;return send(res,200,{cleared:true});
+  }
+  if(req.method==='GET'&&url.pathname==='/api/conversation'){
+    if(url.searchParams.get('id')!==conversation)return send(res,404,{error:'conversation not found'});
+    return send(res,200,{conversation_id:conversation,question:'total amount',tables:sheetTables||[],state:savedState});
+  }
+  if(req.method==='POST'&&url.pathname==='/api/conversation/sync'){
+    const body=await readJson(req);sheetCalls.push({path:url.pathname,body});sheetTables=body.tables;
+    return send(res,200,{changed:true,source_hash:'synced',dataset_version:2});
+  }
+  if(url.pathname==='/__sheets'){
+    // A fresh spreadsheet session over the one mock conversation (an earlier test may have deleted it).
+    if(url.searchParams.has('reset')){sheetBound=null;sheetTables=null;savedState=null;sheetCalls.length=0;deleted=false;
+      dropState=url.searchParams.has('dropState');}   // dropState: the server never received the snapshot yet
+    return send(res,200,{bound:sheetBound,calls:sheetCalls,saved:Boolean(savedState)});
+  }
+  if(url.pathname==='/__sheets-host'){
+    // Stands in for sheets-addon/Sidebar.html: frames the workbook and answers its requests with the
+    // grids the test put in window.__SHEETS_HOST (the Apps Script server's getHostContext/getWorkbookGrids).
+    return send(res,200,`<!doctype html><html><body style="margin:0">
+<iframe id=prereasoner src="/embed/sheets${url.search}" style="width:300px;height:640px;border:0"></iframe>
+<script>
+const frame=document.getElementById('prereasoner');
+addEventListener('message',event=>{
+  if(event.source!==frame.contentWindow)return;
+  const m=event.data||{};if(!m.prereasoner)return;
+  const host=window.__SHEETS_HOST;host.requests=(host.requests||0)+1;
+  const workbook={grids:host.grids()};
+  const payload=m.type==='context'?{token:'host-google-token',spreadsheetId:'sheet-1',name:'Sales data',workbook}:workbook;
+  frame.contentWindow.postMessage({prereasoner:1,id:m.id,type:m.type,payload},location.origin);
+});
+</script></body></html>`,'text/html; charset=utf-8');
   }
 
   let relative=decodeURIComponent(url.pathname).replace(/^\/+/, '');
   if(!relative)relative='index.html';
   if(['sheets','excel','csv'].includes(relative))relative='index.html';
   if(relative==='picker')relative='picker.html';
-  if(relative==='reason'||relative.startsWith('reason/'))relative='reason.html';
+  if(relative==='reason'||relative.startsWith('reason/')||relative==='embed/sheets')relative='reason.html';
   const target=path.resolve(root,relative);
   if(!target.startsWith(root+path.sep)||!fs.existsSync(target)||!fs.statSync(target).isFile())return send(res,404,'not found','text/plain');
   const data=fs.readFileSync(target);res.writeHead(200,{'content-type':types[path.extname(target)]||'application/octet-stream','content-length':data.length});res.end(data);

@@ -17,6 +17,7 @@
         "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
       },
       { "source": "/reason/**", "destination": "/reason.html" },
+      { "source": "/embed/sheets", "destination": "/reason.html" },
       { "source": "/knowledge/**", "destination": "/knowledge.html" },
       { "source": "/sheets", "destination": "/index.html" },
       { "source": "/excel", "destination": "/index.html" },
@@ -49,6 +50,13 @@
           { "key": "Content-Security-Policy", "value": "frame-ancestors 'self' https://excel.cloud.microsoft https://*.office.com https://*.office365.com https://*.officeapps.live.com https://*.microsoft365.com https://*.sharepoint.com" },
           { "key": "X-Content-Type-Options", "value": "nosniff" },
           { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+        ]
+      },
+      {
+        "comment": "The Google Sheets add-in frames the workbook at /embed/sheets (lib/host-bridge.js): Sheets (docs.google.com) holds the add-in's googleusercontent frames, which hold this page. Only this route may be framed by them.",
+        "source": "/embed/**",
+        "headers": [
+          { "key": "Content-Security-Policy", "value": "frame-ancestors https://docs.google.com https://*.googleusercontent.com" }
         ]
       }
     ]

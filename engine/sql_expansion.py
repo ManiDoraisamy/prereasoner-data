@@ -12,6 +12,7 @@ from typing import Iterable, Sequence
 
 from engine.sql_ast import (
     Aggregate,
+    BinaryExpr,
     BooleanExpr,
     ColumnRef,
     Comparison,
@@ -628,6 +629,66 @@ QUANTITY_MEASURE_COLUMN_WORDS = frozenset({"quantity", "qty"})
 MONEY_MEASURE_COLUMN_WORDS = frozenset({
     "total", "amount", "revenue", "sale", "spend", "value", "subtotal",
 })
+# A money noun that names the table ("sales" in a sales table) asks for that table's money total:
+# "what's the sales in France", "total sales in Asia". It stays the entity when the question asks to
+# count it ("how many sales", "number of sales") or to list it ("list the sales in France").
+ROW_LISTING_COMMANDS = frozenset({"list", "show", "display"})
+
+
+def money_total_position(question_tokens: Sequence[str], table_words: Iterable[str]) -> int | None:
+    """Position of a money noun that names a table and asks for its money total, else None.
+
+    Tokens and table words are canon() forms. Both planners apply this one rule, the own-data
+    search (sql_search) and the world-join operand choice (encoder_overlay.read_op_all); each still
+    requires a money measure column in that table, without which the noun keeps its entity reading.
+    """
+    question_tokens = tuple(question_tokens)
+    if count_requested(question_tokens) or ROW_LISTING_COMMANDS & set(question_tokens):
+        return None
+    names = set(table_words)
+    return next((index for index, token in enumerate(question_tokens)
+                 if token in MONEY_MEASURE_NOUNS and token in names), None)
+
+
+def money_total_columns(question: str, sch: Sequence[dict]) -> tuple[str, list[dict]] | None:
+    """(table, its money-named numeric columns) when ``question`` asks for a money-named table's total.
+
+    ``sch`` is the planner schema ({table, name, affinity, ...}). None when the rule does not fire
+    or the table has no money column.
+    """
+    question_tokens = tokens(question)
+    table_of = {word: entry["table"] for entry in sch for word in name_tokens(entry["table"])}
+    position = money_total_position(question_tokens, table_of)
+    if position is None:
+        return None
+    table = table_of[question_tokens[position]]
+    columns = [entry for entry in sch
+               if entry["table"] == table and entry.get("affinity") in ("INTEGER", "REAL")
+               and not is_id(entry["name"])
+               and set(name_tokens(entry["name"])) & MONEY_MEASURE_COLUMN_WORDS]
+    return (table, columns) if columns else None
+
+
+def aggregates_money_column(query, table: str, names: Iterable[str]) -> bool:
+    """Whether a typed query's answer aggregates one of ``table``'s money columns.
+
+    A converted total (SUM(amount * rate)) counts: its operand references the column.
+    """
+    wanted = set(names)
+
+    def references(expression) -> bool:
+        if isinstance(expression, ColumnRef):
+            return expression.name in wanted
+        if isinstance(expression, BinaryExpr):
+            return references(expression.left) or references(expression.right)
+        return False
+
+    if not isinstance(query, SelectQuery):
+        return False
+    return any(isinstance(item.expression, Aggregate) and item.expression.function in {"SUM", "AVG"}
+               and references(item.expression.operand)
+               and table in query.referenced_tables()
+               for item in query.select)
 
 
 @dataclass(frozen=True)

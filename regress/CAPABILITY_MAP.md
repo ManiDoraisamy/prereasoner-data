@@ -37,8 +37,8 @@ Prediction accuracy (designer vs reality): **28/35**. The map below is what the 
 | B2 | **Element (non-geo) world attributes not usable as measures** — "avg atomic mass" → `AVG("kg")` over the *uploaded* column, **no world join at all** (silently wrong, plausible number) | NOT a measure-selection bug: the element column never resolves to a world join. The router's `world_leaves` are only `city`/`country`; non-geo types (element/hospital/…) route through a separate path that filters by country and aggregates the *upload's* column — nothing exposes `world.Elements.mass`/`atomic_number` as a measure. A proper fix wires a new non-geo world-measure path (route→world join, expose numeric attrs, select the world attribute); a cheap interim is to CLARIFY instead of silently averaging an unrelated column. Niche use case. |
 | B7 | **Currency-name filter/group** — "sales where currency is euro" → clarify | `currency_name` (a country-chained attr) isn't exposed as a filter dimension. Likely tractable by reusing the geo world-join path (as continent does), not yet attempted. |
 
-### 🤷 Not a clean bug (ambiguous phrasing)
-| B6 | "total **sales** in Asia" → `COUNT(*)`=2 when the table is named `sales` and the metric column is `amount` — a defensible read; no deterministic right answer. |
+### ✅ Decided (2026-09-25)
+| B6 | "total **sales** in Asia" → `COUNT(*)`=2 when the table is named `sales` and the metric column is `amount`. The owner decided a money noun that names its table reads as that table's money total unless the question counts or lists it: `SUM(amount)`. One rule serves both planners (`engine/sql_expansion.money_total_position`); "how many sales" still counts and "list the sales" still lists (DECISIONS.md). |
 
 ## 🚧 Genuine model limits (correct to refuse / out of scope — NOT bugs)
 
@@ -57,5 +57,5 @@ Prediction accuracy (designer vs reality): **28/35**. The map below is what the 
 The remaining bugs (B2, B4, B5, B7) all route through `_world_link`'s "numeric world attributes are measures,
 never filter dimensions" rule — the **planner architecture** change to do next (does **not** require retraining:
 the model already types the columns + reads the aggregate intent; the gaps are deterministic planner wiring +,
-for FX, world data). B6 is ambiguous phrasing, not a bug. Population-as-filter and FX are architecture/data
+for FX, world data). B6 is decided (a money-named table's total). Population-as-filter and FX are architecture/data
 decisions, not patches.

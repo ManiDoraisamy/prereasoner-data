@@ -150,12 +150,15 @@ class EncoderQuery(TableQuery):
         return bool(_re.search(r"(^id$|_?id$|^index$|^pk$)", name.lower()))
 
     def read_op_all(self, question, sch):
-        """Operator + operand FROM THE UNIFIED METRIC SPACE — NO `MEASURE_NOUNS` / `table_noun` keyword lists.
+        """Operator + operand FROM THE UNIFIED METRIC SPACE — no local measure-noun lists (the one money-noun rule
+        is shared with the own-data search in engine/sql_expansion.py).
         sch: list of {table, name, affinity[, qvec]} (planner format; qvec present on the live path).
           - op (SUM/COUNT/AVG/None) comes from read_op_model (the question's intent_agg dims).
           - the COUNT table and the SUM/AVG measure column are chosen by COSINE in the contrastive space
             (the reason the encoder is unified: 'sell'/'earn'/'revenue'/'amount' land together), restricted to
             non-id numeric columns. An explicitly-named column/table wins; a single measure is taken directly.
+          - a money noun that names the table ("sales") reads as its money-named measure column unless the question
+            counts or lists it — the same rule as the own-data search (sql_expansion.money_total_position).
         Returns (fn, table, col) | ("COUNT", table|None, None) | None, the format KnowledgeTableQuery.serve() expects."""
         import numpy as _np
         # rebuild tables from sch (incl. per-column `values` when the rich planner sch carries them) so ingest()'s
@@ -176,11 +179,13 @@ class EncoderQuery(TableQuery):
             return None
         norm, fks = self.ingest(stub_tables)
         op, _ = self.read_op_model(norm, question, fks)
-        if op is None:
-            return None
         tnames = sorted(by_table)
         low = question.lower().split()
         nonid_num = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]
+        from engine.sql_expansion import money_total_columns
+        money = money_total_columns(question, sch)
+        if op is None and not money:
+            return None
 
         # encode the question + table names + any column names lacking a cached qvec, in ONE batch
         miss = [c for c in nonid_num if c.get("qvec") is None]
@@ -204,13 +209,29 @@ class EncoderQuery(TableQuery):
             return next((c for c in nonid_num for w in low
                          if w == c["name"].lower() or w.rstrip("s") == c["name"].lower().rstrip("s")), None)
 
+        def money_total():
+            if not money:
+                return None
+            table, columns = money
+            column = columns[0] if len(columns) == 1 else max(columns, key=lambda c: cos(qv, cvec(c)))
+            return table, column["name"]
+
+        if op is None:                                       # "what's the sales in London": the head read no
+            return ("SUM", *money_total())                   # aggregate, but the money noun asks for the total
         if op == "COUNT":
+            total = money_total()                            # "whats the sales in france": no count was asked
+            if total:
+                return ("SUM", *total)
             t = token_table() or (max(tnames, key=lambda t: cos(qv, tvec[t])) if tnames else None)
             return ("COUNT", t, None)
-        # SUM / AVG: explicit measure token > (table-noun w/ no measure -> COUNT) > single measure > cosine measure
+        # SUM / AVG: explicit measure token > money noun naming the table > (table-noun w/ no measure -> COUNT)
+        # > single measure > cosine measure
         tm = token_measure()
         if tm:
             return (op, tm["table"], tm["name"])
+        total = money_total()
+        if total:
+            return (op, *total)
         tt = token_table()                                   # "total CUSTOMERS …" names the ENTITY, not a measure col ->
         if tt:                                               # COUNT that sheet's rows (matches KnowledgeTableQuery.read_op_all);
             return ("COUNT", tt, None)                       # an FK-reachable measure (orders.amount) must NOT hijack -> SUM

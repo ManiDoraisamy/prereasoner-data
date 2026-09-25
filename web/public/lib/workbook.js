@@ -29,6 +29,13 @@ function getSheets(){
 function getQ(){try{const q=sessionStorage.getItem(SS.Q);if(q)return q;}catch(_){}return WB.demoQ;}
 const SHEETS=getSheets();
 const TABNAMES=SHEETS.map((s,i)=>slug(s.name,i));
+// The Sheets add-in builds this frame's session after the page loaded (lib/host-bridge.js): read it as
+// the page would have at load, before run().
+function adoptSession(){
+  SHEETS.splice(0,SHEETS.length,...getSheets());
+  TABNAMES.splice(0,TABNAMES.length,...SHEETS.map((s,i)=>slug(s.name,i)));
+  question=getQ();
+}
 const MAX_RENDER_ROWS=500;
 
 /* ---------------- state ----------------
@@ -341,7 +348,7 @@ function srcPanel(m){
 // and `use` alone never reruns history. Scoped to ONE request so the conversation is not
 // silently pinned to a slower backend afterwards.
 function verifyRerun(){
-  if(!question||!((SETTLED&&convId())||FAILMSG)) return;
+  if(!question||!canSend()) return;
   if(!confirm('Run this same calculation with BOTH Python and SQL and compare every step?\n\nIt asks the question again; the rest of the conversation keeps its normal setting.')) return;
   ONESHOT_USE='both';
   archiveTurn(); resetRun(); paint(); startRun();
@@ -383,7 +390,8 @@ function renderTabs(){
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
 }
-function pick(id){ AUTO=false; ACTIVE=id; paint(); }
+function pick(id){ AUTO=false; ACTIVE=id; if(WB.embed) document.body.classList.add('embed-sheet'); paint(); }
+function closeEmbedSheet(){ document.body.classList.remove('embed-sheet'); }   // the add-in's sheet view returns to the chat
 function pickStep(id){ SRCOPEN=true; pick(id); }
 // Google-Sheets-style paging for the tab strip (its native scrollbar is hidden).
 function scrollTabs(d){ const t=$('tabstrip'); if(t) t.scrollBy({left:d*220,behavior:'smooth'}); }
@@ -599,19 +607,39 @@ async function loadAnalysis(analysisId,revision,options){
     return false;
   }
 }
+// Inside the Sheets add-in a spreadsheet without a conversation opens with no question yet: the
+// sidebar waits for the first one instead of running a prefilled prompt (lib/host-bridge.js).
+function awaitingFirstQuestion(){ return !!WB.embed&&!question&&!CHAT.length&&!convId(); }
+let EMBED_ERROR=null;   // the add-in could not read the spreadsheet: only the message shows; asking again re-reads it
+function embedFailed(message){
+  EMBED_ERROR=String(message||'The spreadsheet could not be read.'); FAILMSG=EMBED_ERROR; STATUS='failed';
+  let pending=null; try{ pending=sessionStorage.getItem(SS.EMBED_PENDING); sessionStorage.removeItem(SS.EMBED_PENDING); }catch(_){}
+  const box=$('chatq'); if(box&&pending) box.value=pending;  // the question that was waiting stays ready to send again
+  wireChat(); paint();
+}
 function renderRail(){
   let h='';
   const shared=window.PrereasonerTurnRenderer;
   for(const t of CHAT) h+=shared?shared.renderTurn({question:t.q,assistantHtml:t.html})
     :'<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
-  h+=shared?shared.renderTurn({question:question,assistantHtml:turnHtml()})
+  if(EMBED_ERROR) h='<div class="embedempty failed">'+esc(EMBED_ERROR)+'<br>Fix the spreadsheet, then ask again.</div>';
+  else if(awaitingFirstQuestion()) h+='<div class=embedempty>Ask a question about this spreadsheet.'   // the notice the add-on's OAuth verification describes
+    +'<p class=embednotice>When you send a question, Prereasoner securely processes your question and the visible, '
+    +'non-empty tabs in this spreadsheet to produce and save the answer. This data is not used to train generalized '
+    +'AI models. <a href="/privacy" target=_blank rel=noopener>Privacy</a></p></div>';
+  else h+=shared?shared.renderTurn({question:question,assistantHtml:turnHtml()})
     :'<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
   // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps send
   // disabled until it lands — otherwise the follow-up would POST conversation_id:null and orphan into a fresh
   // server conversation (splitting the thread + never updating the /reason/<id> URL). ORCH is NOT exempt:
   // its history is client-side, but server-side grouping + the shareable URL still need the id threaded.
-  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&convId())||FAILMSG);
+  const btn=$('chatsend'); if(btn) btn.disabled=!(canSend());
+  const box=$('chatq'); if(box&&WB.embed) box.placeholder=awaitingFirstQuestion()||EMBED_ERROR?'Ask a question…':'Ask a follow-up…';
+}
+function canSend(){
+  if(WB.embed&&EMBED_ERROR) return true;                     // asking again re-reads the spreadsheet
+  return (SETTLED&&(convId()||awaitingFirstQuestion()))||!!FAILMSG;
 }
 function writeSourceInfo(info){try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info||{}));}catch(_){}}
 function sourceStatusInfo(){const info=typeof currentSourceInfo==='function'?currentSourceInfo():{};if(!info.kind&&typeof sourceKind==='function')info.kind=sourceKind(SHEETS);return info;}
@@ -982,7 +1010,7 @@ function renderFromJSON(j,executionKey=null){
   DONE=true; finalize();
   if(wasSettled)saveConvState();
 }
-function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); }
+function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); renderSourceStatus(); }   // the source chip leaves "checking" with the turn
 // Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Sonnet fallback
 // (POST /api/converse); if it isn't deployed yet or errors, degrade to a payload-based "did you mean".
 async function conversationalReply(c){
@@ -1260,16 +1288,41 @@ function resetRun(){
 }
 function sendChat(){
   const box=$('chatq'); const q=(box&&box.value||'').trim();
-  if(!q||!((SETTLED&&convId())||FAILMSG))return;              // one run at a time; a follow-up needs the conversation_id (else it orphans) — mirrors the send-button gate
-  ONESHOT_USE=null;                                           // an ordinary question returns to the deployment default
-  archiveTurn();
-  box.value='';
+  if(!q||!canSend())return;                                  // one run at a time; a follow-up needs the conversation_id (else it orphans) — the send-button gate
+  if(!WB.embed){ ask(q); return; }
+  // Inside the Sheets add-in the cells are re-read first (lib/host-bridge.js): an unchanged sheet is
+  // asked now; a changed one, or one that could not be read before, reloads the frame with the
+  // question pending.
+  if(EMBED_ERROR){ try{ sessionStorage.setItem(SS.EMBED_PENDING,q); }catch(_){} location.reload(); return; }
+  const btn=$('chatsend'); if(btn) btn.disabled=true;
+  window.HOST_BRIDGE.ensureFresh(q,convId())
+    .then(fresh=>{ if(fresh) ask(q); })
+    .catch(error=>failTurn(q,(error&&error.message)||String(error)));
+}
+// A question that could not be asked (the add-in could not read the sheet) is a turn that failed.
+function failTurn(q,message){
+  const box=$('chatq'); if(box) box.value='';
+  const first=awaitingFirstQuestion();
+  if(!first) archiveTurn();
   question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
+  if(first) setHeaderTitle(q);
+  resetRun(); fail(message);
+}
+function ask(q){
+  const box=$('chatq');
+  ONESHOT_USE=null;                                           // an ordinary question returns to the deployment default
+  const first=awaitingFirstQuestion();                        // the add-in's first question has no earlier turn
+  if(!first) archiveTurn();
+  if(box) box.value='';
+  question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
+  if(first) setHeaderTitle(q);                                // the header names the conversation's opening question
   resetRun(); paint();
   if(box) box.focus();                                        // keep the cursor in the chat box for rapid follow-ups
   startRun();
 }
+let CHAT_WIRED=false;
 function wireChat(){
+  if(CHAT_WIRED) return; CHAT_WIRED=true;
   const box=$('chatq'), btn=$('chatsend');
   if(btn) btn.onclick=sendChat;
   if(box) box.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
@@ -1288,6 +1341,9 @@ async function run(){
   // Deep link: landing on /reason/<id> in a session that isn't that conversation -> load it, then reload so
   // the module-level SHEETS/question pick it up. (A normal home->reason flow has no id in the URL.)
   const ucid=urlConvId(), linkedAnalysis=urlAnalysis();
+  // The add-in reloaded with fresh sheet data: the question that was waiting for it is asked below.
+  const pending=WB.embed&&sessionStorage.getItem(SS.EMBED_PENDING);
+  if(pending) sessionStorage.removeItem(SS.EMBED_PENDING);
   if(ucid&&ucid!==convId()){
     try{ const tk=await window.ensureToken();
       const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(ucid),{headers:{Authorization:'Bearer '+tk}});
@@ -1305,6 +1361,7 @@ async function run(){
   // below) — a fresh conversation must never inherit another conversation's transcript.
   try{ if(convId()){ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } } }catch(_){}
   wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); MASTER_READY=loadMaster();
+  if(WB.embed&&new URLSearchParams(location.search).get('view')==='conversations') setDrawer(true);   // the add-on's "Previous conversations"
   window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
   // RESTORE the saved snapshot (turns + derived sheets + result) instead of re-running the model. Only when it
   // belongs to THIS conversation; otherwise fall through to a fresh run (a brand-new conversation, or no snapshot yet).
@@ -1326,6 +1383,10 @@ async function run(){
     // render snapshot. Never re-run (and potentially bill) the opening question just to open a link.
     if(!restored){SETTLED=true;DONE=true;STATUS='';}
     await loadAnalysis(linkedAnalysis.analysis_id,linkedAnalysis.revision,{focusTurn:true,persist:false});
-  }else if(!restored) startRun();
+  }else if(awaitingFirstQuestion()){ SETTLED=true; DONE=true; STATUS=''; paint(); if(pending) ask(pending); }
+  else if(!restored){                                        // a conversation without a saved snapshot re-runs
+    if(pending){ question=pending; try{ sessionStorage.setItem(SS.Q,pending); }catch(_){} setHeaderTitle(pending); }
+    startRun();
+  }else if(pending) ask(pending);
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend
