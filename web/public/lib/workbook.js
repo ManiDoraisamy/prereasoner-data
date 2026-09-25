@@ -22,6 +22,9 @@ const WB = Object.assign({
 }, window.WB_CONFIG || {});
 
 const $=id=>document.getElementById(id);
+// Step names, sentences and live status lines are the shared rail presentation (lib/turn-renderer.js),
+// the same the Google Sheets add-on renders.
+const {stepLabel,stepDescription:stepDesc,stepStatus}=window.PrereasonerTurnRenderer;
 function getSheets(){
   try{const t=sessionStorage.getItem(SS.TABLES);if(t){const a=JSON.parse(t);if(a&&a.length)return a;}}catch(_){}
   return WB.demoTables;
@@ -29,13 +32,6 @@ function getSheets(){
 function getQ(){try{const q=sessionStorage.getItem(SS.Q);if(q)return q;}catch(_){}return WB.demoQ;}
 const SHEETS=getSheets();
 const TABNAMES=SHEETS.map((s,i)=>slug(s.name,i));
-// The Sheets add-in builds this frame's session after the page loaded (lib/host-bridge.js): read it as
-// the page would have at load, before run().
-function adoptSession(){
-  SHEETS.splice(0,SHEETS.length,...getSheets());
-  TABNAMES.splice(0,TABNAMES.length,...SHEETS.map((s,i)=>slug(s.name,i)));
-  question=getQ();
-}
 const MAX_RENDER_ROWS=500;
 
 /* ---------------- state ----------------
@@ -348,7 +344,7 @@ function srcPanel(m){
 // and `use` alone never reruns history. Scoped to ONE request so the conversation is not
 // silently pinned to a slower backend afterwards.
 function verifyRerun(){
-  if(!question||!canSend()) return;
+  if(!question||!((SETTLED&&convId())||FAILMSG)) return;
   if(!confirm('Run this same calculation with BOTH Python and SQL and compare every step?\n\nIt asks the question again; the rest of the conversation keeps its normal setting.')) return;
   ONESHOT_USE='both';
   archiveTurn(); resetRun(); paint(); startRun();
@@ -390,8 +386,7 @@ function renderTabs(){
   const a=document.querySelector('.wtab.active'); if(a&&a.scrollIntoView) a.scrollIntoView({inline:'nearest',block:'nearest'});
   updateTabArrows();
 }
-function pick(id){ AUTO=false; ACTIVE=id; if(WB.embed) document.body.classList.add('embed-sheet'); paint(); }
-function closeEmbedSheet(){ document.body.classList.remove('embed-sheet'); }   // the add-in's sheet view returns to the chat
+function pick(id){ AUTO=false; ACTIVE=id; paint(); }
 function pickStep(id){ SRCOPEN=true; pick(id); }
 // Google-Sheets-style paging for the tab strip (its native scrollbar is hidden).
 function scrollTabs(d){ const t=$('tabstrip'); if(t) t.scrollBy({left:d*220,behavior:'smooth'}); }
@@ -417,20 +412,13 @@ function conv2html(t){
 // Only THIS turn's derivation is "Reasoning steps". Stale sheets (kept from the previous turn so a conversational
 // follow-up's workbook isn't empty) must NOT render here — else an empty/no-data turn ("chennai?" with no Chennai
 // rows) would show the PRIOR turn's steps (e.g. France's world_join/world_filter) under the new question's header.
-function lineage(s){ if(!s||!s.sql)return ''; const t=[]; const re=/(?:from|join)\s+"([^"]+)"/gi; let m2;   // C1: which sheets feed this step (from its SQL)
-  while((m2=re.exec(s.sql))){ const nm=m2[1]; if(!/world|meaning/i.test(nm)&&!t.includes(nm)) t.push(nm); } return t.slice(0,4).join(', '); }
-function executionChip(s){
-  const src=sheetSource(s), text=src.ran==='both'?'PY = SQL':src.ran==='py'?'PY ran':src.ran==='sql'?'SQL ran':'';
-  return text?'<span class="stepbackend '+src.ran+'" title="Execution backend for this materialized step">'+text+'</span>':'';
-}
-function cleanStepText(value){return String(value||'').replace(/^(\w+)\s+\1\b/i,'$1');}
-function cleanLineageText(value){const inputName=SHEETS.length===1?(SHEETS[0].name||'your data'):'your data';
-  return String(value||'').replace(/\bc_[0-9a-f]{32}\b/gi,inputName);}
-function stepInputLabel(value,s){const source=BOOK.find(x=>x.viewName===value);if(source)return source.section&&source.section!==s.section&&source.sectionLabel?source.sectionLabel:dispName(source);
-  return cleanLineageText(value).replace(/_/g,' ');}
-function stepLink(s,index){ const lin=(s.inputs||[]).length?(s.inputs||[]).map(v=>stepInputLabel(v,s)).join(', '):cleanLineageText(lineage(s));
-  const description=cleanStepText(s.desc||dispName(s));
-  return '<button class="steplink'+(s.id===ACTIVE?' on':'')+'" title="Open the “'+escAttr(dispName(s))+'” sheet and its emitted source'+(lin?' — built from: '+escAttr(lin):'')+'" onclick="pickStep(\''+s.id+'\')"><span class=idx>'+(index+1)+'</span><span class=stx>'+esc(description)+(lin?'<span class=steplin> · from '+esc(lin)+'</span>':'')+'</span>'+executionChip(s)+'</button>'; }
+// A derivation sheet as a shared rail step (lib/turn-renderer.js): its sentence, lineage and backend.
+function railStep(s){ return {viewName:s.viewName||'',name:dispName(s),description:s.desc||dispName(s),inputs:s.inputs||[],sql:s.sql||'',
+  sectionId:s.section||'',sectionLabel:s.sectionLabel||'',ran:sheetSource(s).ran}; }
+function stepLink(s,index){ const R=window.PrereasonerTurnRenderer, step=railStep(s);
+  step.lineage=R.stepLineage(step,BOOK.filter(x=>x.cls==='deriv').map(railStep),SHEETS.length===1?(SHEETS[0].name||'your data'):'your data');
+  return R.renderStepLink(step,index,{active:s.id===ACTIVE,onclick:"pickStep('"+s.id+"')",
+    title:'Open the “'+dispName(s)+'” sheet and its emitted source'+(step.lineage?' — built from: '+step.lineage:'')}); }
 function derivTree(d){
   if(window.PrereasonerTurnRenderer){
     const steps=d.map((sheet,index)=>({
@@ -467,7 +455,7 @@ function derivTree(d){
 }
 function derivLinks(){ const d=BOOK.filter(s=>s.cls==='deriv'&&!s.stale); if(!d.length)return '';
   const tree=derivTree(d); return tree||('<div class=steps>'+d.map(stepLink).join('')+'</div>'); }
-function asksLine(){ return CALLS.length?('<div class=cotask>read as '+CALLS.map(c=>'&ldquo;'+esc(c.question)+'&rdquo;').join(', ')+'</div>'):''; }
+function asksLine(){ return window.PrereasonerTurnRenderer.renderAsks(CALLS.map(c=>c.question)); }
 // The executable derivation tree — collapsed under a "Reasoning steps" toggle. COTOPEN persists the open state so a
 // re-render (e.g. clicking a step to open its sheet) doesn't snap it shut.
 let COTOPEN=false;
@@ -607,39 +595,19 @@ async function loadAnalysis(analysisId,revision,options){
     return false;
   }
 }
-// Inside the Sheets add-in a spreadsheet without a conversation opens with no question yet: the
-// sidebar waits for the first one instead of running a prefilled prompt (lib/host-bridge.js).
-function awaitingFirstQuestion(){ return !!WB.embed&&!question&&!CHAT.length&&!convId(); }
-let EMBED_ERROR=null;   // the add-in could not read the spreadsheet: only the message shows; asking again re-reads it
-function embedFailed(message){
-  EMBED_ERROR=String(message||'The spreadsheet could not be read.'); FAILMSG=EMBED_ERROR; STATUS='failed';
-  let pending=null; try{ pending=sessionStorage.getItem(SS.EMBED_PENDING); sessionStorage.removeItem(SS.EMBED_PENDING); }catch(_){}
-  const box=$('chatq'); if(box&&pending) box.value=pending;  // the question that was waiting stays ready to send again
-  wireChat(); paint();
-}
 function renderRail(){
   let h='';
   const shared=window.PrereasonerTurnRenderer;
   for(const t of CHAT) h+=shared?shared.renderTurn({question:t.q,assistantHtml:t.html})
     :'<div class="turn user"><div class=msg>'+esc(t.q)+'</div></div><div class="turn ai">'+t.html+'</div>';
-  if(EMBED_ERROR) h='<div class="embedempty failed">'+esc(EMBED_ERROR)+'<br>Fix the spreadsheet, then ask again.</div>';
-  else if(awaitingFirstQuestion()) h+='<div class=embedempty>Ask a question about this spreadsheet.'   // the notice the add-on's OAuth verification describes
-    +'<p class=embednotice>When you send a question, Prereasoner securely processes your question and the visible, '
-    +'non-empty tabs in this spreadsheet to produce and save the answer. This data is not used to train generalized '
-    +'AI models. <a href="/privacy" target=_blank rel=noopener>Privacy</a></p></div>';
-  else h+=shared?shared.renderTurn({question:question,assistantHtml:turnHtml()})
+  h+=shared?shared.renderTurn({question:question,assistantHtml:turnHtml()})
     :'<div class="turn user"><div class=msg>'+esc(question)+'</div></div><div class="turn ai">'+turnHtml()+'</div>';
   const sc=$('rail'); sc.innerHTML=h; sc.scrollTop=sc.scrollHeight;
   // A follow-up needs the conversation_id (arrives with the response), so a NEW conversation keeps send
   // disabled until it lands — otherwise the follow-up would POST conversation_id:null and orphan into a fresh
   // server conversation (splitting the thread + never updating the /reason/<id> URL). ORCH is NOT exempt:
   // its history is client-side, but server-side grouping + the shareable URL still need the id threaded.
-  const btn=$('chatsend'); if(btn) btn.disabled=!(canSend());
-  const box=$('chatq'); if(box&&WB.embed) box.placeholder=awaitingFirstQuestion()||EMBED_ERROR?'Ask a question…':'Ask a follow-up…';
-}
-function canSend(){
-  if(WB.embed&&EMBED_ERROR) return true;                     // asking again re-reads the spreadsheet
-  return (SETTLED&&(convId()||awaitingFirstQuestion()))||!!FAILMSG;
+  const btn=$('chatsend'); if(btn) btn.disabled=!((SETTLED&&convId())||FAILMSG);
 }
 function writeSourceInfo(info){try{sessionStorage.setItem(SS.SOURCE_INFO,JSON.stringify(info||{}));}catch(_){}}
 function sourceStatusInfo(){const info=typeof currentSourceInfo==='function'?currentSourceInfo():{};if(!info.kind&&typeof sourceKind==='function')info.kind=sourceKind(SHEETS);return info;}
@@ -891,47 +859,6 @@ function dropStale(){
   if(!BOOK.some(s=>s.stale))return;
   BOOK=BOOK.filter(s=>!s.stale);
   if(!BOOK.some(s=>s.id===ACTIVE)) ACTIVE=BOOK.length?BOOK[0].id:null;
-}
-// Short, logical step names (by op) — readable at a glance ("combined", "reference lookup", "filtered",
-// "total") instead of the engine's verbose "join orders + customers" / "where country = 'France'".
-const SHORTLBL={join:'combined',world_join:'reference lookup',world_filter:'filtered',filter:'filtered',cross:'candidate pairs',anti_join:'not yet matched',
-  time_filter:'date filter',having:'filtered',group_agg:'total',yoy:'year-over-year',running:'running total',
-  divide:'ratio',share:'share',topn:'top results',sort:'sorted'};
-function stepLabel(v){
-  if(v&&v.op==='group_agg'){ const s=String((v.sql||'')+' '+(v.label||'')).toLowerCase();
-    if(/\bcount\b/.test(s))return 'count'; if(/\bavg\b|average/.test(s))return 'average'; if(/\bmin\b|\bmax\b/.test(s))return 'extremes'; return 'total'; }
-  return (v&&SHORTLBL[v.op])||(v&&v.label)||oplabel(v&&v.op);
-}
-// A plain-English sentence for what a step does — shown in the Reasoning steps (the short name labels the tab).
-function humanCond(c){ return String(c||'').replace(/\s*<>\s*/,' is not ').replace(/\s*=\s*/,' is ').replace(/'/g,'').trim(); }
-function stepDesc(v){
-  const lbl=(v&&v.label)||'', op=v&&v.op;
-  if(op==='join'){ const t=lbl.replace(/^join\s+/i,'').replace(/\s*\+\s*/g,' and '); return 'Combined '+(t||'your tables')+' into one table.'; }
-  if(op==='world_join'){ const m=lbl.match(/on\s+(.+)$/i); return 'Looked up shared facts for each '+(m?m[1].trim():'entity')+' from the source named in the answer provenance.'; }
-  if(op==='world_filter'||op==='filter'||op==='having'){ const m=lbl.match(/where\s+(.+)$/i); return m?('Kept only the rows where '+humanCond(m[1])+'.'):'Filtered to the matching rows.'; }
-  if(op==='time_filter'){ return 'Kept only the rows in that time period.'; }
-  if(op==='convert'){ return 'Converted each amount at its ECB reference rate — the rate and its publication date are columns on this sheet, so the Result is just the converted column summed.'; }
-  if(op==='group_agg'){ return ({count:'Counted the rows.',average:'Averaged the values.',extremes:'Found the highest and lowest values.'})[stepLabel(v)]||'Added up the values to get the total.'; }
-  if(op==='topn'){ return 'Kept just the top-ranked results.'; }
-  if(op==='cross'){ return 'Built every candidate pair from the two ranked branches.'; }
-  if(op==='anti_join'){ return 'Removed pairs already present in the evidence branch.'; }
-  if(op==='sort'){ return 'Sorted the results in order.'; }
-  if(op==='yoy'){ return 'Computed the year-over-year change.'; }
-  if(op==='running'){ return 'Computed a running (cumulative) total.'; }
-  if(op==='share'){ return 'Computed each row’s share of the total.'; }
-  if(op==='divide'){ return 'Computed the ratio between the two measures.'; }
-  return lbl||stepLabel(v);
-}
-function stepStatus(v){                                       // a friendly, plain-English "working…" line (no internal step names)
-  switch(v&&v.op){
-    case 'join': return 'Combining your tables…';
-    case 'world_join': return 'Looking up world facts…';
-    case 'world_filter': case 'filter': case 'having': return 'Filtering the rows…';
-    case 'group_agg': return 'Crunching the numbers…';
-    case 'order': case 'sort': return 'Sorting the results…';
-    case 'divide': return 'Working out the ratio…';
-    default: return 'Working it out…';
-  }
 }
 function appendView(v,execution=null,executionKey=null){
   v=RESULT_WIRE.table(v);
@@ -1288,41 +1215,16 @@ function resetRun(){
 }
 function sendChat(){
   const box=$('chatq'); const q=(box&&box.value||'').trim();
-  if(!q||!canSend())return;                                  // one run at a time; a follow-up needs the conversation_id (else it orphans) — the send-button gate
-  if(!WB.embed){ ask(q); return; }
-  // Inside the Sheets add-in the cells are re-read first (lib/host-bridge.js): an unchanged sheet is
-  // asked now; a changed one, or one that could not be read before, reloads the frame with the
-  // question pending.
-  if(EMBED_ERROR){ try{ sessionStorage.setItem(SS.EMBED_PENDING,q); }catch(_){} location.reload(); return; }
-  const btn=$('chatsend'); if(btn) btn.disabled=true;
-  window.HOST_BRIDGE.ensureFresh(q,convId())
-    .then(fresh=>{ if(fresh) ask(q); })
-    .catch(error=>failTurn(q,(error&&error.message)||String(error)));
-}
-// A question that could not be asked (the add-in could not read the sheet) is a turn that failed.
-function failTurn(q,message){
-  const box=$('chatq'); if(box) box.value='';
-  const first=awaitingFirstQuestion();
-  if(!first) archiveTurn();
-  question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
-  if(first) setHeaderTitle(q);
-  resetRun(); fail(message);
-}
-function ask(q){
-  const box=$('chatq');
+  if(!q||!((SETTLED&&convId())||FAILMSG))return;              // one run at a time; a follow-up needs the conversation_id (else it orphans) — mirrors the send-button gate
   ONESHOT_USE=null;                                           // an ordinary question returns to the deployment default
-  const first=awaitingFirstQuestion();                        // the add-in's first question has no earlier turn
-  if(!first) archiveTurn();
-  if(box) box.value='';
+  archiveTurn();
+  box.value='';
   question=q; try{ sessionStorage.setItem(SS.Q,q); }catch(_){}
-  if(first) setHeaderTitle(q);                                // the header names the conversation's opening question
   resetRun(); paint();
   if(box) box.focus();                                        // keep the cursor in the chat box for rapid follow-ups
   startRun();
 }
-let CHAT_WIRED=false;
 function wireChat(){
-  if(CHAT_WIRED) return; CHAT_WIRED=true;
   const box=$('chatq'), btn=$('chatsend');
   if(btn) btn.onclick=sendChat;
   if(box) box.addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); sendChat(); } });
@@ -1341,9 +1243,6 @@ async function run(){
   // Deep link: landing on /reason/<id> in a session that isn't that conversation -> load it, then reload so
   // the module-level SHEETS/question pick it up. (A normal home->reason flow has no id in the URL.)
   const ucid=urlConvId(), linkedAnalysis=urlAnalysis();
-  // The add-in reloaded with fresh sheet data: the question that was waiting for it is asked below.
-  const pending=WB.embed&&sessionStorage.getItem(SS.EMBED_PENDING);
-  if(pending) sessionStorage.removeItem(SS.EMBED_PENDING);
   if(ucid&&ucid!==convId()){
     try{ const tk=await window.ensureToken();
       const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(ucid),{headers:{Authorization:'Bearer '+tk}});
@@ -1361,7 +1260,6 @@ async function run(){
   // below) — a fresh conversation must never inherit another conversation's transcript.
   try{ if(convId()){ const h=sessionStorage.getItem('pr_orch_history'); if(h){ const a=JSON.parse(h); if(Array.isArray(a)) HISTORY=a; } } }catch(_){}
   wireChat(); wireGrid(); setHeaderTitle(question); seedInputs(); MASTER_READY=loadMaster();
-  if(WB.embed&&new URLSearchParams(location.search).get('view')==='conversations') setDrawer(true);   // the add-on's "Previous conversations"
   window.addEventListener('beforeunload', e=>{ if(BOOK.some(s=>s.cls==='master'&&s.dirty)){ e.preventDefault(); e.returnValue=''; } });  // guard unsaved master edits
   // RESTORE the saved snapshot (turns + derived sheets + result) instead of re-running the model. Only when it
   // belongs to THIS conversation; otherwise fall through to a fresh run (a brand-new conversation, or no snapshot yet).
@@ -1383,10 +1281,6 @@ async function run(){
     // render snapshot. Never re-run (and potentially bill) the opening question just to open a link.
     if(!restored){SETTLED=true;DONE=true;STATUS='';}
     await loadAnalysis(linkedAnalysis.analysis_id,linkedAnalysis.revision,{focusTurn:true,persist:false});
-  }else if(awaitingFirstQuestion()){ SETTLED=true; DONE=true; STATUS=''; paint(); if(pending) ask(pending); }
-  else if(!restored){                                        // a conversation without a saved snapshot re-runs
-    if(pending){ question=pending; try{ sessionStorage.setItem(SS.Q,pending); }catch(_){} setHeaderTitle(pending); }
-    startRun();
-  }else if(pending) ask(pending);
+  }else if(!restored) startRun();
 }
 try{ fetch(ENDPOINT,{method:'GET',cache:'no-store'}).catch(()=>{}); }catch(_){}   // pre-warm the scale-to-zero backend

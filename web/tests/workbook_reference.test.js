@@ -17,9 +17,9 @@ const firebaseSource = fs.readFileSync(
   path.join(__dirname, '..', 'public', 'lib', 'firebase-init.js'), 'utf8');
 const source = fs.readFileSync(path.join(__dirname,'..','public','lib','result-wire.js'),'utf8')
   + '\n' + turnRendererSource + '\n' + referenceSource + '\n' + conversationSource + '\n' + workbookSource;
-assert(!source.includes("world_join:'wikipedia lookup'"),
+assert(!/world_join:\s*'wikipedia lookup'/.test(source),
   'shared-data joins must not label non-Wikidata sources such as ECB as Wikipedia');
-assert(source.includes("world_join:'reference lookup'"),
+assert(/world_join:\s*'reference lookup'/.test(source),
   'shared-data joins must use source-neutral provenance language');
 assert(firebaseSource.includes("at('dataset_semantics')") && firebaseSource.includes('onDatasetSemantics'),
   'live engine traces must carry dataset-semantics set and clear state');
@@ -198,6 +198,28 @@ const checks = `
 // Execute as three distinct classic scripts, matching the browser's real loading model.
 vm.runInContext(fs.readFileSync(path.join(__dirname,'..','public','lib','result-wire.js'),'utf8'),context);
 vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
+
+// The rail's step presentation is one shared component (turn-renderer.js): the web workspace and the
+// Google Sheets add-on's sidebar render the same sentence, lineage and backend for an engine view.
+{
+  const R = context.PrereasonerTurnRenderer;
+  const views = [
+    {name: 'france_orders', op: 'filter', label: "where country = 'France'", inputs: ['c_0123456789abcdef0123456789abcdef'],
+      execution: {actual: 'python', verified: false}},
+    {name: 'france_total', op: 'group_agg', label: 'SUM(amount)', sql: 'SELECT SUM(amount) FROM france_orders',
+      inputs: ['france_orders'], execution: {actual: 'verify', verified: true}, is_output: true}
+  ];
+  const steps = R.stepsFromViews(views, {sourceName: 'orders'});
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(steps.map(step => [step.name, step.description, step.lineage, step.ran]))), [
+    ['filtered', 'Kept only the rows where country is France.', 'orders', 'py'],
+    ['total', 'Added up the values to get the total.', 'filtered', 'both']
+  ]);
+  assert.strictEqual(R.stepStatus(views[0]), 'Filtering the rows…');
+  const link = R.renderStepLink(steps[1], 1, {href: 'https://chat.prereasoner.com/reason/c_1'});
+  assert(link.startsWith('<a class="steplink" href="https://chat.prereasoner.com/reason/c_1"'), link);
+  assert(link.includes('<span class=idx>2</span>') && link.includes(' · from filtered') && link.includes('PY = SQL'), link);
+  assert.strictEqual(R.renderAsks(['total amount in France']), '<div class=cotask>read as &ldquo;total amount in France&rdquo;</div>');
+}
 vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});
 vm.runInContext(conversationSource, context, {filename: 'workbook-conversations.js'});
 vm.runInContext(workbookSource + checks, context, {filename: 'workbook.js'});

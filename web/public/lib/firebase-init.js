@@ -154,10 +154,11 @@ export async function ensureSignedIn(){
   return auth.currentUser.uid;
 }
 
-// Inside the Google Sheets add-in (lib/host-bridge.js) Google's sign-in page cannot be framed, so
-// the add-in hands over the user's Google access token and this exchanges it for the same Firebase
-// account a web sign-in reaches (the Google provider, the same uid). Always the host's account: a
-// frame that still holds another account's session is signed in again.
+// The Google Sheets add-on's sidebar (sheets-addon/Sidebar.html) imports this module from
+// chat.prereasoner.com for the live trace. It cannot show Google's sign-in page, so the add-on hands
+// over the user's Google access token and this exchanges it for the same Firebase account a web
+// sign-in reaches (the Google provider, the same uid). Always the host's account: a sidebar that
+// still holds another account's session is signed in again.
 export async function signInWithHostToken(accessToken){
   await auth.authStateReady();
   const result = await signInWithCredential(auth, GoogleAuthProvider.credential(null, accessToken));

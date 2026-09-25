@@ -13,7 +13,6 @@
     <button class=menubtn id=menubtn aria-label="Conversations" aria-controls=drawer aria-expanded=false onclick=openDrawer()><svg viewBox="0 0 24 24" width=20 height=20 aria-hidden=true><path d="M3 6h18M3 12h18M3 18h18" stroke="currentColor" stroke-width=2 stroke-linecap=round fill=none/></svg></button>
     <div class=htitle id=htitle title=""></div>
     <div class=spacer></div>
-    <a class=embedprivacy href="/privacy" target=_blank rel=noopener>Privacy</a>
     <div class=accountwrap id=accountwrap hidden><button class=accountbtn type=button id=accountbtn aria-label="Account" aria-haspopup=menu aria-expanded=false></button>
       <div class=accountmenu id=accountmenu role=menu><div class=accountidentity id=accountidentity></div><a href="/support" role=menuitem>Support</a><a href="/privacy" role=menuitem>Privacy</a><a href="/terms" role=menuitem>Terms</a><button type=button id=signoutbtn role=menuitem>Sign out</button></div>
     </div>
@@ -27,7 +26,6 @@
   </aside>
   <div class=workmain>
     <div class=sheetside>
-      <button class=embedback type=button onclick=closeEmbedSheet()>&#8592; Chat</button>
       <div class=sheetcard id=sheetcard>
         <div class=sheetmsg id=sheetmsg><span class=spin></span> Loading your data…</div>
       </div>
@@ -48,15 +46,10 @@
   </div>
 </div>
 <script src="/lib/shared.js"></script>
-<script src="/lib/host-bridge.js"></script>
 <script src="/lib/result-wire.js"></script>
 <script src="/lib/turn-renderer.js?v=2"></script>
 <script>
-window.WB_CONFIG = { endpoint: '/api/reason',   // reason: composition over the uploaded sheets (+world joins)
-  embed: window.HOST_BRIDGE.embedded ? window.HOST_BRIDGE.host : null };   // framed by the Sheets add-in
-// Framed by the add-in, the only data is the spreadsheet's and the only question is the user's: no demo.
-if (window.HOST_BRIDGE.embedded) Object.assign(window.WB_CONFIG, { demoQ: '', demoTables: [] });
-if (window.HOST_BRIDGE.embedded) document.body.classList.add('embed');
+window.WB_CONFIG = { endpoint: '/api/reason' };   // reason: composition over the uploaded sheets (+world joins)
 </script>
 <script src="/lib/workbook-reference.js"></script>
 <script src="/lib/workbook-conversations.js?v=2"></script>
@@ -64,7 +57,7 @@ if (window.HOST_BRIDGE.embedded) document.body.classList.add('embed');
 <script type="module">
 // ensureSignedIn resolves the uid, resolves null when redirecting to Google, and THROWS when a
 // redirect came back without a session (the loop-breaker) — show that instead of looping.
-import { auth, ensureSignedIn, signInWithHostToken, signOutUser } from "/lib/firebase-init.js";
+import { auth, ensureSignedIn, signOutUser } from "/lib/firebase-init.js";
 function showAccount(user){
   if(!user)return;const wrap=document.getElementById('accountwrap'),btn=document.getElementById('accountbtn'),menu=document.getElementById('accountmenu');
   const name=(user.displayName||'').trim()||(user.email||'').trim()||'Account';wrap.hidden=false;btn.textContent=name.slice(0,1).toUpperCase();
@@ -79,15 +72,6 @@ function showAccount(user){
   const who=document.createElement('span');who.className='railwho';who.textContent=name;who.title=user.email||name;
   drawerUser.append(avatar,who);drawerUser.hidden=false;
 }
-if (window.HOST_BRIDGE.embedded) {
-  // The Sheets add-in supplies the Google account and the cells; the frame signs in with them.
-  try {
-    await window.HOST_BRIDGE.boot(signInWithHostToken);
-    adoptSession();
-    run();
-  } catch (e) { embedFailed((e && e.message) || String(e)); }
-} else {
-  try { if (await ensureSignedIn()){ showAccount(auth.currentUser); run(); } }
-  catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }
-}
+try { if (await ensureSignedIn()){ showAccount(auth.currentUser); run(); } }
+catch (e) { fail((e && e.message) || 'Google sign-in did not complete — please try again.'); }
 </script></body></html>

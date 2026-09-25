@@ -35,7 +35,18 @@
     // A header must name every populated column. Prefix rows must be narrower
     // metadata, not an earlier rectangular data table that we would discard.
     let start=rows.findIndex((r,i)=>i<64&&r.every(text));
-    if(start<0)throw new Error('No unambiguous header found in the first 64 rows. Use one named column per field.');
+    if(start<0){
+      // A header row that leaves a data column unnamed is the usual cause: name that column, so the
+      // fix is one cell (a header row shifted by an inserted column leaves the last column bare).
+      const near=rows.findIndex((r,i)=>i<64&&count(r)>=2&&r.every(v=>!filled(v)||text(v)));
+      const merged=(r,c)=>(sheet['!merges']||[]).some(m=>m.s.r<=r+bounds.s.r&&m.e.r>=r+bounds.s.r&&m.s.c<=c+bounds.s.c&&m.e.c>=c+bounds.s.c);
+      const bare=near<0?[]:rows[near].map((v,c)=>c).filter(c=>!filled(rows[near][c])&&!merged(near,c)
+        &&rows.slice(near+1).some(r=>filled(r[c])));
+      if(bare.length)throw new Error((bare.length===1?'Column ':'Columns ')
+        +bare.map(c=>XLSX.utils.encode_col(c+bounds.s.c)).join(', ')+(bare.length===1?' has':' have')
+        +' values but no header in row '+(near+bounds.s.r+1)+'. Give every column with data a header.');
+      throw new Error('No unambiguous header found in the first 64 rows. Use one named column per field.');
+    }
     if(rows.slice(0,start).some(r=>count(r)===width))
       throw new Error('Multiple or ambiguous header rows. Select a single table before uploading.');
     let columns=rows[start].map(v=>v.trim());
@@ -117,5 +128,41 @@
     if(date1904)book.Workbook={WBProps:{date1904:true}};
     return XLSX.write(book,{type:'array',bookType:'xlsx'});
   }
-  root.WORKBOOK_IMPORT={normalize,gridWorkbook};
+  // The whole conversion: file bytes ({buffer}) or live cells ({grids}) -> {ok, sheets} or {ok:false,
+  // error}, within the upload limits. The upload worker (lib/xlsx-worker.js) runs it off the page; the
+  // Google Sheets add-on's sidebar runs it on its page.
+  function convert(data,XLSX,limits){
+    try{
+      const bytes=Array.isArray(data.grids)?new Uint8Array(gridWorkbook(data.grids,XLSX)):new Uint8Array(data.buffer);
+      const workbook=XLSX.read(bytes,{
+        type:'array',dense:true,sheetRows:limits.rows+2,
+        cellFormula:true,cellDates:true,cellHTML:false,cellNF:true,cellStyles:false,bookVBA:false,
+      });
+      // Number formats are kept (cellNF) so an elapsed duration can be told from a date.
+      const date1904=Boolean(workbook.Workbook&&workbook.Workbook.WBProps&&workbook.Workbook.WBProps.date1904);
+      if(workbook.SheetNames.length>limits.sheets)throw new Error('workbooks may contain at most 8 worksheets');
+      let total=0;
+      const sheets=[];
+      for(const name of workbook.SheetNames){
+        const sheet=workbook.Sheets[name];
+        // A worksheet's own problem names it: a workbook (or a whole spreadsheet) can have several.
+        let normalized;
+        try{
+          const ref=sheet['!fullref']||sheet['!ref'], range=ref?XLSX.utils.decode_range(ref):null;
+          if(range&&range.e.r-range.s.r+1>limits.rows+1)throw new Error('each worksheet may contain at most 10,000 data rows');
+          if(range&&range.e.c-range.s.c+1>limits.columns)throw new Error('each worksheet may contain at most 256 columns');
+          normalized=normalize(sheet,XLSX,{date1904});
+          if(normalized&&normalized.csv.length>limits.tableChars)throw new Error('an expanded worksheet is too large');
+        }catch(error){throw new Error('Sheet "'+name+'": '+((error&&error.message)||String(error)));}
+        if(!normalized)continue;
+        total+=normalized.csv.length;
+        if(total>limits.totalChars)throw new Error('the expanded workbook is too large');
+        sheets.push({name,...normalized});
+      }
+      return {ok:true,sheets};
+    }catch(error){
+      return {ok:false,error:(error&&error.message)||String(error)};
+    }
+  }
+  root.WORKBOOK_IMPORT={normalize,gridWorkbook,convert};
 })(typeof window==='undefined'?globalThis:window);

@@ -531,21 +531,3 @@ body.signed-in:not(.app) .page>.hdr .brand{display:none}
   .hero{padding:32px 20px 48px}.hero-left .h1{font-size:32px}.promptcard .qbox{min-height:118px}
   .rail{max-width:none}.railhead{height:42px;flex-basis:42px}
 }
-
-/* The Google Sheets add-in frames /embed/sheets (lib/host-bridge.js): the conversation rail fills the
-   narrow sidebar, and a derivation step the user opens covers it as a full-width sheet. */
-body.app.embed .hdr{flex:0 0 44px;padding:0 10px;gap:8px}
-body.app.embed .accountwrap{display:none}
-body.app.embed .workmain{flex-direction:column}
-body.app.embed .sheetside{display:none}
-body.app.embed .rail{flex:1 1 auto;max-width:none;max-height:none;border:0}
-body.app.embed.embed-sheet .sheetside{display:flex;flex:1 1 auto;min-height:0}
-body.app.embed.embed-sheet .rail{display:none}
-.embedback,.embedprivacy{display:none}
-body.app.embed .embedprivacy{display:block;color:#6f6878;font-size:12px;text-decoration:none}
-body.app.embed .embedprivacy:hover{color:var(--brand);text-decoration:underline}
-body.app.embed.embed-sheet .embedback{all:unset;display:flex;align-items:center;gap:6px;cursor:pointer;padding:9px 12px;color:#4b2fd6;font-size:13px;font-weight:600;border-bottom:1px solid #e7e4ea}
-.embedempty{color:#6f6878;font-size:13px;line-height:1.6;padding:28px 8px;text-align:center}
-.embedempty.failed{color:#b42318}
-.embednotice{margin:14px auto 0;max-width:250px;font-size:12px;line-height:1.5;color:#8a8392}
-.embednotice a{color:var(--brand)}

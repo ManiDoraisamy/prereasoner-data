@@ -17,7 +17,6 @@
         "run": { "serviceId": "prereasoner-api", "region": "us-central1" }
       },
       { "source": "/reason/**", "destination": "/reason.html" },
-      { "source": "/embed/sheets", "destination": "/reason.html" },
       { "source": "/knowledge/**", "destination": "/knowledge.html" },
       { "source": "/sheets", "destination": "/index.html" },
       { "source": "/excel", "destination": "/index.html" },
@@ -53,10 +52,10 @@
         ]
       },
       {
-        "comment": "The Google Sheets add-in frames the workbook at /embed/sheets (lib/host-bridge.js): Sheets (docs.google.com) holds the add-in's googleusercontent frames, which hold this page. Only this route may be framed by them.",
-        "source": "/embed/**",
+        "comment": "The Google Sheets add-on's sidebar runs on an Apps Script content origin and imports the shared ES modules (lib/firebase-init.js with lib/config.js and lib/result-wire.js) for the live trace; module scripts load cross-origin only with CORS. These are public static files.",
+        "source": "/lib/**",
         "headers": [
-          { "key": "Content-Security-Policy", "value": "frame-ancestors https://docs.google.com https://*.googleusercontent.com" }
+          { "key": "Access-Control-Allow-Origin", "value": "*" }
         ]
       }
     ]

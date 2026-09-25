@@ -28,14 +28,9 @@ function currentSourceInfo(){try{return JSON.parse(sessionStorage.getItem(SS.SOU
 // address bar in place (no reload) so refresh, back/forward, and copy-link all land on THIS conversation.
 function setConversation(cid){
   if(!cid||typeof cid!=='string') return;
-  const known=convId()===cid;
   try{ sessionStorage.setItem('pr_conversation_id', cid); }catch(_){}
-  // Inside the Sheets add-in the frame stays on /embed/sheets (the page the add-in frames); the
-  // conversation instead becomes the spreadsheet's, so reopening the sidebar restores it.
-  if(WB.embed){ if(!known) window.HOST_BRIDGE.bind(cid).catch(error=>console.warn('the spreadsheet did not keep this conversation',
-    (error&&error.message)||String(error))); }
-  else if(urlConvId()!==cid){ try{ history.replaceState({}, '', '/reason/'+cid+executionQuery()); }catch(_){} }
-  const b=$('chatsend'); if(b) b.disabled=!canSend();   // now that the id landed, a follow-up can safely attach to this conversation
+  if(urlConvId()!==cid){ try{ history.replaceState({}, '', '/reason/'+cid+executionQuery()); }catch(_){} }
+  const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&convId())||FAILMSG);   // now that the id landed, a follow-up can safely attach to this conversation
 }
 function prettyTs(iso){ if(!iso)return ''; try{ return new Date(iso).toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(_){ return ''; } }
 async function listConversations(before){
@@ -47,7 +42,6 @@ async function listConversations(before){
   }catch(_){ return {conversations:[],next_cursor:null}; }
 }
 async function openConversation(id){                          // re-hydrate a past conversation (its stored tables + prompt) at its own URL
-  if(WB.embed){ window.open('/reason/'+encodeURIComponent(id)+executionQuery(),'_blank','noopener'); return; }   // the add-in keeps this spreadsheet's conversation
   const it=document.querySelector('.convitem[data-cid="'+id+'"]'); if(it) it.classList.add('loading');
   try{ const tk=await window.ensureToken();
     const r=await fetch(API_BASE+'/api/conversation?id='+encodeURIComponent(id),{headers:{Authorization:'Bearer '+tk}});
@@ -63,7 +57,6 @@ async function openConversation(id){                          // re-hydrate a pa
   }catch(_){ if(it){ it.classList.remove('loading'); it.classList.add('err'); } }
 }
 function newConversation(){
-  if(WB.embed){ window.HOST_BRIDGE.clear().catch(error=>fail((error&&error.message)||String(error))); return; }
   let route='/';try{const saved=sessionStorage.getItem(SS.ENTRY_ROUTE)||'/';if(/^\/(sheets|excel|csv)?\/?$/.test(saved))route=saved.replace(/\/$/,'')||'/';
     ['pr_conversation_id','pr_orch_history','pr_conv_state',SS.TABLES,SS.Q,SS.CSV,SS.NAME,SS.SOURCE_INFO].forEach(k=>k&&sessionStorage.removeItem(k));
   }catch(_){}location.href=route+executionQuery();
@@ -249,6 +242,6 @@ function restoreConvState(st){                               // render a stored 
   AUTO=false;
   setHeaderTitle(CHAT.length?CHAT[0].q:question);
   paint();
-  const b=$('chatsend'); if(b) b.disabled=!canSend();   // follow-ups allowed (conversation exists)
+  const b=$('chatsend'); if(b) b.disabled=!((SETTLED&&convId())||FAILMSG);   // follow-ups allowed (conversation exists)
   return true;
 }

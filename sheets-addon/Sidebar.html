@@ -1,46 +1,480 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
     <style>
-      html, body { margin: 0; height: 100%; overflow: hidden; background: #fff; }
-      iframe { display: block; width: 100%; height: 100%; border: 0; }
+      html, body { height: 100%; }
+      body { margin: 0; color: #202124; font: 13px Arial, sans-serif; }
+      .branding-below { bottom: 58px; top: 0; overflow-y: auto; padding: 0 16px 16px; box-sizing: border-box; }
+      .topline { min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #dadce0; }
+      .new-chat {
+        display: inline-flex; align-items: center; justify-content: center; height: 30px; box-sizing: border-box;
+        border: 1px solid #dadce0; border-radius: 7px; background: #fff; color: #3c3154; padding: 0 9px;
+        font: 400 12px/14px Arial, sans-serif; cursor: pointer;
+      }
+      .new-chat:hover { background: #f7f5fb; border-color: #c8bfd8; }
+      .new-chat:disabled { opacity: .5; cursor: default; }
+      .sheet-count { color: #5f6368; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .note { margin: 12px 0 0; padding: 9px 10px; color: #5f6368; background: #f8f9fa; border: 1px solid #dadce0; border-radius: 8px; line-height: 1.45; }
+      .note[hidden] { display: none; }
+      .empty { padding: 26px 0; color: #5f6368; line-height: 1.5; }
+      .empty.sheet-error { color: #8d1b15; }
+      .data-notice { margin: 12px 0 0; color: #6f667a; font-size: 11px; line-height: 1.45; }
+      .data-notice a { color: #4f2fd0; }
+      .turn-pair { margin: 14px 0 18px; }
+      .turn.user { display: flex; justify-content: flex-end; }
+      .turn.ai { min-width: 0; }
+      .question {
+        display: inline-block; max-width: 94%; margin-left: 6%; padding: 9px 11px; color: #4f2fd0; background: #f0ecfc;
+        border-radius: 8px; line-height: 1.4; box-sizing: border-box; white-space: pre-wrap;
+      }
+      .answer { margin-top: 8px; padding: 11px; background: #f8f9fa; border: 1px solid #dadce0; border-radius: 8px; line-height: 1.45; }
+      .answer a { color: #4f2fd0; text-decoration: underline; text-underline-offset: 2px; }
+      .answer code { padding: 1px 4px; border-radius: 4px; background: #eceff1; font: 12px Consolas, monospace; }
+      .answer.error { color: #8d1b15; background: #fce8e6; border-color: #f2b8b5; }
+      .statusline { display: flex; align-items: center; gap: 7px; margin-top: 8px; color: #5f6368; }
+      .spin { width: 11px; height: 11px; border: 2px solid #ddd5fb; border-top-color: #5d33fb; border-radius: 50%; animation: spin .8s linear infinite; flex: 0 0 auto; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      details.reasoning { margin-top: 8px; padding-top: 1px; }
+      details.reasoning summary { display: flex; align-items: center; gap: 4px; padding: 6px 2px; color: #5f6368; cursor: pointer; list-style: none; }
+      details.reasoning summary::-webkit-details-marker { display: none; }
+      .reasoning-toggle { display: inline-flex; width: 14px; height: 18px; align-items: center; justify-content: center; flex: 0 0 auto; }
+      .cotchev { display: inline-block; transition: transform .15s; }
+      details.reasoning[open] .cotchev { transform: rotate(90deg); }
+      .reasoning-title { color: #4b4167; font-weight: 500; }
+      .reasoning-body { padding: 1px 0 4px; color: #5f6368; }
+      .analysis-open { display: inline-block; margin: 1px 0 7px 24px; color: #4f2fd0; text-decoration: none; font-size: 11px; }
+      .analysis-open:hover, .analysis-open:focus { text-decoration: underline; }
+      .cotask { margin: 0 0 7px 24px; color: #6c657c; font-size: 11px; line-height: 1.4; }
+      .reasontree { display: flex; flex-direction: column; gap: 5px; }
+      .reasonnode { position: relative; min-width: 0; }
+      .branchhead { display: flex; align-items: flex-start; gap: 7px; padding: 4px 2px; color: #51486b; line-height: 1.35; }
+      .branchmark { width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: #8f7bf2; box-shadow: 0 0 0 3px #f0ecfd; flex: 0 0 auto; }
+      .branchtxt { display: flex; flex-direction: column; min-width: 0; }
+      .branchtxt b { color: #4b4167; font-weight: 600; }
+      .branchq { margin-top: 1px; color: #8b829e; font-size: 11px; }
+      .reasonchildren { margin-left: 10px; padding-left: 9px; border-left: 1px solid #ded8ee; }
+      .reasonref { margin: 3px 0 3px 18px; color: #8b829e; font-size: 11px; }
+      .branchsteps { display: flex; flex-direction: column; gap: 4px; margin: 2px 0 5px 14px; }
+      .reasontree > .branchsteps { margin-left: 0; }
+      .steplink {
+        display: flex; align-items: flex-start; gap: 8px; padding: 7px 8px; color: #202124; background: #fff;
+        border: 1px solid #ebe7f3; border-radius: 7px; text-decoration: none; line-height: 1.35;
+      }
+      a.steplink:hover, a.steplink:focus { border-color: #8f7bf2; background: #faf9ff; }
+      .steplink .idx { min-width: 19px; height: 19px; display: inline-flex; align-items: center; justify-content: center; border-radius: 5px; color: #fff; background: #8f7bf2; font-size: 10px; font-weight: 600; flex: 0 0 auto; }
+      .steplink .stx { flex: 1; min-width: 0; }
+      .steplin { color: #8b829e; font-size: 11px; }
+      .stepbackend { margin-left: 2px; padding: 1px 5px; border-radius: 4px; color: #5d33fb; background: #f0ecfd; font: 600 9px/1.5 Consolas, monospace; white-space: nowrap; flex: 0 0 auto; }
+      .live-reasoning .steplink { opacity: .9; }
+      .bottom { position: fixed; left: 0; right: 0; bottom: 0; box-sizing: border-box; padding: 8px 12px 10px; background: #fff; border-top: 1px solid #dadce0; }
+      .composer { display: flex; gap: 8px; align-items: flex-end; }
+      .composer textarea {
+        min-height: 36px; max-height: 112px; flex: 1; resize: vertical; box-sizing: border-box;
+        border: 1px solid #d9d4df; border-radius: 8px; padding: 8px 9px; font: 13px Arial, sans-serif;
+      }
+      #send { border: 0; width: 34px; min-width: 34px !important; max-width: 34px; height: 34px; border-radius: 50%; background: #5d33fb; color: #fff; padding: 0; cursor: pointer; font-size: 18px; line-height: 34px; }
+      #send:disabled { opacity: .45; cursor: default; }
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     </style>
   </head>
   <body>
-    <!-- The sidebar IS the Prereasoner web workbook (https://chat.prereasoner.com/embed/sheets): the same
-         page, live reasoning and conversation history as the web app. This host renders nothing; it
-         only answers the workbook's requests for this spreadsheet's context (Code.js). -->
-    <iframe id="prereasoner" title="Prereasoner" src="<?= embedUrl ?>" allow="clipboard-write"></iframe>
+    <div class="sidebar branding-below" id="scroll">
+      <div class="topline">
+        <button class="new-chat" id="newConversation" type="button" disabled>+ New chat</button>
+        <span class="sheet-count" id="sheetCount">Reading the sheet…</span>
+      </div>
+      <div class="note" id="note" role="status" hidden></div>
+      <div id="thread" aria-live="polite"></div>
+    </div>
+
+    <div class="sidebar bottom">
+      <form class="composer" id="composer">
+        <label class="sr-only" for="question">Ask about this spreadsheet</label>
+        <textarea id="question" placeholder="Ask about this spreadsheet…" rows="1" disabled></textarea>
+        <button id="send" type="submit" aria-label="Send" disabled>↑</button>
+      </form>
+    </div>
+
+    <!-- The web rail's shared component and the web upload importer, from chat.prereasoner.com. -->
+    <script src="https://chat.prereasoner.com/lib/result-wire.js?v=1"></script>
+    <script src="https://chat.prereasoner.com/lib/turn-renderer.js?v=3"></script>
+    <script src="https://chat.prereasoner.com/vendor/xlsx-0.20.3.full.min.js"></script>
+    <script src="https://chat.prereasoner.com/lib/upload-limits.js"></script>
+    <script src="https://chat.prereasoner.com/lib/number-format.js"></script>
+    <script src="https://chat.prereasoner.com/lib/workbook-import.js?v=2"></script>
+    <!-- The web's live trace (subscribeTurn/subscribeRun) and its Firebase sign-in. -->
+    <script type="module">
+      import {signInWithHostToken} from 'https://chat.prereasoner.com/lib/firebase-init.js';
+      window.__prereasonerLive = {signIn: signInWithHostToken};
+      window.dispatchEvent(new Event('prereasoner-live'));
+    </script>
     <script>
       (function () {
-        var ORIGIN = 'https://chat.prereasoner.com';
-        var SERVER = {context: 'getHostContext', grids: 'getWorkbookGrids'};
-        var frame = document.getElementById('prereasoner');
+        var REASON_BASE = <?!= reasonBase ?>;
+        var PRIVACY_URL = 'https://chat.prereasoner.com/privacy';
+        var R = window.PrereasonerTurnRenderer;
+        var threadEl = document.getElementById('thread');
+        var scrollEl = document.getElementById('scroll');
+        var noteEl = document.getElementById('note');
+        var countEl = document.getElementById('sheetCount');
+        var questionEl = document.getElementById('question');
+        var sendEl = document.getElementById('send');
+        var newEl = document.getElementById('newConversation');
+        var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '',
+          restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null};
 
-        function reply(id, type, payload) {
-          frame.contentWindow.postMessage({prereasoner: 1, id: id, type: type, payload: payload}, ORIGIN);
+        function callServer(name, arg) {
+          return new Promise(function (resolve, reject) {
+            var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+            if (arg === undefined) runner[name]();
+            else runner[name](arg);
+          });
         }
 
-        function explain(error) {
-          var message = String((error && error.message) || error || 'The spreadsheet could not be read.');
+        function errorText(error) {
+          var message = String((error && error.message) || error || 'Something went wrong.');
           if (/PERMISSION_DENIED/i.test(message)) {
-            return 'Google blocked access to this sheet. Reopen the add-on in the account that owns ' +
-              'the sheet, then authorize it.';
+            return 'Google blocked access to this sheet. Reopen the add-on in the account that owns the sheet, then authorize it.';
           }
           return message;
         }
 
-        window.addEventListener('message', function (event) {
-          if (event.origin !== ORIGIN || event.source !== frame.contentWindow) return;
-          var message = event.data || {};
-          var name = message.prereasoner && SERVER[message.type];
-          if (!name) return;
-          google.script.run
-            .withSuccessHandler(function (payload) { reply(message.id, message.type, payload); })
-            .withFailureHandler(function (error) { reply(message.id, 'error', {message: explain(error)}); })
-            [name]();
+        // Sign-in for the live trace: the shared Firebase module arrives as a module script.
+        var liveModule = new Promise(function (resolve) {
+          if (window.__prereasonerLive) resolve(window.__prereasonerLive);
+          else window.addEventListener('prereasoner-live', function () { resolve(window.__prereasonerLive); }, {once: true});
+        });
+        function signIn(token) {
+          var timeout = new Promise(function (_, reject) {
+            window.setTimeout(function () { reject(new Error('Live updates are unavailable.')); }, 15000);
+          });
+          return Promise.race([liveModule, timeout]).then(function (live) { return live.signIn(token); })
+            .then(function (uid) { state.uid = uid; });
+        }
+
+        // The sheet through the web upload importer: the same header, date, duration, merge, total and
+        // formula-error rule as an upload of the same cells.
+        function importGrids(workbook) {
+          var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
+          if (!result.ok) throw new Error(result.error);
+          if (!result.sheets.length) throw new Error('This spreadsheet needs a header row and at least one data row.');
+          return result.sheets.map(function (sheet) {
+            return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon'}};
+          });
+        }
+
+        async function fingerprint(tables) {
+          var text = JSON.stringify(tables.map(function (table) { return [table.name, table.data]; }));
+          var hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+          return Array.prototype.map.call(new Uint8Array(hash), function (byte) {
+            return byte.toString(16).padStart(2, '0');
+          }).join('');
+        }
+
+        function sourceName() {
+          return state.tables.length === 1 ? state.tables[0].name : 'your data';
+        }
+
+        function randomId() {
+          var bytes = new Uint8Array(16);
+          crypto.getRandomValues(bytes);
+          return Array.prototype.map.call(bytes, function (byte) { return byte.toString(16).padStart(2, '0'); }).join('');
+        }
+
+        function analysisUrl(turn) {
+          if (!turn.conversationId) return '';
+          var url = REASON_BASE + encodeURIComponent(turn.conversationId);
+          var analysis = turn.analysis, id = analysis && String(analysis.analysis_id || '');
+          var revision = analysis && Number(analysis.revision);
+          if (/^a_[0-9a-f]{32}$/.test(id) && Number.isInteger(revision) && revision >= 1 && revision <= 1000000) {
+            url += '?analysis_id=' + encodeURIComponent(id) + '&revision=' + encodeURIComponent(revision);
+          }
+          return url;
+        }
+
+        // The web rail's reasoning panel (lib/turn-renderer.js): the same steps, sentences and backend badges.
+        function reasoningHtml(turn, live) {
+          var steps = turn.steps || [], asks = turn.asks || [];
+          if (!steps.length && !asks.length) return '';
+          var url = live ? '' : analysisUrl(turn);
+          var tree = R.renderReasoningTree(steps, {renderStep: function (step, index) {
+            return R.renderStepLink(step, index, url ? {href: url, title: 'Open this reasoning in Prereasoner'} : {});
+          }});
+          var name = turn.analysis ? R.analysisName(turn.analysis) : '';
+          return R.renderReasoningPanel({
+            title: name ? 'Reasoning steps for ' + name : 'Reasoning steps',
+            bodyHtml: R.renderAsks(asks) + tree, analysisUrl: url, open: !!live, className: live ? 'live-reasoning' : ''
+          });
+        }
+
+        function turnHtml(turn) {
+          return R.renderTurn({question: turn.question, assistantHtml: R.renderAssistantTurn({
+            reasoningHtml: reasoningHtml(turn, false), reply: turn.reply || 'No answer was returned.'})});
+        }
+
+        function liveHtml(live) {
+          return R.renderTurn({question: live.question, assistantHtml: '<div class="turn-content">' +
+            '<div class="statusline"><span class="spin"></span>' + R.escapeHtml(live.status) + '</div>' +
+            reasoningHtml(live, true) +
+            (live.reply ? '<div class="turn-answer convmsg answer">' + R.renderMarkdown(live.reply) + '</div>' : '') +
+            '</div>'});
+        }
+
+        function failedHtml(failed) {
+          return R.renderTurn({question: failed.question,
+            assistantHtml: '<div class="turn-content"><div class="answer error" role="alert">' + R.escapeHtml(failed.error) + '</div></div>'});
+        }
+
+        function emptyHtml() {
+          if (state.sheetError) {
+            return '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '<br>Fix the sheet, then ask your question.</div>';
+          }
+          return '<div class="empty"><div>Ask a question about the current sheet.</div><p class="data-notice">When you send a question, ' +
+            'Prereasoner securely processes your question and the visible, non-empty tabs in this spreadsheet to produce and save ' +
+            'the answer. This data is not used to train generalized AI models. <a href="' + PRIVACY_URL +
+            '" target="_blank" rel="noopener">Privacy</a></p></div>';
+        }
+
+        function scrollToEnd() {
+          window.requestAnimationFrame(function () { scrollEl.scrollTop = scrollEl.scrollHeight; });
+        }
+
+        function render() {
+          var html = state.turns.map(turnHtml).join('');
+          if (state.failed) html += failedHtml(state.failed);
+          if (state.live) html += '<div id="liveTurn">' + liveHtml(state.live) + '</div>';
+          if (!html) html = emptyHtml();
+          threadEl.innerHTML = html;
+          scrollToEnd();
+        }
+
+        // A live event repaints only the running turn, so earlier turns keep their open panels.
+        function renderLive() {
+          var element = document.getElementById('liveTurn');
+          if (!element || !state.live) return render();
+          element.innerHTML = liveHtml(state.live);
+          scrollToEnd();
+        }
+
+        function showNote(text) {
+          noteEl.textContent = text || '';
+          noteEl.hidden = !text;
+        }
+
+        function renderSheets() {
+          var count = state.tables.length;
+          countEl.textContent = count ? count + (count === 1 ? ' tab' : ' tabs') + ': ' +
+            state.tables.map(function (table) { return table.name; }).join(', ') : '';
+          countEl.title = countEl.textContent;
+        }
+
+        function setBusy(busy) {
+          state.busy = busy;
+          questionEl.disabled = busy;
+          sendEl.disabled = busy;
+          newEl.disabled = busy || !state.conversationId;
+          sendEl.textContent = busy ? '…' : '↑';
+        }
+
+        // Follow the turn as it runs: the calls the assistant makes, each call's steps as they finish,
+        // and the reply as it is written (lib/firebase-init.js subscribeTurn/subscribeRun).
+        function startLive(live) {
+          if (!state.uid || !window.subscribeTurn || !window.subscribeRun) return function () {};
+          var jobs = {}, subscriptions = [];
+          function refreshSteps() {
+            var views = [];
+            Object.keys(jobs).forEach(function (jobId) {
+              var job = jobs[jobId];
+              Object.keys(job.views).sort(function (a, b) { return Number(a) - Number(b); }).forEach(function (key) {
+                views.push(Object.assign({}, job.views[key], {execution: job.views[key].execution || job.execution}));
+              });
+            });
+            live.steps = R.stepsFromViews(views, {sourceName: sourceName()});
+            renderLive();
+          }
+          subscriptions.push(window.subscribeTurn(state.uid, live.turnId, {
+            onStatus: function (status) { if (status === 'done') live.done = true; },
+            onCall: function (_, call) {
+              if (!call || !call.jobId || jobs[call.jobId]) return;
+              jobs[call.jobId] = {views: {}, execution: null};
+              live.asks.push(String(call.question || ''));
+              live.status = 'Reading as: “' + call.question + '”…';
+              renderLive();
+              subscriptions.push(window.subscribeRun(state.uid, call.jobId, {
+                onView: function (key, view) {
+                  if (!view || jobs[call.jobId].views[key]) return;
+                  jobs[call.jobId].views[key] = view;
+                  live.status = R.stepStatus(view);
+                  refreshSteps();
+                },
+                onExecution: function (execution) { jobs[call.jobId].execution = execution; refreshSteps(); },
+                onAnalysis: function (analysis) { if (analysis) { live.analysis = analysis; renderLive(); } },
+                onTransportError: function (message) { live.status = message; renderLive(); }
+              }));
+            },
+            onReply: function (text) { live.reply = String(text || ''); renderLive(); },
+            onConversation: function (id) { if (id) live.conversationId = String(id); }
+          }));
+          return function () {
+            subscriptions.forEach(function (stop) { try { stop(); } catch (_) {} });
+          };
+        }
+
+        function finishedTurn(question, response) {
+          var views = [], asks = [], analysis = null;
+          (response.traces || []).forEach(function (trace) {
+            if (trace.question) asks.push(trace.question);
+            if (trace.analysis) analysis = trace.analysis;
+            (trace.views || []).forEach(function (view) {
+              views.push(Object.assign({}, view, {execution: view.execution || trace.execution}));
+            });
+          });
+          return {question: question, reply: response.reply || 'No answer was returned.', asks: asks, analysis: analysis,
+            steps: R.stepsFromViews(views, {sourceName: sourceName()}), conversationId: state.conversationId};
+        }
+
+        function snapshot() {
+          return {client: 'google-sheets-addon', version: 2, turns: state.turns.slice(-24),
+            history: state.history.slice(-24), syncedFingerprint: state.syncedFingerprint};
+        }
+
+        // Saved sidebars: version 2 keeps the shared rail's steps; version 1 (before the shared rail)
+        // kept its own step labels, shown as the step sentences.
+        function restoredTurns(saved) {
+          if (!saved || saved.client !== 'google-sheets-addon' || !Array.isArray(saved.turns)) return [];
+          return saved.turns.slice(-24).map(function (turn) {
+            if (saved.version === 2) return Object.assign({}, turn, {conversationId: state.conversationId});
+            return {question: turn.question, reply: turn.reply, analysis: turn.analysis || null, asks: [],
+              conversationId: state.conversationId, steps: (turn.reasoning || []).map(function (step, index) {
+                return Object.assign({}, step, {index: index, description: step.label || ''});
+              })};
+          });
+        }
+
+        async function restore(tables) {
+          var restored = await callServer('restorePrereasonerSheetConversation', {tables: tables});
+          state.conversationId = restored.conversationId || null;
+          state.turns = restoredTurns(restored.state);
+          state.history = restored.state && Array.isArray(restored.state.history) ? restored.state.history.slice(-24) : [];
+          state.syncedFingerprint = (restored.state && restored.state.syncedFingerprint) || '';
+          state.restored = true;
+          if (restored.stale && state.turns.length) showNote('The sheet changed since this conversation. Ask again to use the current data.');
+        }
+
+        async function submit() {
+          var question = questionEl.value.trim();
+          if (!question || state.busy) return;
+          questionEl.value = '';
+          state.failed = null;
+          showNote('');
+          setBusy(true);
+          var live = {question: question, turnId: randomId(), status: 'Reading the sheet…', steps: [], asks: [], reply: ''};
+          state.live = live;
+          render();
+          var stopLive = function () {};
+          try {
+            var tables = importGrids(await callServer('getWorkbookGrids'));
+            state.sheetError = '';
+            state.tables = tables;
+            renderSheets();
+            var print = await fingerprint(tables);
+            if (!state.restored) await restore(tables);
+            if (state.conversationId && state.syncedFingerprint && print !== state.syncedFingerprint) {
+              live.status = 'Syncing the changed sheet…';
+              renderLive();
+              await callServer('syncPrereasonerConversation', {conversationId: state.conversationId, tables: tables});
+            }
+            live.status = 'Understanding your question…';
+            renderLive();
+            if (state.signedIn) await Promise.race([state.signedIn.catch(function () {}),
+              new Promise(function (resolve) { window.setTimeout(resolve, 5000); })]);
+            stopLive = startLive(live);
+            var response;
+            try {
+              response = await callServer('askPrereasoner', {question: question, tables: tables,
+                conversationId: state.conversationId, history: state.history, turnId: live.turnId});
+            } catch (error) {
+              if (!(live.done && live.reply)) throw error;   // the live trace already finished this turn
+              response = {reply: live.reply, conversationId: live.conversationId, history: [], traces: null};
+            }
+            response = window.RESULT_WIRE ? window.RESULT_WIRE.decode(response) : response;
+            state.conversationId = response.conversationId || live.conversationId || state.conversationId;
+            var turn = response.traces ? finishedTurn(question, response)
+              : {question: question, reply: live.reply, asks: live.asks, analysis: live.analysis || null, steps: live.steps,
+                 conversationId: state.conversationId};
+            state.turns = state.turns.concat([turn]).slice(-24);
+            state.history = response.history && response.history.length ? response.history.slice(-24)
+              : state.history.concat([{role: 'user', content: question}, {role: 'assistant', content: turn.reply}]).slice(-24);
+            state.syncedFingerprint = print;
+            state.live = null;
+            render();
+            callServer('savePrereasonerSheetConversation', {conversationId: state.conversationId, state: snapshot()})
+              .catch(function () { showNote('This conversation could not be saved for this sheet.'); });
+          } catch (error) {
+            state.live = null;
+            state.failed = {question: question, error: errorText(error)};
+            questionEl.value = question;
+            render();
+          } finally {
+            stopLive();
+            setBusy(false);
+            questionEl.focus();
+          }
+        }
+
+        document.getElementById('composer').addEventListener('submit', function (event) {
+          event.preventDefault();
+          submit();
+        });
+        questionEl.addEventListener('keydown', function (event) {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            submit();
+          }
+        });
+        newEl.addEventListener('click', async function () {
+          if (state.busy) return;
+          setBusy(true);
+          try {
+            await callServer('clearPrereasonerSheetConversation');
+            state.conversationId = null;
+            state.turns = [];
+            state.history = [];
+            state.syncedFingerprint = '';
+            state.failed = null;
+            showNote('');
+            render();
+          } catch (error) {
+            showNote(errorText(error));
+          } finally {
+            setBusy(false);
+          }
+        });
+
+        callServer('getSidebarContext').then(async function (context) {
+          state.signedIn = signIn(context.token);
+          state.signedIn.catch(function () {});
+          try {
+            state.tables = importGrids(context.workbook);
+          } catch (error) {
+            state.sheetError = errorText(error);
+            return;
+          }
+          renderSheets();
+          try {
+            await restore(state.tables);
+          } catch (error) {
+            showNote(errorText(error));
+          }
+        }).catch(function (error) {
+          state.sheetError = errorText(error);
+        }).then(function () {
+          if (!state.tables.length) countEl.textContent = '';
+          render();
+          setBusy(false);
+          questionEl.focus();
         });
       })();
     </script>

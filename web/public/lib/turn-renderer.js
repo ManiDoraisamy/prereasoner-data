@@ -165,6 +165,156 @@
     return '<div class="reasontree">' + html + '</div>';
   }
 
+  // The rail's step presentation for the engine's views, shared by the web workspace and the Google
+  // Sheets add-on: a short name, a plain-English sentence, the live "working" line, the tables a step
+  // was built from, and the backend that produced its rows.
+  var STEP_NAMES = {join: 'combined', world_join: 'reference lookup', world_filter: 'filtered',
+    filter: 'filtered', cross: 'candidate pairs', anti_join: 'not yet matched', time_filter: 'date filter',
+    having: 'filtered', group_agg: 'total', yoy: 'year-over-year', running: 'running total',
+    divide: 'ratio', share: 'share', topn: 'top results', sort: 'sorted'};
+
+  function stepLabel(view) {
+    var op = view && view.op;
+    if (op === 'group_agg') {
+      var text = String((view.sql || '') + ' ' + (view.label || '')).toLowerCase();
+      if (/\bcount\b/.test(text)) return 'count';
+      if (/\bavg\b|average/.test(text)) return 'average';
+      if (/\bmin\b|\bmax\b/.test(text)) return 'extremes';
+      return 'total';
+    }
+    return STEP_NAMES[op] || (view && view.label) || op || '';
+  }
+
+  function humanCondition(condition) {
+    return String(condition || '').replace(/\s*<>\s*/, ' is not ').replace(/\s*=\s*/, ' is ')
+      .replace(/'/g, '').trim();
+  }
+
+  function stepDescription(view) {
+    var label = (view && view.label) || '', op = view && view.op, match;
+    if (op === 'join') {
+      var tables = label.replace(/^join\s+/i, '').replace(/\s*\+\s*/g, ' and ');
+      return 'Combined ' + (tables || 'your tables') + ' into one table.';
+    }
+    if (op === 'world_join') {
+      match = label.match(/on\s+(.+)$/i);
+      return 'Looked up shared facts for each ' + (match ? match[1].trim() : 'entity') +
+        ' from the source named in the answer provenance.';
+    }
+    if (op === 'world_filter' || op === 'filter' || op === 'having') {
+      match = label.match(/where\s+(.+)$/i);
+      return match ? 'Kept only the rows where ' + humanCondition(match[1]) + '.' : 'Filtered to the matching rows.';
+    }
+    if (op === 'time_filter') return 'Kept only the rows in that time period.';
+    if (op === 'convert') {
+      return 'Converted each amount at its ECB reference rate — the rate and its publication date are ' +
+        'columns on this sheet, so the Result is just the converted column summed.';
+    }
+    if (op === 'group_agg') {
+      return {count: 'Counted the rows.', average: 'Averaged the values.',
+        extremes: 'Found the highest and lowest values.'}[stepLabel(view)] || 'Added up the values to get the total.';
+    }
+    var sentences = {topn: 'Kept just the top-ranked results.',
+      cross: 'Built every candidate pair from the two ranked branches.',
+      anti_join: 'Removed pairs already present in the evidence branch.', sort: 'Sorted the results in order.',
+      yoy: 'Computed the year-over-year change.', running: 'Computed a running (cumulative) total.',
+      share: 'Computed each row’s share of the total.', divide: 'Computed the ratio between the two measures.'};
+    return sentences[op] || label || stepLabel(view);
+  }
+
+  function stepStatus(view) {
+    switch (view && view.op) {
+      case 'join': return 'Combining your tables…';
+      case 'world_join': return 'Looking up world facts…';
+      case 'world_filter': case 'filter': case 'having': return 'Filtering the rows…';
+      case 'group_agg': return 'Crunching the numbers…';
+      case 'order': case 'sort': return 'Sorting the results…';
+      case 'divide': return 'Working out the ratio…';
+      default: return 'Working it out…';
+    }
+  }
+
+  // Which backend produced a step's rows: both emitters always exist, only `ran` is evidence.
+  function executionRan(execution) {
+    var actual = execution && execution.actual ? String(execution.actual) : '';
+    if (actual === 'verify' && execution.verified) return 'both';
+    return actual === 'python' ? 'py' : actual === 'sql' ? 'sql' : '';
+  }
+
+  function renderExecutionBadge(ran) {
+    var text = ran === 'both' ? 'PY = SQL' : ran === 'py' ? 'PY ran' : ran === 'sql' ? 'SQL ran' : '';
+    return text ? '<span class="stepbackend ' + ran + '" title="Execution backend for this materialized step">' +
+      text + '</span>' : '';
+  }
+
+  // The tables a step was built from. `step` and `steps` carry {viewName, name, sectionId, sectionLabel,
+  // inputs, sql}; `sourceName` names the uploaded data when a canonical table id appears.
+  function stepLineage(step, steps, sourceName) {
+    function clean(value) {
+      return String(value || '').replace(/\bc_[0-9a-f]{32}\b/gi, sourceName || 'your data');
+    }
+    var inputs = Array.isArray(step.inputs) ? step.inputs : [];
+    if (inputs.length) {
+      return inputs.map(function (value) {
+        var source = (steps || []).filter(function (item) { return item.viewName === value; })[0];
+        if (source) {
+          return source.sectionId && source.sectionId !== step.sectionId && source.sectionLabel
+            ? source.sectionLabel : source.name;
+        }
+        return clean(value).replace(/_/g, ' ');
+      }).join(', ');
+    }
+    var names = [], pattern = /(?:from|join)\s+"([^"]+)"/gi, match;
+    while ((match = pattern.exec(String(step.sql || '')))) {
+      if (!/world|meaning/i.test(match[1]) && names.indexOf(match[1]) < 0) names.push(match[1]);
+    }
+    return clean(names.slice(0, 4).join(', '));
+  }
+
+  // One numbered step: its sentence, its lineage, and its backend. The web opens the step's sheet
+  // (`onclick`); the add-on opens the full analysis (`href`); a step still streaming opens nothing.
+  function renderStepLink(step, index, options) {
+    options = options || {};
+    var description = String(step.description || step.name || '').replace(/^(\w+)\s+\1\b/i, '$1');
+    var lineage = String(step.lineage || '');
+    var inner = '<span class=idx>' + (index + 1) + '</span><span class=stx>' + escapeHtml(description) +
+      (lineage ? '<span class=steplin> · from ' + escapeHtml(lineage) + '</span>' : '') + '</span>' +
+      renderExecutionBadge(step.ran || '');
+    var className = 'steplink' + (options.active ? ' on' : '');
+    var title = options.title ? ' title="' + escapeAttribute(options.title) + '"' : '';
+    if (options.href) {
+      return '<a class="' + className + '" href="' + escapeAttribute(options.href) +
+        '" target="_blank" rel="noopener noreferrer"' + title + '>' + inner + '</a>';
+    }
+    if (!options.onclick) return '<div class="' + className + '"' + title + '>' + inner + '</div>';
+    return '<button class="' + className + '"' + title + ' onclick="' + escapeAttribute(options.onclick) + '">' +
+      inner + '</button>';
+  }
+
+  // The questions the assistant asked the engine this turn ("read as …").
+  function renderAsks(questions) {
+    var list = (questions || []).filter(Boolean);
+    return list.length ? '<div class=cotask>read as ' + list.map(function (question) {
+      return '&ldquo;' + escapeHtml(question) + '&rdquo;';
+    }).join(', ') + '</div>' : '';
+  }
+
+  // Engine views (live or from a /chat trace) as reasoning-tree steps, in the web rail's presentation.
+  function stepsFromViews(views, options) {
+    options = options || {};
+    var steps = (views || []).filter(function (view) { return view && typeof view === 'object'; })
+      .map(function (view, index) {
+        return {index: index, viewName: String(view.name || ''), name: stepLabel(view),
+          description: stepDescription(view), kind: String(view.op || ''), inputs: view.inputs || [],
+          sql: view.sql || '', ran: executionRan(view.execution || options.execution),
+          isOutput: !!view.is_output, sectionId: String(view.section || ''),
+          sectionLabel: String(view.section_label || ''), sectionQuestion: String(view.section_question || ''),
+          sectionInputs: view.section_inputs || []};
+      });
+    steps.forEach(function (step) { step.lineage = stepLineage(step, steps, options.sourceName); });
+    return steps;
+  }
+
   function renderReasoningPanel(options) {
     options = options || {};
     var body = String(options.bodyHtml || '');
@@ -203,11 +353,20 @@
     analysisName: analysisName,
     escapeAttribute: escapeAttribute,
     escapeHtml: escapeHtml,
+    executionRan: executionRan,
+    renderAsks: renderAsks,
     renderAssistantTurn: renderAssistantTurn,
+    renderExecutionBadge: renderExecutionBadge,
     renderMarkdown: renderMarkdown,
     renderReasoningPanel: renderReasoningPanel,
     renderReasoningTree: renderReasoningTree,
+    renderStepLink: renderStepLink,
     renderTurn: renderTurn,
-    safeHttpUrl: safeHttpUrl
+    safeHttpUrl: safeHttpUrl,
+    stepDescription: stepDescription,
+    stepLabel: stepLabel,
+    stepLineage: stepLineage,
+    stepStatus: stepStatus,
+    stepsFromViews: stepsFromViews
   };
 }(typeof window === 'undefined' ? globalThis : window));

@@ -7,7 +7,43 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
-## 2026-09-25 (night) — RELEASED: the Sheets add-on is the web workbook; one import rule; "sales" is a money total
+## 2026-09-25 (late night) — The Sheets sidebar renders the web rail as a component (add-on v23)
+
+The owner rejected v22: they had asked for the web app's sidebar as a component inside the add-on,
+styled like the add-on, not the whole web page framed in Sheets. v23 replaces the embed. There was no
+rollback, per the owner.
+
+**What changed** (DECISIONS.md, "The Google Sheets add-on renders the web rail as a shared component"):
+- `sheets-addon/Sidebar.html` is the add-on's own UI (Google add-on CSS, v21's layout). It renders with
+  `web/public/lib/turn-renderer.js`, which now owns the rail's step presentation moved out of
+  `workbook.js`: step names, sentences, live status, lineage, backend badge, the "read as" line and
+  `stepsFromViews`. The web rail calls the same functions.
+- Live progress: the sidebar imports `lib/firebase-init.js` (`subscribeTurn` / `subscribeRun`, the web's own
+  subscriptions) and signs in with the Google token from `Code.js`. `/lib/**` is served with
+  `Access-Control-Allow-Origin: *` so the module loads from the Apps Script origin. v21 polled the
+  database's REST API instead.
+- Import: the sidebar runs `WORKBOOK_IMPORT.convert` (moved out of `xlsx-worker.js`, which now wraps it).
+  The header message names the column: `Sheet "sales": Column H has values but no header in row 1.` This
+  is the owner's sheet, which the sidebar refuses.
+- `Code.js` returns cells and calls Prereasoner server to server (Cloud Run `/chat`, the sheet-session and
+  sync APIs), as v21 did; the chat service accepts browser requests only from its own origins. The manifest
+  keeps `script.external_request` and its URL allowlist, the verified scopes.
+- The embed is deleted: `lib/host-bridge.js`, the `/embed/sheets` rewrite and CSP, and the embed hooks in
+  `workbook*.js`, `reason.html`, `styles.css` and `shared.js`. The web keeps the `settle()` source-chip fix
+  and its new test.
+
+**Gates:**
+- `npm run test:web`: 9 suites in the main worktree (the other session's Excel suites included).
+  `Sheets add-on` has 41 checks and `workbook layout` 27.
+- `npm run test:browser` 32/32. `sheets-sidebar.spec.js` drives the real `Sidebar.html` on an Apps
+  Script-like origin, with the shared files from `web/public`, a stand-in `google.script.run` and a
+  realtime database the test drives. It covers live steps with the web's sentences and badges, the
+  streamed reply, the finished turn linked to the analysis, the saved version 2 state, New chat, and the
+  named header error followed by a retry. `docs/marketplace/render-review-assets.js` renders the review
+  images through the same harness (`sheets-sidebar-harness.js`).
+- The chip regression test fails without the fix ("syncstate checking") and passes with it.
+
+## 2026-09-25 (night) — RELEASED: the Sheets add-on is the web workbook (replaced by v23, entry above); one import rule; "sales" is a money total
 
 The owner asked why the Google Sheets add-on failed, why its sidebar was worse than chat.prereasoner.com,
 and why it showed no live progress. The HTTP 500 was the engine's cached connection (released as

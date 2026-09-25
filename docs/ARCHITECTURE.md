@@ -187,10 +187,12 @@ replay. The legacy Wikidata schema migration is still pending.
    isolated in `web/public/lib/xlsx-worker.js`, which uses a vendored SheetJS build with compressed, expanded,
    row, column, worksheet, and time limits. Host grids (the Excel add-in's and the Google Sheets add-on's cells)
    are written as the workbook those cells would export to and take the same worker, limits and layout rule, so a
-   sheet reads exactly as an upload of it would. `sheets-addon/` is a read-only Apps Script host: its sidebar frames
-   the web workbook at `/embed/sheets` (`web/public/lib/host-bridge.js`) and supplies only the user's Google OAuth
-   access token (which the page exchanges for its Firebase session), the spreadsheet id, and the visible, non-empty
-   tabs' cell grids. It does not implement presentation or reasoning, and never writes to the spreadsheet.
+   sheet reads exactly as an upload of it would. `sheets-addon/` is a read-only Apps Script add-on. Its sidebar is
+   its own UI in Sheets' style and renders turns with the web rail's shared component (`web/public/lib/turn-renderer.js`).
+   Live steps come from the web's subscriptions (`web/public/lib/firebase-init.js`), and the sidebar reads the cells
+   with the upload importer (`WORKBOOK_IMPORT.convert`). Its Apps Script server returns the visible, non-empty tabs'
+   cells and calls `/chat` and the conversation APIs server to server with the user's Firebase identity. It does not
+   implement reasoning and never writes to the spreadsheet.
 4. `engine.master` validates or selects private references. `engine.relations.discover_fks()` is the canonical
    relationship detector used here and by planning.
 5. `engine.server` resolves the conversation id and verifies ownership before selecting its working schema.
@@ -447,8 +449,8 @@ maintenance command from loading model artifacts.
 | Package | Role | Must not own |
 |---|---|---|
 | `engine/` | Authenticated reasoning, planning, grounding, execution | Presentation-only chat policy |
-| `web/` | Workbook state, uploads, references, trace rendering (also inside the Sheets add-on, `/embed/sheets`) | SQL semantics |
-| `sheets-addon/` | Read-only host for the framed web workbook: Google token, spreadsheet id, cell grids | Presentation, reasoning, result synthesis, or sheet mutation |
+| `web/` | Workbook state, uploads, references, trace rendering; the rail component and importer the Sheets add-on loads | SQL semantics |
+| `sheets-addon/` | Read-only Sheets sidebar and its server: cells, sign-in, server-to-server Prereasoner calls | Step presentation, import rules, reasoning, or sheet mutation |
 | `mcp_server/` | Typed adapter over the engine HTTP API | A second planner or result synthesis |
 | `orchestrator/` | Optional conversation and tool invocation | Arithmetic or factual answers without engine evidence |
 | `db/` | Reproducible schema and knowledge synchronization | Request routing |

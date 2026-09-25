@@ -281,7 +281,9 @@ for (const [stored, pathname, want, why] of [
   assert(!html.includes('xlsx/0.18.5') && !html.includes('XLSX.read('), 'the landing must not execute the vulnerable parser inline');
   assert(worker.includes("xlsx-0.20.3.full.min.js"), 'the worker must pin the patched vendored SheetJS build');
   assert(reader.includes('MAX_XLSX_BYTES') && reader.includes('WORKER_TIMEOUT_MS'), 'compressed input and parse time must be bounded');
-  assert(worker.includes('MAX_ROWS') && worker.includes('MAX_COLUMNS') && worker.includes('MAX_OUTPUT_CHARS'),
+  const importer = fs.readFileSync(path.join(__dirname, '..', 'public', 'lib', 'workbook-import.js'), 'utf8');
+  assert(worker.includes('WORKBOOK_IMPORT.convert(event.data,XLSX,UPLOAD_LIMITS)'), 'the worker must convert within the upload limits');
+  assert(importer.includes('limits.rows') && importer.includes('limits.columns') && importer.includes('limits.totalChars'),
     'expanded workbook dimensions must be bounded');
 }
 

@@ -118,7 +118,8 @@ Google Sheets™ is a trademark of Google LLC.
 | `openid` | Identifies the signed-in Google user for Prereasoner authentication. |
 | `userinfo.email` | Associates the user with their Prereasoner account and supports account communication. |
 | `userinfo.profile` | Completes Google identity federation through Firebase Authentication. |
-| `script.container.ui` | Adds the Prereasoner Extensions menu and the sidebar inside Google Sheets. The sidebar shows the Prereasoner workbook page (`https://chat.prereasoner.com/embed/sheets`); the add-on passes that page the user's Google access token, which the page exchanges with Firebase Authentication in the browser, keeps in memory only, and never sends to Prereasoner servers. No narrower Apps Script scope provides container UI. |
+| `script.external_request` | Lets server-side Apps Script use `UrlFetchApp` to authenticate through Firebase, send the user's question and bounded current-workbook data to the manifest-allowlisted Prereasoner service, save sidebar state, and retrieve previous conversations. Apps Script offers no narrower per-domain OAuth scope; `urlFetchWhitelist` restricts the destinations. |
+| `script.container.ui` | Adds the Prereasoner Extensions menu, question-and-answer sidebar, and previous-conversations dialog inside Google Sheets. To show the analysis steps as they run, the sidebar also exchanges the user's Google access token with Firebase Authentication in the browser; the token stays in the sidebar's memory and is never sent to Prereasoner servers. No narrower Apps Script scope provides container UI. |
 | `spreadsheets.currentonly` | Reads only the spreadsheet in which the user invokes the add-on: its visible, non-empty tabs, when the sidebar opens and before each question. The add-on does not write to it. |
 
 ### Reviewer test path
@@ -148,23 +149,21 @@ required because the add-on uses the reviewer's Google identity through Firebase
 - **OAuth reviewer video:** https://youtu.be/hXyQ9CYCfBM (provided for OAuth verification)
 - **Marketplace promo video:** omitted from the Store Listing draft; three workflow images remain.
 
-## Embedded workbook — September 25, 2026
+## Sidebar component — September 25, 2026
 
-- The sidebar is the Prereasoner web workbook: `Sidebar.html` frames
-  `https://chat.prereasoner.com/embed/sheets`, which shows live reasoning steps and the same
-  conversations as chat.prereasoner.com. `Code.js` only supplies the Google access token, the
-  spreadsheet's identity, and its cells (DECISIONS.md).
-- The add-on no longer calls `UrlFetchApp`: `script.external_request` and `urlFetchWhitelist` are removed
-  from the manifest. The requested scopes are a subset of the verified ones. The OAuth consent screen
-  still lists `script.external_request` until it is removed in the Cloud console.
+- Apps Script version `22` (`2e4d27c`) framed the whole Prereasoner web page in the sidebar. Version `23`
+  replaced it the same day. The sidebar is again the add-on's own UI with Google's add-on CSS, and it draws
+  each answer with the web app's rail component loaded from chat.prereasoner.com (DECISIONS.md).
+- The sidebar follows the analysis as it runs through the web app's live trace, reads the sheet with the
+  web upload importer, and names a data column without a header.
+- The server still calls Prereasoner with `UrlFetchApp`, so the manifest keeps `script.external_request`
+  and `urlFetchWhitelist`; the scopes equal the verified ones.
 - The data-use notice before the first question is unchanged, word for word, with its Privacy link.
-- The three review images were rendered again from the embedded sidebar
-  (`docs/marketplace/render-review-assets.js`). The OAuth demo video (https://youtu.be/hXyQ9CYCfBM)
-  shows the earlier sidebar.
-- Release: Apps Script version `22` was pushed with `clasp` (`2e4d27c`), and the Marketplace deployment
-  points to it. The App Configuration's script version was set to `22` and the listing draft was
-  published on September 25, 2026. That publish also carried the September 24 draft edits below. The
-  store screenshot still shows the earlier sidebar; the owner chose to publish without replacing it.
+- The three review images are rendered from the version 23 sidebar (`docs/marketplace/render-review-assets.js`).
+  The OAuth demo video (https://youtu.be/hXyQ9CYCfBM) shows the version 21 sidebar.
+- The listing draft was published on September 25, 2026 with version `22`. That publish also carried the
+  September 24 draft edits below. The store screenshot still shows the version 21 sidebar; the owner chose
+  to publish without replacing it.
 
 ## Branding and screenshot resubmission — September 24, 2026
 

@@ -644,39 +644,35 @@ an entity noun ("total customers") and a column literally named for the measure 
 No Spider dev database has a table named with a money noun, so none of the 1,034 dev questions can
 trigger the rule and the served result is unchanged (spider/results/RESULTS.md).
 
-## The Google Sheets add-on frames the web workbook (2026-09-25)
+## The Google Sheets add-on renders the web rail as a shared component (2026-09-25)
 
-The add-on had its own sidebar (`Sidebar.html`, `Previous.html`). Its Apps Script server converted the
-tabs to CSV, exchanged the user's Google token for a Firebase ID token, called `/chat`, and rendered the
-reply in a compact rail. That was a second presentation of the workbook. It showed nothing until the whole
-answer returned, because an Apps Script call cannot follow the RTDB trace, and it trailed the web rail's
-features. The owner chose to embed the web app's sidebar.
+The add-on had its own sidebar (`Sidebar.html`, `Previous.html`) with its own step labels (in the sidebar
+and again in `Code.js`) and its own CSV conversion. It followed the analysis by polling the database's
+REST API. So it drew answers differently from the web rail and showed progress late. The owner asked for
+the web app's sidebar as a component inside the add-on, styled like the add-on.
 
-The sidebar frames `/embed/sheets`, which is `reason.html` running `workbook.js` with `WB.embed='sheets'`
-in a compact layout: the same rendering, live trace and conversations as chat.prereasoner.com. The
-add-on is a host. `Code.js` answers two `postMessage` requests (`context`, `grids`) with the Google
-token, the spreadsheet's identity and its cell grids, and `Sidebar.html` relays only between its frame
-and the Prereasoner origin. The page's side is `web/public/lib/host-bridge.js`. It accepts replies only
-from its parent at an Apps Script content origin, and signs in with the token (`signInWithCredential`).
-It imports the grids with the upload importer and restores the spreadsheet's conversation
-(`/api/spreadsheet/conversation/*`) before the workbook runs, so opening the sidebar is one page load.
-Before each question it re-reads the grids. A changed sheet syncs the
-conversation's source, which marks the old answer stale as for any reopened conversation whose data
-changed. The frame then reloads once with the question pending.
+A same-day attempt framed the whole web page (`/embed/sheets`, `lib/host-bridge.js`) and shipped as Apps
+Script version 22. It put the web's header, drawer and workbook inside Sheets. Version 23 replaced it, and
+the embed was removed.
 
-- `web/` is the one presentation owner. The add-on dropped `script.external_request` and its URL
-  allowlist, and it never holds a Prereasoner token.
-- Only `/embed/**` may be framed by `docs.google.com` and `*.googleusercontent.com`
-  (`web/firebase.json`); every other route keeps the `**` frame-ancestors.
-- A `web/public/` change reaches the sidebar with a Hosting deploy; the add-on needs a new version only
-  when `Code.js`, `Sidebar.html` or its manifest change.
-- In the frame, a previous conversation opens in its own tab; the frame keeps the spreadsheet's
-  conversation, and New chat unbinds it.
+- `Sidebar.html` is the add-on's own UI with Google's add-on CSS. It loads the web rail's rendering from
+  chat.prereasoner.com: `lib/turn-renderer.js`, which now owns the step presentation that lived in
+  `workbook.js` (step names, sentences, live status, lineage, backend badge, "read as" line,
+  `stepsFromViews`). `workbook.js` and the sidebar both call it.
+- Live progress uses the web's own subscriptions (`lib/firebase-init.js` `subscribeTurn` /
+  `subscribeRun`, imported as a module; `/lib/**` is served with `Access-Control-Allow-Origin: *` for
+  that). The sidebar signs in with the Google token from `Code.js` (`signInWithHostToken`), so each step
+  appears as it finishes and the reply streams as it is written.
+- The sheet is read with the upload importer on the sidebar page (`WORKBOOK_IMPORT.convert`, which the
+  upload worker also runs), so the add-on and an upload of the same cells produce the same tables.
+- `Code.js` returns cells and makes the Prereasoner calls server to server, as before. The chat service
+  accepts browser requests only from its own origins, so the add-on keeps `script.external_request` and
+  its URL allowlist. `/chat` goes directly to Cloud Run for its 300-second timeout, and the steps return
+  without their rows.
+- The sidebar state saves version 2 (the shared steps). Version 1 states from before still render.
+- The data-use notice the OAuth verification describes stays word for word before the first question.
 - This supersedes the Sheets sidebar parts of `docs/EXCEL_COPILOT_PLAN.md`. The Excel add-in keeps its
   own task pane.
-- The data-use notice the OAuth verification describes stays word for word in the empty sidebar.
-- `docs/marketplace/render-review-assets.js` renders the review images from the embedded page; the OAuth
-  demo video still shows the old sidebar.
 
 ## One import rule for uploads and host grids (2026-09-25)
 
@@ -691,6 +687,8 @@ number formats, failed-formula flags, merged ranges and the date system. `WORKBO
 writes the grids as the `.xlsx` those cells would export to, and the worker applies the upload's read,
 limits and `normalize` rule. A populated column without a header is refused with the upload's message,
 which now names the worksheet. Host grids and an upload of the same cells produce identical CSV and import
-metadata in both date systems (`web/tests/workbook_import.test.js`). The Sheets add-on checks the upload's
-per-worksheet limits (10,000 data rows, 256 columns) before it reads a tab; it used to cap the rows of all
-tabs together at 10,000, which the server does not.
+metadata in both date systems (`web/tests/workbook_import.test.js`). Both add-ins check the upload's
+per-worksheet limits (10,000 data rows, 256 columns) before they read a tab; they used to cap the rows of
+all tabs together at 10,000, which the server does not. When a header row leaves a data column unnamed,
+the message names the column ("Column H has values but no header in row 1"); a cell covered by a merged
+header keeps the general message.

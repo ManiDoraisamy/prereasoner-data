@@ -122,7 +122,7 @@ await assert.rejects(() => runWorkbook([sheet('sales', 'Visible', [
   ['order ID', 'customer', 'city', 'tier', 'ordered', 'currency', 'amount'],
   [1, 101, 'Sherlock Holmes', 'London', 'Gold', 'Magnifying Glass', 'GBP', 118],
   [2, 102, 'Sherlock Holmes', 'London', 'Gold', 'Calabash Pipe', 'GBP', 95]
-])]), /No unambiguous header found/);
+])]), /^Error: Sheet "sales": Column H has values but no header in row 1/);
 await assert.rejects(() => runWorkbook([sheet('Dupes', 'Visible', [['id', 'customer', 'customer'], [1, 'A', 'B']])]),
   /Duplicate column headers/);
 await assert.rejects(() => runWorkbook([sheet('Errors', 'Visible', [
