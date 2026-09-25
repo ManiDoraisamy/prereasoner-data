@@ -173,6 +173,88 @@ def test_postgres_connect_retries_transport_errors_but_not_authentication():
         sleep.assert_not_called()
 
 
+def test_cached_connection_dropped_between_requests_is_replaced_before_use():
+    """2026-09-25 15:44 UTC (the Sheets add-on; five times since 08-30): the engine's one
+    cross-request connection was dropped between requests, `_rconn()` handed it back, and the
+    world bridge's first statement failed with `server closed the connection unexpectedly`
+    (HTTP 500). psycopg2 marks a connection closed only after a statement fails on it, so the dead
+    connection looked healthy until a user's request paid for it. The shortest observed gap
+    between the last good use and the failing request was 8 s (09-10)."""
+    import contextlib
+    import io
+    from types import SimpleNamespace
+
+    import psycopg2
+
+    from engine import entities, request_timing
+
+    class Connection:
+        def __init__(self):
+            self.alive, self.closed, self.autocommit, self.statements = True, 0, False, []
+
+        def cursor(self):
+            connection = self
+
+            class Cursor:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc):
+                    return False
+
+                def execute(self, sql, params=None):
+                    connection.statements.append(sql)
+                    if not connection.alive:
+                        connection.closed = 2
+                        raise psycopg2.OperationalError("server closed the connection unexpectedly")
+
+            return Cursor()
+
+        def close(self):
+            self.closed = self.closed or 1
+
+    def resolver():
+        query = entities.EntityQuery.__new__(entities.EntityQuery)   # the connection cache only
+        query._rcn = None
+        return query
+
+    clock = SimpleNamespace(now=1000.0)
+    fake_time = SimpleNamespace(monotonic=lambda: clock.now)
+
+    # The production failure: the session dies between requests, then the next request arrives.
+    dropped, fresh = Connection(), Connection()
+    query = resolver()
+    with patch.object(entities, "_pg", side_effect=[dropped, fresh]), \
+            patch.object(entities, "time", fake_time, create=True):
+        assert query._rconn() is dropped and dropped.autocommit
+        dropped.alive = False
+        clock.now += 8                                          # the shortest measured gap
+        timing = request_timing.begin("stale")
+        try:
+            handed = query._rconn()
+            line = io.StringIO()
+            with contextlib.redirect_stdout(line):
+                request_timing.emit("reason")
+        finally:
+            request_timing.end(timing)
+    assert handed is not dropped, "a connection dropped between requests was handed to a request"
+    assert handed is fresh and fresh.autocommit and dropped.closed
+    assert "pg_stale_reconnect_ms=" in line.getvalue(), "the replacement must be visible in the timing line"
+
+    # Contrast: a live connection reached after a pause costs one probe and is kept; statements
+    # within a request, milliseconds apart, are never probed, so a busy request pays nothing.
+    live = Connection()
+    query = resolver()
+    with patch.object(entities, "_pg", side_effect=[live]) as connect, \
+            patch.object(entities, "time", fake_time, create=True):
+        assert query._rconn() is live
+        clock.now += 0.004
+        assert query._rconn() is live and live.statements == []
+        clock.now += 8
+        assert query._rconn() is live and live.statements == ["SELECT 1"]
+        assert connect.call_count == 1
+
+
 def test_chat_validation_normalizes_and_bounds_inputs():
     out = validate_chat_request({
         "message": "  total amount  ",
@@ -430,6 +512,7 @@ TESTS = [
     test_conversation_lifecycle_limits_are_bounded_and_configurable,
     test_admin_access_fails_closed_without_an_explicit_allowlist,
     test_postgres_connect_retries_transport_errors_but_not_authentication,
+    test_cached_connection_dropped_between_requests_is_replaced_before_use,
     test_chat_validation_normalizes_and_bounds_inputs,
     test_a_long_conversation_keeps_its_most_recent_history_window,
     test_table_names_are_canonical_bounded_and_unique_at_every_boundary,

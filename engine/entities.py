@@ -15,7 +15,11 @@ the analyze view — is inherited unchanged from the layers below.
 """
 from __future__ import annotations
 import re
+import time
 
+import psycopg2
+
+from engine import request_timing
 from engine.config import DATA_DIR
 from engine.resolve_base import RoutedQuery
 from engine.pg import _pg
@@ -53,6 +57,14 @@ WORLD_TABLE_TYPE = {"city": "city", "country": "country", "u_s_state": "state",
                     "Elements in the World": "element"}
 TYPE_TO_FRIENDLY = {v: k for k, v in WORLD_TABLE_TYPE.items()}   # state -> u_s_state; element -> friendly view
 VALUE_ROUTE_MIN = 0.80   # a column routes to a world table when >= this fraction of its cells resolve to that type
+# The cached resolution connection is checked with one round trip before reuse once it has been idle
+# this long. It lives for hours, and the managed Cloud SQL connection drops it between requests: all
+# five production failures (`world request failed: OperationalError`, 2026-08-30..09-25) came 5-57 s
+# after the connector refreshed its certificate (cloudsql.instances.connect), 8 s to 41 min after the
+# connection's last successful use. psycopg2 reports a connection closed only after a statement fails
+# on it, and that statement was the first one of a user's request. So each request's first use is
+# checked, while statements within a request, milliseconds apart, are not.
+RCONN_IDLE_CHECK_S = 1.0
 
 
 class EntityQuery(RoutedQuery):
@@ -65,6 +77,7 @@ class EntityQuery(RoutedQuery):
         super().__init__(deploy_dir)
         self._nlp = None
         self._rcn = None     # cached resolution connection (1 per instance)
+        self._rcn_used = None  # monotonic time _rconn last handed it out (the idle clock for its liveness check)
 
     # ---- helpers ----
     def _spacy(self):
@@ -82,10 +95,25 @@ class EntityQuery(RoutedQuery):
         # Every write here is idempotent (per-user bridge CREATE/ADD COLUMN IF NOT EXISTS, DELETE+INSERT refresh),
         # so per-statement autocommit is safe and the explicit .commit() calls become no-ops. Shared knowledgebase
         # tables are never written from this path.
+        now = time.monotonic()
+        last_used = getattr(self, "_rcn_used", None)
+        if (self._rcn is not None and not self._rcn.closed and last_used is not None
+                and now - last_used > RCONN_IDLE_CHECK_S):
+            try:
+                with self._rcn.cursor() as cur:
+                    cur.execute("SELECT 1")
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                self._rcn.close()                                # dropped between requests
+                with request_timing.span("pg_stale_reconnect"):  # the request's [timing] line shows it
+                    self._open_rconn()
         if self._rcn is None or self._rcn.closed:
-            self._rcn = _pg()
-            self._rcn.autocommit = True
+            self._open_rconn()
+        self._rcn_used = now
         return self._rcn
+
+    def _open_rconn(self):
+        self._rcn = _pg()
+        self._rcn.autocommit = True
 
     # ---- request-scoped memo for shared-knowledge reads ----
     def begin_request(self):
