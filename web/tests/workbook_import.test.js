@@ -83,14 +83,22 @@ for(const date1904 of [false,true]){
 }
 // The Sheets add-on screenshot: an index column A was inserted but the header row was not moved, so
 // "amount" labels the currency codes and the amounts in H have no header. The add-ins used to name
-// that column "column_8" and answer from shifted labels; the one rule refuses the layout instead.
+// that column "column_8" and answer from shifted labels. Every answer would read the wrong column, so
+// this layout is refused, with the worksheet, the evidence and the fix.
 const shifted=[['order ID','customer','city','tier','ordered','currency','amount'],
   [1,101,'Sherlock Holmes','London','Gold','Magnifying Glass','GBP',118],
   [2,102,'Sherlock Holmes','London','Gold','Calabash Pipe','GBP',95]];
-// The message names the worksheet and the column without a header: a spreadsheet's tabs are all read,
-// and the fix is one cell.
 assert.throws(()=>normalizeGrids([{name:'notes',rows:[['note'],['ok']]},{name:'sales',rows:shifted}]),
-  /^Error: Sheet "sales": Column H has values but no header in row 1\. Give every column with data a header\.$/);
+  /^Error: Sheet "sales": Column H has values but no header, and the headers look one column to the left of their data \(G1 "amount" is above "GBP"\)\. Put each header above its data\.$/);
+// The owner's fix moved the headers right and left A1 empty over the row numbers. A column with values
+// but no header is not a field: it is left out, and the import says which; nothing is named for it.
+const [realigned]=normalizeGrids([{name:'sales',rows:[[null,...shifted[0]],...shifted.slice(1)]}]);
+assert.strictEqual(realigned.csv,'order ID,customer,city,tier,ordered,currency,amount\n'
+  +'101,Sherlock Holmes,London,Gold,Magnifying Glass,GBP,118\n102,Sherlock Holmes,London,Gold,Calabash Pipe,GBP,95');
+assert.strictEqual(JSON.stringify([realigned.import.leftOutColumns,realigned.import.columns,realigned.import.headerRow]),'[["A"],7,1]');
+const [helper]=normalizeGrids([{name:'orders',rows:[['id','amount',null],[1,10,'check'],[2,20,'ok']]}]);
+assert.strictEqual(helper.csv,'id,amount\n1,10\n2,20');
+assert.strictEqual(JSON.stringify(helper.import.leftOutColumns),'["C"]');
 // A layout with no header-like row at all keeps the general message.
 assert.throws(()=>normalizeGrids([{name:'numbers',rows:[[1,2],[3,4]]}]),/No unambiguous header found in the first 64 rows/);
 assert.throws(()=>normalizeGrids([{name:'dupes',rows:[['id','customer','customer'],[1,'A','B']]}]),/Duplicate column headers/);
@@ -99,4 +107,4 @@ assert.throws(()=>normalizeGrids([{name:'errors',rows:[['id','ratio'],[1,'#DIV/0
 const [groupedGrid]=normalizeGrids([{name:'grouped',rows:[['Order','Amounts',null],['ID','Net','Tax'],[1,10,2]],
   merges:[{s:{r:0,c:1},e:{r:0,c:2}}]}]);
 assert.match(groupedGrid.csv,/"?ID"?,Amounts Net,Amounts Tax/);
-console.log('workbook layout: 27 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');
+console.log('workbook layout: 32 checks passed (including 3 downloaded originals, 3 timezones, 2 date systems and host grids)');

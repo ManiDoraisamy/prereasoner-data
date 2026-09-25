@@ -100,7 +100,7 @@ const failed = load(book([sheet(8, 'Ratios', [['id', 'ratio'], [1, '#DIV/0!']])]
 assert.throws(() => normalizeGrids(failed.workbook.grids), /formula error/); checks++;
 const shifted = load(book([sheet(7, 'sales', [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118]])])).getSidebarContext();
 assert.throws(() => normalizeGrids(shifted.workbook.grids),
-  /^Error: Sheet "sales": Column D has values but no header in row 1\./); checks++;
+  /^Error: Sheet "sales": Column D has values but no header, and the headers look one column to the left of their data \(C1 "amount" is above "Holmes"\)\./); checks++;
 
 // Apps Script cannot load web/public/lib/upload-limits.js, so the add-on's copy is pinned to it here.
 const shared = {};

@@ -30,7 +30,7 @@ If the sidebar reports that Google blocked access to the sheet, open the sheet i
 ## Runtime flow
 
 1. `onOpen` adds **Prereasoner → Ask a question** and **Prereasoner → Previous conversations** (a dialog that lists saved conversations with links to `/reason/<conversation_id>`).
-2. `getSidebarContext` returns the Google token and the grids. The sidebar signs in to Firebase with the token for the live trace, imports the grids, and restores this sheet's conversation (`/api/spreadsheet/conversation/restore`). If a tab cannot be read, the sidebar shows the importer's message, such as `Column H has values but no header in row 1`.
+2. `getSidebarContext` returns the Google token and the grids. The sidebar signs in to Firebase with the token for the live trace, imports the grids, and restores this sheet's conversation (`/api/spreadsheet/conversation/restore`). A column with values but no header (row numbers, a helper column) is left out, and a note above the conversation says which. If a tab cannot be read, the sidebar shows the importer's message instead, for example when the header row sits one column to the left of its data.
 3. Before each question, the sidebar reads the grids again. If the sheet changed since the conversation last saw it, `/api/conversation/sync` brings the conversation's source up to date, which marks earlier answers stale.
 4. `askPrereasoner` sends the question, tables, history, and a turn id to `/chat`. Meanwhile the sidebar follows `runs/<uid>/<turn id>` and each engine call's trace, showing the steps and the reply as they arrive.
 5. The finished turn shows the answer and its reasoning steps, linked to the full analysis in Prereasoner, and is saved for this sheet (`/api/spreadsheet/conversation/state`).

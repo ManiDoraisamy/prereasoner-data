@@ -123,7 +123,8 @@
         var sendEl = document.getElementById('send');
         var newEl = document.getElementById('newConversation');
         var state = {conversationId: null, turns: [], history: [], tables: [], syncedFingerprint: '',
-          restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null};
+          restored: false, sheetError: '', uid: null, signedIn: null, busy: true, live: null, failed: null,
+          importNote: '', note: ''};
 
         function callServer(name, arg) {
           return new Promise(function (resolve, reject) {
@@ -160,6 +161,14 @@
           var result = window.WORKBOOK_IMPORT.convert({grids: workbook.grids}, window.XLSX, window.UPLOAD_LIMITS);
           if (!result.ok) throw new Error(result.error);
           if (!result.sheets.length) throw new Error('This spreadsheet needs a header row and at least one data row.');
+          // A column with values but no header is not a field; say which were left out.
+          state.importNote = result.sheets.filter(function (sheet) {
+            return sheet.import && sheet.import.leftOutColumns && sheet.import.leftOutColumns.length;
+          }).map(function (sheet) {
+            var columns = sheet.import.leftOutColumns, one = columns.length === 1;
+            return 'Sheet "' + sheet.name + '": ' + (one ? 'column ' : 'columns ') + columns.join(', ') +
+              (one ? ' has' : ' have') + ' no header, so ' + (one ? 'it was' : 'they were') + ' left out.';
+          }).join(' ');
           return result.sheets.map(function (sheet) {
             return {name: sheet.name, data: sheet.csv, source: {kind: 'google-sheets-addon'}};
           });
@@ -258,9 +267,12 @@
           scrollToEnd();
         }
 
+        // The note shows what the last import left out, plus one passing message.
         function showNote(text) {
-          noteEl.textContent = text || '';
-          noteEl.hidden = !text;
+          state.note = text || '';
+          var combined = [state.importNote, state.note].filter(Boolean).join(' ');
+          noteEl.textContent = combined;
+          noteEl.hidden = !combined;
         }
 
         function renderSheets() {
@@ -376,6 +388,7 @@
           var stopLive = function () {};
           try {
             var tables = importGrids(await callServer('getWorkbookGrids'));
+            showNote(state.note);
             state.sheetError = '';
             state.tables = tables;
             renderSheets();
@@ -458,6 +471,7 @@
           state.signedIn.catch(function () {});
           try {
             state.tables = importGrids(context.workbook);
+            showNote(state.note);
           } catch (error) {
             state.sheetError = errorText(error);
             return;

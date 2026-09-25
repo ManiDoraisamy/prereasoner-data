@@ -685,10 +685,18 @@ labels.
 Both hosts now send grids to the upload worker (`web/public/lib/xlsx-worker.js`). A grid carries values,
 number formats, failed-formula flags, merged ranges and the date system. `WORKBOOK_IMPORT.gridWorkbook`
 writes the grids as the `.xlsx` those cells would export to, and the worker applies the upload's read,
-limits and `normalize` rule. A populated column without a header is refused with the upload's message,
-which now names the worksheet. Host grids and an upload of the same cells produce identical CSV and import
-metadata in both date systems (`web/tests/workbook_import.test.js`). Both add-ins check the upload's
-per-worksheet limits (10,000 data rows, 256 columns) before they read a tab; they used to cap the rows of
-all tabs together at 10,000, which the server does not. When a header row leaves a data column unnamed,
-the message names the column ("Column H has values but no header in row 1"); a cell covered by a merged
-header keeps the general message.
+limits and `normalize` rule, and every error names the worksheet. Host grids and an upload of the same
+cells produce identical CSV and import metadata in both date systems (`web/tests/workbook_import.test.js`).
+Both add-ins check the upload's per-worksheet limits (10,000 data rows, 256 columns) before they read a
+tab; they used to cap the rows of all tabs together at 10,000, which the server does not.
+
+A column with values but no header is not a field, so nothing is named for it. It is left out, the import
+records it (`import.leftOutColumns`), and the Sheets sidebar and the upload preview say which column. A
+header row may therefore name two thirds of the columns, as when row numbers sit in an unnamed column A.
+Refusing the whole sheet for one unnamed column stopped the owner's sheet from working once its headers
+were fixed. One layout is still refused: only the last column unnamed, holding numbers, while the header
+before it sits over text. That is a header row one column to the left of its data, and every answer would
+read the wrong column. The message shows the evidence and the fix: `Column H has values but no header, and
+the headers look one column to the left of their data (G1 "amount" is above "GBP"). Put each header above
+its data.` An unnamed cell under a merged header remains ambiguous, and the 9 shipped workbooks convert
+unchanged.

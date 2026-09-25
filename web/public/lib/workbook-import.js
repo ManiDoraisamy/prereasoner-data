@@ -32,28 +32,40 @@
     if(!width)return null;
     const rows=raw.map(r=>Array.from({length:width},(_,c)=>r[c]??null));
     const count=r=>r.filter(filled).length;
-    // A header must name every populated column. Prefix rows must be narrower
-    // metadata, not an earlier rectangular data table that we would discard.
+    const letter=c=>XLSX.utils.encode_col(c+bounds.s.c);
+    const merges=sheet['!merges']||[];
+    // The header row names the fields: the first row that names every populated column or, failing
+    // that, the first all-text row that names at least two thirds of them. A column with values but
+    // no header is not a field (row numbers, a helper column): it is left out, and the import says so;
+    // nothing is named for it. Prefix rows must be narrower metadata, not an earlier rectangular data
+    // table that we would discard.
+    const noHeader='No unambiguous header found in the first 64 rows. Use one named column per field.';
     let start=rows.findIndex((r,i)=>i<64&&r.every(text));
-    if(start<0){
-      // A header row that leaves a data column unnamed is the usual cause: name that column, so the
-      // fix is one cell (a header row shifted by an inserted column leaves the last column bare).
-      const near=rows.findIndex((r,i)=>i<64&&count(r)>=2&&r.every(v=>!filled(v)||text(v)));
-      const merged=(r,c)=>(sheet['!merges']||[]).some(m=>m.s.r<=r+bounds.s.r&&m.e.r>=r+bounds.s.r&&m.s.c<=c+bounds.s.c&&m.e.c>=c+bounds.s.c);
-      const bare=near<0?[]:rows[near].map((v,c)=>c).filter(c=>!filled(rows[near][c])&&!merged(near,c)
-        &&rows.slice(near+1).some(r=>filled(r[c])));
-      if(bare.length)throw new Error((bare.length===1?'Column ':'Columns ')
-        +bare.map(c=>XLSX.utils.encode_col(c+bounds.s.c)).join(', ')+(bare.length===1?' has':' have')
-        +' values but no header in row '+(near+bounds.s.r+1)+'. Give every column with data a header.');
-      throw new Error('No unambiguous header found in the first 64 rows. Use one named column per field.');
+    if(start<0)start=rows.findIndex((r,i)=>i<64&&count(r)>=2&&count(r)*3>=width*2&&r.every(v=>!filled(v)||text(v)));
+    if(start<0)throw new Error(noHeader);
+    const unnamed=rows[start].map((v,c)=>c).filter(c=>!filled(rows[start][c]));
+    // A cell under a merged header belongs to that header's group: one name for two columns is ambiguous.
+    if(unnamed.some(c=>merges.some(m=>m.s.r<=start+bounds.s.r&&m.e.r>=start+bounds.s.r&&m.s.c<=c+bounds.s.c&&m.e.c>=c+bounds.s.c)))
+      throw new Error(noHeader);
+    const below=c=>rows.slice(start+1).map(r=>r[c]).filter(filled);
+    const leftOut=unnamed.filter(c=>below(c).length);
+    // A header row one column to the left of its data (a column inserted without moving the headers)
+    // leaves only the last column unnamed, holding numbers, while the last header sits over text:
+    // every answer would read the wrong column, so the sheet is refused with the fix.
+    const last=width-1, share=(c,test)=>below(c).filter(test).length/Math.max(1,below(c).length);
+    if(leftOut.length===1&&leftOut[0]===last&&unnamed.length===1&&share(last,v=>typeof v==='number')>=0.8
+       &&share(last-1,v=>typeof v==='string'&&!/^-?[\d.,]+$/.test(v.trim()))>=0.8){
+      throw new Error('Column '+letter(last)+' has values but no header, and the headers look one column to the left of their data ('
+        +letter(last-1)+(start+bounds.s.r+1)+' "'+rows[start][last-1].trim()+'" is above "'+below(last-1)[0]+'"). Put each header above its data.');
     }
     if(rows.slice(0,start).some(r=>count(r)===width))
       throw new Error('Multiple or ambiguous header rows. Select a single table before uploading.');
-    let columns=rows[start].map(v=>v.trim());
-    const merges=sheet['!merges']||[];
+    const keep=rows[start].map((v,c)=>c).filter(c=>!unnamed.includes(c));
+    let columns=keep.map(c=>rows[start][c].trim());
     if(start>0&&count(rows[start-1])>=2){
       const parent=rows[start-1], absolute=start-1+bounds.s.r;
-      columns=columns.map((name,c)=>{
+      columns=columns.map((name,i)=>{
+        const c=keep[i];
         const merge=merges.find(m=>m.s.r===absolute&&m.e.r===absolute&&m.s.c<=c+bounds.s.c&&m.e.c>=c+bounds.s.c);
         const group=merge&&parent[merge.s.c-bounds.s.c];
         return text(group)&&group.trim()!==name?group.trim()+' '+name:name;
@@ -80,7 +92,7 @@
       const row=rows[i];
       if(row.some(v=>typeof v==='string'&&/^(grand total|sub[ -]?total|total)\s*:?$/i.test(v.trim())))
         throw new Error('A total/subtotal row is mixed with records. Select the detail table to avoid double-counting.');
-      data.push(row.map(v=>{
+      data.push(keep.map(c=>row[c]).map(v=>{
         if(!(v instanceof Date))return v;
         const iso=v.toISOString();
         // Excel dates carry no timezone. Preserve non-midnight time components
@@ -89,7 +101,7 @@
       }));
     }
     // The input file's cached values are authoritative; no formula is executed.
-    for(let r=start+1;r<validationEnd;r++)for(let c=0;c<width;c++){
+    for(let r=start+1;r<validationEnd;r++)for(const c of keep){
       const cell=cellAt(r,c);
       if(cell&&cell.f&&cell.v==null)throw new Error('A formula has no cached value. Recalculate and save the workbook in Excel first.');
       if(cell&&cell.t==='e')throw new Error('The table contains an Excel formula error. Correct it before uploading.');
@@ -98,7 +110,7 @@
     const normalized=XLSX.utils.aoa_to_sheet([columns,...data]);
     return {csv:XLSX.utils.sheet_to_csv(normalized,{blankrows:false}),import:{
       version:1,method:'deterministic-layout',headerRow:start+bounds.s.r+1,
-      dataRows:data.length,columns:width,skippedBlankRows:skipped,
+      dataRows:data.length,columns:keep.length,leftOutColumns:leftOut.map(letter),skippedBlankRows:skipped,
       prefixRows:start,suffixRows:rows.length-end,formulaValues:'cached-only',
     }};
   }

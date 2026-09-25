@@ -60,21 +60,27 @@ test('the Sheets sidebar renders the web rail, with live steps from the realtime
   expect((await calls(page, 'clearPrereasonerSheetConversation')).length).toBe(1);
 });
 
-test('the Sheets sidebar names the column without a header, and asks again once the sheet is fixed', async ({page}) => {
-  // The owner's sheet: an inserted index column shifted the header row one cell left.
+test('the Sheets sidebar refuses a shifted header row, then reads the fixed sheet without the unnamed column', async ({page}) => {
+  // The owner's sheet: an inserted index column shifted the header row one cell left, so "amount" sits
+  // over text and the amounts have no header. Every answer would read the wrong column.
   const shifted = [['order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118], [2, 102, 'Watson', 95]];
   await openSidebar(page, shifted);
-  await expect(page.locator('.empty.sheet-error')).toContainText(
-    'Sheet "Orders": Column D has values but no header in row 1. Give every column with data a header.');
+  await expect(page.locator('.empty.sheet-error')).toContainText('Sheet "Orders": Column D has values but no header, and the ' +
+    'headers look one column to the left of their data (C1 "amount" is above "Holmes"). Put each header above its data.');
   expect(await calls(page, 'restorePrereasonerSheetConversation')).toEqual([]);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
-  await expect(page.locator('.answer.error')).toContainText('Column D has values but no header in row 1');
+  await expect(page.locator('.answer.error')).toContainText('the headers look one column to the left of their data');
   await expect(page.locator('#question')).toHaveValue('total amount');
 
-  await page.evaluate(() => { window.__server.rows = [['#', 'order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118], [2, 102, 'Watson', 95]]; });
+  // The owner's fix: the headers moved right, leaving A1 empty over the row numbers. That column is
+  // not a field; it is left out, the note says so, and the question runs on the rest.
+  await page.evaluate(() => { window.__server.rows = [['', 'order ID', 'customer', 'amount'], [1, 101, 'Holmes', 118], [2, 102, 'Watson', 95]]; });
   await page.locator('#question').press('Enter');
   await expect.poll(() => page.evaluate(() => Boolean(window.__server.pendingAsk))).toBe(true);
   expect((await calls(page, 'restorePrereasonerSheetConversation')).length).toBe(1);
+  expect((await page.evaluate(() => window.__server.pendingAsk.arg)).tables[0].data)
+    .toBe('order ID,customer,amount\n101,Holmes,118\n102,Watson,95');
+  await expect(page.locator('#note')).toHaveText('Sheet "Orders": column A has no header, so it was left out.');
   await expect(page.locator('.answer.error')).toHaveCount(0);
 });
