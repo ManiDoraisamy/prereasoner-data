@@ -1,61 +1,79 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" role="img" aria-labelledby="title desc">
   <title id="title">Spreadsheet question with inspectable calculation</title>
-  <desc id="desc">A minimal Google Sheets-style grid with two highlighted France rows beside an add-on sidebar showing the question, answer, and sum of those rows.</desc>
+  <desc id="desc">A minimal spreadsheet grid with two highlighted France rows. Arrows carry each row's sales value into the add-on sidebar's calculation, $840 + $400, which gives the answer $1,240.</desc>
   <defs>
     <style>
-      text { font-family: Arial, Helvetica, sans-serif; fill: #202124; }
-      .muted { fill: #4b5563; }
-      .sheet-name { font-size: 32px; font-weight: 700; fill: #188038; }
-      .table-head { font-size: 28px; font-weight: 700; fill: #137333; }
+      text { font-family: Arial, Helvetica, sans-serif; font-weight: 400; fill: #202124; }
+      .sheet-name { font-size: 30px; font-weight: 700; }
+      .table-head { font-size: 26px; font-weight: 700; fill: #3c4043; }
       .cell { font-size: 32px; }
-      .label { font-size: 26px; font-weight: 700; }
-      .question { font-size: 36px; font-weight: 600; }
+      .value { font-weight: 700; }
+      .label { font-size: 24px; font-weight: 700; letter-spacing: 1.5px; fill: #5f6368; }
+      .question { font-size: 34px; font-weight: 700; }
+      .operand { font-size: 36px; font-weight: 700; fill: #137333; }
+      .operator { font-size: 36px; font-weight: 700; fill: #5f6368; }
       .answer { font-size: 64px; font-weight: 700; }
-      .calculation { font-size: 36px; font-weight: 600; }
+      .flow { fill: none; stroke: #188038; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
     </style>
   </defs>
 
-  <rect width="1280" height="800" fill="#f5f6fb"/>
+  <rect width="1280" height="800" fill="#f8f9fa"/>
 
   <!-- Sheet and add-on sit together as they do in Google Sheets. -->
   <rect x="28" y="24" width="752" height="752" fill="#fff" stroke="#dadce0" stroke-width="2"/>
-  <rect x="28" y="24" width="752" height="8" fill="#188038"/>
-  <rect x="52" y="53" width="42" height="42" rx="5" fill="#188038"/>
-  <path d="M62 64h22M62 73h22M62 82h22M69 64v18M77 64v18" stroke="#fff" stroke-width="2"/>
-  <text x="108" y="86" class="sheet-name">Sales data</text>
-
-  <rect x="52" y="118" width="704" height="72" fill="#e6f4ea"/>
-  <path d="M365 118v574M550 118v574M52 190h704M52 316h704M52 442h704M52 568h704M52 694h704" stroke="#d7e2d9" stroke-width="2"/>
-  <text x="76" y="164" class="table-head">Country</text>
-  <text x="457" y="164" text-anchor="middle" class="table-head">Quarter</text>
-  <text x="728" y="164" text-anchor="end" class="table-head">Sales</text>
-
-  <rect x="52" y="192" width="704" height="122" fill="#f1f8f3"/>
-  <rect x="52" y="318" width="704" height="122" fill="#f1f8f3"/>
-  <rect x="52" y="192" width="8" height="248" fill="#34a853"/>
-  <text x="76" y="267" class="cell">France</text>
-  <text x="457" y="267" text-anchor="middle" class="cell">Q3</text>
-  <text x="728" y="267" text-anchor="end" class="cell" font-weight="700">$840</text>
-  <text x="76" y="393" class="cell">France</text>
-  <text x="457" y="393" text-anchor="middle" class="cell">Q3</text>
-  <text x="728" y="393" text-anchor="end" class="cell" font-weight="700">$400</text>
-  <text x="76" y="519" class="cell">Germany</text>
-  <text x="457" y="519" text-anchor="middle" class="cell">Q3</text>
-  <text x="728" y="519" text-anchor="end" class="cell">$620</text>
-  <text x="76" y="645" class="cell">Spain</text>
-  <text x="457" y="645" text-anchor="middle" class="cell">Q3</text>
-  <text x="728" y="645" text-anchor="end" class="cell">$260</text>
-
   <rect x="780" y="24" width="472" height="752" fill="#fff" stroke="#dadce0" stroke-width="2"/>
-  <rect x="780" y="24" width="472" height="10" fill="#6f4bf2"/>
-  <rect x="808" y="62" width="416" height="156" rx="12" fill="#f3f0ff"/>
-  <text x="832" y="124" class="question">What were Q3</text>
-  <text x="832" y="171" class="question">sales in France?</text>
+  <rect x="27" y="23" width="753" height="9" fill="#188038"/>
+  <rect x="780" y="23" width="473" height="9" fill="#5d33fb"/>
 
-  <text x="808" y="294" class="label muted">ANSWER</text>
-  <text x="808" y="348" font-size="30">France · Q3 total</text>
-  <text x="808" y="439" class="answer">$1,240</text>
-  <path d="M808 488h416" stroke="#e1e3eb" stroke-width="2"/>
-  <text x="808" y="543" class="label muted">CALCULATION</text>
-  <text x="808" y="608" class="calculation">$840 + $400</text>
+  <!-- Neutral outline table glyph: no product-logo color or shape. -->
+  <rect x="53" y="59" width="38" height="38" rx="6" fill="none" stroke="#5f6368" stroke-width="2"/>
+  <path d="M53 72h38M53 85h38M66 59v38" stroke="#5f6368" stroke-width="2"/>
+  <text x="108" y="89" class="sheet-name">Sales data</text>
+
+  <!-- Fills first, then one continuous grid on top. -->
+  <rect x="52" y="158" width="704" height="72" fill="#f1f3f4"/>
+  <rect x="52" y="230" width="704" height="252" fill="#e6f4ea"/>
+  <path d="M52 230h704M52 356h704M52 482h704M52 608h704M365 158v576M550 158v576" stroke="#dadce0" stroke-width="2"/>
+  <rect x="52" y="158" width="704" height="576" fill="none" stroke="#dadce0" stroke-width="2"/>
+  <rect x="51" y="230" width="7" height="252" fill="#34a853"/>
+
+  <text x="76" y="203" class="table-head">Country</text>
+  <text x="457" y="203" text-anchor="middle" class="table-head">Quarter</text>
+  <text x="728" y="203" text-anchor="end" class="table-head">Sales</text>
+
+  <text x="76" y="304" class="cell">France</text>
+  <text x="457" y="304" text-anchor="middle" class="cell">Q3</text>
+  <text x="728" y="304" text-anchor="end" class="cell value">$840</text>
+  <text x="76" y="430" class="cell">France</text>
+  <text x="457" y="430" text-anchor="middle" class="cell">Q3</text>
+  <text x="728" y="430" text-anchor="end" class="cell value">$400</text>
+  <text x="76" y="556" class="cell">Germany</text>
+  <text x="457" y="556" text-anchor="middle" class="cell">Q3</text>
+  <text x="728" y="556" text-anchor="end" class="cell">$620</text>
+  <text x="76" y="682" class="cell">Spain</text>
+  <text x="457" y="682" text-anchor="middle" class="cell">Q3</text>
+  <text x="728" y="682" text-anchor="end" class="cell">$260</text>
+
+  <rect x="808" y="60" width="416" height="128" rx="12" fill="#f0ecfc"/>
+  <text x="832" y="113" class="question">What were Q3</text>
+  <text x="832" y="159" class="question">sales in France?</text>
+
+  <text x="808" y="244" class="label">CALCULATION</text>
+  <rect x="808" y="328" width="120" height="56" rx="10" fill="#e6f4ea" stroke="#188038" stroke-width="2"/>
+  <text x="868" y="369" text-anchor="middle" class="operand">$840</text>
+  <text x="955" y="369" text-anchor="middle" class="operator">+</text>
+  <rect x="982" y="328" width="120" height="56" rx="10" fill="#e6f4ea" stroke="#188038" stroke-width="2"/>
+  <text x="1042" y="369" text-anchor="middle" class="operand">$400</text>
+
+  <!-- Each row's value flows into its own operand; the paths never cross. -->
+  <circle cx="742" cy="293" r="5" fill="#188038"/>
+  <path class="flow" d="M742 293H844Q868 293 868 317"/>
+  <path d="M859 314H877L868 327Z" fill="#188038"/>
+  <circle cx="742" cy="419" r="5" fill="#188038"/>
+  <path class="flow" d="M742 419H1018Q1042 419 1042 395"/>
+  <path d="M1033 398H1051L1042 385Z" fill="#188038"/>
+
+  <path d="M808 468h416" stroke="#dadce0" stroke-width="2"/>
+  <text x="808" y="526" class="label">ANSWER</text>
+  <text x="808" y="606" class="answer">$1,240</text>
 </svg>
