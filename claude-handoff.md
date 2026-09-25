@@ -7,6 +7,91 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-25 — RELEASED: the Excel add-in and three review fixes; full Chrome gate 124/124
+
+**Production now** (one revision per service, no tags):
+- engine `prereasoner-api-00227-xey` = `engine@sha256:2069c274…` built from `3d7189e` (8 vCPU / 16 GiB).
+  The jobs `prereasoner-api-ecb-rates-refresh`, `prereasoner-api-retention-cleanup` and
+  `prereasoner-api-release-smoke` run the same image.
+- chat `prereasoner-chat-00124-yad` = `chat@sha256:ec248a5c…` built from `3d7189e`.
+- Hosting deployed from `3d7189e`. The later `11ed076` and `3a57b0f` change only `docs/marketplace/`.
+- Database: chat migrations 8-10 applied (8: the host column on Excel document sessions; 9:
+  `chat.auth_principal`; 10: spreadsheet sessions keyed by user, host and spreadsheet), then the serving
+  grants (`db.reference_grants --role serving`).
+- Rollback: engine `00223-vas` (`dedfb27`, image `e9170f8a…`; point the three jobs back at it) and chat
+  `00120-huq` (`1be4c6e`, image `afad5e36…`). Migration 10 is not backward compatible. The old engine's
+  sheet-session upsert names the old key `(user_id, spreadsheet_id)` and fails against the new one, so
+  an engine rollback breaks add-in session saves: prefer rolling forward. Hosting rolls back from the
+  Firebase console's release history.
+
+**What shipped, in order**
+1. `c8533ca` (owner): the Excel add-in (`web/public/office/excel/`), host-scoped sheet sessions, and one
+   storage principal per Google account (`chat.auth_principal`), so the add-ins and the web app share
+   one account.
+2. Before release: `c8533ca` made the chat service resolve that principal in Postgres, which the chat
+   service does not connect to, so every chat request would have failed sign-in. The owner chose the
+   engine-only lookup. Fixed in `2e70227`: the chat verifies the Firebase token without a database and
+   keys the dataset attestation by the Firebase UID, and only the engine resolves the storage principal.
+   The regression test drives the real chat handler with `engine.pg` unimportable (red on `c8533ca`:
+   HTTP 401).
+3. A review the owner forwarded found three gaps, fixed in `3d7189e`:
+   - The grounding guard bound only `column = 'literal'`, and the proposer's imported SQL may put the
+     literal first. It now checks both operand orders.
+   - `db9a1d8` had stopped checking `!=`, `<>` and `NOT IN`. The owner chose to keep checking
+     exclusions. The module and DECISIONS.md state the policy and its same-domain cost, and tests pin
+     both sides.
+   - The Excel add-in counted any format containing a date letter as a date, so
+     `#,##0.00;[Red]-#,##0.00` turned 1,234.50 into 1903-05-18, and both importers turned `[h]:mm`
+     durations into 1900 timestamps. `web/public/lib/number-format.js` now owns the rule for the add-in
+     and the upload.
+
+   Spider stays 647/1,034, because none of the 1,034 selected dev queries has a reversed literal
+   comparison (RESULTS.md).
+4. Released `3d7189e` on 2026-09-25 in this order: migrations and grants; both services deployed with no
+   traffic and smoke-tested; traffic switched at 00:17 UTC; hosting deployed. For about 90 s between
+   migration 10 and the switch, the old engine's sheet-session saves failed.
+
+**Gates:**
+- `tests.run_all`, launched on the main checkout while it was clean at `3d7189e`: 45/45 suites, none
+  skipped. They include:
+  - `test_sql_ast` 114/114
+  - `test_request_limits` 17/17
+  - `test_app_migrations` 13/13
+  - `test_release` 32/32
+  - live `test_orchestrator` 25/25
+  - live `test_datasets` PASS: 24 prompts and 40 standalone follow-ups. The 13 `chat:` follow-ups are
+    covered by Chrome.
+- `npm run test:web` on a clean checkout of HEAD: all 6 suites pass, including `workbook layout` (18
+  checks) and `Excel workbook reader` (5). The 9 shipped workbooks convert to byte-identical CSV.
+- Production checks after the switch:
+  - release smoke OK
+  - the owner's account lists the same 50 conversations
+  - `chat.auth_principal` holds one row
+- Full Chrome pass on the live release, all 24 datasets (the 6 upload datasets attached as files):
+  - fresh conversations **74/74**
+  - the 24 existing conversations from the 2026-09-24 morning pass **50/50**
+  - Every one of the 124 turns made an engine call, so none was answered from memory.
+  - Paris answers Delta and Omega, and Lyon answers Alpha, Beta, Delta and Omega, in fresh and existing
+    conversations.
+- Gate driving: Chrome throttles timers in background tabs to about one wake-up a minute, so an in-page
+  wait loop stalls and can overlap the next call. Take one locked step per call and wait outside the
+  page. Keep compound questions in one tab.
+
+**Open**
+- One user's requests still run one at a time behind the per-user advisory lock. Parallel compound
+  questions can exceed the chat's 180 s engine timeout (see the 2026-09-24 evening entry).
+- Codex's Spider run tagged `codex_positive_grounding` (checkpoint in `spider/results/`) measures the
+  exclusion-removal policy the owner rejected, so its numbers do not describe the served engine.
+- `LIKE` literals are still unchecked; 11 dev questions select a `LIKE` query.
+- The Excel add-in sends dates as `YYYY-MM-DDT00:00:00Z`; the web upload sends `YYYY-MM-DD`. The
+  difference predates this release.
+- The gate added 24 conversations to the owner's account and 50 turns to existing ones; none were
+  deleted.
+- Resolved: the owner committed `spider/results/full_eval_served_grounding_whole_db.json` in `c8533ca`.
+- Another session has uncommitted Excel add-in work in the main worktree (`web/public/office/excel/`,
+  `excel-addon/`, `package.json`, new tests). It is not part of this release (hosting was deployed from
+  a clean `3d7189e` checkout) and was left untouched.
+
 ## 2026-09-24 (evening) — RELEASED: literal grounding, question fidelity, and four defects the Chrome passes found
 
 **Production now** (one revision per service, no tags):
