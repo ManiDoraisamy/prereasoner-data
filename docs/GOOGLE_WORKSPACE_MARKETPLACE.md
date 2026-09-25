@@ -142,7 +142,7 @@ required because the add-on uses the reviewer's Google identity through Firebase
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `21`
+- **Apps Script version:** `22`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
 - **OAuth reviewer video:** https://youtu.be/hXyQ9CYCfBM (provided for OAuth verification)
@@ -159,9 +159,12 @@ required because the add-on uses the reviewer's Google identity through Firebase
   still lists `script.external_request` until it is removed in the Cloud console.
 - The data-use notice before the first question is unchanged, word for word, with its Privacy link.
 - The three review images were rendered again from the embedded sidebar
-  (`docs/marketplace/render-review-assets.js`). The saved Marketplace draft keeps the earlier images
-  until the new ones are uploaded, and the OAuth demo video (https://youtu.be/hXyQ9CYCfBM) shows the
-  earlier sidebar.
+  (`docs/marketplace/render-review-assets.js`). The OAuth demo video (https://youtu.be/hXyQ9CYCfBM)
+  shows the earlier sidebar.
+- Release: Apps Script version `22` was pushed with `clasp` (`2e4d27c`), and the Marketplace deployment
+  points to it. The App Configuration's script version was set to `22` and the listing draft was
+  published on September 25, 2026. That publish also carried the September 24 draft edits below. The
+  store screenshot still shows the earlier sidebar; the owner chose to publish without replacing it.
 
 ## Branding and screenshot resubmission — September 24, 2026
 

@@ -7,7 +7,7 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
-## 2026-09-25 (night) — The Sheets add-on is the web workbook; one import rule; "sales" is a money total
+## 2026-09-25 (night) — RELEASED: the Sheets add-on is the web workbook; one import rule; "sales" is a money total
 
 The owner asked why the Google Sheets add-on failed, why its sidebar was worse than chat.prereasoner.com,
 and why it showed no live progress. The HTTP 500 was the engine's cached connection (released as
@@ -15,6 +15,23 @@ and why it showed no live progress. The HTTP 500 was the engine's cached connect
 not `workbook.js`. Its Apps Script server called `/chat` and returned only the final JSON, so nothing
 could follow the RTDB trace. The owner chose to embed the web app's sidebar, one import rule for
 uploads and add-ins, and "sales" as a money total.
+
+**Production now** (the owner approved each step):
+- engine `prereasoner-api-00233-liy` = `engine@sha256:4fc6e203…` built from `2e4d27c`; traffic switched at
+  20:07 UTC; the three jobs run the same image; release smoke `mrfcj` passed. Rollback: `00230-rax`
+  (`5bb21a2`, `8906537e…`). chat unchanged (`00124-yad`).
+- Hosting version `255a2962` (19:41 UTC), deployed from the main working tree as the owner chose. It
+  includes this commit plus another session's uncommitted Excel files (`office/excel/*`, `support.html`,
+  `terms.html`), which were already live. `/embed/sheets` sends one CSP, `frame-ancestors
+  https://docs.google.com https://*.googleusercontent.com`; every other page keeps the Office policy.
+- Add-on: `clasp push` (`@HEAD`), version 22, and the Marketplace deployment points to 22. The Marketplace
+  app is published and installs run its published App Configuration, so the script version there was set
+  to 22 and the draft was published, carrying the 09-24 listing edits (docs/GOOGLE_WORKSPACE_MARKETPLACE.md).
+  The store screenshot still shows the old sidebar; the owner chose to publish as is.
+- Live check pending: at 20:35 UTC, about 30 minutes after the publish, the owner's sheet (installed
+  from the Marketplace) still opened the previous sidebar, while the published App Configuration reads 22.
+  The previous sidebar works again with the engine fix; the next step is to confirm the new sidebar once
+  Google rolls the version out to installs.
 
 **What changed** (DECISIONS.md has the three entries):
 - `sheets-addon/` is a host. `Sidebar.html` frames `/embed/sheets` (`reason.html` + `workbook.js`,
@@ -58,11 +75,10 @@ uploads and add-ins, and "sales" as a money total.
   rerun (`EVAL_DATASETS=customer-orders,customers-orders,eval-formesign-assets-xls`).
 
 **Open**
-- Deploy order: Hosting first (the CSP must allow the frame before the add-on points at it), then
-  `clasp push` and a new Apps Script version. Verify `/embed/sheets` sends exactly one
-  `Content-Security-Policy`, the Google `frame-ancestors`.
-- Hosting currently serves another session's uncommitted Excel files (entry below). A deploy from a
-  clean commit rolls them back.
+- Hosting serves another session's uncommitted Excel files. A deploy from a clean commit rolls them back,
+  so that session should commit first.
+- The Marketplace App Configuration and consent screen still list `script.external_request` (the owner kept
+  it for now); the manifest no longer requests it.
 - The three review images are rendered from the embed. The saved Marketplace draft keeps the old ones
   until they are uploaded, and the OAuth demo video shows the old sidebar
   (docs/GOOGLE_WORKSPACE_MARKETPLACE.md).
