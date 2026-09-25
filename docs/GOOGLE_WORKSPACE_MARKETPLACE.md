@@ -143,7 +143,7 @@ required because the add-on uses the reviewer's Google identity through Firebase
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `22`
+- **Apps Script version:** `23`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
 - **OAuth reviewer video:** https://youtu.be/hXyQ9CYCfBM (provided for OAuth verification)
@@ -164,6 +164,8 @@ required because the add-on uses the reviewer's Google identity through Firebase
 - The listing draft was published on September 25, 2026 with version `22`. That publish also carried the
   September 24 draft edits below. The store screenshot still shows the version 21 sidebar; the owner chose
   to publish without replacing it.
+- Version `23` (`44d4781`) was pushed with `clasp` the same night. The Marketplace deployment points to it,
+  and the App Configuration's script version was set to `23` and published.
 
 ## Branding and screenshot resubmission — September 24, 2026
 

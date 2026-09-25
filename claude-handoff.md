@@ -7,11 +7,23 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
-## 2026-09-25 (late night) — The Sheets sidebar renders the web rail as a component (add-on v23)
+## 2026-09-25 (late night) — RELEASED: the Sheets sidebar renders the web rail as a component (add-on v23)
 
 The owner rejected v22: they had asked for the web app's sidebar as a component inside the add-on,
 styled like the add-on, not the whole web page framed in Sheets. v23 replaces the embed. There was no
 rollback, per the owner.
+
+**Production now:**
+- `44d4781`: Hosting version `3bb9723c` (21:02 UTC), deployed from the main working tree as before, so the
+  other session's uncommitted Excel files stay live and unchanged. `/lib/**` sends
+  `Access-Control-Allow-Origin: *`, and `/embed/sheets` and `lib/host-bridge.js` return 404.
+- Add-on: `clasp push`, version 23, and the Marketplace deployment points to 23. The App Configuration's
+  script version was set to 23 and published. The engine is unchanged (`00233-liy`).
+- Live in Sheets: the owner's "Sales data" opens the v23 sidebar with `Sheet "sales": Column H has values
+  but no header in row 1.` A scratch sheet, "Prereasoner add-on check" (country/amount, 4 rows, created
+  for this check), opens the v23 sidebar reading "1 tab: Sheet1". My browser automation cannot type into
+  Sheets' nested add-on frame, so no live question was asked; the answer path is covered by
+  `sheets-sidebar.spec.js`.
 
 **What changed** (DECISIONS.md, "The Google Sheets add-on renders the web rail as a shared component"):
 - `sheets-addon/Sidebar.html` is the add-on's own UI (Google add-on CSS, v21's layout). It renders with
