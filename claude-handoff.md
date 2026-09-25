@@ -7,6 +7,25 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-26 — RELEASED: a column without a header is left out, not a reason to refuse the sheet (add-on v24)
+
+The owner shifted their sheet's headers right to fix it, and v23 still refused it: A1 was empty over the
+row numbers ("Column A has values but no header"). Refusing a whole sheet for one unnamed column was wrong.
+In `aacf2a1`, the importer leaves such a column out (`import.leftOutColumns`), and the sidebar and upload
+preview say which. The header row may name two thirds of the columns. Nothing is named for the column.
+Still refused, with the evidence: the header row one column to the left of its data (only the last
+column unnamed and numeric, the header before it over text), because every answer would read the wrong
+column. The 9 shipped workbooks convert unchanged (compared against the committed importer).
+
+- Gates: `npm run test:web` 9 suites (`workbook layout` 32 checks); `npm run test:browser` 32/32. The
+  sidebar test replays the owner's fix: the shifted sheet is refused, then with A1 empty the question runs
+  without column A, and the note shows.
+- Production: Hosting `aacf2a1` from the main working tree (the live importer matches). Add-on version 24
+  (the note) is pushed, the Marketplace deployment points to it, and the App Configuration was set to 24
+  and published.
+- Live: "Sales data" opens with "1 tab: sales" and `Sheet "sales": column A has no header, so it was
+  left out.`, ready for a question.
+
 ## 2026-09-25 (late night) — RELEASED: the Sheets sidebar renders the web rail as a component (add-on v23)
 
 The owner rejected v22: they had asked for the web app's sidebar as a component inside the add-on,

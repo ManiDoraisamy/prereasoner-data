@@ -143,7 +143,7 @@ required because the add-on uses the reviewer's Google identity through Firebase
 
 - **Google Cloud project:** `prereasoner-inference` (`271377281957`)
 - **Apps Script project:** `17TO27c1vtTAfHo66XhnbKmKFwO9t-Koihd7ZtCFC_lJnIjGQLhDWp2jL`
-- **Apps Script version:** `23`
+- **Apps Script version:** `24`
 - **Deployment ID:** `AKfycbxsTRCTIQ41Th_7T-CuHQ9bB5KzkU1SUeRInLH_EI7CksH7g8TzZd6pLeHih2nO7lxX`
 - **YouTube channel:** `Prereasoner` (`UCcY6pYi3Pu-xbt5iH-CE-0Q`)
 - **OAuth reviewer video:** https://youtu.be/hXyQ9CYCfBM (provided for OAuth verification)
@@ -166,6 +166,8 @@ required because the add-on uses the reviewer's Google identity through Firebase
   to publish without replacing it.
 - Version `23` (`44d4781`) was pushed with `clasp` the same night. The Marketplace deployment points to it,
   and the App Configuration's script version was set to `23` and published.
+- Version `24` (`aacf2a1`) followed on September 26: a column without a header is left out and named in a
+  note instead of blocking the sheet. The App Configuration's script version was set to `24` and published.
 
 ## Branding and screenshot resubmission — September 24, 2026
 
