@@ -7,7 +7,7 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
-## 2026-09-26 — FIXED, not deployed: the chat replaced the model's sentence with the bare value
+## 2026-09-26 — RELEASED: the chat keeps the model's sentence when it states the engine's value (chat 00127-six)
 
 The Sheets sidebar answered "total amount in india" with a bare "125". The model had written "Your total
 amount in India comes to 125." The chat's grounding check (`_grounded_presentation`, added in `f73d147`
@@ -28,7 +28,16 @@ that the value appears in the reply, which a bare value does.
 - The regression test is `test_presentation_that_states_the_engine_value_in_prose_is_kept` in
   `tests.test_orchestrator_unit`. It fails on the old check with "comes to 125.". Suite 20/20;
   compileall passes.
-- Production needs a `prereasoner-chat` deploy.
+- Production: chat `prereasoner-chat-00127-six` = `chat@sha256:cb778cfc…`, built from `1bbf38d`. The
+  Cloud Build test step (`ecf99083`) ran `test_mcp` and `test_orchestrator_unit`. The revision was
+  deployed with no traffic, and its `/readyz` answered ok through the tag before the switch. Use
+  `/readyz`: Cloud Run's frontend answers `/healthz` itself with a 404. The engine and Hosting did not
+  change.
+- Live: on chat.prereasoner.com, the `neartail-shipping` demo's "total delivery fee in Europe" answered
+  "Your total delivery fee across Europe comes to 46." (`00127-six`, `[timing] chat status=ok llm_n=2`).
+  The old check turned exactly this shape of sentence into a bare "46.0".
+- Rollback: `gcloud run services update-traffic prereasoner-chat --to-revisions
+  prereasoner-chat-00124-yad=100` (`3d7189e`, image `ec248a5c…`), which brings the bare values back.
 
 ## 2026-09-26 — The Google Sheets picker "flake" was the machine running out of TCP ports, not a race
 
