@@ -20,6 +20,12 @@
       <button id="newChat" class="quiet" type="button" hidden>+ New chat</button>
     </header>
     <section id="notice" class="notice" hidden></section>
+    <section id="authPanel" class="auth-panel" aria-labelledby="authTitle" hidden>
+      <h2 id="authTitle">Sign in to Prereasoner</h2>
+      <p>Continue with Microsoft to ask questions and reopen your saved analyses.</p>
+      <button id="signInMicrosoft" class="auth-button" type="button">Continue with Microsoft</button>
+      <p id="authError" class="error" role="alert" hidden></p>
+    </section>
     <section id="thread" class="thread" aria-label="Conversation">
       <div id="empty" class="empty">Ask a question about this workbook.</div>
     </section>
@@ -34,12 +40,5 @@
       <button id="send" type="submit" aria-label="Send question" disabled>↑</button>
     </form>
   </main>
-  <dialog id="authDialog" class="auth-dialog" aria-labelledby="authTitle">
-    <h2 id="authTitle">Sign in to Prereasoner</h2>
-    <p>Sign in to ask questions and reopen your saved conversations.</p>
-    <button id="signInMicrosoft" class="auth-button" type="button">Continue with Microsoft</button>
-    <button id="signInGoogle" class="auth-button secondary" type="button">Continue with Google</button>
-    <p id="authError" class="error" role="alert"></p>
-  </dialog>
 </body>
 </html>

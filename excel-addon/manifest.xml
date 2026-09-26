@@ -11,7 +11,7 @@
   <DisplayName DefaultValue="Prereasoner - Excel Copilot" />
   <Description DefaultValue="Ask questions about Excel workbooks and inspect the reasoning behind each answer." />
   <IconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-32.png" />
-  <HighResolutionIconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-128.png" />
+  <HighResolutionIconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-64.png" />
   <SupportUrl DefaultValue="https://chat.prereasoner.com/support" />
   <AppDomains>
     <AppDomain>https://chat.prereasoner.com</AppDomain>
@@ -19,16 +19,16 @@
   <Hosts>
     <Host Name="Workbook" />
   </Hosts>
-  <DefaultSettings>
-    <SourceLocation DefaultValue="https://chat.prereasoner.com/office/excel/taskpane.html" />
-  </DefaultSettings>
-  <!-- Excel JavaScript APIs require read/write document permission, even when this add-in only reads. -->
-  <Permissions>ReadWriteDocument</Permissions>
   <Requirements>
     <Sets DefaultMinVersion="1.2">
       <Set Name="ExcelApi" MinVersion="1.2" />
     </Sets>
   </Requirements>
+  <DefaultSettings>
+    <SourceLocation DefaultValue="https://chat.prereasoner.com/office/excel/taskpane.html" />
+  </DefaultSettings>
+  <!-- Excel JavaScript APIs require read/write document permission, even when this add-in only reads. -->
+  <Permissions>ReadWriteDocument</Permissions>
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/taskpaneappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Hosts>
       <Host xsi:type="Workbook">
@@ -45,7 +45,7 @@
                 <Icon>
                   <bt:Image size="16" resid="Icon.16" />
                   <bt:Image size="32" resid="Icon.32" />
-                  <bt:Image size="80" resid="Icon.128" />
+                  <bt:Image size="80" resid="Icon.80" />
                 </Icon>
                 <Control xsi:type="Button" id="Prereasoner.Ask">
                   <Label resid="Ask.Label" />
@@ -56,7 +56,7 @@
                   <Icon>
                     <bt:Image size="16" resid="Icon.16" />
                     <bt:Image size="32" resid="Icon.32" />
-                    <bt:Image size="80" resid="Icon.128" />
+                    <bt:Image size="80" resid="Icon.80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <TaskpaneId>Prereasoner.Taskpane</TaskpaneId>
@@ -72,7 +72,7 @@
                   <Icon>
                     <bt:Image size="16" resid="Icon.16" />
                     <bt:Image size="32" resid="Icon.32" />
-                    <bt:Image size="80" resid="Icon.128" />
+                    <bt:Image size="80" resid="Icon.80" />
                   </Icon>
                   <Action xsi:type="ShowTaskpane">
                     <TaskpaneId>Prereasoner.Taskpane</TaskpaneId>
@@ -87,9 +87,9 @@
     </Hosts>
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-32.png" />
-        <bt:Image id="Icon.32" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-48.png" />
-        <bt:Image id="Icon.128" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-128.png" />
+        <bt:Image id="Icon.16" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-16.png" />
+        <bt:Image id="Icon.32" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-32.png" />
+        <bt:Image id="Icon.80" DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-80.png" />
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Taskpane.AskUrl" DefaultValue="https://chat.prereasoner.com/office/excel/taskpane.html?view=ask" />

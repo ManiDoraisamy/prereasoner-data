@@ -1,9 +1,11 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import {getAuth, GoogleAuthProvider, OAuthProvider, onAuthStateChanged, signInWithCredential, getIdToken} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+import {getAuth, OAuthProvider, onAuthStateChanged, signInWithCredential, getIdToken} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 import {getDatabase, ref, onValue} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js';
 import {firebaseConfig} from '../../lib/config.js';
 import {readWorkbook, workbookKey} from './host.js';
 import {credentialForDialog} from './auth-bridge.js';
+import {explainMicrosoftAuthError} from './auth-errors.js';
+import {streamResponse} from './turn-bridge.js';
 
 const app = initializeApp(firebaseConfig, 'prereasoner-excel');
 const auth = getAuth(app);
@@ -108,20 +110,41 @@ function mapReasoning(response) {
 }
 
 function awaitStream(turnId) {
-  let unsubscribe = () => {};
+  const unsubs = [];
+  const engineRuns = {};
+  const watchedJobs = new Set();
+  const readyJobs = new Set();
+  let latestTurn = {};
+  let unsubscribe = () => unsubs.splice(0).forEach(stop => stop());
   let timer;
   let cancel;
   const promise = new Promise((resolve, reject) => {
-    unsubscribe = onValue(ref(database, `runs/${auth.currentUser.uid}/${turnId}`), snapshot => {
-      const run = snapshot.val();
-      if (!run) return;
-      if (run.status === 'done' && typeof run.reply === 'string') {
-        clearTimeout(timer); unsubscribe();
-        resolve({reply: run.reply, conversation_id: run.conversation_id || null, traces: []});
-      } else if (run.status === 'error') {
+    const base = ref(database, `runs/${auth.currentUser.uid}/${turnId}`);
+    const finishIfReady = () => {
+      if (latestTurn.status !== 'done' || typeof latestTurn.reply !== 'string') return;
+      if (![...watchedJobs].every(jobId => readyJobs.has(jobId))) return;
+      clearTimeout(timer); unsubscribe(); resolve(streamResponse(latestTurn, engineRuns));
+    };
+    unsubs.push(onValue(base, snapshot => {
+      const run = snapshot.val() || {};
+      latestTurn = run;
+      const calls = run.calls && typeof run.calls === 'object' ? Object.values(run.calls) : [];
+      for (const call of calls) {
+        if (!call?.jobId || watchedJobs.has(call.jobId)) continue;
+        watchedJobs.add(call.jobId);
+        unsubs.push(onValue(ref(database, `runs/${auth.currentUser.uid}/${call.jobId}`), trace => {
+          engineRuns[call.jobId] = trace.val() || {};
+          readyJobs.add(call.jobId);
+          finishIfReady();
+        }, error => {
+          clearTimeout(timer); unsubscribe(); reject(error);
+        }));
+      }
+      finishIfReady();
+      if (run.status === 'error') {
         clearTimeout(timer); unsubscribe(); reject(new Error(run.error || 'The analysis could not be completed.'));
       }
-    }, error => { clearTimeout(timer); unsubscribe(); reject(error); });
+    }, error => { clearTimeout(timer); unsubscribe(); reject(error); }));
     timer = setTimeout(() => { unsubscribe(); reject(new Error('The analysis is taking longer than expected. You can try again.')); }, 240000);
   });
   cancel = () => { clearTimeout(timer); unsubscribe(); };
@@ -202,41 +225,50 @@ function showHistory(show) {
 }
 
 function openSignIn(error) {
-  $('authError').textContent = error || '';
-  if (!$('authDialog').open) $('authDialog').showModal();
+  $('authPanel').hidden = false;
+  $('thread').hidden = true;
+  $('composer').hidden = true;
+  showAuthError(error || '');
+}
+
+function showAuthError(message) {
+  $('authError').textContent = message;
+  $('authError').hidden = !message;
 }
 
 async function acceptDialogMessage(event) {
   if (event.origin !== location.origin) return;
   let message;
   try { message = JSON.parse(event.message ?? event.data); } catch (_) { return; }
-  if (message.kind !== 'pr-auth-result' || !['google', 'microsoft'].includes(message.provider)) return;
+  if (message.kind !== 'pr-auth-result' || message.provider !== 'microsoft') return;
   try {
-    const credential = credentialForDialog(message, {OAuthProvider, GoogleAuthProvider});
+    const credential = credentialForDialog(message, {OAuthProvider});
     await signInWithCredential(auth, credential);
-    $('authDialog').close();
     onSignedIn(auth.currentUser);
-  } catch (error) { openSignIn(error.message); }
+  } catch (error) { openSignIn(explainMicrosoftAuthError(error)); }
 }
 
 function launchAuth(provider) {
-  $('authError').textContent = '';
+  showAuthError('');
   Office.context.ui.displayDialogAsync(`${location.origin}/office/excel/auth-dialog.html?provider=${provider}`, {
     height: 55, width: 35, displayInIframe: false
   }, result => {
     if (result.status !== Office.AsyncResultStatus.Succeeded) {
-      $('authError').textContent = 'Microsoft sign-in could not open. Please try again.'; return;
+      showAuthError('Microsoft sign-in could not open. Please try again.'); return;
     }
     const dialog = result.value;
     dialog.addEventHandler(Office.EventType.DialogMessageReceived, acceptDialogMessage);
     dialog.addEventHandler(Office.EventType.DialogEventReceived, arg => {
-      if (arg.error === 12006) $('authError').textContent = 'Sign-in was closed before it finished.';
+      if (arg.error === 12006) showAuthError('Sign-in was closed before it finished.');
     });
   });
 }
 
 function onSignedIn(user) {
   if (!user) return;
+  $('authPanel').hidden = true;
+  $('thread').hidden = false;
+  $('composer').hidden = false;
   setBusy(false);
   $('newChat').hidden = false;
   $('previousChats').hidden = false;
@@ -267,7 +299,6 @@ async function init() {
   });
   $('loadMore').addEventListener('click', () => loadHistory(state.nextPage).catch(error => notice(error.message, true)));
   $('signInMicrosoft').addEventListener('click', () => launchAuth('microsoft'));
-  $('signInGoogle').addEventListener('click', () => launchAuth('google'));
   onAuthStateChanged(auth, user => {
     if (!user) { setBusy(true); openSignIn(); }
     else onSignedIn(user);
