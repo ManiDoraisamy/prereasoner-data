@@ -7,6 +7,29 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-26 — FIXED, not deployed: the chat replaced the model's sentence with the bare value
+
+The Sheets sidebar answered "total amount in india" with a bare "125". The model had written "Your total
+amount in India comes to 125." The chat's grounding check (`_grounded_presentation`, added in `f73d147`
+on September 14) looked for "125" followed by neither a digit nor a dot. It took the sentence's full stop
+for a decimal point and replaced the sentence with the scalar. Trailing zeros ("1,240.50.") and rounded
+averages ("about 264" for 263.96, "$250.78", "4.67") failed the same way. Production chat `00124-yad`
+has run this check since September 14, and neither the model (`claude-sonnet-5`) nor the prompt
+changed. No gate caught it. `tests.test_datasets` compares engine rows, and the Chrome gate only checks
+that the value appears in the reply, which a bare value does.
+
+- A replay of `run_chat` on `claude-sonnet-5` used the production prompt, with the engine faked to
+  return the production scalar. Before the fix, 4 of 14 presentations were kept; after it, 15 of 15.
+- The check now reads the prose's numbers as numbers. It keeps a sentence when one of them equals the
+  scalar, or equals the scalar rounded to the precision the sentence shows and within 5%. A percentage
+  may also read as a fraction, and magnitudes are compared ("down 12" for -12). A different or stale
+  number still falls back to the scalar ("There are 100 distinct IDs." for 23), and so does "about 5"
+  for 4.667.
+- The regression test is `test_presentation_that_states_the_engine_value_in_prose_is_kept` in
+  `tests.test_orchestrator_unit`. It fails on the old check with "comes to 125.". Suite 20/20;
+  compileall passes.
+- Production needs a `prereasoner-chat` deploy.
+
 ## 2026-09-26 — The Google Sheets picker "flake" was the machine running out of TCP ports, not a race
 
 The v22 entry below says the picker journeys (`release-flow.spec.js`, "Google Sheets uses the shared

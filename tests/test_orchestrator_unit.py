@@ -364,6 +364,51 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
     assert orchestrator._grounded_presentation(error, "There are 100 distinct IDs.") == "The calculation failed."
 
 
+def test_presentation_that_states_the_engine_value_in_prose_is_kept():
+    # Production, 2026-09-26: the Sheets sidebar showed "125" for "total amount in india". The
+    # model had written "Your total amount in India comes to 125.", and the grounding check
+    # read the full stop as a decimal point and replaced the sentence with the bare value.
+    # Replays on claude-sonnet-5 kept 4 of 14 correct sentences; these are the model's own.
+    def kept(value, prose):
+        shaped = {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]}}
+        return orchestrator._grounded_presentation(shaped, prose) == prose
+
+    for value, prose in [
+        (125, "Your total amount in India comes to 125."),
+        (1240.5, "Your total amount in France comes to 1,240.50."),
+        ("876.50", "Your net amount after discount comes to $876.50. The full breakdown is in the tabs."),
+        (250.77935327248008, "The average price for your VIP customers comes out to about $250.78."),
+        (263.961291749613, "Your calls last about 264 on average — so just under 4.5 minutes per call."),
+        (4.667, "The average rating for Sourdough Baking comes to 4.67 out of 5 — a really solid score!"),
+        (5238.47, "Your total for Belgium comes to $5,238.47 in US dollars."),
+        (125, "Your total in India comes to Rs.125."),
+        (125000, "That comes to ₹1,25,000."),
+        (250.77935327248008, "The average price is around 250."),
+        (0.4166, "France accounts for about 42% of sales."),
+        (-12, "Sales were down 12 compared with last year."),
+    ]:
+        assert kept(value, prose), (value, prose)
+
+    # Same sentence, another number: a different value, a stale one, or a rounding too coarse
+    # to be the value still falls back to the engine's scalar.
+    for value, prose in [
+        (125, "Your total amount in India comes to 12.5."),
+        (125, "Your total amount in India comes to 0.125."),
+        (125, "Your total amount in India comes to 1255."),
+        (125, "Your total amount in India comes to 120."),
+        (1250, "Your total was 1,240 last time."),
+        (4.667, "The average rating is about 5."),
+        (1234, "It comes to about 1,000."),
+        (0.034, "That is 0 percent of sales."),
+        (125, "Your total amount in India is ready in the tabs."),
+        (10 ** 30, "It comes to 0.00000000000000000000000000001."),
+    ]:
+        assert not kept(value, prose), (value, prose)
+        assert orchestrator._grounded_presentation(
+            {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]}}, prose,
+        ) == str(value)
+
+
 def _answered_from_memory_turn(user_message, history, memory_reply, catalog=()):
     """A turn whose model first answers ``memory_reply`` without the tool, calls the tool when the
     correction arrives, then presents. Returns (result, model_calls, engine_calls); each model call
@@ -1029,6 +1074,7 @@ TESTS = [
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_recalculation_identity_and_scalar_presentation_are_grounded,
+    test_presentation_that_states_the_engine_value_in_prose_is_kept,
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,

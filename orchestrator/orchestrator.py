@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -346,13 +347,47 @@ def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
     if len(rows) != 1 or len(rows[0]) != 1:
         return presentation.strip() or fallback
     scalar = str(rows[0][0]).strip()
-    if not re.fullmatch(r"[-+]?\d+(?:[.,]\d+)?", scalar):
+    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", scalar):
         return presentation.strip() or fallback
-    normalized_scalar = scalar.replace(",", "")
-    normalized_reply = presentation.replace(",", "")
-    if not re.search(rf"(?<![\d.]){re.escape(normalized_scalar)}(?![\d.])", normalized_reply):
+    if not _states_value(presentation, Decimal(scalar)):
         return fallback
     return presentation.strip() or fallback
+
+
+# A number as prose writes it: thousands groups (1,240 or the Indian 1,25,000), a decimal part, and
+# an optional percent sign. Scanning left to right keeps "0.125" one number, so its "125" never
+# stands alone, while the full stop that ends "comes to 125." is not a decimal point.
+_PROSE_NUMBER = re.compile(r"(\d{1,3}(?:,\d{2,3})+|\d+)(?:\.(\d+))?(\s?(?:%|percent\b))?")
+
+
+def _states_value(prose: str, value: Decimal) -> bool:
+    """Whether the prose states the engine's scalar.
+
+    A number in the prose states it when it equals the value, or equals the value rounded to the
+    precision that number shows ("about 264" for 263.96, "$250.78" for 250.779..., "around 250")
+    and stays within 5% of it, so "about 5" does not pass for 4.667. A number followed by "%" may
+    also read as a fraction (42% for 0.4166). Magnitudes are compared, since prose says "down 12",
+    not "-12". Any other number, such as a stale one copied from the chat, does not state it.
+    """
+    target = abs(value)
+    for match in _PROSE_NUMBER.finditer(prose):
+        whole, fraction, percent = match.groups()
+        digits = whole.replace(",", "")
+        number = Decimal(digits + ("." + fraction if fraction else ""))
+        if fraction:
+            step = Decimal(1).scaleb(-len(fraction))
+        else:
+            step = Decimal(1).scaleb(len(digits) - len(digits.rstrip("0")) if number else 0)
+        readings = [(number, step)] + ([(number / 100, step / 100)] if percent else [])
+        for stated, unit in readings:
+            if stated == target:
+                return True
+            # Rounded half up to `unit`, the value lands on `stated` exactly when it lies in
+            # [stated - unit/2, stated + unit/2).
+            if (target and stated - unit / 2 <= target < stated + unit / 2
+                    and abs(stated - target) <= target * Decimal("0.05")):
+                return True
+    return False
 
 
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:
