@@ -7,6 +7,23 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-26 — Each browser test gets its own fixture-server state
+
+The fixture server (`web/tests/browser/server.js`) kept one request count, deleted flag and revision
+store for its whole lifetime, so the suite could not be repeated. With `--repeat-each=2`, the release
+journey's second run expected 1 request and found 4. After the delete test, `/api/conversations`
+stayed empty for every later test. Now each test's browser context carries a state cookie
+(`web/tests/browser/fixtures.js`, the `test` that server-backed specs import), and the server keys
+state by it. A state request without the cookie gets HTTP 400 instead of a shared default. It is a
+cookie rather than a header because an extra header would also reach the pages' cross-origin requests
+(the Drive export, fonts) and trigger CORS preflights there.
+
+- `npx playwright test --repeat-each=3`: 99/99 on 8 workers, with copies of the release journey running
+  in parallel against the one server. `npm run test:browser`: 33/33. Back to back, it took 34.4 s
+  before and 37.2 s after, and the new spec's extra worker accounts for the difference.
+- Regression spec `mock-server.spec.js`: after this test asks a question and deletes the conversation,
+  another test's state is still fresh. The spec fails when the server shares one state again.
+
 ## 2026-09-26 — RELEASED: the chat keeps the model's sentence when it states the engine's value (chat 00127-six)
 
 The Sheets sidebar answered "total amount in india" with a bare "125". The model had written "Your total

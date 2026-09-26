@@ -268,6 +268,13 @@ links while retaining the input tab, renders a complex dependency tree with stag
 switches the final anti-join between readable Python and SQL, and deletes the conversation. The API response is a fixture so the browser
 test is deterministic; Python integration suites separately cover the real engine and database.
 
+Specs that load pages from the fixture server (`web/tests/browser/server.js`) import `test` from
+`web/tests/browser/fixtures.js`. It gives each test's browser context its own state cookie, and the
+server keeps the request count, the deleted conversation and the stored analysis revisions per cookie
+(`/__state` reports that test's state). Tests are therefore independent of order and of workers sharing
+the one server, and `npx playwright test --repeat-each=3` runs the whole suite. A state request without
+the cookie gets HTTP 400, and `mock-server.spec.js` checks this isolation.
+
 For a manual browser pass, start Firebase Hosting from `web/`:
 
 ```powershell

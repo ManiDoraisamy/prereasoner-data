@@ -1,11 +1,11 @@
-const {test,expect}=require('@playwright/test');
+const {test,expect}=require('./fixtures.js');
 const XLSX=require('../../public/vendor/xlsx-0.20.3.full.min.js');
 const path=require('node:path');
 const fs=require('node:fs');
 
-for(const timezoneId of ['America/Los_Angeles','Pacific/Auckland'])test('spreadsheet dates retain their day in '+timezoneId,async({browser})=>{
-  const context=await browser.newContext({timezoneId});const page=await context.newPage();
-  try{
+for(const timezoneId of ['America/Los_Angeles','Pacific/Auckland'])test.describe(timezoneId,()=>{
+  test.use({timezoneId});
+  test('spreadsheet dates retain their day in '+timezoneId,async({page})=>{
     await mockAuth(page);await page.goto('/');
     await page.locator('#file').setInputFiles(path.resolve(__dirname,'../../public/dataset/eval-formesign-assets-xls/assets.xls'));
     await expect(page.locator('#chips .nm')).toHaveText(['assets']);
@@ -13,7 +13,7 @@ for(const timezoneId of ['America/Los_Angeles','Pacific/Auckland'])test('spreads
     expect(data).toContain(',2012-02-06,');
     expect(data).toContain(',2016-04-09,');
     expect(data).not.toContain('T23:00');
-  }finally{await context.close();}
+  });
 });
 
 for(const failure of [null,429,'layout'])test('Google Sheets uses the shared workbook importer: '+(failure||'success'),async({page})=>{
@@ -225,7 +225,7 @@ test('home menus and previews close cleanly with Escape and restore focus',async
   await expect(examples).toBeFocused();
 });
 
-test('sign in, upload, answer, inspect trace, follow up, and delete',async({page,request})=>{
+test('sign in, upload, answer, inspect trace, follow up, and delete',async({page})=>{
   await mockAuth(page);
   await page.addInitScript(()=>localStorage.setItem('pr_chat_nav_open','1'));
 
@@ -297,7 +297,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.reload();
   await page.locator('.wtab').filter({hasText:'orders'}).click();
   await expect(page.locator('th').filter({hasText:'amount'}).first()).toContainText('EUR');
-  await expect.poll(async()=>((await request.get('/__state')).json()).then(v=>v.requestCount)).toBe(1);
+  await expect.poll(async()=>((await page.request.get('/__state')).json()).then(v=>v.requestCount)).toBe(1);
 
   await page.locator('.wtab').filter({hasText:'calculated'}).click();
   // The header carries the owning table as a chip and the provenance kind as a glyph, so the
@@ -349,7 +349,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   // workbook and turn, not whichever analysis happened to be active in this browser session. It
   // must also work in a fresh tab with no local render snapshot and must not re-run the question.
   await page.evaluate(()=>sessionStorage.removeItem('pr_conv_state'));
-  const requestsBeforeLinkedOpen=(await (await request.get('/__state')).json()).requestCount;
+  const requestsBeforeLinkedOpen=(await (await page.request.get('/__state')).json()).requestCount;
   await page.goto('/reason/c_0123456789abcdef0123456789abcdef?analysis_id=a_11111111111111111111111111111111&revision=1');
   await expect(page.locator('.wb.result tbody')).toContainText('180');
   await expect(page.locator('.analysislink.on')).toHaveText('total sales');
@@ -360,7 +360,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   const linkedParts=page.locator('.turn.ai').locator(':scope > .turn-content').first().locator(':scope > *');
   await expect(linkedParts.nth(0)).toHaveClass(/turn-reasoning/);
   await expect(linkedParts.nth(1)).toHaveClass(/turn-answer/);
-  expect((await (await request.get('/__state')).json()).requestCount).toBe(requestsBeforeLinkedOpen);
+  expect((await (await page.request.get('/__state')).json()).requestCount).toBe(requestsBeforeLinkedOpen);
 
   const deleteChat=page.getByTitle('Delete chat');
   if(!await deleteChat.isVisible())await page.getByRole('button',{name:'Conversations',exact:true}).click();
@@ -368,7 +368,7 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await deleteChat.click();
   await deletion;
   await expect(page).toHaveURL('http://127.0.0.1:4173/');
-  await expect.poll(async()=>((await request.get('/__state')).json()).then(v=>v.deleted)).toBe(true);
+  await expect.poll(async()=>((await page.request.get('/__state')).json()).then(v=>v.deleted)).toBe(true);
 });
 
 test('Google source freshness uses one quiet status control and recalculates in place',async({page})=>{

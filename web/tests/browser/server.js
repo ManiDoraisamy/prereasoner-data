@@ -6,12 +6,22 @@ const path=require('path');
 
 const root=path.resolve(__dirname,'../../public');
 const conversation='c_0123456789abcdef0123456789abcdef';
-let deleted=false;
-let requestCount=0;
 const totalSalesId='a_11111111111111111111111111111111';
 const topProductsId='a_22222222222222222222222222222222';
 const promotionGapsId='a_33333333333333333333333333333333';
-const revisions=new Map();
+
+// Each test's state (the request count, the deleted conversation, the stored analysis revisions),
+// keyed by the cookie fixtures.js gives the test's browser context. Tests share this one server, so
+// state kept for the server's lifetime made them depend on order and repeats. A request for state
+// without the cookie is refused rather than served from a shared default.
+const STATE_COOKIE='pr_test_state';
+const states=new Map();
+function stateOf(req){
+  const id=(new RegExp('(?:^|;\\s*)'+STATE_COOKIE+'=([^;]+)').exec(req.headers.cookie||'')||[])[1];
+  if(!id)return null;
+  if(!states.has(id))states.set(id,{deleted:false,requestCount:0,revisions:new Map()});
+  return states.get(id);
+}
 
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
   '.css':'text/css; charset=utf-8','.svg':'image/svg+xml','.csv':'text/csv; charset=utf-8',
@@ -112,23 +122,26 @@ function shaped(raw){return {status:'answered',model:'test',answer:raw.result,sq
 const server=http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://127.0.0.1:4173');
   if(url.pathname==='/__health')return send(res,200,'ok','text/plain');
-  if(url.pathname==='/__state')return send(res,200,{deleted,requestCount});
   if(url.pathname==='/config')return send(res,200,{authMode:'test'});
+  const stateful=url.pathname==='/__state'||url.pathname==='/chat'||url.pathname.startsWith('/api/');
+  const state=stateful?stateOf(req):null;
+  if(stateful&&!state)return send(res,400,{error:'no '+STATE_COOKIE+' cookie: import test from web/tests/browser/fixtures.js'});
+  if(url.pathname==='/__state')return send(res,200,{deleted:state.deleted,requestCount:state.requestCount});
   if(req.method==='GET'&&url.pathname==='/api/reason')return send(res,200,{ok:true});
   if(req.method==='POST'&&url.pathname==='/api/reason'){
-    const body=await readJson(req);requestCount+=1;
+    const body=await readJson(req);state.requestCount+=1;
     if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
     const analysis=analysisFor(body.question||''); const raw=answer(body.question||'',analysis);
     raw.execution=executionFor(body.use);
-    revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
+    state.revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
     return send(res,200,raw);
   }
   if(req.method==='POST'&&url.pathname==='/chat'){
-    const body=await readJson(req);requestCount+=1;
+    const body=await readJson(req);state.requestCount+=1;
     if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
     const analysis=analysisFor(body.message||''); const raw=answer(body.message||'',analysis);
     raw.execution=executionFor(body.use);
-    revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
+    state.revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
     return send(res,200,{reply:/not buying|never bought/i.test(body.message||'')
       ?'Found 3 promotion gaps for the top customers and products.'
       :/top selling/i.test(body.message||'')?'Coat is the top-selling product.'
@@ -139,16 +152,16 @@ const server=http.createServer(async(req,res)=>{
   }
   if(req.method==='GET'&&url.pathname==='/api/analysis'){
     const key=url.searchParams.get('analysis_id')+':'+url.searchParams.get('revision');
-    const raw=revisions.get(key);
+    const raw=state.revisions.get(key);
     const reply=raw?(/paris/i.test(raw.question||'')?'The Paris total is 120.':'Your total is 180.') : '';
     return raw?send(res,200,{analysis:raw.analysis,question:raw.question,
       turn:{question:raw.question,reply},response:raw}):send(res,404,{error:'analysis not found'});
   }
-  if(req.method==='GET'&&url.pathname==='/api/conversations')return send(res,200,{conversations:deleted?[]:[
+  if(req.method==='GET'&&url.pathname==='/api/conversations')return send(res,200,{conversations:state.deleted?[]:[
     {id:conversation,question:'total amount',ts:'2026-09-05T12:00:00Z'}]});
   if(req.method==='POST'&&url.pathname==='/api/conversation/state')return send(res,200,{saved:conversation});
   if(req.method==='POST'&&url.pathname==='/api/conversation/delete'){
-    const body=await readJson(req);deleted=body.id===conversation;return send(res,200,{deleted:body.id});
+    const body=await readJson(req);state.deleted=body.id===conversation;return send(res,200,{deleted:body.id});
   }
 
   let relative=decodeURIComponent(url.pathname).replace(/^\/+/, '');
@@ -161,4 +174,7 @@ const server=http.createServer(async(req,res)=>{
   const data=fs.readFileSync(target);res.writeHead(200,{'content-type':types[path.extname(target)]||'application/octet-stream','content-length':data.length});res.end(data);
 });
 
-server.listen(4173,'127.0.0.1');
+// playwright.config.js runs this file as the fixture server; fixtures.js imports it only for the cookie name.
+if(require.main===module)server.listen(4173,'127.0.0.1');
+
+module.exports={STATE_COOKIE};
