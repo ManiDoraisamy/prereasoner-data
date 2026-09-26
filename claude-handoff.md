@@ -7,6 +7,36 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-26 — The Google Sheets picker "flake" was the machine running out of TCP ports, not a race
+
+The v22 entry below says the picker journeys (`release-flow.spec.js`, "Google Sheets uses the shared
+workbook importer") flake about 1 in 30 runs on unmodified main. They do not. In both failures, a request
+to the local test server failed at the network level:
+
+- Both failures (one full-suite run, one picker-only run) happened between 20:21 and 20:23 on September
+  25, while `tests.run_all` ran its live suites in the background. That is the only time in the last
+  7 days when Windows logged TCP port-reuse failures (System event 4227 at 20:07, 20:16 and 20:32). In
+  the same run, three `test_datasets` questions could not open a Postgres connection (`WSAEADDRINUSE`,
+  10048).
+- Failing one request reproduces both messages exactly. If `lib/google-sheets-import.js` does not load,
+  the page shows `Could not read the sheet: GOOGLE_SHEETS_IMPORT is not defined`. In the success
+  journey, the page then stays on `/picker`, so `toHaveURL` fails. If the navigation to `/sheets` fails
+  instead, the page ends on `chrome-error://chromewebdata/`.
+- There is no ordering race. The module script is deferred, so it runs only after every parser-blocking
+  classic script has run or failed to load. With `shared.js`, `upload-limits.js`, `xlsx-reader.js` or
+  `google-sheets-import.js` delayed by 2.5 s, the journey still completes. The gapi stub's synchronous
+  callbacks run only after everything they use is defined.
+- On unchanged main (`f59c372`): 90/90 with `--repeat-each=30`, 90/90 with all 16 cores saturated,
+  300/300 with `--repeat-each=100`, and `npm run test:browser` 32/32.
+
+Nothing changed in the page, the stub or the server. Run the browser suite on its own, not alongside
+`run_all`'s live suites. If a browser test fails with a page error, first read the failed requests in
+its trace (`test-results/<test>/trace.zip`) and check System event 4227, and only then look for a race.
+
+Found along the way: the mock server keeps `requestCount` and `deleted` for its whole lifetime. The
+stateful release test therefore fails on its second repeat (it expects 1 request and sees 4), so only
+stateless tests can run with `--repeat-each`. A separate task was suggested.
+
 ## 2026-09-26 — RELEASED: a column without a header is left out, not a reason to refuse the sheet (add-on v24)
 
 The owner shifted their sheet's headers right to fix it, and v23 still refused it: A1 was empty over the
@@ -133,8 +163,8 @@ uploads and add-ins, and "sales" as a money total.
 - `npm run test:browser` 32/32. The three embed journeys run against a stand-in host
   (`/__sheets-host`). They cover sign-in, the first question, reopening in the same tab and in another
   browser, a changed sheet (sync plus pending question), a change right after an answer, New chat,
-  Previous conversations and an unreadable sheet. The existing picker journeys flake about 1 in 30 runs
-  on unmodified main as well; a separate task was suggested.
+  Previous conversations and an unreadable sheet. The picker journeys failed once in 30 runs on
+  unmodified main too. The 2026-09-26 entry above shows this was a port shortage, not a flake.
 - `tests.run_all` on the dev worktree: 44 of 45 suites OK, among them `test_sql_ast` 119/119,
   `test_compose` 14/14, `test_calculations` 104/104 and live `test_orchestrator` 25/25. `test_datasets`
   passed 61 of 65 checks. The other 4 could not connect to the local database proxy (Windows
