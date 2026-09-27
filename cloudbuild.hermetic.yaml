@@ -7,7 +7,13 @@ steps:
     args:
       - -ceu
       - |
+        node_volume=prereasoner-node-bin
+        docker volume create "$$node_volume" >/dev/null
+        docker run --rm --volume "$$node_volume:/node" node:22-bookworm-slim \
+          sh -ceu 'cp "$(command -v node)" /node/node; chmod 0555 /node/node'
+        docker run --rm --volume "$$node_volume:/node:ro" node:22-bookworm-slim /node/node --version
         docker run --rm --cpus=8 --memory=16g \
+          --volume "$$node_volume:/opt/node:ro" \
           --volume /workspace/tests:/app/tests:ro \
           --volume /workspace/training:/app/training:ro \
           --volume /workspace/web:/app/web:ro \
@@ -40,6 +46,7 @@ steps:
           --volume /workspace/Dockerfile.orchestrator:/app/Dockerfile.orchestrator:ro \
           --volume /workspace/Dockerfile.sync:/app/Dockerfile.sync:ro \
           --workdir /app \
+          --env PATH=/opt/node:/usr/local/bin:/usr/bin:/bin \
           --env PYTHONPATH=/app \
           --env RUN_ENGINE_TESTS=0 \
           --env RUN_ORCHESTRATOR_TESTS=0 \

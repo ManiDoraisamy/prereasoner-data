@@ -761,6 +761,9 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "/workspace/engine:/app/engine" not in cloudbuild
     assert "--env RUN_ENGINE_TESTS=0" in cloudbuild
     assert "--env RUN_ORCHESTRATOR_TESTS=0" in cloudbuild
+    assert "node:22-bookworm-slim" in cloudbuild
+    assert 'command -v node' in cloudbuild and "/opt/node:ro" in cloudbuild
+    assert "chmod 0555 /node/node" in cloudbuild
     assert "-m tests.run_all" in cloudbuild
     assert "gcloud run" not in cloudbuild and "terraform apply" not in cloudbuild
 
