@@ -782,6 +782,7 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "requirements-ci-windows.lock.txt" in SOURCE_SUITE_ALLOWLIST
     assert "spider/probe" in SOURCE_SUITE_ALLOWLIST
     assert "deploy/gcp/requirements.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/gcp/requirements.txt" in SOURCE_SUITE_ALLOWLIST
     assert "deploy/dependency_locks.py" in SOURCE_SUITE_ALLOWLIST
     assert "deploy/dependency_locks.json" in SOURCE_SUITE_ALLOWLIST
     assert "infra/README.md" in SOURCE_SUITE_ALLOWLIST

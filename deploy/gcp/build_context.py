@@ -41,6 +41,7 @@ SOURCE_SUITE_ALLOWLIST = (
     "deploy/dependency_locks.py",
     "deploy/dependency_locks.json",
     "deploy/gcp/requirements.lock.txt",
+    "deploy/gcp/requirements.txt",
     "deploy/gcp/button.html",
     "deploy/gcp/deploy.sh",
     "deploy/gcp/README.md",
