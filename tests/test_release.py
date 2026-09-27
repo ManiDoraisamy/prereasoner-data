@@ -806,6 +806,11 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     assert "INSTALL_CI_REQUIREMENTS=0" in runner
     assert "RUN_WORLD_REGRESSION=1" in runner
     assert "LIVE_ENGINE_ONLY=1" in runner
+    # A fixed AUTH_TEST_SUB makes live_schema treat that ID as caller-owned and
+    # skip the production-shaped conversation/ownership rows. Live suites must
+    # allocate registered, disposable conversation IDs instead.
+    live_suite_runner = runner.split("# Exercise the complete production HTTP entrypoint", 1)[0]
+    assert "AUTH_TEST_SUB=localdev" not in live_suite_runner
     assert "LIVE_REGRESSION_TIMEOUT_SECONDS=600" in runner
     assert "TEST_SUITE_TIMEOUT_SECONDS=600" in runner
     assert "docker update --memory=2g --memory-swap=2g" in runner

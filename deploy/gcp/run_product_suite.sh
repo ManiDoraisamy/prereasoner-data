@@ -94,7 +94,6 @@ docker run --rm --network "$network" --cpus=8 --memory=16g \
   --env TEST_SUITE_TIMEOUT_SECONDS=600 \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
-  --env AUTH_TEST_SUB=localdev \
   --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh
 
 # Exercise the complete production HTTP entrypoint under CPU-only Cloud Run resource limits. Three

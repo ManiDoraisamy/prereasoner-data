@@ -41,6 +41,16 @@ The separate 80% Spider accuracy work remains in its own worktree.
   regression from the full live-suite list and has per-regression/per-suite timeouts; the next run
   should identify a slow module or a real product failure rather than stall silently.
 
+- Third attempt `f736404e-20cf-428c-a768-eba399d74be4` passed restore and the offline tier, then
+  failed both curated world requests before SQL execution: the suite container forced
+  `AUTH_TEST_SUB=localdev`, causing `live_schema()` to mistake a bare fixed ID for an existing
+  caller-owned conversation. The serving role correctly rejected writes to `chat.working_table`
+  without a `chat.conversation` row. I removed that override only from the live-suite container
+  (the separate HTTP smoke retains its auth bypass), and added a regression assertion. The runner
+  now uses the registered, random production-shaped conversation lease already implemented by
+  `regress.live_schema`. Local release contracts pass **39/39**; the disposable live gate must be
+  rerun before any live-world or dataset result can be claimed.
+
 - The public mainline bundle was fetched in this checkout only from the immutable source in
   `engine/data/weights_manifest.json`; Python 3.11 validated its complete fingerprint as
   `1400e39e1dec7da7ca0648c5c8e4bbcc41417a0ede1df39acf69cd4a5c7956ce`.

@@ -13,6 +13,19 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Disposable live-world rerun found a test identity fixture bug
+
+Cloud Build `f736404e-20cf-428c-a768-eba399d74be4` restored the public seed and passed the
+offline regression, then failed both curated world cases before query execution. The live-suite
+container set `AUTH_TEST_SUB=localdev`; that makes `regress.live_schema()` treat the value as an
+external override and skip registering the `chat.conversation`/owner rows. The production serving
+role then correctly rejected its `chat.working_table` insert with a foreign-key violation. This is
+a live-test fixture bug, not evidence about world-join accuracy. Removed that fixed override from
+the test-suite container (keeping it only on the isolated `/api/reason` auth-bypass smoke), and
+added a contract test against recurrence. `tests.test_release` passes **39/39**. Next: commit this
+fix and rerun the disposable gate; do not report live product acceptance until world cases and all
+live suites complete, and do not connect to production Cloud SQL.
+
 ## 2026-09-28 — Live product gate wired with a disposable database
 
 I continued past the hermetic pass and added a dedicated test-only Cloud Build lane. It restores the
