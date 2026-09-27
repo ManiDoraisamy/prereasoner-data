@@ -29,6 +29,29 @@ SOURCE_ALLOWLIST = (
     "mcp_server",
     "orchestrator",
 )
+SOURCE_SUITE_ALLOWLIST = (
+    *SOURCE_ALLOWLIST,
+    "tests",
+    "training",
+    "web",
+    "docs",
+    ".github",
+    "deploy/gcp/build_context.py",
+    "deploy/gcp/button.html",
+    "deploy/gcp/deploy.sh",
+    "deploy/gcp/hosting_release.js",
+    "infra/main.tf",
+    "infra/orchestrator.tf",
+    "infra/variables.tf",
+    "infra/versions.tf",
+    "spider/probe/full_eval.py",
+    "world_eval/run.py",
+    "README.md",
+    "requirements.txt",
+    ".gitleaks.toml",
+    ".python-version",
+    "cloudbuild.hermetic.yaml",
+)
 def chat_engine_sources() -> tuple[str, ...]:
     """The Dockerfile owns the lean engine dependency list for BOTH build paths."""
     dockerfile = (ROOT / "Dockerfile.orchestrator").read_text(encoding="utf-8")
@@ -100,6 +123,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
     allowlists = {
         "engine": SOURCE_ALLOWLIST,
+        "suite": SOURCE_SUITE_ALLOWLIST,
         "chat": SOURCE_CHAT_ALLOWLIST,
         "sync": SOURCE_SYNC_ALLOWLIST,
         "hosting": SOURCE_HOSTING_ALLOWLIST,
@@ -151,6 +175,9 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     elif target == "hosting":
         fingerprint = "source-only"
         provenance = output / "web" / "build_provenance.json"
+    elif target == "suite":
+        fingerprint = "source-only"
+        provenance = output / "tests" / "build_provenance.json"
     else:
         fingerprint = "source-only"
         provenance = output / "orchestrator" / "build_provenance.json"
@@ -165,7 +192,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--target", choices=("engine", "chat", "sync", "hosting"), default="engine")
+    parser.add_argument("--target", choices=("engine", "suite", "chat", "sync", "hosting"), default="engine")
     args = parser.parse_args()
     commit, fingerprint = create_context(args.output, args.target)
     print(f"build context ready: target={args.target} commit={commit} weights={fingerprint}")

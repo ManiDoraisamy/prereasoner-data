@@ -657,6 +657,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         SOURCE_ALLOWLIST,
         SOURCE_CHAT_ALLOWLIST,
         SOURCE_HOSTING_ALLOWLIST,
+        SOURCE_SUITE_ALLOWLIST,
         SOURCE_SYNC_ALLOWLIST,
         chat_engine_sources,
     )
@@ -668,6 +669,8 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert {"engine", "db", "regress", "mcp_server", "orchestrator"} <= set(SOURCE_ALLOWLIST)
     assert "requirements.lock.txt" in SOURCE_ALLOWLIST
     assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
+    assert {"tests", "training", "web", "docs", ".github"} <= set(SOURCE_SUITE_ALLOWLIST)
+    assert "spider" not in SOURCE_SUITE_ALLOWLIST
     assert {
         "Dockerfile.orchestrator",
         "cloudbuild.orchestrator.yaml",
@@ -707,7 +710,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     sync_dockerfile = _text("Dockerfile.sync")
     assert "COPY engine/enrichment/registry.py" in sync_dockerfile
     assert "COPY engine/ /app/engine/" not in sync_dockerfile
-    assert 'choices=("engine", "chat", "sync", "hosting")' in source
+    assert 'choices=("engine", "suite", "chat", "sync", "hosting")' in source
     assert '"build_target": target' in source
     hosting = _text("cloudbuild.hosting.yaml")
     assert "firebase deploy" in hosting
@@ -745,6 +748,17 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
     assert "runtime_startup_seconds" in smoke
     assert "docker rm -f" in smoke
     assert "gcloud run" not in smoke and "terraform" not in smoke
+
+
+def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
+    cloudbuild = _text("cloudbuild.hermetic.yaml")
+    assert "engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482" in cloudbuild
+    assert "docker run --rm --cpus=8 --memory=16g" in cloudbuild
+    assert "--volume /workspace:/src:ro" in cloudbuild
+    assert "--env RUN_ENGINE_TESTS=0" in cloudbuild
+    assert "--env RUN_ORCHESTRATOR_TESTS=0" in cloudbuild
+    assert "-m tests.run_all" in cloudbuild
+    assert "gcloud run" not in cloudbuild and "terraform apply" not in cloudbuild
 
 
 def test_live_database_tests_allocate_production_shaped_schemas():
@@ -1010,6 +1024,7 @@ TESTS = [
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_engine_release_build_runs_the_real_server_until_health_ready,
+    test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image,
     test_live_database_tests_allocate_production_shaped_schemas,
     test_release_installs_only_hash_locked_dependencies,
     test_world_evaluation_records_release_provenance,
