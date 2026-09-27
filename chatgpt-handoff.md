@@ -15,18 +15,20 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ## 2026-09-27 — Expanded the release smoke to import the real server entrypoint
 
-The additional clean Cloud Build completed successfully, so the target Python 3.11/Linux image
-has now imported `engine.server` itself as well as its startup helpers. Commit
-`938adba9791501f3977b775403ceeda750640782` built as Cloud Build
-`49c564f7-a0c6-4422-a028-ae4ff01dc74a`; Artifact Registry independently reports
-`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:129f2614d97a86bc94edcaeca4826800c868b749fa484dad69b0aa837223779e`.
-The build passed the startup imports, model-bundle/interpreter load, and offline regression **13/13**
-(world/live tier skipped). It is an isolated Artifact Registry tag only: no Cloud Run revision or
-traffic changed. The local 7B pool-oracle screen remains active in its separate worktree; its
-memory-intensive scoring is deliberately left untouched. Next safe steps are the lightweight local
-release-contract suite, followed by complex/full model-backed tests and CPU resource measurement
-when that screen releases enough memory. Live Postgres acceptance still needs an explicitly safe
-seeded test target; the production-named instance will not be used for tests.
+I added a post-regression Cloud Build step that launches the actual image entrypoint and polls its
+HTTP health contract, instead of stopping at importability. Commit
+`d30d1872d8ca4b2c3730f5d89b90fdfa6240c972` passed Cloud Build
+`11282f3a-6606-4f36-a7db-a11176110a1b`: offline regression **13/13**, then `engine.server` loaded
+and `/api/healthz` reported `ok/reason/world/dimension=true` in **22 seconds**. Artifact Registry
+independently reports
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:05209bc7baf01efaed96445366042c5da4cc7e2f67e685835dd79e0d323e194a`.
+This is an isolated Artifact Registry image tag only; no Cloud Run revision or traffic changed.
+The health response demonstrates model startup only; it does not establish a live DB connection or
+request-latency/memory SLA. The focused release-contract suite now passes **36/36**, and refreshed
+SQL AST, provenance, decomposition, and compile checks pass **124/124**, **11/11**, **14/14**, and
+compileall, respectively. The independent 7B pool-oracle process remains active in its separate
+worktree and was left untouched. Next are its release of local memory for the complete model-backed
+suite and CPU resource measurement, plus a safe seeded DB target for live product acceptance.
 
 ---
 
@@ -47,7 +49,8 @@ Remaining blockers are still real: the full `tests.run_all` rerun was interrupte
 safety floor during complex model tests while the separate 7B CPU screen ran; the live world/dataset
 gate has no safe staging DB (the only Cloud SQL instance is production-named, and I did not use it);
 the 7B proposer still has no model-matched arbiter; and full-engine CPU latency/peak memory have not
-been measured. The 7B screen had reached 470/1,034 at the last checkpoint. The image build proves
+been measured. Its separate pool-oracle screen is active at **570/1,034** as of 22:45 local time.
+The image build proves
 the current 0.5B runtime/dependency path only, not 7B CPU serving or +10.4-point product lift.
 
 ---

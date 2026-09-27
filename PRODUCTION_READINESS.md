@@ -34,6 +34,14 @@ The separate 80% Spider accuracy work remains in its own worktree.
   Artifact Registry digest is
   `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:129f2614d97a86bc94edcaeca4826800c868b749fa484dad69b0aa837223779e`.
   This is an isolated image tag only; no Cloud Run revision or traffic was changed.
+- The release pipeline then gained a non-deploying runtime health smoke. Commit
+  `d30d1872d8ca4b2c3730f5d89b90fdfa6240c972` passed Cloud Build
+  `11282f3a-6606-4f36-a7db-a11176110a1b`: offline regression 13/13, then the image's real entrypoint
+  loaded the engine and returned `ok/reason/world/dimension=true` from `/api/healthz` in 22 seconds.
+  Its immutable digest is
+  `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:05209bc7baf01efaed96445366042c5da4cc7e2f67e685835dd79e0d323e194a`.
+  This health route reports loaded components, not database connectivity. It was pushed under a
+  unique Artifact Registry tag only; it was not deployed.
 
 ## What is measured
 
@@ -50,6 +58,8 @@ The separate 80% Spider accuracy work remains in its own worktree.
 - The release/provenance suite now passes **35/35** after making artifact downloads manifest-driven
   and rejecting traversal/absolute artifact paths. This ensures a future package's declared files
   are actually fetched; it does not certify the current unmatched GGUF bundle.
+- After adding the runtime-server smoke contract, the release/provenance suite passes **36/36**;
+  refreshed SQL AST, provenance, and decomposition suites pass **124/124**, **11/11**, and **14/14**.
 - After that change, the focused provenance tests passed **11/11**, SQL AST/runtime tests
   **124/124**, and decomposition tests **14/14**. Earlier checks found localhost PostgreSQL
   accepting connections, but the latest check on 2026-09-27 found it down and the
@@ -58,7 +68,8 @@ The separate 80% Spider accuracy work remains in its own worktree.
 - A 7B pool-oracle screen remains active in the accuracy worktree. The first clean offline
   regression attempt against the fetched mainline bundle initialized its model, then was
   interrupted by this worktree when free memory fell below 1 GiB. The screen was left untouched;
-  the full offline gate must be rerun after it exits.
+  the full offline gate must be rerun after it exits. Its latest readable checkpoint is **570/1,034**
+  at 22:45 local time on 2026-09-27; this is an oracle diagnostic, not serving accuracy.
 - The branch's best 7B Spider DEV diagnostic is 755/1,034 (73.0%), versus the main Spider
   baseline 647/1,034 (62.6%): +108 questions, +10.44 percentage points. This is not a
   product-regression result or an unbiased holdout result.
