@@ -8,9 +8,39 @@ steps:
       - -ceu
       - |
         docker run --rm --cpus=8 --memory=16g \
-          --volume /workspace:/src:ro \
-          --workdir /src \
-          --env PYTHONPATH=/app:/src \
+          --volume /workspace/tests:/app/tests:ro \
+          --volume /workspace/training:/app/training:ro \
+          --volume /workspace/web:/app/web:ro \
+          --volume /workspace/docs:/app/docs:ro \
+          --volume /workspace/.github:/app/.github:ro \
+          --volume /workspace/deploy:/app/deploy:ro \
+          --volume /workspace/infra:/app/infra:ro \
+          --volume /workspace/spider/probe:/app/spider/probe:ro \
+          --volume /workspace/world_eval:/app/world_eval:ro \
+          --volume /workspace/mcp_server:/app/mcp_server:ro \
+          --volume /workspace/orchestrator:/app/orchestrator:ro \
+          --volume /workspace/.gcloudignore:/app/.gcloudignore:ro \
+          --volume /workspace/.gitleaks.toml:/app/.gitleaks.toml:ro \
+          --volume /workspace/.python-version:/app/.python-version:ro \
+          --volume /workspace/README.md:/app/README.md:ro \
+          --volume /workspace/requirements.txt:/app/requirements.txt:ro \
+          --volume /workspace/requirements.lock.txt:/app/requirements.lock.txt:ro \
+          --volume /workspace/THIRD_PARTY.md:/app/THIRD_PARTY.md:ro \
+          --volume /workspace/CLAUDE.md:/app/CLAUDE.md:ro \
+          --volume /workspace/DECISIONS.md:/app/DECISIONS.md:ro \
+          --volume /workspace/PRODUCTION_READINESS.md:/app/PRODUCTION_READINESS.md:ro \
+          --volume /workspace/chatgpt-handoff.md:/app/chatgpt-handoff.md:ro \
+          --volume /workspace/claude-handoff.md:/app/claude-handoff.md:ro \
+          --volume /workspace/cloudbuild.yaml:/app/cloudbuild.yaml:ro \
+          --volume /workspace/cloudbuild.hosting.yaml:/app/cloudbuild.hosting.yaml:ro \
+          --volume /workspace/cloudbuild.orchestrator.yaml:/app/cloudbuild.orchestrator.yaml:ro \
+          --volume /workspace/cloudbuild.sync.yaml:/app/cloudbuild.sync.yaml:ro \
+          --volume /workspace/cloudbuild.hermetic.yaml:/app/cloudbuild.hermetic.yaml:ro \
+          --volume /workspace/Dockerfile:/app/Dockerfile:ro \
+          --volume /workspace/Dockerfile.orchestrator:/app/Dockerfile.orchestrator:ro \
+          --volume /workspace/Dockerfile.sync:/app/Dockerfile.sync:ro \
+          --workdir /app \
+          --env PYTHONPATH=/app \
           --env RUN_ENGINE_TESTS=0 \
           --env RUN_ORCHESTRATOR_TESTS=0 \
           --entrypoint python \

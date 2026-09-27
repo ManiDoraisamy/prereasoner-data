@@ -754,7 +754,11 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     cloudbuild = _text("cloudbuild.hermetic.yaml")
     assert "engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482" in cloudbuild
     assert "docker run --rm --cpus=8 --memory=16g" in cloudbuild
-    assert "--volume /workspace:/src:ro" in cloudbuild
+    assert "--volume /workspace/tests:/app/tests:ro" in cloudbuild
+    assert "--volume /workspace/training:/app/training:ro" in cloudbuild
+    assert "--volume /workspace/infra:/app/infra:ro" in cloudbuild
+    assert "--workdir /app" in cloudbuild and "PYTHONPATH=/app" in cloudbuild
+    assert "/workspace/engine:/app/engine" not in cloudbuild
     assert "--env RUN_ENGINE_TESTS=0" in cloudbuild
     assert "--env RUN_ORCHESTRATOR_TESTS=0" in cloudbuild
     assert "-m tests.run_all" in cloudbuild
