@@ -39,6 +39,37 @@ steps:
       - -m
       - regress.run_regression
       - --offline
+  # Exercise the same entrypoint Cloud Run invokes, in the just-built image. This
+  # proves model construction + warmup + HTTP readiness, not just importability.
+  # It deliberately does not call a live database or modify a Cloud Run service.
+  - id: runtime-server-smoke
+    name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
+    entrypoint: bash
+    waitFor: ['regress-offline']
+    args:
+      - -ceu
+      - |
+        image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
+        name=prereasoner-runtime-${BUILD_ID}
+        start=$$(date +%s)
+        trap 'docker logs "$$name" 2>&1 | tail -40 || true; docker rm -f "$$name" >/dev/null 2>&1 || true' EXIT
+        docker run -d --name "$$name" "$$image" >/dev/null
+        for attempt in $$(seq 1 180); do
+          if docker exec "$$name" python -c 'import json,urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/healthz", timeout=2)); assert all(d.get(k) is True for k in ("ok", "reason", "world", "dimension")), d; print(json.dumps(d, sort_keys=True))' >/tmp/prereasoner-health.json 2>/dev/null; then
+            cat /tmp/prereasoner-health.json
+            echo "runtime_startup_seconds=$$(($$(date +%s)-$$start))"
+            exit 0
+          fi
+          running=$$(docker inspect -f '{{.State.Running}}' "$$name" 2>/dev/null || echo false)
+          if [ "$$running" != true ]; then
+            docker logs "$$name" 2>&1 || true
+            echo "server container exited before health readiness" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        echo "server did not become healthy within 360 seconds" >&2
+        exit 1
   # WORLD tier (the world-model-join goldens + tests/ oracle suites) needs the seeded world Postgres. Wire it
   # by connecting Cloud SQL (add the cloud-sql-proxy sidecar or _CLOUDSQL substitution) and passing
   # KB_PG_PASSWORD from Secret Manager, then run `python -m regress.run_regression --require-world`

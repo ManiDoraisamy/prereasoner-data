@@ -726,6 +726,20 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         assert ignore in _text(".gcloudignore")
 
 
+def test_engine_release_build_runs_the_real_server_until_health_ready():
+    cloudbuild = _text("cloudbuild.yaml")
+    smoke = cloudbuild.split("  - id: runtime-server-smoke", 1)[1].split(
+        "  # WORLD tier", 1
+    )[0]
+    assert "waitFor: ['regress-offline']" in smoke
+    assert 'docker run -d --name "$$name" "$$image"' in smoke
+    assert "$$name" in smoke and "docker exec" in smoke
+    assert "/api/healthz" in smoke
+    assert "runtime_startup_seconds" in smoke
+    assert "docker rm -f" in smoke
+    assert "gcloud run" not in smoke and "terraform" not in smoke
+
+
 def test_live_database_tests_allocate_production_shaped_schemas():
     from regress.live_schema import live_schema
 
@@ -988,6 +1002,7 @@ TESTS = [
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
+    test_engine_release_build_runs_the_real_server_until_health_ready,
     test_live_database_tests_allocate_production_shaped_schemas,
     test_release_installs_only_hash_locked_dependencies,
     test_world_evaluation_records_release_provenance,
