@@ -39,6 +39,7 @@ SOURCE_SUITE_ALLOWLIST = (
     "deploy/gcp/build_context.py",
     "deploy/gcp/run_hermetic_suite.sh",
     "deploy/dependency_locks.py",
+    "deploy/dependency_locks.json",
     "deploy/gcp/requirements.lock.txt",
     "deploy/gcp/button.html",
     "deploy/gcp/deploy.sh",
