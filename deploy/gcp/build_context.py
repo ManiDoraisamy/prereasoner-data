@@ -47,6 +47,8 @@ SOURCE_SUITE_ALLOWLIST = (
     "spider/probe/full_eval.py",
     "world_eval/run.py",
     "README.md",
+    "requirements-ci.txt",
+    "requirements-ci.lock.txt",
     "requirements.txt",
     "cloudbuild.hosting.yaml",
     "cloudbuild.orchestrator.yaml",
