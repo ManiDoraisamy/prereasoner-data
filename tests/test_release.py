@@ -728,11 +728,18 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
 
 def test_engine_release_build_runs_the_real_server_until_health_ready():
     cloudbuild = _text("cloudbuild.yaml")
+    offline = cloudbuild.split("  - id: regress-offline", 1)[1].split(
+        "  - id: runtime-server-smoke", 1
+    )[0]
     smoke = cloudbuild.split("  - id: runtime-server-smoke", 1)[1].split(
         "  # WORLD tier", 1
     )[0]
+    assert "--cpus=8" in offline and "--memory=16g" in offline
+    assert "offline_case_latency_ms" in _text("regress/run_regression.py")
+    assert "offline_process_peak_rss_mb" in _text("regress/run_regression.py")
     assert "waitFor: ['regress-offline']" in smoke
-    assert 'docker run -d --name "$$name" "$$image"' in smoke
+    assert "docker run -d --cpus=8 --memory=16g" in smoke
+    assert 'docker run -d --cpus=8 --memory=16g --name "$$name" "$$image"' in smoke
     assert "$$name" in smoke and "docker exec" in smoke
     assert "/api/healthz" in smoke
     assert "runtime_startup_seconds" in smoke

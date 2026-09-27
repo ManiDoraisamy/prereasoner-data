@@ -17,8 +17,10 @@ engine image, where torch + the model weights live — GitHub CI can only compil
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import sys
+import time
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -221,13 +223,15 @@ def run_bundle_checks(eng):
 def run_offline(eng):
     from regress import offline_cases
     print("\n=== OFFLINE tier (non-world text-to-SQL) ===")
-    passed, failed, limits = 0, [], []
+    passed, failed, limits, durations_ms = 0, [], [], []
     for c in offline_cases.CASES:
+        started = time.perf_counter()
         try:
             rows, sql = eng.run([dict(t) for t in c["tables"]], c["question"])
             fails = check(c, rows)
         except Exception as e:                               # noqa: BLE001
             rows, sql, fails = None, None, [f"exception: {type(e).__name__}: {e}"]
+        durations_ms.append((time.perf_counter() - started) * 1000.0)
         tag = "REG " if c.get("regression") else "    "
         if fails and c.get("known_limitation"):
             # A documented gap in the single typed-AST planner (see the case's note). Reported, not a
@@ -243,6 +247,18 @@ def run_offline(eng):
             print(f"  ok   {tag}{c['name']}")
     print(f"  offline: {passed} passed, {len(failed)} failed"
           + (f", {len(limits)} known-limitation ({', '.join(limits)})" if limits else ""))
+    if durations_ms:
+        ordered = sorted(durations_ms)
+        p50 = ordered[max(0, math.ceil(0.50 * len(ordered)) - 1)]
+        p95 = ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)]
+        print(f"  offline_case_latency_ms: n={len(ordered)} p50={p50:.1f} "
+              f"p95={p95:.1f} max={ordered[-1]:.1f}")
+    try:
+        import resource
+        peak_rss_mb = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024.0
+        print(f"  offline_process_peak_rss_mb: {peak_rss_mb:.1f}")
+    except (ImportError, AttributeError, OSError):
+        print("  offline_process_peak_rss_mb: unavailable on this platform")
     return failed
 
 

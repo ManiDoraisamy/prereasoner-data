@@ -33,6 +33,8 @@ steps:
     args:
       - run
       - --rm
+      - --cpus=8
+      - --memory=16g
       - --entrypoint
       - python
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
@@ -53,7 +55,7 @@ steps:
         name=prereasoner-runtime-${BUILD_ID}
         start=$$(date +%s)
         trap 'docker logs "$$name" 2>&1 | tail -40 || true; docker rm -f "$$name" >/dev/null 2>&1 || true' EXIT
-        docker run -d --name "$$name" "$$image" >/dev/null
+        docker run -d --cpus=8 --memory=16g --name "$$name" "$$image" >/dev/null
         for attempt in $$(seq 1 180); do
           if docker exec "$$name" python -c 'import json,urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/healthz", timeout=2)); assert all(d.get(k) is True for k in ("ok", "reason", "world", "dimension")), d; print(json.dumps(d, sort_keys=True))' >/tmp/prereasoner-health.json 2>/dev/null; then
             cat /tmp/prereasoner-health.json
