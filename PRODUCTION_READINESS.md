@@ -42,6 +42,16 @@ The separate 80% Spider accuracy work remains in its own worktree.
   `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:05209bc7baf01efaed96445366042c5da4cc7e2f67e685835dd79e0d323e194a`.
   This health route reports loaded components, not database connectivity. It was pushed under a
   unique Artifact Registry tag only; it was not deployed.
+- Commit `597300ad10e4e8f17328345a9cdf53c423362071` constrained offline and runtime containers to
+  the configured Cloud Run limits (8 vCPU / 16 GiB) and added per-case latency/peak-RSS reporting.
+  Cloud Build `3477f8e6-5a02-49b0-a21e-17a1f680fdf4` passed offline product cases **13/13** at p50
+  **5.28s**, p95/max **12.84s**, with Python process peak RSS **5,373.4 MiB**, then started the real
+  server and passed `/api/healthz` in **16s**. Its digest is
+  `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482`.
+  These results are for the 0.5B mainline bundle, not the 7B diagnostic; 13 cases do not establish
+  a hard request SLA. Read-only inspection shows production revision `prereasoner-api-00236-noz`
+  uses a different image digest (`3cbb0037…`) and is configured for 8 CPU / 16 GiB. This workstream
+  did not alter its traffic or configuration.
 
 ## What is measured
 

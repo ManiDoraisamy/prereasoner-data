@@ -13,6 +13,23 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-27 — CPU envelope gate measured on the production container limits
+
+The follow-up build constrained both offline regression and the actual server container to the
+Cloud Run service's configured **8 vCPU / 16 GiB** limits. Commit
+`597300ad10e4e8f17328345a9cdf53c423362071` passed Cloud Build
+`3477f8e6-5a02-49b0-a21e-17a1f680fdf4`: offline product cases **13/13**, per-case latency
+**p50 5.28s / p95 12.84s / max 12.84s**, Python process peak RSS **5,373.4 MiB**, then actual
+server startup and health in **16 seconds**. Registry digest:
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482`.
+The focused release suite passes **36/36**; refreshed SQL AST, provenance, and decomposition tests
+pass **124/124**, **11/11**, and **14/14**, with compileall and `git diff --check` clean. This
+supports CPU capacity for the **current mainline-matched 0.5B bundle**, but the 13-case sample is not
+a hard latency SLA and it does not validate 7B. The live revision `prereasoner-api-00236-noz` still
+uses a different digest (`3cbb0037…`); this workstream changed no traffic or service config. Live
+world joins/datasets still need an explicitly safe seeded DB. Ruff is not installed in this checkout,
+so lint is not claimed.
+
 ## 2026-09-27 — Expanded the release smoke to import the real server entrypoint
 
 I added a post-regression Cloud Build step that launches the actual image entrypoint and polls its
@@ -24,11 +41,10 @@ independently reports
 `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:05209bc7baf01efaed96445366042c5da4cc7e2f67e685835dd79e0d323e194a`.
 This is an isolated Artifact Registry image tag only; no Cloud Run revision or traffic changed.
 The health response demonstrates model startup only; it does not establish a live DB connection or
-request-latency/memory SLA. The focused release-contract suite now passes **36/36**, and refreshed
-SQL AST, provenance, decomposition, and compile checks pass **124/124**, **11/11**, **14/14**, and
-compileall, respectively. The independent 7B pool-oracle process remains active in its separate
-worktree and was left untouched. Next are its release of local memory for the complete model-backed
-suite and CPU resource measurement, plus a safe seeded DB target for live product acceptance.
+request-latency/memory SLA. The focused release-contract suite passes **36/36**, and refreshed SQL
+AST, provenance, and decomposition tests pass **124/124**, **11/11**, and **14/14**. The independent
+7B pool-oracle process remains active in its separate worktree and was left untouched. Live
+world joins/datasets still need an explicitly safe seeded DB.
 
 ---
 
