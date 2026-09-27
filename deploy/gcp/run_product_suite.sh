@@ -32,7 +32,7 @@ docker run --rm --volume "$node_volume:/node" node:22-bookworm-slim@sha256:43ac6
   sh -ceu 'cp "$(command -v node)" /node/node; chmod 0555 /node/node'
 
 docker run -d --name "$db_name" --network "$network" --network-alias product-db \
-  --cpus=4 --memory=5g --shm-size=3g \
+  --cpus=4 --memory=5g --memory-swap=5g --shm-size=3g \
   --volume "$volume:/var/lib/postgresql/data" \
   --volume /workspace/db/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro \
   --env POSTGRES_DB=world --env POSTGRES_USER=postgres --env "POSTGRES_PASSWORD=$db_password" \
@@ -76,11 +76,9 @@ subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
 print(f"runtime_python={sys.version.split()[0]}", flush=True)
 PY
 
-# Require the full production world-regression tier; a missing seed or silently skipped tier fails.
-docker run --rm --network "$network" --cpus=8 --memory=10g \
-  --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
-  --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
-  --entrypoint python "$image" -m regress.run_regression --require-world
+# HNSW restore needs a 2 GB build allocation; serving/query suites do not. Shrink the disposable
+# database's cgroup budget after seeding so it can coexist with the multi-GB CPU model process.
+docker update --memory=2g --memory-swap=2g "$db_name" >/dev/null
 
 # Run the complete current test source against the seed using the production image's Python 3.11
 # and model bundle. RUN_ENGINE_TESTS=1 is deliberate: any skipped live suite is a failed gate.
@@ -90,6 +88,7 @@ docker run --rm --network "$network" --cpus=8 --memory=16g \
   --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
   --env RUN_ENGINE_TESTS=1 --env RUN_ORCHESTRATOR_TESTS=0 \
   --env INSTALL_CI_REQUIREMENTS=0 \
+  --env RUN_WORLD_REGRESSION=1 \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
   --env AUTH_TEST_SUB=localdev \

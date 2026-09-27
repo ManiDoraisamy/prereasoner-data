@@ -284,6 +284,12 @@ def main():
     print("\nloading engine (Qwen LoRA + relational readout)...", flush=True)
     eng = Engine()
     off_failed = run_bundle_checks(eng) + run_offline(eng) + unit_failed
+    # The live tier constructs its own KnowledgeReasoner. Keeping this offline Engine alive would
+    # retain a second multi-GB CPU model during the world run and can OOM a production-sized worker.
+    del eng
+    import gc
+    gc.collect()
+    print("offline_engine_released=true", flush=True)
 
     world_failed, skipped = ([], True)
     if not args.offline:

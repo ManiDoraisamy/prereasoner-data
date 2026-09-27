@@ -24,10 +24,14 @@ installing/upgrading dependencies, then starts its real CPU-only HTTP server und
 limit and checks three known `/api/reason` totals while collecting latency and container stats.
 
 The DB, volume, network, and server are build-local and removed by an exit trap; no Cloud SQL API or
-production connection is used. Docker Hub's pgvector/pg16 Linux/amd64 image is digest-pinned.
-`tests.test_release` is now **38/38**, and the runner passes Bash syntax validation. This is code
-wired but not yet a live gate result; I’m preparing its clean archived source and will report the
-Cloud Build result before calling this blocker closed. No production image/configuration changed.
+production connection is used. Docker Hub's pgvector/pg16 Linux/amd64 image is digest-pinned. First
+Cloud Build `5d25edb8-ac1b-4443-a3fe-42b31cd17311` downloaded the seed, initialized the DB, loaded
+the model bundle, and passed all 13 offline cases; it then exited **137** when the live regression
+constructed a second model while retaining the offline model. This exposed a real test-runner memory
+bug: `regress.run_regression` did not release its offline engine before starting the world tier. I
+fixed that and will cap Postgres at 2 GiB after restore (the restore itself needs its temporary 2 GiB
+HNSW build allowance). The first run is a failure, not a product pass. Local release contracts are
+38/38; no production image/configuration changed.
 
 ## 2026-09-28 — Clean full hermetic suite passes in the pinned target image
 

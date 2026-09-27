@@ -31,4 +31,8 @@ subprocess.run([
 ], check=True)
 PY
 
+if [ "${RUN_WORLD_REGRESSION:-0}" = "1" ]; then
+  python -m regress.run_regression --require-world
+fi
+
 exec python -m tests.run_all
