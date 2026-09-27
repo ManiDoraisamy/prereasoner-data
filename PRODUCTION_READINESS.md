@@ -28,8 +28,12 @@ The separate 80% Spider accuracy work remains in its own worktree.
   It is tagged in Artifact Registry only—no Cloud Run revision or traffic change—and contains the
   matched 0.5B bundle, not a 7B model-matched selector.
 - After that build, the offline startup smoke was strengthened to import `engine.server` itself,
-  not only its helper modules. The expanded invariant passed locally; its repeat in a clean Linux/
-  Python 3.11 build is queued and not yet claimed.
+  not only its helper modules. Commit `938adba9791501f3977b775403ceeda750640782` passed in clean
+  Cloud Build `49c564f7-a0c6-4422-a028-ae4ff01dc74a`: server/startup imports passed, the model bundle
+  and interpreter loaded, and the offline product gate passed 13/13 (world/live tier skipped). Its
+  Artifact Registry digest is
+  `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:129f2614d97a86bc94edcaeca4826800c868b749fa484dad69b0aa837223779e`.
+  This is an isolated image tag only; no Cloud Run revision or traffic was changed.
 
 ## What is measured
 
@@ -43,7 +47,7 @@ The separate 80% Spider accuracy work remains in its own worktree.
   first five suites but was interrupted in `test_complex_datasets` at the memory safety floor while
   the separate 7B job was active. It is incomplete, not green. The focused SQL AST suite passes
   124/124.
-- The release/provenance suite now passes **34/34** after making artifact downloads manifest-driven
+- The release/provenance suite now passes **35/35** after making artifact downloads manifest-driven
   and rejecting traversal/absolute artifact paths. This ensures a future package's declared files
   are actually fetched; it does not certify the current unmatched GGUF bundle.
 - After that change, the focused provenance tests passed **11/11**, SQL AST/runtime tests

@@ -15,13 +15,18 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ## 2026-09-27 — Expanded the release smoke to import the real server entrypoint
 
-The Cloud Build proved the pinned Linux/Python 3.11 image and offline regression, but the
-startup/import invariant list did not import `engine.server` itself. I added the actual process
-entrypoint to `regress.run_regression`'s lightweight startup checks. Running those checks locally
-passed, including server import and the FK invariants; Python 3.11 compileall also passed. This
-change is committed with the current handoff/docs and is queued for a second clean Cloud Build so
-the real entrypoint import is exercised inside the production Python 3.11 image. This remains a
-non-traffic build; no Cloud Run changes.
+The additional clean Cloud Build completed successfully, so the target Python 3.11/Linux image
+has now imported `engine.server` itself as well as its startup helpers. Commit
+`938adba9791501f3977b775403ceeda750640782` built as Cloud Build
+`49c564f7-a0c6-4422-a028-ae4ff01dc74a`; Artifact Registry independently reports
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:129f2614d97a86bc94edcaeca4826800c868b749fa484dad69b0aa837223779e`.
+The build passed the startup imports, model-bundle/interpreter load, and offline regression **13/13**
+(world/live tier skipped). It is an isolated Artifact Registry tag only: no Cloud Run revision or
+traffic changed. The local 7B pool-oracle screen remains active in its separate worktree; its
+memory-intensive scoring is deliberately left untouched. Next safe steps are the lightweight local
+release-contract suite, followed by complex/full model-backed tests and CPU resource measurement
+when that screen releases enough memory. Live Postgres acceptance still needs an explicitly safe
+seeded test target; the production-named instance will not be used for tests.
 
 ---
 
