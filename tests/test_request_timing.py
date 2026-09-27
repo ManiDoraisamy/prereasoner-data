@@ -148,6 +148,24 @@ def test_no_user_data_in_the_line():
     assert "upload_rows=42" in out, f"counts are fine, content is not: {out}"
 
 
+def test_slow_sql_fingerprint_never_carries_uploaded_cells():
+    """execute_values sends the uploaded-sheet INSERT as bytes, literals included. str() of bytes is its
+    repr, whose escaped quotes the literal pattern never matched, so a slow upload logged the sheet's
+    cells ('sql=b?management\\?single\\?...'; three production lines on 2026-09-24)."""
+    from engine.pg import _sql_fingerprint
+
+    statement = ('INSERT INTO "c_1"."bank" VALUES '
+                 "('management','single',42,'it''s'),('admin.','married',7.5,'O''Brien')")
+    for form in (statement, statement.encode("utf-8"), bytearray(statement.encode("utf-8"))):
+        fingerprint = _sql_fingerprint(form)
+        assert fingerprint == 'INSERT INTO "c_1"."bank" VALUES (?,?,?,?),(?,?,?,?)', (type(form), fingerprint)
+    # A statement object whose repr is not SQL is named, never printed.
+    class Composed:
+        def __repr__(self):
+            return "Composed([Literal(\"Holmes's pipe\")])"
+    assert _sql_fingerprint(Composed()) == "<Composed>"
+
+
 def test_unattributed_time_is_published():
     """Span self-times cover only instrumented work; the remainder must be visible, or the biggest
     span reads as 'the cost' while uninstrumented time hides."""
@@ -222,6 +240,7 @@ TESTS = [
     test_instrumentation_is_inert_outside_a_request,
     test_span_returns_the_wrapped_value_and_reraises,
     test_no_user_data_in_the_line,
+    test_slow_sql_fingerprint_never_carries_uploaded_cells,
     test_unattributed_time_is_published,
     test_span_count_and_explicit_count_share_one_key,
     test_single_call_phase_prints_no_count,

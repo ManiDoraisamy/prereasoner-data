@@ -68,8 +68,18 @@ _REDACT_NUMBERS = re.compile(r"\b\d+(?:\.\d+)?\b")
 def _sql_fingerprint(query):
     """A privacy-safe template of one statement: string literals and numbers become '?', whitespace
     collapses. What remains is the STRUCTURE (verbs, tables, columns) — enough to find the code
-    path, nothing of the user's cells or question."""
-    text = query if isinstance(query, str) else str(query)
+    path, nothing of the user's cells or question.
+
+    execute_values sends a whole statement, literals included, as bytes. str() of bytes is its repr,
+    whose escaped quotes the literal pattern never matched, so uploaded cells reached the log line
+    (three production lines on 2026-09-24). Bytes are decoded first; any other statement object is
+    named by its type only, because its repr is not SQL the patterns can redact."""
+    if isinstance(query, (bytes, bytearray, memoryview)):
+        text = bytes(query).decode("utf-8", "replace")
+    elif isinstance(query, str):
+        text = query
+    else:
+        return f"<{type(query).__name__}>"
     text = _REDACT_STRINGS.sub("?", text)
     text = _REDACT_NUMBERS.sub("?", text)
     return " ".join(text.split())[:140]
