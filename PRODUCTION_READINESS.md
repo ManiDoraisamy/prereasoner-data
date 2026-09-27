@@ -1,0 +1,142 @@
+# Production-readiness workstream
+
+Status as of 2026-09-27: isolated refactor and backward-compatibility checks are in
+progress on branch `codex/prod-readiness`. Nothing has been merged, promoted, or deployed.
+The separate 80% Spider accuracy work remains in its own worktree.
+
+### Latest release work (2026-09-27)
+
+- The public mainline bundle was fetched in this checkout only from the immutable source in
+  `engine/data/weights_manifest.json`; Python 3.11 validated its complete fingerprint as
+  `1400e39e1dec7da7ca0648c5c8e4bbcc41417a0ede1df39acf69cd4a5c7956ce`.
+- `engine.fetch_weights` now refuses repository/revision overrides and mutable revisions. The
+  focused release suite passes 35/35 after this change; Python 3.11 compiled `engine`, `db`,
+  `regress`, and `tests` successfully.
+- The complete offline regression subsequently passed: engine invariants, Schema.org interpreter
+  bundle load, and 13/13 non-world product cases. Its final line says `world tier skipped`; it is
+  not full product acceptance. The earlier attempt that stopped below 1 GiB did not count as a pass.
+  The separate 7B job was not modified.
+- The former live dataset-test worker is no longer running. This checkout has no
+  `KB_PG_PASSWORD`, and localhost port 5432 currently refuses connections; live Postgres/world
+  acceptance therefore remains blocked on its seeded database and credentials.
+- Docker and WSL are unavailable in this Windows environment, so an actual clean Linux/Python 3.11
+  container build has not been verified. No deployment or promotion has occurred.
+
+## What is measured
+
+- Main's shipped 0.5B/arbiter bundle remains the reference product path. In this worktree,
+  `python -m regress.run_regression --offline` passed its invariants, model-bundle check,
+  and all 13 offline non-world product cases. The live Postgres/world tier was skipped;
+  this machine has no `KB_PG_PASSWORD` configured.
+- An earlier `tests.run_all` run passed all 31 configured suites with the live-engine and
+  external-orchestrator tiers explicitly disabled; it used a dummy `ANTHROPIC_API_KEY` because one
+  test checks request plumbing while mocking the model call. The latest full-suite rerun passed its
+  first five suites but was interrupted in `test_complex_datasets` at the memory safety floor while
+  the separate 7B job was active. It is incomplete, not green. The focused SQL AST suite passes
+  124/124.
+- The release/provenance suite now passes **34/34** after making artifact downloads manifest-driven
+  and rejecting traversal/absolute artifact paths. This ensures a future package's declared files
+  are actually fetched; it does not certify the current unmatched GGUF bundle.
+- After that change, the focused provenance tests passed **11/11**, SQL AST/runtime tests
+  **124/124**, and decomposition tests **14/14**. Earlier checks found localhost PostgreSQL
+  accepting connections, but the latest check on 2026-09-27 found it down and the
+  `tests.test_datasets` process gone. No final result from that process is available, so it is not
+  counted as a pass.
+- A 7B pool-oracle screen remains active in the accuracy worktree. The first clean offline
+  regression attempt against the fetched mainline bundle initialized its model, then was
+  interrupted by this worktree when free memory fell below 1 GiB. The screen was left untouched;
+  the full offline gate must be rerun after it exits.
+- The branch's best 7B Spider DEV diagnostic is 755/1,034 (73.0%), versus the main Spider
+  baseline 647/1,034 (62.6%): +108 questions, +10.44 percentage points. This is not a
+  product-regression result or an unbiased holdout result.
+- The 7B diagnostic used one prompt variant, neutral likelihoods, and the existing arbiter
+  fitted on the 0.5B proposer with a four-beam pool. It is not a model-matched serving bundle.
+  The measured local one-variant proposer median was 8.84 seconds; 149/200 calls met the
+  12-second soft target. This is not a full-engine or Cloud Run latency result.
+- A self-contained diagnostic bundle was built from the frozen 7B base/LoRA and tokenizer, with
+  artifact hashes pinned in its runtime and weight manifests. With `n_gpu_layers=0`,
+  `python -m regress.run_regression --offline` against it passed 13/13 non-world fixtures.
+  This is a candidate-specific CPU integration check, not the full acceptance gate: the copied
+  arbiter was marked unmatched, the run used explicit test mode, and the live Postgres/world
+  tier was skipped. The focused SQL AST/runtime contract suite passed 124/124. llama.cpp emitted
+  CPU_REPACK fallback notices for LoRA tensors; generation completed, but this run established no
+  latency or memory SLA.
+- After fixing the bundle builder and decomposition fallback below, the self-contained 7B
+  diagnostic bundle passed `tests.test_complex_datasets` **7/7** and
+  `tests.test_schema_coverage` **15/15**. Its offline CPU product regression passed **13/13**.
+  A subsequent full `tests.run_all` run passed 30 configured suites; the complex suite's final
+  two model-backed cases could not initialize llama.cpp (`Failed to load model from file`) while
+  a separate 7B CPU-screen process was consuming memory. The same complex suite passed 7/7 as a
+  standalone run before that memory-contended full run. This full-suite run is therefore not
+  green and must be repeated on an adequately provisioned idle runner. The default `engine/data`
+  bundle is absent from this isolated checkout (its model files are ignored), so its regression
+  cannot be replayed here without importing files from another worktree. No live Postgres/world
+  result is available.
+
+## Refactor work in this branch
+
+The serving call site remains one `SQLProposer` interface. A hash-pinned GGUF CPU runtime is
+dispatched through its runtime manifest; the existing HF/PEFT bundle remains the default
+when no GGUF runtime manifest is present. The runtime path validates artifact hashes, exact
+beam/token contracts, SQL import/AST validation, and preserves multiline SQL. It preserves
+the model's declared chat-template thinking mode rather than silently changing it.
+
+The loader now verifies the proposer identity against the arbiter's fit provenance. For GGUF,
+the runtime manifest must also be pinned by `weights_manifest.json`; an artifact cannot assert
+`model_matched_arbiter=true` unless its adapter identity and likelihood protocol agree with the
+arbiter fit. Unmatched GGUF/arbiter pairs are refused outside explicit development/test mode.
+Regression coverage includes these refusals, hash pins, exact candidate counts, and multiline
+output handling.
+
+The artifact fetcher previously duplicated the current nine download paths in source, even though
+the authoritative bundle contract is `weights_manifest.json`. That would make future matched
+packages with a GGUF base/adapter or an additional selector fail on a clean install unless the
+fetcher were separately edited. It now derives downloads from the manifest's hash-pinned `files`
+map and rejects absolute/traversal paths and malformed digests. A focused regression verifies
+that new manifest entries are fetched and unsafe paths are refused. The diagnostic package builder
+had a related defect: it copied GGUF/tokenizer files locally without adding them to the manifest,
+so a clean build could silently omit the files. It now pins every copied runtime file, marks the
+bundle unpublished/local-only, and refuses a misleading HF revision. A small synthetic package
+test verifies the full contract. These changes make packaging auditable; they do not publish or
+endorse the current unmatched diagnostic bundle.
+
+The complex product fixture uncovered a real decomposition seam: a highest-ranked proposal
+could fail deterministic dual-lowering even when another ranked pool member was compilable. The
+compiler now tries the ranked pool in order, preserving the existing SQL guard, named-measure,
+ranked-grain, cutoff, typed-AST, and dual-emitter checks. A second fixture showed every generated
+candidate for “top product category names by revenue” grouped by both category and product. For
+cross-input measure rankings only, a narrow typed-AST projection now drops a uniquely named
+extra group key, keeps the requested entity and the ORDER BY measure, validates the new AST, and
+records provenance evidence. Ambiguous nouns, non-measure ranking, and unsafe projections do
+not rewrite. Regression tests cover both accepted rewrites and rejected ambiguity. The focused
+decomposition suite passes **14/14**; the top-category fixture also passes when rerun against
+the final projection tightening. SQL AST/runtime contract tests pass **124/124**.
+
+## Not ready to claim or promote
+
+The self-contained diagnostic bundle passed its 13-case offline CPU gate and, after the
+decomposition fix, all seven complex product fixtures in a standalone run. It is still not a
+serving candidate:
+its one-output pool and neutral-likelihood features do not match the four-beam,
+likelihood-scored arbiter contract, and it is explicitly refused outside development/test mode.
+The diagnostic package helper is now correct, but the diagnostic GGUF files are still not in the
+repository's production manifest or public artifact revision. The bundle includes a hash-pinned
+tokenizer snapshot, but the CPU `llama-cpp-python` runtime is not pinned
+in the serving dependency lock or verified on the production Python version/image. llama.cpp
+reported CPU_REPACK fallback for LoRA tensors, and no latency or memory SLA was measured.
+
+The remaining acceptance work, still isolated from main, is:
+
+1. Repeat the full offline suite on an idle target-like runner; separately rerun the complex
+   fixture suite against the final tree after the last projection-tightening change.
+2. Train/calibrate a model-matched selector on the candidate's actual proposal/scoring
+   distribution, and package it with the exact candidate, tokenizer, and prompt/pool contract.
+3. Add the runtime artifact to the normal production fetch manifest and pin `llama-cpp-python`
+   in the serving dependency lock; verify a clean clone can fetch and load it on the production
+   Python version/image.
+4. Run proposer/arbiter parity and selected-SQL checks on fixed product fixtures; reject any
+   mismatch rather than relaxing loader guards.
+5. Run the full offline regression against the frozen matched candidate, then the live
+   Postgres/world product tier once its seeded database and credentials are available.
+6. Measure complete-engine CPU latency and peak memory on the target runtime, not just isolated
+   proposal time. A failing or incomplete gate stays unpromoted; main remains unchanged.

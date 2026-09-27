@@ -8,17 +8,19 @@ Everything the serving engine opens at runtime lives here (override the location
 ```
 python -m engine.fetch_weights
 ```
-This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `sql_proposer/`, `anchor_assignment.npz`,
-`primitives.npz`, and `schema_property_head.pt` into this directory (see
-`engine/fetch_weights.py`). `weights_manifest.json` pins the
+This downloads every file listed under `files` in `weights_manifest.json` into this directory
+(currently `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `sql_proposer/`, `anchor_assignment.npz`,
+`primitives.npz`, and `schema_property_head.pt`; see `engine/fetch_weights.py`). The fetcher stages
+the declared set and validates hashes before installation. `weights_manifest.json` pins the
 source revision and SHA-256 of every runtime weight; both existing and downloaded bundles
 must validate completely before use. The default source repo is the public
 **[`prereasoner/prereasoner-weights`](https://huggingface.co/prereasoner/prereasoner-weights)**;
 no account or token is required. Override it with `PREREASONER_WEIGHTS_REPO`; set `HF_TOKEN` only when
 the replacement repository requires authentication. After retraining, first run
-`python -m training.props.promote --local-only` and complete local gates. Upload those exact large files,
-then run `python -m training.props.promote --revision <immutable-hf-commit>` and commit the updated
-manifest. A local-only manifest intentionally refuses fresh-clone download. To retrain from scratch, see
+`python -m training.props.promote --local-only` and complete local gates. Upload exactly the paths
+from `weights_manifest.json`'s `files` map (not a separate glob list), then run
+`python -m training.props.promote --revision <immutable-hf-commit>` and commit the updated manifest.
+A local-only manifest intentionally refuses fresh-clone download. To retrain from scratch, see
 `docs/TRAINING.md`.
 
 | File | Size | Purpose | In git? |

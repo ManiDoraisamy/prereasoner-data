@@ -66,14 +66,42 @@ def load_sql_selection(obj, deploy_dir=DATA_DIR):
     """The own-data SQL selection models (engine/data, pinned by weights_manifest.json): the
     fitted arbiter (sql_arbiter.json) and the proposer adapter it was fit with (sql_proposer/).
     The arbiter's pool contract fixes how many beams the proposer decodes."""
+    import json
     from pathlib import Path
-    from engine.sql_proposer import SQLProposer
+
+    from engine.artifact_provenance import (
+        adapter_sha256,
+        load_weights_manifest,
+        sha256_file,
+    )
+    from engine.sql_proposer import (
+        SQLProposer,
+        validate_proposer_arbiter_contract,
+        validate_proposer_runtime_pin,
+    )
     from engine.sql_rank import SQLArbiter
     d = Path(deploy_dir)
-    obj.sql_arbiter = SQLArbiter.load(d / "sql_arbiter.json")
+    arbiter_path = d / "sql_arbiter.json"
+    arbiter_payload = json.loads(arbiter_path.read_text(encoding="utf-8"))
+    obj.sql_arbiter = SQLArbiter.from_payload(arbiter_payload, str(arbiter_path))
+    runtime_path = d / "sql_proposer" / "runtime.json"
+    if runtime_path.is_file():
+        manifest = load_weights_manifest(d)
+        if manifest is None:
+            raise ValueError("GGUF proposer runtime requires a hash-pinned weights manifest")
+        validate_proposer_runtime_pin(manifest, sha256_file(runtime_path))
+        proposer_identity = json.loads(runtime_path.read_text(encoding="utf-8"))
+    else:
+        proposer_identity = {
+            "backend": "huggingface-peft",
+            "adapter_sha256": adapter_sha256(d / "sql_proposer"),
+        }
+    validate_proposer_arbiter_contract(
+        arbiter_payload, proposer_identity, sha256_file(arbiter_path)
+    )
     obj.sql_proposer = SQLProposer.load(
         d / "sql_proposer", beams=obj.sql_arbiter.proposer_beams,
-        max_new_tokens=obj.sql_arbiter.proposer_max_new_tokens, device=DEVICE,
+        max_new_tokens=obj.sql_arbiter.proposer_max_new_tokens, device=DEVICE, data_dir=d,
     )
 
 

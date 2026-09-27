@@ -109,6 +109,176 @@ def test_fresh_weight_fetch_stages_committed_artifacts():
         _stage_committed_artifacts(source, staging, manifest)
         assert validate_weight_bundle(staging, manifest)
 
+        escaping_manifest = {
+            "version": 1,
+            "files": {},
+            "committed_artifacts": {
+                "../outside.json": {"sha256": "0" * 64}
+            },
+        }
+        try:
+            _stage_committed_artifacts(source, staging, escaping_manifest)
+        except ValueError as exc:
+            assert "not relative and safe" in str(exc)
+        else:
+            raise AssertionError("committed artifact staging accepted a path escape")
+
+
+def test_weight_fetch_paths_follow_manifest_and_reject_path_escape():
+    from engine.artifact_provenance import validate_weight_bundle
+    from engine.fetch_weights import _downloadable_files, _validate_fetch_source
+
+    manifest = {
+        "files": {
+            "encoder.pt": "a" * 64,
+            "sql_proposer/base.gguf": "b" * 64,
+            "sql_proposer/runtime.json": "c" * 64,
+        }
+    }
+    assert _downloadable_files(manifest) == (
+        "encoder.pt", "sql_proposer/base.gguf", "sql_proposer/runtime.json",
+    )
+    for unsafe in (
+        "../outside.bin", "nested/../../outside.bin", r"nested\outside.bin",
+        "C:/outside.bin", "./model.bin", "nested//file.bin", "nested/", ".",
+    ):
+        try:
+            _downloadable_files({"files": {unsafe: "a" * 64}})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted unsafe artifact path: {unsafe!r}")
+
+    source_manifest = {
+        "repository": "example/weights",
+        "revision": "a" * 40,
+    }
+    _validate_fetch_source(source_manifest, "example/weights", "a" * 40)
+    for repo, revision in (
+        ("other/weights", "a" * 40),
+        ("example/weights", "main"),
+        ("example/weights", "b" * 40),
+        ("example/weights", None),
+    ):
+        try:
+            _validate_fetch_source(source_manifest, repo, revision)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted non-manifest fetch source: {repo}@{revision}")
+
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            validate_weight_bundle(directory, {"version": 1, "files": {"model.bin": "not-a-hash"}})
+        except RuntimeError as exc:
+            assert "invalid SHA-256" in str(exc)
+        else:
+            raise AssertionError("accepted a manifest with a malformed artifact digest")
+
+
+def test_cached_weight_fetch_does_not_silently_ignore_source_override():
+    from engine.artifact_provenance import sha256_file
+    from engine.fetch_weights import main
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        model = root / "model.bin"
+        model.write_bytes(b"already verified")
+        manifest = {
+            "version": 1,
+            "repository": "example/weights",
+            "revision": "a" * 40,
+            "files": {"model.bin": sha256_file(model)},
+        }
+        with (
+            patch("engine.fetch_weights._MANIFEST", manifest),
+            patch("engine.fetch_weights.DATA_DIR", root),
+            patch("sys.argv", ["fetch_weights", "--repo", "other/weights"]),
+        ):
+            assert main() == 2
+
+
+def test_gguf_diagnostic_package_manifests_every_runtime_file_as_local_only():
+    from argparse import Namespace
+
+    from engine.artifact_provenance import (
+        sha256_file,
+        validate_weight_bundle,
+        write_json_artifact,
+    )
+    from training.proposer.package_gguf_diagnostic import package
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "source"
+        source.mkdir()
+        (source / "model.bin").write_bytes(b"old-model")
+        arbiter = {"fit": {"proposer_adapter_sha256": "old-adapter"}, "pool": {}}
+        write_json_artifact(source / "sql_arbiter.json", arbiter)
+        manifest = {
+            "version": 1,
+            "repository": "example/weights",
+            "revision": "a" * 40,
+            "files": {"model.bin": sha256_file(source / "model.bin")},
+            "committed_artifacts": {
+                "sql_arbiter.json": {
+                    "note": "fixture",
+                    "sha256": sha256_file(source / "sql_arbiter.json"),
+                }
+            },
+        }
+        write_json_artifact(source / "weights_manifest.json", manifest, indent=2)
+
+        base = root / "base.gguf"
+        adapter = root / "adapter.gguf"
+        base.write_bytes(b"base")
+        adapter.write_bytes(b"adapter")
+        tokenizer = root / "tokenizer"
+        tokenizer.mkdir()
+        (tokenizer / "tokenizer.json").write_text("{}", encoding="utf-8")
+        contract = root / "contract.json"
+        write_json_artifact(contract, {
+            "selected_peft_adapter_sha256": "selected-adapter",
+            "base_gguf_sha256": sha256_file(base),
+            "lora_gguf_sha256": sha256_file(adapter),
+            "base_model": "fixture/model",
+            "base_revision": "b" * 40,
+            "variant_count": 1,
+            "max_new_tokens": 256,
+        })
+        output = root / "output"
+        args = Namespace(
+            source_bundle=source,
+            output_bundle=output,
+            base_gguf=base,
+            lora_gguf=adapter,
+            tokenizer_snapshot=tokenizer,
+            source_contract=contract,
+            tokenizer_model_id="fixture/model",
+            tokenizer_revision="b" * 40,
+            prompt_variant=["return one SQL query"],
+            max_new_tokens=256,
+            context_tokens=8192,
+            cpu_threads=8,
+            lora_scale=1.0,
+            system_prompt="SQL only",
+            thinking=None,
+        )
+        package(args)
+
+        packaged = json.loads((output / "weights_manifest.json").read_text(encoding="utf-8"))
+        from engine.fetch_weights import _downloadable_files
+
+        assert packaged["revision"] is None
+        assert packaged["unpublished_local"] is True
+        assert {
+            "sql_proposer/diagnostic_gguf/base.gguf",
+            "sql_proposer/diagnostic_gguf/adapter.gguf",
+            "sql_proposer/diagnostic_gguf/tokenizer/tokenizer.json",
+        } <= set(packaged["files"])
+        assert _downloadable_files(packaged) == tuple(sorted(packaged["files"]))
+        assert validate_weight_bundle(output)
+
 
 def test_supported_model_stack_is_security_baseline():
     serving = _text("requirements.txt")
@@ -798,6 +968,9 @@ TESTS = [
     test_spider_evaluator_supports_module_invocation,
     test_public_weight_bundle_is_manifested_and_documented,
     test_fresh_weight_fetch_stages_committed_artifacts,
+    test_weight_fetch_paths_follow_manifest_and_reject_path_escape,
+    test_cached_weight_fetch_does_not_silently_ignore_source_override,
+    test_gguf_diagnostic_package_manifests_every_runtime_file_as_local_only,
     test_supported_model_stack_is_security_baseline,
     test_privacy_is_a_published_route_not_a_request_dialog,
     test_external_model_deployment_fails_closed,

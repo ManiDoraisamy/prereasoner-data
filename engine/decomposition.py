@@ -167,7 +167,12 @@ def ranked_measure_projected(candidate):
     no row and no order, so this is the same query, not another reading.
     """
     from engine.sql_ast import (
-        Aggregate, ASTValidationError, SelectItem, SelectQuery, render_query, validate_query,
+        Aggregate,
+        ASTValidationError,
+        SelectItem,
+        SelectQuery,
+        render_query,
+        validate_query,
     )
     from engine.sql_candidate import ScoredQuery
 
@@ -190,24 +195,122 @@ def ranked_measure_projected(candidate):
                        candidate.evidence + ("leaf:ranked-measure-projected",))
 
 
-def leaf_candidate(selection, node_id: str, question: str, feeds_cross: bool):
-    """The one query a decomposition leaf serves, or None when no single query can.
+def ranked_entity_projected(candidate, node_id: str, question: str, feeds_cross: bool):
+    """Project an over-detailed grouped ranking to its explicitly named entity.
 
-    Single queries are read in the arbiter's order, its choice first, each names-only ranking
-    with its measure projected. The first reading that satisfies the leaf contract is served:
-    it sums, and ranks by, the measure the question names, at the ranked entity's grain. When
-    none does, the arbiter's own reading is returned so the contract's rejection names the
-    concrete defect.
+    A cross-input ranking must represent one ranked entity plus its measure. If the typed
+    proposal groups a named category by both category and product, the leaf wording can
+    identify the requested head noun; dropping that extra group key computes the requested
+    category total rather than changing the merge grain. The rewrite is deliberately narrow:
+    exactly one group key must match the ranking head noun, the query must be a limited
+    aggregate ranking, and its projection/order must remain representable after projection.
+    """
+    from engine.sql_ast import (
+        Aggregate,
+        ASTValidationError,
+        ColumnRef,
+        SelectQuery,
+        render_query,
+        validate_query,
+    )
+    from engine.sql_candidate import ScoredQuery
+    from engine.sql_expansion import name_tokens, tokens
+
+    query = candidate.query
+    if (not feeds_cross or not isinstance(query, SelectQuery) or query.having is not None
+            or query.limit is None or len(query.group_by) <= 1
+            or not any(isinstance(term.expression, Aggregate) for term in query.order_by)):
+        return None
+    words = list(tokens(question))
+    rank_at = next((index for index, word in enumerate(words)
+                    if word in {"top", "bottom", "highest", "lowest", "most", "least"}), None)
+    if rank_at is None:
+        return None
+    by_at = next((index for index in range(rank_at + 1, len(words))
+                  if words[index] == "by"), None)
+    if by_at is None:
+        return None
+    entity_words = words[rank_at + 1:by_at]
+    while entity_words and (entity_words[0].isdigit()
+                            or entity_words[0] in {"the", "a", "an"}):
+        entity_words.pop(0)
+    if any(word in {"and", "or"} for word in entity_words):
+        return None
+    if entity_words and entity_words[-1] in {"name", "names", "entity", "entities"}:
+        entity_words.pop()
+    if not entity_words:
+        return None
+    head = entity_words[-1]
+    matches = [
+        group for group in query.group_by
+        if isinstance(group, ColumnRef) and head in name_tokens(group.name)
+    ]
+    if len(matches) != 1:
+        return None
+    entity = matches[0]
+    # Do not silently change an ordering or projection that depends on the discarded key.
+    if any(
+        not isinstance(term.expression, Aggregate) and term.expression != entity
+        for term in query.order_by
+    ):
+        return None
+    ranking_measures = {
+        term.expression for term in query.order_by
+        if isinstance(term.expression, Aggregate)
+    }
+    projected_items = tuple(
+        item for item in query.select
+        if item.expression == entity or item.expression in ranking_measures
+    )
+    if not any(item.expression == entity for item in projected_items):
+        return None
+    projected = replace(query, select=projected_items, group_by=(entity,))
+    try:
+        validate_query(projected)
+    except ASTValidationError:
+        return None
+    return ScoredQuery(
+        projected,
+        render_query(projected),
+        candidate.score,
+        candidate.evidence + (f"leaf:ranked-entity-projected:{node_id}:{entity.name}",),
+    )
+
+
+def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
+    """Return all single-query readings in arbiter order, with named measures projected.
+
+    Readings follow the arbiter's order, with its choice first and each names-only ranking
+    projected with its measure. The caller must enforce the measure and ranking-grain
+    contracts separately: a lower-ranked pool member may be compatible even when the
+    preferred reading is not.
     """
     order = [selection.selected] if selection.selected is not None else []
     order += [index for index in selection.ranking if index != selection.selected]
-    readings = [ranked_measure_projected(selection.pool[index]) or selection.pool[index]
-                for index in order if single_branch(selection.pool[index])]
-    for reading in readings:
-        if (leaf_measure_rejection(node_id, question, reading.query, selection.pool) is None
-                and ranked_leaf_grain_rejection(node_id, reading.query, feeds_cross) is None):
-            return reading
-    return readings[0] if readings else None
+    readings = []
+    seen_sql = set()
+    for index in order:
+        candidate = selection.pool[index]
+        if not single_branch(candidate):
+            continue
+        reading = ranked_measure_projected(candidate) or candidate
+        for option in (reading, ranked_entity_projected(
+                reading, node_id, question, feeds_cross)):
+            if option is not None and option.sql not in seen_sql:
+                seen_sql.add(option.sql)
+                readings.append(option)
+    return readings
+
+
+def leaf_candidate(selection, node_id: str, question: str, feeds_cross: bool):
+    """Return the highest-ranked compatible reading, preserving the legacy single result."""
+    candidates = leaf_candidates(selection, node_id, question, feeds_cross)
+    compatible = [
+        candidate for candidate in candidates
+        if leaf_measure_rejection(node_id, question, candidate.query, selection.pool) is None
+        and ranked_leaf_grain_rejection(node_id, candidate.query, feeds_cross) is None
+    ]
+    return (compatible or candidates[:1])[0] if candidates else None
 
 
 def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
@@ -373,43 +476,73 @@ def build_decomposed_plan(
             raise DecompositionError(
                 f"subquestion {node['id']!r} produced no typed AST candidate"
             )
-        candidate = leaf_candidate(
+        options = leaf_candidates(
             selection, node["id"], node["question"], node["id"] in cross_inputs,
         )
-        if candidate is None:
+        if not options:
             raise DecompositionError(
                 f"subquestion {node['id']!r} requires an unsupported compound query"
             )
-        ok, reason = planner.guard(candidate.sql)
-        if not ok:
-            raise DecompositionError(
-                f"subquestion {node['id']!r} failed the query guard: {reason}"
+        child = None
+        first_rejection = None
+        first_guard_failure = None
+        first_lowering_failure = None
+        # Pool order is the arbiter's order, but compatibility with the typed AST does
+        # not imply compatibility with the stricter dual-emitter subset. Try each
+        # already-ranked, contract-compatible reading before clarifying. This preserves
+        # all semantic and deterministic guards while avoiding a false failure caused
+        # solely by an unsupported top-ranked representation.
+        for option in options:
+            ok, reason = planner.guard(option.sql)
+            if not ok:
+                if first_guard_failure is None:
+                    first_guard_failure = reason
+                continue
+            rejection = leaf_measure_rejection(
+                node["id"], node["question"], option.query, candidates
+            ) or ranked_leaf_grain_rejection(
+                node["id"], option.query, node["id"] in cross_inputs
+            ) or unstated_cutoff_rejection(
+                node["id"], question, option.query.limit
             )
-        rejection = leaf_measure_rejection(
-            node["id"], node["question"], candidate.query, candidates
-        ) or ranked_leaf_grain_rejection(
-            node["id"], candidate.query, node["id"] in cross_inputs
-        ) or unstated_cutoff_rejection(
-            node["id"], question, candidate.query.limit
-        )
-        if rejection is not None:
-            raise DecompositionError(rejection)
-        try:
-            child = lower_select_query(
-                node["id"],
-                candidate.query,
-                schema,
-                foreign_keys,
-                postgres_row_identity=getattr(planner, "postgres_row_identity", False),
-                # A natural-language leaf such as "for each purchase" can be selected
-                # as a typed SELECT * even when its downstream merge only needs named
-                # dimensions. Normalize that AST before either emitter is built.
-                expand_stars=True,
-            )
-        except UnsupportedDeterministicPlan as exc:
+            if rejection is not None:
+                if first_rejection is None:
+                    first_rejection = rejection
+                continue
+            try:
+                lowered = lower_select_query(
+                    node["id"],
+                    option.query,
+                    schema,
+                    foreign_keys,
+                    postgres_row_identity=getattr(planner, "postgres_row_identity", False),
+                    # A natural-language leaf such as "for each purchase" can be selected
+                    # as a typed SELECT * even when its downstream merge only needs named
+                    # dimensions. Normalize that AST before either emitter is built.
+                    expand_stars=True,
+                )
+            except UnsupportedDeterministicPlan as exc:
+                if first_lowering_failure is None:
+                    first_lowering_failure = exc
+                continue
+            child = lowered
+            break
+        if child is None:
+            if first_rejection is not None:
+                raise DecompositionError(first_rejection)
+            if first_guard_failure is not None:
+                raise DecompositionError(
+                    f"subquestion {node['id']!r} failed the query guard: "
+                    f"{first_guard_failure}"
+                )
+            if first_lowering_failure is not None:
+                raise DecompositionError(
+                    f"subquestion {node['id']!r} cannot use both emitters: "
+                    f"{first_lowering_failure}"
+                ) from first_lowering_failure
             raise DecompositionError(
-                f"subquestion {node['id']!r} cannot use both emitters: {exc}"
-            ) from exc
+                f"subquestion {node['id']!r} has no candidate satisfying the leaf contract"
+            )
         # Every leaf is linear, but its names must use the ROOT slug's 63-byte
         # naming contract. PostgreSQL truncates long identifiers silently; raw
         # slug + node + stage concatenation can collapse multiple stages to one.
