@@ -839,6 +839,13 @@ def test_live_database_tests_allocate_production_shaped_schemas():
     register_lease.assert_not_called()
 
 
+def test_world_regression_reports_empty_result_instead_of_raising():
+    from regress.world_cases import _scalar
+
+    assert _scalar({"result": None, "clarify": True}) is None
+    assert _scalar({"result": {"rows": [[270]]}}) == 270
+
+
 def test_release_installs_only_hash_locked_dependencies():
     locks = (
         "requirements.lock.txt",
@@ -1083,6 +1090,7 @@ TESTS = [
     test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image,
     test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed,
     test_live_database_tests_allocate_production_shaped_schemas,
+    test_world_regression_reports_empty_result_instead_of_raising,
     test_release_installs_only_hash_locked_dependencies,
     test_world_evaluation_records_release_provenance,
     test_gpu_training_preserves_the_runner_cuda_torch,

@@ -36,7 +36,8 @@ ENGINE_SUITES = ["tests.test_world", "tests.test_world_joins", "tests.test_route
 
 
 def _scalar(res):
-    rows = (res or {}).get("result", {}).get("rows") or []
+    payload = (res or {}).get("result")
+    rows = payload.get("rows") or [] if isinstance(payload, dict) else []
     if rows and rows[0]:
         try:
             return int(float(str(rows[0][0]).replace(",", "")))
@@ -62,8 +63,15 @@ def run():
                 got = _scalar(res)
                 ok = (got == c["expect_scalar"]) if "expect_scalar" in c else \
                      (isinstance(got, int) and got >= c["expect_min"])
+                diagnostic = ""
+                if not ok and isinstance(res, dict):
+                    diagnostic = (
+                        f" clarify={res.get('clarify')} error={res.get('error')!r}"
+                        f" reason={res.get('reason')!r}"
+                    )
                 print(f"  {'ok  ' if ok else 'FAIL'} {c['name']}: got {got}"
-                      f" (want {c.get('expect_scalar', '>=' + str(c.get('expect_min')))})")
+                      f" (want {c.get('expect_scalar', '>=' + str(c.get('expect_min')))})"
+                      f"{diagnostic}")
                 if not ok:
                     failed.append(c["name"])
             except Exception as e:                           # noqa: BLE001
