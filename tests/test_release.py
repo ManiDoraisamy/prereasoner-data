@@ -25,9 +25,14 @@ def _version(requirements: str, package: str) -> tuple[int, ...]:
 
 
 def test_public_artifact_boundary():
-    tracked = subprocess.check_output(
-        ["git", "ls-files"], cwd=ROOT, text=True, encoding="utf-8"
-    ).splitlines()
+    if (ROOT / ".git").exists():
+        tracked = subprocess.check_output(
+            ["git", "ls-files"], cwd=ROOT, text=True, encoding="utf-8"
+        ).splitlines()
+    else:
+        provenance = json.loads(_text("tests/build_provenance.json"))
+        tracked = provenance.get("source_files")
+        assert isinstance(tracked, list) and tracked, "suite archive must attest its source inventory"
     folded = [path.replace("\\", "/").lower() for path in tracked]
     assert not any("spider/results/" in path and "per_example" in path for path in folded)
     assert "training/world/build_wikipedia_schema.py" not in folded
@@ -766,6 +771,12 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "chmod 0555 /node/node" in cloudbuild
     assert "-m tests.run_all" in cloudbuild
     assert "gcloud run" not in cloudbuild and "terraform apply" not in cloudbuild
+
+    from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
+
+    assert "requirements-ci.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "requirements-ci-windows.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "spider/probe" in SOURCE_SUITE_ALLOWLIST
 
 
 def test_live_database_tests_allocate_production_shaped_schemas():

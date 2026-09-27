@@ -44,11 +44,12 @@ SOURCE_SUITE_ALLOWLIST = (
     "infra/orchestrator.tf",
     "infra/variables.tf",
     "infra/versions.tf",
-    "spider/probe/full_eval.py",
+    "spider/probe",
     "world_eval/run.py",
     "README.md",
     "requirements-ci.txt",
     "requirements-ci.lock.txt",
+    "requirements-ci-windows.lock.txt",
     "requirements.txt",
     "cloudbuild.hosting.yaml",
     "cloudbuild.orchestrator.yaml",
@@ -151,6 +152,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
         "git", "-C", str(ROOT), "archive", "--format=tar", commit,
         "--", *allowlist,
     ))
+    source_files = []
     with tarfile.open(fileobj=BytesIO(archive), mode="r:") as bundle:
         for member in bundle.getmembers():
             if not (member.isfile() or member.isdir()):
@@ -161,6 +163,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
             if member.isdir():
                 destination.mkdir(parents=True, exist_ok=True)
                 continue
+            source_files.append(member.name)
             source = bundle.extractfile(member)
             if source is None:
                 raise RuntimeError(f"archive file has no content: {member.name}")
@@ -194,11 +197,14 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     else:
         fingerprint = "source-only"
         provenance = output / "orchestrator" / "build_provenance.json"
-    provenance.write_text(json.dumps({
+    provenance_record = {
         "build_target": target,
         "source_commit": commit,
         "weights_manifest_sha256": fingerprint,
-    }, sort_keys=True, indent=2) + "\n", encoding="ascii")
+    }
+    if target == "suite":
+        provenance_record["source_files"] = sorted(source_files)
+    provenance.write_text(json.dumps(provenance_record, sort_keys=True, indent=2) + "\n", encoding="ascii")
     return commit, fingerprint
 
 
