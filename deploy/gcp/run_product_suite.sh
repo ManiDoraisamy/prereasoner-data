@@ -87,8 +87,11 @@ docker run --rm --network "$network" --cpus=8 --memory=16g \
   --workdir /app \
   --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
   --env RUN_ENGINE_TESTS=1 --env RUN_ORCHESTRATOR_TESTS=0 \
+  --env LIVE_ENGINE_ONLY=1 \
   --env INSTALL_CI_REQUIREMENTS=0 \
   --env RUN_WORLD_REGRESSION=1 \
+  --env LIVE_REGRESSION_TIMEOUT_SECONDS=600 \
+  --env TEST_SUITE_TIMEOUT_SECONDS=600 \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
   --env AUTH_TEST_SUB=localdev \

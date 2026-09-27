@@ -262,7 +262,7 @@ def run_offline(eng):
     return failed
 
 
-def run_world():
+def run_world(*, include_engine_suites=True):
     if not os.environ.get("KB_PG_PASSWORD"):
         print("\n=== WORLD tier: SKIPPED (no KB_PG_PASSWORD) ===")
         print("  NOTE: a deploy gate MUST run this against a seeded world Postgres (db/sync seed, or a")
@@ -270,13 +270,15 @@ def run_world():
         return [], True
     from regress import world_cases
     print("\n=== WORLD tier (world-model-join, live Postgres) ===")
-    return world_cases.run(), False
+    return world_cases.run(include_engine_suites=include_engine_suites), False
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--offline", action="store_true", help="offline tier only")
     ap.add_argument("--require-world", action="store_true", help="fail if the world tier is skipped")
+    ap.add_argument("--skip-world-subtests", action="store_true",
+                    help="run curated world goldens only; execute ENGINE_SUITES separately")
     args = ap.parse_args()
 
     unit_failed = run_unit_checks()
@@ -293,7 +295,7 @@ def main():
 
     world_failed, skipped = ([], True)
     if not args.offline:
-        world_failed, skipped = run_world()
+        world_failed, skipped = run_world(include_engine_suites=not args.skip_world_subtests)
 
     print("\n" + "=" * 60)
     total_fail = len(off_failed) + len(world_failed)

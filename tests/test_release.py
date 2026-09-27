@@ -802,14 +802,23 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     assert "docker rm -f" in runner and "docker volume rm" in runner and "docker network rm" in runner
     assert "--role serving" in runner and "KB_PG_USER=serving" in runner
     assert "RUN_ENGINE_TESTS=1" in runner and "RUN_ORCHESTRATOR_TESTS=0" in runner
+    assert "LIVE_ENGINE_ONLY=1" in runner
     assert "INSTALL_CI_REQUIREMENTS=0" in runner
     assert "RUN_WORLD_REGRESSION=1" in runner
+    assert "LIVE_ENGINE_ONLY=1" in runner
+    assert "LIVE_REGRESSION_TIMEOUT_SECONDS=600" in runner
+    assert "TEST_SUITE_TIMEOUT_SECONDS=600" in runner
     assert "docker update --memory=2g --memory-swap=2g" in runner
     assert "--cpus=8 --memory=16g" in runner and "/api/reason" in runner
     assert 'float(rows[0][0]) != 300.0' in runner and "docker stats --no-stream" in runner
     assert "gcloud sql" not in runner and "cloud-sql-proxy" not in runner
     assert "RUN_WORLD_REGRESSION" in _text("deploy/gcp/run_hermetic_suite.sh")
     assert "--require-world" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "--skip-world-subtests" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "world regression exceeded" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "TIMEOUT  {mod}" in _text("tests/run_all.py")
+    assert "LIVE_ENGINE_ONLY" in _text("tests/run_all.py")
+    assert "include_engine_suites=not args.skip_world_subtests" in _text("regress/run_regression.py")
     assert "offline_engine_released=true" in _text("regress/run_regression.py")
     from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
 

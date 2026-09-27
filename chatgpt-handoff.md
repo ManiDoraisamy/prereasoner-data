@@ -27,11 +27,18 @@ The DB, volume, network, and server are build-local and removed by an exit trap;
 production connection is used. Docker Hub's pgvector/pg16 Linux/amd64 image is digest-pinned. First
 Cloud Build `5d25edb8-ac1b-4443-a3fe-42b31cd17311` downloaded the seed, initialized the DB, loaded
 the model bundle, and passed all 13 offline cases; it then exited **137** when the live regression
-constructed a second model while retaining the offline model. This exposed a real test-runner memory
-bug: `regress.run_regression` did not release its offline engine before starting the world tier. I
-fixed that and will cap Postgres at 2 GiB after restore (the restore itself needs its temporary 2 GiB
-HNSW build allowance). The first run is a failure, not a product pass. Local release contracts are
-38/38; no production image/configuration changed.
+constructed a second model while retaining the offline model. I fixed this test-runner memory bug
+by releasing/collecting the offline engine before starting the world tier, and capped PostgreSQL at
+2 GiB after its restore-only HNSW build.
+
+Second attempt `5d9f8849-c7c7-4a42-b33c-c07eba0ab227` confirmed it passed the OOM point and reached
+world execution, but emitted no new logs after model initialization for over ten minutes. I cancelled
+that disposable build to avoid leaving a silent billable worker; it is incomplete, not a pass. Its
+two curated world responses exposed a null-result grading bug, now fixed to print clarification/error
+details instead of raising. I added bounded per-regression/per-suite timeouts and changed the next
+run to execute curated world goldens once, then all seven live engine suites (the 31-suite hermetic
+tier already passed separately). Local release contracts are now **39/39**. The next build should
+identify the exact slow or failing live module. No production image/configuration changed.
 
 ## 2026-09-28 — Clean full hermetic suite passes in the pinned target image
 

@@ -32,7 +32,20 @@ subprocess.run([
 PY
 
 if [ "${RUN_WORLD_REGRESSION:-0}" = "1" ]; then
-  python -m regress.run_regression --require-world
+  python - <<'PY'
+import os
+import subprocess
+import sys
+
+timeout = int(os.environ.get("LIVE_REGRESSION_TIMEOUT_SECONDS", "900"))
+try:
+    subprocess.run(
+        [sys.executable, "-m", "regress.run_regression", "--require-world", "--skip-world-subtests"],
+        cwd="/app", timeout=timeout, check=True,
+    )
+except subprocess.TimeoutExpired:
+    raise SystemExit(f"world regression exceeded {timeout}s")
+PY
 fi
 
 exec python -m tests.run_all

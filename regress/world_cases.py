@@ -46,7 +46,7 @@ def _scalar(res):
     return None
 
 
-def run():
+def run(*, include_engine_suites=True):
     failed = []
     from engine.knowledge import KnowledgeReasoner
     from regress.live_schema import live_schema
@@ -77,13 +77,15 @@ def run():
             except Exception as e:                           # noqa: BLE001
                 print(f"  FAIL {c['name']}: {type(e).__name__}: {e}")
                 failed.append(c["name"])
-        # Reuse the maintained oracle suites under the same serving-owned schema.
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for mod in ENGINE_SUITES:
-            rc = subprocess.call([sys.executable, "-m", mod], cwd=root, env=os.environ.copy())
-            print(f"  {'ok  ' if rc == 0 else 'FAIL'} {mod} (exit {rc})")
-            if rc != 0:
-                failed.append(mod)
+        # Reuse the maintained oracle suites under the same serving-owned schema. A test-only
+        # Cloud Build can ask tests.run_all to run the entire ENGINE_SUITES list once instead.
+        if include_engine_suites:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for mod in ENGINE_SUITES:
+                rc = subprocess.call([sys.executable, "-m", mod], cwd=root, env=os.environ.copy())
+                print(f"  {'ok  ' if rc == 0 else 'FAIL'} {mod} (exit {rc})")
+                if rc != 0:
+                    failed.append(mod)
     finally:
         if previous_sub is None:
             os.environ.pop("AUTH_TEST_SUB", None)

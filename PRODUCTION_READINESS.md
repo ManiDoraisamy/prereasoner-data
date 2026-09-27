@@ -33,8 +33,13 @@ The separate 80% Spider accuracy work remains in its own worktree.
 - First live attempt `5d25edb8-ac1b-4443-a3fe-42b31cd17311` restored the seed, passed the model-bundle
   load and all **13/13 offline cases**, then exited **137** during world-tier model loading. The
   actual cause was the regression runner retaining its offline model while constructing a second
-  model for the live tier; I added explicit release/GC between tiers and will lower PostgreSQL's
-  cgroup budget after its seed-only HNSW build before retrying.
+  model for the live tier; I added explicit release/GC between tiers and lowered PostgreSQL's
+  cgroup budget after its seed-only HNSW build.
+- Second attempt `5d9f8849-c7c7-4a42-b33c-c07eba0ab227` passed that OOM point and entered the world
+  tier, but emitted no further logs after model initialization for over ten minutes. I cancelled the
+  disposable build to avoid an unbounded billable worker. The gate now separates the curated world
+  regression from the full live-suite list and has per-regression/per-suite timeouts; the next run
+  should identify a slow module or a real product failure rather than stall silently.
 
 - The public mainline bundle was fetched in this checkout only from the immutable source in
   `engine/data/weights_manifest.json`; Python 3.11 validated its complete fingerprint as
