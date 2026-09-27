@@ -13,6 +13,49 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Live product gate wired with a disposable database
+
+I continued past the hermetic pass and added a dedicated test-only Cloud Build lane. It restores the
+public Community dump into a temporary PostgreSQL 16/pgvector Docker container, verifies the
+installer-pinned SHA-256, creates a non-superuser `serving` role, runs current migrations/grants,
+requires `regress.run_regression --require-world`, and runs every configured live world/dataset suite
+with `RUN_ENGINE_TESTS=1`. It runs the immutable production image's Python 3.11 environment without
+installing/upgrading dependencies, then starts its real CPU-only HTTP server under the 8-vCPU/16-GiB
+limit and checks three known `/api/reason` totals while collecting latency and container stats.
+
+The DB, volume, network, and server are build-local and removed by an exit trap; no Cloud SQL API or
+production connection is used. Docker Hub's pgvector/pg16 Linux/amd64 image is digest-pinned.
+`tests.test_release` is now **38/38**, and the runner passes Bash syntax validation. This is code
+wired but not yet a live gate result; I’m preparing its clean archived source and will report the
+Cloud Build result before calling this blocker closed. No production image/configuration changed.
+
+## 2026-09-28 — Clean full hermetic suite passes in the pinned target image
+
+I completed the production-readiness follow-up rather than stopping at a status report. Cloud Build
+`3e11903b-948f-4d3e-9279-ebc1e8ed5df8` passed **all 31 configured `tests.run_all` suites** against
+the digest-pinned 0.5B mainline image
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482`.
+This includes the clean model-backed complex-dataset suite **7/7**. The Schema.org coverage ratchet
+passed **15/15** and request-limit tests **18/18** locally; release tests are **37/37**. The helper
+Node image was pulled as `node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c`,
+and is now explicitly digest-pinned in the harness.
+
+The initial remote failures were actual harness/source-boundary problems, which I fixed rather than
+counting as passes: `.gcloudignore` was re-filtering the pre-allowlisted archive; test source and
+locked CI dependencies were absent; the tests' Git-provenance checks had no repository metadata;
+one coverage test referenced the removed hard-coded `WEIGHTS` table instead of the authoritative
+manifest; and a mocked chat test lacked a fake key. The final harness supplies the entire explicit
+source inventory, preserves only the base image's model artifacts, installs CI dependencies in the
+ephemeral test container, and creates a synthetic Git snapshot from the attested file list. No
+serving image was built/pushed by this test-only run, and Cloud Run traffic/configuration was
+untouched.
+
+Still open and intentionally not conflated with this gate: live seeded-Postgres/world product
+tests (no safe staging database/credentials identified), the experimental 7B proposer still has no
+matched selector, and complete-engine latency/memory needs a request-level run beyond the offline
+13-case timing sample. The release image remains the mainline-matched 0.5B bundle. No merge,
+promotion, or deployment has happened.
+
 ## 2026-09-27 — CPU envelope gate measured on the production container limits
 
 The follow-up build constrained both offline regression and the actual server container to the

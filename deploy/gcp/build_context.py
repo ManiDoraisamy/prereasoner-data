@@ -82,6 +82,8 @@ SOURCE_SUITE_ALLOWLIST = (
     ".gitleaks.toml",
     ".python-version",
     "cloudbuild.hermetic.yaml",
+    "cloudbuild.product.yaml",
+    "deploy/gcp/run_product_suite.sh",
 )
 def chat_engine_sources() -> tuple[str, ...]:
     """The Dockerfile owns the lean engine dependency list for BOTH build paths."""

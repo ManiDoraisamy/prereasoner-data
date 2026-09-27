@@ -114,6 +114,29 @@ This executes `tests.run_all` with the production image capped at 8 vCPU / 16 Gi
 world-data, and external-orchestrator tests remain separate; this gate cannot be reported as live
 product acceptance and does not deploy or change Cloud Run traffic.
 
+### Live product suite against disposable seeded Postgres (no deployment)
+
+The live-world acceptance gate uses a temporary Docker network and PostgreSQL 16/pgvector container
+inside Cloud Build. It restores only the public, SHA-256-pinned Community seed, creates a temporary
+non-superuser `serving` role, runs `regress.run_regression --require-world`, and runs all configured
+engine/world/dataset tests with the **production image's unchanged hash-locked Python 3.11
+environment**. It then runs three requests through the actual HTTP server with the serving role,
+checks the answer, and records CPU-only request latency and container RSS/CPU. The PostgreSQL
+container, volume, network, and test server are removed on both success and failure. This lane never
+connects to Cloud SQL, including `prereasoner-world`, and creates no GCP database or service.
+
+```bash
+python deploy/gcp/build_context.py --target suite --output /tmp/prereasoner-product-context
+cd /tmp/prereasoner-product-context
+gcloud builds submit --project <PROJECT_ID> \
+  --ignore-file=cloudbuild.hermetic.ignore \
+  --config=cloudbuild.product.yaml .
+```
+
+Cloud Build time/cost is bounded by the 90-minute timeout; the test image and PostgreSQL are
+container-local to that build. A green result is live product-dataset evidence against the public
+seed, not a production-data soak or a Spider 80% result.
+
 The Terraform backend in `infra/versions.tf` is deliberately partial. `deploy.sh` supplies the caller's
 bucket and `deployments/<name>` prefix at `terraform init`. This prevents a public checkout from ever
 defaulting to the maintainer's production state.

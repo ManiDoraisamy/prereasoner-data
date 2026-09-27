@@ -9,9 +9,9 @@ steps:
       - |
         node_volume=prereasoner-node-bin
         docker volume create "$$node_volume" >/dev/null
-        docker run --rm --volume "$$node_volume:/node" node:22-bookworm-slim \
+        docker run --rm --volume "$$node_volume:/node" node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c \
           sh -ceu 'cp "$(command -v node)" /node/node; chmod 0555 /node/node'
-        docker run --rm --volume "$$node_volume:/node:ro" node:22-bookworm-slim /node/node --version
+        docker run --rm --volume "$$node_volume:/node:ro" node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c /node/node --version
         docker run --rm --cpus=8 --memory=16g \
           --volume "$$node_volume:/opt/node:ro" \
           --volume /workspace:/workspace:ro \

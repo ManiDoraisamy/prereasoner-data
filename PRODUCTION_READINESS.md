@@ -1,10 +1,35 @@
 # Production-readiness workstream
 
-Status as of 2026-09-27: isolated refactor and backward-compatibility checks are in
+Status as of 2026-09-28: isolated refactor and backward-compatibility checks are in
 progress on branch `codex/prod-readiness`. Nothing has been merged, promoted, or deployed.
 The separate 80% Spider accuracy work remains in its own worktree.
 
-### Latest release work (2026-09-27)
+### Latest release work (2026-09-28)
+
+- The full clean-image hermetic rerun now passes. Cloud Build
+  `3e11903b-948f-4d3e-9279-ebc1e8ed5df8` used the digest-pinned 0.5B serving image
+  `sha256:57d49a5d…` plus its model bundle and the repository's hash-locked CI-only test dependencies;
+  all **31 configured suites passed**, including `tests.test_complex_datasets` **7/7** and the
+  Schema.org coverage ratchet **15/15**. The live Postgres/world and external-orchestrator suites
+  were explicitly disabled, so this is not live-product acceptance. No serving image was built or
+  pushed by this test-only build, and no Cloud Run traffic changed. The Node helper resolved to
+  `node:22-bookworm-slim@sha256:43ac6c60…`; that exact digest is now pinned in the harness.
+- Commits `533d7b0` through `f03a11b` fixed the harness rather than suppressing product tests:
+  it now uses a clean allowlisted Git archive, avoids applying `.gcloudignore` twice, keeps the
+  model weights from the base image, overlays current source, installs the CI lock only in the
+  disposable runner, and stages a synthetic Git commit for provenance tests without shipping
+  history. The formerly failing `WEIGHTS` import test was corrected to assert against the
+  manifest-driven fetch list; the request-limit test now supplies a fake key to its mocked chat
+  path. Focused release tests pass **38/38**, request-limit tests **18/18**, and schema coverage
+  **15/15**.
+
+- A separate live-product gate is wired locally: it restores only the public Community seed into a
+  temporary, pinned PostgreSQL 16/pgvector Docker container inside Cloud Build, applies the normal
+  migrations/grants, requires the world regression tier and all live engine/dataset suites to run,
+  and sends three CPU-only `/api/reason` requests through the actual server at the 8-vCPU/16-GiB
+  container limit. It leaves the production Python 3.11 package set unchanged and tears down its
+  DB/container/network on exit. Local release-contract tests pass **38/38** and the runner passes
+  `bash -n`; the Cloud Build live gate is the next execution, not yet a result.
 
 - The public mainline bundle was fetched in this checkout only from the immutable source in
   `engine/data/weights_manifest.json`; Python 3.11 validated its complete fingerprint as
@@ -59,12 +84,10 @@ The separate 80% Spider accuracy work remains in its own worktree.
   `python -m regress.run_regression --offline` passed its invariants, model-bundle check,
   and all 13 offline non-world product cases. The live Postgres/world tier was skipped;
   this machine has no `KB_PG_PASSWORD` configured.
-- An earlier `tests.run_all` run passed all 31 configured suites with the live-engine and
-  external-orchestrator tiers explicitly disabled; it used a dummy `ANTHROPIC_API_KEY` because one
-  test checks request plumbing while mocking the model call. The latest full-suite rerun passed its
-  first five suites but was interrupted in `test_complex_datasets` at the memory safety floor while
-  the separate 7B job was active. It is incomplete, not green. The focused SQL AST suite passes
-  124/124.
+- The latest clean-image `tests.run_all` rerun passed all 31 configured suites with live-engine and
+  external-orchestrator tiers explicitly disabled. The complex model-backed suite passed 7/7.
+  This supersedes the earlier memory-interrupted attempt; it does not supply live Postgres/world
+  evidence. Focused SQL AST tests remain 124/124.
 - The release/provenance suite now passes **35/35** after making artifact downloads manifest-driven
   and rejecting traversal/absolute artifact paths. This ensures a future package's declared files
   are actually fetched; it does not certify the current unmatched GGUF bundle.

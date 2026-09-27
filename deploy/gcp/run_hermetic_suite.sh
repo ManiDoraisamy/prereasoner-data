@@ -5,11 +5,14 @@ set -eu
 # the allowlisted source archive, retaining those ignored runtime artifacts in /app/engine/data.
 cp -a /workspace/. /app/
 
-# CI-only tools are installed in this disposable test container, never in the release image.
+# CI-only tools are installed in the disposable hermetic container, never in the release image.
+# The live-product lane leaves the production Python environment unchanged and adds only Git.
 apt-get update
 apt-get install -y --no-install-recommends git
 rm -rf /var/lib/apt/lists/*
-python -m pip install --require-hashes -r /app/requirements-ci.lock.txt
+if [ "${INSTALL_CI_REQUIREMENTS:-1}" = "1" ]; then
+  python -m pip install --require-hashes -r /app/requirements-ci.lock.txt
+fi
 
 # git archive intentionally has no history. Build a synthetic local commit from the attested
 # file inventory so provenance tests exercise exact source blobs without uploading .git history.

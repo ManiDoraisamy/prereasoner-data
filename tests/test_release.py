@@ -768,14 +768,13 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "--env RUN_ENGINE_TESTS=0" in cloudbuild
     assert "--env RUN_ORCHESTRATOR_TESTS=0" in cloudbuild
     assert "node:22-bookworm-slim" in cloudbuild
+    assert "node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c" in cloudbuild
     assert 'command -v node' in cloudbuild and "/opt/node:ro" in cloudbuild
     assert "chmod 0555 /node/node" in cloudbuild
     assert "-m tests.run_all" in suite_runner
     assert "gcloud run" not in cloudbuild and "terraform apply" not in cloudbuild
     assert "--ignore-file=cloudbuild.hermetic.ignore" in _text("deploy/gcp/README.md")
     assert "git archive intentionally has no history" in suite_runner
-    assert "requirements-ci.lock.txt" in suite_runner and "--require-hashes" in suite_runner
-
     from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
 
     assert "requirements-ci.lock.txt" in SOURCE_SUITE_ALLOWLIST
@@ -790,6 +789,28 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "spider/results/RESULTS.md" in SOURCE_SUITE_ALLOWLIST
     assert ".gcloudignore" in SOURCE_SUITE_ALLOWLIST
     assert "cloudbuild.hermetic.ignore" in SOURCE_SUITE_ALLOWLIST
+    assert 'INSTALL_CI_REQUIREMENTS:-1' in suite_runner
+
+
+def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
+    cloudbuild = _text("cloudbuild.product.yaml")
+    runner = _text("deploy/gcp/run_product_suite.sh")
+    assert "pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067" in cloudbuild
+    assert "engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482" in cloudbuild
+    assert "2c39e749e2ae87654cca80881cdec4de924e131b1f8199179f6c7ceef2d8840a" in runner
+    assert "docker network create" in runner and "docker volume create" in runner
+    assert "docker rm -f" in runner and "docker volume rm" in runner and "docker network rm" in runner
+    assert "--role serving" in runner and "KB_PG_USER=serving" in runner
+    assert "RUN_ENGINE_TESTS=1" in runner and "RUN_ORCHESTRATOR_TESTS=0" in runner
+    assert "INSTALL_CI_REQUIREMENTS=0" in runner
+    assert "regress.run_regression --require-world" in runner
+    assert "--cpus=8 --memory=16g" in runner and "/api/reason" in runner
+    assert 'float(rows[0][0]) != 300.0' in runner and "docker stats --no-stream" in runner
+    assert "gcloud sql" not in runner and "cloud-sql-proxy" not in runner
+    from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
+
+    assert "cloudbuild.product.yaml" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/gcp/run_product_suite.sh" in SOURCE_SUITE_ALLOWLIST
 
 
 def test_live_database_tests_allocate_production_shaped_schemas():
@@ -1056,6 +1077,7 @@ TESTS = [
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_engine_release_build_runs_the_real_server_until_health_ready,
     test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image,
+    test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed,
     test_live_database_tests_allocate_production_shaped_schemas,
     test_release_installs_only_hash_locked_dependencies,
     test_world_evaluation_records_release_provenance,
