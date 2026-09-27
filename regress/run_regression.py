@@ -116,7 +116,12 @@ def run_unit_checks():
     # builds a healthy-looking image that crashes at boot. Importing here — inside the built image, since this
     # gate runs in the container — turns that boot crash into a BUILD failure. (prop12 regression, 2026-08-18.)
     import importlib
-    for _startup_module in ("engine.enrichment", "engine.domain_typing", "engine.domain_profiles"):
+    for _startup_module in (
+        "engine.server",
+        "engine.enrichment",
+        "engine.domain_typing",
+        "engine.domain_profiles",
+    ):
         try:
             module = importlib.import_module(_startup_module)
             if _startup_module == "engine.enrichment":

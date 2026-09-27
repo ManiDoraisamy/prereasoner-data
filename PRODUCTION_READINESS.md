@@ -19,8 +19,17 @@ The separate 80% Spider accuracy work remains in its own worktree.
 - The former live dataset-test worker is no longer running. This checkout has no
   `KB_PG_PASSWORD`, and localhost port 5432 currently refuses connections; live Postgres/world
   acceptance therefore remains blocked on its seeded database and credentials.
-- Docker and WSL are unavailable in this Windows environment, so an actual clean Linux/Python 3.11
-  container build has not been verified. No deployment or promotion has occurred.
+- Docker and WSL are unavailable in this Windows environment, so clean target-image verification
+  was performed remotely through Cloud Build. For the current 0.5B mainline bundle, Cloud Build
+  `4a688469-8c85-421a-a20f-b8bdff9a0afc` built commit `4755ee67ce53f160d931eeadb5d08273a33bf623`
+  on the pinned Linux/Python 3.11 image, installed the full hash lock, and passed the in-image
+  offline gate 13/13. The verified image digest is
+  `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:bd5a2be1435eab883b25a1908b973f29211d998bed7728c466cef4c266185330`.
+  It is tagged in Artifact Registry only—no Cloud Run revision or traffic change—and contains the
+  matched 0.5B bundle, not a 7B model-matched selector.
+- After that build, the offline startup smoke was strengthened to import `engine.server` itself,
+  not only its helper modules. The expanded invariant passed locally; its repeat in a clean Linux/
+  Python 3.11 build is queued and not yet claimed.
 
 ## What is measured
 

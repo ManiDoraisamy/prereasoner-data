@@ -13,6 +13,40 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-27 — Expanded the release smoke to import the real server entrypoint
+
+The Cloud Build proved the pinned Linux/Python 3.11 image and offline regression, but the
+startup/import invariant list did not import `engine.server` itself. I added the actual process
+entrypoint to `regress.run_regression`'s lightweight startup checks. Running those checks locally
+passed, including server import and the FK invariants; Python 3.11 compileall also passed. This
+change is committed with the current handoff/docs and is queued for a second clean Cloud Build so
+the real entrypoint import is exercised inside the production Python 3.11 image. This remains a
+non-traffic build; no Cloud Run changes.
+
+---
+
+## 2026-09-27 — Clean Linux/Python 3.11 build and offline gate passed
+
+Commit `4755ee67ce53f160d931eeadb5d08273a33bf623` produced a clean, allowlisted 109.7 MB build
+context with the verified mainline bundle fingerprint. I submitted Cloud Build `4a688469-8c85-421a-a20f-b8bdff9a0afc`
+to the supplied `prereasoner-inference` project under the isolated tag
+`codex-prod-readiness-4755ee6`. The pinned Python 3.11 Linux image built, installed
+`requirements.lock.txt` with `--require-hashes`, loaded the Qwen/adapter artifacts, passed the
+Schema.org interpreter startup/load check, and passed the offline regression **13/13**. Build
+status is SUCCESS; Artifact Registry independently reports
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:bd5a2be1435eab883b25a1908b973f29211d998bed7728c466cef4c266185330`.
+This is the 0.5B mainline-matched package, not the unmatched 7B experiment. It is a tagged image only:
+no Cloud Run revision, deployment, or traffic change.
+
+Remaining blockers are still real: the full `tests.run_all` rerun was interrupted at the memory
+safety floor during complex model tests while the separate 7B CPU screen ran; the live world/dataset
+gate has no safe staging DB (the only Cloud SQL instance is production-named, and I did not use it);
+the 7B proposer still has no model-matched arbiter; and full-engine CPU latency/peak memory have not
+been measured. The 7B screen had reached 470/1,034 at the last checkpoint. The image build proves
+the current 0.5B runtime/dependency path only, not 7B CPU serving or +10.4-point product lift.
+
+---
+
 ## 2026-09-27 — Full-suite model tests remain memory-gated; no safe DB target found
 
 I ran `tests.run_all` with the live-engine and external-orchestrator tiers disabled, using the
