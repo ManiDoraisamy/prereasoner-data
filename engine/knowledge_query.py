@@ -25,6 +25,7 @@ Class graph:  KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery)
 """
 from __future__ import annotations
 import os
+import re
 
 import numpy as np
 
@@ -125,6 +126,60 @@ def _calculation_coverage_words(calculations):
         elif operation == "apply_rate":
             claimed.update({"apply", "applying", "calculate", "calculating", "compute", "computing"})
     return claimed
+
+
+# Words for the spreadsheet itself rather than its data ('Count all non-empty Order ID rows below
+# the header'): never a row filter, a world entity, or free text to search for.
+_SPREADSHEET_WORDS = frozenset({
+    "row", "rows", "column", "columns", "cell", "cells", "sheet", "sheets", "spreadsheet",
+    "header", "headers", "blank", "empty", "non", "data",
+})
+
+
+def _word_forms(word):
+    forms = {word, word.rstrip("s"), word + "s"}
+    if word.endswith("y"):
+        forms.add(word[:-1] + "ies")                        # city -> cities
+    if word.endswith("ies"):
+        forms.add(word[:-3] + "y")
+    return forms
+
+
+def _schema_vocabulary(sch):
+    """The words the uploaded tables' own names and column names contribute, with plural forms.
+
+    Split on ANY non-alphanumeric: Sheets columns are space-named ('order ID'), and an underscore-only
+    split left 'order' unrecognized ('Count ... Order ID rows' clarified with 'order' reported dropped
+    even though the column is literally named that, 2026-09-14). A 'city' column also covers 'cities'.
+    """
+    words = set()
+    for column in sch:
+        for name in (str(column["table"]).lower(), str(column["name"]).lower()):
+            for part in {name} | set(re.split(r"[^a-z0-9]+", name)):
+                if part:
+                    words |= _word_forms(part)
+    return words
+
+
+def semantic_predicate(question, drop_surfaces=(), sch=()):
+    """The residual free-text predicate: question words minus stopwords minus the surface tokens of any
+    resolved world entity (those drive the structured filter). 'who complained about bad delivery in France',
+    France stripped -> drop who/about/in/complained (STOP) -> 'bad delivery'.
+
+    Empty when no residual word says anything about the rows' content: words that only name the tables,
+    their columns or the spreadsheet leave nothing to search the free text for. 'amount in France' is a
+    column and a country; the semantic path ranked France's orders by similarity to the word 'amount',
+    capped them at ten, and showed one opaque step instead of the join, lookup and filter (2026-09-27).
+    """
+    drop = set()
+    for s in drop_surfaces:
+        drop |= set(str(s).lower().split())
+    words = "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in question).split()
+    residual = [w for w in words if w not in STOP and w not in drop]
+    vocabulary = _schema_vocabulary(sch) | _SPREADSHEET_WORDS
+    if all(w in vocabulary for w in residual):
+        return ""
+    return " ".join(residual).strip()
 
 
 class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, EntityQuery):
@@ -481,16 +536,6 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return {"table": table, "conn": conn, "unconn": unconn,
                 "freetext": max(unconn, key=lambda c: self._avglen(table, c))}
 
-    def _semantic_predicate(self, question, drop_surfaces=()):
-        """The residual free-text predicate: question words minus stopwords minus the surface tokens of any resolved
-        world entity (those drive the structured filter). 'who complained about bad delivery in France', France
-        stripped -> drop who/about/in/complained (STOP) -> 'bad delivery'."""
-        drop = set()
-        for s in drop_surfaces:
-            drop |= set(str(s).lower().split())
-        words = "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in question).split()
-        return " ".join(w for w in words if w not in STOP and w not in drop).strip()
-
     # ---------------- clarify: detect a query that dropped part of the question + propose a rephrasing ----------------
     def _word_qid(self, w):
         """the world qid a single content word resolves to (exact normalized match in knowledgebase.\"words\" across the geo
@@ -514,22 +559,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         import re as _re
         sqll = (sql or "").lower()
         has_agg = bool(_re.search(r'\b(sum|count|avg|min|max)\s*\(', sqll))
-        def _forms(w):
-            f = {w, w.rstrip("s"), w + "s"}
-            if w.endswith("y"):
-                f.add(w[:-1] + "ies")                        # city -> cities
-            if w.endswith("ies"):
-                f.add(w[:-3] + "y")
-            return f
-        sch_words = set()
-        for c in sch:
-            for nm in (str(c["table"]).lower(), str(c["name"]).lower()):
-                # split on ANY non-alphanumeric: Sheets columns are space-named ('order ID'), and an
-                # underscore-only split left 'order' uncovered — 'Count ... Order ID rows' clarified
-                # with 'order' reported dropped even though the column is literally named that (2026-09-14).
-                for part in {nm} | set(_re.split(r"[^a-z0-9]+", nm)):
-                    if part:
-                        sch_words |= _forms(part)            # incl. plurals: a 'city' column also covers 'cities'
+        sch_words = _schema_vocabulary(sch)
         # question / aggregate CUE words are realized by the OPERATOR (has_agg), not by a filter — they are never a
         # world entity, so excluding them stops _best_world_entity from spuriously matching e.g. 'how'/'many' to a
         # town and falsely reporting the COUNT query "dropped" them (which hijacked 'how many … in France' to clarify).
@@ -541,21 +571,22 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                "nation", "nations", "element", "elements", "atomic", "has", "highest", "lowest", "largest",
                "smallest", "most", "least", "maximum", "minimum", "max", "min", "top", "bottom",
                "named", "there", "among",
-               # The tabular MEDIUM, not data semantics: 'Count all non-empty Order ID rows below the
-               # header in the Customers sheet' asks a plain COUNT — 'rows'/'header'/'sheet'/'non-empty'
-               # describe the spreadsheet, and a weak embedding match to some town once reported them
-               # as dropped filters, hijacking the count to clarify (2026-09-14). Numeric comparators
-               # ('below 100') were never covered by this guard (content words are alphabetic), so
-               # exempting 'below'/'above' loses no real constraint coverage.
-               "row", "rows", "column", "columns", "cell", "cells", "sheet", "sheets", "spreadsheet",
-               "header", "headers", "blank", "empty", "non", "below", "above", "current",
-               # Spreadsheet scope prose. These words do not identify a row filter or world entity;
-               # treating them as unresolved predicates turned an exact COUNT(DISTINCT "order ID")
-               # into a clarification about an unrelated numeric column in production.
-               "data", "across",
+               # The tabular MEDIUM (_SPREADSHEET_WORDS), not data semantics: 'Count all non-empty
+               # Order ID rows below the header in the Customers sheet' asks a plain COUNT —
+               # 'rows'/'header'/'sheet'/'non-empty' describe the spreadsheet, and a weak embedding match
+               # to some town once reported them as dropped filters, hijacking the count to clarify
+               # (2026-09-14). Numeric comparators ('below 100') were never covered by this guard
+               # (content words are alphabetic), so exempting 'below'/'above' loses no real constraint
+               # coverage.
+               "below", "above", "current",
+               # Spreadsheet scope prose ('data' is spreadsheet medium too). These words do not identify
+               # a row filter or world entity; treating them as unresolved predicates turned an exact
+               # COUNT(DISTINCT "order ID") into a clarification about an unrelated numeric column in
+               # production.
+               "across",
                # Presentation/provenance language describes how to display the answer, not an
                # additional row predicate. Schema-named columns still win via sch_words above.
-               "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown"}
+               "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown"} | _SPREADSHEET_WORDS
         if _re.search(r'\breturn\s+(?:the|a|an|this|that)\b', question.lower()):
             CUE.add("return")
         if _re.search(r'\bcount\s*\(\s*distinct\b', sqll):
@@ -730,7 +761,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     return {"question": question, "error": f"{type(e).__name__}: {e}", "result": None}
                 print(f"[knowledge_query] non-geo serving failed: {type(e).__name__}", flush=True)
         cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
-        pred = "" if is_agg else self._semantic_predicate(question, [cr[2]] if cr else [])
+        pred = "" if is_agg else semantic_predicate(question, [cr[2]] if cr else [], sch)
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
         if plan and pred and schema:
             try:

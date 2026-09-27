@@ -274,10 +274,17 @@ def lower_world_query(
             )
             operand = BinaryValue(operand, "*", ColumnValue(*rate))
             function = "SUM"
-    else:
+    elif world_rate or conversion:
         raise UnsupportedDeterministicPlan(
             "world projection requires typed projection bindings"
         )
+    else:
+        # A listing ('amount in France', 'customers in France'): the kept rows are the answer, so the
+        # last sheet (filtered, or the lookup when nothing is filtered) is the declared output
+        # (docs/SHEETS_AS_REASONING.md rule 6). Repeating it as a projection sheet would be a no-op
+        # sheet (rule 3). These listings used to fail here, and a leftover word such as 'amount' sent
+        # them to the semantic search, which showed one opaque step.
+        return AnalysisPlan(slug, tuple(tables.values()), tuple(views))
     if isinstance(operand, BinaryValue):
         views.append(
             CalculatedView(

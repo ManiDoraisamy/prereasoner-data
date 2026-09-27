@@ -13,7 +13,7 @@ import sys
 
 from engine.compose import ComposeEngine
 from engine.joins import discover_fks, join_plan
-from engine.knowledge_query import verify_nonempty
+from engine.knowledge_query import semantic_predicate, verify_nonempty
 
 
 ORDERS = {"name": "orders", "columns": ["city", "amount"],
@@ -181,9 +181,29 @@ def test_real_aggregates_and_plain_selects_are_untouched():
         assert out is payload, f"{label} must pass through the gate untouched, got {out}"
 
 
+def test_words_that_name_the_sheet_leave_nothing_to_search_for():
+    """Production, 2026-09-27: 'amount in france' left the word 'amount' after France was resolved, and
+    that column name became a free-text search. The semantic path ranked France's orders by similarity to
+    the word, capped them at ten, and showed one opaque step instead of the lookup and the filter. A search
+    needs a word about the rows' content; the sheet's own vocabulary is not one."""
+    sales = [{"table": "sales", "name": name} for name in
+             ("order ID", "customer", "city", "tier", "ordered", "currency", "amount")]
+    for question in ("amount in france", "customers in France", "orders in france", "sales in france",
+                     "rows in france", "amounts and cities in France"):
+        assert semantic_predicate(question, ["France"], sales) == "", question
+    # Same sheet, words about the rows' content: the search keeps the question's words, including the
+    # ones that also name a column, so the embedding sees the whole phrase.
+    assert semantic_predicate("trench coat orders in france", ["France"], sales) == "trench coat orders"
+    remarks = [{"table": "orders", "name": "remarks"}, {"table": "orders", "name": "city"}]
+    assert semantic_predicate("who complained about bad delivery in France", ["France"], remarks) == "bad delivery"
+    # Without a schema, nothing is sheet vocabulary.
+    assert semantic_predicate("amount in france", ["France"]) == "amount"
+
+
 TESTS = [
     test_aggregate_over_zero_rows_is_not_presented_as_an_answer,
     test_real_aggregates_and_plain_selects_are_untouched,
+    test_words_that_name_the_sheet_leave_nothing_to_search_for,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,
     test_regression_the_named_filter_is_not_dropped,

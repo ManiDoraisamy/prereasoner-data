@@ -1807,6 +1807,66 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
             )
 
 
+def test_a_world_listing_ends_at_the_filtered_sheet_in_both_emitters():
+    # 'amount in France' has no aggregate: the kept rows are the answer, so the trail is the lookup
+    # and the filter, and the filtered sheet is the output. The lowering used to refuse it ("world
+    # projection requires typed projection bindings"), which left such listings to the semantic search.
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
+    from engine.deterministic.world import lower_world_query
+
+    rows = [[1, "Paris", 100], [2, "Lyon", 80], [3, "Chennai", 150]]
+    schema = [
+        {
+            "table": "orders",
+            "name": column,
+            "affinity": "TEXT" if column == "city" else "INTEGER",
+            "values": [row[index] for row in rows],
+        }
+        for index, column in enumerate(("id", "city", "amount"))
+    ]
+    slots = dict(
+        slug="amount_in_france", schema=schema, uploaded=["orders"], foreign_keys=[],
+        joins=[{"left_table": "orders", "left_col": "city", "right_table": "city", "right_col": "qid"}],
+        bridge_name="orders connected to knowledgebase", route_table="orders", route_column="city",
+        meaning_filter={"filter_table": "city", "attr": "country", "value": "Q142"}, own_filters=[],
+        world_rate=None, as_of=None, aggregate=None, calculation=None, conversion=None,
+        reference_columns={"city": [("qid", SQLType.TEXT), ("country", SQLType.TEXT)]},
+    )
+    plan = lower_world_query(**slots)
+    assert [view.name for view in plan.views] == [
+        "amount_in_france_combined", "amount_in_france_enriched_1", "amount_in_france_filtered",
+    ]
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        for namespace in ("conversation", "knowledgebase"):
+            connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+        for statement in (
+            "CREATE TABLE conversation.orders(id INTEGER, city TEXT, amount INTEGER)",
+            "INSERT INTO conversation.orders VALUES(1,'Paris',100),(2,'Lyon',80),(3,'Chennai',150)",
+            'CREATE TABLE conversation."orders connected to knowledgebase"'
+            '("column" TEXT, value TEXT, entity_qid TEXT)',
+            """INSERT INTO conversation."orders connected to knowledgebase" VALUES"""
+            """('city','Paris','Q90'),('city','Lyon','Q456'),('city','Chennai','Q1352')""",
+            "CREATE TABLE knowledgebase.city(qid TEXT, country TEXT)",
+            "INSERT INTO knowledgebase.city VALUES('Q90','Q142'),('Q456','Q142'),('Q1352','Q668')",
+        ):
+            connection.exec_driver_sql(statement)
+        result = DeterministicAnalysis(plan, conversation_schema="conversation").run(
+            connection, mode="verify", estimated_rows=3
+        )
+    assert sorted(
+        (row["orders__id"], row["orders__amount"], row["city__country"]) for row in result.rows
+    ) == [(1, 100, "Q142"), (2, 80, "Q142")], result.rows
+
+    # A currency conversion still needs an aggregate that says what it converts.
+    try:
+        lower_world_query(**{**slots, "conversion": ("exchange_rate", "rate_to_usd")})
+    except UnsupportedDeterministicPlan:
+        pass
+    else:
+        raise AssertionError("a conversion without an aggregate must not lower to a listing")
+
+
 def test_decomposed_dag_crosses_branches_and_excludes_existing_pairs():
     from engine.deterministic.plan import SortedView, SortValue
 
