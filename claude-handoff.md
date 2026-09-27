@@ -7,6 +7,68 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-27 — RELEASED: world listings show their steps ("amount in france"); slow-SQL lines never carry cells (engine 00236-noz)
+
+The owner compared "amount in france" with "total sales in france". The first showed one step ("result
+· from sales, sales unconnected to knowledgebase") and no combined, enriched or filtered tabs. The second
+showed combined → enriched → filtered → total. There were two causes.
+
+- **Routing.** For a question without an aggregate, `KnowledgeQuery.serve` resolved France and took
+  the leftover word "amount", which is a column name, as free text to search for. That sends a question
+  to the hybrid semantic path (`engine/knowledge_bridges.py:_serve_hybrid`), which runs one statement:
+  the France rows `ORDER BY embedding <=> embed('amount') LIMIT 10`. The stored analysis `a_5f2f42…`
+  revision 1 (15:24 UTC) shows `predicate: "amount"`. Its rows were right only because France has fewer
+  than 10 orders, and they came in similarity order (109, 123, 110, 121, 122). "customers in france" and
+  "orders in france" went the same way.
+- **Lowering.** The world path could not plan a listing at all. `lower_world_query` raised "world
+  projection requires typed projection bindings" for every question without an aggregate, so "in
+  france" and "who is in france" failed outright. The semantic search had been hiding this.
+- **Fix.** `semantic_predicate` is now a module function. It returns nothing when every leftover word
+  only names the sheet itself: its table and column names with their plurals (`_schema_vocabulary`,
+  now shared with `_uncovered`), or the spreadsheet (`_SPREADSHEET_WORDS`, shared with `_uncovered`'s
+  CUE). A world listing now lowers to its trail, and the filtered sheet is the declared output
+  (SHEETS_AS_REASONING rule 6). A currency conversion without an aggregate still refuses.
+- **The owner's sheet, through the production entry point.** "amount in france", "customers in
+  france", "orders in france" and "in france" each give combined → enriched 1 → filtered, with the 5
+  France orders in their own order (109, 110, 121, 122, 123). SQL, Python and verify modes produce the
+  same stages and rows. "total sales in france" is unchanged (970).
+- **Gates.** The new `tests.test_compose` test (`test_words_that_name_the_sheet_leave_nothing_to_search_for`)
+  fails on the old predicate, which was 'amount'. The new `tests.test_deterministic_emitters` test
+  (`test_a_world_listing_ends_at_the_filtered_sheet_in_both_emitters`, verify-mode parity on SQLite)
+  fails on the old lowering with the production error.
+  - Hermetic suites: compose 15/15, emitters 47/47, `test_calculations` 104/104,
+    `test_router_evidence` 11/11, `test_routing` 13/13, `test_complex_datasets` 7/7.
+  - Live suites: `test_world` 18/18, `test_world_joins` 6/6, `test_geo` 61/61, `test_nongeo` PASS,
+    `test_route_wired` PASS.
+  - `test_datasets` PASS: 24 prompts, 40 standalone follow-ups and 1 rewrite in four modes (260
+    records); the 13 `chat:` follow-ups are skipped by design.
+- **The bare "970" in the second screenshot.** That analysis (`a_6430c3…`) was stored on September 25
+  at 23:48 UTC, before the chat fix. Stored replies are not regenerated.
+- **Slow-SQL leak (`fd11f99`, released with this).** `execute_values` sends the uploaded-sheet INSERT
+  as bytes, literals included. `_sql_fingerprint` redacted `str(bytes)`, the repr, whose escaped quotes
+  the literal pattern never matched, so a slow upload logged the sheet's cells. Production has 3 such
+  lines (2026-09-24 01:01 UTC); they stay in Cloud Logging until its retention expires or someone
+  removes them. Bytes are now decoded before redaction, and any other statement object is named by its
+  type only. `tests.test_request_timing` 11/11; the new test fails on the old fingerprint with
+  `b?management\?single\?…`.
+- **Production.** Engine `prereasoner-api-00236-noz` = `engine@sha256:3cbb0037…`, built from `fd11f99`
+  (Cloud Build `9ae0332a`, its `regress-offline` step passed; weights `1400e39e…`, unchanged). Before
+  any traffic, the release-smoke job ran on the new image: `ok`, request budgets, conversation
+  lifecycle, exact total and reasoning total 3.3. The revision was deployed with no traffic, and
+  `/api/healthz` answered ok (reason, world, dimension) through its tag. Traffic then moved to it, the
+  tag was removed, and the three jobs run the same image. Chat and Hosting did not change.
+- **Live.** On chat.prereasoner.com, the `customer-orders` demo (the owner's 23 orders) asked "amount in
+  France" showed combined → looked up shared facts → filtered (PY ran). The Result overlays the
+  filtered sheet: orders 109, 110, 121, 122, 123 with 310, 210, 180, 95, 175, as derived from the CSV.
+  The reply was a sentence.
+- **Rollback.** `gcloud run services update-traffic prereasoner-api --to-revisions
+  prereasoner-api-00233-liy=100 --region us-central1 --project prereasoner-inference`, and point the
+  three jobs back at `engine@sha256:4fc6e203…`. Listings then fail again, and the leak returns.
+- **Separate tasks suggested.** "who ordered a trench coat in france" is read as a COUNT (5), and
+  "everything in france" still goes to the semantic search. The world trail shows "combined" for a
+  single sheet (rule 3). Lookup columns show QIDs (Q142) instead of labels in the enriched sheet and
+  now in listing Results (rule 5).
+
 ## 2026-09-26 — Each browser test gets its own fixture-server state
 
 The fixture server (`web/tests/browser/server.js`) kept one request count, deleted flag and revision
