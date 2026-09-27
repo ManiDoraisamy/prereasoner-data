@@ -30,7 +30,9 @@ SOURCE_ALLOWLIST = (
     "orchestrator",
 )
 SOURCE_SUITE_ALLOWLIST = (
-    *SOURCE_ALLOWLIST,
+    # Do not carry .gcloudignore into this already-filtered archive: gcloud builds submit
+    # applies it a second time and would silently drop tests/training/docs/spider sources.
+    *(path for path in SOURCE_ALLOWLIST if path != ".gcloudignore"),
     "tests",
     "training",
     "web",

@@ -777,6 +777,7 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "requirements-ci.lock.txt" in SOURCE_SUITE_ALLOWLIST
     assert "requirements-ci-windows.lock.txt" in SOURCE_SUITE_ALLOWLIST
     assert "spider/probe" in SOURCE_SUITE_ALLOWLIST
+    assert ".gcloudignore" not in SOURCE_SUITE_ALLOWLIST
 
 
 def test_live_database_tests_allocate_production_shaped_schemas():
