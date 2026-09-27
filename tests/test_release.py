@@ -757,11 +757,12 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
 
 def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     cloudbuild = _text("cloudbuild.hermetic.yaml")
+    suite_runner = _text("deploy/gcp/run_hermetic_suite.sh")
     assert "engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482" in cloudbuild
     assert "docker run --rm --cpus=8 --memory=16g" in cloudbuild
     assert "--volume /workspace:/workspace:ro" in cloudbuild
-    assert "cp -a /workspace/. /app/" in cloudbuild
-    assert "requirements-ci.lock.txt" in cloudbuild and "--require-hashes" in cloudbuild
+    assert "cp -a /workspace/. /app/" in suite_runner
+    assert "requirements-ci.lock.txt" in suite_runner and "--require-hashes" in suite_runner
     assert "--workdir /app" in cloudbuild
     assert "/opt/node:/opt/venv/bin" in cloudbuild
     assert "--env RUN_ENGINE_TESTS=0" in cloudbuild
@@ -769,15 +770,21 @@ def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     assert "node:22-bookworm-slim" in cloudbuild
     assert 'command -v node' in cloudbuild and "/opt/node:ro" in cloudbuild
     assert "chmod 0555 /node/node" in cloudbuild
-    assert "-m tests.run_all" in cloudbuild
+    assert "-m tests.run_all" in suite_runner
     assert "gcloud run" not in cloudbuild and "terraform apply" not in cloudbuild
+    assert "--ignore-file=cloudbuild.hermetic.ignore" in _text("deploy/gcp/README.md")
+    assert "git archive intentionally has no history" in suite_runner
+    assert "requirements-ci.lock.txt" in suite_runner and "--require-hashes" in suite_runner
 
     from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
 
     assert "requirements-ci.lock.txt" in SOURCE_SUITE_ALLOWLIST
     assert "requirements-ci-windows.lock.txt" in SOURCE_SUITE_ALLOWLIST
     assert "spider/probe" in SOURCE_SUITE_ALLOWLIST
-    assert ".gcloudignore" not in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/gcp/requirements.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "spider/results/RESULTS.md" in SOURCE_SUITE_ALLOWLIST
+    assert ".gcloudignore" in SOURCE_SUITE_ALLOWLIST
+    assert "cloudbuild.hermetic.ignore" in SOURCE_SUITE_ALLOWLIST
 
 
 def test_live_database_tests_allocate_production_shaped_schemas():

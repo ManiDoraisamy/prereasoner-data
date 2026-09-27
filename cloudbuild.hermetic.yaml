@@ -20,7 +20,7 @@ steps:
           --env RUN_ENGINE_TESTS=0 \
           --env RUN_ORCHESTRATOR_TESTS=0 \
           --entrypoint /bin/sh \
-          ${_BASE_IMAGE} -ceu 'cp -a /workspace/. /app/; python -m pip install --require-hashes -r /app/requirements-ci.lock.txt; exec python -m tests.run_all'
+          ${_BASE_IMAGE} /workspace/deploy/gcp/run_hermetic_suite.sh
 
 substitutions:
   _BASE_IMAGE: us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482

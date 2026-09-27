@@ -32,7 +32,7 @@ from engine.artifact_provenance import (
     sha256_tree,
 )
 from engine.config import BASE_MODEL_ID, BASE_MODEL_REVISION, DATA_DIR
-from engine.fetch_weights import WEIGHTS
+from engine.fetch_weights import _downloadable_files
 
 MANIFEST = Path("training/schema_org/data/semantic_manifest.json")
 MODEL_META = DATA_DIR / "schema_property_model.json"
@@ -301,10 +301,11 @@ def test_artifacts_agree_on_corpus_identity():
 
 def test_runtime_bundle_is_fully_fetchable_and_pinned():
     manifest = json.loads((DATA_DIR / "weights_manifest.json").read_text(encoding="utf-8"))
-    assert set(WEIGHTS) == set(manifest["files"]), (
+    fetchable = set(_downloadable_files(manifest))
+    assert fetchable == set(manifest["files"]), (
         "fetch_weights must provision every external file in the promoted manifest; "
-        f"missing={sorted(set(manifest['files']) - set(WEIGHTS))}, "
-        f"unmanifested={sorted(set(WEIGHTS) - set(manifest['files']))}"
+        f"missing={sorted(set(manifest['files']) - fetchable)}, "
+        f"unmanifested={sorted(fetchable - set(manifest['files']))}"
     )
     meta = json.loads(MODEL_META.read_text(encoding="utf-8"))
     assert meta["weights_sha256"] == manifest["files"]["schema_property_head.pt"], (

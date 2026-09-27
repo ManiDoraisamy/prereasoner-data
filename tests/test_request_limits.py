@@ -94,6 +94,7 @@ def test_chat_authenticates_without_a_database_and_signs_with_the_firebase_uid()
                 patch.object(auth, "_storage_principal", storage_principal), \
                 patch.dict(sys.modules, {"engine.pg": None}), \
                 patch.object(config, "external_llm_enabled", lambda: True), \
+                patch.object(config, "anthropic_api_key", lambda: "test-only-key"), \
                 patch.object(server, "run_chat", run_chat):
             request = urllib.request.Request(
                 f"http://127.0.0.1:{httpd.server_address[1]}/chat", data=body, method="POST",

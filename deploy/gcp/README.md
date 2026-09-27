@@ -95,6 +95,25 @@ manual Firebase deployment step.
 
 ## State And Replays
 
+### Hermetic Python suite (no deployment)
+
+The model-backed hermetic suites run inside the digest-pinned CPU serving image with the same
+frozen model bundle, plus the repository's hash-locked CI-only test dependencies. Build a clean,
+allowlisted source archive first, then explicitly use its no-filter upload file; the normal
+`.gcloudignore` is included for the source-boundary tests and must not be applied a second time:
+
+```bash
+python deploy/gcp/build_context.py --target suite --output /tmp/prereasoner-suite-context
+cd /tmp/prereasoner-suite-context
+gcloud builds submit --project <PROJECT_ID> \
+  --ignore-file=cloudbuild.hermetic.ignore \
+  --config=cloudbuild.hermetic.yaml .
+```
+
+This executes `tests.run_all` with the production image capped at 8 vCPU / 16 GiB. Live Postgres,
+world-data, and external-orchestrator tests remain separate; this gate cannot be reported as live
+product acceptance and does not deploy or change Cloud Run traffic.
+
 The Terraform backend in `infra/versions.tf` is deliberately partial. `deploy.sh` supplies the caller's
 bucket and `deployments/<name>` prefix at `terraform init`. This prevents a public checkout from ever
 defaulting to the maintainer's production state.
