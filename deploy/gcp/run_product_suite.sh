@@ -181,7 +181,11 @@ print("cpu_api_reason_world_join_ms=" + json.dumps(summary(single), sort_keys=Tr
 load = {}
 for workers in (2, 4, 8):
     latencies = []
-    for _ in range(3):
+    # The endpoint intentionally limits each verified principal to 30 requests/minute.
+    # Earlier levels send 3 + 6 + 12 = 21 calls, so one eight-request burst reaches the
+    # configured concurrency cap without turning this smoke into a rate-limit test.
+    rounds = 1 if workers == 8 else 3
+    for _ in range(rounds):
         with ThreadPoolExecutor(max_workers=workers) as executor:
             latencies.extend(executor.map(lambda _ignored: call_once(), range(workers)))
     load[str(workers)] = summary(latencies)
