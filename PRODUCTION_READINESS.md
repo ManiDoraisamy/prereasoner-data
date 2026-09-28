@@ -6,6 +6,22 @@ The separate 80% Spider accuracy work remains in its own worktree.
 
 ### Latest release work (2026-09-28)
 
+- **Latest live product gate passed:** Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` ran
+  source commit `78dbcd91bc10a8f0f5eeefc3de21705f58fd385e` on an `E2_HIGHCPU_32` worker. On the
+  release image `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482`,
+  the Python 3.11 runtime check passed `pip check` and
+  reported Python 3.11.16, CPU Torch 2.13.0, Transformers 5.10.4, spaCy 3.8.13, sqlglot 30.18.0,
+  and psycopg2-binary 2.9.12. Against an isolated PostgreSQL 16/pgvector instance restored from the
+  checksum-pinned public Community seed and refreshed with ECB release `2026-09-25`
+  (`dfe9ab070c0679d42a174981e07b240131d2db19d20108a5d0e4653d9f61fc9f`), migrations/grants,
+  curated world goldens, all configured live modules, and the full `tests.test_datasets` prompt and
+  follow-up matrix passed. The actual CPU-only HTTP entrypoint returned the expected France world
+  join on all three calls. At 8 vCPU / 16 GiB, call latency was p50 **1.18 s**, p95/max **4.29 s**;
+  container memory was **6.63 GiB** and process peak RSS **7.64 GiB**. This small smoke is not an
+  SLA or concurrency test. The authenticated external-orchestrator path remains explicitly
+  untested, and the disposable public seed is not production Cloud SQL. No image was promoted and
+  no Cloud Run traffic/configuration changed.
+
 - Live build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed offline and the two curated world
   goldens, then reported SIGKILL (`-9`) for `tests.test_world`/`tests.test_geo` and a 600-second
   timeout for `tests.test_datasets`. `tests.test_world_joins` passed **6/6** and `test_route_wired`

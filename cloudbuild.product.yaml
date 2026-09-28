@@ -6,12 +6,14 @@ steps:
     args:
       - -ceu
       - |
+        export RUN_PRODUCT_SUITES='${_RUN_PRODUCT_SUITES}'
         export BASE_IMAGE='${_BASE_IMAGE}'
         export PGVECTOR_IMAGE='${_PGVECTOR_IMAGE}'
         export BUILD_ID='${BUILD_ID}'
         exec bash /workspace/deploy/gcp/run_product_suite.sh
 
 substitutions:
+  _RUN_PRODUCT_SUITES: "1"
   _BASE_IMAGE: us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482
   _PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
 

@@ -809,13 +809,17 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     # A fixed AUTH_TEST_SUB makes live_schema treat that ID as caller-owned and
     # skip the production-shaped conversation/ownership rows. Live suites must
     # allocate registered, disposable conversation IDs instead.
-    live_suite_runner = runner.split("# Exercise the complete production HTTP entrypoint", 1)[0]
+    live_suite_runner = runner.split(
+        "# Exercise the production HTTP entrypoint under CPU-only Cloud Run resource limits", 1
+    )[0]
     assert "AUTH_TEST_SUB=localdev" not in live_suite_runner
     assert "LIVE_REGRESSION_TIMEOUT_SECONDS=600" in runner
     assert "db.sync.sources.ecb.sync" in runner
     assert "db.sync.build_exchange_rate" in runner
     assert "TEST_SUITE_TIMEOUT_SECONDS=1800" in runner
     assert "E2_HIGHCPU_32" in _text("cloudbuild.product.yaml")
+    assert '_RUN_PRODUCT_SUITES: "1"' in _text("cloudbuild.product.yaml")
+    assert 'RUN_PRODUCT_SUITES=\'${_RUN_PRODUCT_SUITES}\'' in _text("cloudbuild.product.yaml")
     assert "suite_status=0" in runner
     assert "|| suite_status=$?" in runner
     assert 'exit "$suite_status"' in runner
@@ -823,6 +827,9 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     assert "--cpus=8 --memory=16g" in runner and "/api/reason" in runner
     assert 'float(rows[0][0]) != 270.0' in runner and "docker stats --no-stream" in runner
     assert 'cpu_api_reason_world_join_ms=' in runner
+    assert 'cpu_api_reason_world_join_load=' in runner
+    assert 'for workers in (2, 4)' in runner
+    assert 'live_product_suites=skipped by explicit CPU-smoke-only invocation' in runner
     assert "gcloud sql" not in runner and "cloud-sql-proxy" not in runner
     assert "RUN_WORLD_REGRESSION" in _text("deploy/gcp/run_hermetic_suite.sh")
     assert "--require-world" in _text("deploy/gcp/run_hermetic_suite.sh")

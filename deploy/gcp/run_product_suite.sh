@@ -97,22 +97,26 @@ docker update --memory=2g --memory-swap=2g "$db_name" >/dev/null
 # Run the complete current test source against the seed using the production image's Python 3.11
 # and model bundle. RUN_ENGINE_TESTS=1 is deliberate: any skipped live suite is a failed gate.
 suite_status=0
-docker run --rm --network "$network" --cpus=8 --memory=16g \
-  --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
-  --workdir /app \
-  --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
-  --env RUN_ENGINE_TESTS=1 --env RUN_ORCHESTRATOR_TESTS=0 \
-  --env LIVE_ENGINE_ONLY=1 \
-  --env INSTALL_CI_REQUIREMENTS=0 \
-  --env RUN_WORLD_REGRESSION=1 \
-  --env LIVE_REGRESSION_TIMEOUT_SECONDS=600 \
-  --env TEST_SUITE_TIMEOUT_SECONDS=1800 \
-  --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
-  --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
-  --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh || suite_status=$?
+if [[ "${RUN_PRODUCT_SUITES:-1}" == "1" ]]; then
+  docker run --rm --network "$network" --cpus=8 --memory=16g \
+    --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
+    --workdir /app \
+    --env PATH=/opt/node:/opt/venv/bin:/usr/local/bin:/usr/bin:/bin \
+    --env RUN_ENGINE_TESTS=1 --env RUN_ORCHESTRATOR_TESTS=0 \
+    --env LIVE_ENGINE_ONLY=1 \
+    --env INSTALL_CI_REQUIREMENTS=0 \
+    --env RUN_WORLD_REGRESSION=1 \
+    --env LIVE_REGRESSION_TIMEOUT_SECONDS=600 \
+    --env TEST_SUITE_TIMEOUT_SECONDS=1800 \
+    --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
+    --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
+    --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh || suite_status=$?
+else
+  echo "live_product_suites=skipped by explicit CPU-smoke-only invocation" >&2
+fi
 
-# Exercise the complete production HTTP entrypoint under CPU-only Cloud Run resource limits. Three
-# deterministic, same-request calls make latency visible without turning this into a throughput test.
+# Exercise the production HTTP entrypoint under CPU-only Cloud Run resource limits. Repeated
+# read-only world joins at concurrency 1/2/4 provide a bounded latency/resource smoke, not a load SLA.
 docker run -d --name "$server_name" --network "$network" --cpus=8 --memory=16g \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
@@ -123,6 +127,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 base = "http://127.0.0.1:8080"
 deadline = time.monotonic() + 360
@@ -147,26 +152,39 @@ payload = {
     ],
     "question": "what is the total amount in France",
 }
-request = urllib.request.Request(
-    base + "/api/reason", data=json.dumps(payload).encode(),
-    headers={"Content-Type": "application/json", "Authorization": "Bearer test"},
-)
-latencies = []
-for _ in range(3):
+def call_once():
+    request = urllib.request.Request(
+        base + "/api/reason", data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer test"},
+    )
     started = time.perf_counter()
     with urllib.request.urlopen(request, timeout=180) as response:
         result = json.load(response)
-    latencies.append((time.perf_counter() - started) * 1000)
     rows = (result.get("result") or {}).get("rows") or []
     if result.get("error") or result.get("clarify") or not rows or float(rows[0][0]) != 270.0:
         raise SystemExit(f"CPU serving golden failed: {result!r}")
-ordered = sorted(latencies)
-print(
-    "cpu_api_reason_world_join_ms=" + json.dumps({
-        "n": len(latencies), "p50": round(ordered[1], 1),
-        "p95": round(ordered[-1], 1), "max": round(ordered[-1], 1),
-    }, sort_keys=True), flush=True,
-)
+    return (time.perf_counter() - started) * 1000
+
+def summary(latencies):
+    ordered = sorted(latencies)
+    return {
+        "n": len(ordered),
+        "p50": round(ordered[(len(ordered) - 1) // 2], 1),
+        "p95": round(ordered[min(len(ordered) - 1, int(len(ordered) * 0.95))], 1),
+        "max": round(ordered[-1], 1),
+    }
+
+single = [call_once() for _ in range(3)]
+print("cpu_api_reason_world_join_ms=" + json.dumps(summary(single), sort_keys=True), flush=True)
+
+load = {}
+for workers in (2, 4):
+    latencies = []
+    for _ in range(3):
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            latencies.extend(executor.map(lambda _ignored: call_once(), range(workers)))
+    load[str(workers)] = summary(latencies)
+print("cpu_api_reason_world_join_load=" + json.dumps(load, sort_keys=True), flush=True)
 PY
 docker stats --no-stream --format 'cpu_server_container_memory={{.MemUsage}} cpu={{.CPUPerc}}' "$server_name"
 docker exec "$server_name" awk '/VmHWM|VmRSS/ {print "cpu_server_process_" tolower($1) "=" $2 "_kib"}' /proc/1/status
@@ -176,4 +194,8 @@ if [[ "$suite_status" != 0 ]]; then
   exit "$suite_status"
 fi
 
-echo "All configured suites, including live world and dataset suites, passed against disposable PostgreSQL."
+if [[ "${RUN_PRODUCT_SUITES:-1}" == "1" ]]; then
+  echo "All configured suites, including live world and dataset suites, passed against disposable PostgreSQL."
+else
+  echo "CPU HTTP smoke passed; product suites were intentionally skipped in this invocation."
+fi

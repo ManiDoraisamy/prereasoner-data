@@ -13,6 +13,33 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Disposable live product gate and CPU API smoke pass
+
+Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` completed successfully on source commit
+`78dbcd91bc10a8f0f5eeefc3de21705f58fd385e` (E2_HIGHCPU_32 worker) using the release image
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482`.
+It restored the checksum-pinned public Community seed into disposable PostgreSQL 16/pgvector,
+refreshed the public ECB source
+(`2026-09-25`, content hash
+`dfe9ab070c0679d42a174981e07b240131d2db19d20108a5d0e4653d9f61fc9f`), and ran migrations/grants
+under the non-superuser serving role. The live regression, world/world-join/router/geo/schema-probe
+modules, and the complete dataset prompt/follow-up suite all passed. `tests.test_datasets` finished
+with exit 0; FX cases used the refreshed rates and passed the documented tolerance. The CPU smoke
+then called the real CPU-only `/api/reason` entrypoint three times for a world join and returned the
+expected France total each time.
+
+The exact release image's Python 3.11 environment passed `pip check`; reported versions: Python
+3.11.16, CPU Torch 2.13.0, Transformers 5.10.4, spaCy 3.8.13, sqlglot 30.18.0, and
+psycopg2-binary 2.9.12. At 8 vCPU / 16 GiB, the three-call world-join smoke measured p50 **1.18 s**,
+p95/max **4.29 s**, container memory **6.63 GiB**, and process peak RSS **7.64 GiB**. Three calls
+are a smoke, not a tail-latency or concurrency SLA.
+
+This closes the isolated public-seed live-product and CPU-smoke blockers on the refactor branch.
+It does not close merge/deploy readiness: authenticated external-orchestrator follow-ups were
+explicitly disabled, the live source here is the public Community snapshot rather than production
+Cloud SQL, and no traffic changed. The measured result is now recorded; remaining release
+prerequisites are being checked without touching production or the separate 7B accuracy worktree.
+
 ## 2026-09-28 — Live gate exposed worker-memory and stale-FX fixture blockers
 
 The corrected disposable build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed the offline 13-case
