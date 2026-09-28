@@ -718,6 +718,9 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert '"release": SOURCE_SUITE_ALLOWLIST' in source
     assert 'target in {"engine", "release"}' in source
     assert '"release", "suite", "chat"' in source
+    assert 'if target in {"suite", "release"}' in source
+    assert 'output / "tests" / "build_provenance.json"' in source
+    assert 'if target == "release":' in source
     assert '"build_target": target' in source
     hosting = _text("cloudbuild.hosting.yaml")
     assert "firebase deploy" in hosting

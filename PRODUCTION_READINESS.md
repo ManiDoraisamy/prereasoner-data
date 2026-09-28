@@ -298,8 +298,12 @@ do not validate the separate 7B Spider accuracy claim.
 
 The standard deployment build is being hardened to run offline regression, startup health, and
 the disposable live-product gate against the exact candidate image before publication. Its new
-wiring passes local release-contract tests; it has not yet been exercised as one Cloud Build from
-a clean, weight-complete release context.
+wiring exposed and is fixing a clean-context provenance omission: build
+`2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef` built the image, passed offline regression and health, then
+the live-suite runner failed closed because `/app/tests/build_provenance.json` was missing. The
+HTTP join smoke still passed (29/29 requests, exact answers), but the product gate is a failure.
+Cloud Build did not publish the declared image. The `release` context now emits the separate test
+source inventory expected by the runner; a second full build is required before this gate closes.
 
 The old “remaining acceptance work” list immediately below is historical and superseded by
 these completed gates. The actual blockers are now:

@@ -222,9 +222,17 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
         "source_commit": commit,
         "weights_manifest_sha256": fingerprint,
     }
-    if target == "suite":
+    if target in {"suite", "release"}:
         provenance_record["source_files"] = sorted(source_files)
     provenance.write_text(json.dumps(provenance_record, sort_keys=True, indent=2) + "\n", encoding="ascii")
+    if target == "release":
+        # The live/hermetic runner overlays the release source and builds its temporary Git
+        # snapshot from this attested inventory. Keep it alongside the model-bundle provenance.
+        suite_provenance = output / "tests" / "build_provenance.json"
+        suite_provenance.parent.mkdir(parents=True, exist_ok=True)
+        suite_provenance.write_text(
+            json.dumps(provenance_record, sort_keys=True, indent=2) + "\n", encoding="ascii",
+        )
     return commit, fingerprint
 
 

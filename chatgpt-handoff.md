@@ -13,6 +13,19 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — First full release build caught missing suite provenance
+
+The new commit-tagged release build `2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef` built its image,
+passed startup/offline gates, restored the checksum-pinned public database, and reached the
+integrated live-product runner. That runner failed closed because the `release` source context
+did not emit `/app/tests/build_provenance.json`, which is needed to create the attested synthetic
+Git snapshot. The actual CPU HTTP smoke still passed (29/29 exact calls), but the full release
+gate is a failure; Cloud Build did not publish the image. I added the second suite inventory
+provenance record to the release context and am rerunning local tests before the one permitted
+retry. No production traffic or data was touched.
+
+---
+
 ## 2026-09-28 — Full live-product gate is now part of the release build
 
 I closed a release-pipeline gap rather than treating the earlier manual acceptance build as
