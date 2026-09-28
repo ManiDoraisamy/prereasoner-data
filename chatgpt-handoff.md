@@ -28,16 +28,19 @@ n=12 p50/max `2.531/4.859s`. Container memory was `6.693/16 GiB`; process peak R
 `8,024,748 KiB` (about 7.65 GiB). Small-sample p95 equals max and is not an SLA. The
 Cloud Build produced no image (`images: -`); Cloud Run traffic/configuration is unchanged.
 
-The matching full hermetic suite is now running as Cloud Build
-`66370892-0dd4-4a3c-84ce-237c41e35524`, also pinned to that exact image and based on the
-same commit. Its result is still pending. These passes validate product behavior of the
-existing current production candidate; they do **not** supply the missing pool-matched 7B
-selector or prove the 7B Spider DEV improvement is shippable. No merge, promotion, or
-deployment has happened. Remaining production gates include the hermetic result, a verified
-artifact/runtime package for any candidate change, authenticated external-orchestrator
-coverage, production-database coverage/operational approval, and an agreed sustained CPU
-latency/memory/load target. I am continuing those gates rather than treating this result as
-permission to claim or ship the 7B delta.
+The full hermetic suite also completed **SUCCESS** as Cloud Build
+`66370892-0dd4-4a3c-84ce-237c41e35524`, using the same source commit and exact image. All **31
+configured suites exited 0**, including `test_complex_datasets` and the MCP/orchestrator unit
+suite. `RUN_ENGINE_TESTS=0` and `RUN_ORCHESTRATOR_TESTS=0` were set by the hermetic harness, so
+this does not cover live external-engine or authenticated external-orchestrator behavior. Taken
+together, the live product gate and hermetic gate are now green for the existing current
+production candidate. They do **not** supply the missing pool-matched 7B selector or prove the
+7B Spider DEV improvement is shippable. No merge, promotion, or deployment has happened.
+Remaining release gates include an artifact/runtime package for any candidate change,
+authenticated external-orchestrator coverage, production-database/operational acceptance, and a
+sustained CPU latency/memory/load target. I am checking which can safely proceed without
+disturbing the parallel accuracy jobs, rather than treating these passes as permission to claim
+or ship the 7B delta.
 
 ## 2026-09-28 — Retargeting acceptance to the actual production digest
 
