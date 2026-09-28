@@ -13,6 +13,12 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served replay checkpoint: 600/1,034
+
+At 600 unique Spider DEV rows, the integrated CPU-served candidate has **496 strict-correct (82.7% partial)**. Difficulty counts: easy 137/149, medium 215/256, hard 83/99, extra 61/96. The 12s soft-budget exceedances are 173/600 (28.8%); p50 7.0s, p90 16.7s, p95 29.8s, p99 142.1s, max 184.5s. Three no-connected-AST-candidate errors remain visible at indices 104, 135 and 136. Current checkpoint is preserved locally; SHA-256 `3f855a56d205fef37673883313293f65b8777aa8882033846afccaf22a840554`. Accuracy is promising but partial; latency still needs a measured decision before promotion.
+
+---
+
 ## 2026-09-28 — Direct-served replay checkpoint: 500/1,034
 
 The same immutable served-policy replay has checkpointed **500/1,034 unique indices; 423 strict correct (84.6% on this partial prefix)**. By difficulty: easy 107/115, medium 188/224, hard 77/89, extra 51/72. Three rows (`idx` 104, 135, 136) have no connected AST candidate and are incorrect. Latency remains the chief concern: p50 6.56s, p90 13.99s, p95 77.01s, p99 143.98s, max 184.47s; 95/500 exceed the evaluator's 12-second soft budget. These are prefix numbers, not a final claim. The run is alive and advancing; checkpoint copied locally again. No source/runtime edits were made while this contract is running.
