@@ -1,0 +1,2 @@
+# PEP 517 backend required to build the pinned llama-cpp-python source distribution.
+scikit-build-core==0.11.6

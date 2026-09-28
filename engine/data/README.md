@@ -2,16 +2,16 @@
 
 Everything the serving engine opens at runtime lives here (override the location with
 `PREREASONER_DATA_DIR`). Large binaries are **gitignored** (the repo `.gitignore` excludes `*.pt`, `*.db`,
-`*.npz`, `qwen_lora/` and `sql_proposer/`) and must be fetched/produced separately; the small CSV/JSON artifacts are committed.
+`*.npz` and `qwen_lora/`) and must be fetched/produced separately; the small CSV/JSON artifacts are committed.
 
-**Provision the weights on a fresh clone:**
+**Provision the encoder weights on a fresh clone:**
 ```
 python -m engine.fetch_weights
 ```
-This downloads every file listed under `files` in `weights_manifest.json` into this directory
-(currently `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `sql_proposer/`, `anchor_assignment.npz`,
-`primitives.npz`, and `schema_property_head.pt`; see `engine/fetch_weights.py`). The fetcher stages
-the declared set and validates hashes before installation. `weights_manifest.json` pins the
+This downloads `encoder.pt`, `encoder_meta.pt`, `qwen_lora/`, `anchor_assignment.npz`,
+`primitives.npz`, and `schema_property_head.pt` into this directory (see
+`engine/fetch_weights.py`). The SQL model is fetched separately with
+`python -m engine.fetch_xiyan_sql`. `weights_manifest.json` pins the
 source revision and SHA-256 of every runtime weight; both existing and downloaded bundles
 must validate completely before use. The default source repo is the public
 **[`prereasoner/prereasoner-weights`](https://huggingface.co/prereasoner/prereasoner-weights)**;
@@ -26,7 +26,8 @@ A local-only manifest intentionally refuses fresh-clone download. To retrain fro
 | File | Size | Purpose | In git? |
 |---|---|---|---|
 | `qwen_lora/` | ~17 MB | LoRA adapter for the Qwen2.5-0.5B unified encoder (the trained metric space). Loaded by `engine.encoder_overlay`, `engine.dimension`, `engine.router`. | no (gitignored) |
-| `sql_proposer/` | ~9 MB | LoRA adapter for the Qwen2.5-0.5B causal LM that proposes own-data SQL candidates (`engine.sql_proposer`). Installed only by `training/rank/promote.py`, together with its arbiter. | no (gitignored) |
+| `xiyan_sql_proposer.gguf` | 4.68 GB | Pinned XiYanSQL QwenCoder 7B Q4_K_M CPU model. Fetched and hash-verified during image build from the immutable revision in `xiyan_sql_proposer.json`. | no (fetched by image build) |
+| `xiyan_sql_proposer.json` | 1 KB | Prompt, tokenizer, model, decoding and runtime contract for the single active SQL proposer. | yes |
 | `sql_arbiter.json` | 3 KB | The fitted linear arbiter (`engine.sql_rank.SQLArbiter`): nine named features' means, scales and coefficients, the candidate-pool contract (search candidates, beams, decode length, execution budget), and fit provenance naming the adapter it belongs to. | yes |
 | `encoder.pt` | ~72 MB | State_dict of the trained relational readout (`engine.encoder_model.RelationalModel`). Plain `state_dict` — no pickled classes. | no (gitignored) |
 | `encoder_meta.pt` | 8 KB | `{"alloc": …, "cfg": …}` — the dim allocation (names/families/ids) + the RelationalModel constructor config. Contains tensors and primitive containers only; loaded with `torch.load(..., weights_only=True)`. | no (gitignored, `*.pt`) |

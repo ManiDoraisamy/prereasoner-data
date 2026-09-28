@@ -916,6 +916,7 @@ def test_release_installs_only_hash_locked_dependencies():
         lock = _text(relative)
         assert "--hash=sha256:" in lock, f"release dependency lock has no hashes: {relative}"
     assert "--require-hashes -r /tmp/requirements.lock.txt" in _text("Dockerfile")
+    assert "--require-hashes -r /tmp/requirements-build.lock.txt" in _text("Dockerfile")
     assert "--require-hashes -r orchestrator/requirements.lock.txt" in _text(
         "Dockerfile.orchestrator"
     )

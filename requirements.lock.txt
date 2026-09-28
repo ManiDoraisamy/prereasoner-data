@@ -500,6 +500,10 @@ defusedxml==0.7.1 \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
     --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
     # via -r requirements.txt
+diskcache==5.6.3 \
+    --hash=sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc \
+    --hash=sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19
+    # via llama-cpp-python
 distro==1.9.0 \
     --hash=sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed \
     --hash=sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2
@@ -828,6 +832,7 @@ idna==3.19 \
 jinja2==3.1.6 \
     --hash=sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
     # via
+    #   llama-cpp-python
     #   spacy
     #   torch
 jiter==0.16.0 \
@@ -937,6 +942,9 @@ jiter==0.16.0 \
     --hash=sha256:f4444a83f946605990c98f625cdd3d2725bfb818158760c5748c653170a20e0e \
     --hash=sha256:fb08c276dd02dac3a284acdd02cacc630d2e3cd6572a4b85519f35cbd133c3de
     # via anthropic
+llama-cpp-python==0.3.35 \
+    --hash=sha256:1139dbb54509074b70893fab8554e3b079aa9f4d312058ce4018ef0019e3de12
+    # via -r requirements.txt
 markdown-it-py==4.2.0 \
     --hash=sha256:04a21681d6fbb623de53f6f364d352309d4094dd4194040a10fd51833e418d49 \
     --hash=sha256:9f7ebbcd14fe59494226453aed97c1070d83f8d24b6fc3a3bcf9a38092641c4a
@@ -1157,6 +1165,7 @@ numpy==1.26.4 \
     #   -r requirements.txt
     #   accelerate
     #   blis
+    #   llama-cpp-python
     #   peft
     #   spacy
     #   thinc
@@ -2091,6 +2100,7 @@ typing-extensions==4.16.0 \
     #   anyio
     #   grpcio
     #   huggingface-hub
+    #   llama-cpp-python
     #   opentelemetry-api
     #   pydantic
     #   pydantic-core

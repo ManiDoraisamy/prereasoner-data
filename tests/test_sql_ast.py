@@ -913,8 +913,8 @@ def test_shipped_arbiter_is_the_manifested_served_contract():
     manifest = json.loads((data / "weights_manifest.json").read_text(encoding="utf-8"))
     assert manifest["committed_artifacts"]["sql_arbiter.json"]["sha256"] == sha256_file(
         data / "sql_arbiter.json")
-    assert {"sql_proposer/adapter_config.json", "sql_proposer/adapter_model.safetensors"} <= set(
-        manifest["files"])
+    assert "xiyan_sql_proposer.json" in manifest["committed_artifacts"]
+    assert "xiyan_sql_proposer/adapter_model.safetensors" not in manifest["files"]
     assert (SHIPPED_ARBITER.search_candidates, SHIPPED_ARBITER.proposer_beams,
             SHIPPED_ARBITER.proposer_max_new_tokens) == (25, 4, 96)
     assert payload["fit"]["proposer_adapter_sha256"], "the arbiter must name the adapter it was fit on"
@@ -1171,6 +1171,15 @@ def test_proposal_import_rejects_malformed_model_text():
         except Unsupported:
             continue
         raise AssertionError(f"malformed model text imported: {text[:40]}")
+
+
+def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences():
+    from engine.sql_proposer import normalize_decoded_sql
+
+    assert normalize_decoded_sql("SELECT name\nFROM people;") == "SELECT name\nFROM people;"
+    assert normalize_decoded_sql("```sql\nSELECT name\nFROM people;\n```") == (
+        "SELECT name\nFROM people;"
+    )
 
 
 def test_evaluator_grades_the_served_selection():

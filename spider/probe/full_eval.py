@@ -537,7 +537,7 @@ def main():
         "cap": args.cap,
         "timeout": args.timeout,
     }
-    from engine.artifact_provenance import adapter_sha256, fingerprint_paths
+    from engine.artifact_provenance import adapter_sha256, fingerprint_paths, sha256_file
     from engine.config import DATA_DIR
 
     # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
@@ -546,7 +546,7 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
+                   "sql_proposer.py", "xiyan_sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
                    "model_revisions.py",
                    "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
@@ -569,6 +569,8 @@ def main():
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "sql_arbiter": DATA_DIR / "sql_arbiter.json",
+            "sql_proposer_contract": DATA_DIR / "xiyan_sql_proposer.json",
+            "sql_proposer_model": DATA_DIR / "xiyan_sql_proposer.gguf",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
             **{
@@ -577,7 +579,7 @@ def main():
             },
         }),
         "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
-        "proposer_adapter": adapter_sha256(DATA_DIR / "sql_proposer"),
+        "proposer_model_sha256": sha256_file(DATA_DIR / "xiyan_sql_proposer.gguf"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}

@@ -64,45 +64,30 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
 
 
 def load_sql_selection(obj, deploy_dir=DATA_DIR):
-    """The own-data SQL selection models (engine/data, pinned by weights_manifest.json): the
-    fitted arbiter (sql_arbiter.json) and the proposer adapter it was fit with (sql_proposer/).
-    The arbiter's pool contract fixes how many beams the proposer decodes."""
+    """Load the one pinned CPU SQL proposer and its explicitly evaluated selector."""
     import json
     from pathlib import Path
-
-    from engine.artifact_provenance import (
-        adapter_sha256,
-        load_weights_manifest,
-        sha256_file,
-    )
-    from engine.sql_proposer import (
-        SQLProposer,
-        validate_proposer_arbiter_contract,
-        validate_proposer_runtime_pin,
-    )
+    from engine.xiyan_sql_proposer import XiYanSQLProposer
     from engine.sql_rank import SQLArbiter
+    from engine.artifact_provenance import load_weights_manifest, sha256_file
     d = Path(deploy_dir)
-    arbiter_path = d / "sql_arbiter.json"
-    arbiter_payload = json.loads(arbiter_path.read_text(encoding="utf-8"))
-    obj.sql_arbiter = SQLArbiter.from_payload(arbiter_payload, str(arbiter_path))
-    runtime_path = d / "sql_proposer" / "runtime.json"
-    if runtime_path.is_file():
-        manifest = load_weights_manifest(d)
-        if manifest is None:
-            raise ValueError("GGUF proposer runtime requires a hash-pinned weights manifest")
-        validate_proposer_runtime_pin(manifest, sha256_file(runtime_path))
-        proposer_identity = json.loads(runtime_path.read_text(encoding="utf-8"))
-    else:
-        proposer_identity = {
-            "backend": "huggingface-peft",
-            "adapter_sha256": adapter_sha256(d / "sql_proposer"),
-        }
-    validate_proposer_arbiter_contract(
-        arbiter_payload, proposer_identity, sha256_file(arbiter_path)
+    contract_path = d / "xiyan_sql_proposer.json"
+    manifest = load_weights_manifest(d)
+    if manifest is None:
+        raise ValueError("XiYanSQL proposer requires a hash-pinned weights manifest")
+    if sha256_file(contract_path) != (
+        manifest.get("committed_artifacts", {}).get("xiyan_sql_proposer.json", {}).get("sha256")
+    ):
+        raise RuntimeError("XiYanSQL proposer contract differs from the manifested artifact")
+    contract = XiYanSQLProposer.read_contract(contract_path)
+    arbiter_path = d / contract["selector"]["artifact"]
+    if sha256_file(arbiter_path) != contract["selector"]["sha256"]:
+        raise RuntimeError("SQL arbiter does not match the XiYanSQL selection contract")
+    obj.sql_arbiter = SQLArbiter.from_payload(
+        json.loads(arbiter_path.read_text(encoding="utf-8")), str(arbiter_path)
     )
-    obj.sql_proposer = SQLProposer.load(
-        d / "sql_proposer", beams=obj.sql_arbiter.proposer_beams,
-        max_new_tokens=obj.sql_arbiter.proposer_max_new_tokens, device=DEVICE, data_dir=d,
+    obj.sql_proposer = XiYanSQLProposer.load(
+        d / "xiyan_sql_proposer.gguf", contract_path=contract_path,
     )
 
 

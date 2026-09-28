@@ -107,4 +107,4 @@ options:
 # Headroom for a slow-HF day: anonymous HF egress bandwidth to GCP varies. 60 min covers it; override
 # with `--timeout` if HF is pathologically
 # slow, or vendor the models into the image for a fully deterministic build.
-timeout: 5400s
+timeout: 7200s

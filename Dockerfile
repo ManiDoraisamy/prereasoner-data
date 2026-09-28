@@ -9,7 +9,7 @@
 # drops pip's wheel/build leftovers and keeps a single apt layer out of the final image.
 #
 # Model weights (engine/data/encoder.pt, encoder_meta.pt, primitives.npz,
-# anchor_assignment.npz, qwen_lora/, sql_proposer/, schema_property_head.pt) are GITIGNORED: present in a
+# anchor_assignment.npz, qwen_lora/ and schema_property_head.pt) are GITIGNORED: present in a
 # full working copy, absent in a fresh clone/CI. `COPY engine/` succeeds either way, so the *build* never
 # fails on missing weights — instead the entrypoint checks for them at container START
 # and exits with a clear, actionable message. See engine/data/README.md.
@@ -20,8 +20,13 @@ FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential cmake ninja-build \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV CMAKE_ARGS="-DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_FMA=ON -DGGML_F16C=ON"
 
 # requirements.lock.txt pins the complete CPU stack and hashes every distribution. requirements.txt
 # remains the human-maintained input used to regenerate it. The lock installs the CPU torch wheel and
@@ -29,7 +34,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # `spacy download` step needed — but keep the assertion below so a future requirements
 # edit that drops the model wheel fails the build, not the first request).
 COPY requirements.lock.txt /tmp/requirements.lock.txt
-RUN pip install --require-hashes -r /tmp/requirements.lock.txt \
+COPY requirements-build.lock.txt /tmp/requirements-build.lock.txt
+RUN pip install --require-hashes -r /tmp/requirements-build.lock.txt \
+ && pip install --no-build-isolation --require-hashes -r /tmp/requirements.lock.txt \
  && python -c "import spacy; spacy.load('en_core_web_md')"
 
 # Pre-bake the Hugging Face models the engine loads at startup (the Qwen base, used both as the
@@ -51,7 +58,18 @@ AutoModelForCausalLM.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
 AutoTokenizer.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
 AutoModel.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
 AutoTokenizer.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
+AutoTokenizer.from_pretrained(
+    "XGenerationLab/XiYanSQL-QwenCoder-7B-2504",
+    revision="681ba8b35480da7fd297b40fd3bb1e709148df2b",
+)
 PY
+
+# Bake the verified public XiYanSQL GGUF into the image. Runtime startup must not download models.
+COPY engine/fetch_xiyan_sql.py /tmp/fetch_xiyan_sql.py
+COPY engine/data/xiyan_sql_proposer.json /tmp/xiyan_sql_proposer.json
+RUN python /tmp/fetch_xiyan_sql.py \
+      --contract /tmp/xiyan_sql_proposer.json \
+      --out /opt/xiyan_sql_proposer.gguf
 
 # ---------- runtime ----------
 FROM python:3.11-slim@sha256:da047cb8f9d1d98e5c070f5300ba9f7274e33b8fc0e5be5ed88740aed1b95ba9
@@ -70,11 +88,12 @@ WORKDIR /app
 # image.  Keeping the client here avoids a second database-tool image or a live Wikidata
 # bootstrap during installation; the serving process never invokes pg_restore.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends postgresql-client \
+ && apt-get install -y --no-install-recommends postgresql-client libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/venv /opt/venv
 COPY --from=builder /opt/hf /opt/hf
+COPY --from=builder /opt/xiyan_sql_proposer.gguf /app/engine/data/xiyan_sql_proposer.gguf
 COPY LICENSE THIRD_PARTY.md /licenses/
 
 # engine/ includes engine/data/* when the weights exist locally; in a fresh clone only
@@ -104,7 +123,7 @@ if [ "$1" = "python" ] && [ "$2" = "-m" ] && [ "$3" = "engine.retention_cleanup"
     exec "$@"
 fi
 missing=""
-for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora sql_proposer sql_arbiter.json schema_property_head.pt; do
+for f in encoder.pt encoder_meta.pt anchor_assignment.npz primitives.npz qwen_lora xiyan_sql_proposer.gguf xiyan_sql_proposer.json sql_arbiter.json schema_property_head.pt; do
     [ -e "$DATA_DIR/$f" ] || missing="$missing $f"
 done
 if [ -n "$missing" ]; then
