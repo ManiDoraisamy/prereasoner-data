@@ -117,13 +117,16 @@ product acceptance and does not deploy or change Cloud Run traffic.
 ### Live product suite against disposable seeded Postgres (no deployment)
 
 The live-world acceptance gate uses a temporary Docker network and PostgreSQL 16/pgvector container
-inside Cloud Build. It restores only the public, SHA-256-pinned Community seed, creates a temporary
+inside Cloud Build. It restores only the public, SHA-256-pinned Community seed, refreshes the public
+ECB series for the current as-of date inside that disposable database, creates a temporary
 non-superuser `serving` role, runs `regress.run_regression --require-world`, and runs all configured
 engine/world/dataset tests with the **production image's unchanged hash-locked Python 3.11
-environment**. It then runs three requests through the actual HTTP server with the serving role,
-checks the answer, and records CPU-only request latency and container RSS/CPU. The PostgreSQL
-container, volume, network, and test server are removed on both success and failure. This lane never
-connects to Cloud SQL, including `prereasoner-world`, and creates no GCP database or service.
+environment**. It then runs the actual HTTP server under the production 8-vCPU/16-GiB container cap,
+checks a customers+orders-to-France knowledgebase join, and records CPU-only request latency and
+container RSS/CPU. The Cloud Build worker has enough host memory for the test containers; each
+container remains capped at its tested serving limit. The PostgreSQL container, volume, network, and
+test server are removed on both success and failure. This lane never connects to Cloud SQL,
+including `prereasoner-world`, and creates no GCP database or service.
 
 ```bash
 python deploy/gcp/build_context.py --target suite --output /tmp/prereasoner-product-context

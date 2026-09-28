@@ -63,6 +63,20 @@ docker run --rm --network "$network" --cpus=4 --memory=2g \
   --env "COMMUNITY_SEED_URI=$seed_uri" --env "COMMUNITY_SEED_SHA256=$seed_sha256" \
   --entrypoint python "$image" -m db.sync.community_seed_import --role serving
 
+# The Community dump is a versioned world snapshot; ECB rates are a daily series and that snapshot
+# can predate today's as-of date. Refresh only this public source inside the disposable database,
+# then rebuild its bounded calendar projection. The ECB importer logs the release content hash.
+docker run --rm --network "$network" --cpus=4 --memory=2g \
+  --env SYNC_PG_HOST=product-db --env SYNC_PG_PORT=5432 --env SYNC_PG_DB=world \
+  --env SYNC_PG_USER=postgres --env "SYNC_PG_PASSWORD=$db_password" --env SYNC_PG_SSLMODE=disable \
+  --entrypoint python "$image" -m db.sync.sources.ecb.sync
+docker run --rm --network "$network" --cpus=4 --memory=2g \
+  --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
+  --env KB_PG_USER=postgres --env "KB_PG_PASSWORD=$db_password" --env KB_PG_SSLMODE=disable \
+  --entrypoint python "$image" -m db.sync.build_exchange_rate
+docker exec "$db_name" psql -v ON_ERROR_STOP=1 -U postgres -d world -Atc \
+  "SELECT 'ecb_release=' || source_release_id || '; rows=' || count(*) || '; date_range=' || min(date)::text || '..' || max(date)::text FROM knowledgebase.exchange_rate GROUP BY source_release_id"
+
 # Assert the actual immutable image's target runtime and installed package consistency before grading.
 docker run --rm -i --cpus=2 --memory=2g --entrypoint python "$image" - <<'PY'
 import importlib.metadata
@@ -82,6 +96,7 @@ docker update --memory=2g --memory-swap=2g "$db_name" >/dev/null
 
 # Run the complete current test source against the seed using the production image's Python 3.11
 # and model bundle. RUN_ENGINE_TESTS=1 is deliberate: any skipped live suite is a failed gate.
+suite_status=0
 docker run --rm --network "$network" --cpus=8 --memory=16g \
   --volume "$node_volume:/opt/node:ro" --volume /workspace:/workspace:ro \
   --workdir /app \
@@ -91,10 +106,10 @@ docker run --rm --network "$network" --cpus=8 --memory=16g \
   --env INSTALL_CI_REQUIREMENTS=0 \
   --env RUN_WORLD_REGRESSION=1 \
   --env LIVE_REGRESSION_TIMEOUT_SECONDS=600 \
-  --env TEST_SUITE_TIMEOUT_SECONDS=600 \
+  --env TEST_SUITE_TIMEOUT_SECONDS=1800 \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
-  --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh
+  --entrypoint /bin/sh "$image" /workspace/deploy/gcp/run_hermetic_suite.sh || suite_status=$?
 
 # Exercise the complete production HTTP entrypoint under CPU-only Cloud Run resource limits. Three
 # deterministic, same-request calls make latency visible without turning this into a throughput test.
@@ -126,8 +141,11 @@ else:
 print("cpu_server_health=" + json.dumps(health, sort_keys=True), flush=True)
 
 payload = {
-    "tables": [{"name": "orders", "data": "Order_ID,Amount\nO1,100\nO2,150\nO3,50\n"}],
-    "question": "what is the total amount",
+    "tables": [
+        {"name": "customers", "data": "Name,City\nAda,Paris\nLin,Lyon\nBo,Berlin\n"},
+        {"name": "orders", "data": "Customer,Amount\nAda,120\nLin,150\nBo,200\n"},
+    ],
+    "question": "what is the total amount in France",
 }
 request = urllib.request.Request(
     base + "/api/reason", data=json.dumps(payload).encode(),
@@ -140,11 +158,11 @@ for _ in range(3):
         result = json.load(response)
     latencies.append((time.perf_counter() - started) * 1000)
     rows = (result.get("result") or {}).get("rows") or []
-    if result.get("error") or result.get("clarify") or not rows or float(rows[0][0]) != 300.0:
+    if result.get("error") or result.get("clarify") or not rows or float(rows[0][0]) != 270.0:
         raise SystemExit(f"CPU serving golden failed: {result!r}")
 ordered = sorted(latencies)
 print(
-    "cpu_api_reason_ms=" + json.dumps({
+    "cpu_api_reason_world_join_ms=" + json.dumps({
         "n": len(latencies), "p50": round(ordered[1], 1),
         "p95": round(ordered[-1], 1), "max": round(ordered[-1], 1),
     }, sort_keys=True), flush=True,
@@ -152,5 +170,10 @@ print(
 PY
 docker stats --no-stream --format 'cpu_server_container_memory={{.MemUsage}} cpu={{.CPUPerc}}' "$server_name"
 docker exec "$server_name" awk '/VmHWM|VmRSS/ {print "cpu_server_process_" tolower($1) "=" $2 "_kib"}' /proc/1/status
+
+if [[ "$suite_status" != 0 ]]; then
+  echo "live product suites failed with exit $suite_status (CPU HTTP smoke still completed)" >&2
+  exit "$suite_status"
+fi
 
 echo "All configured suites, including live world and dataset suites, passed against disposable PostgreSQL."

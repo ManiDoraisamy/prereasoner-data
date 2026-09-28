@@ -812,10 +812,17 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     live_suite_runner = runner.split("# Exercise the complete production HTTP entrypoint", 1)[0]
     assert "AUTH_TEST_SUB=localdev" not in live_suite_runner
     assert "LIVE_REGRESSION_TIMEOUT_SECONDS=600" in runner
-    assert "TEST_SUITE_TIMEOUT_SECONDS=600" in runner
+    assert "db.sync.sources.ecb.sync" in runner
+    assert "db.sync.build_exchange_rate" in runner
+    assert "TEST_SUITE_TIMEOUT_SECONDS=1800" in runner
+    assert "E2_HIGHCPU_32" in _text("cloudbuild.product.yaml")
+    assert "suite_status=0" in runner
+    assert "|| suite_status=$?" in runner
+    assert 'exit "$suite_status"' in runner
     assert "docker update --memory=2g --memory-swap=2g" in runner
     assert "--cpus=8 --memory=16g" in runner and "/api/reason" in runner
-    assert 'float(rows[0][0]) != 300.0' in runner and "docker stats --no-stream" in runner
+    assert 'float(rows[0][0]) != 270.0' in runner and "docker stats --no-stream" in runner
+    assert 'cpu_api_reason_world_join_ms=' in runner
     assert "gcloud sql" not in runner and "cloud-sql-proxy" not in runner
     assert "RUN_WORLD_REGRESSION" in _text("deploy/gcp/run_hermetic_suite.sh")
     assert "--require-world" in _text("deploy/gcp/run_hermetic_suite.sh")

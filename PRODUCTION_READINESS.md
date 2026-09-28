@@ -6,6 +6,16 @@ The separate 80% Spider accuracy work remains in its own worktree.
 
 ### Latest release work (2026-09-28)
 
+- Live build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed offline and the two curated world
+  goldens, then reported SIGKILL (`-9`) for `tests.test_world`/`tests.test_geo` and a 600-second
+  timeout for `tests.test_datasets`. `tests.test_world_joins` passed **6/6** and `test_route_wired`
+  passed. Geo/data tests revealed the static Community seed's ECB projection had no row for the
+  current `as_of` date; FX conversions safely clarified rather than fabricating rates. API CPU smoke
+  did not run because this runner revision stopped on the suite failure. Next-run changes: use a
+  32-GB Cloud Build worker while retaining the production-matched 8-vCPU/16-GiB app container;
+  refresh the public ECB release in the isolated database; raise the per-suite timeout to 1,800s;
+  preserve suite failure but still execute the CPU HTTP world-join smoke; and make the world test
+  reuse one `KnowledgeReasoner`/router instance as serving does.
 - The full clean-image hermetic rerun now passes. Cloud Build
   `3e11903b-948f-4d3e-9279-ebc1e8ed5df8` used the digest-pinned 0.5B serving image
   `sha256:57d49a5d…` plus its model bundle and the repository's hash-locked CI-only test dependencies;

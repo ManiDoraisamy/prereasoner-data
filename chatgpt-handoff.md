@@ -13,6 +13,29 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Live gate exposed worker-memory and stale-FX fixture blockers
+
+The corrected disposable build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed the offline 13-case
+regression and both curated world goldens (`270` France total; at least `2` France customers). The
+live engine run then reported `tests.test_world` and `tests.test_geo` with exit `-9` (SIGKILL), while
+`tests.test_datasets` hit its 600-second timeout. The world-join suite itself passed **6/6** and
+`test_route_wired` passed; the geo logs also showed FX tests joining on `as_of=2026-09-28` against
+the static Community dump with no row for that date, so FX derivations correctly clarified instead
+of fabricating a conversion. The API smoke was skipped because this gate version exited on suite
+failure. These are not a live acceptance pass.
+
+I tightened the next run against the evidence: request Cloud Build `E2_HIGHCPU_32` (the prior
+`E2_HIGHCPU_8` worker has 8 GB host memory despite our 16-GB test-container setting); refresh only
+the public ECB release and rebuild its bounded rate calendar inside the disposable DB, logging the
+release hash/date range; allow up to 1,800 seconds per live suite; continue to the CPU HTTP smoke
+even if a suite fails, then retain the failure exit code. The HTTP smoke now tests the actual
+`/api/reason` customers+orders → France world join (expected `270`), not just an own-table sum.
+`tests.test_world` now reuses one `KnowledgeReasoner` and its composed planner/router to match the
+production single-model lifecycle and avoid redundant model copies. Local release contract tests
+remain **39/39**, Bash syntax and Python compilation pass. Next: rerun the disposable lane and record
+each live suite, runtime dependency check, join latency, and peak CPU-server memory. Still no Cloud
+SQL, merge, promotion, or deployment.
+
 ## 2026-09-28 — Disposable live-world rerun found a test identity fixture bug
 
 Cloud Build `f736404e-20cf-428c-a768-eba399d74be4` restored the public seed and passed the
