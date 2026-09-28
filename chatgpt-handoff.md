@@ -13,9 +13,34 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served replay checkpoint: 840/1,034
+
+The production-matched 8-thread RunPod replay is alive at **840/1,034 contiguous unique
+rows**, with **706 strict-correct (84.0% prefix)**. Difficulty counts are easy 204/219,
+medium 302/354, hard 113/135, and extra 87/132. Three missing-`strict` rows are explicit
+`no connected AST candidate` failures (indices 104, 135, 136) and count as wrong. Current
+latency p50/p90/p95/p99/max is 7.43/15.22/19.07/131.06/184.47 seconds; 178/840 exceed
+the evaluator's soft 12-second budget. This is an interim diagnostic, not the final result.
+The heavy tail is not explained by candidate count alone: several very slow `flight_2` and
+`employee_hire_evaluation` rows have between 1 and 26 candidates. Prompt/model-stage timing
+is not yet instrumented, so no root cause is claimed.
+
+Checkpoint preserved outside the repo at `%TEMP%\\prereasoner-7b-analysis-20260928\\serving-8t.latest.json`,
+SHA-256 `69f6daa6649dd7ca59d60eeb8e62d4f2afa48780c702a2f9fc3132903cba8603`. Its artifact
+contract pins source commit `0c7e98050f7ab9a88066b6197dccd684c700b9a8`, Q4 proposer SHA
+`50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb`, arbiter SHA
+`fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d`, and effective
+`sql_proposer_threads=8`; it also reports `worktree_dirty=true`, so the per-artifact hashes,
+not the Git commit alone, are the reproducibility contract. The RunPod CPU3c remains
+`RUNNING` at `$0.96/hour`; billing through the 19:00Z bucket for this pod is `$3.030837`.
+The official test-suite database archive has downloaded (1,269,456,098 bytes) but is not
+being extracted during the latency run. No merge, deployment, or traffic change has occurred.
+
+---
+
 ## 2026-09-28 — Direct-served replay checkpoint: 710/1,034
 
-Latest full-dataset served replay checkpoint is **710/1,034 unique; 598 strict-correct (84.2% partial)**. By difficulty: easy 175/189, medium 259/304, hard 98/115, extra 66/102. Latency p50 7.0s, p90 16.2s, p95 20.0s, p99 131.5s, max 184.5s; 175/710 exceeded the evaluator's soft 12s budget. The top-1 accuracy remains above 80% on each prefix, but the complete final count and long-tail release decision are still outstanding. Exact official Spider test-suite evaluator source has been pinned locally at commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c`; its README identifies test-suite accuracy as Spider's official execution metric, and requires no `--plug_value` for a model that predicts literal values. Official suite databases are not yet downloaded; evaluate the final saved predictions against them after the served replay completes.
+At this earlier checkpoint the replay was **710/1,034 unique; 598 strict-correct (84.2% partial)**. By difficulty: easy 175/189, medium 259/304, hard 98/115, extra 66/102. Latency p50 7.0s, p90 16.2s, p95 20.0s, p99 131.5s, max 184.5s; 175/710 exceeded the evaluator's soft 12s budget. The full result and long-tail release decision remain outstanding. Exact official Spider test-suite evaluator source has been pinned locally at commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c`; its README identifies test-suite accuracy as Spider's official execution metric, and requires no `--plug_value` for a model that predicts literal values. The suite database archive was subsequently downloaded; see the latest checkpoint entry above.
 
 ---
 
