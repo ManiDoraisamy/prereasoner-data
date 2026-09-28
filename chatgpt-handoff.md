@@ -51,6 +51,14 @@ not the separate 7B Spider diagnostic that measured the +10.4-point DEV delta. T
 does not have a pool-matched selector/runtime contract here, so this successful product gate cannot
 be represented as having promoted that accuracy gain.
 
+Post-gate local checks also passed: CI's Ruff `F,E9` set across engine/db/deploy/training/tests/
+orchestrator/MCP/regression sources, and `compileall` across the same Python source trees. No
+production revision changed; read-only Cloud Run inspection still shows 100% traffic on
+`prereasoner-api-00236-noz`. Remaining items are candidate-matched 7B packaging/selector evidence,
+the external Anthropic-backed orchestrator integration (not run because it can incur API spend),
+and any production-data acceptance decision. I am not treating the 0.5B public-seed pass as
+validation of the 7B accuracy lift.
+
 ## 2026-09-28 — Live gate exposed worker-memory and stale-FX fixture blockers
 
 The corrected disposable build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed the offline 13-case
