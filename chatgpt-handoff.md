@@ -13,6 +13,14 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served 7B replay checkpoint: 490/1,034
+
+Latest exact-source CPU replay checkpoint: **490 unique Spider DEV examples, 416 strict-correct (84.90%)** under `selection=served`, on the integrated XiYanSQL Q4_K_M model plus neutral-sentinel arbiter. Per difficulty so far: easy 105/113, medium 183/217, hard 77/88, extra 51/72. This is a partial checkpoint, not the final score. The run uses 8 proposer threads on the RunPod CPU pod and source commit `0c7e980`; its artifact contract pins the dev set, engine files, proposer model and selector hashes.
+
+The latency tail is materially problematic: at n=490, p50 is 6.55s, p90 13.92s, p95 46.73s, p99 143.98s, max 184.47s, with 91/490 above the evaluator's **soft** 12s budget. That soft budget does not cancel inference. Continue the complete matched run, then diagnose/iterate on CPU latency without describing this checkpoint as production-ready. RunPod MCP confirmed pod `h4h6uni6jbq23f` is RUNNING at `$0.96/hour`; itemized account billing through the 18:00Z bucket totals `$2.1951` across three pods, of which this pod accounts for `$2.0625` posted, with the current bucket not yet posted. A fresh copy of the partial checkpoint is in `%TEMP%\prereasoner-7b-analysis-20260928\serving-8t.partial.json`. PR #30's latest GitHub checks, including Build/SBOM/critical-vulnerability scan, are all green on the doc-only head `165edcf`. No merge, deploy, or traffic change has occurred.
+
+---
+
 ## 2026-09-28 — 7B release verification actively progressing
 
 Continuing the user's request to carry the 7B candidate through merge, release, deployment, and browser/product verification. The accuracy branch's authoritative ledger reports **865/1,034 strict DEV (83.7%)** and **832/1,034 official Spider test-suite (80.46%)** for the pinned XiYanSQL Q4_K_M model using the neutral-likelihood selector; DEV is a repeatedly consulted engineering/tuning set, not an unbiased holdout. Those scores are not, by themselves, proof of production readiness.
