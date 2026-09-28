@@ -13,6 +13,12 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served replay checkpoint: 500/1,034
+
+The same immutable served-policy replay has checkpointed **500/1,034 unique indices; 423 strict correct (84.6% on this partial prefix)**. By difficulty: easy 107/115, medium 188/224, hard 77/89, extra 51/72. Three rows (`idx` 104, 135, 136) have no connected AST candidate and are incorrect. Latency remains the chief concern: p50 6.56s, p90 13.99s, p95 77.01s, p99 143.98s, max 184.47s; 95/500 exceed the evaluator's 12-second soft budget. These are prefix numbers, not a final claim. The run is alive and advancing; checkpoint copied locally again. No source/runtime edits were made while this contract is running.
+
+---
+
 ## 2026-09-28 — Direct-served 7B replay checkpoint: 490/1,034
 
 Latest exact-source CPU replay checkpoint: **490 unique Spider DEV examples, 416 strict-correct (84.90%)** under `selection=served`, on the integrated XiYanSQL Q4_K_M model plus neutral-sentinel arbiter. Per difficulty so far: easy 105/113, medium 183/217, hard 77/88, extra 51/72. This is a partial checkpoint, not the final score. The run uses 8 proposer threads on the RunPod CPU pod and source commit `0c7e980`; its artifact contract pins the dev set, engine files, proposer model and selector hashes.
