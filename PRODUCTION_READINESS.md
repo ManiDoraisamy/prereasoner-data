@@ -1,14 +1,33 @@
 # Production-readiness workstream
 
-Status as of 2026-09-28: public-seed live product suites and CPU API checks pass against immutable
-image `57d49a…`, and static CI lint/compile gates pass on branch `codex/prod-readiness`. A read-only
-check then found the current production revision uses newer image `3cbb003…`; the full disposable
-product gate is being rerun against that exact digest before claiming current-production parity.
-Nothing has been merged, promoted, or deployed. Release remains blocked for any claim that this ships
-the +10.4 Spider DEV points: the measured 7B artifact has no pool-matched selector/runtime package
-in this branch. The separate 80% Spider accuracy work remains in its own worktree.
+Status as of 2026-09-28: the full public-seed product suite and bounded CPU API check have passed
+against the exact current production image `3cbb003…` in Cloud Build
+`17436fb4-3251-433d-9966-37da60eb9551` (source `39b1aa9`). Full hermetic validation against the
+same digest is running as `66370892-0dd4-4a3c-84ce-237c41e35524`. Nothing has been merged,
+promoted, or deployed. This validates the currently serving candidate only; release remains
+blocked for any claim that it ships the +10.4 Spider DEV points because the 7B artifact still has
+no pool-matched selector/runtime package in this branch. The separate 80% Spider accuracy work
+remains in its own worktree.
 
 ### Latest release work (2026-09-28)
+
+- **Exact-current-image live product gate passed:** Cloud Build `17436fb4-3251-433d-9966-37da60eb9551`
+  ran source commit `39b1aa9b94797d81ff580362339040283e2be128` against production image digest
+  `sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd`. Disposable PostgreSQL
+  16/pgvector was restored from the pinned Community seed and refreshed with ECB data. Offline,
+  world, nongeo, world joins, router, geo, schema-probe, and full dataset prompt/follow-up suites
+  all passed. CPU-only `/api/reason` world-join calls all matched expected answers: serial n=3
+  p50/max `1.214/4.251s`, concurrency 2 n=6 `1.187/2.374s`, concurrency 4 n=12 `2.531/4.859s`.
+  Container peak was `6.693/16 GiB`; process peak RSS `8,024,748 KiB` (~7.65 GiB). Small-sample
+  p95 equals max and is not an SLA. The build produced no image and changed no traffic.
+- **Exact-current-image hermetic gate running:** Cloud Build `66370892-0dd4-4a3c-84ce-237c41e35524`
+  uses the same digest and source commit; result pending. It is separate from the live database
+  suite and must pass before both gates are marked current-image green.
+- These results validate the already-serving candidate, not the 7B Spider +10.4 DEV-point change.
+  A model/pool-matched 7B selector and verified runtime artifact remain necessary before that result
+  can enter this release path. Authenticated external-orchestrator coverage, production-database
+  acceptance, operational approval, and a sustained CPU load/SLA target also remain open; no
+  production deployment is authorized by these test results alone.
 
 - **Previous release-image live product gate passed:** Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` ran
   source commit `78dbcd91bc10a8f0f5eeefc3de21705f58fd385e` on an `E2_HIGHCPU_32` worker. On the

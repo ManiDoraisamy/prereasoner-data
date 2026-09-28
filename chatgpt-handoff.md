@@ -13,6 +13,32 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Exact-current-image product and CPU gates passed
+
+Cloud Build `17436fb4-3251-433d-9966-37da60eb9551` completed **SUCCESS** from source
+commit `39b1aa9b94797d81ff580362339040283e2be128` using the clean allowlisted suite
+context. It tested the exact currently serving image
+`sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd` against a
+disposable PostgreSQL 16/pgvector database restored from the pinned public seed and refreshed
+ECB data. Offline, world, nongeo, world joins, wired routing, geo, schema probes, and the full
+dataset prompt/follow-up suite all exited 0. The runner summary says **ALL SUITES PASSED**.
+The actual CPU-only `/api/reason` smoke returned the expected world join for all requests:
+serial n=3 p50/max `1.214/4.251s`, concurrency 2 n=6 p50/max `1.187/2.374s`, concurrency 4
+n=12 p50/max `2.531/4.859s`. Container memory was `6.693/16 GiB`; process peak RSS was
+`8,024,748 KiB` (about 7.65 GiB). Small-sample p95 equals max and is not an SLA. The
+Cloud Build produced no image (`images: -`); Cloud Run traffic/configuration is unchanged.
+
+The matching full hermetic suite is now running as Cloud Build
+`66370892-0dd4-4a3c-84ce-237c41e35524`, also pinned to that exact image and based on the
+same commit. Its result is still pending. These passes validate product behavior of the
+existing current production candidate; they do **not** supply the missing pool-matched 7B
+selector or prove the 7B Spider DEV improvement is shippable. No merge, promotion, or
+deployment has happened. Remaining production gates include the hermetic result, a verified
+artifact/runtime package for any candidate change, authenticated external-orchestrator
+coverage, production-database coverage/operational approval, and an agreed sustained CPU
+latency/memory/load target. I am continuing those gates rather than treating this result as
+permission to claim or ship the 7B delta.
+
 ## 2026-09-28 — Retargeting acceptance to the actual production digest
 
 After the successful live suite and CPU sweep, I compared the test image to the live Cloud Run
