@@ -13,6 +13,34 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served replay checkpoint: 890/1,034; separate full local diagnostic
+
+The production-matched RunPod replay has advanced to **890/1,034 contiguous unique rows**,
+with **747 strict-correct (83.9% prefix)**. Difficulty counts: easy 216/231, medium 323/380,
+hard 121/143, extra 87/136. The three known no-AST rows remain counted wrong. The cumulative
+soft-12-second exceedance count is 191/890; latency p50/p90/p95/p99/max is
+7.43/15.83/46.73/131.54/231.59 seconds. Current checkpoint SHA-256 is
+`fe9b5156d7c5a923fcc57e6eb296c51636493e121c01b5faacb9db8b3b5cd395` on the pod. The
+evaluator is still advancing, but the new 231.59-second maximum confirms the long-tail latency
+gate is not yet met.
+
+A separate local full-set diagnostic completed **865/1,034 strict (83.7%)**, with contiguous
+unique coverage of every index and three explicit no-AST errors. Its artifact is preserved at
+`%TEMP%\\prereasoner-7b-analysis-20260928\\serving-16t-final.json`, SHA-256
+`3924ba112ea5e3d04d99447cdf9f77ddd41ad47a8911f6ff5b2d0798602184d5`. That run used a
+different source commit (`8655010f60460039d41705887b70415cc8d119be`) and a `16t` run tag; its
+per-example latency p50/p90/p95/p99/max is 17.08/34.93/39.72/45.71/62.06 seconds, with
+828/1,034 above the soft 12-second budget. It is corroborating accuracy evidence, not a
+replacement for the production-matched 8-thread run; its checkpoint contract does not record
+the effective thread count.
+
+RunPod billing for our CPU3c pod `h4h6uni6jbq23f` through the closed 20:00Z bucket is
+`$3.432598` total (`$0.240048` in that bucket); current-hour usage is not yet posted. The
+official test-suite archive remains downloaded but unextracted while the 8-thread latency run
+is active.
+
+---
+
 ## 2026-09-28 — Direct-served replay checkpoint: 840/1,034
 
 The production-matched 8-thread RunPod replay is alive at **840/1,034 contiguous unique
