@@ -69,6 +69,21 @@ def load_contract(path: str | Path = _CONTRACT) -> dict:
     return contract
 
 
+def effective_cpu_threads(contract: dict, environ=None) -> int:
+    """Return the exact llama.cpp CPU thread count, rejecting unsafe overrides.
+
+    The run contract's default is part of model provenance; deployments may
+    override it for a measured host, but the effective value must be recorded
+    by evaluation and remain within the runtime's supported range.
+    """
+    environ = os.environ if environ is None else environ
+    raw = environ.get("SQL_PROPOSER_THREADS")
+    threads = int(raw) if raw is not None else int(contract["runtime"]["threads"])
+    if not 1 <= threads <= 16:
+        raise ValueError("SQL_PROPOSER_THREADS must be between 1 and 16")
+    return threads
+
+
 class XiYanSQLProposer:
     """Implements the SQLProposer interface while preserving the experiment's exact model path.
 
@@ -111,11 +126,12 @@ class XiYanSQLProposer:
 
         runtime = contract["runtime"]
         generation = contract["generation"]
+        threads = effective_cpu_threads(contract)
         model = Llama(
             model_path=str(path.resolve()),
             n_ctx=int(runtime["context"]),
-            n_threads=int(os.environ.get("SQL_PROPOSER_THREADS", runtime["threads"])),
-            n_threads_batch=int(os.environ.get("SQL_PROPOSER_THREADS", runtime["threads"])),
+            n_threads=threads,
+            n_threads_batch=threads,
             n_batch=int(runtime["batch_size"]),
             n_ubatch=min(int(runtime["batch_size"]), 512),
             seed=int(generation["seed"]),

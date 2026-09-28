@@ -537,6 +537,8 @@ def main():
         "cap": args.cap,
         "timeout": args.timeout,
     }
+    from engine.xiyan_sql_proposer import effective_cpu_threads, load_contract
+    checkpoint_contract["sql_proposer_threads"] = effective_cpu_threads(load_contract())
     from engine.artifact_provenance import adapter_sha256, fingerprint_paths, sha256_file
     from engine.config import DATA_DIR
 

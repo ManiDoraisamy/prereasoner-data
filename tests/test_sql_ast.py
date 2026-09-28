@@ -881,6 +881,20 @@ def test_gguf_runtime_requires_its_exact_candidate_count_and_multiline_sql_is_pr
     )
 
 
+def test_xiyan_runtime_thread_override_is_recorded_and_bounded():
+    from engine.xiyan_sql_proposer import effective_cpu_threads
+
+    contract = {"runtime": {"threads": 8}}
+    assert effective_cpu_threads(contract, {}) == 8
+    assert effective_cpu_threads(contract, {"SQL_PROPOSER_THREADS": "16"}) == 16
+    try:
+        effective_cpu_threads(contract, {"SQL_PROPOSER_THREADS": "32"})
+    except ValueError as exc:
+        assert "between 1 and 16" in str(exc)
+    else:
+        raise AssertionError("unsupported thread override was accepted")
+
+
 def test_gguf_prompt_preserves_the_pinned_chat_template_mode():
     class Tokenizer:
         def __init__(self):
@@ -2810,6 +2824,7 @@ TESTS = [
     test_proposer_runtime_requires_an_exact_weights_manifest_pin,
     test_gguf_runtime_refuses_uncalibrated_pair_in_production,
     test_gguf_runtime_requires_its_exact_candidate_count_and_multiline_sql_is_preserved,
+    test_xiyan_runtime_thread_override_is_recorded_and_bounded,
     test_gguf_prompt_preserves_the_pinned_chat_template_mode,
     test_shipped_arbiter_is_the_manifested_served_contract,
     test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
