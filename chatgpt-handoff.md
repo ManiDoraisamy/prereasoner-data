@@ -13,6 +13,36 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Latest-source hermetic gate and concurrency-8 CPU check
+
+After the exact-current-image full product pass, I extended the disposable `/api/reason` CPU smoke
+to match Cloud Run's configured per-instance concurrency of 8. The first attempt failed with 429
+because its 45 requests exceeded the API's intentional 30 requests/minute limit for the single
+test principal; this was a test-rate-budget mistake, not a model/CPU failure. I corrected the test
+to keep 29 requests total (one eight-request burst after 21 lower-concurrency calls), without
+changing application rate-limit behavior. Focused release tests passed **39/39**. The corrected
+smoke-only Cloud Build `ae908abb-962c-4e70-ac5a-38401fa79d9c`, source commit `423535b`, passed
+all **8/8** simultaneous requests at concurrency 8 against the exact production image and a
+disposable public-seed database. At concurrency 1/2/4/8, p50 was `1.367/1.578/3.768/5.435s`,
+max `5.182/3.078/6.505/10.729s`; process peak was `8,012,288 KiB` and container snapshot
+`6.709/16 GiB`. The n=8 p95 equals max. This is one bounded burst, not a sustained-load or
+percentile SLA. No image was built or pushed.
+
+Since the runner/test contract changed after the previous hermetic build, I reran the full
+hermetic suite from latest source commit `016c83dce6f973da7c5546950f8002237adb8e69`. Cloud Build
+`ec4f7b47-7f51-46f8-8354-f0230d12793d` completed **SUCCESS**: all **31 configured hermetic suites
+exited 0**. As designed, `RUN_ENGINE_TESTS=0` and `RUN_ORCHESTRATOR_TESTS=0`; the live engine and
+external Anthropic integration are separate gates, not implied passes. The exact-current-image
+live dataset/product suite remains the pass from `17436fb4-3251-433d-9966-37da60eb9551` at source
+`39b1aa9`; later commits changed only the smoke/test/docs, not product engine behavior.
+
+No merge, image push, production DB query, traffic change, or deployment occurred. The blocker for
+shipping the requested +10.4 Spider points is unchanged and verified: this branch's model contract
+is Qwen2.5-0.5B, while the 7B candidate/pool/selector package is separate and not validated as a
+production artifact. External-provider testing would incur Anthropic API cost; the harness
+requires an API key, so it has not been invoked without explicit cost authority. Production
+Cloud SQL acceptance and a sustained load/SLA decision are also outstanding.
+
 ## 2026-09-28 — Exact-current-image product and CPU gates passed
 
 Cloud Build `17436fb4-3251-433d-9966-37da60eb9551` completed **SUCCESS** from source

@@ -3,8 +3,10 @@
 Status as of 2026-09-28: the full public-seed product suite and bounded CPU API check passed
 against the exact current production image `3cbb003…` in Cloud Build
 `17436fb4-3251-433d-9966-37da60eb9551` (source `39b1aa9`). Full hermetic validation also passed
-against that digest as `66370892-0dd4-4a3c-84ce-237c41e35524` (31 configured suites). Nothing has
-been merged, promoted, or deployed. These gates validate the currently serving candidate only;
+against that digest on latest source `016c83d` as `ec4f7b47-7f51-46f8-8354-f0230d12793d` (31
+configured suites). A bounded concurrency-8 CPU smoke also passed as
+`ae908abb-962c-4e70-ac5a-38401fa79d9c`. Nothing has been merged, promoted, or deployed. These
+gates validate the currently serving candidate only;
 release remains blocked for any claim that it ships the +10.4 Spider DEV points because the 7B
 artifact still has no pool-matched selector/runtime package in this branch. The separate 80%
 Spider accuracy work remains in its own worktree.
@@ -27,6 +29,11 @@ Spider accuracy work remains in its own worktree.
   dataset, MCP, and orchestrator unit tests. `RUN_ENGINE_TESTS=0` and
   `RUN_ORCHESTRATOR_TESTS=0` are explicit in the hermetic harness, so live external-engine and
   authenticated external-orchestrator behavior are not covered by this gate.
+- Because the CPU runner changed after that first exact-image hermetic pass, it was rerun at latest
+  source commit `016c83dce6f973da7c5546950f8002237adb8e69`: build
+  `ec4f7b47-7f51-46f8-8354-f0230d12793d`, **SUCCESS**, all 31 configured hermetic suites exit 0.
+  The live dataset/product acceptance remains `17436fb4-3251-433d-9966-37da60eb9551` at source
+  `39b1aa9`; intervening changes only expanded the smoke runner/test and documentation.
 - **Configured CPU concurrency cap checked:** Cloud Run's current service config is 8 vCPU / 16 GiB,
   container concurrency 8, max scale 3. The initial smoke (`d1cd9876-d700-46cd-8170-d7eefa9eac8f`)
   sent 45 calls under one principal per minute and correctly received HTTP 429 at the engine's
