@@ -24,7 +24,6 @@ def main():
     if not os.environ.get("KB_PG_PASSWORD"):
         print("KB_PG_PASSWORD not set — skipping (live world Postgres)"); return
     from engine.knowledge import KnowledgeReasoner
-    from engine.knowledge_compose import ComposedKnowledgeQuery
     from engine.pg import _pg
 
     # --- (A) expanded type hierarchy synced ---
@@ -42,8 +41,12 @@ def main():
     cn.close()
 
     # --- (B) column router types columns ---
-    from engine.router import Router
-    r = Router()
+    # Match the serving architecture: one KnowledgeReasoner owns the unified encoder,
+    # Schema.org interpreter/router, and composed planner. Standalone Router and duplicate
+    # ComposedKnowledgeQuery instances can load extra copies and inflate peak memory unnecessarily.
+    wr = KnowledgeReasoner()
+    qc = wr.composed
+    r = wr.qw._router()
     o = r.route(["Mayo Clinic", "Cleveland Clinic", "Mount Sinai", "Johns Hopkins Hospital"], header="hospital")
     ok("router: hospital emits only a calibrated servable class",
        o is None or r.decoder.classes[o["class"]]["servable"], f"got={o}")
@@ -58,8 +61,6 @@ def main():
     sub = live_schema().name
     CUST = {"name": "customers", "columns": ["name", "city", "amount"],
             "rows": [["Ada", "Paris", 100], ["Bob", "Lyon", 80], ["Eve", "Berlin", 40], ["Sam", "Tokyo", 50]]}
-    qc = ComposedKnowledgeQuery()
-    wr = KnowledgeReasoner()
     # --- (C) aggregate baseline (world join) ---
     ra = served(sub, qc.serve, [CUST], "total amount in France", sub)
     av = (((ra.get("answer") or ra.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]

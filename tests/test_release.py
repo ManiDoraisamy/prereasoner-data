@@ -25,9 +25,14 @@ def _version(requirements: str, package: str) -> tuple[int, ...]:
 
 
 def test_public_artifact_boundary():
-    tracked = subprocess.check_output(
-        ["git", "ls-files"], cwd=ROOT, text=True, encoding="utf-8"
-    ).splitlines()
+    if (ROOT / ".git").exists():
+        tracked = subprocess.check_output(
+            ["git", "ls-files"], cwd=ROOT, text=True, encoding="utf-8"
+        ).splitlines()
+    else:
+        provenance = json.loads(_text("tests/build_provenance.json"))
+        tracked = provenance.get("source_files")
+        assert isinstance(tracked, list) and tracked, "suite archive must attest its source inventory"
     folded = [path.replace("\\", "/").lower() for path in tracked]
     assert not any("spider/results/" in path and "per_example" in path for path in folded)
     assert "training/world/build_wikipedia_schema.py" not in folded
@@ -108,6 +113,176 @@ def test_fresh_weight_fetch_stages_committed_artifacts():
 
         _stage_committed_artifacts(source, staging, manifest)
         assert validate_weight_bundle(staging, manifest)
+
+        escaping_manifest = {
+            "version": 1,
+            "files": {},
+            "committed_artifacts": {
+                "../outside.json": {"sha256": "0" * 64}
+            },
+        }
+        try:
+            _stage_committed_artifacts(source, staging, escaping_manifest)
+        except ValueError as exc:
+            assert "not relative and safe" in str(exc)
+        else:
+            raise AssertionError("committed artifact staging accepted a path escape")
+
+
+def test_weight_fetch_paths_follow_manifest_and_reject_path_escape():
+    from engine.artifact_provenance import validate_weight_bundle
+    from engine.fetch_weights import _downloadable_files, _validate_fetch_source
+
+    manifest = {
+        "files": {
+            "encoder.pt": "a" * 64,
+            "sql_proposer/base.gguf": "b" * 64,
+            "sql_proposer/runtime.json": "c" * 64,
+        }
+    }
+    assert _downloadable_files(manifest) == (
+        "encoder.pt", "sql_proposer/base.gguf", "sql_proposer/runtime.json",
+    )
+    for unsafe in (
+        "../outside.bin", "nested/../../outside.bin", r"nested\outside.bin",
+        "C:/outside.bin", "./model.bin", "nested//file.bin", "nested/", ".",
+    ):
+        try:
+            _downloadable_files({"files": {unsafe: "a" * 64}})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted unsafe artifact path: {unsafe!r}")
+
+    source_manifest = {
+        "repository": "example/weights",
+        "revision": "a" * 40,
+    }
+    _validate_fetch_source(source_manifest, "example/weights", "a" * 40)
+    for repo, revision in (
+        ("other/weights", "a" * 40),
+        ("example/weights", "main"),
+        ("example/weights", "b" * 40),
+        ("example/weights", None),
+    ):
+        try:
+            _validate_fetch_source(source_manifest, repo, revision)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"accepted non-manifest fetch source: {repo}@{revision}")
+
+    with tempfile.TemporaryDirectory() as directory:
+        try:
+            validate_weight_bundle(directory, {"version": 1, "files": {"model.bin": "not-a-hash"}})
+        except RuntimeError as exc:
+            assert "invalid SHA-256" in str(exc)
+        else:
+            raise AssertionError("accepted a manifest with a malformed artifact digest")
+
+
+def test_cached_weight_fetch_does_not_silently_ignore_source_override():
+    from engine.artifact_provenance import sha256_file
+    from engine.fetch_weights import main
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        model = root / "model.bin"
+        model.write_bytes(b"already verified")
+        manifest = {
+            "version": 1,
+            "repository": "example/weights",
+            "revision": "a" * 40,
+            "files": {"model.bin": sha256_file(model)},
+        }
+        with (
+            patch("engine.fetch_weights._MANIFEST", manifest),
+            patch("engine.fetch_weights.DATA_DIR", root),
+            patch("sys.argv", ["fetch_weights", "--repo", "other/weights"]),
+        ):
+            assert main() == 2
+
+
+def test_gguf_diagnostic_package_manifests_every_runtime_file_as_local_only():
+    from argparse import Namespace
+
+    from engine.artifact_provenance import (
+        sha256_file,
+        validate_weight_bundle,
+        write_json_artifact,
+    )
+    from training.proposer.package_gguf_diagnostic import package
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "source"
+        source.mkdir()
+        (source / "model.bin").write_bytes(b"old-model")
+        arbiter = {"fit": {"proposer_adapter_sha256": "old-adapter"}, "pool": {}}
+        write_json_artifact(source / "sql_arbiter.json", arbiter)
+        manifest = {
+            "version": 1,
+            "repository": "example/weights",
+            "revision": "a" * 40,
+            "files": {"model.bin": sha256_file(source / "model.bin")},
+            "committed_artifacts": {
+                "sql_arbiter.json": {
+                    "note": "fixture",
+                    "sha256": sha256_file(source / "sql_arbiter.json"),
+                }
+            },
+        }
+        write_json_artifact(source / "weights_manifest.json", manifest, indent=2)
+
+        base = root / "base.gguf"
+        adapter = root / "adapter.gguf"
+        base.write_bytes(b"base")
+        adapter.write_bytes(b"adapter")
+        tokenizer = root / "tokenizer"
+        tokenizer.mkdir()
+        (tokenizer / "tokenizer.json").write_text("{}", encoding="utf-8")
+        contract = root / "contract.json"
+        write_json_artifact(contract, {
+            "selected_peft_adapter_sha256": "selected-adapter",
+            "base_gguf_sha256": sha256_file(base),
+            "lora_gguf_sha256": sha256_file(adapter),
+            "base_model": "fixture/model",
+            "base_revision": "b" * 40,
+            "variant_count": 1,
+            "max_new_tokens": 256,
+        })
+        output = root / "output"
+        args = Namespace(
+            source_bundle=source,
+            output_bundle=output,
+            base_gguf=base,
+            lora_gguf=adapter,
+            tokenizer_snapshot=tokenizer,
+            source_contract=contract,
+            tokenizer_model_id="fixture/model",
+            tokenizer_revision="b" * 40,
+            prompt_variant=["return one SQL query"],
+            max_new_tokens=256,
+            context_tokens=8192,
+            cpu_threads=8,
+            lora_scale=1.0,
+            system_prompt="SQL only",
+            thinking=None,
+        )
+        package(args)
+
+        packaged = json.loads((output / "weights_manifest.json").read_text(encoding="utf-8"))
+        from engine.fetch_weights import _downloadable_files
+
+        assert packaged["revision"] is None
+        assert packaged["unpublished_local"] is True
+        assert {
+            "sql_proposer/diagnostic_gguf/base.gguf",
+            "sql_proposer/diagnostic_gguf/adapter.gguf",
+            "sql_proposer/diagnostic_gguf/tokenizer/tokenizer.json",
+        } <= set(packaged["files"])
+        assert _downloadable_files(packaged) == tuple(sorted(packaged["files"]))
+        assert validate_weight_bundle(output)
 
 
 def test_supported_model_stack_is_security_baseline():
@@ -487,6 +662,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         SOURCE_ALLOWLIST,
         SOURCE_CHAT_ALLOWLIST,
         SOURCE_HOSTING_ALLOWLIST,
+        SOURCE_SUITE_ALLOWLIST,
         SOURCE_SYNC_ALLOWLIST,
         chat_engine_sources,
     )
@@ -498,6 +674,8 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert {"engine", "db", "regress", "mcp_server", "orchestrator"} <= set(SOURCE_ALLOWLIST)
     assert "requirements.lock.txt" in SOURCE_ALLOWLIST
     assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
+    assert {"tests", "training", "web", "docs", ".github"} <= set(SOURCE_SUITE_ALLOWLIST)
+    assert "spider" not in SOURCE_SUITE_ALLOWLIST
     assert {
         "Dockerfile.orchestrator",
         "cloudbuild.orchestrator.yaml",
@@ -537,7 +715,12 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     sync_dockerfile = _text("Dockerfile.sync")
     assert "COPY engine/enrichment/registry.py" in sync_dockerfile
     assert "COPY engine/ /app/engine/" not in sync_dockerfile
-    assert 'choices=("engine", "chat", "sync", "hosting")' in source
+    assert '"release": SOURCE_SUITE_ALLOWLIST' in source
+    assert 'target in {"engine", "release"}' in source
+    assert '"release", "suite", "chat"' in source
+    assert 'if target in {"suite", "release"}' in source
+    assert 'output / "tests" / "build_provenance.json"' in source
+    assert 'if target == "release":' in source
     assert '"build_target": target' in source
     hosting = _text("cloudbuild.hosting.yaml")
     assert "firebase deploy" in hosting
@@ -554,6 +737,139 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert "prereasoner-sync:ci -c \"from db.sync.community_bootstrap" in workflow
     for ignore in (".venv*/", "service-account*.json", "*.tfstate"):
         assert ignore in _text(".gcloudignore")
+
+
+def test_engine_release_build_runs_the_real_server_until_health_ready():
+    cloudbuild = _text("cloudbuild.yaml")
+    offline = cloudbuild.split("  - id: regress-offline", 1)[1].split(
+        "  - id: runtime-server-smoke", 1
+    )[0]
+    smoke = cloudbuild.split("  - id: runtime-server-smoke", 1)[1].split(
+        "  # Exercise the full live-product suite", 1
+    )[0]
+    assert "--cpus=8" in offline and "--memory=16g" in offline
+    assert "offline_case_latency_ms" in _text("regress/run_regression.py")
+    assert "offline_process_peak_rss_mb" in _text("regress/run_regression.py")
+    assert "waitFor: ['regress-offline']" in smoke
+    assert "docker run -d --cpus=8 --memory=16g" in smoke
+    assert 'docker run -d --cpus=8 --memory=16g --name "$$name" "$$image"' in smoke
+    assert "$$name" in smoke and "docker exec" in smoke
+    assert "/api/healthz" in smoke
+    assert "runtime_startup_seconds" in smoke
+    assert "docker rm -f" in smoke
+    assert "gcloud run" not in smoke and "terraform" not in smoke
+    deploy = _text("deploy/gcp/deploy.sh")
+    assert "build_context.py --target release" in deploy
+    assert '--ignore-file="$BUILD_CONTEXT/cloudbuild.hermetic.ignore"' in deploy
+    assert "--timeout=5400s" in deploy
+
+
+def test_engine_release_runs_full_live_product_gate_before_image_publication():
+    cloudbuild = _text("cloudbuild.yaml")
+    product = cloudbuild.split("  - id: live-product-suite", 1)[1].split(
+        "images:", 1
+    )[0]
+    assert "waitFor: ['runtime-server-smoke']" in product
+    assert "deploy/gcp/run_product_suite.sh" in product
+    assert "_RUN_PRODUCT_SUITES: \"1\"" in cloudbuild
+    assert "_PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:" in cloudbuild
+    assert "machineType: E2_HIGHCPU_32" in cloudbuild
+    assert "timeout: 5400s" in cloudbuild
+    assert "gcloud sql" not in product and "cloud-sql-proxy" not in product
+    # Cloud Build publishes declared images only after every step succeeds.
+    assert cloudbuild.index("- id: live-product-suite") < cloudbuild.index("images:")
+
+
+def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
+    cloudbuild = _text("cloudbuild.hermetic.yaml")
+    suite_runner = _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "engine@sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd" in cloudbuild
+    assert "docker run --rm --cpus=8 --memory=16g" in cloudbuild
+    assert "--volume /workspace:/workspace:ro" in cloudbuild
+    assert "cp -a /workspace/. /app/" in suite_runner
+    assert "requirements-ci.lock.txt" in suite_runner and "--require-hashes" in suite_runner
+    assert "--workdir /app" in cloudbuild
+    assert "/opt/node:/opt/venv/bin" in cloudbuild
+    assert "--env RUN_ENGINE_TESTS=0" in cloudbuild
+    assert "--env RUN_ORCHESTRATOR_TESTS=0" in cloudbuild
+    assert "node:22-bookworm-slim" in cloudbuild
+    assert "node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c" in cloudbuild
+    assert 'command -v node' in cloudbuild and "/opt/node:ro" in cloudbuild
+    assert "chmod 0555 /node/node" in cloudbuild
+    assert "-m tests.run_all" in suite_runner
+    assert "gcloud run" not in cloudbuild and "terraform apply" not in cloudbuild
+    assert "--ignore-file=cloudbuild.hermetic.ignore" in _text("deploy/gcp/README.md")
+    assert "git archive intentionally has no history" in suite_runner
+    from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
+
+    assert "requirements-ci.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "requirements-ci-windows.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "spider/probe" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/gcp/requirements.lock.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/gcp/requirements.txt" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/dependency_locks.py" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/dependency_locks.json" in SOURCE_SUITE_ALLOWLIST
+    assert "infra/README.md" in SOURCE_SUITE_ALLOWLIST
+    assert "CODE_OF_CONDUCT.md" in SOURCE_SUITE_ALLOWLIST
+    assert "spider/results/RESULTS.md" in SOURCE_SUITE_ALLOWLIST
+    assert ".gcloudignore" in SOURCE_SUITE_ALLOWLIST
+    assert "cloudbuild.hermetic.ignore" in SOURCE_SUITE_ALLOWLIST
+    assert 'INSTALL_CI_REQUIREMENTS:-1' in suite_runner
+
+
+def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
+    cloudbuild = _text("cloudbuild.product.yaml")
+    runner = _text("deploy/gcp/run_product_suite.sh")
+    assert "pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067" in cloudbuild
+    assert "engine@sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd" in cloudbuild
+    assert "2c39e749e2ae87654cca80881cdec4de924e131b1f8199179f6c7ceef2d8840a" in runner
+    assert "docker network create" in runner and "docker volume create" in runner
+    assert "docker rm -f" in runner and "docker volume rm" in runner and "docker network rm" in runner
+    assert "--role serving" in runner and "KB_PG_USER=serving" in runner
+    assert "RUN_ENGINE_TESTS=1" in runner and "RUN_ORCHESTRATOR_TESTS=0" in runner
+    assert "LIVE_ENGINE_ONLY=1" in runner
+    assert "INSTALL_CI_REQUIREMENTS=0" in runner
+    assert "RUN_WORLD_REGRESSION=1" in runner
+    assert "LIVE_ENGINE_ONLY=1" in runner
+    # A fixed AUTH_TEST_SUB makes live_schema treat that ID as caller-owned and
+    # skip the production-shaped conversation/ownership rows. Live suites must
+    # allocate registered, disposable conversation IDs instead.
+    live_suite_runner = runner.split(
+        "# Exercise the production HTTP entrypoint under CPU-only Cloud Run resource limits", 1
+    )[0]
+    assert "AUTH_TEST_SUB=localdev" not in live_suite_runner
+    assert "LIVE_REGRESSION_TIMEOUT_SECONDS=600" in runner
+    assert "db.sync.sources.ecb.sync" in runner
+    assert "db.sync.build_exchange_rate" in runner
+    assert "TEST_SUITE_TIMEOUT_SECONDS=1800" in runner
+    assert "E2_HIGHCPU_32" in _text("cloudbuild.product.yaml")
+    assert '_RUN_PRODUCT_SUITES: "1"' in _text("cloudbuild.product.yaml")
+    assert 'RUN_PRODUCT_SUITES=\'${_RUN_PRODUCT_SUITES}\'' in _text("cloudbuild.product.yaml")
+    assert "suite_status=0" in runner
+    assert "|| suite_status=$?" in runner
+    assert 'exit "$suite_status"' in runner
+    assert "docker update --memory=2g --memory-swap=2g" in runner
+    assert "--cpus=8 --memory=16g" in runner and "/api/reason" in runner
+    assert 'float(rows[0][0]) != 270.0' in runner and "docker stats --no-stream" in runner
+    assert 'cpu_api_reason_world_join_ms=' in runner
+    assert 'cpu_api_reason_world_join_load=' in runner
+    assert 'for workers in (2, 4, 8)' in runner
+    assert 'rounds = 1 if workers == 8 else 3' in runner
+    assert 'limits each verified principal to 30 requests/minute' in runner
+    assert 'live_product_suites=skipped by explicit CPU-smoke-only invocation' in runner
+    assert "gcloud sql" not in runner and "cloud-sql-proxy" not in runner
+    assert "RUN_WORLD_REGRESSION" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "--require-world" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "--skip-world-subtests" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "world regression exceeded" in _text("deploy/gcp/run_hermetic_suite.sh")
+    assert "TIMEOUT  {mod}" in _text("tests/run_all.py")
+    assert "LIVE_ENGINE_ONLY" in _text("tests/run_all.py")
+    assert "include_engine_suites=not args.skip_world_subtests" in _text("regress/run_regression.py")
+    assert "offline_engine_released=true" in _text("regress/run_regression.py")
+    from deploy.gcp.build_context import SOURCE_SUITE_ALLOWLIST
+
+    assert "cloudbuild.product.yaml" in SOURCE_SUITE_ALLOWLIST
+    assert "deploy/gcp/run_product_suite.sh" in SOURCE_SUITE_ALLOWLIST
 
 
 def test_live_database_tests_allocate_production_shaped_schemas():
@@ -576,6 +892,13 @@ def test_live_database_tests_allocate_production_shaped_schemas():
         explicit = live_schema()
     assert explicit.name == "explicit_test_schema" and not explicit.managed
     register_lease.assert_not_called()
+
+
+def test_world_regression_reports_empty_result_instead_of_raising():
+    from regress.world_cases import _scalar
+
+    assert _scalar({"result": None, "clarify": True}) is None
+    assert _scalar({"result": {"rows": [[270]]}}) == 270
 
 
 def test_release_installs_only_hash_locked_dependencies():
@@ -798,6 +1121,9 @@ TESTS = [
     test_spider_evaluator_supports_module_invocation,
     test_public_weight_bundle_is_manifested_and_documented,
     test_fresh_weight_fetch_stages_committed_artifacts,
+    test_weight_fetch_paths_follow_manifest_and_reject_path_escape,
+    test_cached_weight_fetch_does_not_silently_ignore_source_override,
+    test_gguf_diagnostic_package_manifests_every_runtime_file_as_local_only,
     test_supported_model_stack_is_security_baseline,
     test_privacy_is_a_published_route_not_a_request_dialog,
     test_external_model_deployment_fails_closed,
@@ -815,7 +1141,12 @@ TESTS = [
     test_runpod_resume_requires_ownership_and_never_creates_a_pod,
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
+    test_engine_release_build_runs_the_real_server_until_health_ready,
+    test_engine_release_runs_full_live_product_gate_before_image_publication,
+    test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image,
+    test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed,
     test_live_database_tests_allocate_production_shaped_schemas,
+    test_world_regression_reports_empty_result_instead_of_raising,
     test_release_installs_only_hash_locked_dependencies,
     test_world_evaluation_records_release_provenance,
     test_gpu_training_preserves_the_runner_cuda_torch,

@@ -29,6 +29,62 @@ SOURCE_ALLOWLIST = (
     "mcp_server",
     "orchestrator",
 )
+SOURCE_SUITE_ALLOWLIST = (
+    *SOURCE_ALLOWLIST,
+    "tests",
+    "training",
+    "web",
+    "docs",
+    ".github",
+    "deploy/gcp/build_context.py",
+    "deploy/gcp/run_hermetic_suite.sh",
+    "deploy/dependency_locks.py",
+    "deploy/dependency_locks.json",
+    "deploy/gcp/requirements.lock.txt",
+    "deploy/gcp/requirements.txt",
+    "deploy/gcp/button.html",
+    "deploy/gcp/deploy.sh",
+    "deploy/gcp/README.md",
+    "deploy/gcp/cloudshell-tutorial.md",
+    "deploy/gcp/hosting_release.js",
+    "infra/main.tf",
+    "infra/orchestrator.tf",
+    "infra/variables.tf",
+    "infra/versions.tf",
+    "infra/README.md",
+    "spider/probe",
+    "spider/README.md",
+    "spider/results/RESULTS.md",
+    "world_eval/run.py",
+    "README.md",
+    ".gitignore",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "CITATION.cff",
+    "docker-compose.yml",
+    ".env.example",
+    "cloudbuild.hermetic.ignore",
+    "requirements-ci.txt",
+    "requirements-ci.lock.txt",
+    "requirements-ci-windows.lock.txt",
+    "requirements.txt",
+    "cloudbuild.hosting.yaml",
+    "cloudbuild.orchestrator.yaml",
+    "cloudbuild.sync.yaml",
+    "Dockerfile.orchestrator",
+    "Dockerfile.sync",
+    "THIRD_PARTY.md",
+    "CLAUDE.md",
+    "DECISIONS.md",
+    "PRODUCTION_READINESS.md",
+    "chatgpt-handoff.md",
+    "claude-handoff.md",
+    ".gitleaks.toml",
+    ".python-version",
+    "cloudbuild.hermetic.yaml",
+    "cloudbuild.product.yaml",
+    "deploy/gcp/run_product_suite.sh",
+)
 def chat_engine_sources() -> tuple[str, ...]:
     """The Dockerfile owns the lean engine dependency list for BOTH build paths."""
     dockerfile = (ROOT / "Dockerfile.orchestrator").read_text(encoding="utf-8")
@@ -100,6 +156,8 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
     allowlists = {
         "engine": SOURCE_ALLOWLIST,
+        "release": SOURCE_SUITE_ALLOWLIST,
+        "suite": SOURCE_SUITE_ALLOWLIST,
         "chat": SOURCE_CHAT_ALLOWLIST,
         "sync": SOURCE_SYNC_ALLOWLIST,
         "hosting": SOURCE_HOSTING_ALLOWLIST,
@@ -114,6 +172,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
         "git", "-C", str(ROOT), "archive", "--format=tar", commit,
         "--", *allowlist,
     ))
+    source_files = []
     with tarfile.open(fileobj=BytesIO(archive), mode="r:") as bundle:
         for member in bundle.getmembers():
             if not (member.isfile() or member.isdir()):
@@ -124,6 +183,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
             if member.isdir():
                 destination.mkdir(parents=True, exist_ok=True)
                 continue
+            source_files.append(member.name)
             source = bundle.extractfile(member)
             if source is None:
                 raise RuntimeError(f"archive file has no content: {member.name}")
@@ -132,7 +192,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
                 shutil.copyfileobj(source, handle)
             destination.chmod(member.mode & 0o777)
 
-    if target == "engine":
+    if target in {"engine", "release"}:
         data = ROOT / "engine" / "data"
         manifest = load_weights_manifest(data)
         if manifest is None:
@@ -151,21 +211,38 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     elif target == "hosting":
         fingerprint = "source-only"
         provenance = output / "web" / "build_provenance.json"
+    elif target == "suite":
+        fingerprint = "source-only"
+        provenance = output / "tests" / "build_provenance.json"
     else:
         fingerprint = "source-only"
         provenance = output / "orchestrator" / "build_provenance.json"
-    provenance.write_text(json.dumps({
+    provenance_record = {
         "build_target": target,
         "source_commit": commit,
         "weights_manifest_sha256": fingerprint,
-    }, sort_keys=True, indent=2) + "\n", encoding="ascii")
+    }
+    if target in {"suite", "release"}:
+        provenance_record["source_files"] = sorted(source_files)
+    provenance.write_text(json.dumps(provenance_record, sort_keys=True, indent=2) + "\n", encoding="ascii")
+    if target == "release":
+        # The live/hermetic runner overlays the release source and builds its temporary Git
+        # snapshot from this attested inventory. Keep it alongside the model-bundle provenance.
+        suite_provenance = output / "tests" / "build_provenance.json"
+        suite_provenance.parent.mkdir(parents=True, exist_ok=True)
+        suite_provenance.write_text(
+            json.dumps(provenance_record, sort_keys=True, indent=2) + "\n", encoding="ascii",
+        )
     return commit, fingerprint
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--target", choices=("engine", "chat", "sync", "hosting"), default="engine")
+    parser.add_argument(
+        "--target", choices=("engine", "release", "suite", "chat", "sync", "hosting"),
+        default="engine",
+    )
     args = parser.parse_args()
     commit, fingerprint = create_context(args.output, args.target)
     print(f"build context ready: target={args.target} commit={commit} weights={fingerprint}")

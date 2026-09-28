@@ -36,7 +36,8 @@ ENGINE_SUITES = ["tests.test_world", "tests.test_world_joins", "tests.test_route
 
 
 def _scalar(res):
-    rows = (res or {}).get("result", {}).get("rows") or []
+    payload = (res or {}).get("result")
+    rows = payload.get("rows") or [] if isinstance(payload, dict) else []
     if rows and rows[0]:
         try:
             return int(float(str(rows[0][0]).replace(",", "")))
@@ -45,7 +46,7 @@ def _scalar(res):
     return None
 
 
-def run():
+def run(*, include_engine_suites=True):
     failed = []
     from engine.knowledge import KnowledgeReasoner
     from regress.live_schema import live_schema, served
@@ -62,20 +63,29 @@ def run():
                 got = _scalar(res)
                 ok = (got == c["expect_scalar"]) if "expect_scalar" in c else \
                      (isinstance(got, int) and got >= c["expect_min"])
+                diagnostic = ""
+                if not ok and isinstance(res, dict):
+                    diagnostic = (
+                        f" clarify={res.get('clarify')} error={res.get('error')!r}"
+                        f" reason={res.get('reason')!r}"
+                    )
                 print(f"  {'ok  ' if ok else 'FAIL'} {c['name']}: got {got}"
-                      f" (want {c.get('expect_scalar', '>=' + str(c.get('expect_min')))})")
+                      f" (want {c.get('expect_scalar', '>=' + str(c.get('expect_min')))})"
+                      f"{diagnostic}")
                 if not ok:
                     failed.append(c["name"])
             except Exception as e:                           # noqa: BLE001
                 print(f"  FAIL {c['name']}: {type(e).__name__}: {e}")
                 failed.append(c["name"])
-        # Reuse the maintained oracle suites under the same serving-owned schema.
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        for mod in ENGINE_SUITES:
-            rc = subprocess.call([sys.executable, "-m", mod], cwd=root, env=os.environ.copy())
-            print(f"  {'ok  ' if rc == 0 else 'FAIL'} {mod} (exit {rc})")
-            if rc != 0:
-                failed.append(mod)
+        # Reuse the maintained oracle suites under the same serving-owned schema. A test-only
+        # Cloud Build can ask tests.run_all to run the entire ENGINE_SUITES list once instead.
+        if include_engine_suites:
+            root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            for mod in ENGINE_SUITES:
+                rc = subprocess.call([sys.executable, "-m", mod], cwd=root, env=os.environ.copy())
+                print(f"  {'ok  ' if rc == 0 else 'FAIL'} {mod} (exit {rc})")
+                if rc != 0:
+                    failed.append(mod)
     finally:
         if previous_sub is None:
             os.environ.pop("AUTH_TEST_SUB", None)

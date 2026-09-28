@@ -1,35 +1,33 @@
-"""fetch_weights.py — provision the gitignored model weights for a fresh clone.
+"""Fetch and verify the exact gitignored model artifacts named by weights_manifest.json.
 
-The small config/JSON artifacts (alloc.json, families.json, props_thr.json, sql_*.json, taxonomy.csv,
-word_*.json) are committed. The large binaries are gitignored and must be fetched once:
-
-    encoder.pt              the trained RelationalModel readout (~72 MB)
-    encoder_meta.pt         {alloc, cfg} for the readout
-    qwen_lora/              the LoRA adapter for the Qwen2.5-0.5B encoder (~17 MB)
-    sql_proposer/           the LoRA adapter for the Qwen2.5-0.5B SQL proposer (~9 MB)
-    anchor_assignment.npz   per-dim Youden-J thresholds for /api/dimension
-    primitives.npz          the learned 10-primitive head
-    schema_property_head.pt calibrated Schema.org named-property evidence head
+The manifest's ``repository``, immutable 40-character ``revision``, and ``files`` map are the
+single source of truth. The fetcher refuses mutable revisions, source overrides, unsafe paths,
+and any download whose SHA-256 differs from the manifest. Small committed runtime artifacts are
+staged from the checkout and verified in the same bundle before downloaded files are installed.
 
 Usage:
-    python -m engine.fetch_weights                 # download any missing weights into engine/data/
-    python -m engine.fetch_weights --force         # re-download even if present
-    PREREASONER_WEIGHTS_REPO=<hf-repo-id> python -m engine.fetch_weights
+    python -m engine.fetch_weights                 # verify or fetch the pinned bundle
+    python -m engine.fetch_weights --force         # fetch again from that same pinned revision
 
-The Hugging Face repo id defaults to the value of PREREASONER_WEIGHTS_REPO (recommended) or the constant
-below. Publish the weights once with `huggingface_hub.upload_folder(folder_path=engine/data, repo_id=...,
-allow_patterns=['*.pt','*.npz','qwen_lora/*','sql_proposer/*'])`, then a clone runs this to provision them.
+To publish a new model bundle, first produce and review a complete weights manifest and upload
+exactly its ``files`` entries to the repository at the recorded immutable revision. Do not use a
+wildcard upload as the release contract: an unmanifested file is not part of a reproducible bundle.
 """
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
-from engine.artifact_provenance import load_weights_manifest, validate_weight_bundle
+from engine.artifact_provenance import (
+    load_weights_manifest,
+    resolve_artifact_path,
+    validate_weight_bundle,
+)
 
 DATA_DIR = Path(os.environ.get("PREREASONER_DATA_DIR") or Path(__file__).resolve().parent / "data")
 
@@ -42,18 +40,42 @@ DEFAULT_REPO = os.environ.get(
 )
 DEFAULT_REVISION = (_MANIFEST or {}).get("revision")
 
-# (relative path under the HF repo == relative path under engine/data/, size for the log)
-WEIGHTS = [
-    "encoder.pt",
-    "encoder_meta.pt",
-    "anchor_assignment.npz",
-    "primitives.npz",
-    "schema_property_head.pt",
-    "qwen_lora/adapter_config.json",
-    "qwen_lora/adapter_model.safetensors",
-    "sql_proposer/adapter_config.json",
-    "sql_proposer/adapter_model.safetensors",
-]
+def _downloadable_files(manifest: dict) -> tuple[str, ...]:
+    """Return safe, manifest-pinned paths to fetch from the immutable HF revision."""
+    files = manifest.get("files")
+    if not isinstance(files, dict) or not files:
+        raise ValueError("weights manifest must declare downloadable files")
+    paths: list[str] = []
+    for relative, digest in files.items():
+        if not isinstance(relative, str) or not relative.strip():
+            raise ValueError("weights manifest contains an invalid artifact path")
+        posix_path = PurePosixPath(relative)
+        windows_path = PureWindowsPath(relative)
+        if (posix_path.is_absolute() or windows_path.is_absolute()
+                or windows_path.drive or ".." in posix_path.parts
+                or ".." in windows_path.parts or "\\" in relative
+                or any(part in {"", ".", ".."} for part in relative.split("/"))):
+            raise ValueError(f"weights manifest artifact path is not relative and safe: {relative!r}")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError(f"weights manifest has an invalid SHA-256 for {relative!r}")
+        paths.append(relative)
+    return tuple(sorted(paths))
+
+
+def _validate_fetch_source(manifest: dict, repo: str, revision: str | None) -> None:
+    """Require downloads to use the immutable source declared by the bundle contract."""
+    expected_repo = manifest.get("repository")
+    expected_revision = manifest.get("revision")
+    if not isinstance(expected_repo, str) or not expected_repo.strip():
+        raise ValueError("weights manifest must pin its source repository")
+    if repo != expected_repo:
+        raise ValueError(
+            f"requested repository {repo!r} differs from manifest repository {expected_repo!r}"
+        )
+    if not isinstance(expected_revision, str) or not re.fullmatch(r"[0-9a-f]{40}", expected_revision):
+        raise ValueError("weights manifest must pin a full immutable 40-character Git revision")
+    if revision != expected_revision:
+        raise ValueError("requested revision differs from the immutable manifest revision")
 
 
 def _stage_committed_artifacts(
@@ -63,10 +85,10 @@ def _stage_committed_artifacts(
 ) -> None:
     """Copy Git-tracked manifest entries beside downloads for whole-bundle validation."""
     for relative in manifest.get("committed_artifacts", {}):
-        source_path = source / relative
+        source_path = resolve_artifact_path(source, relative)
         if not source_path.is_file():
             raise RuntimeError(f"committed runtime artifact is missing: {source_path}")
-        destination = staging / relative
+        destination = resolve_artifact_path(staging, relative)
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_path, destination)
 
@@ -95,16 +117,6 @@ def main() -> int:
         print("huggingface_hub is required: pip install huggingface_hub", file=sys.stderr)
         return 2
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not args.force:
-        try:
-            fingerprint = validate_weight_bundle(DATA_DIR)
-        except RuntimeError:
-            fingerprint = None
-        if fingerprint is not None:
-            print(f"weights ready in {DATA_DIR}: manifest verified ({fingerprint[:12]})")
-            return 0
-
     if _MANIFEST is None:
         print("weights_manifest.json is required for an atomic verified download", file=sys.stderr)
         return 2
@@ -115,10 +127,29 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    try:
+        # Validate even on a cache hit so explicit CLI/environment overrides are never silently
+        # reported as successful when the existing bundle prevented the requested fetch.
+        _validate_fetch_source(_MANIFEST, args.repo, args.revision)
+        downloads = _downloadable_files(_MANIFEST)
+    except ValueError as exc:
+        print(f"invalid weights manifest or source override: {exc}", file=sys.stderr)
+        return 2
+
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if not args.force:
+        try:
+            fingerprint = validate_weight_bundle(DATA_DIR)
+        except RuntimeError:
+            fingerprint = None
+        if fingerprint is not None:
+            print(f"weights ready in {DATA_DIR}: manifest verified ({fingerprint[:12]})")
+            return 0
+
     with tempfile.TemporaryDirectory(prefix=".weights-", dir=DATA_DIR) as temporary:
         staging = Path(temporary)
         _stage_committed_artifacts(DATA_DIR, staging, _MANIFEST)
-        for rel in WEIGHTS:
+        for rel in downloads:
             dest = staging / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             print(f"  fetching {rel} from {args.repo}@{args.revision} ...", flush=True)
@@ -133,7 +164,7 @@ def main() -> int:
             )
             shutil.copyfile(path, dest)
         fingerprint = validate_weight_bundle(staging, _MANIFEST)
-        for rel in WEIGHTS:
+        for rel in downloads:
             dest = DATA_DIR / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(staging / rel, dest)
