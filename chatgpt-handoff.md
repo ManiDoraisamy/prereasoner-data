@@ -27,6 +27,8 @@ serial n=3 p50/max `1.214/4.251s`, concurrency 2 n=6 p50/max `1.187/2.374s`, con
 n=12 p50/max `2.531/4.859s`. Container memory was `6.693/16 GiB`; process peak RSS was
 `8,024,748 KiB` (about 7.65 GiB). Small-sample p95 equals max and is not an SLA. The
 Cloud Build produced no image (`images: -`); Cloud Run traffic/configuration is unchanged.
+The exact image's runtime checks passed on Python `3.11.16`, Torch `2.13.0+cpu`, Transformers
+`5.10.4`, spaCy `3.8.13`, sqlglot `30.18.0`, and psycopg2-binary `2.9.12`; `pip check` exited 0.
 
 The full hermetic suite also completed **SUCCESS** as Cloud Build
 `66370892-0dd4-4a3c-84ce-237c41e35524`, using the same source commit and exact image. All **31

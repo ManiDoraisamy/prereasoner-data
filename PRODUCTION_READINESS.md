@@ -19,7 +19,9 @@ Spider accuracy work remains in its own worktree.
   all passed. CPU-only `/api/reason` world-join calls all matched expected answers: serial n=3
   p50/max `1.214/4.251s`, concurrency 2 n=6 `1.187/2.374s`, concurrency 4 n=12 `2.531/4.859s`.
   Container peak was `6.693/16 GiB`; process peak RSS `8,024,748 KiB` (~7.65 GiB). Small-sample
-  p95 equals max and is not an SLA. The build produced no image and changed no traffic.
+  p95 equals max and is not an SLA. Python `3.11.16`, Torch `2.13.0+cpu`, Transformers `5.10.4`,
+  spaCy `3.8.13`, sqlglot `30.18.0`, and psycopg2-binary `2.9.12` were verified; `pip check`
+  exited 0. The build produced no image and changed no traffic.
 - **Exact-current-image hermetic gate passed:** Cloud Build `66370892-0dd4-4a3c-84ce-237c41e35524`
   used the same digest and source commit. All **31 configured suites exited 0**, including complex
   dataset, MCP, and orchestrator unit tests. `RUN_ENGINE_TESTS=0` and
