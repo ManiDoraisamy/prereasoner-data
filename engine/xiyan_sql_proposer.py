@@ -1,11 +1,12 @@
 """CPU inference adapter for the pinned XiYanSQL Q4_K_M production proposer."""
 from __future__ import annotations
 
-from collections import OrderedDict
 import json
 import os
-from pathlib import Path
+import re
 import threading
+from collections import OrderedDict
+from pathlib import Path
 
 from engine import request_timing
 from engine.artifact_provenance import sha256_file
@@ -29,8 +30,42 @@ def load_contract(path: str | Path = _CONTRACT) -> dict:
         raise RuntimeError("unsupported XiYanSQL prompt contract")
     if contract.get("selector", {}).get("likelihood_policy") != "neutral-sentinel-v1":
         raise RuntimeError("XiYanSQL selector contract has an unsupported likelihood policy")
-    if contract.get("runtime", {}).get("gpu_layers") != 0:
+    selector = contract["selector"]
+    if selector.get("model_matched_arbiter") is not False:
+        raise RuntimeError("the deployed arbiter must disclose that it was fit with another proposer")
+    for field in ("sha256", "fit_source_proposer_sha256"):
+        if not isinstance(selector.get(field), str) or not re.fullmatch(
+            r"[0-9a-f]{64}", selector[field]
+        ):
+            raise RuntimeError(f"XiYanSQL selector contract has an invalid {field}")
+    artifact = contract.get("gguf")
+    if (not isinstance(artifact, dict)
+            or not re.fullmatch(r"[0-9a-f]{64}", str(artifact.get("sha256", "")))
+            or not isinstance(artifact.get("size_bytes"), int)
+            or artifact["size_bytes"] <= 0
+            or artifact.get("quantization") != "Q4_K_M"
+            or artifact.get("license") != "Apache-2.0"):
+        raise RuntimeError("XiYanSQL GGUF contract is incomplete or unsupported")
+    generation = contract.get("generation")
+    if (not isinstance(generation, dict)
+            or generation.get("temperature") != 0.0
+            or generation.get("top_p") != 1.0
+            or generation.get("seed") != 0
+            or not 1 <= int(generation.get("max_new_tokens", 0)) <= 1024
+            or generation.get("stop") != "tokenizer_eos"):
+        raise RuntimeError("XiYanSQL generation contract is not the measured deterministic policy")
+    runtime = contract.get("runtime")
+    if not isinstance(runtime, dict) or runtime.get("gpu_layers") != 0:
         raise RuntimeError("the production XiYanSQL proposer must run on CPU")
+    if (not 512 <= int(runtime.get("context", 0)) <= 8192
+            or not 1 <= int(runtime.get("threads", 0)) <= 16
+            or not 1 <= int(runtime.get("batch_size", 0)) <= 2048):
+        raise RuntimeError("XiYanSQL CPU runtime limits are outside the supported bounds")
+    tokenizer = contract.get("tokenizer")
+    if (not isinstance(tokenizer, dict)
+            or not isinstance(tokenizer.get("repository"), str)
+            or not re.fullmatch(r"[0-9a-f]{40}", str(tokenizer.get("revision", "")))):
+        raise RuntimeError("XiYanSQL tokenizer must be pinned to an immutable revision")
     return contract
 
 
@@ -47,6 +82,8 @@ class XiYanSQLProposer:
         self.model = model
         self.tokenizer = tokenizer
         self.contract = contract
+        self.model_sha256 = model_sha256
+        # Kept for the generic planner provenance interface; this is a GGUF model, not a LoRA.
         self.adapter_sha256 = model_sha256
         self.device = "cpu"
         self.beams = 1

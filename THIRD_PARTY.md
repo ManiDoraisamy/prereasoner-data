@@ -10,6 +10,7 @@ system; no source's facts are relicensed merely because they are used for traini
 | Component | Use | Upstream terms |
 |---|---|---|
 | [Qwen2.5-0.5B](https://huggingface.co/Qwen/Qwen2.5-0.5B) | Base encoder for the trained LoRA adapter | Apache-2.0 |
+| [XiYanSQL-QwenCoder-7B-2504](https://huggingface.co/XGenerationLab/XiYanSQL-QwenCoder-7B-2504) and its published Q4_K_M GGUF | CPU-only SQL proposal generation; exact repositories, revisions, quantization and hashes are pinned in `engine/data/xiyan_sql_proposer.json` | Apache-2.0 |
 | [BAAI/bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) | Entity-resolution embeddings | MIT |
 | [spaCy en_core_web_md](https://spacy.io/models/en#en_core_web_md) | English parsing and entity candidates | MIT; the installed wheel contains its license and source notices |
 | [Wikidata](https://www.wikidata.org/wiki/Wikidata:Copyright) | Entity identifiers and the largest current set of property-labelled training observations | Structured data is CC0; other Wikidata content can have different terms |
@@ -42,11 +43,14 @@ aggregate evaluation measurements; questions, gold SQL, databases, and per-examp
 part of the source distribution. Follow the dataset owner's terms and cite the Spider paper when
 downloading it through the instructions in `docs/SQL_AST.md`.
 
-The SQL proposer adapter in the weight bundle (`sql_proposer/`) and the SQL arbiter
-(`engine/data/sql_arbiter.json`) were trained on Spider TRAIN questions and gold SQL (Yu et al.,
-"Spider: A Large-Scale Human-Labeled Dataset for Complex and Cross-Domain Semantic Parsing and
-Text-to-SQL Task", EMNLP 2018). Spider dev was used only for measurement. Redistributors of those
-artifacts should keep this attribution and review CC BY-SA 4.0's terms for their use.
+The SQL arbiter (`engine/data/sql_arbiter.json`) was fitted using Spider TRAIN questions and gold SQL;
+its proposer-fit provenance is retained in the artifact. Runtime applies it to the separately
+licensed XiYanSQL Q4_K_M proposer using the disclosed neutral-likelihood policy in
+`engine/data/xiyan_sql_proposer.json`; this is an empirically measured but model-mismatched selector,
+not a claim that the arbiter was retrained on XiYanSQL. Spider DEV was used for measurement only.
+Spider is distributed by the Yale LILY Lab under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/); retain the Spider paper attribution
+and review those terms before redistributing derived artifacts.
 
 Python packages installed from the requirement files and browser libraries loaded by the frontend retain their
 upstream licenses. Before publishing a model bundle or container image, preserve the notices shipped by those

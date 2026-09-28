@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "deploy" / "dependency_locks.json"
 LOCKS = {
     "requirements.lock.txt": ("requirements.txt", "linux-x86_64-python3.11"),
+    "requirements-build.lock.txt": ("requirements-build.txt", "linux-x86_64-python3.11"),
     "requirements-ci.lock.txt": ("requirements-ci.txt", "linux-x86_64-python3.11"),
     "requirements-ci-windows.lock.txt": ("requirements-ci.txt", "windows-x86_64-python3.11"),
     "orchestrator/requirements.lock.txt": (

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
-from engine.sql_schema import SchemaGraph
 from engine.sql_prompt import xiyan_mschema, xiyansql_prompt
+from engine.sql_schema import SchemaGraph
 from engine.xiyan_sql_proposer import XiYanSQLProposer, load_contract
 
 
@@ -94,3 +92,20 @@ def test_contract_pins_the_measured_gguf_and_one_cpu_sample():
     assert contract["runtime"]["threads"] == 8
     assert contract["generation"]["temperature"] == 0.0
     assert contract["likelihood_policy"] == "neutral-sentinel-v1"
+    assert contract["selector"]["model_matched_arbiter"] is False
+    assert contract["selector"]["fit_source_proposer_sha256"] == (
+        "d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf"
+    )
+
+
+def test_runtime_contract_rejects_an_undisclosed_model_mismatch(tmp_path):
+    import json
+
+    import pytest
+
+    contract = load_contract()
+    contract["selector"]["model_matched_arbiter"] = True
+    path = tmp_path / "runtime.json"
+    path.write_text(json.dumps(contract), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="disclose that it was fit with another proposer"):
+        load_contract(path)

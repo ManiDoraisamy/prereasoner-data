@@ -27,8 +27,8 @@ A local-only manifest intentionally refuses fresh-clone download. To retrain fro
 |---|---|---|---|
 | `qwen_lora/` | ~17 MB | LoRA adapter for the Qwen2.5-0.5B unified encoder (the trained metric space). Loaded by `engine.encoder_overlay`, `engine.dimension`, `engine.router`. | no (gitignored) |
 | `xiyan_sql_proposer.gguf` | 4.68 GB | Pinned XiYanSQL QwenCoder 7B Q4_K_M CPU model. Fetched and hash-verified during image build from the immutable revision in `xiyan_sql_proposer.json`. | no (fetched by image build) |
-| `xiyan_sql_proposer.json` | 1 KB | Prompt, tokenizer, model, decoding and runtime contract for the single active SQL proposer. | yes |
-| `sql_arbiter.json` | 3 KB | The fitted linear arbiter (`engine.sql_rank.SQLArbiter`): nine named features' means, scales and coefficients, the candidate-pool contract (search candidates, beams, decode length, execution budget), and fit provenance naming the adapter it belongs to. | yes |
+| `xiyan_sql_proposer.json` | 1 KB | Prompt, tokenizer, model, decoding, CPU-runtime and neutral-selector contract for the single active SQL proposer; hash-pinned in `weights_manifest.json`. | yes |
+| `sql_arbiter.json` | 3 KB | The fitted linear arbiter (`engine.sql_rank.SQLArbiter`): named features' means, scales and coefficients, pool contract and fit provenance. Runtime explicitly records that this historical arbiter is model-mismatched and applies only the evaluated neutral-likelihood policy. | yes |
 | `encoder.pt` | ~72 MB | State_dict of the trained relational readout (`engine.encoder_model.RelationalModel`). Plain `state_dict` — no pickled classes. | no (gitignored) |
 | `encoder_meta.pt` | 8 KB | `{"alloc": …, "cfg": …}` — the dim allocation (names/families/ids) + the RelationalModel constructor config. Contains tensors and primitive containers only; loaded with `torch.load(..., weights_only=True)`. | no (gitignored, `*.pt`) |
 | `alloc.json` | 10 KB | The dim allocation as JSON (same content as `encoder_meta.pt["alloc"]`), used by `engine.router` which stays torch-free at import. | yes |

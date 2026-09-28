@@ -596,7 +596,7 @@ def build_decomposed_plan(
             view = CrossView(name, left, right, right_prefix=f"{right_id}_")
             row_bounds[merge["id"]] = left_bound * right_bound
         else:
-            keys = _bind_merge_keys(views, shapes, left, right)
+            keys = _bind_merge_keys(views, shapes, left, right, foreign_keys)
             view = AntiJoinView(
                 name,
                 left,
@@ -789,19 +789,41 @@ def duplicated_output_dimension(views, shapes, output: str) -> str | None:
     return None
 
 
-def _bind_merge_keys(views, shapes, left, right):
-    """Aliases are presentation, not identity. Bind only identical physical columns.
+def _bind_merge_keys(views, shapes, left, right, foreign_keys=()):
+    """Bind aliases only when physical lineage matches or a direct FK proves identity.
 
     Ambiguous duplicate projections and unrelated columns sharing an alias fail
-    closed. Foreign-key equivalence needs a separate composite-key proof; merely
-    sharing a spelling (or a value) is never sufficient.
+    closed. A direct, single-column inclusion dependency is sufficient to compare
+    the same named entity key across its source and referenced table; composite or
+    partial dependencies are deliberately not treated as identity.
     """
     from engine.deterministic.plan import MergeKey
+
+    def equivalent(left_origin, right_origin):
+        if left_origin == right_origin:
+            return True
+        lt, lc = left_origin
+        rt, rc = right_origin
+        return any(
+            edge.get("from_table") == lt
+            and edge.get("from_col") == lc
+            and edge.get("to_table") == rt
+            and edge.get("to_col") == rc
+            and float(edge.get("inclusion", 0.0)) == 1.0
+            for edge in foreign_keys
+        ) or any(
+            edge.get("from_table") == rt
+            and edge.get("from_col") == rc
+            and edge.get("to_table") == lt
+            and edge.get("to_col") == lc
+            and float(edge.get("inclusion", 0.0)) == 1.0
+            for edge in foreign_keys
+        )
 
     left_keys = _merge_key_columns(views, shapes, left)
     right_keys = _merge_key_columns(views, shapes, right)
     if any(
-        left_keys[name] != right_keys[name]
+        not equivalent(left_keys[name], right_keys[name])
         for name in left_keys.keys() & right_keys.keys()
     ):
         raise DecompositionError(
@@ -810,7 +832,7 @@ def _bind_merge_keys(views, shapes, left, right):
     keys = []
     missing = []
     for column, origin in left_keys.items():
-        matches = [name for name, other in right_keys.items() if origin == other]
+        matches = [name for name, other in right_keys.items() if equivalent(origin, other)]
         if len(matches) > 1 or (matches and list(left_keys.values()).count(origin) > 1):
             raise DecompositionError("anti-join dimension binding is ambiguous")
         if matches:

@@ -144,6 +144,22 @@ def test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures
     _reject(lambda: _bind_merge_keys(views, {}, "a_result", "b_result"))
 
 
+def test_merge_key_alias_can_follow_only_a_complete_direct_foreign_key():
+    views = [
+        CombinedView("source", ("products", "purchases")),
+        ProjectedView("products", "source", (SelectedValue(
+            "product_name", ColumnValue("products", "product_name")),)),
+        ProjectedView("purchases", "source", (SelectedValue(
+            "product_name", ColumnValue("purchases", "product_name")),)),
+    ]
+    fks = [{"from_table": "purchases", "from_col": "product_name",
+            "to_table": "products", "to_col": "product_name", "inclusion": 1.0}]
+    keys = _bind_merge_keys(views, {}, "products", "purchases", fks)
+    assert [(key.left, key.right) for key in keys] == [("product_name", "product_name")]
+    fks[0]["inclusion"] = 0.99
+    _reject(lambda: _bind_merge_keys(views, {}, "products", "purchases", fks))
+
+
 def test_anti_join_evidence_must_preserve_the_complete_left_grain():
     """Backend parity must not certify evidence that dropped half a candidate pair."""
     from engine.deterministic.plan import CrossView

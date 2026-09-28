@@ -20,7 +20,8 @@
     "artifact": "sql_arbiter.json",
     "sha256": "fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d",
     "likelihood_policy": "neutral-sentinel-v1",
-    "fit_source_proposer_sha256": "d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf"
+    "fit_source_proposer_sha256": "d8939fea27e474eea3e77384e9a56b2bfbeac7ec7a90cf5a990a46b6e8bfacdf",
+    "model_matched_arbiter": false
   },
   "generation": {
     "max_new_tokens": 1024,

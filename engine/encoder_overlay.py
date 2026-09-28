@@ -7,12 +7,15 @@ readout, the operator/intent decision, and the free-text bridge embeddings.
 """
 from __future__ import annotations
 
+from typing import ClassVar
+
 import numpy as np
 
 from engine.artifact_provenance import validate_weight_bundle
-from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR, DEVICE
+from engine.config import BASE_MODEL_REVISION as MODEL_REVISION
+from engine.config import DATA_DIR
 from engine.sql_schema import is_surrogate_key
-from engine.tables import TableQuery, MODEL_ID
+from engine.tables import MODEL_ID, TableQuery
 
 
 def load_encoder(obj, deploy_dir=DATA_DIR):
@@ -21,7 +24,9 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     nL/tok/qwen/hdim) from the shipped artifacts (encoder_meta.pt / encoder.pt / qwen_lora) + the anchor-head
     thresholds (the intent dims fire the operator; verified SUM/COUNT/AVG)."""
     from pathlib import Path
+
     import torch
+
     from engine.encoder_model import RelationalModel
     d = Path(deploy_dir)
     obj.model_bundle_sha256 = validate_weight_bundle(d)
@@ -51,8 +56,8 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
         d / "encoder.pt", map_location="cpu", weights_only=True
     )); obj.model.eval()
     obj.nL = pt["cfg"]["layers"] + 1
-    from transformers import AutoModel, AutoTokenizer
     from peft import PeftModel
+    from transformers import AutoModel, AutoTokenizer
     obj.tok = AutoTokenizer.from_pretrained(MODEL_ID, revision=MODEL_REVISION)
     if obj.tok.pad_token is None:
         obj.tok.pad_token = obj.tok.eos_token
@@ -66,10 +71,12 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
 def load_sql_selection(obj, deploy_dir=DATA_DIR):
     """Load the one pinned CPU SQL proposer and its explicitly evaluated selector."""
     import json
+    import os
     from pathlib import Path
-    from engine.xiyan_sql_proposer import XiYanSQLProposer
-    from engine.sql_rank import SQLArbiter
+
     from engine.artifact_provenance import load_weights_manifest, sha256_file
+    from engine.sql_rank import SQLArbiter
+    from engine.xiyan_sql_proposer import XiYanSQLProposer
     d = Path(deploy_dir)
     contract_path = d / "xiyan_sql_proposer.json"
     manifest = load_weights_manifest(d)
@@ -83,11 +90,16 @@ def load_sql_selection(obj, deploy_dir=DATA_DIR):
     arbiter_path = d / contract["selector"]["artifact"]
     if sha256_file(arbiter_path) != contract["selector"]["sha256"]:
         raise RuntimeError("SQL arbiter does not match the XiYanSQL selection contract")
+    arbiter_payload = json.loads(arbiter_path.read_text(encoding="utf-8"))
+    fitted_proposer = (arbiter_payload.get("fit") or {}).get("proposer_adapter_sha256")
+    if fitted_proposer != contract["selector"]["fit_source_proposer_sha256"]:
+        raise RuntimeError("XiYanSQL contract disagrees with the arbiter's recorded fit provenance")
     obj.sql_arbiter = SQLArbiter.from_payload(
-        json.loads(arbiter_path.read_text(encoding="utf-8")), str(arbiter_path)
+        arbiter_payload, str(arbiter_path)
     )
     obj.sql_proposer = XiYanSQLProposer.load(
-        d / "xiyan_sql_proposer.gguf", contract_path=contract_path,
+        os.environ.get("SQL_PROPOSER_MODEL_PATH") or d / "xiyan_sql_proposer.gguf",
+        contract_path=contract_path,
     )
 
 
@@ -101,7 +113,9 @@ class EncoderQuery(TableQuery):
         load_sql_selection(self, deploy_dir)
 
     # ---------- operator FROM THE MODEL (retires the keyword AGG_CUES) ----------
-    INTENT_OPS = {"COUNT": "intent_agg_count", "SUM": "intent_agg_sum", "AVG": "intent_agg_avg"}
+    INTENT_OPS: ClassVar[dict[str, str]] = {
+        "COUNT": "intent_agg_count", "SUM": "intent_agg_sum", "AVG": "intent_agg_avg",
+    }
 
     def _question_readout(self, tables, fks, question):
         """Build the (schema-name units + question-token units) graph, run the unified encoder + readout, and

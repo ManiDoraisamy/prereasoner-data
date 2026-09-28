@@ -18,7 +18,7 @@
     },
     "xiyan_sql_proposer.json": {
       "note": "tracked model/runtime contract for the single SQL proposer; the pinned GGUF is downloaded and hash-verified during image build",
-      "sha256": "2da506fefa49015de51c514e9315a82a5d6ca7aeb13af178a0d1151cbe2b8589"
+      "sha256": "3c7836a87994bb6c8b95391f1077a17f24240196fd8781486dd15c6db4ff8961"
     },
     "sql_arbiter.json": {
       "note": "tracked in git (not fetched); fitted SQL arbiter installed only by training/rank/promote.py",

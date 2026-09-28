@@ -73,7 +73,9 @@ def test_public_weight_bundle_is_manifested_and_documented():
     manifest = json.loads(_text("engine/data/weights_manifest.json"))
     assert manifest["repository"] == "prereasoner/prereasoner-weights"
     assert re.fullmatch(r"[0-9a-f]{40}", manifest["revision"])
-    assert len(manifest["files"]) == 9
+    assert len(manifest["files"]) == 7
+    assert "sql_proposer/adapter_model.safetensors" not in manifest["files"]
+    assert "xiyan_sql_proposer.json" in manifest["committed_artifacts"]
 
     setup_docs = "\n".join(
         _text(path)
@@ -774,7 +776,7 @@ def test_engine_release_runs_full_live_product_gate_before_image_publication():
     assert "_RUN_PRODUCT_SUITES: \"1\"" in cloudbuild
     assert "_PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:" in cloudbuild
     assert "machineType: E2_HIGHCPU_32" in cloudbuild
-    assert "timeout: 5400s" in cloudbuild
+    assert "timeout: 7200s" in cloudbuild
     assert "gcloud sql" not in product and "cloud-sql-proxy" not in product
     # Cloud Build publishes declared images only after every step succeeds.
     assert cloudbuild.index("- id: live-product-suite") < cloudbuild.index("images:")
