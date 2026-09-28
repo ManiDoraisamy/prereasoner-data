@@ -21,6 +21,18 @@ The separate 80% Spider accuracy work remains in its own worktree.
   SLA or concurrency test. The authenticated external-orchestrator path remains explicitly
   untested, and the disposable public seed is not production Cloud SQL. No image was promoted and
   no Cloud Run traffic/configuration changed.
+- The follow-up CPU-only concurrency check is isolated in Cloud Build
+  `c0f5e9d4-2d6c-412f-a522-6c2200b37afe` (commit `b7e97a9`) against the same pinned image and
+  disposable seed. It passed all **21** exact-answer world-join requests: concurrency 1, n=3,
+  p50/max **1.20/4.68 s**; concurrency 2, n=6, p50/max **1.28/2.49 s**; concurrency 4, n=12,
+  p50/max **2.50/4.96 s**. Container snapshot was **6.70/16 GiB**, process peak RSS **7.66 GiB**.
+  p95 equals max at these small sample sizes. This is a bounded CPU resource smoke, not sustained
+  load, saturation, or an SLA; the full live suite was not rerun in this smoke-only build because
+  it passed in the preceding build.
+- Scope boundary: both runs exercised the existing **0.5B mainline serving image** and prove its
+  isolated product regression/runtime only. They are not the 7B Spider DEV experiment or its
+  +10.4-point diagnostic delta. That 7B bundle still lacks a selector matched to its candidate pool
+  and a verified production runtime package; this branch has not packaged or promoted it.
 
 - Live build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed offline and the two curated world
   goldens, then reported SIGKILL (`-9`) for `tests.test_world`/`tests.test_geo` and a 600-second

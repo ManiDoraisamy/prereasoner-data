@@ -30,15 +30,26 @@ expected France total each time.
 
 The exact release image's Python 3.11 environment passed `pip check`; reported versions: Python
 3.11.16, CPU Torch 2.13.0, Transformers 5.10.4, spaCy 3.8.13, sqlglot 30.18.0, and
-psycopg2-binary 2.9.12. At 8 vCPU / 16 GiB, the three-call world-join smoke measured p50 **1.18 s**,
-p95/max **4.29 s**, container memory **6.63 GiB**, and process peak RSS **7.64 GiB**. Three calls
-are a smoke, not a tail-latency or concurrency SLA.
+psycopg2-binary 2.9.12. The initial 3-call serial smoke measured p50 **1.18 s**, max **4.29 s**,
+container memory **6.63 GiB**, and process peak RSS **7.64 GiB**.
+
+I then expanded the CPU check in commit `b7e97a9` and ran a bounded smoke-only Cloud Build
+`c0f5e9d4-2d6c-412f-a522-6c2200b37afe` against the same immutable image and disposable DB. Serial
+3-call p50/max were **1.20/4.68 s**; at concurrency 2 (6 calls) p50/max were **1.28/2.49 s**; at
+concurrency 4 (12 calls) p50/max were **2.50/4.96 s**. All 21 world-join calls returned the exact
+expected result. Container snapshot was **6.70/16 GiB**, process peak RSS **7.66 GiB**. The test
+reports p95 as max for these small samples; it is a bounded sanity check, not a production
+percentile, saturation, or sustained-load SLA.
 
 This closes the isolated public-seed live-product and CPU-smoke blockers on the refactor branch.
 It does not close merge/deploy readiness: authenticated external-orchestrator follow-ups were
 explicitly disabled, the live source here is the public Community snapshot rather than production
 Cloud SQL, and no traffic changed. The measured result is now recorded; remaining release
 prerequisites are being checked without touching production or the separate 7B accuracy worktree.
+Important scope boundary: these live/CPU measurements exercise the immutable 0.5B mainline image,
+not the separate 7B Spider diagnostic that measured the +10.4-point DEV delta. That 7B bundle still
+does not have a pool-matched selector/runtime contract here, so this successful product gate cannot
+be represented as having promoted that accuracy gain.
 
 ## 2026-09-28 — Live gate exposed worker-memory and stale-FX fixture blockers
 
