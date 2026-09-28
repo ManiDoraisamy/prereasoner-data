@@ -1,5 +1,53 @@
 # Spider Results
 
+## Integrated 7B release-candidate diagnostic (2026-09-28; experimental, not the main baseline)
+
+Using the pinned XiYanSQL Q4_K_M CPU proposer integrated with the unified engine and its served
+neutral-sentinel arbiter, the exact production-matched full DEV replay scored **864/1,034 strict
+(83.56%)** and **867/1,034 lenient (83.85%)**. This is +217 strict examples / +20.99 percentage
+points over the historical 0.5B baseline below (647/1,034, 62.57%). Spider DEV was consulted
+repeatedly during model and selector development, so this is an engineering/tuning result, not an
+unbiased generalization estimate. It is not the official Spider TEST score and does not measure
+multi-source Knowledgebase joins. The historical 0.5B result remains the main baseline until the
+candidate passes release and deployment gates.
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar-gold |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 246 | 233 | 227 | 163/173 |
+| medium | 446 | 446 | 378 | 385 | 97/101 |
+| hard | 174 | 173 | 149 | 155 | 74/77 |
+| extra | 166 | 166 | 104 | 100 | 47/57 |
+| **all** | **1,034** | **1,031** | **864** | **867** | **381/408** |
+
+As a separate benchmark, the official `taoyds/test-suite-sql-eval` evaluator at commit
+`e97acc546ecbee8fa27fa8dbf025ef61493a876c`, run on the official Spider test-suite databases
+without `--plug_value`, scored **839/1,034 (81.14%) test-suite execution accuracy** (easy 233/248,
+medium 375/446, hard 148/174, extra 83/166). This metric evaluates Spider databases only; it does
+not test production Knowledgebase joins. Test-suite database archive SHA-256:
+`9ec24ea8debc6bd04abfe137b5f1a739b5a8836f32c0464e4dfc94eb7f41da96`.
+
+Reproduction artifacts were hash-verified from the CPU3c run: summary SHA-256
+`05792b3a3304a40d5e119673813d71f20ef58f5ac461c431b0874d72dc8fe56a`, per-example JSON
+`1bcec9318fe3bbb6a430e9a401722a52e530255f45d67a01840ce1efae30ea26`, checkpoint contract
+`0d9987aa6d21a64f6bef0982c853b147df866d2f29294e707ae60b2ae9860610`. Contract source commit is
+`0c7e98050f7ab9a88066b6197dccd684c700b9a8`, with the model SHA
+`50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb` and arbiter SHA
+`fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d`. The contract records
+`worktree_dirty=true`; use its individual artifact hashes rather than the commit alone as
+provenance.
+
+Latency is a release caveat, not hidden by the accuracy result: the Spider evaluator observed
+p50/p90/p95/p99/max **7.513/17.614/21.686/129.397/231.588 seconds**, with **273/1,034** beyond
+its soft 12-second budget (no cancellation). An earlier bounded Cloud Run API smoke on the
+candidate image was materially faster (concurrent-8 max 11.648 seconds); these measure different
+request paths and are reported separately. A privacy-safe targeted probe of the ten longest rows
+finished in 4.3–7.2 seconds on the same eight-thread CPU; proposal spans were 3.7–6.5 seconds,
+encode at most 1.56 seconds, and pool execution under 8 ms. The earlier 142–232-second spikes did
+not reproduce in the controlled sample. A full 1,034-row replay with per-stage telemetry and fixed
+eight-core affinity is running before the final production-readiness decision.
+
+This integrated experiment is supplemental and must not overwrite the baseline table below.
+
 This is the current, reproducible measurement of the served own-data planner:
 `engine/tables.py:TableQuery.select_query` — the deterministic typed-AST search (25 candidates), the
 d2 SQL proposer (4 beams, every line imported, validated and re-rendered), in-memory pool execution, the

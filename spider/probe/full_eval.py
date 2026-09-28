@@ -537,7 +537,9 @@ def main():
         "cap": args.cap,
         "timeout": args.timeout,
     }
-    from engine.artifact_provenance import adapter_sha256, fingerprint_paths
+    from engine.xiyan_sql_proposer import effective_cpu_threads, load_contract
+    checkpoint_contract["sql_proposer_threads"] = effective_cpu_threads(load_contract())
+    from engine.artifact_provenance import adapter_sha256, fingerprint_paths, sha256_file
     from engine.config import DATA_DIR
 
     # Fingerprint the FULL serving path, not just the planner core — a routing or semantic-signal change
@@ -546,7 +548,7 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
+                   "sql_proposer.py", "xiyan_sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
                    "model_revisions.py",
                    "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
@@ -569,6 +571,8 @@ def main():
             "encoder": DATA_DIR / "encoder.pt",
             "encoder_meta": DATA_DIR / "encoder_meta.pt",
             "sql_arbiter": DATA_DIR / "sql_arbiter.json",
+            "sql_proposer_contract": DATA_DIR / "xiyan_sql_proposer.json",
+            "sql_proposer_model": DATA_DIR / "xiyan_sql_proposer.gguf",
             "eval_harness": os.path.join(ROOT, "spider", "probe", "full_eval.py"),
             **{f"engine/{name}": os.path.join(ROOT, "engine", name) for name in engine_code},
             **{
@@ -577,7 +581,7 @@ def main():
             },
         }),
         "encoder_adapter": adapter_sha256(DATA_DIR / "qwen_lora"),
-        "proposer_adapter": adapter_sha256(DATA_DIR / "sql_proposer"),
+        "proposer_model_sha256": sha256_file(DATA_DIR / "xiyan_sql_proposer.gguf"),
         **_git_provenance(ROOT),   # source_commit + worktree_dirty: a run traces to an exact tree; a dirty
     }                              # tree (or a different commit) invalidates a --resume checkpoint.
     completed = {}
@@ -648,13 +652,25 @@ def main():
                 current_tabs=tabs,
                 current_question=ex["question"],
                 current_fks=selected_fks,
+                current_index=i,
             ):
-                return predict(
-                    enc, eng, reader, current_tabs, current_question,
-                    current_fks, ast_schema_cache,
-                    args.selection, not args.no_compose,
-                    args.backend, args.python_row_limit,
-                )
+                from engine import request_timing
+
+                token = request_timing.begin(f"spider-{current_index}")
+                try:
+                    result = predict(
+                        enc, eng, reader, current_tabs, current_question,
+                        current_fks, ast_schema_cache,
+                        args.selection, not args.no_compose,
+                        args.backend, args.python_row_limit,
+                    )
+                    # Keep privacy-safe phase timings with this offline record. These contain only
+                    # stage names and durations—not prompts, values, or SQL—and let us locate a
+                    # production-relevant long tail without assuming generation is the cause.
+                    result["_timing_spans_ms"] = request_timing.snapshot()
+                    return result
+                finally:
+                    request_timing.end(token)
 
             r, terr, prediction_seconds, over_budget = run_with_budget(
                 predict_current,

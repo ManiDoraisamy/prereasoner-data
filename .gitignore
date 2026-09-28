@@ -16,6 +16,7 @@ engine/deterministic/_gen/
 engine/data/*.pt
 engine/data/*.db
 engine/data/*.npz
+engine/data/*.gguf
 engine/data/qwen_lora/
 engine/data/sql_proposer/
 engine/data/*.previous

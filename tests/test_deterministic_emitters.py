@@ -1501,7 +1501,9 @@ def test_knowledge_delegate_preserves_shared_plan_execution_evidence():
 
 def test_coverage_checks_filters_in_the_full_emitted_program():
     from types import SimpleNamespace
+    from unittest.mock import patch
 
+    import engine.knowledge_query as knowledge_query
     from engine.knowledge_query import KnowledgeQuery, _coverage_sql
 
     program = SQLEmitter().emit(_plan())
@@ -1515,20 +1517,25 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
         _best_world_entity=lambda words: (words[0], "France", "country", 1),
     )
     schema = [{"table": "orders", "name": "amount", "affinity": "REAL"}]
-    assert KnowledgeQuery._uncovered(
-        adapter, "total amount in France", schema, response["sql"]
-    ) == ["france"]
-    assert (
-        KnowledgeQuery._uncovered(
-            adapter, "total amount in France", schema, _coverage_sql(response)
+    # This unit isolates coverage over already-emitted SQL. POS tagging is an
+    # independent production dependency and is tested through the full runtime.
+    with patch.object(knowledge_query, "closed_class_words", return_value=frozenset()):
+        assert KnowledgeQuery._uncovered(
+            adapter, "total amount in France", schema, response["sql"]
+        ) == ["france"]
+        assert (
+            KnowledgeQuery._uncovered(
+                adapter, "total amount in France", schema, _coverage_sql(response)
+            )
+            == []
         )
-        == []
-    )
-    assert _coverage_sql({"sql": "SELECT 1"}) == "SELECT 1"
+        assert _coverage_sql({"sql": "SELECT 1"}) == "SELECT 1"
 
 
 def test_coverage_prose_is_not_a_place_or_an_ignored_status():
     from types import SimpleNamespace
+    from unittest.mock import patch
+    import engine.knowledge_query as knowledge_query
     from engine.knowledge_query import KnowledgeQuery
     adapter = SimpleNamespace(
         _encode=lambda words: [[0] for _ in words],
@@ -1538,23 +1545,26 @@ def test_coverage_prose_is_not_a_place_or_an_ignored_status():
     schema = [{"table": "payments", "name": "amount", "affinity": "REAL", "values": [10]}]
     def dropped(question, columns=schema):
         return KnowledgeQuery._uncovered(adapter, question, columns, 'SELECT SUM(amount) FROM payments')
-    assert dropped('How many payments are listed?') == []
-    assert dropped('What is the total amount paid?') == []
-    assert dropped('What is the total amount paid in France?') == ['france']
-    assert dropped('What is the total amount among payments in France?') == ['france']
-    assert dropped('How many listed payments?') == ['listed']  # status adjective, not display prose
-    with_status = schema + [{"table": "payments", "name": "status", "values": ["paid", "listed"]}]
-    assert dropped('What is the total amount paid?', with_status) == ['paid']
-    assert dropped('How many payments are listed?', with_status) == ['listed']
-    availability = schema + [{'table': 'payments', 'name': 'availability', 'values': ['Listed for sale']}]
-    assert dropped('How many payments are listed?', availability) == ['listed']
-    pending = schema + [{'table': 'payments', 'name': 'notes', 'values': ['Unpaid']}]
-    assert dropped('What is the total amount paid?', pending) == ['paid']
-    assert dropped('What is the total amount paid?', [dict(schema[0], table='invoices')]) == ['paid']
+    with patch.object(knowledge_query, "closed_class_words", return_value=frozenset()):
+        assert dropped('How many payments are listed?') == []
+        assert dropped('What is the total amount paid?') == []
+        assert dropped('What is the total amount paid in France?') == ['france']
+        assert dropped('What is the total amount among payments in France?') == ['france']
+        assert dropped('How many listed payments?') == ['listed']  # status adjective, not display prose
+        with_status = schema + [{"table": "payments", "name": "status", "values": ["paid", "listed"]}]
+        assert dropped('What is the total amount paid?', with_status) == ['paid']
+        assert dropped('How many payments are listed?', with_status) == ['listed']
+        availability = schema + [{'table': 'payments', 'name': 'availability', 'values': ['Listed for sale']}]
+        assert dropped('How many payments are listed?', availability) == ['listed']
+        pending = schema + [{'table': 'payments', 'name': 'notes', 'values': ['Unpaid']}]
+        assert dropped('What is the total amount paid?', pending) == ['paid']
+        assert dropped('What is the total amount paid?', [dict(schema[0], table='invoices')]) == ['paid']
 
 
 def test_distinct_count_operator_and_sheet_scope_are_covered():
     from types import SimpleNamespace
+    from unittest.mock import patch
+    import engine.knowledge_query as knowledge_query
     from engine.knowledge_query import KnowledgeQuery
     adapter = SimpleNamespace(
         _encode=lambda words: [[0] for _ in words],
@@ -1568,8 +1578,9 @@ def test_distinct_count_operator_and_sheet_scope_are_covered():
     sql = 'SELECT COUNT(DISTINCT "customers"."order ID") FROM "customers"'
     question = ("Count the unique values in the 'order ID' column across all data rows. "
                 "Return the count and show the calculation steps.")
-    assert KnowledgeQuery._uncovered(adapter, question, schema, sql) == []
-    assert KnowledgeQuery._uncovered(adapter, question + " In France.", schema, sql) == ['france']
+    with patch.object(knowledge_query, "closed_class_words", return_value=frozenset()):
+        assert KnowledgeQuery._uncovered(adapter, question, schema, sql) == []
+        assert KnowledgeQuery._uncovered(adapter, question + " In France.", schema, sql) == ['france']
 
 
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():

@@ -311,7 +311,7 @@ def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
         "Temporary Prereasoner database bootstrap",
         "cleanup_bootstrap_identity",
         'build_service_account="${build_service_account##*/}"',
-        "deploy/gcp/build_context.py --output",
+        "deploy/gcp/build_context.py --target release --output",
         'status --porcelain --untracked-files=all',
         "engine.release_smoke",
         "--datasets,iana_country",

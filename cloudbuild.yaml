@@ -1,6 +1,6 @@
 # Build + push the engine image to Artifact Registry.
 #
-#   python deploy/gcp/build_context.py --output /tmp/prereasoner-engine-build
+#   python deploy/gcp/build_context.py --target release --output /tmp/prereasoner-engine-build
 #   gcloud builds submit /tmp/prereasoner-engine-build --config /tmp/prereasoner-engine-build/cloudbuild.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=<commit-or-release-id>
 #
@@ -33,18 +33,61 @@ steps:
     args:
       - run
       - --rm
+      - --cpus=8
+      - --memory=16g
       - --entrypoint
       - python
       - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
       - -m
       - regress.run_regression
       - --offline
-  # WORLD tier (the world-model-join goldens + tests/ oracle suites) needs the seeded world Postgres. Wire it
-  # by connecting Cloud SQL (add the cloud-sql-proxy sidecar or _CLOUDSQL substitution) and passing
-  # KB_PG_PASSWORD from Secret Manager, then run `python -m regress.run_regression --require-world`
-  # (tests/ must also be added to the image / .gcloudignore for the reused oracle suites). Until wired, the
-  # world tier must be run pre-deploy against a seeded DB (dev or staging). Skipped != passed.
+  # Exercise the same entrypoint Cloud Run invokes, in the just-built image. This
+  # proves model construction + warmup + HTTP readiness, not just importability.
+  # It deliberately does not call a live database or modify a Cloud Run service.
+  - id: runtime-server-smoke
+    name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
+    entrypoint: bash
+    waitFor: ['regress-offline']
+    args:
+      - -ceu
+      - |
+        image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
+        name=prereasoner-runtime-${BUILD_ID}
+        start=$$(date +%s)
+        trap 'docker logs "$$name" 2>&1 | tail -40 || true; docker rm -f "$$name" >/dev/null 2>&1 || true' EXIT
+        docker run -d --cpus=8 --memory=16g --name "$$name" "$$image" >/dev/null
+        for attempt in $$(seq 1 180); do
+          if docker exec "$$name" python -c 'import json,urllib.request; d=json.load(urllib.request.urlopen("http://127.0.0.1:8080/api/healthz", timeout=2)); assert all(d.get(k) is True for k in ("ok", "reason", "world", "dimension")), d; print(json.dumps(d, sort_keys=True))' >/tmp/prereasoner-health.json 2>/dev/null; then
+            cat /tmp/prereasoner-health.json
+            echo "runtime_startup_seconds=$$(($$(date +%s)-$$start))"
+            exit 0
+          fi
+          running=$$(docker inspect -f '{{.State.Running}}' "$$name" 2>/dev/null || echo false)
+          if [ "$$running" != true ]; then
+            docker logs "$$name" 2>&1 || true
+            echo "server container exited before health readiness" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        echo "server did not become healthy within 360 seconds" >&2
+        exit 1
 
+  # Exercise the full live-product suite against the exact candidate image before Cloud Build
+  # publishes it. The runner uses only a checksum-pinned public seed in a disposable database;
+  # it never connects to production Cloud SQL.
+  - id: live-product-suite
+    name: gcr.io/cloud-builders/docker@sha256:e85f8f20f7b533e74a4b1be279b9ff2b45dcc20ab97de9b302c26715a9d9ffc8
+    entrypoint: bash
+    waitFor: ['runtime-server-smoke']
+    args:
+      - -ceu
+      - |
+        export RUN_PRODUCT_SUITES='${_RUN_PRODUCT_SUITES}'
+        export BASE_IMAGE='${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}'
+        export PGVECTOR_IMAGE='${_PGVECTOR_IMAGE}'
+        export BUILD_ID='${BUILD_ID}'
+        exec bash /workspace/deploy/gcp/run_product_suite.sh
 images:
   - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/engine:${_TAG}
 
@@ -52,12 +95,16 @@ substitutions:
   _REGION: us-central1 # must match infra/ var.region
   _REPO: prereasoner   # must match infra/ var.artifact_repo
   _TAG: latest
+  _RUN_PRODUCT_SUITES: "1"
+  _PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
 
 options:
   # The torch/transformers pip layer is the long pole; a bigger machine roughly halves it.
-  machineType: E2_HIGHCPU_8
+  # The live gate runs the 8-vCPU/16-GiB model beside disposable Postgres. The 8-GB-host
+  # worker is too small for that valid combination and has caused host-level OOM kills.
+  machineType: E2_HIGHCPU_32
 
 # Headroom for a slow-HF day: anonymous HF egress bandwidth to GCP varies. 60 min covers it; override
 # with `--timeout` if HF is pathologically
 # slow, or vendor the models into the image for a fully deterministic build.
-timeout: 3600s
+timeout: 7200s

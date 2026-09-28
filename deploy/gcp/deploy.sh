@@ -341,7 +341,7 @@ fi
 BUILD_CONTEXT="$(mktemp -d "${TMPDIR:-/tmp}/prereasoner-build.XXXXXX")"
 (
   cd "$ROOT"
-  "$VENV_PYTHON" deploy/gcp/build_context.py --output "$BUILD_CONTEXT"
+  "$VENV_PYTHON" deploy/gcp/build_context.py --target release --output "$BUILD_CONTEXT"
 )
 
 build_service_account="$(gcloud builds get-default-service-account \
@@ -358,8 +358,9 @@ commit="$(git -C "$ROOT" rev-parse --short=12 HEAD)"
 image_tag="${REGION}-docker.pkg.dev/${PROJECT_ID}/${ARTIFACT_REPO}/engine:community-${commit}"
 submit_build "$BUILD_CONTEXT" \
   --project="$PROJECT_ID" \
+  --ignore-file="$BUILD_CONTEXT/cloudbuild.hermetic.ignore" \
   --config="$BUILD_CONTEXT/cloudbuild.yaml" \
-  --timeout=3600s \
+  --timeout=5400s \
   --substitutions="_REGION=${REGION},_REPO=${ARTIFACT_REPO},_TAG=community-${commit}"
 digest="$(gcloud artifacts docker images describe "$image_tag" \
   --project="$PROJECT_ID" --format='value(image_summary.digest)')"

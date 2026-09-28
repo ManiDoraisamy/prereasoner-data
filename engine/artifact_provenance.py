@@ -7,12 +7,31 @@ import json
 import os
 from collections.abc import Mapping
 from decimal import Decimal
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 from engine.numeric import wire_value
 
 WEIGHTS_MANIFEST = "weights_manifest.json"
+
+
+def resolve_artifact_path(data_dir: str | Path, relative: str) -> Path:
+    """Resolve a manifest artifact path while forbidding absolute/path-traversal entries."""
+    if not isinstance(relative, str) or not relative or "\\" in relative:
+        raise ValueError(f"artifact path must be a non-empty POSIX relative path: {relative!r}")
+    posix_path = PurePosixPath(relative)
+    windows_path = PureWindowsPath(relative)
+    raw_parts = relative.split("/")
+    if (posix_path.is_absolute() or windows_path.is_absolute() or windows_path.drive
+            or any(part in {"", ".", ".."} for part in raw_parts)):
+        raise ValueError(f"artifact path is not relative and safe: {relative!r}")
+    root = Path(data_dir).resolve()
+    path = root.joinpath(*posix_path.parts).resolve()
+    if root not in path.parents:
+        raise ValueError(f"artifact path escapes bundle root: {relative!r}")
+    return path
+
+
 # The files that ARE a PEFT LoRA adapter. `save_pretrained` also writes a README.md model card, which
 # is neither pinned by weights_manifest.json nor shipped in the image.
 ADAPTER_FILES = ("adapter_config.json", "adapter_model.safetensors")
@@ -146,7 +165,15 @@ def validate_weight_bundle(
             continue
         expected_files[relative] = record["sha256"]
     for relative, expected in sorted(expected_files.items()):
-        path = root / relative
+        if (not isinstance(expected, str) or len(expected) != 64
+                or any(character not in "0123456789abcdef" for character in expected)):
+            failures.append(f"{relative}: invalid SHA-256")
+            continue
+        try:
+            path = resolve_artifact_path(root, relative)
+        except ValueError as exc:
+            failures.append(f"{relative}: {exc}")
+            continue
         if not path.is_file():
             failures.append(f"{relative}: missing")
             continue

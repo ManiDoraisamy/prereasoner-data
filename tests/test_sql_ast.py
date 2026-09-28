@@ -12,6 +12,7 @@ import sqlite3
 import sys
 import tempfile
 import threading
+from unittest.mock import patch
 
 import numpy as np
 
@@ -46,7 +47,13 @@ from engine.sql_rank import (
     arbitrate,
     merge_proposals,
 )
-from engine.sql_proposer import SQLProposer
+from engine.sql_proposer import (
+    GGUFSQLProposer,
+    SQLProposer,
+    normalize_decoded_sql,
+    validate_proposer_arbiter_contract,
+    validate_proposer_runtime_pin,
+)
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
 from spider.probe.evalutil import run_with_budget
@@ -765,14 +772,163 @@ def test_arbiter_refuses_an_artifact_fit_under_another_contract():
             raise AssertionError("an arbiter fit under a different contract was accepted")
 
 
+def test_proposer_arbiter_binding_rejects_stale_or_mislabeled_runtime():
+    arbiter = {"fit": {"proposer_adapter_sha256": "fitted-adapter",
+                        "likelihood_protocol": "neutral-sentinel-v1"}}
+    validate_proposer_arbiter_contract(
+        arbiter, {"backend": "huggingface-peft", "adapter_sha256": "fitted-adapter"},
+        "arbiter-hash",
+    )
+    validate_proposer_arbiter_contract(
+        arbiter,
+        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
+         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": False,
+         "likelihood_protocol": "neutral-sentinel-v1"},
+        "arbiter-hash",
+    )
+    validate_proposer_arbiter_contract(
+        arbiter,
+        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
+         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": True,
+         "selected_peft_adapter_sha256": "fitted-adapter",
+         "likelihood_protocol": "neutral-sentinel-v1"},
+        "arbiter-hash",
+    )
+    bad_identities = (
+        {"backend": "huggingface-peft", "adapter_sha256": "other-adapter"},
+        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "stale-arbiter",
+         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": False},
+        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
+         "arbiter_fit_proposer_sha256": "other-adapter", "model_matched_arbiter": False},
+        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
+         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": True,
+         "selected_peft_adapter_sha256": "other-adapter"},
+        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
+         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": True,
+         "selected_peft_adapter_sha256": "fitted-adapter",
+         "likelihood_protocol": "teacher-forced-logprob-v1"},
+    )
+    for identity in bad_identities:
+        try:
+            validate_proposer_arbiter_contract(arbiter, identity, "arbiter-hash")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a proposer/arbiter identity mismatch was accepted")
+
+
+def test_proposer_runtime_requires_an_exact_weights_manifest_pin():
+    manifest = {"version": 1, "files": {"sql_proposer/runtime.json": "runtime-hash"}}
+    validate_proposer_runtime_pin(manifest, "runtime-hash")
+    try:
+        validate_proposer_runtime_pin(manifest, "different-runtime-hash")
+    except (TypeError, ValueError) as exc:
+        assert "SHA-256 mismatch" in str(exc)
+    else:
+        raise AssertionError("a runtime.json not matching its manifest pin was accepted")
+    try:
+        validate_proposer_runtime_pin({"version": 1, "files": {}}, "runtime-hash")
+    except TypeError as exc:
+        assert "does not pin" in str(exc)
+    else:
+        raise AssertionError("an unpinned runtime.json was accepted")
+
+
+def test_gguf_runtime_refuses_uncalibrated_pair_in_production():
+    runtime = {
+        "version": 1,
+        "backend": "llama-cpp-gguf-lora",
+        "likelihood_protocol": "neutral-sentinel-v1",
+        "model_matched_arbiter": False,
+        "max_new_tokens": 96,
+        "prompt_variants": ["Return one SQL query."],
+    }
+    with tempfile.TemporaryDirectory() as temp:
+        runtime_path = Path(temp) / "runtime.json"
+        runtime_path.write_text(json.dumps(runtime), encoding="utf-8")
+        with patch("engine.config.APP_ENV", "production"):
+            try:
+                GGUFSQLProposer.load(runtime_path, expected_beams=1,
+                                     expected_max_new_tokens=96)
+            except RuntimeError as exc:
+                assert "uncalibrated" in str(exc)
+            else:
+                raise AssertionError("production loaded an uncalibrated proposer/arbiter pair")
+
+
+def test_gguf_runtime_requires_its_exact_candidate_count_and_multiline_sql_is_preserved():
+    runtime = {
+        "version": 1,
+        "backend": "llama-cpp-gguf-lora",
+        "likelihood_protocol": "neutral-sentinel-v1",
+        "model_matched_arbiter": True,
+        "max_new_tokens": 96,
+        "prompt_variants": ["Return one SQL query."],
+    }
+    with tempfile.TemporaryDirectory() as temp:
+        runtime_path = Path(temp) / "runtime.json"
+        runtime_path.write_text(json.dumps(runtime), encoding="utf-8")
+        with patch("engine.config.APP_ENV", "test"):
+            try:
+                GGUFSQLProposer.load(runtime_path, expected_beams=4,
+                                     expected_max_new_tokens=96)
+            except ValueError as exc:
+                assert "expects 4 proposer outputs" in str(exc)
+            else:
+                raise AssertionError("runtime with one candidate was accepted for four-beam arbiter")
+    assert normalize_decoded_sql("```sql\nSELECT name\nFROM people\n```") == (
+        "SELECT name\nFROM people"
+    )
+
+
+def test_xiyan_runtime_thread_override_is_recorded_and_bounded():
+    from engine.xiyan_sql_proposer import effective_cpu_threads
+
+    contract = {"runtime": {"threads": 8}}
+    assert effective_cpu_threads(contract, {}) == 8
+    assert effective_cpu_threads(contract, {"SQL_PROPOSER_THREADS": "16"}) == 16
+    try:
+        effective_cpu_threads(contract, {"SQL_PROPOSER_THREADS": "32"})
+    except ValueError as exc:
+        assert "between 1 and 16" in str(exc)
+    else:
+        raise AssertionError("unsupported thread override was accepted")
+
+
+def test_gguf_prompt_preserves_the_pinned_chat_template_mode():
+    class Tokenizer:
+        def __init__(self):
+            self.calls = []
+
+        def apply_chat_template(self, messages, **options):
+            self.calls.append((messages, options))
+            return "rendered prompt"
+
+    for thinking in (None, False, True):
+        tokenizer = Tokenizer()
+        runtime = {"system_prompt": "system", "thinking": thinking,
+                   "prompt_variants": ["variant"]}
+        proposer = GGUFSQLProposer(
+            None, tokenizer, runtime=runtime, model_fingerprint="test",
+            max_new_tokens=96, context=2048, threads=4,
+        )
+        assert proposer._prompt([], "question", "variant") == "rendered prompt"
+        messages, options = tokenizer.calls[0]
+        assert messages[0] == {"role": "system", "content": "system"}
+        assert options["tokenize"] is False and options["add_generation_prompt"] is True
+        assert options.get("enable_thinking") == thinking if thinking is not None else (
+            "enable_thinking" not in options
+        )
+
+
 def test_shipped_arbiter_is_the_manifested_served_contract():
     data = Path(__file__).resolve().parents[1] / "engine" / "data"
     payload = json.loads((data / "sql_arbiter.json").read_text(encoding="utf-8"))
     manifest = json.loads((data / "weights_manifest.json").read_text(encoding="utf-8"))
     assert manifest["committed_artifacts"]["sql_arbiter.json"]["sha256"] == sha256_file(
         data / "sql_arbiter.json")
-    assert {"sql_proposer/adapter_config.json", "sql_proposer/adapter_model.safetensors"} <= set(
-        manifest["files"])
+    assert "xiyan_sql_proposer.json" in manifest["committed_artifacts"]
+    assert "xiyan_sql_proposer/adapter_model.safetensors" not in manifest["files"]
     assert (SHIPPED_ARBITER.search_candidates, SHIPPED_ARBITER.proposer_beams,
             SHIPPED_ARBITER.proposer_max_new_tokens) == (25, 4, 96)
     assert payload["fit"]["proposer_adapter_sha256"], "the arbiter must name the adapter it was fit on"
@@ -1029,6 +1185,15 @@ def test_proposal_import_rejects_malformed_model_text():
         except Unsupported:
             continue
         raise AssertionError(f"malformed model text imported: {text[:40]}")
+
+
+def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences():
+    from engine.sql_proposer import normalize_decoded_sql
+
+    assert normalize_decoded_sql("SELECT name\nFROM people;") == "SELECT name\nFROM people;"
+    assert normalize_decoded_sql("```sql\nSELECT name\nFROM people;\n```") == (
+        "SELECT name\nFROM people;"
+    )
 
 
 def test_evaluator_grades_the_served_selection():
@@ -2655,6 +2820,12 @@ TESTS = [
     test_proposal_merge_endorses_search_sql_and_appends_novel_beams,
     test_arbiter_score_is_named_linear_arithmetic_with_pool_order_ties,
     test_arbiter_refuses_an_artifact_fit_under_another_contract,
+    test_proposer_arbiter_binding_rejects_stale_or_mislabeled_runtime,
+    test_proposer_runtime_requires_an_exact_weights_manifest_pin,
+    test_gguf_runtime_refuses_uncalibrated_pair_in_production,
+    test_gguf_runtime_requires_its_exact_candidate_count_and_multiline_sql_is_preserved,
+    test_xiyan_runtime_thread_override_is_recorded_and_bounded,
+    test_gguf_prompt_preserves_the_pinned_chat_template_mode,
     test_shipped_arbiter_is_the_manifested_served_contract,
     test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
     test_select_query_never_chooses_a_query_that_does_not_run,

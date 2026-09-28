@@ -38,16 +38,29 @@ ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_join
 
 
 def main():
-    suites = list(SUITES)
-    if os.environ.get("RUN_ORCHESTRATOR_TESTS", "1") == "0":
-        suites.remove("tests.test_orchestrator")
-    if os.environ.get("RUN_ENGINE_TESTS", "1") != "0":
-        suites += ENGINE_SUITES
+    if os.environ.get("LIVE_ENGINE_ONLY", "0") == "1":
+        suites = list(ENGINE_SUITES)
+    else:
+        suites = list(SUITES)
+        if os.environ.get("RUN_ORCHESTRATOR_TESTS", "1") == "0":
+            suites.remove("tests.test_orchestrator")
+        if os.environ.get("RUN_ENGINE_TESTS", "1") != "0":
+            suites += ENGINE_SUITES
 
     results = []
+    suite_timeout = int(os.environ.get("TEST_SUITE_TIMEOUT_SECONDS", "900"))
     for mod in suites:
         print(f"\n{'='*70}\n# {mod}\n{'='*70}", flush=True)
-        rc = subprocess.call([sys.executable, "-m", mod], cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        try:
+            completed = subprocess.run(
+                [sys.executable, "-m", mod],
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                timeout=suite_timeout,
+            )
+            rc = completed.returncode
+        except subprocess.TimeoutExpired:
+            print(f"TIMEOUT  {mod} exceeded {suite_timeout}s", flush=True)
+            rc = 124
         results.append((mod, rc))
 
     print(f"\n{'='*70}\n# SUMMARY\n{'='*70}")

@@ -26,7 +26,15 @@ from engine.deterministic import (
 )
 from engine.deterministic.context import analysis_execution_context
 from engine.knowledge_compose import ComposedKnowledgeQuery
-from engine.sql_ast import Aggregate, ColumnRef, SelectItem, SelectQuery, SetQuery, SQLType, Star
+from engine.sql_ast import (
+    Aggregate,
+    ColumnRef,
+    SelectItem,
+    SelectQuery,
+    SetQuery,
+    SQLType,
+    Star,
+)
 from engine.sql_candidate import ScoredQuery
 from engine.sql_rank import PoolSelection
 
@@ -136,6 +144,22 @@ def test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures
     _reject(lambda: _bind_merge_keys(views, {}, "a_result", "b_result"))
 
 
+def test_merge_key_alias_can_follow_only_a_complete_direct_foreign_key():
+    views = [
+        CombinedView("source", ("products", "purchases")),
+        ProjectedView("products", "source", (SelectedValue(
+            "product_name", ColumnValue("products", "product_name")),)),
+        ProjectedView("purchases", "source", (SelectedValue(
+            "product_name", ColumnValue("purchases", "product_name")),)),
+    ]
+    fks = [{"from_table": "purchases", "from_col": "product_name",
+            "to_table": "products", "to_col": "product_name", "inclusion": 1.0}]
+    keys = _bind_merge_keys(views, {}, "products", "purchases", fks)
+    assert [(key.left, key.right) for key in keys] == [("product_name", "product_name")]
+    fks[0]["inclusion"] = 0.99
+    _reject(lambda: _bind_merge_keys(views, {}, "products", "purchases", fks))
+
+
 def test_anti_join_evidence_must_preserve_the_complete_left_grain():
     """Backend parity must not certify evidence that dropped half a candidate pair."""
     from engine.deterministic.plan import CrossView
@@ -222,6 +246,75 @@ def test_decomposition_expands_a_wildcard_leaf_before_dual_lowering():
         and view.values[0].value == ColumnValue("products", "id")
         for view in plan.views
     )
+
+
+def test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower():
+    """An unsupported top reading must not hide a lower-ranked safe pool member."""
+    from engine.sql_ast import render_query
+
+    tables = [{"name": "products", "columns": ["id"], "rows": [[1], [2]]}]
+    schema = [
+        {"table": "products", "name": "id", "affinity": "INTEGER", "values": [1, 2]}
+    ]
+    product_id = ColumnRef("products", "id", SQLType.INTEGER)
+    unsupported = SelectQuery((SelectItem(product_id),), "products", distinct=True)
+    supported = SelectQuery((SelectItem(product_id),), "products")
+    pool = (
+        ScoredQuery(unsupported, render_query(unsupported), 2.0, ()),
+        ScoredQuery(supported, render_query(supported), 1.0, ()),
+    )
+    selection = PoolSelection(
+        pool, frozenset(), (True, True), (True, True), ((-1.0, 1),) * 2,
+        (2.0, 1.0), (0, 1), 0, 2,
+    )
+    planner = Mock()
+    planner.postgres_row_identity = False
+    planner.select_query.return_value = selection
+    planner.guard.return_value = (True, None)
+
+    plan = build_decomposed_plan(
+        planner, "fallback", tables, schema, (), _proposal(),
+        question="available products never purchased",
+    )
+    # Two leaves were compiled, and neither emitter received the rejected DISTINCT AST.
+    assert planner.guard.call_args_list[0].args[0] == render_query(unsupported)
+    assert planner.guard.call_args_list[1].args[0] == render_query(supported)
+    assert plan.output
+
+
+def test_ranked_leaf_projects_extra_group_key_only_for_named_entity():
+    """A category ranking is totaled at category grain, not split by product."""
+    from engine.decomposition import ranked_entity_projected
+    from engine.sql_ast import OrderTerm
+
+    category = ColumnRef("products", "category", SQLType.TEXT)
+    product = ColumnRef("products", "product_name", SQLType.TEXT)
+    revenue = Aggregate("SUM", ColumnRef("products", "revenue", SQLType.REAL))
+    count = Aggregate("COUNT", ColumnRef("products", "id", SQLType.INTEGER))
+    over_detailed = SelectQuery(
+        (SelectItem(category), SelectItem(product), SelectItem(revenue), SelectItem(count)),
+        "products",
+        group_by=(category, product),
+        order_by=(OrderTerm(revenue, "DESC"),),
+        limit=2,
+    )
+    candidate = ScoredQuery(over_detailed, "original", 1.0, ())
+    projected = ranked_entity_projected(
+        candidate, "top_categories", "top 2 product category names by total revenue", True,
+    )
+    assert projected is not None
+    assert projected.query.group_by == (category,)
+    assert [item.expression for item in projected.query.select] == [category, revenue]
+    assert projected.query.order_by == over_detailed.order_by
+    assert projected.evidence[-1] == "leaf:ranked-entity-projected:top_categories:category"
+    assert over_detailed.group_by == (category, product)  # immutable source candidate
+    # The rewrite is not allowed when the entity is ambiguous or the leaf is not ranked.
+    assert ranked_entity_projected(
+        candidate, "top_items", "top 2 category and product names by revenue", True,
+    ) is None
+    assert ranked_entity_projected(
+        candidate, "categories", "category names by total revenue", True,
+    ) is None
 
 
 def test_measure_leaf_without_aggregation_is_rejected_not_answered():
@@ -447,6 +540,8 @@ TESTS = [
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
+    test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower,
+    test_ranked_leaf_projects_extra_group_key_only_for_named_entity,
     test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected,
     test_measure_leaf_without_aggregation_is_rejected_not_answered,
     test_ranked_cross_input_must_stay_at_the_ranked_entity_grain,

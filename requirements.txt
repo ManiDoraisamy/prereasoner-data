@@ -9,6 +9,7 @@ tokenizers==0.22.2
 safetensors==0.7.0
 accelerate==1.15.0
 peft==0.19.1                    # loads the qwen_lora and sql_proposer adapters onto the base Qwen
+llama-cpp-python==0.3.35        # pinned CPU GGUF backend for the XiYanSQL 7B SQL proposer
 sqlglot==30.18.0                # parses proposer SQL into the typed AST (engine/sql_import.py)
 numpy==1.26.4
 psycopg2-binary>=2.9,<3         # live world Postgres (pgvector)
