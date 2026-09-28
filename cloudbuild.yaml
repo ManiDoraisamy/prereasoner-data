@@ -1,6 +1,6 @@
 # Build + push the engine image to Artifact Registry.
 #
-#   python deploy/gcp/build_context.py --output /tmp/prereasoner-engine-build
+#   python deploy/gcp/build_context.py --target release --output /tmp/prereasoner-engine-build
 #   gcloud builds submit /tmp/prereasoner-engine-build --config /tmp/prereasoner-engine-build/cloudbuild.yaml \
 #     --substitutions=_REGION=us-central1,_REPO=prereasoner,_TAG=<commit-or-release-id>
 #
