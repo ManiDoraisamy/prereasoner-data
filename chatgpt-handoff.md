@@ -13,6 +13,29 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served replay checkpoint: 980/1,034; browser suite passed
+
+The production-matched 8-thread replay is at **980/1,034 contiguous unique rows**, **812
+strict-correct (82.9% prefix)**. By difficulty: easy 220/235, medium 350/416, hard 142/167,
+extra 100/162. The three known no-AST failures are counted wrong. It needs 16/54 of the
+remaining rows to reach the 80% gate of 828/1,034. Latency p50/p90/p95/p99/max is
+7.52/17.72/29.62/131.06/231.59 seconds, with 253/980 exceeding the soft 12s budget. The
+checkpoint is copied locally at `%TEMP%\\prereasoner-7b-analysis-20260928\\serving-8t.latest.json`,
+SHA-256 `92de12c5e38195205198a83180d66dbf3b027c7be788f4b9192187aadb4bf3a4`; local and pod
+hashes matched. The 8-thread evaluator is active. Accuracy is above the partial threshold, but
+the long latency tail remains a cutover concern pending the completed replay and diagnosis.
+
+Browser regression: `npm run test:browser` completed **33/33 Playwright tests passed** against
+the isolated local fixture server (29.6 seconds). A read-only production browser inspection
+confirmed the app page renders with its existing account/dataset, and `/api/healthz` returned
+`ok`, `reason`, `world`, and `dimension` all true. I did not send synthetic requests through the
+signed-in production account, which would create durable user history. The live product suite
+against disposable seeded PostgreSQL and bounded candidate-image HTTP smoke remain the safe
+write-path evidence (both previously passed on this source); the 7B-revision production browser
+path is still pending deployment and separate approval for any user-account writes.
+
+---
+
 ## 2026-09-28 — Direct-served replay checkpoint: 890/1,034; separate full local diagnostic
 
 The production-matched RunPod replay has advanced to **890/1,034 contiguous unique rows**,
