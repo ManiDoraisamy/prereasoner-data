@@ -275,7 +275,8 @@
   // (`onclick`); the add-on opens the full analysis (`href`); a step still streaming opens nothing.
   function renderStepLink(step, index, options) {
     options = options || {};
-    var description = String(step.description || step.name || '').replace(/^(\w+)\s+\1\b/i, '$1');
+    var description = String(step.description || step.name || step.label || step.title ||
+      step.operation || ('Calculation ' + (index + 1))).replace(/^(\w+)\s+\1\b/i, '$1');
     var lineage = String(step.lineage || '');
     var inner = '<span class=idx>' + (index + 1) + '</span><span class=stx>' + escapeHtml(description) +
       (lineage ? '<span class=steplin> · from ' + escapeHtml(lineage) + '</span>' : '') + '</span>' +

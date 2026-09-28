@@ -218,6 +218,8 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
   const link = R.renderStepLink(steps[1], 1, {href: 'https://chat.prereasoner.com/reason/c_1'});
   assert(link.startsWith('<a class="steplink" href="https://chat.prereasoner.com/reason/c_1"'), link);
   assert(link.includes('<span class=idx>2</span>') && link.includes(' · from filtered') && link.includes('PY = SQL'), link);
+  const legacyLink = R.renderStepLink({title: 'Legacy step', operation: 'filter'}, 0);
+  assert(legacyLink.includes('Legacy step'), legacyLink);
   assert.strictEqual(R.renderAsks(['total amount in France']), '<div class=cotask>read as &ldquo;total amount in France&rdquo;</div>');
 }
 vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});

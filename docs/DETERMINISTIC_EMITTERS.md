@@ -76,7 +76,7 @@ class OrdersCustomersProducts:
 
 | Stage | SQL form | Python operation |
 |---|---|---|
-| Combined | Input joins | `View.from_orm` over one ORM query |
+| Combined | Joins of two or more input tables | `View.from_orm` over one ORM query |
 | Enriched | Reference inner joins | `previous.for_each`, traversing object relationships |
 | Filtered | `WHERE` | `previous.filter`, with an explicit predicate |
 | Calculated | Retained columns plus expressions | `previous.for_each`, retaining objects and earlier values |
@@ -86,6 +86,13 @@ class OrdersCustomersProducts:
 | Correlated | Share, running total, or previous-period join | `previous.for_each`, with visible reduction/join expressions |
 | Cross | Bounded `CROSS JOIN` | `left.cross(right)` |
 | Anti-join | `WHERE NOT EXISTS` over every physical dimension in the left grain | `left.anti_join(right, keys=...)` |
+
+Every plan enters the ORM through a combined view, but one table is not a combined stage
+([SHEETS_AS_REASONING.md](SHEETS_AS_REASONING.md) rule 3). `AnalysisPlan.inlined_entries()` marks such an
+entry when it has one consumer, and both emitters read it inside that consumer: the SQL stage selects from
+the entry's `SELECT` as an inline subquery, and the Python stage opens with the table's ORM load. Neither
+program materializes the entry, so both declare the same stages, and the consumer names the uploaded table
+as its input.
 
 The actual source includes the ORM query, row classes, transformation bodies, predicates, initial
 aggregate state, and operator calls. SQL `SUM(gross_amount)` corresponds to
@@ -109,7 +116,9 @@ Generated table classes are SQLAlchemy declarative mappings. Stage dataclasses c
 and calculated values; they are not the table mappings. For example, a generated `Order` exposes
 `customer_id: Mapped["Customer"]` and `city: Mapped["City"]` as relationships. The physical customer
 key is stored in a private `_customer_id_value` attribute used for joins and trace flattening.
-Composite relationships retain every key pair and have explicit ORM join conditions.
+Composite relationships retain every key pair and have explicit ORM join conditions. A double precision
+reference column (element masses, coordinates) is read as NUMERIC by both programs, `CAST(... AS NUMERIC)` in
+the SQL lookup and a `NumericFloat` ORM column, so every later stage computes exact decimals on identical values.
 
 Enrichment follows declared scalar paths such as `order.city.country`. Required references drop
 missing objects (inner joins); optional references preserve them (left joins). Collection-valued enrichment is rejected until both
@@ -205,6 +214,10 @@ result; unsaved user-authored reference rows are never truncated.
 Each stage record carries both `sql` and `python`, the latter being the exact slice of the emitted
 wrapper that produced that stage (`view_sources` in the emitter's internal manifest). The public
 package manifest omits that duplicate index because each served stage already carries its slice.
+A stage record shows its rows as the user reads them ([SHEETS_AS_REASONING.md](SHEETS_AS_REASONING.md)
+rule 5): a reference column's stored QID displays as its label, a filter stage's label names its condition
+in those labels (`where country = 'France'`), and every cell follows the response's wire contract (an exact
+JSON scalar for a decimal, ISO text for a date). The executed programs and their parity keep the stored values.
 The workbook's per-sheet
 badge names the backend that actually ran: `Python` shows the generated loops, `SQL` shows the view's
 query. When `verify` ran both, the badge becomes a Python/SQL picker defaulting to Python; switching

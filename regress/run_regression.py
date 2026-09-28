@@ -165,17 +165,6 @@ def run_unit_checks():
         fails.append(f"REG joins.discover_fks faked an FK from the measure column qty->warehouse (got {mfks})")
     else:
         print("  ok       fk_no_name_signal_measure_rejected")
-    # (3) The typed-AST search calls self._is_id (surrogate-key test), so EVERY TableQuery subclass used in
-    # serving must have it — the PG own-data planner _TableQueryPg lacked it and crashed live (offline
-    # EncoderQuery has it, so this is invisible to the model tiers). Pin every serving subclass.
-    from engine.encoder_overlay import EncoderQuery
-    from engine.pg import _TableQueryPg
-    from engine.tables import TableQuery
-    missing = [c.__name__ for c in (TableQuery, _TableQueryPg, EncoderQuery) if not hasattr(c, "_is_id")]
-    if missing:
-        fails.append(f"REG TableQuery subclass(es) missing _is_id -> typed-AST search crashes: {missing}")
-    else:
-        print("  ok   REG tablequery_subclasses_have_is_id")
     if fails:
         for f in fails:
             print(f"  FAIL {f}")

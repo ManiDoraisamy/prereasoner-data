@@ -1688,6 +1688,57 @@ def test_world_path_money_noun_naming_the_table_sums_its_money_column():
     assert reader("SUM").read_op_all("total sales in France", units) == ("COUNT", "sales", None)
 
 
+def test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word():
+    """Production, 2026-09-27: 'who ordered a trench coat in France' was answered with COUNT = 5. The
+    COUNT threshold is 0.05, and the article 'a' read 0.15 (the real cue 'many' reads 0.92), so a listing
+    question became a count. Closed-class words carry grammar; the readout skips them as it skips column
+    names ('ordered' read 0.22) and cell values. The activations are the production readout's."""
+    from unittest.mock import patch
+
+    import numpy as np
+
+    from engine.encoder_overlay import EncoderQuery
+
+    activation = {"ordered": 0.22, "a": 0.15, "many": 0.92}
+    query = EncoderQuery.__new__(EncoderQuery)
+    query.sid = {"intent_agg_count": 0, "intent_agg_sum": 1, "intent_agg_avg": 2}
+    query.thr = {"intent_agg_count": 0.05, "intent_agg_sum": 0.3, "intent_agg_avg": 0.3}
+
+    def question_readout(_tables, _fks, text):
+        toks = text.split()
+        final = np.zeros((len(toks), 3), np.float32)
+        for index, token in enumerate(toks):
+            final[index][0] = activation.get(token.lower(), 0.0)
+        return final, 0, toks, [token.lower() for token in toks]
+
+    query._question_readout = question_readout
+    sales = {"name": "sales", "columns": ["customer", "ordered"], "rows": [["Clouseau", "Gabardine Trench Coat"]]}
+    with patch("engine.closed_class.closed_class_words", return_value=frozenset({"who", "a", "in", "how"})):
+        assert query.read_op_model([sales], "who ordered a trench coat in France", [])[0] is None
+        assert query.read_op_model([sales], "how many orders in France", [])[0] == "COUNT"
+
+
+def test_one_surrogate_key_rule_names_keys_not_measures_or_codes():
+    # Eleven copies of the surrogate-key test disagreed (2026-09-27): compose missed 'order ID' and summed
+    # order numbers, the ranker's regex called 'paid' a key, and only some copies counted codes. The planner,
+    # the ranker's features, compose, the world path and the deterministic lowering now read one rule.
+    import importlib
+
+    from engine.sql_schema import is_surrogate_key
+
+    for name in ("order ID", "customer_id", "OrderID", "PetID", "uid", "customer_key", "Identifier", "index"):
+        assert is_surrogate_key(name), name
+    # Contrastive: 'orders' and 'idea' share letters with 'id', 'paid' ends in them, 'price index' is a
+    # measure, and a code is a natural attribute people ask for by name.
+    for name in ("orders", "idea", "paid", "valid", "price index", "country_code", "Code", "keyboard"):
+        assert not is_surrogate_key(name), name
+    assert not is_surrogate_key("amount")                       # a measure
+    for module in ("engine.sql_search", "engine.sql_rank", "engine.sql_recursive", "engine.sql_expansion",
+                   "engine.sql_extrema", "engine.compose", "engine.encoder_overlay", "engine.knowledge_query",
+                   "engine.knowledge_tables", "engine.deterministic.lower"):
+        assert importlib.import_module(module).is_surrogate_key is is_surrogate_key, module
+
+
 def test_literal_measure_column_keeps_raw_interpretation():
     # A schema that names its own "revenue" column keeps the raw reading; the
     # implicit measure fires only when the vocabulary has no direct column.
@@ -2670,6 +2721,8 @@ TESTS = [
     test_money_named_table_without_a_money_column_keeps_the_entity,
     test_served_selection_contract_keeps_money_totals_and_converted_totals,
     test_world_path_money_noun_naming_the_table_sums_its_money_column,
+    test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word,
+    test_one_surrogate_key_rule_names_keys_not_measures_or_codes,
     test_literal_measure_column_keeps_raw_interpretation,
     test_search_is_deterministic,
     test_encoder_role_signal_breaks_ambiguous_column_tie,

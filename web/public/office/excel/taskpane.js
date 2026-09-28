@@ -13,6 +13,7 @@ const database = getDatabase(app);
 const $ = id => document.getElementById(id);
 const renderer = window.PrereasonerTurnRenderer;
 const state = {conversationId: null, history: [], turns: [], tables: [], workbookId: null, nextPage: null};
+let activeDialog = null;
 
 function notice(message, error = false) {
   const el = $('notice');
@@ -56,8 +57,11 @@ function renderTurns() {
     empty.textContent = 'Ask a question about this workbook.'; thread.append(empty); return;
   }
   for (const turn of state.turns) {
-    const reasoningBody = renderer.renderReasoningTree(turn.reasoning || []);
     const analysisUrl = turn.conversationId ? `https://chat.prereasoner.com/reason/${encodeURIComponent(turn.conversationId)}` : '';
+    const reasoningBody = renderer.renderReasoningTree(turn.reasoning || [], {
+      renderStep: (step, index) => renderer.renderStepLink(step, index,
+        analysisUrl ? {href: analysisUrl, title: 'Open this reasoning in Prereasoner'} : {})
+    });
     const reasoningHtml = renderer.renderReasoningPanel({bodyHtml: reasoningBody, title: 'How this was calculated', analysisUrl});
     const assistantHtml = renderer.renderAssistantTurn({reply: turn.reply, reasoningHtml});
     thread.insertAdjacentHTML('beforeend', renderer.renderTurn({question: turn.question, assistantHtml}));
@@ -99,13 +103,19 @@ function mapReasoning(response) {
   if (Array.isArray(response.steps)) return response.steps;
   const traces = Array.isArray(response.traces) ? response.traces : [];
   return traces.flatMap((trace, ti) => {
-    const views = trace?.views || trace?.engine?.views || [];
-    return (Array.isArray(views) ? views : []).map((view, vi) => ({
-      index: ti * 100 + vi, label: view.title || view.label || view.operation || `Calculation ${vi + 1}`,
-      detail: view.description || view.question || [view.op, Array.isArray(view.rows) ? `${view.rows.length} rows` : ''].filter(Boolean).join(' · '), sectionId: view.section || view.section_id || '',
-      sectionLabel: view.section_label || '', sectionQuestion: view.section_question || '',
-      sectionInputs: view.section_inputs || [], inputs: view.inputs || [], isOutput: Boolean(view.is_output)
+    const engine = trace?.engine || trace || {};
+    const views = Array.isArray(engine.views) ? engine.views : [];
+    const normalizedViews = views.map(view => ({
+      ...view,
+      op: view.op || view.operation || '',
+      label: view.label || view.title || '',
     }));
+    return renderer.stepsFromViews(normalizedViews, {execution: engine.execution})
+      .map((step, vi) => ({
+        ...step,
+        description: views[vi].description || views[vi].question || step.description,
+        index: ti * 100 + vi,
+      }));
   });
 }
 
@@ -245,22 +255,46 @@ async function acceptDialogMessage(event) {
     const credential = credentialForDialog(message, {OAuthProvider});
     await signInWithCredential(auth, credential);
     onSignedIn(auth.currentUser);
-  } catch (error) { openSignIn(explainMicrosoftAuthError(error)); }
+    activeDialog?.close();
+    activeDialog = null;
+  } catch (error) {
+    const code = typeof error?.code === 'string' ? ` (Firebase error ${error.code})` : '';
+    console.warn('Microsoft credential handoff failed', {code: error?.code || 'unknown'});
+    openSignIn(`${explainMicrosoftAuthError(error)}${code}`);
+  }
 }
 
 function launchAuth(provider) {
   showAuthError('');
+  if (!window.Office?.context?.ui?.displayDialogAsync) {
+    showAuthError('This Excel host does not support the sign-in dialog. Open the workbook in Excel for the web or desktop and try again.');
+    return;
+  }
   Office.context.ui.displayDialogAsync(`${location.origin}/office/excel/auth-dialog.html?provider=${provider}`, {
     height: 55, width: 35, displayInIframe: false
   }, result => {
     if (result.status !== Office.AsyncResultStatus.Succeeded) {
-      showAuthError('Microsoft sign-in could not open. Please try again.'); return;
+      const code = result.error?.code;
+      if (code === 12007) {
+        showAuthError('A Microsoft sign-in window is already open. Finish signing in there, then return to Excel.');
+      } else if (code === 12011) {
+        showAuthError('Your browser blocked the sign-in window. Allow pop-ups for Excel, then try again.');
+      } else if (code === 12009) {
+        showAuthError('The sign-in window was dismissed. Select Continue with Microsoft to try again.');
+      } else {
+        const reason = code ? ` (Office error ${code})` : '';
+        showAuthError(`Microsoft sign-in could not open${reason}. Please try again.`);
+      }
+      return;
     }
     const dialog = result.value;
+    activeDialog = dialog;
     dialog.addEventHandler(Office.EventType.DialogMessageReceived, acceptDialogMessage);
     dialog.addEventHandler(Office.EventType.DialogEventReceived, arg => {
+      activeDialog = null;
       if (arg.error === 12006) showAuthError('Sign-in was closed before it finished.');
     });
+    showAuthError('A separate Microsoft sign-in window is open. Complete sign-in there, then return to Excel.');
   });
 }
 
@@ -293,6 +327,12 @@ async function init() {
     event.preventDefault(); const question = $('question').value.trim();
     if (!question || !auth.currentUser) return;
     ask(question).catch(error => notice(error.message, true));
+  });
+  $('question').addEventListener('keydown', event => {
+    if (event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
+      event.preventDefault();
+      $('composer').requestSubmit();
+    }
   });
   $('question').addEventListener('input', () => {
     $('question').style.height = 'auto'; $('question').style.height = `${Math.min($('question').scrollHeight, 120)}px`;

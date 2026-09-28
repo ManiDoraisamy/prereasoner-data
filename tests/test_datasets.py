@@ -242,12 +242,8 @@ def main() -> int:
         print("set KB_PG_PASSWORD")
         return 1
     from engine import request_timing
-    from engine.deterministic.context import (
-        analysis_execution_context,
-        enforce_execution_response,
-    )
     from engine.knowledge import KnowledgeReasoner
-    from regress.live_schema import live_schema
+    from regress.live_schema import live_schema, served
 
     Q = KnowledgeReasoner()
     schema = live_schema().name
@@ -270,20 +266,11 @@ def main() -> int:
             requested_mode = None if mode == "default" else mode
             token = request_timing.begin(f"dataset-{name}-{mode}")
             try:
-                with analysis_execution_context(
-                    None, schema, execution_mode=requested_mode
-                ):
-                    try:
-                        response = enforce_execution_response(
-                            Q.serve(
-                                tables,
-                                question,
-                                schema,
-                                decomposition=decomposition,
-                            ), requested_mode
-                        )
-                    except Exception as exc:  # noqa: BLE001 — the matrix records backend failures
-                        response = {"error": f"{type(exc).__name__}: {exc}"}
+                try:
+                    response = served(schema, Q.serve, tables, question, schema,
+                                      decomposition=decomposition, mode=requested_mode)
+                except Exception as exc:  # noqa: BLE001 — the matrix records backend failures
+                    response = {"error": f"{type(exc).__name__}: {exc}"}
                 record = {
                     "dataset": name,
                     "question": question,

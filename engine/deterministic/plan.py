@@ -32,6 +32,10 @@ class ColumnSpec:
     type: SQLType
     primary_key: bool = False
     nullable: bool = True
+    # Stored as a binary float (double precision). Both programs read it as NUMERIC: a float carries
+    # binary noise ('1.00800000000000000711') and float sums round differently from decimal sums, so
+    # only one exact reading lets the SQL and Python programs agree on every later stage.
+    binary_float: bool = False
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -847,17 +851,116 @@ class AnalysisPlan:
             shapes[view.name] = self._view_columns(view, shapes)
         return shapes
 
-    def view_inputs(self) -> dict[str, tuple[str, ...]]:
-        return {view.name: self.inputs(view) for view in self.views}
+    def reference_columns(self) -> dict[str, frozenset[str]]:
+        """Each stage's columns that carry a knowledgebase value unchanged.
 
-    def view_sections(self) -> dict[str, str | None]:
-        out = {view.name: None for view in self.views}
-        for section in self.sections:
-            for view in section.views:
-                out[view] = section.id
+        docs/SHEETS_AS_REASONING.md rule 5: reference columns store QIDs, and displayed rows show their
+        labels. The lineage follows the plan, so a column a projection renames ('city__country' ->
+        'country') or a group key keeps is still a reference, while a value computed from one is not, and
+        an uploaded column never is (an uploaded 'Q1' quarter stays 'Q1').
+        """
+        shapes = self.view_columns()
+        reference_tables = {table.name for table in self.tables if table.schema == "knowledgebase"}
+
+        def table_columns(names):
+            return {f"{name}__{column.name}" for name in names if name in reference_tables
+                    for column in self.table(name).columns}
+
+        def carried(value, current):
+            if isinstance(value, ViewValue):
+                return value.name in current
+            return isinstance(value, ColumnValue) and value.table in reference_tables
+
+        out: dict[str, frozenset[str]] = {}
+        for view in self.views:
+            if isinstance(view, CombinedView):
+                columns = table_columns(view.tables)
+            elif isinstance(view, CrossView):
+                left = shapes[view.left]
+                columns = set(out[view.left]) | {
+                    view.right_prefix + name if name in left else name for name in out[view.right]
+                }
+            elif isinstance(view, AntiJoinView):
+                columns = set(out[view.left])
+            else:
+                current = out[view.source]
+                if isinstance(view, EnrichedView):
+                    columns = set(current) | table_columns(
+                        enrichment.target_table for enrichment in view.enrichments
+                    )
+                elif isinstance(view, ProjectedView):
+                    columns = {value.name for value in view.values if carried(value.value, current)}
+                elif isinstance(view, CalculatedView):
+                    columns = set(current) | {
+                        value.name for value in view.values if carried(value.value, current)
+                    }
+                elif isinstance(view, ReducedView):
+                    columns = {value.name for value in view.group_by if carried(value.value, current)}
+                else:                                   # filtered, sorted and window stages keep their rows' columns
+                    columns = set(current)
+            out[view.name] = frozenset(columns)
         return out
 
-    def view_operations(self) -> dict[str, str]:
+    def inlined_entries(self) -> frozenset[str]:
+        """One-sheet entry views, which neither emitter materializes as a stage.
+
+        docs/SHEETS_AS_REASONING.md rule 3: every plan enters the ORM through a combined view, but over one
+        uploaded table it adds no column and drops no row, so it is not a sheet. Its one consumer reads the
+        upload itself: the SQL through the entry's own SELECT as an inline subquery, the Python by loading
+        the ORM rows at the top of that stage. The trail then names no relation it does not show (rule 2).
+        A combined view that joins two or more sheets, is the declared output, or feeds more than one stage
+        stays a stage of its own.
+        """
+        consumers: dict[str, int] = {}
+        for view in self.views:
+            for name in self.inputs(view):
+                consumers[name] = consumers.get(name, 0) + 1
+        return frozenset(
+            view.name
+            for view in self.views
+            if isinstance(view, CombinedView)
+            and len(view.tables) == 1
+            and view.name != self.output
+            and consumers.get(view.name) == 1
+        )
+
+    def stages(self) -> tuple[ViewStep, ...]:
+        """The views both emitters materialize as named stages, in plan order."""
+        inlined = self.inlined_entries()
+        return tuple(view for view in self.views if view.name not in inlined)
+
+    def stage_manifest(self) -> dict[str, object]:
+        """What both emitters declare about their stages: names, output, columns, operations, inputs and
+        sections. A stage that reads an inlined entry names the uploaded table as its input."""
+        inlined = self.inlined_entries()
+        entries = {view.name: view.tables for view in self.views if view.name in inlined}
+        stages = self.stages()
+        columns = self.view_columns()
+        sections = {view: section.id for section in self.sections for view in section.views}
+        return {
+            "views": [view.name for view in stages],
+            "output": self.output,
+            "view_columns": {view.name: list(columns[view.name]) for view in stages},
+            "view_operations": {view.name: self._operation(view) for view in stages},
+            "view_inputs": {
+                view.name: [table for name in self.inputs(view) for table in entries.get(name, (name,))]
+                for view in stages
+            },
+            "view_sections": {view.name: sections.get(view.name) for view in stages},
+            "sections": [
+                {
+                    "id": section.id,
+                    "label": section.label,
+                    "question": section.question,
+                    "views": [name for name in section.views if name not in entries],
+                    "inputs": list(section.inputs),
+                }
+                for section in self.sections
+            ],
+        }
+
+    @staticmethod
+    def _operation(view: ViewStep) -> str:
         operations = {
             CombinedView: "join",
             EnrichedView: "world_join",
@@ -870,14 +973,11 @@ class AnalysisPlan:
             CrossView: "cross",
             AntiJoinView: "anti_join",
         }
-        return {
-            view.name: view.function
-            if isinstance(view, WindowView)
-            else "topn"
-            if isinstance(view, SortedView) and view.limit is not None
-            else operations[type(view)]
-            for view in self.views
-        }
+        if isinstance(view, WindowView):
+            return view.function
+        if isinstance(view, SortedView) and view.limit is not None:
+            return "topn"
+        return operations[type(view)]
 
     def _validate_predicate(
         self,

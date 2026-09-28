@@ -436,7 +436,8 @@ class ComposedKnowledgeQuery:
                 shared_plan = lower_composition(context.slug, norm, schema, res["bindings"], world, connection)
                 release = self.qw._bridge_world_version()
                 connection.conn.commit()
-                columns, rows = self.qw.q11._execute_deterministic(tablemap, shared_plan, release)
+                columns, rows = self.qw.q11._execute_deterministic(tablemap, shared_plan, release,
+                                                                   labels=self.qw._qid_labels)
                 record = current_execution_record()
                 return {"question": question, "as_of": as_of, "error": None,
                         "model": "engine - composed view stack", "plan": res["plan"],

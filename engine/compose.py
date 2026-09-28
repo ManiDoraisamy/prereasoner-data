@@ -24,8 +24,10 @@ import numpy as np
 
 from engine.primitives import (q, filter_view, group_agg_view, yoy_view, topn_view, share_view,
                                divide_view, running_view, join_view, world_join_view)
+from engine.closed_class import EXCLUSION_CUES
 from engine.joins import discover_fks, join_plan
 from engine.numeric import parse_decimal, register_sqlite_decimal, sqlite_numeric, wire_decimal
+from engine.sql_schema import is_surrogate_key
 
 MEASURE_WORDS = {"amount", "revenue", "sales", "spend", "cost", "price", "value", "quantity", "qty", "margin",
                  "profit", "income", "turnover"}   # encoder-FREE FALLBACK ONLY — with an encoder the measure is cosine
@@ -37,7 +39,7 @@ class ComposeEngine:
     the OPERANDS (operator + measure column) are read off the metric space (read_op_model + cosine, like the live
     world engine). Without an encoder both fall back to transparent regex/keyword heuristics."""
 
-    EXCL_TRIGGER = re.compile(r'exclud\w*|without|\bno\b|\bnot\b|ignoring|not counting', re.I)   # heuristic flag only
+    EXCL_TRIGGER = EXCLUSION_CUES                           # heuristic flag only; shared with the semantic search
 
     def __init__(self, reader=None, encoder=None):
         self.reader = reader                                # PrimitiveReader | None — the learned primitive readout
@@ -52,10 +54,6 @@ class ComposeEngine:
             parse_decimal(v); return True
         except (ValueError, TypeError):
             return False
-
-    @staticmethod
-    def _is_id(name):
-        return bool(re.search(r'(^id$|_id$|^index$|^pk$)', name.lower()))
 
     def _types(self, cols, rows):
         """num / time / text per column (time = a year column — the axis YoY needs)."""
@@ -249,7 +247,7 @@ class ComposeEngine:
         structure decision comes from."""
         low = " " + question.lower() + " "
         cols = table["columns"]; rows = table["rows"]; typ = self._types(cols, rows)
-        numeric = [c for c in cols if typ[c] == "num" and not self._is_id(c)]
+        numeric = [c for c in cols if typ[c] == "num" and not is_surrogate_key(c)]
         times = [c for c in cols if typ[c] == "time"]
         texts = [c for c in cols if typ[c] == "text"]
         measure = self._pick_measure(low, numeric, question)

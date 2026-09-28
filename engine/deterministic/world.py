@@ -11,6 +11,7 @@ from dataclasses import replace
 
 from engine.deterministic.lower import (
     UnsupportedDeterministicPlan,
+    _unique_identifiers,
     _unique_names,
     _unique_class_names,
     _value,
@@ -33,6 +34,8 @@ from engine.deterministic.plan import (
     ReducedView,
     RelationshipSpec,
     SelectedValue,
+    SortedView,
+    SortValue,
     TableSpec,
     ViewValue,
     ProjectedView,
@@ -79,8 +82,18 @@ def lower_world_query(
     bridge_key="entity_qid",
     projection=None,
     outer=False,
+    dimension=None,
+    order=None,
 ):
-    """Consume only grounded structural slots selected by KnowledgeTableQuery."""
+    """Consume only grounded structural slots selected by KnowledgeTableQuery.
+
+    ``dimension`` is the world attribute a projection names, as (reference table, column). The kept rows
+    are grouped by it, so each shape ends like the own-data and compose trails, a grouped total:
+    without an aggregate ('which continent is Tokyo in') each value with the number of rows holding it;
+    with ``order`` ("DESC" or "ASC", 'which continent has the highest total amount') the aggregate per
+    value and the top group; with a COUNT and no order ('how many continents') the number of distinct
+    non-empty values. The reference value stays the stored QID in both programs; the trail shows its label.
+    """
     ast_joins = []
     for table, fk in zip(uploaded[1:], foreign_keys, strict=True):
         local = fk.get("from_cols") or (fk["from_col"],)
@@ -116,8 +129,8 @@ def lower_world_query(
             attributes[name],
             "knowledgebase",
             tuple(
-                ColumnSpec(column, attrs[column], dtype, column in keys)
-                for column, dtype in columns
+                ColumnSpec(column, attrs[column], dtype, column in keys, binary_float=binary)
+                for column, dtype, binary in columns
             ),
         )
     views = [replace(base.views[0], outer=outer)]
@@ -274,10 +287,12 @@ def lower_world_query(
             )
             operand = BinaryValue(operand, "*", ColumnValue(*rate))
             function = "SUM"
+    elif dimension is not None:
+        if order is not None:
+            raise UnsupportedDeterministicPlan("a ranked world projection needs a SUM or AVG measure")
+        function, operand, alias = "COUNT", None, "count"
     elif world_rate or conversion:
-        raise UnsupportedDeterministicPlan(
-            "world projection requires typed projection bindings"
-        )
+        raise UnsupportedDeterministicPlan("a currency conversion lowers only as an aggregate")
     else:
         # A listing ('amount in France', 'customers in France'): the kept rows are the answer, so the
         # last sheet (filtered, or the lookup when nothing is filtered) is the declared output
@@ -294,16 +309,56 @@ def lower_world_query(
             )
         )
         operand = ViewValue("calculated_value")
+    if dimension is None:
+        if order is not None:
+            raise UnsupportedDeterministicPlan("a ranking needs the world attribute it ranks")
+        views.append(
+            ReducedView(
+                f"{slug}_total", views[-1].name, (AggregateValue(alias, function, operand),)
+            )
+        )
+        return AnalysisPlan(slug, tuple(tables.values()), tuple(views))
+    if order not in (None, "DESC", "ASC"):
+        raise UnsupportedDeterministicPlan(f"unsupported ranking order: {order!r}")
+    if order is not None and function == "COUNT":
+        raise UnsupportedDeterministicPlan("a ranked world projection needs a SUM or AVG measure")
+    reference, attribute = dimension
+    key, alias = _unique_identifiers((attribute, alias))
+    group = SelectedValue(key, ColumnValue(reference, attribute))
+    distinct_count = aggregate is not None and function == "COUNT" and order is None
     views.append(
         ReducedView(
-            f"{slug}_total", views[-1].name, (AggregateValue(alias, function, operand),)
+            f"{slug}_groups" if distinct_count else f"{slug}_total",
+            views[-1].name,
+            (AggregateValue(alias, function, operand),),
+            (group,),
         )
     )
+    if distinct_count:
+        # COUNT of the group key skips the rows with no value, as COUNT(DISTINCT ...) does.
+        views.append(
+            ReducedView(
+                f"{slug}_total", views[-1].name, (AggregateValue(alias, "COUNT", ViewValue(key)),)
+            )
+        )
+    elif order is not None:
+        # The key breaks ties, so both programs keep the same group.
+        views.append(
+            SortedView(
+                f"{slug}_top_results",
+                views[-1].name,
+                (SortValue(ViewValue(alias), order == "DESC"), SortValue(ViewValue(key))),
+                1,
+            )
+        )
     return AnalysisPlan(slug, tuple(tables.values()), tuple(views))
 
 
 def reference_schema(connection, required, keys=None):
-    """Read declared physical types; never guess the type from the name of a fact."""
+    """Read declared physical types; never guess the type from the name of a fact.
+
+    Each column is (name, SQLType, stored as a binary float): a double precision column is read as
+    NUMERIC by both programs (ColumnSpec.binary_float)."""
     types = {
         "text": SQLType.TEXT,
         "character varying": SQLType.TEXT,
@@ -326,13 +381,14 @@ def reference_schema(connection, required, keys=None):
             or (("date", "currency_code") if table == "exchange_rate" else ("qid",))
         )
         selected = [
-            (column, types[dtype])
+            (column, types[dtype], dtype == "double precision")
             for column, dtype in rows
             if column in wanted and dtype in types
         ]
-        if wanted - {column for column, _ in selected}:
+        if wanted - {column for column, _type, _binary in selected}:
             raise UnsupportedDeterministicPlan(
-                f"missing or unsupported knowledgebase columns: {table}: {wanted - {column for column, _ in selected}}"
+                "missing or unsupported knowledgebase columns: "
+                f"{table}: {wanted - {column for column, _type, _binary in selected}}"
             )
         result[table] = selected
     return result

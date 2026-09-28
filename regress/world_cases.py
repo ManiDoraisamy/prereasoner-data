@@ -48,7 +48,7 @@ def _scalar(res):
 def run():
     failed = []
     from engine.knowledge import KnowledgeReasoner
-    from regress.live_schema import live_schema
+    from regress.live_schema import live_schema, served
 
     lease = live_schema()
     sub = lease.name
@@ -58,7 +58,7 @@ def run():
         Q = KnowledgeReasoner()
         for c in CURATED:
             try:
-                res = Q.serve([dict(t) for t in c["tables"]], c["question"], sub)
+                res = served(sub, Q.serve, [dict(t) for t in c["tables"]], c["question"], sub)
                 got = _scalar(res)
                 ok = (got == c["expect_scalar"]) if "expect_scalar" in c else \
                      (isinstance(got, int) and got >= c["expect_min"])

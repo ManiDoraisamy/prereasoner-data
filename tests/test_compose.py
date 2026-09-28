@@ -13,7 +13,7 @@ import sys
 
 from engine.compose import ComposeEngine
 from engine.joins import discover_fks, join_plan
-from engine.knowledge_query import semantic_predicate, verify_nonempty
+from engine.knowledge_query import content_words, semantic_predicate, verify_nonempty
 
 
 ORDERS = {"name": "orders", "columns": ["city", "amount"],
@@ -200,10 +200,54 @@ def test_words_that_name_the_sheet_leave_nothing_to_search_for():
     assert semantic_predicate("amount in france", ["France"]) == "amount"
 
 
+def test_grammar_computations_and_exclusions_are_not_searched_for():
+    """'everything in France' searched the free text for the word 'everything' (2026-09-27). A search needs
+    a content word: closed-class words (the caller passes spaCy's reading, engine.closed_class) carry
+    grammar. A question that asks for a computation ('highest') or an exclusion ('without') is never a
+    search: similarity and word matching cannot express either."""
+    sales = [{"table": "sales", "name": name} for name in
+             ("order ID", "customer", "city", "tier", "ordered", "currency", "amount")]
+    trench = "who ordered a trench coat in france"
+    assert semantic_predicate(trench, ["France"], sales, closed={"who", "a", "in"}) == "ordered trench coat"
+    assert content_words(trench, ["France"], sales, closed={"who", "a", "in"}) == ["trench", "coat"]
+    assert semantic_predicate("trench coat orders in France", ["France"], sales, closed={"in"}) == "trench coat orders"
+    for question, closed in (("everything in france", {"everything", "in"}),
+                             ("anything from france", {"anything", "from"}),
+                             ("What is the highest amount paid?", {"what", "is", "the", "?"}),
+                             ("orders in France without a trench coat", {"in", "a"})):
+        assert semantic_predicate(question, ["France"], sales, closed=closed) == "", question
+    # A quoted cell value is an exact filter, dropped like the country ('Gold' is a tier): nothing is left to
+    # search for. With a phrase beside it, the search keeps only the phrase.
+    assert semantic_predicate("gold customers in france", ["France", "Gold"], sales, closed={"in"}) == ""
+    assert content_words("who ordered a trench coat in paris", ["Paris"], sales,
+                         closed={"who", "a", "in"}) == ["trench", "coat"]
+
+
+def test_an_id_column_is_never_offered_as_a_measure():
+    """'orders for a brass magnifying glass in france' on the customer-orders sheet summed "order ID"
+    (2026-09-27): compose's own key test matched 'order_id' but not 'order ID', so the ID reached the measure
+    candidates, where the encoder's operand pick could choose it. Compose now reads the engine's one
+    surrogate-key rule (engine.sql_schema.is_surrogate_key)."""
+    import csv
+    from pathlib import Path
+
+    rows = list(csv.reader((Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "customer-orders"
+                            / "orders.csv").read_text(encoding="utf-8").splitlines()))
+    table = {"name": "orders", "columns": rows[0], "rows": rows[1:]}
+    engine = ComposeEngine()
+    offered = []
+    pick = engine._pick_measure
+    engine._pick_measure = lambda low, numeric, question: offered.append(list(numeric)) or pick(low, numeric, question)
+    engine.plan("orders for a brass magnifying glass in france", table)
+    assert offered == [["amount"]], offered
+
+
 TESTS = [
     test_aggregate_over_zero_rows_is_not_presented_as_an_answer,
     test_real_aggregates_and_plain_selects_are_untouched,
     test_words_that_name_the_sheet_leave_nothing_to_search_for,
+    test_grammar_computations_and_exclusions_are_not_searched_for,
+    test_an_id_column_is_never_offered_as_a_measure,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,
     test_regression_the_named_filter_is_not_dropped,

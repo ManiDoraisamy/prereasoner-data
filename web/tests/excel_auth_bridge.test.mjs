@@ -6,7 +6,13 @@ const calls = [];
 class OAuthProvider {
   constructor(id) { this.id = id; }
   credential(options) { calls.push(['microsoft', this.id, options]); return 'microsoft-credential'; }
+  static credentialFromJSON(value) { calls.push(['from-json', value]); return {providerId: value.providerId, value}; }
 }
+const serialized = {providerId: 'microsoft.com', signInMethod: 'microsoft.com',
+  oauthIdToken: 'ms-id', oauthAccessToken: 'ms-access', pendingToken: 'pending'};
+assert.deepEqual(credentialForDialog({provider: 'microsoft', credential: serialized},
+  {OAuthProvider}), {providerId: 'microsoft.com', value: serialized});
+assert.deepEqual(calls.pop(), ['from-json', serialized]);
 assert.equal(credentialForDialog({provider: 'microsoft', idToken: 'ms-id', accessToken: 'ms-access'},
   {OAuthProvider}), 'microsoft-credential');
 assert.deepEqual(calls.pop(), ['microsoft', 'microsoft.com', {idToken: 'ms-id', accessToken: 'ms-access'}]);

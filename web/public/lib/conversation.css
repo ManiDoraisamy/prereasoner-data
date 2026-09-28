@@ -1,0 +1,45 @@
+/* Shared conversation presentation for the Prereasoner web rail and spreadsheet add-ons.
+   Host pages own their outer layout; this file owns turn, reasoning and answer styling. */
+.turn-pair{margin:0 0 16px;min-width:0}
+.turn{margin:0 0 12px;min-width:0}
+.turn.user{display:flex;justify-content:flex-end}
+.turn .msg{max-width:100%;font:14px/1.5 Inter,Arial,sans-serif;color:#302a3b;background:#f5f3f8;border:1px solid #e2dee8;border-radius:11px;padding:10px 13px;white-space:pre-wrap;word-break:break-word}
+.turn.user .msg{max-width:90%;background:#f1edfa;border-color:#e2d9f5}
+.turn-content{min-width:0;color:#302a3b;font:14px/1.55 Inter,Arial,sans-serif}
+.turn-answer.answer,.answer.convmsg,.convmsg{margin-top:8px;padding:11px 13px;border:1px solid #e7e2ed;border-radius:10px;background:#fff;color:#302a3b;font:14px/1.55 Inter,Arial,sans-serif;overflow-wrap:anywhere}
+.turn-answer a,.answer a,.convmsg a{color:#6040dc}
+.turn-answer code,.answer code,.convmsg code{padding:1px 4px;border-radius:4px;background:#f2eff7;font:12px Consolas,monospace}
+.turn-answer.pending,.answer.pending{color:#6c6577}
+.answer.error{color:#9c2b25;border-color:#efc5c2;background:#fff7f6}
+.turn-reasoning,.reasoning{margin:7px 0 0;min-width:0;color:#655d70}
+.turn-reasoning>summary,.reasoning>summary{display:flex;align-items:center;gap:5px;min-width:0;padding:4px 0;color:#746d7e;font:12px/1.4 Inter,Arial,sans-serif;cursor:pointer;list-style:none}
+.turn-reasoning>summary::-webkit-details-marker,.reasoning>summary::-webkit-details-marker{display:none}
+.reasoning-toggle{display:inline-flex;align-items:center;justify-content:center;flex:0 0 16px;width:16px;height:18px}
+.cotchev{display:inline-block;transition:transform .15s}
+.turn-reasoning[open] .cotchev,.reasoning[open] .cotchev{transform:rotate(90deg)}
+.reasoning-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.reasoning-body{padding:3px 0 5px;color:#554d61}
+.analysis-open{display:inline-block;margin:2px 0 7px 21px;color:#6040dc;text-decoration:none;font-size:12px}
+.analysis-open:hover,.analysis-open:focus-visible{text-decoration:underline}
+.cotask{margin:0 0 7px 21px;padding:5px 8px;border-radius:7px;background:#f7f5fa;color:#655d70;font-size:12px;line-height:1.45}
+.reasontree{display:flex;flex-direction:column;gap:5px}
+.reasonnode{position:relative;min-width:0}
+.branchhead{display:flex;align-items:flex-start;gap:7px;padding:4px 2px;color:#51486b;line-height:1.4}
+.branchmark{width:7px;height:7px;margin-top:6px;border-radius:50%;background:#8f7bf2;box-shadow:0 0 0 3px #f0ecfd;flex:0 0 auto}
+.branchtxt{display:flex;flex-direction:column;min-width:0}
+.branchtxt b{color:#4b4167;font-weight:600}
+.branchq{margin-top:1px;color:#81788e;font-size:12px}
+.reasonchildren{margin-left:8px;padding-left:9px;border-left:1px solid #e2dced}
+.reasonref{margin:3px 0 3px 17px;color:#81788e;font-size:11px}
+.branchsteps{display:flex;flex-direction:column;gap:4px;margin:2px 0 5px 14px}
+.reasontree>.branchsteps{margin-left:0}
+.steplink{display:flex;align-items:flex-start;gap:8px;min-width:0;padding:7px 8px;border:1px solid #e9e5ee;border-radius:8px;background:#fff;color:#302a3b;text-decoration:none;line-height:1.4}
+a.steplink:hover,a.steplink:focus-visible{border-color:#b9a8e8;background:#faf9fd}
+.steplink .idx{display:inline-flex;align-items:center;justify-content:center;flex:0 0 20px;width:20px;height:20px;border-radius:6px;background:#8f7bf2;color:#fff;font-size:11px}
+.steplink .stx{flex:1;min-width:0}
+.steplin{display:block;color:#81788e;font-size:11px}
+.stepbackend{align-self:flex-start;flex:0 0 auto;margin-left:2px;padding:1px 5px;border-radius:4px;background:#f1edfc;color:#6756b7;font:700 9px/1.5 Consolas,monospace;white-space:nowrap}
+.result-table-wrap{max-width:100%;overflow:auto}
+.result-table{width:100%;border-collapse:collapse;font-size:12px}
+.result-table th,.result-table td{padding:5px;border:1px solid #e7e2ed;text-align:left}
+.result-table th{background:#f7f5fa}

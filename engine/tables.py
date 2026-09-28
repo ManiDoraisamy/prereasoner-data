@@ -234,14 +234,6 @@ class TableQuery:
         self.sql_proposer = None
         self.sql_arbiter = None
 
-    @staticmethod
-    def _is_id(name):
-        """Structural surrogate-key test (a primary/foreign key is never a SUM/AVG measure). Defined on the
-        BASE so EVERY TableQuery subclass has it — the PG own-data planner (_TableQueryPg) and the offline
-        EncoderQuery both call self._is_id during typed-AST search; a subclass-only definition crashed
-        _TableQueryPg."""
-        return bool(re.search(r"(^id$|_?id$|^index$|^pk$)", name.lower()))
-
     # ---------- encoding ----------
     # The vector for a text depends only on the text and the loaded weights, so encoded texts are
     # cached on the instance that holds those weights (a new overlay instance starts empty — correct

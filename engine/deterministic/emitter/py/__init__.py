@@ -157,7 +157,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 8
+    VERSION = 9
 
     def emit(
         self,
@@ -214,26 +214,7 @@ class PythonEmitter:
             "dataset_version": dataset_version,
             "knowledgebase_release": knowledgebase_release,
             "tables": [table.name for table in plan.tables],
-            "views": [view.name for view in plan.views],
-            "output": plan.output,
-            "view_columns": {
-                name: list(columns) for name, columns in plan.view_columns().items()
-            },
-            "view_operations": plan.view_operations(),
-            "view_inputs": {
-                name: list(inputs) for name, inputs in plan.view_inputs().items()
-            },
-            "view_sections": plan.view_sections(),
-            "sections": [
-                {
-                    "id": section.id,
-                    "label": section.label,
-                    "question": section.question,
-                    "views": list(section.views),
-                    "inputs": list(section.inputs),
-                }
-                for section in plan.sections
-            ],
+            **plan.stage_manifest(),
             # Per-stage slice of the wrapper source, so the workbook can show the exact
             # Python that produced a sheet beside that sheet's SQL.
             "view_sources": view_sources,
@@ -254,9 +235,19 @@ class PythonEmitter:
         return (
             "from datetime import date, datetime\n"
             "\n"
-            "from sqlalchemy import Date, Text\n"
+            "from sqlalchemy import Date, Numeric, Text, cast\n"
             "from sqlalchemy.orm import DeclarativeBase\n"
             "from sqlalchemy.types import TypeDecorator\n"
+            "\n"
+            "\n"
+            "class NumericFloat(TypeDecorator):\n"
+            "    \"\"\"A binary float column read as NUMERIC, as the SQL program reads it.\"\"\"\n"
+            "\n"
+            "    impl = Numeric\n"
+            "    cache_ok = True\n"
+            "\n"
+            "    def column_expression(self, column):\n"
+            "        return cast(column, Numeric)\n"
             "\n"
             "\n"
             "class PortableDate(TypeDecorator[date | str]):\n"
@@ -301,7 +292,9 @@ class PythonEmitter:
             f"from sqlalchemy import {', '.join(sorted(imports))}",
             "from sqlalchemy.orm import Mapped, mapped_column, relationship",
             "",
-            "from .base import Base, PortableDate",
+            "from .base import Base, "
+            + ("NumericFloat, " if any(column.binary_float for column in table.columns) else "")
+            + "PortableDate",
             "",
             "",
             f"class {table.class_name}(Base):",
@@ -319,6 +312,8 @@ class PythonEmitter:
             scalar_attribute = table.scalar_attribute(column.name)
             scalar_attrs[column.name] = scalar_attribute
             py_type, sql_type = _TYPE[column.type]
+            if column.binary_float:
+                py_type, sql_type = "Decimal", "NumericFloat"
             if column.nullable:
                 py_type += " | None"
             args = [repr(column.name), sql_type]
@@ -525,8 +520,22 @@ class PythonEmitter:
 
         emitted_variables = []
         view_sources: dict[str, str] = {}
+        inlined = plan.inlined_entries()
+        # An inlined one-sheet entry is no stage: its ORM load opens the one stage that reads it.
+        entries: dict[str, list[str]] = {}
         for view in plan.views:
+            if view.name in inlined:
+                entries[view.name] = [
+                    # The validated attribute, never the uploaded name, reaches generated source.
+                    "        # Rows of "
+                    + ", ".join(plan.table(name).attribute for name in view.tables),
+                    *self._emit_combined(plan, view, row_classes[view.name]),
+                    "",
+                ]
+                continue
             stage_start = len(lines)
+            for name in plan.inputs(view):
+                lines.extend(entries.pop(name, ()))
             lines.append(f"        # View: {view.name}")
             if isinstance(view, CombinedView):
                 lines.extend(self._emit_combined(plan, view, row_classes[view.name]))

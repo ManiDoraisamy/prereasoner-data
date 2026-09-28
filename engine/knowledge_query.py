@@ -19,7 +19,7 @@ This realizes the unified-encoder objective in production (not just /api/dimensi
 Class graph:  KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, EntityQuery)
   The bridge mixin owns persistence and hybrid pgvector execution; this module owns routing, planning,
   clarification, and request orchestration.
-    - read_op_all / read_op_model / _is_id  resolve to EncoderQuery (the metric-space operator), NOT keywords.
+    - read_op_all / read_op_model  resolve to EncoderQuery (the metric-space operator), NOT keywords.
     - serve / meaning_filter / _world_joins / route / _resolve  resolve to EntityQuery (the world machinery + bge).
     - schema / _encode / _layers  resolve to TableQuery, but run on the UNIFIED qwen (overlaid in __init__).
 """
@@ -30,7 +30,6 @@ import re
 import numpy as np
 
 from engine.config import DATA_DIR, kb_model_route_enabled
-from engine.tables import qlit
 from engine.entities import EntityQuery, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.embeddings import Embedder, pgvector_literal, normalize_surface
@@ -38,11 +37,13 @@ from engine.encoder_overlay import EncoderQuery, load_encoder, load_sql_selectio
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.bridge import STOP
+from engine.closed_class import EXCLUSION_CUES, closed_class_words
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
 )
 from engine.calculations import calculation_clarify
-from engine.numeric import parse_decimal, wire_decimal
+from engine.numeric import parse_decimal
+from engine.sql_schema import is_surrogate_key
 
 
 def _cos(a, b):
@@ -135,6 +136,41 @@ _SPREADSHEET_WORDS = frozenset({
     "header", "headers", "blank", "empty", "non", "data",
 })
 
+# Words that ask for a computation: an aggregate or an extreme. The operator realizes them, so a question that
+# uses one asks for a number or a ranking, and the semantic search (rows listed by similarity) never answers
+# it. The operator readout models only COUNT/SUM/AVG; 'What is the highest amount paid?' went unread once the
+# readout stopped counting articles, and 'paid' alone would have sent it to the search (2026-09-27).
+_OPERATOR_WORDS = frozenset({
+    "many", "much", "number", "average", "avg", "mean", "total", "sum", "count", "per", "each",
+    "highest", "lowest", "largest", "smallest", "most", "least", "maximum", "minimum", "max", "min",
+    "top", "bottom",
+})
+
+# Question and aggregate words are realized by the OPERATOR, not by a filter: they are never a world entity
+# (excluding them stops _best_world_entity from matching 'how'/'many' to a town and reporting a COUNT query as
+# having "dropped" them, which hijacked 'how many ... in France' to clarify), and never free text to search
+# for. The world ENTITY-TYPE nouns (cities, countries, ...) NAME the resolved type, never a filter value, so
+# 'total amount for CITIES in France' must not report 'cities' dropped.
+_QUERY_WORDS = _OPERATOR_WORDS | frozenset({
+    "how", "list", "show", "give", "find", "get", "what", "which", "who", "whom", "where", "when",
+    "are", "were", "city", "cities", "country", "countries", "state", "states", "town", "towns",
+    "place", "places", "nation", "nations", "element", "elements", "atomic", "has",
+    "named", "there", "among",
+    # Positional words: 'Count all non-empty Order ID rows below the header in the Customers sheet' asks a
+    # plain COUNT, and a weak embedding match to some town once reported the spreadsheet words as dropped
+    # filters, hijacking the count to clarify (2026-09-14). Numeric comparators ('below 100') were never
+    # covered by this guard (content words are alphabetic), so exempting 'below'/'above' loses no real
+    # constraint coverage.
+    "below", "above", "current",
+    # Spreadsheet scope prose. These words do not identify a row filter or world entity; treating them as
+    # unresolved predicates turned an exact COUNT(DISTINCT "order ID") into a clarification about an unrelated
+    # numeric column in production.
+    "across",
+    # Presentation/provenance language describes how to display the answer, not an additional row predicate.
+    # Schema-named columns still win via the sheet's own vocabulary.
+    "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown",
+})
+
 
 def _word_forms(word):
     forms = {word, word.rstrip("s"), word + "s"}
@@ -161,23 +197,37 @@ def _schema_vocabulary(sch):
     return words
 
 
-def semantic_predicate(question, drop_surfaces=(), sch=()):
-    """The residual free-text predicate: question words minus stopwords minus the surface tokens of any
-    resolved world entity (those drive the structured filter). 'who complained about bad delivery in France',
-    France stripped -> drop who/about/in/complained (STOP) -> 'bad delivery'.
-
-    Empty when no residual word says anything about the rows' content: words that only name the tables,
-    their columns or the spreadsheet leave nothing to search the free text for. 'amount in France' is a
-    column and a country; the semantic path ranked France's orders by similarity to the word 'amount',
-    capped them at ten, and showed one opaque step instead of the join, lookup and filter (2026-09-27).
-    """
+def _residual_words(question, drop_surfaces):
+    """Question words minus stopwords minus the surface tokens of any resolved world entity (those drive the
+    structured filter)."""
     drop = set()
     for s in drop_surfaces:
         drop |= set(str(s).lower().split())
     words = "".join(ch.lower() if (ch.isalnum() or ch.isspace()) else " " for ch in question).split()
-    residual = [w for w in words if w not in STOP and w not in drop]
-    vocabulary = _schema_vocabulary(sch) | _SPREADSHEET_WORDS
-    if all(w in vocabulary for w in residual):
+    return [w for w in words if w not in STOP and w not in drop]
+
+
+def content_words(question, drop_surfaces=(), sch=(), closed=()):
+    """The residual words that say something about the rows' content.
+
+    Not a word that only names the tables, their columns or the spreadsheet: 'amount in France' is a column
+    and a country, and the semantic path once ranked France's orders by similarity to the word 'amount',
+    capped them at ten, and showed one opaque step instead of the lookup and filter (2026-09-27). Not a
+    question or aggregate word (_QUERY_WORDS): 'highest' asks for a maximum. Not a closed-class word
+    (``closed``, from engine.closed_class): 'everything in France' is a listing too.
+    """
+    other = _schema_vocabulary(sch) | _SPREADSHEET_WORDS | _QUERY_WORDS
+    return [w for w in _residual_words(question, drop_surfaces) if w not in other and w not in closed]
+
+
+def semantic_predicate(question, drop_surfaces=(), sch=(), closed=()):
+    """The residual free-text predicate: 'who complained about bad delivery in France', France stripped ->
+    drop who/about/in/complained (STOP) -> 'bad delivery'. Empty when the question asks for a computation
+    (_OPERATOR_WORDS) or no residual word is content (``content_words``); otherwise the whole residual, so the
+    embedding sees the question's phrase."""
+    residual = _residual_words(question, drop_surfaces)
+    if (EXCLUSION_CUES.search(question) or any(w in _OPERATOR_WORDS for w in residual)
+            or not content_words(question, drop_surfaces, sch, closed)):
         return ""
     return " ".join(residual).strip()
 
@@ -399,18 +449,16 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         e.g. hospitals.csv(hospital, beds) + 'total beds for hospitals in United States' -> resolve each hospital to
         a pre-synchronized knowledgebase.\"hospital\" row, keep those whose .country = 'United States', SUM(beds).
 
-        The per-cell entity resolution is the engine's resolver (Python). Every relational step AFTER it is
-        EXECUTED PostgreSQL over a VALUES relation of the resolved upload, returned as the derivation trail
-        (docs/SHEETS_AS_REASONING.md): lookup -> filtered -> total, with `sql` the statement that actually
-        produced each sheet's rows — this path once shipped an illustrative `resolve(...)` pseudo-SQL and a
-        Python-side fold with no visible filter step."""
+        The per-cell entity resolution is the engine's resolver (Python); it persists the connected bridge,
+        and the shared deterministic plan runs every relational step after it in both programs, returning the
+        derivation trail (docs/SHEETS_AS_REASONING.md): lookup -> filtered -> total."""
         t = plan["table"]; label = plan["label"]; country = plan["country"]
         ci = t["columns"].index(plan["col"])
         op = (self.read_op_model([t], question)[0]) or "COUNT"
         measure = None
         if op in ("SUM", "AVG"):
             measure = next((c["name"] for c in sch if c["table"] == t["name"]
-                            and c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])), None)
+                            and c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])), None)
             if not measure:
                 op = "COUNT"
 
@@ -427,82 +475,37 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
         _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # table = the EXACT Wikidata label
-        disp = f'{op}({measure})' if measure else 'COUNT(*)'
         model = f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
-        if context is not None:
-            from engine.deterministic.world import lower_world_query, reference_schema
-            from engine.numeric import wire_rows
-            self._pg_schema = schema
-            self.q11._pg_schema = schema
-            self._persist_connected(t["name"], plan["col"], label,
-                                    [(str(row[ci]), qid) for row, qid in resolved])
-            con = self._connect({table["name"]: table for table in norm}, sch, attach_world=True)
-            try:
-                shared_plan = lower_world_query(
-                    slug=context.slug, schema=sch, uploaded=[t["name"]], foreign_keys=[],
-                    joins=[{"left_table": t["name"], "left_col": plan["col"], "right_table": wl, "right_col": "qid"}],
-                    bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"], route_column=plan["col"],
-                    meaning_filter={"filter_table": wl, "attr": "country", "value": country},
-                    own_filters=[], world_rate=None, as_of=None, aggregate=(op, t["name"], measure),
-                    calculation=None, conversion=None, reference_columns=reference_schema(con, {wl: {"country"}}))
-                release = self._bridge_world_version()
-                con.conn.commit()
-                columns, rows = self.q11._execute_deterministic({t["name"]: t}, shared_plan, release)
-                record = current_execution_record()
-                return {"question": question, "as_of": None, "sql": record["final_sql"],
-                        "result": {"columns": columns, "rows": wire_rows(rows[:50])},
-                        "views": record["views"], "deterministic": record, "model": model}
-            finally:
-                con.close()
-                self._con = None
-        if not resolved:                                                  # nothing resolved -> empty aggregate, no trail
-            val = 0
-            return {"question": question, "as_of": None, "sql": None,
-                    "result": {"columns": [disp], "rows": [[val]]}, "views": [], "model": model}
-
-        cols = list(t["columns"])
-        values = ", ".join(
-            "(" + ", ".join(qlit("" if v is None else str(v)) for v in rw + [wq]) + ")"
-            for rw, wq in resolved)
-        ucols = ", ".join(f'u."{c}"' for c in cols)
-        alias = ", ".join(f'"{c}"' for c in cols + ["__qid"])
-        base = f'FROM (VALUES {values}) AS u({alias}) JOIN knowledgebase."{wl}" w ON w.qid = u."__qid"'
-        where = f' WHERE lower(w."country") = lower({qlit(country)})'
-        lookup_sql = f'SELECT {ucols}, w."country" {base} LIMIT 50'
-        filtered_sql = f'SELECT {ucols}, w."country" {base}{where} LIMIT 50'
-        if op == "COUNT":
-            agg = "COUNT(*)"
-        else:                                                             # empty cells -> NULL, so SUM/AVG skip them
-            agg = f'COALESCE({op}(NULLIF(u."{measure}", \'\')::numeric), 0)'
-        total_sql = f'SELECT {agg} {base}{where}'
-
-        cur.execute(lookup_sql)
-        lrows = [list(r) for r in cur.fetchall()]
-        cur.execute(filtered_sql)
-        frows = [list(r) for r in cur.fetchall()]
-        cur.execute(total_sql)
-        val = cur.fetchone()[0]
-        if not isinstance(val, int):
-            val = wire_decimal(parse_decimal(val))
-        # country values are QIDs; display them as labels (SHEETS_AS_REASONING rule 5)
-        labels = self._qid_labels({r[-1] for r in lrows} | {country})
-        for r in lrows + frows:
-            r[-1] = labels.get(str(r[-1]), r[-1])
-        views = [
-            {"name": "knowledgebase_lookup", "op": "world_join",
-             "label": f'join {t["name"]} to the world on {plan["col"]}',
-             "sql": lookup_sql, "columns": cols + ["country"], "rows": lrows},
-            {"name": "filtered", "op": "world_filter",
-             "label": f'where country = {labels.get(country, country)!r}',
-             "sql": filtered_sql, "columns": cols + ["country"], "rows": frows},
-            {"name": "total", "op": "group_agg", "label": "total",
-             "sql": total_sql, "columns": [disp], "rows": [[val]]},
-        ]
-        return {"question": question, "as_of": None, "sql": total_sql,
-                "result": {"columns": [disp], "rows": [[val]]},          # "columns" (NOT "cols") — the client render +
-                "views": views, "model": model}
+        if context is None:                                   # production enters one per request (engine/server.py)
+            raise RuntimeError("world questions are served inside an analysis context")
+        from engine.deterministic.world import lower_world_query, reference_schema
+        from engine.numeric import wire_rows
+        self._pg_schema = schema
+        self.q11._pg_schema = schema
+        self._persist_connected(t["name"], plan["col"], label,
+                                [(str(row[ci]), qid) for row, qid in resolved])
+        con = self._connect({table["name"]: table for table in norm}, sch, attach_world=True)
+        try:
+            shared_plan = lower_world_query(
+                slug=context.slug, schema=sch, uploaded=[t["name"]], foreign_keys=[],
+                joins=[{"left_table": t["name"], "left_col": plan["col"], "right_table": wl, "right_col": "qid"}],
+                bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"], route_column=plan["col"],
+                meaning_filter={"filter_table": wl, "attr": "country", "value": country},
+                own_filters=[], world_rate=None, as_of=None, aggregate=(op, t["name"], measure),
+                calculation=None, conversion=None, reference_columns=reference_schema(con, {wl: {"country"}}))
+            release = self._bridge_world_version()
+            con.conn.commit()
+            columns, rows = self.q11._execute_deterministic({t["name"]: t}, shared_plan, release,
+                                                            labels=self._qid_labels)
+            record = current_execution_record()
+            return {"question": question, "as_of": None, "sql": record["final_sql"],
+                    "result": {"columns": columns, "rows": wire_rows(rows[:50])},
+                    "views": record["views"], "deterministic": record, "model": model}
+        finally:
+            con.close()
+            self._con = None
 
     # ---------------- connected / unconnected split ----------------
     def _avglen(self, table, col):
@@ -560,33 +563,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         sqll = (sql or "").lower()
         has_agg = bool(_re.search(r'\b(sum|count|avg|min|max)\s*\(', sqll))
         sch_words = _schema_vocabulary(sch)
-        # question / aggregate CUE words are realized by the OPERATOR (has_agg), not by a filter — they are never a
-        # world entity, so excluding them stops _best_world_entity from spuriously matching e.g. 'how'/'many' to a
-        # town and falsely reporting the COUNT query "dropped" them (which hijacked 'how many … in France' to clarify).
-        # The world ENTITY-TYPE nouns (cities/countries/…) NAME the resolved type — never a dropped filter value —
-        # so 'total amount for CITIES in France' must not report 'cities' dropped and hijack a correct join to clarify.
-        CUE = {"how", "many", "much", "number", "list", "show", "give", "find", "get", "what", "which", "who", "whom",
-               "where", "when", "average", "avg", "mean", "total", "sum", "count", "per", "each", "are", "were",
-               "city", "cities", "country", "countries", "state", "states", "town", "towns", "place", "places",
-               "nation", "nations", "element", "elements", "atomic", "has", "highest", "lowest", "largest",
-               "smallest", "most", "least", "maximum", "minimum", "max", "min", "top", "bottom",
-               "named", "there", "among",
-               # The tabular MEDIUM (_SPREADSHEET_WORDS), not data semantics: 'Count all non-empty
-               # Order ID rows below the header in the Customers sheet' asks a plain COUNT —
-               # 'rows'/'header'/'sheet'/'non-empty' describe the spreadsheet, and a weak embedding match
-               # to some town once reported them as dropped filters, hijacking the count to clarify
-               # (2026-09-14). Numeric comparators ('below 100') were never covered by this guard
-               # (content words are alphabetic), so exempting 'below'/'above' loses no real constraint
-               # coverage.
-               "below", "above", "current",
-               # Spreadsheet scope prose ('data' is spreadsheet medium too). These words do not identify
-               # a row filter or world entity; treating them as unresolved predicates turned an exact
-               # COUNT(DISTINCT "order ID") into a clarification about an unrelated numeric column in
-               # production.
-               "across",
-               # Presentation/provenance language describes how to display the answer, not an
-               # additional row predicate. Schema-named columns still win via sch_words above.
-               "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown"} | _SPREADSHEET_WORDS
+        CUE = set(_QUERY_WORDS | _SPREADSHEET_WORDS)       # realized by the operator, never a filter (see _QUERY_WORDS)
         if _re.search(r'\breturn\s+(?:the|a|an|this|that)\b', question.lower()):
             CUE.add("return")
         if _re.search(r'\bcount\s*\(\s*distinct\b', sqll):
@@ -594,8 +571,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # literally in the emitted SQL. A column actually named "value" is already covered by
             # sch_words, so this only closes the operator-language false-positive.
             CUE |= {"distinct", "unique", "different", "value", "values"}
+        # Closed-class words carry grammar, not a constraint: 'everything in France' drops nothing. Negation and
+        # exclusion cues are never closed-class here (engine.closed_class), so a dropped 'not' is still caught.
+        closed = closed_class_words(question)
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
-                   if w not in STOP and w not in CUE and len(w) > 1
+                   if w not in STOP and w not in CUE and len(w) > 1 and w not in closed
                    and w not in sch_words and w.rstrip("s") not in sch_words]
         # A weak embedding match to a town must not reinterpret ordinary query
         # prose as geography. Only exempt bounded grammatical forms, and never
@@ -629,7 +609,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             content = [word for word in content if word not in realized]
         if not content:
             return []
-        nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]
+        nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
         uv = self._encode(content)
         dropped = []
         for i, w in enumerate(content):
@@ -689,7 +669,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         ent_tok = ent[0] if ent else None                    # gap): never surface a QID in a human-facing rephrase
         _, scores = self.read_op_model(norm, question, fks)
         sum_s, avg_s, cnt_s = scores.get("SUM", 0.0), scores.get("AVG", 0.0), scores.get("COUNT", 0.0)
-        nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]
+        nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
         qv = self._encode([question])[0]
         measure = max(nonid, key=lambda c: _cos(qv, c["qvec"])) if nonid else None
         mword, mscore = None, 0.0
@@ -756,13 +736,19 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     return verify_nonempty(
                         self._serve_world_type(norm, question, sch, ngp, schema), question)
             except Exception as e:                                    # noqa: BLE001 — fall through to the geo/delegate path
-                from engine.deterministic.context import current_analysis_context
-                if ngp is not None and current_analysis_context() is not None:
+                if ngp is not None:
                     return {"question": question, "error": f"{type(e).__name__}: {e}", "result": None}
                 print(f"[knowledge_query] non-geo serving failed: {type(e).__name__}", flush=True)
         cr = None if is_agg else self._resolve(question, "country")   # (country QID, sim, surface) | None — resolved ONCE
-        pred = "" if is_agg else semantic_predicate(question, [cr[2]] if cr else [], sch)
+        closed = frozenset() if is_agg else closed_class_words(question)
+        # A quoted cell value ('GOLD customers', 'in Paris') is an exact filter, never words to search for.
+        own = [] if is_agg else self._own_value_matches(question, norm)
+        drop = ([cr[2]] if cr else []) + [value for _table, _column, value in own]
+        pred = "" if is_agg else semantic_predicate(question, drop, sch, closed)
         plan = next((p for p in (self._table_plan(t) for t in norm) if p), None) if pred else None
+        # The search reads one sheet; a filter on another sheet needs the structured path's joins.
+        if plan and any(table != plan["table"]["name"] for table, _column, _value in own):
+            plan = None
         if plan and pred and schema:
             try:
                 # _resolve returns a country QID, but the connected bridge stores + filters/disambiguates on the
@@ -771,8 +757,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 cname = self._country_name_for_qid(cr[0]) if cr else None
                 if cr and not cname:
                     cname = cr[2]                                      # last resort: the surface the user typed
+                mention = tuple((w, tuple(sorted(_word_forms(w))))
+                                for w in content_words(question, drop, sch, closed))
                 return self._serve_hybrid(norm, fks, sch, question, pred, plan,
-                                          cname, as_of, schema)
+                                          cname, as_of, schema, mention,
+                                          [(column, value) for _table, column, value in own])
             except Exception as e:                                   # noqa: BLE001 — never hard-fail the world path
                 print(f"hybrid serve failed, delegating: {type(e).__name__}", flush=True)
         # Delegate the aggregate / plain-world-join path to EntityQuery EXPLICITLY (not super()): in this MRO

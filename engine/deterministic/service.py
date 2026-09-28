@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+import re
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 
 from sqlalchemy import Connection, Engine
@@ -15,7 +17,18 @@ from engine.deterministic.emitter import (
     PythonEmitter,
     SQLEmitter,
 )
-from engine.deterministic.plan import AnalysisPlan, AntiJoinView, SortedView
+from engine.deterministic.plan import (
+    AnalysisPlan,
+    AntiJoinView,
+    BinaryValue,
+    ColumnValue,
+    FilteredView,
+    FunctionValue,
+    JunctionValue,
+    LiteralValue,
+    SortedView,
+    ViewValue,
+)
 from engine.deterministic.runtime import (
     ExecutionMode,
     VerificationMismatch,
@@ -27,7 +40,81 @@ from engine.deterministic.runtime import (
     materialized_python_views,
 )
 
+from engine.numeric import wire_value
+
 DEFAULT_DEBUG_ROOT = Path(__file__).with_name("_gen") / "py"
+_ENTITY = re.compile(r"Q\d+")
+
+
+def _wire_cell(value):
+    """A displayed cell as the wire carries it (engine.numeric): an exact JSON scalar for a decimal, ISO text
+    for a date. The server and the stream used to convert these on the way out and log each as a leak."""
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return wire_value(value)
+
+
+def _operand(value):
+    while isinstance(value, FunctionValue):           # LOWER and TEXT are storage details, not the condition
+        value = value.operand
+    return value
+
+
+def _names_reference(value, references):
+    value = _operand(value)
+    if isinstance(value, ColumnValue):
+        return f"{value.table}__{value.column}" in references
+    return isinstance(value, ViewValue) and value.name in references
+
+
+def _comparisons(predicate):
+    if isinstance(predicate, JunctionValue):
+        for child in predicate.predicates:
+            yield from _comparisons(child)
+    else:
+        yield predicate
+
+
+def _filter_entities(predicate, references):
+    """The stored entities a filter compares with a reference column; its label shows them resolved."""
+    for comparison in _comparisons(predicate):
+        for side, other in ((comparison.left, comparison.right), (comparison.right, comparison.left)):
+            literal = _operand(other)
+            if (_names_reference(side, references) and isinstance(literal, LiteralValue)
+                    and isinstance(literal.value, str) and _ENTITY.fullmatch(literal.value)):
+                yield literal.value
+
+
+def _term(value, labels):
+    value = _operand(value)
+    if isinstance(value, ColumnValue):
+        return value.column
+    if isinstance(value, ViewValue):
+        return value.name
+    if isinstance(value, LiteralValue):
+        if value.value is None:
+            return "NULL"
+        if isinstance(value.value, str):
+            return repr(labels.get(value.value, value.value))
+        return str(value.value)
+    if isinstance(value, BinaryValue):
+        return f"({_term(value.left, labels)} {value.operator} {_term(value.right, labels)})"
+    return str(value)
+
+
+def _condition(predicate, labels, references):
+    """A filter's predicate as its step label names it (docs/SHEETS_AS_REASONING.md, step 4 and rule 5):
+    "country = 'France'" where the program compares the stored Q142. Only a value compared with a
+    reference column is shown as a label; an uploaded 'Q1' stays 'Q1'."""
+    if isinstance(predicate, JunctionValue):
+        return f" {predicate.operator.lower()} ".join(
+            f"({_condition(child, labels, references)})" if isinstance(child, JunctionValue)
+            else _condition(child, labels, references)
+            for child in predicate.predicates
+        )
+    shown = labels if (_names_reference(predicate.left, references)
+                       or _names_reference(predicate.right, references)) else {}
+    return f"{_term(predicate.left, shown)} {predicate.operator} {_term(predicate.right, shown)}"
 
 
 @dataclass(frozen=True)
@@ -65,6 +152,27 @@ class ExecutionResult:
     view_rows: tuple[tuple[dict[str, object], ...], ...]
     debug_path: Path | None = None
     fallback_reason: str | None = None
+    reference_columns: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    labels: Mapping[str, str] = field(default_factory=dict)
+    step_labels: Mapping[str, str] = field(default_factory=dict)
+
+    def displayed(self, step: str, rows) -> tuple[dict[str, object], ...]:
+        """A stage's rows as the user sees them: a knowledgebase entity in a reference column shows its
+        label (docs/SHEETS_AS_REASONING.md rule 5). The programs and their parity keep the stored QID."""
+        columns = self.reference_columns.get(step, frozenset())
+        if not columns or not self.labels:
+            return tuple(rows)
+        return tuple(
+            {
+                column: self.labels.get(value, value) if column in columns and isinstance(value, str) else value
+                for column, value in row.items()
+            }
+            for row in rows
+        )
+
+    def output_rows(self) -> tuple[dict[str, object], ...]:
+        """The output stage's rows as displayed; the Result shows these."""
+        return self.displayed(str(self.emission.python.manifest["output"]), self.rows)
 
     def record(self) -> dict[str, object]:
         sections = {
@@ -78,6 +186,7 @@ class ExecutionResult:
             self.view_rows,
             strict=True,
         ):
+            rows = self.displayed(step, rows[:50])
             sql = statement.split(" AS ", 1)[1]
             suffix = str(step).removeprefix(
                 str(self.emission.python.manifest["slug"]) + "_"
@@ -95,13 +204,13 @@ class ExecutionResult:
                     "section_label": section.get("label"),
                     "section_question": section.get("question"),
                     "section_inputs": section.get("inputs", []),
-                    "label": suffix.replace("_", " "),
+                    "label": self.step_labels.get(step, suffix.replace("_", " ")),
                     "sql": sql,
                     "python": self.emission.python.manifest["view_sources"].get(step, ""),
                     "columns": self.emission.python.manifest["view_columns"][step],
                     "rows": [
                         [
-                            row.get(column)
+                            _wire_cell(row.get(column))
                             for column in self.emission.python.manifest["view_columns"][
                                 step
                             ]
@@ -141,6 +250,7 @@ class DeterministicAnalysis:
         conversation_schema: str,
         dataset_version: str | None = None,
         knowledgebase_release: str | None = None,
+        labels: Callable[[Iterable[str]], Mapping[str, str]] | None = None,
     ):
         if not conversation_schema:
             raise ValueError("conversation schema must be non-empty")
@@ -148,6 +258,8 @@ class DeterministicAnalysis:
         self.conversation_schema = conversation_schema
         self.dataset_version = dataset_version
         self.knowledgebase_release = knowledgebase_release
+        # Resolves knowledgebase entities ('Q142') to their labels ('France') for display only.
+        self.labels = labels
 
     def emit(self) -> DualEmission:
         metadata = {
@@ -235,9 +347,8 @@ class DeterministicAnalysis:
         schema_map: Mapping[str, str | None] = {
             "conversation": self.conversation_schema
         }
-        output_index = tuple(view.name for view in self.plan.views).index(
-            str(self.plan.output)
-        )
+        stages = self.plan.stages()
+        output_index = tuple(view.name for view in stages).index(str(self.plan.output))
         fallback_reason = None
         if selected is ExecutionMode.PYTHON:
             try:
@@ -289,7 +400,7 @@ class DeterministicAnalysis:
             with request_timing.span("deterministic_sql"):
                 sql_views = execute_sql_views(emission.sql, bind)
             for step, python_rows, sql_rows in zip(
-                self.plan.views,
+                stages,
                 python_views,
                 sql_views,
                 strict=True,
@@ -308,6 +419,25 @@ class DeterministicAnalysis:
             rows = sql_views[output_index]
         else:  # pragma: no cover - the enum and chooser make this unreachable
             raise AssertionError(f"unexpected execution mode: {selected}")
+        reference = self.plan.reference_columns()
+        filters = [view for view in stages if isinstance(view, FilteredView)]
+        labels: Mapping[str, str] = {}
+        if self.labels is not None:
+            # Only the entities a user will see: the first 50 rows each stage records, the output, and the
+            # values a filter's label names.
+            entities = {
+                value
+                for index, (view, stage_rows) in enumerate(zip(stages, view_rows, strict=True))
+                for row in (stage_rows if index == output_index else stage_rows[:50])
+                for column in reference[view.name]
+                if isinstance(value := row.get(column), str) and _ENTITY.fullmatch(value)
+            } | {qid for view in filters for qid in _filter_entities(view.predicate, reference[view.source])}
+            if entities:
+                with request_timing.span("deterministic_labels"):
+                    labels = dict(self.labels(entities))
+        step_labels = {
+            view.name: "where " + _condition(view.predicate, labels, reference[view.source]) for view in filters
+        }
         return ExecutionResult(
             selected,
             rows,
@@ -315,4 +445,7 @@ class DeterministicAnalysis:
             view_rows,
             debug_path,
             fallback_reason,
+            reference,
+            labels,
+            step_labels,
         )

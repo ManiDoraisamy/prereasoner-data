@@ -546,9 +546,12 @@ def test_typed_date_literals_compare_as_dates_in_generated_python():
                 schema_map={"conversation": "main"},
                 row_limit=10_000,
             )
-            assert materialized_python_views(result, plan)[0][2]["events__occurred"] == (
-                "2026-01-02 03:04:05"
-            )
+            # The one-sheet entry is read inside the filter stage, the first materialized one.
+            kept = materialized_python_views(result, plan)[0]
+            assert [row["events__occurred"] for row in kept] == [
+                "2026-01-01",
+                "2026-01-02 03:04:05",
+            ]
             assert materialized_python_views(result, plan)[-1] == ({"count": 2},)
     finally:
         engine.dispose()
@@ -1272,7 +1275,11 @@ def test_multihop_missing_references_and_prior_calculations_match_sql():
         ],
     )
     assert result.rows == ({"total": 10},)
-    assert [len(rows) for rows in result.view_rows] == [3, 3, 1, 1]
+    # The one-sheet entry is read inside the calculated stage; it is not a stage of its own.
+    assert result.emission.sql.manifest["views"] == [
+        "amount_calculated", "amount_enriched", "amount_total",
+    ]
+    assert [len(rows) for rows in result.view_rows] == [3, 1, 1]
 
 
 def test_direct_execution_context_and_explicit_mode_fail_closed():
@@ -1503,7 +1510,6 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
         "deterministic": {"sql": program.record()},
     }
     adapter = SimpleNamespace(
-        _is_id=lambda name: False,
         _encode=lambda words: [[0] for word in words],
         _word_qid=lambda word: None,
         _best_world_entity=lambda words: (words[0], "France", "country", 1),
@@ -1525,7 +1531,7 @@ def test_coverage_prose_is_not_a_place_or_an_ignored_status():
     from types import SimpleNamespace
     from engine.knowledge_query import KnowledgeQuery
     adapter = SimpleNamespace(
-        _is_id=lambda name: False, _encode=lambda words: [[0] for _ in words],
+        _encode=lambda words: [[0] for _ in words],
         _word_qid=lambda word: None,
         _best_world_entity=lambda words: (words[0], "Spurious Place", "city", 0.61),
     )
@@ -1551,7 +1557,6 @@ def test_distinct_count_operator_and_sheet_scope_are_covered():
     from types import SimpleNamespace
     from engine.knowledge_query import KnowledgeQuery
     adapter = SimpleNamespace(
-        _is_id=lambda name: str(name).lower().endswith('id'),
         _encode=lambda words: [[0] for _ in words],
         _word_qid=lambda word: None,
         _best_world_entity=lambda words: (words[0], 'Spurious Place', 'city', 0.61),
@@ -1792,7 +1797,7 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
             with patch(
                 "engine.deterministic.compose.reference_schema",
                 return_value={
-                    "Cities": [("qid", SQLType.TEXT), ("country", SQLType.TEXT)]
+                    "Cities": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]
                 },
             ):
                 plan = lower_composition(
@@ -1830,7 +1835,7 @@ def test_a_world_listing_ends_at_the_filtered_sheet_in_both_emitters():
         bridge_name="orders connected to knowledgebase", route_table="orders", route_column="city",
         meaning_filter={"filter_table": "city", "attr": "country", "value": "Q142"}, own_filters=[],
         world_rate=None, as_of=None, aggregate=None, calculation=None, conversion=None,
-        reference_columns={"city": [("qid", SQLType.TEXT), ("country", SQLType.TEXT)]},
+        reference_columns={"city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]},
     )
     plan = lower_world_query(**slots)
     assert [view.name for view in plan.views] == [
@@ -1865,6 +1870,325 @@ def test_a_world_listing_ends_at_the_filtered_sheet_in_both_emitters():
         pass
     else:
         raise AssertionError("a conversion without an aggregate must not lower to a listing")
+
+
+def test_a_one_sheet_trail_starts_at_the_reference_lookup():
+    # docs/SHEETS_AS_REASONING.md rule 3: 'combined' is a stage only for a real join of two or more
+    # uploaded sheets. The one-sheet 'total sales in france' trail opened with "Combined into one table
+    # · from sales" (2026-09-27). Neither emitter materializes a one-sheet entry: the lookup reads the
+    # upload itself, so its SQL and Python name no relation the trail does not show (rule 2).
+    from engine.deterministic.world import lower_world_query
+
+    rows = [[1, "Paris", 100], [2, "Lyon", 80], [3, "Chennai", 150]]
+    plan = lower_world_query(
+        slug="orders_in_france",
+        schema=[{"table": "orders", "name": column, "affinity": "TEXT" if column == "city" else "INTEGER",
+                 "values": [row[index] for row in rows]}
+                for index, column in enumerate(("id", "city", "amount"))],
+        uploaded=["orders"], foreign_keys=[],
+        joins=[{"left_table": "orders", "left_col": "city", "right_table": "city", "right_col": "qid"}],
+        bridge_name="orders connected to knowledgebase", route_table="orders", route_column="city",
+        meaning_filter={"filter_table": "city", "attr": "country", "value": "Q142"}, own_filters=[],
+        world_rate=None, as_of=None, aggregate=None, calculation=None, conversion=None,
+        reference_columns={"city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]},
+    )
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        for namespace in ("conversation", "knowledgebase"):
+            connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+        for statement in (
+            "CREATE TABLE conversation.orders(id INTEGER, city TEXT, amount INTEGER)",
+            "INSERT INTO conversation.orders VALUES(1,'Paris',100),(2,'Lyon',80),(3,'Chennai',150)",
+            'CREATE TABLE conversation."orders connected to knowledgebase"'
+            '("column" TEXT, value TEXT, entity_qid TEXT)',
+            """INSERT INTO conversation."orders connected to knowledgebase" VALUES"""
+            """('city','Paris','Q90'),('city','Lyon','Q456'),('city','Chennai','Q1352')""",
+            "CREATE TABLE knowledgebase.city(qid TEXT, country TEXT)",
+            "INSERT INTO knowledgebase.city VALUES('Q90','Q142'),('Q456','Q142'),('Q1352','Q668')",
+        ):
+            connection.exec_driver_sql(statement)
+        result = DeterministicAnalysis(plan, conversation_schema="conversation").run(
+            connection, mode="verify", estimated_rows=3
+        )
+    assert result.mode.value == "verify"                                  # both programs ran and agreed
+    stages = ["orders_in_france_enriched_1", "orders_in_france_filtered"]
+    assert result.emission.sql.manifest["views"] == result.emission.python.manifest["views"] == stages
+    assert not any("orders_in_france_combined AS" in " ".join(statement.split()[:4])
+                   for statement in result.emission.sql.statements)      # no combined view is created
+    shown = result.record()["views"]
+    assert [view["name"] for view in shown] == stages
+    lookup = shown[0]
+    assert lookup["inputs"] == ["orders"], lookup["inputs"]
+    # The lookup's own programs read the upload: an inline SELECT in SQL, the ORM rows in Python.
+    assert 'FROM (SELECT "conversation"."orders"."id" AS "orders__id"' in lookup["sql"], lookup["sql"]
+    assert 'FROM "orders_in_france_combined"' not in lookup["sql"]
+    assert "select(Order)" in lookup["python"] and "# View: orders_in_france_combined" not in lookup["python"]
+    assert [len(view["rows"]) for view in shown] == [3, 2]
+
+    # Two uploaded sheets really joined keep their combined sheet, and the next sheet reads from it.
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    with engine.begin() as connection:
+        for namespace in ("conversation", "knowledgebase"):
+            connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+        for statement in (
+            "CREATE TABLE conversation.customers (customer_id INTEGER PRIMARY KEY, name TEXT NOT NULL)",
+            "CREATE TABLE conversation.orders (order_id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL, "
+            "amount NUMERIC NOT NULL, city TEXT NOT NULL)",
+            "CREATE TABLE knowledgebase.country (qid TEXT PRIMARY KEY, name TEXT NOT NULL)",
+            "CREATE TABLE knowledgebase.city (qid TEXT PRIMARY KEY, name TEXT NOT NULL, country TEXT NOT NULL)",
+            "INSERT INTO conversation.customers VALUES (1, 'Ada'), (2, 'Lin')",
+            "INSERT INTO knowledgebase.country VALUES ('Q142', 'France'), ('Q30', 'United States')",
+            "INSERT INTO knowledgebase.city VALUES ('Q90', 'Paris', 'Q142'), ('Q60', 'New York City', 'Q30')",
+            "INSERT INTO conversation.orders VALUES (10, 1, 12.50, 'Q90'), (11, 1, 7.50, 'Q90'), (12, 2, 100, 'Q60')",
+        ):
+            connection.exec_driver_sql(statement)
+        joined = DeterministicAnalysis(_plan(), conversation_schema="conversation").run(
+            connection, mode="verify", estimated_rows=3
+        ).record()["views"]
+    assert joined[0]["name"] == "total_amount_combined", [view["name"] for view in joined]
+    assert joined[1]["inputs"] == ["total_amount_combined"]
+
+
+def test_a_world_trail_shows_entity_labels_and_runs_the_stored_qids():
+    # docs/SHEETS_AS_REASONING.md rule 5: the lookup and filtered sheets of 'everything in France' showed
+    # Q142 and Q90 (2026-09-27). Displayed rows show labels; both programs keep the stored literal, so the
+    # parity check still compares what ran. An uploaded 'Q1' (a quarter) is not an entity: only columns
+    # the plan traces to a knowledgebase table are labelled.
+    from engine.deterministic.world import lower_world_query
+
+    rows = [[1, "Paris", "Q1", 100], [2, "Lyon", "Q2", 80], [3, "Chennai", "Q1", 150]]
+    names = {"Q90": "Paris", "Q456": "Lyon", "Q1352": "Chennai", "Q142": "France", "Q668": "India",
+             "Q1": "universe"}
+    asked = []
+
+    def labels(entities):
+        asked.append(set(entities))
+        return {qid: names[qid] for qid in entities if qid in names}
+
+    def run(aggregate, own_filters=()):
+        plan = lower_world_query(
+            slug="orders_in_france",
+            schema=[{"table": "orders", "name": column,
+                     "affinity": "INTEGER" if column in ("id", "amount") else "TEXT",
+                     "values": [row[index] for row in rows]}
+                    for index, column in enumerate(("id", "city", "quarter", "amount"))],
+            uploaded=["orders"], foreign_keys=[],
+            joins=[{"left_table": "orders", "left_col": "city", "right_table": "city", "right_col": "qid"}],
+            bridge_name="orders connected to knowledgebase", route_table="orders", route_column="city",
+            meaning_filter={"filter_table": "city", "attr": "country", "value": "Q142"},
+            own_filters=list(own_filters),
+            world_rate=None, as_of=None, aggregate=aggregate, calculation=None, conversion=None,
+            reference_columns={"city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]},
+        )
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        with engine.begin() as connection:
+            for namespace in ("conversation", "knowledgebase"):
+                connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+            for statement in (
+                "CREATE TABLE conversation.orders(id INTEGER, city TEXT, quarter TEXT, amount INTEGER)",
+                "INSERT INTO conversation.orders VALUES(1,'Paris','Q1',100),(2,'Lyon','Q2',80),"
+                "(3,'Chennai','Q1',150)",
+                'CREATE TABLE conversation."orders connected to knowledgebase"'
+                '("column" TEXT, value TEXT, entity_qid TEXT)',
+                """INSERT INTO conversation."orders connected to knowledgebase" VALUES"""
+                """('city','Paris','Q90'),('city','Lyon','Q456'),('city','Chennai','Q1352')""",
+                "CREATE TABLE knowledgebase.city(qid TEXT, country TEXT)",
+                "INSERT INTO knowledgebase.city VALUES('Q90','Q142'),('Q456','Q142'),('Q1352','Q668')",
+            ):
+                connection.exec_driver_sql(statement)
+            return DeterministicAnalysis(plan, conversation_schema="conversation", labels=labels).run(
+                connection, mode="verify", estimated_rows=3
+            )
+
+    listing = run(None)
+    assert listing.mode.value == "verify"                       # both programs ran and agreed on the QIDs
+    views = {view["logical_name"]: view for view in listing.record()["views"]}
+    lookup, kept = views["enriched_1"], views["filtered"]
+
+    def column(view, name):
+        return [row[view["columns"].index(name)] for row in view["rows"]]
+
+    assert column(lookup, "city__qid") == ["Paris", "Lyon", "Chennai"], lookup["rows"]
+    assert column(lookup, "city__country") == ["France", "France", "India"], lookup["rows"]
+    assert column(kept, "city__country") == ["France", "France"], kept["rows"]
+    assert column(lookup, "orders__quarter") == ["Q1", "Q2", "Q1"]      # an uploaded value is never an entity
+    assert column(kept, "orders__city") == ["Paris", "Lyon"]
+    assert asked == [{"Q90", "Q456", "Q1352", "Q142", "Q668"}], asked   # one lookup, reference columns only
+    assert "'Q142'" in kept["sql"] and "Q142" in kept["python"]          # the executed programs keep the literal
+    assert [row["city__country"] for row in listing.rows] == ["Q142", "Q142"]
+    assert [row["city__country"] for row in listing.output_rows()] == ["France", "France"]
+    assert [row["orders__quarter"] for row in listing.output_rows()] == ["Q1", "Q2"]
+
+    total = run(("SUM", "orders", "amount"))
+    views = {view["logical_name"]: view for view in total.record()["views"]}
+    assert column(views["filtered"], "city__country") == ["France", "France"]
+    assert views["total"]["rows"] == [[180]] and [tuple(row.values()) for row in total.output_rows()] == [(180,)]
+
+    # The filter sheet's label names its condition in labels (step 4, rule 5); the program compared Q142. An
+    # uploaded 'Q1' in the same condition stays 'Q1', though the resolver would call it 'universe'.
+    assert views["filtered"]["label"] == "where country = 'France'", views["filtered"]["label"]
+    quarter = run(("SUM", "orders", "amount"), own_filters=[("orders", "quarter", "Q1")])
+    kept = {view["logical_name"]: view for view in quarter.record()["views"]}["filtered"]
+    assert kept["label"] == "where country = 'France' and quarter = 'Q1'", kept["label"]
+    assert kept["rows"] == [[1, "Paris", "Q1", 100, "Paris", "France"]], kept["rows"]
+
+
+def test_world_projections_group_the_kept_rows_by_the_named_world_attribute():
+    # 'which continent has the highest total amount' failed in production with "world projection requires
+    # typed projection bindings" (2026-09-27): the served path refused every question that names a world
+    # column. Each shape now lowers to the own-data and compose grammar, a grouped total, and runs in both
+    # programs with verify parity; the grouped QIDs display as labels.
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
+    from engine.deterministic.world import lower_world_query
+
+    names = {"Q46": "Europe", "Q48": "Asia", "Q49": "North America", "Q18": "South America"}
+
+    def labels(entities):
+        return {qid: names[qid] for qid in entities if qid in names}
+
+    countries = {"France": ("Q142", "Q46"), "Germany": ("Q183", "Q46"), "China": ("Q148", "Q48"),
+                 "India": ("Q668", "Q48"), "United States": ("Q30", "Q49"), "Brazil": ("Q155", "Q18"),
+                 "Japan": ("Q17", "Q48"), "Atlantis": ("Q999", None)}
+
+    def run(sales, **binding):
+        rows = [(index + 1, country, amount) for index, (country, amount) in enumerate(sales)]
+        binding.setdefault("dimension", ("country", "continent"))
+        plan = lower_world_query(
+            slug="continents",
+            schema=[{"table": "sales", "name": column, "affinity": "TEXT" if column == "country" else "INTEGER",
+                     "values": [row[index] for row in rows]}
+                    for index, column in enumerate(("id", "country", "amount"))],
+            uploaded=["sales"], foreign_keys=[],
+            joins=[{"left_table": "sales", "left_col": "country", "right_table": "country", "right_col": "qid"}],
+            bridge_name="sales connected to knowledgebase", route_table="sales", route_column="country",
+            meaning_filter=None, own_filters=[], world_rate=None, as_of=None, calculation=None, conversion=None,
+            reference_columns={"country": [("qid", SQLType.TEXT, False), ("continent", SQLType.TEXT, False)]},
+            **binding,
+        )
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        with engine.begin() as connection:
+            for namespace in ("conversation", "knowledgebase"):
+                connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+            connection.exec_driver_sql("CREATE TABLE conversation.sales(id INTEGER, country TEXT, amount INTEGER)")
+            connection.exec_driver_sql(
+                'CREATE TABLE conversation."sales connected to knowledgebase"'
+                '("column" TEXT, value TEXT, entity_qid TEXT)')
+            connection.exec_driver_sql("CREATE TABLE knowledgebase.country(qid TEXT, continent TEXT)")
+            for row in rows:
+                connection.exec_driver_sql("INSERT INTO conversation.sales VALUES (?, ?, ?)", row)
+            for country, (qid, continent) in countries.items():
+                connection.exec_driver_sql(
+                    'INSERT INTO conversation."sales connected to knowledgebase" VALUES (?, ?, ?)',
+                    ("country", country, qid))
+                connection.exec_driver_sql("INSERT INTO knowledgebase.country VALUES (?, ?)", (qid, continent))
+            result = DeterministicAnalysis(plan, conversation_schema="conversation", labels=labels).run(
+                connection, mode="verify", estimated_rows=len(rows))
+        assert result.mode.value == "verify"                  # both programs ran and agreed on the QIDs
+        return plan, result
+
+    sales = [("France", 120), ("Germany", 80), ("China", 200), ("India", 50), ("United States", 300),
+             ("Brazil", 90), ("Japan", 60)]
+    highest = ("SUM", "sales", "amount")
+    plan, result = run(sales, aggregate=highest, order="DESC")
+    assert [view.name for view in plan.stages()] == [
+        "continents_enriched_1", "continents_total", "continents_top_results"]
+    assert [tuple(row.values()) for row in result.output_rows()] == [("Asia", 310)]
+    assert [tuple(row.values()) for row in result.rows] == [("Q48", 310)]        # the programs keep the QID
+    record = {view["logical_name"]: view for view in result.record()["views"]}
+    assert record["total"]["op"] == "group_agg" and record["top_results"]["op"] == "topn"
+    assert sorted(record["total"]["rows"]) == [["Asia", 310], ["Europe", 200], ["North America", 300],
+                                               ["South America", 90]]
+    _plan_asc, lowest = run(sales, aggregate=highest, order="ASC")
+    assert [tuple(row.values()) for row in lowest.output_rows()] == [("South America", 90)]
+    # A tie is broken by the stored key in both programs: Asia (Q48) before North America (Q49).
+    _plan_tie, tie = run([*sales[:4], ("United States", 310), *sales[5:]], aggregate=highest, order="DESC")
+    assert [tuple(row.values()) for row in tie.output_rows()] == [("Asia", 310)]
+
+    # 'which continent …' without an aggregate: each value and the rows that hold it.
+    _plan_values, values = run(sales, aggregate=None)
+    assert sorted(tuple(row.values()) for row in values.output_rows()) == [
+        ("Asia", 3), ("Europe", 2), ("North America", 1), ("South America", 1)]
+    # 'how many continents': distinct values; a country with no continent is not one.
+    plan, counted = run([*sales, ("Atlantis", 5)], aggregate=("COUNT", "sales", None))
+    assert [view.name for view in plan.stages()][-2:] == ["continents_groups", "continents_total"]
+    assert [tuple(row.values()) for row in counted.output_rows()] == [(4,)]
+
+    # Negative: a ranking needs the attribute it ranks, and a SUM or AVG to rank by.
+    for binding, message in (({"aggregate": highest, "order": "DESC", "dimension": None}, "attribute"),
+                             ({"aggregate": ("COUNT", "sales", None), "order": "DESC"}, "SUM or AVG"),
+                             ({"aggregate": None, "order": "ASC"}, "SUM or AVG")):
+        try:
+            run(sales, **binding)
+        except UnsupportedDeterministicPlan as exc:
+            assert message in str(exc), exc
+        else:
+            raise AssertionError(f"lowered an unsupported projection: {binding}")
+
+
+def test_a_binary_float_reference_column_is_read_as_numeric_by_both_programs():
+    # 'average atomic mass' reads knowledgebase."Elements in the World".mass, a double precision column keyed
+    # by name (2026-09-27). The ORM read 1.008 as 1.00800000000000000711 while SQL read 1.008, so verify
+    # failed at the lookup; and Postgres sums floats with rounding a decimal sum does not have. Both programs
+    # now read the column as NUMERIC. (SQLite computes the SQL program's AVG in floats, so the average is
+    # checked against live Postgres in tests.test_world.)
+    from engine.deterministic.runtime import VerificationMismatch
+    from engine.deterministic.world import lower_world_query
+
+    rows = [(1, "Hydrogen", 2), (2, "Oxygen", 1), (3, "Carbon", 3)]
+
+    def run(aggregate, binary_float=True, mode="verify"):
+        plan = lower_world_query(
+            slug="mass",
+            schema=[{"table": "samples", "name": column, "affinity": "TEXT" if column == "element" else "INTEGER",
+                     "values": [row[index] for row in rows]}
+                    for index, column in enumerate(("id", "element", "qty"))],
+            uploaded=["samples"], foreign_keys=[],
+            joins=[{"left_table": "samples", "left_col": "element", "right_table": "elements", "right_col": "name"}],
+            bridge_name="samples connected to knowledgebase", route_table="samples", route_column="element",
+            meaning_filter=None, own_filters=[], world_rate=None, as_of=None, calculation=None, conversion=None,
+            aggregate=aggregate, bridge_key="world_key", reference_keys={"elements": ("name",)},
+            reference_columns={"elements": [("name", SQLType.TEXT, False), ("mass", SQLType.REAL, binary_float)]},
+        )
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        with engine.begin() as connection:
+            for namespace in ("conversation", "knowledgebase"):
+                connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+            for statement in (
+                "CREATE TABLE conversation.samples(id INTEGER, element TEXT, qty INTEGER)",
+                "INSERT INTO conversation.samples VALUES (1,'Hydrogen',2),(2,'Oxygen',1),(3,'Carbon',3)",
+                'CREATE TABLE conversation."samples connected to knowledgebase"'
+                '("column" TEXT, value TEXT, world_key TEXT)',
+                """INSERT INTO conversation."samples connected to knowledgebase" VALUES """
+                """('element','Hydrogen','Hydrogen'),('element','Oxygen','Oxygen'),('element','Carbon','Carbon')""",
+                "CREATE TABLE knowledgebase.elements(name TEXT, mass REAL)",
+                "INSERT INTO knowledgebase.elements VALUES ('Hydrogen',1.008),('Oxygen',15.999),('Carbon',12.011)",
+            ):
+                connection.exec_driver_sql(statement)
+            return DeterministicAnalysis(plan, conversation_schema="conversation").run(
+                connection, mode=mode, estimated_rows=3)
+
+    total = run(("SUM", "elements", "mass"))
+    assert total.mode.value == "verify"                                  # every stage agreed
+    # A recorded sheet crosses the wire as the result does (engine.numeric.wire_value): the ORM's Decimal
+    # masses become exact JSON scalars, a decimal a float cannot hold exactly as its text.
+    import json
+
+    python = run(("SUM", "elements", "mass"), mode="python")
+    assert python.mode.value == "python" and any(
+        isinstance(value, Decimal) for rows in python.view_rows for row in rows for value in row.values())
+    shown = json.loads(json.dumps(python.record()["views"]))
+    assert sorted(row[-1] for row in shown[0]["rows"]) == ["1.008", "12.011", "15.999"], shown[0]["rows"]
+    assert [Decimal(str(value)) for row in total.rows for value in row.values()] == [Decimal("29.018")]
+    lookup = total.record()["views"][0]
+    assert 'CAST("knowledgebase"."elements"."mass" AS NUMERIC)' in lookup["sql"], lookup["sql"]
+    assert "NumericFloat" in total.emission.python.files["elements.py"]
+    # Contrast: read as a plain REAL, the two programs disagree at the lookup, as they did in production.
+    try:
+        run(("SUM", "elements", "mass"), binary_float=False)
+    except VerificationMismatch as exc:
+        assert "1.00800000000000000711" in str(exc) and "mass_enriched_1" in "".join(exc.__notes__), exc
+    else:
+        raise AssertionError("a binary float read as REAL passed verify")
 
 
 def test_decomposed_dag_crosses_branches_and_excludes_existing_pairs():
@@ -2083,7 +2407,30 @@ def test_every_stage_reports_the_exact_python_that_produced_it():
         assert segment.startswith(f"        # View: {view.name}\n"), view.name
         assert segment in source, view.name
     assert "view_sources" not in package.record()["manifest"]
-    assert package.record()["manifest"]["emitter_version"] == 8
+    assert package.record()["manifest"]["emitter_version"] == 9
+    # A one-sheet entry is no stage: the stage that reads it opens with the upload's ORM load, and that
+    # slice of the module is what the sheet shows.
+    orders = _plan().table("orders")
+    one = AnalysisPlan(
+        "amount",
+        (replace(orders, relationships=()),),
+        (
+            CombinedView("amount_combined", ("orders",)),
+            ReducedView(
+                "amount_total",
+                "amount_combined",
+                (AggregateValue("total", "SUM", ColumnValue("orders", "amount")),),
+            ),
+        ),
+    )
+    package = PythonEmitter().emit(one)
+    source = package.files[package.entrypoint]
+    sources = package.manifest["view_sources"]
+    assert set(sources) == {"amount_total"} and package.manifest["views"] == ["amount_total"]
+    assert sources["amount_total"].startswith("        # Rows of orders\n")
+    assert "        # View: amount_total\n" in sources["amount_total"]
+    assert sources["amount_total"] in source
+    assert package.manifest["view_inputs"] == {"amount_total": ["orders"]}
 
 
 def test_streamed_trace_carries_the_same_derivation_as_the_returned_trace():

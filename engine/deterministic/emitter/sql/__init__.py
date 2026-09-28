@@ -68,7 +68,7 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 5
+    VERSION = 6
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
@@ -84,10 +84,25 @@ class SQLEmitter:
         tables_by_view: dict[str, set[str]] = {}
         values_by_view: dict[str, set[str]] = {}
         columns_by_view = plan.view_columns()
+        inlined = plan.inlined_entries()
+        entries: dict[str, str] = {}
+
+        def item(name: str) -> str:
+            # An inlined one-sheet entry is no view: its one consumer reads its SELECT inline.
+            return f"({entries[name]})" if name in entries else _q(name)
+
+        def relation(name: str) -> str:
+            return f"{item(name)} AS {_q(name)}" if name in entries else _q(name)
+
         for view in plan.views:
             if isinstance(view, CombinedView):
                 sql, available_tables = self._combined(plan, view)
                 available_values = set()
+                if view.name in inlined:
+                    entries[view.name] = sql
+                    tables_by_view[view.name] = set(available_tables)
+                    values_by_view[view.name] = available_values
+                    continue
             elif isinstance(view, CrossView):
                 left = columns_by_view[view.left]
                 selected = [f"l.{_q(name)} AS {_q(name)}" for name in left]
@@ -96,8 +111,8 @@ class SQLEmitter:
                     for name in columns_by_view[view.right]
                 )
                 sql = (
-                    f"SELECT {', '.join(selected)} FROM {_q(view.left)} l "
-                    f"CROSS JOIN {_q(view.right)} r"
+                    f"SELECT {', '.join(selected)} FROM {item(view.left)} l "
+                    f"CROSS JOIN {item(view.right)} r"
                 )
                 available_tables = set()
                 available_values = set(columns_by_view[view.name])
@@ -106,8 +121,8 @@ class SQLEmitter:
                     f"r.{_q(key.right)} = l.{_q(key.left)}" for key in view.keys
                 )
                 sql = (
-                    f"SELECT l.* FROM {_q(view.left)} l WHERE NOT EXISTS "
-                    f"(SELECT 1 FROM {_q(view.right)} r WHERE {comparisons})"
+                    f"SELECT l.* FROM {item(view.left)} l WHERE NOT EXISTS "
+                    f"(SELECT 1 FROM {item(view.right)} r WHERE {comparisons})"
                 )
                 available_tables = set()
                 available_values = set(columns_by_view[view.name])
@@ -120,7 +135,9 @@ class SQLEmitter:
             elif isinstance(view, EnrichedView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
-                sql, added = self._enriched(plan, view, available_tables)
+                sql, added = self._enriched(
+                    plan, view, available_tables, relation(view.source)
+                )
                 available_tables |= added
             elif isinstance(view, FilteredView):
                 available_tables = set(tables_by_view[view.source])
@@ -128,7 +145,7 @@ class SQLEmitter:
                 predicate = self._predicate(
                     view.predicate, available_tables, available_values
                 )
-                sql = f"SELECT * FROM {_q(view.source)} WHERE {predicate}"
+                sql = f"SELECT * FROM {relation(view.source)} WHERE {predicate}"
             elif isinstance(view, CalculatedView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
@@ -136,7 +153,7 @@ class SQLEmitter:
                     f"{self._value(item.value, available_tables, available_values)} AS {_q(item.name)}"
                     for item in view.values
                 )
-                sql = f"SELECT {_q(view.source)}.*, {selected} FROM {_q(view.source)}"
+                sql = f"SELECT {_q(view.source)}.*, {selected} FROM {relation(view.source)}"
                 available_values |= {item.name for item in view.values}
             elif isinstance(view, ProjectedView):
                 available_tables = set(tables_by_view[view.source])
@@ -145,13 +162,15 @@ class SQLEmitter:
                     f"{self._value(item.value, available_tables, available_values)} AS {_q(item.name)}"
                     for item in view.values
                 )
-                sql = f"SELECT {selected} FROM {_q(view.source)}"
+                sql = f"SELECT {selected} FROM {relation(view.source)}"
                 available_tables = set()
                 available_values = {item.name for item in view.values}
             elif isinstance(view, ReducedView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
-                sql = self._reduced(view, available_tables, available_values)
+                sql = self._reduced(
+                    view, available_tables, available_values, relation(view.source)
+                )
                 available_tables = set()
                 available_values = {item.name for item in view.group_by} | {
                     item.name for item in view.aggregates
@@ -163,13 +182,15 @@ class SQLEmitter:
                     f"{self._value(item.value, available_tables, available_values)} {'DESC' if item.descending else 'ASC'} NULLS LAST"
                     for item in view.order
                 )
-                sql = f"SELECT * FROM {_q(view.source)} ORDER BY {order}"
+                sql = f"SELECT * FROM {relation(view.source)} ORDER BY {order}"
                 if view.limit is not None:
                     sql += f" LIMIT {view.limit}"
             elif isinstance(view, WindowView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
-                sql = self._window(view, available_tables, available_values)
+                sql = self._window(
+                    view, available_tables, available_values, item(view.source)
+                )
                 available_values.add(view.output)
             else:
                 raise TypeError(f"unsupported SQL view: {type(view).__name__}")
@@ -184,33 +205,14 @@ class SQLEmitter:
                 "slug": plan.slug,
                 "dataset_version": dataset_version,
                 "knowledgebase_release": knowledgebase_release,
-                "views": [view.name for view in plan.views],
-                "output": plan.output,
-                "view_columns": {
-                    name: list(columns) for name, columns in plan.view_columns().items()
-                },
-                "view_operations": plan.view_operations(),
-                "view_inputs": {
-                    name: list(inputs) for name, inputs in plan.view_inputs().items()
-                },
-                "view_sections": plan.view_sections(),
-                "sections": [
-                    {
-                        "id": section.id,
-                        "label": section.label,
-                        "question": section.question,
-                        "views": list(section.views),
-                        "inputs": list(section.inputs),
-                    }
-                    for section in plan.sections
-                ],
+                **plan.stage_manifest(),
             },
         )
 
     def _combined(self, plan: AnalysisPlan, view: CombinedView) -> tuple[str, set[str]]:
         tables = [plan.table(name) for name in view.tables]
         projections = [
-            f"{self._qualified(table.schema, table.name, column.name)} AS {_q(_flat(table.name, column.name))}"
+            f"{self._read(table, column)} AS {_q(_flat(table.name, column.name))}"
             for table in tables
             for column in table.columns
         ]
@@ -259,6 +261,7 @@ class SQLEmitter:
         plan: AnalysisPlan,
         view: EnrichedView,
         available_tables: set[str],
+        source: str,
     ) -> tuple[str, set[str]]:
         sql = f"SELECT {_q(view.source)}.*"
         joins = []
@@ -327,16 +330,17 @@ class SQLEmitter:
         for target_name in projected:
             target = plan.table(target_name)
             sql += ", " + ", ".join(
-                f"{self._qualified(target.schema, target.name, column.name)} "
-                f"AS {_q(_flat(target.name, column.name))}"
+                f"{self._read(target, column)} AS {_q(_flat(target.name, column.name))}"
                 for column in target.columns
             )
-        sql += f" FROM {_q(view.source)}"
+        sql += f" FROM {source}"
         if joins:
             sql += " " + " ".join(joins)
         return sql, set(projected)
 
-    def _reduced(self, view: ReducedView, tables: set[str], values: set[str]) -> str:
+    def _reduced(
+        self, view: ReducedView, tables: set[str], values: set[str], source: str
+    ) -> str:
         selected = [
             f"{self._value(item.value, tables, values)} AS {_q(item.name)}"
             for item in view.group_by
@@ -345,7 +349,7 @@ class SQLEmitter:
             f"{self._aggregate(item, tables, values)} AS {_q(item.name)}"
             for item in view.aggregates
         )
-        sql = f"SELECT {', '.join(selected)} FROM {_q(view.source)}"
+        sql = f"SELECT {', '.join(selected)} FROM {source}"
         if view.group_by:
             sql += " GROUP BY " + ", ".join(
                 self._value(item.value, tables, values) for item in view.group_by
@@ -369,7 +373,7 @@ class SQLEmitter:
             else sql
         )
 
-    def _window(self, view, tables, values):
+    def _window(self, view, tables, values, source):
         def scoped(value, alias):
             if isinstance(value, (ViewValue, ColumnValue)):
                 return f"{alias}." + self._value(value, tables, values)
@@ -379,7 +383,6 @@ class SQLEmitter:
         conditions = [
             f"{scoped(key, 'p')} = {scoped(key, 't')}" for key in view.partition
         ]
-        source = _q(view.source)
         if view.function == "yoy":
             conditions.append(
                 f"{scoped(view.time, 't')} = {scoped(view.time, 'p')} + 1"
@@ -497,6 +500,11 @@ class SQLEmitter:
 
     def _table(self, schema: str, table: str) -> str:
         return _table(self.schema_map.get(schema, schema), table)
+
+    def _read(self, table, column) -> str:
+        """A stored column as a stage reads it; a binary float is read as NUMERIC (ColumnSpec.binary_float)."""
+        qualified = self._qualified(table.schema, table.name, column.name)
+        return f"CAST({qualified} AS NUMERIC)" if column.binary_float else qualified
 
     def _qualified(self, schema: str, table: str, column: str) -> str:
         return _qualified(self.schema_map.get(schema, schema), table, column)

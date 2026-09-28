@@ -29,7 +29,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SchemaGraph
+from engine.sql_schema import SchemaGraph, is_surrogate_key
 
 
 def ordering_requested(question: str) -> bool:
@@ -224,7 +224,7 @@ class ExpansionSupport:
         for schema_column in self.schema.by_table.get(table, ()):
             column = schema_column.ref
             compact = re.sub(r"[^a-z0-9]", "", column.name.lower())
-            if is_id(column.name) and not explicit_id and compact not in token_set:
+            if is_surrogate_key(column.name) and not explicit_id and compact not in token_set:
                 continue
             if not column_matches(column.name, token_set, table):
                 continue
@@ -365,7 +365,7 @@ class ExpansionSupport:
             return False
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            if is_id(column.name) or not column.type.numeric:
+            if is_surrogate_key(column.name) or not column.type.numeric:
                 continue
             for number_position in number_positions:
                 local = set(question_tokens[
@@ -381,7 +381,7 @@ class ExpansionSupport:
         out = []
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            if numeric and (not column.type.numeric or is_id(column.name)):
+            if numeric and (not column.type.numeric or is_surrogate_key(column.name)):
                 continue
             words = set(semantic_tokens(column.name))
             for index, token in enumerate(question_tokens):
@@ -448,7 +448,7 @@ def join_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
         if column.table == table
     ]
     return sorted(
-        set(columns), key=lambda column: (0 if is_id(column.name) else 1, column.name)
+        set(columns), key=lambda column: (0 if is_surrogate_key(column.name) else 1, column.name)
     )[0] if columns else None
 
 
@@ -533,11 +533,6 @@ def parse_number(token: str):
     if re.fullmatch(r"-?\d+(?:\.\d+)?", token):
         return parse_decimal(token) if "." in token else int(token)
     return None
-
-
-def is_id(name: str) -> bool:
-    words = name_tokens(name)
-    return bool(words) and words[-1] in {"id", "identifier", "key", "code"}
 
 
 def projection_window(question_tokens: tuple[str, ...]) -> tuple[tuple[int, str], ...]:
@@ -664,7 +659,7 @@ def money_total_columns(question: str, sch: Sequence[dict]) -> tuple[str, list[d
     table = table_of[question_tokens[position]]
     columns = [entry for entry in sch
                if entry["table"] == table and entry.get("affinity") in ("INTEGER", "REAL")
-               and not is_id(entry["name"])
+               and not is_surrogate_key(entry["name"])
                and set(name_tokens(entry["name"])) & MONEY_MEASURE_COLUMN_WORDS]
     return (table, columns) if columns else None
 

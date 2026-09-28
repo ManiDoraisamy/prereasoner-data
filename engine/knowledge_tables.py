@@ -24,6 +24,7 @@ from engine.currency_intent import (
 from engine.dataset_semantics import is_synthetic_currency_column
 from engine.numeric import coerce_numeric, register_sqlite_decimal, sqlite_numeric, wire_rows
 from engine.sql_ast import Aggregate, render_scalar_expression
+from engine.sql_schema import is_surrogate_key
 from engine.tables import (  # noqa: F401  (csv_table re-exported)
     TableQuery,
     csv_table,
@@ -398,7 +399,7 @@ class KnowledgeTableQuery:
         """an aggregate (cue + a numeric MEASURE searched across ALL uploaded sheets, excluding key/id cols).
         A SUM/AVG cue followed by a SHEET noun and no measure ("total CUSTOMERS …") means COUNT that sheet's rows."""
         low = question.lower().split()
-        numeric = [c for c in sch if c["affinity"] in ("INTEGER", "REAL") and not re.search(r"(^id$|_?id$)", c["name"].lower())]
+        numeric = [c for c in sch if c["affinity"] in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
         tnames = sorted({c["table"] for c in sch})
 
         def table_noun(start):
@@ -685,6 +686,9 @@ class KnowledgeTableQuery:
         selected_measure = None
         selected_conversion = False
         query_tail = ""
+        # The shared plan's typed projection binding: its aggregate, the world attribute that groups the
+        # rows, and for an ordinal request which end of the ranking it keeps.
+        projection_aggregate, grouping, ranking = agg, None, None
         if calculation_plan is not None:
             proj = (
                 render_scalar_expression(
@@ -704,6 +708,7 @@ class KnowledgeTableQuery:
             selected_measure = (calculation_plan.measure.table, calculation_plan.measure.name)
             selected_conversion = "currency" in calculation_plan.specification.split("+")
         elif wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
+            grouping = (wtarget["table"], wtarget["col"])
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
             involved = [mtab]
@@ -717,6 +722,7 @@ class KnowledgeTableQuery:
             aggregate = self._numeric_aggregate(agg[0], measure)
             dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
             direction = "ASC" if set(question.lower().split()) & ARGMIN_CUES else "DESC"
+            grouping, ranking = (wtarget["table"], wtarget["col"]), direction
             proj = dimension
             query_tail = f' GROUP BY {dimension} ORDER BY {aggregate} {direction} LIMIT 1'
             pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} ({agg[0]} by dimension)',
@@ -725,11 +731,13 @@ class KnowledgeTableQuery:
             selected_measure = (agg[1], agg[2])
         elif wtarget and agg and agg[0] in ("SUM", "AVG") and wtarget["affinity"] in ("INTEGER", "REAL"):
             operand = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
+            projection_aggregate = (agg[0], wtarget["table"], wtarget["col"])   # the world measure itself
             proj = self._numeric_aggregate(agg[0], operand)
             pdesc = ("aggregate", f'{agg[0]}({wtarget["table"]}.{wtarget["col"]})', "agg cue + world measure named")
             involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
             selected_measure = (wtarget["table"], wtarget["col"])
         elif wtarget:
+            projection_aggregate, grouping = None, (wtarget["table"], wtarget["col"])   # each value, not an aggregate
             proj = f'DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])}'      # SELECT DISTINCT the world attribute
             pdesc = ("select", f'DISTINCT {wtarget["table"]}.{wtarget["col"]}', "world column named")
             involved = [mtab]
@@ -795,7 +803,6 @@ class KnowledgeTableQuery:
         else:
             fw, disamb, warnings = upfrom, None, []          # conversion-only: no meaning joins to walk
         fw_no_rate = fw
-        fw_join = fw                                         # joins walked, no rate join, no filters — the 'joined' step
         if world_rate:
             # The knowledgebase table joins like any other table in the conversation: by VALUE on the
             # (code, date) pair. The date compares as ISO text on both engines (Postgres date::text is
@@ -826,51 +833,51 @@ class KnowledgeTableQuery:
         ok, why = self.q11.guard(sql)
         result, err = None, None
         coverage_gap = None
-        response_views = None
         deterministic_record = None
         if ok:
             try:
                 con = self._connect(tablemap, sch, attach_world=bool(joins) or bool(world_rate))
                 from engine.deterministic.context import current_analysis_context, current_execution_record
+                from engine.deterministic.world import lower_world_query, reference_schema
                 context = current_analysis_context()
-                if context is not None and hasattr(self.q11, "_execute_deterministic"):
-                    from engine.deterministic.world import lower_world_query, reference_schema
-                    from engine.deterministic.lower import UnsupportedDeterministicPlan
-                    if wtarget:
-                        raise UnsupportedDeterministicPlan("world projection requires typed projection bindings")
-                    required = {}
-                    for join in joins:
-                        required.setdefault(join["right_table"], set()).add(join["right_col"])
-                        if join["left_table"] not in tablemap:
-                            required.setdefault(join["left_table"], set()).add(join["left_col"])
-                    if mf:
-                        required.setdefault(mf["filter_table"], set()).add(mf["attr"])
-                    if world_rate:
-                        required.setdefault("exchange_rate", set()).update(
-                            (world_rate["rate_col"], "updated_at", "source_release_id"))
-                    shared_plan = lower_world_query(
-                        slug=context.slug, schema=sch, uploaded=joined, foreign_keys=selected_fks,
-                        joins=joins, bridge_name=self._conn_bridge_name(mtab) if joins else None,
-                        route_table=mtab, route_column=route_col, meaning_filter=mf,
-                        own_filters=own_filters, world_rate=world_rate, as_of=as_of,
-                        aggregate=agg, calculation=calculation_plan, conversion=conversion,
-                        reference_columns=reference_schema(con, required), disambiguated=disamb[0] if disamb else None)
-                    release = self._bridge_world_version()
-                    if world_rate:
-                        release_row = con.execute('SELECT source_release_id FROM knowledgebase.exchange_rate LIMIT 1').fetchone()
-                        release += f"; ECB={release_row[0] if release_row else 'missing'}"
-                    # Publish the uploaded source transaction before acquiring the shared
-                    # repeatable-read SQLAlchemy snapshot used by BOTH programs.
-                    con.conn.commit()
-                    cols, rows = self.q11._execute_deterministic(tablemap, shared_plan, release)
-                    deterministic_record = current_execution_record()
-                    result = {"columns": cols, "rows": wire_rows(rows[:50])}
-                else:
-                    cur = con.execute(sql)
-                    cols = [d[0] for d in cur.description]
-                    result = {"columns": cols, "rows": wire_rows(cur.fetchall()[:50])}
-                if proj_world_col and result["rows"] and hasattr(self, "_labelize_qids"):
-                    self._labelize_qids(result)   # a projected world entity-attr column holds QIDs -> show 'Asia', not 'Q48'
+                if context is None:                   # production enters one per request (engine/server.py)
+                    raise RuntimeError("world questions are served inside an analysis context")
+                required = {}
+                for join in joins:
+                    required.setdefault(join["right_table"], set()).add(join["right_col"])
+                    if join["left_table"] not in tablemap:
+                        required.setdefault(join["left_table"], set()).add(join["left_col"])
+                if mf:
+                    required.setdefault(mf["filter_table"], set()).add(mf["attr"])
+                if wtarget:
+                    required.setdefault(wtarget["table"], set()).add(wtarget["col"])
+                # Each reference table is keyed by the column its join lands on: 'qid' for cities and
+                # countries, 'name' for elements and states. The bridge's world_key holds that key's
+                # value; entity_qid holds the QID, which only a qid-keyed table can join on.
+                keys = {join["right_table"]: (join["right_col"],) for join in joins}
+                if world_rate:
+                    required.setdefault("exchange_rate", set()).update(
+                        (world_rate["rate_col"], "updated_at", "source_release_id"))
+                shared_plan = lower_world_query(
+                    slug=context.slug, schema=sch, uploaded=joined, foreign_keys=selected_fks,
+                    joins=joins, bridge_name=self._conn_bridge_name(mtab) if joins else None,
+                    route_table=mtab, route_column=route_col, meaning_filter=mf,
+                    own_filters=own_filters, world_rate=world_rate, as_of=as_of,
+                    aggregate=projection_aggregate, calculation=calculation_plan, conversion=conversion,
+                    reference_columns=reference_schema(con, required, keys), reference_keys=keys,
+                    bridge_key="entity_qid" if not joins or joins[0]["right_col"] == "qid" else "world_key",
+                    disambiguated=disamb[0] if disamb else None, dimension=grouping, order=ranking)
+                release = self._bridge_world_version()
+                if world_rate:
+                    release_row = con.execute('SELECT source_release_id FROM knowledgebase.exchange_rate LIMIT 1').fetchone()
+                    release += f"; ECB={release_row[0] if release_row else 'missing'}"
+                # Publish the uploaded source transaction before acquiring the shared
+                # repeatable-read SQLAlchemy snapshot used by BOTH programs.
+                con.conn.commit()
+                cols, rows = self.q11._execute_deterministic(tablemap, shared_plan, release,
+                                                             labels=self._qid_labels)
+                deterministic_record = current_execution_record()
+                result = {"columns": cols, "rows": wire_rows(rows[:50])}
                 if mf:                            # FRESHNESS GUARD — trace the word rows that ACTUALLY contributed
                     ft = mf["filter_table"]; key = self.words[ft]["key"]
                     if "updated_at" in self.words[ft]["columns"]:
@@ -893,115 +900,6 @@ class KnowledgeTableQuery:
                     base_n = con.execute(f'SELECT COUNT(*) {fw_no_rate}').fetchone()[0]
                     conv_n = con.execute(f'SELECT COUNT(*) {fw}').fetchone()[0]
                     coverage_gap = (base_n - conv_n, base_n) if conv_n < base_n else None
-                    if coverage_gap is None and deterministic_record is None:
-                        fact_q, er_q = qident(world_rate["fact"]), qident("exchange_rate")
-
-                        def _wire_rows(c):
-                            # Postgres returns date objects; every view crosses TWO JSON boundaries
-                            # (the RTDB stream and the HTTP envelope), so serialize at the source —
-                            # in-process tests see exactly what the wire carries.
-                            return [["" if v is None
-                                     else v.isoformat() if isinstance(v, (datetime.date, datetime.datetime))
-                                     else v for v in row] for row in c.fetchall()]
-
-                        # The full derivation trail, one sheet per step, in the ONE step grammar
-                        # every emitter follows (docs/SHEETS_AS_REASONING.md): combined only when
-                        # uploaded sheets really joined; a world lookup is its own reference-lookup
-                        # sheet showing the columns later steps use; filters follow. The resolution
-                        # slides stream separately from the serving host (knowledge_compose).
-                        response_views = []
-                        if updescs:                          # >=2 uploaded sheets joined -> the combined table
-                            combined_proj = ", ".join(f'{qident(t)}.*' for t in joined)
-                            joined_sql = f'SELECT {combined_proj} {upfrom} LIMIT 50'
-                            jc = con.execute(joined_sql)
-                            response_views.append({
-                                "name": "combined", "op": "join",
-                                "label": "join " + " + ".join(joined),
-                                "sql": joined_sql, "columns": [d[0] for d in jc.description],
-                                "rows": _wire_rows(jc),
-                            })
-                        # Reference columns any later step uses (the filter attribute, a projected
-                        # world attribute) — shown BEFORE anything references them (rule 2: no
-                        # forward references), with QIDs resolved to labels for display (rule 5).
-                        upload_names = {t["name"] for t in norm}
-                        wcols = []
-                        if mf:
-                            wcols.append((mf["filter_table"], mf["attr"]))
-                        if wtarget and wtarget["table"] not in upload_names:
-                            wcols.append((wtarget["table"], wtarget["col"]))
-                        wcols = list(dict.fromkeys(wcols))
-                        qid_labels = {}
-                        if joins and wcols:
-                            fact_cols = next((t["columns"] for t in norm if t["name"] == world_rate["fact"]), [])
-                            aliases = [c if c not in fact_cols else f"{t} {c}" for (t, c) in wcols]
-                            wproj = "".join(f', {qident(t)}.{qident(c)} AS {qident(a)}'
-                                            for (t, c), a in zip(wcols, aliases))
-                            lookup_sql = f'SELECT {fact_q}.*{wproj} {fw_join} LIMIT 50'
-                            lc = con.execute(lookup_sql)
-                            lrows = _wire_rows(lc)
-                            n_fact = len(lc.description) - len(wcols)
-                            wanted = {str(r[i]) for r in lrows for i in range(n_fact, len(r))
-                                      if re.fullmatch(r"Q\d+", str(r[i]))}
-                            if mf and re.fullmatch(r"Q\d+", str(mf["value"])):
-                                wanted.add(str(mf["value"]))     # the filter label needs it even off-page
-                            qid_labels = self._qid_labels(wanted) if hasattr(self, "_qid_labels") else {}
-                            for r in lrows:
-                                for i in range(n_fact, len(r)):
-                                    r[i] = qid_labels.get(str(r[i]), r[i])
-                            response_views.append({
-                                "name": "knowledgebase_lookup", "op": "world_join",
-                                "label": f'join {mtab} to the world on {route_col}',
-                                "sql": lookup_sql, "columns": [d[0] for d in lc.description],
-                                "rows": lrows,
-                            })
-                        if conds:                            # the world/own filter -> the kept rows
-                            filtered_sql = f'SELECT {fact_q}.* {fw_no_rate} LIMIT 50'
-                            fc = con.execute(filtered_sql)
-                            human = qid_labels.get(mf["value"], mf["value"]) if mf else None
-                            flabel = (f'where {mf["attr"]} = {human!r}' if mf else
-                                      "where " + " and ".join(f"{c} = {v!r}" for (_t, c, v) in own_filters))
-                            response_views.append({
-                                "name": "filtered", "op": "world_filter" if mf else "filter",
-                                "label": flabel, "sql": filtered_sql,
-                                "columns": [d[0] for d in fc.description],
-                                "rows": _wire_rows(fc),
-                            })
-                        # The CALCULATED view: row-level arithmetic made visible beside the ECB rate
-                        # and its true publication date. Other joined factors (for example a tier
-                        # discount) are visible in the preceding combined view and in this SQL.
-                        product_sql = (
-                            render_scalar_expression(
-                                calculation_plan.expression.operand,
-                                dialect=self._calculation_dialect(),
-                            )
-                            if calculation_plan is not None
-                            and isinstance(calculation_plan.expression, Aggregate)
-                            else self._numeric_multiply(
-                                f'{fact_q}.{qident(agg[2])}',
-                                f'{er_q}.{qident(world_rate["rate_col"])}',
-                            )
-                        )
-                        calc_sql = (
-                            f'SELECT {fact_q}.*, {er_q}.{qident(world_rate["rate_col"])}, '
-                            f'{er_q}.{qident("updated_at")} AS rate_published, '
-                            f'{product_sql} '
-                            f'AS converted {fw} LIMIT 50'
-                        )
-                        calc_cur = con.execute(calc_sql)
-                        response_views.append({
-                            "name": "calculated", "op": "convert", "label": "calculated",
-                            "sql": calc_sql,
-                            "columns": [d[0] for d in calc_cur.description],
-                            "rows": _wire_rows(calc_cur),
-                            "source_release_id": prov.get("release_id"),
-                        })
-                        # The UI overlays the final Result onto the LAST view, so the total must be
-                        # its own view — otherwise the per-row calculated grid is replaced by the SUM.
-                        response_views.append({
-                            "name": "total", "op": "group_agg", "label": "total", "sql": sql,
-                            "columns": [d[0] for d in cur.description],
-                            "rows": result["rows"],
-                        })
             except Exception as e:
                 err = f"{type(e).__name__}: {e}"
         else:
@@ -1015,7 +913,7 @@ class KnowledgeTableQuery:
         feats += [{"col": k, "dims": v} for k, v in world_dims.items() if "." in k]   # + the world columns' read dims
         plan = self._build_plan(pdesc, updescs, joins, mf, own_filters)
         response = {"question": question, "as_of": as_of, "sql": sql, "result": result, "error": err,
-                "views": response_views or [],
+                "views": [],
                 "routed": {f"{t}.{c}": wt for (t, c), wt in routes.items()}, "dims": coldims,
                 "meaning_join": join_desc, "provenance": prov, "warnings": warnings,
                 "debug": self._debug_input(norm, question, world_sections, feats, plan, False),

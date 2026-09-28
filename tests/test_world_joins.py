@@ -54,13 +54,13 @@ def main():
         print("set KB_PG_PASSWORD to run"); return 1
     from engine.knowledge_query import KnowledgeQuery
     Q = KnowledgeQuery()
-    from regress.live_schema import live_schema
+    from regress.live_schema import live_schema, served
     schema = live_schema().name
     npass = 0
     for label, tbl, exp_table, q, exp in CASES:
         routes = Q.route(tbl)
         routed = routes.get((tbl["name"], tbl["columns"][0]))
-        res = Q.serve([tbl], q, schema=schema)
+        res = served(schema, Q.serve, [tbl], q, schema=schema)
         got = _scalar(res)
         ok_route = routed == exp_table
         ok_val = got == exp and not res.get("clarify")

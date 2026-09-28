@@ -45,6 +45,7 @@ from engine.sql_ast import (
     Star,
 )
 from engine.sql_ast import SQLType as ASTType
+from engine.sql_schema import is_surrogate_key
 
 
 class UnsupportedDeterministicPlan(ValueError):
@@ -133,11 +134,7 @@ def lower_select_query(
         id_columns = tuple(
             str(column["name"])
             for column in columns_by_table[table]
-            if re.search(
-                r"(^id$|_?id$|^index$|^pk$)",
-                str(column["name"]),
-                re.IGNORECASE,
-            )
+            if is_surrogate_key(str(column["name"]))
         )
         all_columns = tuple(str(column["name"]) for column in columns_by_table[table])
         candidates = [*preferred_keys[table]]

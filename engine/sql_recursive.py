@@ -33,7 +33,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import ForeignKey, SchemaGraph
+from engine.sql_schema import ForeignKey, SchemaGraph, is_surrogate_key
 
 
 _NEGATIVE_RE = re.compile(
@@ -305,7 +305,7 @@ class RecursiveQueryExpander:
         targets = [
             column.ref for column in self.schema.columns
             if column.ref.type.numeric
-            and not _is_id(column.ref.name)
+            and not is_surrogate_key(column.ref.name)
             and set(_name_tokens(column.ref.name)) <= tokens
         ]
         count_requested = bool(tokens & {"count", "number"}) or "how many" in " ".join(_tokens(question))
@@ -516,7 +516,7 @@ class RecursiveQueryExpander:
         question_tokens = set(_tokens(question))
         for schema_column in self.schema.by_table.get(table, ()):
             column = schema_column.ref
-            if _is_id(column.name):
+            if is_surrogate_key(column.name):
                 continue
             overlap = len(set(_semantic_name_tokens(column.name)) & question_tokens)
             if overlap:
@@ -630,7 +630,7 @@ def _entity_join_key(query: SelectQuery, table: str) -> ColumnRef | None:
                 options.append(column)
     if not options:
         return None
-    return sorted(set(options), key=lambda column: (0 if _is_id(column.name) else 1, column.name))[0]
+    return sorted(set(options), key=lambda column: (0 if is_surrogate_key(column.name) else 1, column.name))[0]
 
 
 def _positive_predicate(predicate: Predicate | None) -> Predicate | None:
@@ -660,7 +660,7 @@ def _tree_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
         column for join in joins if len(join.predicates) == 1 for column in join.predicates[0]
         if column.table == table
     ]
-    return sorted(set(options), key=lambda column: (0 if _is_id(column.name) else 1, column.name))[0] if options else None
+    return sorted(set(options), key=lambda column: (0 if is_surrogate_key(column.name) else 1, column.name))[0] if options else None
 
 
 def _table_mentions(schema: SchemaGraph, tokens: tuple[str, ...]) -> list[tuple[int, str]]:
@@ -847,11 +847,6 @@ def _text_table_position(question: str, table: str) -> int | None:
         if question_tokens[index:index + len(words)] == words:
             return index
     return None
-
-
-def _is_id(name: str) -> bool:
-    words = _name_tokens(name)
-    return bool(words) and words[-1] in {"id", "identifier", "key", "code"}
 
 
 def _name_tokens(name: str) -> tuple[str, ...]:

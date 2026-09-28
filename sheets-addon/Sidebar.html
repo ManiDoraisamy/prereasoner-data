@@ -78,6 +78,7 @@
       #send:disabled { opacity: .45; cursor: default; }
       .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
     </style>
+    <link rel="stylesheet" href="https://chat.prereasoner.com/lib/conversation.css?v=1">
   </head>
   <body>
     <div class="sidebar branding-below" id="scroll">
@@ -442,7 +443,7 @@
           submit();
         });
         questionEl.addEventListener('keydown', function (event) {
-          if (event.key === 'Enter' && !event.shiftKey) {
+          if (event.key === 'Enter' && !event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
             event.preventDefault();
             submit();
           }

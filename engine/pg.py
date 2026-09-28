@@ -274,7 +274,10 @@ class _TableQueryPg(TableQuery):
             if conn is not None:
                 conn.close()
 
-    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None):
+    def _execute_deterministic(self, tablemap, plan, knowledgebase_release=None, labels=None):
+        """Run a served plan through both emitters. ``labels`` resolves knowledgebase entities to their
+        labels for display (docs/SHEETS_AS_REASONING.md rule 5); a plan that reads the knowledgebase
+        cannot be shown without it, so every world trail passes it here, the one executor they share."""
         from sqlalchemy import create_engine
         from sqlalchemy.pool import NullPool
 
@@ -288,6 +291,8 @@ class _TableQueryPg(TableQuery):
         context = current_analysis_context()
         if context is None:
             raise RuntimeError("deterministic execution requires a named-analysis context")
+        if labels is None and any(table.schema == "knowledgebase" for table in plan.tables):
+            raise RuntimeError("a plan that reads the knowledgebase needs its entity labels")
         engine = create_engine(
             "postgresql+psycopg2://",
             creator=_orm_pg,
@@ -299,6 +304,7 @@ class _TableQueryPg(TableQuery):
                 conversation_schema=self._pg_schema,
                 dataset_version=context.dataset_version or analysis_input_hash(list(tablemap.values())),
                 knowledgebase_release=knowledgebase_release,
+                labels=labels,
             ).run(
                 engine,
                 mode=context.execution_mode or deterministic_execution_mode(),
@@ -319,11 +325,12 @@ class _TableQueryPg(TableQuery):
                 revision=context.revision,
             )
             set_execution_record(result.record())
-            if result.rows:
-                columns = list(result.rows[0])
+            shown = result.output_rows()
+            if shown:
+                columns = list(shown[0])
             else:
                 columns = list(plan.view_columns()[str(plan.output)])
-            rows = [tuple(row.get(column) for column in columns) for row in result.rows]
+            rows = [tuple(row.get(column) for column in columns) for row in shown]
             return columns, rows
         finally:
             engine.dispose()

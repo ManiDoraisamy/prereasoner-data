@@ -289,15 +289,33 @@ class KnowledgeBridgeMixin:
                     )
 
     def _serve_hybrid(self, norm, fks, planner_schema, question, predicate, plan,
-                      country, as_of, schema):
+                      country, as_of, schema, mention=(), filters=()):
+        """World filter + semantic rank over the free-text column.
+
+        ``mention`` holds the search's content words with their plural forms. When the sheet's free text
+        contains every one of them ('trench coat' in 'Gabardine Trench Coat'), the search is literal: only
+        the rows that mention them answer it, and the similarity orders them. With no verbatim mention
+        anywhere in the sheet, the search stays semantic and ranks every row that passes the world filter.
+        ``filters`` are the cell values the question quotes, as (column, value) on this sheet: exact
+        filters ('in Paris'), never search words.
+        """
         del fks
         table = plan["table"]
         table_name = table["name"]
+        freetext = plan["freetext"]
         self._pg_schema = schema
         predicate_vector = pgvector_literal(_norm_vec(self._encode([predicate])[0]))
         connected = self._conn_bridge_name(table_name)
         unconnected = f"{table_name} unconnected to knowledgebase"
         route_column = plan["conn"][0][0] if plan["conn"] else None
+        text_index = table["columns"].index(freetext)
+
+        def mentions(value):
+            words = set(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+            return all(words & set(forms) for _word, forms in mention)
+
+        literal = bool(mention) and any(mentions(row[text_index]) for row in table["rows"])
+        patterns = [r"\y(" + "|".join(forms) + r")\y" for _word, forms in mention] if literal else []
         connection = _pg()
         try:
             cursor = connection.cursor()
@@ -311,20 +329,24 @@ class KnowledgeBridgeMixin:
                 elif world_type:
                     self._cell_bridge_sql(norm, table_name, column, world_type, country)
             display = ", ".join(f"m.{qident(column)}" for column in table["columns"])
+            conditions = []
+            if country and route_column:
+                conditions.append(
+                    f"EXISTS (SELECT 1 FROM {qident(schema)}.{qident(connected)} c "
+                    f"WHERE c.\"column\" = {qlit(route_column)} "
+                    f"AND lower(c.\"value\") = lower(m.{qident(route_column)}) "
+                    f"AND c.\"country\" = {qlit(country)})"
+                )
+            conditions += [f"lower(m.{qident(column)}) = lower(%s)" for column, _value in filters]
+            conditions += [f"m.{qident(freetext)} ~* %s" for _ in patterns]
             sql = (
                 f"SELECT {display} FROM {qident(schema)}.{qident(table_name)} m "
                 f"JOIN {qident(schema)}.{qident(unconnected)} u ON u.\"__pk\" = m.\"__pk\" "
-                f"AND u.\"column\" = {qlit(plan['freetext'])} "
+                f"AND u.\"column\" = {qlit(freetext)} "
+                + (f"WHERE {' AND '.join(conditions)} " if conditions else "")
+                + f'ORDER BY u."embedding" <=> %s::vector LIMIT {self.HYBRID_LIMIT}'
             )
-            if country and route_column:
-                sql += (
-                    f"WHERE EXISTS (SELECT 1 FROM {qident(schema)}.{qident(connected)} c "
-                    f"WHERE c.\"column\" = {qlit(route_column)} "
-                    f"AND lower(c.\"value\") = lower(m.{qident(route_column)}) "
-                    f"AND c.\"country\" = {qlit(country)}) "
-                )
-            sql += f'ORDER BY u."embedding" <=> %s::vector LIMIT {self.HYBRID_LIMIT}'
-            cursor.execute(sql, [predicate_vector])
+            cursor.execute(sql, [*(value for _column, value in filters), *patterns, predicate_vector])
             result_columns = [description[0] for description in cursor.description]
             result_rows = [["" if value is None else value for value in row]
                            for row in cursor.fetchall()]
@@ -332,24 +354,30 @@ class KnowledgeBridgeMixin:
         finally:
             connection.close()
 
+        shown = []
+        if country and route_column:
+            shown.append(
+                f"EXISTS (SELECT 1 FROM {qident(connected)} c "
+                f"WHERE lower(c.\"value\")=lower(m.{qident(route_column)}) "
+                f"AND c.\"country\"={qlit(country)})"
+            )
+        shown += [f"lower(m.{qident(column)}) = lower({qlit(value)})" for column, value in filters]
+        shown += [f"m.{qident(freetext)} ~* {qlit(pattern)}" for pattern in patterns]
         display_sql = (
             f"SELECT {display} FROM {qident(table_name)} m "
             f"JOIN {qident(unconnected)} u ON u.\"__pk\"=m.\"__pk\" "
-            f"AND u.\"column\"={qlit(plan['freetext'])} "
+            f"AND u.\"column\"={qlit(freetext)} "
+            + (f"WHERE {' AND '.join(shown)} " if shown else "")
+            + f"ORDER BY u.\"embedding\" <=> embed({predicate!r}) LIMIT {self.HYBRID_LIMIT}"
         )
-        if country and route_column:
-            display_sql += (
-                f"WHERE EXISTS (SELECT 1 FROM {qident(connected)} c "
-                f"WHERE lower(c.\"value\")=lower(m.{qident(route_column)}) "
-                f"AND c.\"country\"={qlit(country)}) "
-            )
-        display_sql += f"ORDER BY u.\"embedding\" <=> embed({predicate!r}) LIMIT {self.HYBRID_LIMIT}"
         return {
             "question": question, "as_of": as_of, "sql": display_sql,
             "result": {"columns": result_columns, "rows": result_rows}, "error": None,
-            "routed": {"table": table_name, "freetext_col": plan["freetext"],
+            "routed": {"table": table_name, "freetext_col": freetext,
                        "connected": [column for column, _ in plan["conn"]]},
             "meaning_join": {"country": country, "predicate": predicate,
+                             "mentions": [word for word, _forms in mention] if literal else [],
+                             "filters": [f"{column} = {value}" for column, value in filters],
                              "connected_bridge": connected, "unconnected_bridge": unconnected},
             "provenance": None, "warnings": [], "dims": None,
             "model": "engine - unified encoder: persisted world bridge + semantic pgvector rank",

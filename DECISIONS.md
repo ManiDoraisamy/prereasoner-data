@@ -700,3 +700,89 @@ read the wrong column. The message shows the evidence and the fix: `Column H has
 the headers look one column to the left of their data (G1 "amount" is above "GBP"). Put each header above
 its data.` An unnamed cell under a merged header remains ambiguous, and the 9 shipped workbooks convert
 unchanged.
+
+## Grammar words carry no aggregate and no search (2026-09-27)
+
+"who ordered a trench coat in France" was answered COUNT = 5: the operator readout fires COUNT above
+0.05, and the article "a" read 0.15. "everything in France" went to the semantic search, which ranked
+France's orders by similarity to the word "everything". Both read meaning off closed-class words.
+
+`engine/closed_class.py` owns the engine's one spaCy model and the closed-class reading of a question:
+the words its tagger reads as determiners, pronouns, adpositions, auxiliaries, conjunctions, particles,
+interjections or punctuation in that sentence. The operator readout ignores them, the semantic search
+never searches for them, and the coverage check never reports them dropped. The tagger reads context,
+so no word list has to track the grammar. Negation and exclusion cues are closed-class but carry a
+constraint, so they are never ignored, and no semantic search answers a question that uses one ("orders
+in France without a trench coat" asks to clarify). A question that asks for a computation ("highest",
+"how many") is never a semantic search either. When the sheet's free text mentions every content word,
+the search is literal ("trench coat" returns order 109 alone); cell values the question quotes ("Paris",
+"Gold") filter exactly.
+
+## A one-sheet trail starts at its lookup and shows labels while running QIDs (2026-09-27)
+
+A one-sheet world trail opened with "Combined into one table · from sales", a copy of the upload that adds
+no column and drops no row (docs/SHEETS_AS_REASONING.md rule 3). Hiding that sheet was not enough: the
+lookup's own SQL and Python read it, so the trail would name a relation it does not show (rule 2).
+`AnalysisPlan.inlined_entries()` marks a one-table entry with one consumer, and both emitters read it
+inside that consumer: the SQL selects from the entry's `SELECT` as an inline subquery, and the Python stage
+opens with the table's ORM load. Both programs declare the same stages, the first sheet names the upload
+as its source, and a combined view that joins two or more sheets stays a stage.
+
+Reference columns store QIDs, and the lookup, filter and Result showed `Q142` and `Q90` (rule 5). After
+both programs ran and agreed, the deterministic service labels the rows it displays:
+`AnalysisPlan.reference_columns()` traces the columns that carry a knowledgebase value unchanged, through
+projections and group keys, and `EntityQuery._qid_labels` resolves them. The one executor every served
+plan passes through (`pg._execute_deterministic`) refuses a knowledgebase plan without that resolver, so a
+new world trail cannot skip it. The executed SQL and Python keep the stored literal, and an uploaded `Q1`
+is never labelled.
+
+## A world projection is a grouped total, and a binary float is read as NUMERIC (2026-09-27)
+
+Every question that names a world column ("which continent has the highest total amount", "average atomic
+mass") failed on the served path: the world path refused any projection before lowering it, and the live
+suite passed only because it served without an analysis context. `lower_world_query` now takes the typed
+projection binding the world path already selected, the world attribute (`dimension`) and which end of an
+ordinal ranking to keep (`order`), and ends each shape in the own-data and compose grammar: a grouped total,
+with a top-results sheet for a ranking and a second count for "how many". The answer carries its measure
+(`Asia, 310`; `Asia, 1`), as compose and own-data answers do.
+
+Two defects surfaced under it. The world path keyed every reference table by `qid`, but elements and states
+are keyed by `name`; each table is now keyed by the column its join lands on, and the bridge joins on
+`world_key` unless that key is `qid`. And the generated ORM read a double precision column through
+`Numeric(58, 20)`, so 1.008 arrived as 1.00800000000000000711 where SQL read 1.008, and Postgres sums floats
+with rounding a decimal sum does not have. `reference_schema` marks a double precision column
+(`ColumnSpec.binary_float`), and both programs read it as NUMERIC at the source: `CAST(... AS NUMERIC)` in
+the SQL lookup and a `NumericFloat` column in the ORM. Every later stage is then exact decimal arithmetic on
+identical values.
+
+## One surrogate-key rule (2026-09-28)
+
+Eleven copies of "is this column a surrogate key" had drifted apart. Compose's regex matched `order_id` but not
+`order ID`, so the customer-orders sheet offered its order numbers as a measure, and "orders for a brass
+magnifying glass in france" summed them. The ranker's regex called `paid` and `uid` keys. The recall modules
+counted codes; the search did not. `engine/sql_schema.is_surrogate_key` is now the only rule, read by the
+planner, the ranker's features, compose, the world path and the deterministic lowering: the last word of the
+name is an identifier word (id, ids, uid, uuid, guid, identifier, key, pk), or the whole name is `index`. A code
+(`country_code`) is a natural attribute people ask for by name, not a surrogate key.
+
+The ranker's features are unchanged on every Spider dev column name, so the fitted arbiter sees the inputs it
+was trained on. Only three recall modules change on dev, on 16 code-named columns in nine databases. Of those
+databases' 551 questions, 539 build byte-identical search pools. The served selection changes on 2 of the other
+12 (wta_1 #451, tvshow #629), both wrong before and after.
+
+## World questions have one implementation: the served one (2026-09-28)
+
+Production enters an analysis context for every request (`engine/server.py`), so world questions always ran
+through the shared deterministic plan. The world owners still kept a second, context-less SQL implementation:
+`engine/knowledge_tables.py`'s plain-SQL branch and hand-built currency trail, and `engine/knowledge_query.py`'s
+non-geo VALUES-relation trail, each with its own QID labelling. Most live world suites and both regress world
+goldens exercised that branch instead of the served one. Every live suite and golden now serves through
+`regress.live_schema.served`, which enters the context the server enters, and the context-less branches and
+`EntityQuery._labelize_qids` are deleted. A world request without a context fails loudly.
+
+Serving the suites as production does exposed two gaps in the served trail, both fixed in the deterministic
+service: a filter sheet's label did not name its condition (`where country = 'France'`, docs/SHEETS_AS_REASONING.md
+step 4 and rule 5), and recorded sheets carried Decimal and date cells that the server converted and logged
+as leaks. It also exposed a production answer the context-less golden had hidden: a population threshold
+("total sales in big cities with population over 1,000,000") returns a compose table instead of 350 or a
+clarify. That is a separate task.

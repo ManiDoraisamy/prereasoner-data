@@ -26,7 +26,6 @@ from engine.sql_expansion import (
     and_terms as _and_terms,
     build_candidate as _candidate,
     column_matches as _column_matches,
-    is_id as _is_id,
     join_key as _join_key,
     linker_noise as _linker_noise,
     ordering_requested,
@@ -38,6 +37,7 @@ from engine.sql_expansion import (
     unique_predicates as _unique_predicates,
 )
 from engine.sql_candidate import ScoredQuery
+from engine.sql_schema import is_surrogate_key
 from engine.numeric import parse_decimal
 
 
@@ -543,7 +543,7 @@ class ExtremaQueryExpander(ExpansionSupport):
         }
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            if _is_id(column.name) or column in foreign_key_columns:
+            if is_surrogate_key(column.name) or column in foreign_key_columns:
                 continue
             if not (
                 column.type.numeric

@@ -34,7 +34,7 @@ def main():
         from engine.tables import qident
     except ImportError as e:
         print(f"missing serving dep ({e}); install: pip install -r requirements.txt"); return 1
-    from regress.live_schema import live_schema
+    from regress.live_schema import live_schema, served
     schema = live_schema().name
     Q = KnowledgeQuery()
     fails = []
@@ -51,7 +51,7 @@ def main():
         fails.append(f"(1) model mis-typed 'name' -> {routes[('customers','name')]!r} (should be untyped)")
 
     # (2) aggregate world join on the model-typed column
-    res = Q.serve([CUST], "how many customers in France", schema=schema)
+    res = served(schema, Q.serve, [CUST], "how many customers in France", schema=schema)
     rows = (res.get("result") or {}).get("rows") or []
     print(f"\nQ: how many customers in France\n   sql={res.get('sql')}\n   rows={rows}")
     got = None
@@ -77,7 +77,7 @@ def main():
     # property evidence; otherwise the record identifies exact source-key grounding.
     Q.begin_typing()
     try:
-        Q.serve([CUST], "how many customers in France", schema=schema)
+        served(schema, Q.serve, [CUST], "how many customers in France", schema=schema)
     finally:
         typing = Q.take_typing()
     city_t = next((t for t in typing if t["column"] == "city"), None)

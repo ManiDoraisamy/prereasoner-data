@@ -156,7 +156,7 @@ class SchemaGraph:
         columns.sort(key=lambda column: (
             0 if set(_name_words(column.ref.name)) & _NAME_WORDS else 1,
             0 if column.ref.type == SQLType.TEXT else 1,
-            1 if _is_id(column.ref.name) else 0,
+            1 if is_surrogate_key(column.ref.name) else 0,
             column.index,
         ))
         return tuple(column.ref for column in columns)
@@ -369,9 +369,17 @@ def _name_words(name: str) -> tuple[str, ...]:
     return tuple(word.lower() for word in re.findall(r"[A-Za-z0-9]+", spaced))
 
 
-def _is_id(name: str) -> bool:
+# A column is a surrogate key (a primary or foreign key, never a measure) when the last word of its name is
+# an identifier word, or its whole name is a row number. A code ('country_code') is a natural attribute
+# people ask for by name, not a surrogate key. This is the engine's one surrogate-key rule.
+SURROGATE_KEY_WORDS = frozenset({"id", "ids", "uid", "uuid", "guid", "identifier", "key", "pk"})
+
+
+def is_surrogate_key(name: str) -> bool:
+    """'order ID', 'customer_id', 'OrderID' and 'index' are keys; 'orders', 'idea', 'paid' and 'price index'
+    are not."""
     words = _name_words(name)
-    return bool(words) and words[-1] in {"id", "identifier", "key"}
+    return bool(words) and (words[-1] in SURROGATE_KEY_WORDS or words == ("index",))
 
 
 def _normalize_value(value: Any) -> str:

@@ -21,7 +21,7 @@ from typing import Mapping, Sequence
 
 from engine.sql_ast import Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery
 from engine.sql_candidate import ScoredQuery
-from engine.sql_schema import SchemaGraph
+from engine.sql_schema import SchemaGraph, is_surrogate_key
 
 
 ColumnKey = tuple[str, str]
@@ -164,7 +164,7 @@ class CandidateRanker:
                 for aggregate in count_aggregates
                 if aggregate.distinct
                 and isinstance(aggregate.operand, ColumnRef)
-                and (_is_id(aggregate.operand.name) or _is_name(aggregate.operand.name))
+                and (is_surrogate_key(aggregate.operand.name) or _is_name(aggregate.operand.name))
             ]
             features.append(("count_distinct_entity", 4.0 if distinct_identities else 0.0))
 
@@ -189,7 +189,7 @@ class CandidateRanker:
             features.append((f"projection_role:{_column_label(column)}", value))
 
         if roles.id_instead_of_name:
-            id_columns = [column for column in select_columns + group_columns if _is_id(column.name)]
+            id_columns = [column for column in select_columns + group_columns if is_surrogate_key(column.name)]
             name_columns = [column for column in select_columns + group_columns if _is_name(column.name)]
             features.append(("requested_id", 4.0 if id_columns else -3.0))
             features.append(("rejected_name", -6.0 if name_columns else 1.0))
@@ -473,10 +473,6 @@ def _travel_column_role(column: ColumnRef) -> str | None:
     if words & {"destination", "dest", "arrival", "arrive", "landing", "to"}:
         return "destination"
     return None
-
-
-def _is_id(name: str) -> bool:
-    return bool(re.search(r"(^id$|_?id$|identifier|key$)", name, re.I))
 
 
 def _is_name(name: str) -> bool:

@@ -31,7 +31,7 @@ def main():
         print("set KB_PG_PASSWORD"); return 1
     from engine.knowledge_query import KnowledgeQuery
     Q = KnowledgeQuery()
-    from regress.live_schema import live_schema
+    from regress.live_schema import live_schema, served
     schema = live_schema().name
     fails = []
     # -ies PLURALS must name the type (regression: the question gate matched only "<type>s?", so
@@ -41,14 +41,14 @@ def main():
         ["Arts University Plymouth", 90], ["Bath Spa University", 60],          # Q145 (UK)
         ["Adelphi University", 120], ["Adams State University", 80]]}           # Q30 (US)
     for country, want in (("United Kingdom", 150), ("United States", 200)):
-        ru = Q.serve([UNI], f"total applicants for universities in {country}", schema=schema)
+        ru = served(schema, Q.serve, [UNI], f"total applicants for universities in {country}", schema=schema)
         gu = _scalar(ru)
         print(f"applicants, {country} universities -> {gu} (exp {want})  model={(ru or {}).get('model','')[:46]}")
         if gu != want:
             fails.append(f"plural 'universities' {country} != {want} (got {gu})")
 
     # SUM the uploaded metric over US hospitals (every entity pre-synchronized in words)
-    r1 = Q.serve([HOSP], "total beds for hospitals in United States", schema=schema)
+    r1 = served(schema, Q.serve, [HOSP], "total beds for hospitals in United States", schema=schema)
     got1 = _scalar(r1)
     print(f"total beds, US hospitals -> {got1} (exp 240)  model={r1.get('model','')[:46]}")
     if got1 != 240:
@@ -56,11 +56,11 @@ def main():
     # The derivation trail (docs/SHEETS_AS_REASONING.md): lookup -> filtered -> total, each sheet's SQL
     # the EXECUTED statement (this path once shipped `resolve(...)` pseudo-SQL and no visible filter),
     # country values displayed as labels, and the filter dropping the non-US rows visibly.
-    trail = [(v.get("op"), v.get("name")) for v in r1.get("views") or []]
-    if trail != [("world_join", "knowledgebase_lookup"), ("world_filter", "filtered"), ("group_agg", "total")]:
+    trail = [(v.get("op"), v.get("logical_name")) for v in r1.get("views") or []]
+    if trail != [("world_join", "enriched_1"), ("filter", "filtered"), ("group_agg", "total")]:
         fails.append(f"non-geo trail wrong: {trail}")
     v_lookup, v_filtered = (r1.get("views") or [{}, {}])[0], (r1.get("views") or [{}, {}])[1]
-    if "country" not in (v_lookup.get("columns") or []):
+    if not any(column.endswith("__country") for column in v_lookup.get("columns") or []):
         fails.append(f"lookup sheet missing the country column the filter uses: {v_lookup.get('columns')}")
     if not any(str(r[-1]) == "United States" for r in v_lookup.get("rows") or []):
         fails.append(f"lookup country shows qids, not labels: {[(r or [None])[-1] for r in v_lookup.get('rows') or []]}")
@@ -71,7 +71,7 @@ def main():
     if "columns" not in (r1.get("result") or {}):                  # the client render reads result.columns (NOT .cols);
         fails.append("result missing 'columns' key — the UI table would render empty")  # the value alone isn't enough
     # COUNT US hospitals
-    r2 = Q.serve([HOSP], "how many hospitals in United States", schema=schema)
+    r2 = served(schema, Q.serve, [HOSP], "how many hospitals in United States", schema=schema)
     got2 = _scalar(r2)
     print(f"count US hospitals       -> {got2} (exp 3)")
     if got2 != 3:
@@ -81,7 +81,7 @@ def main():
         ["Cleveland Clinic", "0.1"], ["Johns Hopkins Hospital", "0.1"],
         ["Charite", "9999999999999999.9"],
     ]}
-    exact_result = Q.serve(
+    exact_result = served(schema, Q.serve,
         [exact_table], "total commission for hospitals in United States", schema=schema,
     )
     exact_rows = (exact_result or {}).get("result", {}).get("rows") or []
@@ -100,7 +100,7 @@ def main():
     named_table = {"name": "transfers", "columns": ["hospital", "transfers"], "rows": [
         ["Mayo Clinic", 14], ["Massachusetts General Hospital", 11],
     ]}
-    named_result = Q.serve(
+    named_result = served(schema, Q.serve,
         [named_table], "total transfers for hospitals named Mayo Clinic", schema=schema,
     )
     named_rows = (named_result or {}).get("result", {}).get("rows") or []

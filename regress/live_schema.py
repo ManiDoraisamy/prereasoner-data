@@ -84,3 +84,13 @@ def live_schema(env_name: str = "AUTH_TEST_SUB") -> LiveSchemaLease:
         _register_lease(lease)
         atexit.register(lease.close)
     return lease
+
+
+def served(schema: str, serve, /, *args, mode: str | None = None, **kwargs):
+    """One request served as engine/server.py serves it: inside an analysis execution context, with the
+    backend actually used reported. World questions run only this way, through the shared deterministic
+    plan; a live suite that calls ``serve`` bare exercises no production path."""
+    from engine.deterministic.context import analysis_execution_context, enforce_execution_response
+
+    with analysis_execution_context(None, schema, execution_mode=mode):
+        return enforce_execution_response(serve(*args, **kwargs), mode)

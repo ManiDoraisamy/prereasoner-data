@@ -43,9 +43,11 @@ def _num(v):
 
 
 def serve_case(Q, case, sub):
+    from regress.live_schema import served
+
     tables = [csv_to_table(t["name"], t["csv"]) for t in case["tables"]]
     try:
-        r = Q.serve(tables, case["question"], sub)
+        r = served(sub, Q.serve, tables, case["question"], sub)
     except Exception as e:                                       # noqa: BLE001
         return {"error": f"{type(e).__name__}: {e}"}
     res = r.get("result") or {}

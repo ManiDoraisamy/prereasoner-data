@@ -38,7 +38,7 @@ from engine.sql_expansion import (
     ordering_requested,
 )
 from engine.sql_profile_expansion import ProfileSearchConfig
-from engine.sql_schema import SchemaGraph
+from engine.sql_schema import SchemaGraph, is_surrogate_key
 
 _WORD_RE = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?")
 _NUMBER_RE = re.compile(r"^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$")
@@ -290,7 +290,7 @@ class SQLSearcher:
         id_requested = bool(_ID_WORDS & token_set)
         for schema_column in self.schema.columns:
             column = schema_column.ref
-            if _is_id(column.name) and not id_requested:
+            if is_surrogate_key(column.name) and not id_requested:
                 continue
             meaningful = _column_link_words(column, id_requested)
             positions = _column_link_positions(column, tokens, self.schema, meaningful)
@@ -485,7 +485,7 @@ class SQLSearcher:
                     if not targets:
                         targets = [
                             _ColumnOption(c.ref, 0.0, len(tokens)) for c in self.schema.columns
-                            if c.ref.type.numeric and not _is_id(c.ref.name)
+                            if c.ref.type.numeric and not is_surrogate_key(c.ref.name)
                         ]
                         if preferred_words:
                             # "total spend" without a column mention must not resolve by
@@ -572,7 +572,7 @@ class SQLSearcher:
             return preferred
         return [
             _ColumnOption(c.ref, 0.0, position) for c in self.schema.columns
-            if c.ref.type.numeric and not _is_id(c.ref.name) and carries(c.ref)
+            if c.ref.type.numeric and not is_surrogate_key(c.ref.name) and carries(c.ref)
         ]
 
     def _predicate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
@@ -769,7 +769,7 @@ class SQLSearcher:
         refs = _unique_columns(tuple(option.column for option in options))
         if refs:
             return list(refs)
-        return [c.ref for c in self.schema.columns if c.ref.type.numeric and not _is_id(c.ref.name)]
+        return [c.ref for c in self.schema.columns if c.ref.type.numeric and not is_surrogate_key(c.ref.name)]
 
     def _date_targets(self, mentions: tuple[_Mention, ...], position: int) -> list[ColumnRef]:
         options = [
@@ -890,7 +890,7 @@ class SQLSearcher:
             expressions = [(aggregate, aggregate_bonus) for aggregate in draft.aggregates] + expressions
         if not expressions:
             typed = [c.ref for c in self.schema.columns
-                     if c.ref.type in {SQLType.INTEGER, SQLType.REAL, SQLType.DATE} and not _is_id(c.ref.name)]
+                     if c.ref.type in {SQLType.INTEGER, SQLType.REAL, SQLType.DATE} and not is_surrogate_key(c.ref.name)]
             expressions.extend((column, 0.5) for column in typed[:4])
         out = []
         seen = set()
@@ -962,11 +962,6 @@ def _canon(word: str) -> str:
     return word
 
 
-def _is_id(name: str) -> bool:
-    words = _name_words(name)
-    return bool(words) and words[-1].lower() in {"id", "identifier", "key"}
-
-
 def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]:
     words = tuple("number" if word.lower() == "no" else _canon(word)
                   for word in _name_words(column.name))
@@ -975,7 +970,7 @@ def _column_link_words(column: ColumnRef, id_requested: bool) -> tuple[str, ...]
         word for word in words
         if word != "id" and word not in table_words
     )
-    if not meaningful and _is_id(column.name) and id_requested:
+    if not meaningful and is_surrogate_key(column.name) and id_requested:
         return ("id",)
     return meaningful or tuple(word for word in words if word != "id")
 

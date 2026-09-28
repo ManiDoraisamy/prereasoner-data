@@ -11,6 +11,7 @@ import numpy as np
 
 from engine.artifact_provenance import validate_weight_bundle
 from engine.config import BASE_MODEL_REVISION as MODEL_REVISION, DATA_DIR, DEVICE
+from engine.sql_schema import is_surrogate_key
 from engine.tables import TableQuery, MODEL_ID
 
 
@@ -106,7 +107,12 @@ class EncoderQuery(TableQuery):
         """OPERATOR FROM THE MODEL, not keywords. The unified encoder fires intent_agg_sum on 'sell'/'how much',
         intent_agg_count on 'how many', intent_agg_avg on 'average' — even when NO lexical cue from AGG_CUES is
         present ('how much did we sell' has no 'sum'/'total' token). Returns (op|None, {op: score}). Operand tokens
-        (column names + cell values) are excluded so the intent reads off the QUESTION verb, not the data."""
+        (column names + cell values) are excluded so the intent reads off the QUESTION verb, not the data.
+        Closed-class tokens are excluded too: an aggregate is never expressed by 'a', 'which' or 'in'. The COUNT
+        threshold is low (0.05), and the article in 'who ordered a trench coat in France' read 0.15, so a
+        listing question was answered with a count (2026-09-27). 'many'/'much' are adjectives and still read."""
+        from engine.closed_class import closed_class_words
+
         tables, fks = (tables, fks) if fks is not None else self.ingest(tables)
         final, qstart, toks, low = self._question_readout(tables, fks, question)
         operand = set()
@@ -117,7 +123,9 @@ class EncoderQuery(TableQuery):
                 for v in r:
                     if v is not None:
                         operand.add(str(v).lower())
-        cand = [i for i in range(len(toks)) if low[i] not in operand] or list(range(len(toks)))
+        closed = closed_class_words(question)
+        cand = [i for i in range(len(toks))
+                if low[i] not in operand and low[i].strip(".,;:!?'\"()") not in closed] or list(range(len(toks)))
 
         def score(name):
             dd = self.sid[name]
@@ -141,13 +149,6 @@ class EncoderQuery(TableQuery):
         salient = sorted(set(fired) | {amax})
         return [{nm: round(float(min(1.0, max(0.0, layers[L][ui][self.sid[nm]]))), 3) for nm in salient}
                 for L in range(self.nL)]
-
-    @staticmethod
-    def _is_id(name):
-        """Structural surrogate-key exclusion (a primary/foreign key is never a SUM/AVG measure). This is the
-        ONLY hardcoded rule left in operand selection — it is structural plumbing, not a measure-noun lookup."""
-        import re as _re
-        return bool(_re.search(r"(^id$|_?id$|^index$|^pk$)", name.lower()))
 
     def read_op_all(self, question, sch):
         """Operator + operand FROM THE UNIFIED METRIC SPACE — no local measure-noun lists (the one money-noun rule
@@ -181,7 +182,7 @@ class EncoderQuery(TableQuery):
         op, _ = self.read_op_model(norm, question, fks)
         tnames = sorted(by_table)
         low = question.lower().split()
-        nonid_num = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not self._is_id(c["name"])]
+        nonid_num = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
         from engine.sql_expansion import money_total_columns
         money = money_total_columns(question, sch)
         if op is None and not money:
@@ -247,7 +248,7 @@ class EncoderQuery(TableQuery):
         """End-to-end LOCAL demonstration of the OPERATOR FROM THE MODEL: read_op_model -> agg SQL -> SQLite exec.
         Single table, aggregate only (the world filter / multi-table joins are the /world serve path). Proves the
         headline 'how much did we sell' -> SUM(measure) without a keyword cue. Returns {op, sql, result, scores}."""
-        import re as _re, sqlite3
+        import sqlite3
         norm, fks = self.ingest([table])
         t = norm[0]; cols = t["columns"]; rows = t["rows"]
         op, scores = self.read_op_model(norm, question, fks)
@@ -262,7 +263,7 @@ class EncoderQuery(TableQuery):
 
         numcols = []
         for ci, c in enumerate(cols):
-            if _re.search(r"(^id$|_id$|^index$)", str(c).lower()):
+            if is_surrogate_key(str(c)):
                 continue
             nn = [r[ci] for r in rows if r[ci] is not None and str(r[ci]).strip()]
             if nn and sum(_isnum(v) for v in nn) >= 0.8 * len(nn):

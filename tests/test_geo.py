@@ -124,7 +124,7 @@ def main():
     from engine.knowledge import KnowledgeReasoner
     from engine.knowledge_compose import ComposedKnowledgeQuery
     from engine.pg import _pg
-    from regress.live_schema import live_schema
+    from regress.live_schema import live_schema, served
     sub = live_schema("GEO_TEST_SUB").name
     cn = _pg()
     cur = cn.cursor()
@@ -151,7 +151,7 @@ def main():
     # --- A1: "big cities near Paris" — the headline geo query ---
     refP, qidP, oraP = oracle_nearby(cur, "Paris", big=True, limit=5)
     ok("oracle: Paris resolves in settlement", refP is not None, f"ref={refP}")
-    rn = _retry(lambda: wr.serve([CUST], "big cities near Paris", sub))
+    rn = _retry(lambda: served(sub, wr.serve, [CUST], "big cities near Paris", sub))
     if ok("nearby(Paris): serve returned a result", rn is not None):
         nr = (rn.get("result") or {}).get("rows") or []
         kms = [row[-1] for row in nr]
@@ -191,7 +191,7 @@ def main():
 
     # --- A2: "cities near Tokyo" — a second, far-from-Paris reference ---
     refT, qidT, oraT = oracle_nearby(cur, "Tokyo", big=False, limit=5)
-    rn2 = _retry(lambda: wr.serve([CUST], "cities near Tokyo", sub))
+    rn2 = _retry(lambda: served(sub, wr.serve, [CUST], "cities near Tokyo", sub))
     if ok("nearby(Tokyo): serve returned a result", rn2 is not None):
         nr2 = (rn2.get("result") or {}).get("rows") or []
         kms2 = [row[-1] for row in nr2]
@@ -222,7 +222,7 @@ def main():
     fake = "Zzqxworldville"
     refN, _, _ = oracle_nearby(cur, fake, big=False)
     ok(f"oracle: '{fake}' is absent from settlement (a true miss)", refN is None, f"resolved={refN}")
-    rmiss = wr.serve([CUST], f"cities near {fake}", sub)
+    rmiss = served(sub, wr.serve, [CUST], f"cities near {fake}", sub)
     ok("edge: unknown reference delegates (no geo result)",
        "geo nearby" not in (rmiss.get("model") or ""), f"model={rmiss.get('model')}")
 
@@ -234,7 +234,7 @@ def main():
        all(v is not None for v in citypop.values()), f"{citypop}")
     top3_oracle = [c for c, _ in sorted(citypop.items(), key=lambda kv: (kv[1] or -1), reverse=True)[:3]]
 
-    rp = _retry(lambda: qc.serve([CUST], "top 3 cities by population", sub))
+    rp = _retry(lambda: served(sub, qc.serve, [CUST], "top 3 cities by population", sub))
     if ok("population: serve returned a result", rp is not None):
         ans = (rp.get("result") or {}).get("rows") or []
         # population is a numeric world attribute -> a measure; the stack ranks by it. Pull the numeric column.
@@ -270,7 +270,7 @@ def main():
            any(p and p > 1000 for p in pops), f"pops={pops}")
 
     # --- B2: "largest cities in France" — population ranking RESTRICTED by a world filter (France) ---
-    rpf = _retry(lambda: qc.serve([CUST], "largest cities in France by population", sub))
+    rpf = _retry(lambda: served(sub, qc.serve, [CUST], "largest cities in France by population", sub))
     if rpf is not None:
         rows_fr = (rpf.get("result") or {}).get("rows") or []
         cities_fr = {str(v) for row in rows_fr for v in row if str(v) in citypop}
@@ -287,13 +287,13 @@ def main():
     print("\n== (C) canonical regressions ==", flush=True)
 
     # C1 France -> SUM (world join on qid + country=Q142 filter). Demo: Paris 100 + Lyon 80 = 180.
-    rfr = _retry(lambda: qc.serve([CUST], "total amount in France", sub))
+    rfr = _retry(lambda: served(sub, qc.serve, [CUST], "total amount in France", sub))
     if ok("France: serve returned a result", rfr is not None):
         fr = (((rfr.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
         ok("France -> sum = 180 (Paris 100 + Lyon 80)", fr == 180, f"got={fr}")
 
     # C2 Europe -> 2-hop continent (city.country -> country.continent = Q46). Demo: Paris+Lyon+Berlin = 220 (Tokyo out).
-    reu = _retry(lambda: qc.serve([CUST], "total amount in Europe", sub))
+    reu = _retry(lambda: served(sub, qc.serve, [CUST], "total amount in Europe", sub))
     if ok("Europe: serve returned a result", reu is not None):
         eu = (((reu.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
         ok("Europe -> 2-hop continent sum = 220 (France+Germany, Tokyo excluded)", eu == 220, f"got={eu}")
@@ -303,7 +303,7 @@ def main():
     # instead of the count). "from X" and "in X" must be the same question.
     got = {}
     for prep in ("from", "in"):
-        rfp = _retry(lambda p=prep: qc.serve([CUST], f"how many customers {p} Paris", sub))
+        rfp = _retry(lambda p=prep: served(sub, qc.serve, [CUST], f"how many customers {p} Paris", sub))
         got[prep] = (((rfp or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("'from Paris' counts like 'in Paris' (1 customer, never 0)",
        got["from"] == got["in"] == 1, f"got={got}")
@@ -321,7 +321,7 @@ def main():
     for cq in ("How many orders are in the current sheet?",
                "Count all non-empty Order ID rows below the header in the Customers sheet",
                "how many orders"):
-        rcnt = _retry(lambda q=cq: qc.serve([_SHEET], q, sub))
+        rcnt = _retry(lambda q=cq: served(sub, qc.serve, [_SHEET], q, sub))
         rows = ((rcnt or {}).get("result") or {}).get("rows") or []
         ok(f"row count stays a scalar 4 from the engine: {cq[:44]!r}",
            not (rcnt or {}).get("clarify") and len(rows) == 1 and len(rows[0]) == 1
@@ -336,7 +336,7 @@ def main():
     _FX = {"name": "fx_rates", "columns": ["currency_code", "rate_to_usd"],
            "rows": [["USD", "1.0"], ["EUR", "1.08"], ["GBP", "1.27"]]}
     _FX_EDGE = ExplicitKeyEdge("orders", ("currency",), "fx_rates", ("currency_code",))
-    rconv = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in US dollars", sub,
+    rconv = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "total order amount in US dollars", sub,
                                     explicit_fks=(_FX_EDGE,)))
     conv = (((rconv or {}).get("result") or {}).get("rows") or [[None]])[0][0] if rconv else None
     ok("fx: total in USD converts to 791.2 (615 EUR*1.08 + 100 GBP*1.27), no clarify",
@@ -347,12 +347,14 @@ def main():
     # A target the uploaded sheet cannot express is COMPLETED from the knowledgebase — the uploaded
     # sheet wins where it overlaps (USD above), but it does not veto knowledge it does not cover,
     # exactly as a city sheet without population still reads population from the world tables.
-    rkb = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in euros", sub,
+    rkb = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "total order amount in euros", sub,
                                   explicit_fks=(_FX_EDGE,)))
     kb_value = (((rkb or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    # The served trail joins the ECB rates on their own reference-lookup sheet; the response's sql is the
+    # output stage's.
     ok("fx: EUR conversion is completed from knowledgebase ECB rates (USD-only sheet cannot veto)",
        bool(rkb) and not rkb.get("clarify") and exact(kb_value) > 0
-       and "exchange_rate" in (rkb.get("sql") or "")
+       and any("exchange_rate" in (view.get("sql") or "") for view in rkb.get("views") or [])
        and "ECB" in ((rkb.get("provenance") or {}).get("source") or ""),
        f"result={rkb}")
 
@@ -371,13 +373,15 @@ def main():
        views_serializable, f"types={[[type(v).__name__ for v in (rkb.get('views') or [{}])[0].get('rows', [[]])[0]]]}")
     kb_views = rkb.get("views") or []
     calc = next((v for v in kb_views if v.get("op") == "convert"), None)
+    # The converted value is calculated_value; the rate's publication date is the rate table's updated_at.
     ok("fx: knowledgebase conversion ships a calculated view (per-row rate + converted)",
        calc is not None and calc.get("label") == "calculated"
-       and "converted" in (calc.get("columns") or []) and "rate_published" in (calc.get("columns") or []),
+       and "calculated_value" in (calc.get("columns") or [])
+       and "exchange_rate__updated_at" in (calc.get("columns") or []),
        f"views={[(v.get('label'), v.get('op')) for v in kb_views]}")
     if calc:
-        cols = calc["columns"]; amt_i = cols.index("amount"); conv_i = cols.index("converted")
-        rate_i = next(i for i, c in enumerate(cols) if c.startswith("rate_to_"))
+        cols = calc["columns"]; amt_i = cols.index("orders__amount"); conv_i = cols.index("calculated_value")
+        rate_i = next(i for i, c in enumerate(cols) if "__rate_to_" in c)
         row_ok = all(exact(r[amt_i]) * exact(r[rate_i]) == exact(r[conv_i])
                      for r in calc["rows"] if r[amt_i] != "")
         ok("fx: every calculated row is exactly amount x rate", row_ok,
@@ -387,13 +391,13 @@ def main():
            total == exact(kb_value), f"sum={total} result={kb_value}")
 
     # A target NEITHER the sheet NOR the ECB series ever published still declines with evidence.
-    rkwd = _retry(lambda: qc.serve([_ORD, _FX], "total order amount in KWD", sub,
+    rkwd = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "total order amount in KWD", sub,
                                    explicit_fks=(_FX_EDGE,)))
     ok("fx: a target outside sheet AND knowledgebase coverage declines, never a number",
        bool(rkwd) and rkwd.get("clarify") is True and not rkwd.get("result"),
        f"result={rkwd}")
 
-    rfilter = _retry(lambda: qc.serve([_ORD, _FX], "how many orders in EUR", sub,
+    rfilter = _retry(lambda: served(sub, qc.serve, [_ORD, _FX], "how many orders in EUR", sub,
                                       explicit_fks=(_FX_EDGE,)))
     filter_value = (((rfilter or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx: COUNT in EUR is a filter, not a conversion decline",
@@ -403,7 +407,7 @@ def main():
 
     _PRODUCTS = {"name": "products", "columns": ["product", "revenue"],
                  "rows": [["A", 100], ["B", 250]]}
-    runits = _retry(lambda: qc.serve([_PRODUCTS], "total revenue in euros", sub))
+    runits = _retry(lambda: served(sub, qc.serve, [_PRODUCTS], "total revenue in euros", sub))
     unit_value = (((runits or {}).get("result") or {}).get("rows") or [[None]])[0][0]
     ok("fx: no currency dimension treats EUR as a unit annotation",
        bool(runits) and not runits.get("clarify") and unit_value == 350
@@ -417,7 +421,7 @@ def main():
                   "rows": [["Clouseau", "EUR", 520], ["Lupin", "EUR", 450], ["Holmes", "GBP", 100]]}
     _FX_RATES = {"name": "illustrative fx rates", "columns": ["currency", "rate_to_usd"],
                  "rows": [["USD", "1.0"], ["EUR", "1.08"], ["GBP", "1.27"], ["INR", "0.012"]]}
-    rconv_world = _retry(lambda: qc.serve(
+    rconv_world = _retry(lambda: served(sub, qc.serve,
         [_FX_CUSTOMERS, _FX_ORDERS, _FX_RATES],
         "total amount in France in US dollars",
         sub,
@@ -433,10 +437,15 @@ def main():
     # total the Result overlays — one sheet per step. The resolution slides stream alongside.
     from engine.trace import set_ctx
     slides = []
-    set_ctx(lambda node, value, merge=False: slides.append((node, value)))
+
+    def capture(node, value, merge=False):
+        slides.append((node, value))
+
+    # As engine/server.py serves: the trace context and serve's emit are the same stream.
+    set_ctx(capture)
     try:
-        rtrail = _retry(lambda: qc.serve([_FX_CUSTOMERS, _FX_ORDERS],
-                                         "total amount in France in US dollars", sub))
+        rtrail = _retry(lambda: served(sub, qc.serve, [_FX_CUSTOMERS, _FX_ORDERS],
+                                         "total amount in France in US dollars", sub, emit=capture))
     finally:
         set_ctx(None)
     trail_value = (((rtrail or {}).get("result") or {}).get("rows") or [[None]])[0][0]
@@ -446,12 +455,12 @@ def main():
        and (rtrail.get("currency") or {}).get("realization") == "converted",
        f"got={trail_value} error={(rtrail or {}).get('error')}")
     trail = [(v.get("op"), v.get("name")) for v in (rtrail or {}).get("views") or []]
-    ok("fx+world: the trail follows the step grammar (combined -> lookup -> filtered -> calculated -> total)",
-       [op for op, _ in trail] == ["join", "world_join", "world_filter", "convert", "group_agg"],
+    ok("fx+world: the trail follows the step grammar (combined -> lookup -> filtered -> rates -> calculated -> total)",
+       [op for op, _ in trail] == ["join", "world_join", "filter", "world_join", "convert", "group_agg"],
        f"trail={trail}")
-    wviews = {v.get("name"): v for v in (rtrail or {}).get("views") or []}
+    wviews = {v.get("logical_name"): v for v in (rtrail or {}).get("views") or []}
     jrows = (wviews.get("combined") or {}).get("rows") or []
-    lview = wviews.get("knowledgebase_lookup") or {}
+    lview = wviews.get("enriched_1") or {}
     frows = (wviews.get("filtered") or {}).get("rows") or []
     crows = (wviews.get("calculated") or {}).get("rows") or []
     ok("fx+world: combined shows every order; filtered keeps exactly the rows the conversion uses",
@@ -460,7 +469,7 @@ def main():
     # SHEETS_AS_REASONING rule 2: the lookup sheet must SHOW the reference column the filter uses,
     # and rule 5: its values display as labels, not bare QIDs.
     lcols = lview.get("columns") or []
-    country_i = lcols.index("country") if "country" in lcols else -1
+    country_i = lcols.index("city__country") if "city__country" in lcols else -1
     ok("fx+world: the reference-lookup sheet shows the country column the filter will use",
        country_i >= 0 and any(str(r[country_i]) == "France" for r in lview.get("rows") or []),
        f"lookup_cols={lcols} rows={lview.get('rows')}")
@@ -473,10 +482,10 @@ def main():
     # as a pointless orders-copy 'combined' tab on 2026-09-06.
     _ONE = {"name": "orders", "columns": ["city", "currency", "amount"],
             "rows": [["Paris", "EUR", 310], ["Paris", "EUR", 210], ["London", "GBP", 100]]}
-    rone = _retry(lambda: qc.serve([_ONE], "total amount in France in US dollars", sub))
+    rone = _retry(lambda: served(sub, qc.serve, [_ONE], "total amount in France in US dollars", sub))
     one_trail = [v.get("op") for v in (rone or {}).get("views") or []]
-    ok("fx+world single sheet: no combined step; trail is lookup -> filtered -> calculated -> total",
-       one_trail == ["world_join", "world_filter", "convert", "group_agg"],
+    ok("fx+world single sheet: no combined step; trail is lookup -> filtered -> rates -> calculated -> total",
+       one_trail == ["world_join", "filter", "world_join", "convert", "group_agg"],
        f"trail={[(v.get('op'), v.get('name')) for v in (rone or {}).get('views') or []]}")
 
     # ROUTING: an explicit conversion target must never be owned by compose (its op library has no
@@ -491,7 +500,7 @@ def main():
                            ["Maintenance", "Ganga Ltd", "India", "INR", 400000],
                            ["License", "Han Solutions", "South Korea", "KRW", 3000000]]}
     asia_stream = []
-    rasia = _retry(lambda: qc.serve([_CONTRACTS], "total value for contracts in Asia in US dollars", sub,
+    rasia = _retry(lambda: served(sub, qc.serve, [_CONTRACTS], "total value for contracts in Asia in US dollars", sub,
                                     emit=lambda node, value: asia_stream.append((node, value))))
     asia_rows = ((rasia or {}).get("result") or {}).get("rows") or []
     ok("fx+world+2hop: an Asia conversion delegates to the conversion path, never compose",
@@ -503,8 +512,8 @@ def main():
        and exact(asia_rows[0][0]) != Decimal("4300000"),   # 900000+400000+3000000 raw-added
        f"rows={asia_rows}")
     asia_trail = [v.get("op") for v in (rasia or {}).get("views") or []]
-    ok("fx+world+2hop: the trail is lookup -> filtered -> calculated -> total",
-       asia_trail == ["world_join", "world_filter", "convert", "group_agg"], f"trail={asia_trail}")
+    ok("fx+world+2hop: the trail is lookup -> filtered -> rates -> calculated -> total",
+       asia_trail == ["world_join", "filter", "world_join", "convert", "group_agg"], f"trail={asia_trail}")
     # The STREAMED trail must equal the RETURNED trail. A refused compose build once streamed its raw
     # mixed-currency stack live; the browser painted it over the delegate's converted answer, so the
     # calculated sheet vanished from the workbook while the number was right (2026-09-06).
@@ -542,13 +551,13 @@ def main():
     # the wrong host for a bare superlative; routing it there was the Spider mis-route). The compose top-N capability
     # stays covered by "top 3 cities by population" (B) and "…Europe by city" below, so here we check the ANSWER (top
     # 3 by amount = Paris/Lyon/Tokyo, Berlin excluded) via whichever path serves it.
-    rtopn = _retry(lambda: qc.serve([CUST], "top 3 cities", sub))
+    rtopn = _retry(lambda: served(sub, qc.serve, [CUST], "top 3 cities", sub))
     if rtopn is not None:
         rows = (rtopn.get("result") or {}).get("rows") or []
         cities = {str(c).strip().lower() for r in rows for c in r}
         ok("composite: 'top 3 cities' returns the top 3 by amount (Paris/Lyon/Tokyo, Berlin excluded)",
            len(rows) == 3 and {"paris", "lyon", "tokyo"} <= cities and "berlin" not in cities, f"rows={rows}")
-    reubc = _retry(lambda: qc.serve([CUST], "total amount in Europe by city", sub))
+    reubc = _retry(lambda: served(sub, qc.serve, [CUST], "total amount in Europe by city", sub))
     if reubc is not None:
         planb = reubc.get("plan") or []
         ok("composite: 'total amount in Europe by city' stacks world_join+world_filter+group+topn",
@@ -556,7 +565,7 @@ def main():
 
     # ============================================================ (D) delegation sanity ==========================
     print("\n== (D) delegation sanity ==", flush=True)
-    rd = wr.serve([CUST], "total amount in France", sub)
+    rd = served(sub, wr.serve, [CUST], "total amount in France", sub)
     dv = (((rd.get("result") or rd.get("answer") or {}).get("rows") or [[None]])[0] or [None])[0]
     ok("delegate: KnowledgeReasoner passes the France aggregate through unchanged (=180)", dv == 180, f"got={dv}")
 
@@ -588,7 +597,7 @@ def main():
     def _hit(tag, inst):
         try:
             for _ in range(2):                                  # a few rounds to widen the race window on the bridge
-                r = inst.serve([CUST], "total amount in France", sub)
+                r = served(sub, inst.serve, [CUST], "total amount in France", sub)
                 results[tag] = (((r.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
         except Exception as e:                                   # noqa: BLE001
             errors[tag] = repr(e)

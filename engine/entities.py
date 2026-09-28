@@ -82,8 +82,8 @@ class EntityQuery(RoutedQuery):
     # ---- helpers ----
     def _spacy(self):
         if self._nlp is None:
-            import spacy
-            self._nlp = spacy.load("en_core_web_md", disable=["lemmatizer"])
+            from engine.closed_class import spacy_model
+            self._nlp = spacy_model()                    # the process's one spaCy model
         return self._nlp
 
     def _rconn(self):
@@ -429,16 +429,6 @@ class EntityQuery(RoutedQuery):
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
             print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True)
             return {}
-
-    def _labelize_qids(self, result):
-        """Resolve entity QIDs in the FIRST projected column to canonical labels, so a projected world
-        entity-attribute column ('which continent is Kyoto in' -> country.continent = 'Q48') reads 'Asia',
-        not the bare qid (SHEETS_AS_REASONING rule 5). Non-qid values pass through unchanged."""
-        import re as _re
-        rows = result.get("rows") or []
-        lbl = self._qid_labels(str(r[0]) for r in rows if r and _re.fullmatch(r"Q\d+", str(r[0])))
-        if lbl:
-            result["rows"] = [([lbl.get(str(r[0]), r[0])] + list(r[1:])) if r else r for r in rows]
 
     def _world_joins(self, upfrom, joins, sch, norm, mtab, route_col, as_of, mf=None):
         """idx==0 = the CELL-side join. CITY cells resolve to a stable qid (context-aware, robust same-name
