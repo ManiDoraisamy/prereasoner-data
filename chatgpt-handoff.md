@@ -13,6 +13,46 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-29 — 7B merged, fully cut over, and post-deploy checks complete
+
+The unified 7B implementation is merged to `main` via [PR #30](https://github.com/ManiDoraisamy/prereasoner-data/pull/30).
+Release source commit: `46b10e42dee5db42bd745537af3c8c6bc423c8b2`; merge commit:
+`ad4f4076fc8f7b09c146811e84aa96802794ce2a`. The source tree was checked against the measured
+replay: all 37 engine-file hashes match, and the model/arbiter artifacts are SHA-pinned.
+
+The full production service—not a canary or split rollout—is now on the 7B image:
+Cloud Run project `prereasoner-inference`, region `us-central1`, service `prereasoner-api`,
+revision `prereasoner-api-00122-zc4`, 100% traffic. Immutable image:
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:82f8f154d8c655bb23e05e0c1a98d956175f3ef1ab13a3fbfe6eb3bd9313b79c`.
+The existing 8-vCPU/16-GiB sizing, Cloud SQL attachment, service account, and min/max scale
+settings were preserved. Revision startup and `GET /api/healthz` passed; `reason`, `world`,
+and `dimension` were healthy. The app returned HTTP 200 in a read-only browser visit. A harmless
+unauthenticated `/api/reason` request returned 401 as required. No signed-in request or durable
+user history was created. The prior revision remains at 0% as rollback capacity.
+
+Release gates on the exact image passed: Cloud Build `22bc2d18-b242-4b90-9c1b-a1502dd5767c`,
+offline regression (13 passed), runtime/server smoke, live product suites against disposable
+seeded PostgreSQL, CPU HTTP smoke (serial and concurrency 2/4/8), and 33/33 Playwright browser
+tests. The disposable DB gate did not touch production Cloud SQL. The unauthenticated check is
+not an end-to-end signed-in user transaction; no such write was performed.
+
+Final CPU Spider DEV replay: **864/1,034 strict (83.56%)**, **867 lenient**, versus the historical
+0.5B main baseline **647/1,034 (62.57%)**: +217 strict examples / +20.99 points. The same 1,034
+selected SQL strings exactly match the prior full replay (zero SQL, strict-label, or identity
+mismatches), so the official Spider test-suite result remains **839/1,034 (81.14%)**. This is a
+repeatedly tuned DEV engineering result, not an unbiased generalization estimate; the test-suite
+metric is Spider-only and says nothing about production Knowledgebase joins. Full evaluator latency
+was p50/p90/p95/p99/max **7.172/16.384/17.840/19.965/138.576 seconds**; 220/1,034 exceeded the
+evaluator's soft 12-second threshold. This evaluator tail differs from the bounded production-image
+HTTP smoke (concurrency-8 max 11.648 seconds), so it is disclosed rather than conflated with API
+latency. Track it as follow-up performance work.
+
+The RunPod replay artifacts were downloaded and SHA-256 verified before the task-created CPU pod
+`h4h6uni6jbq23f` was terminated. The pod's final itemized billing was `$6.81668396841269`; a
+subsequent lookup returned 404, confirming it is gone. No unrelated RunPod resources were changed.
+The authoritative metric update is recorded in `spider/results/RESULTS.md`; older entries below
+are historical checkpoints and should not be read as the current deployment state.
+
 ## 2026-09-28 — Final exact-source 7B score and official Spider test-suite metric
 
 The production-matched CPU-served XiYanSQL Q4_K_M candidate completed the full Spider DEV replay:
