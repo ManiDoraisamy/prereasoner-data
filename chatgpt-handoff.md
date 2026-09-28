@@ -13,6 +13,34 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Corrected release build passed the complete product gate
+
+I fixed the clean-build bug from `2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef`: the release context now
+includes the hermetic-suite source inventory (`tests/build_provenance.json`) as well as the
+hash-verified runtime weights. Commit `39a70cf` passed the mandatory remote release build
+`db2c9921-d638-45e3-963b-4478bce02943` (**SUCCESS**). Offline regression, startup, `pip check`,
+Python 3.11 runtime pins, and every live suite on the isolated public-seed PostgreSQL database
+passed: world joins, nongeo, routed engine, geography, schema probes, and dataset prompts/follow-
+ups. The runner reported `ALL SUITES PASSED`. Verified runtime: Python 3.11.16, Torch 2.13.0+cpu,
+Transformers 5.10.4, spaCy 3.8.13, sqlglot 30.18.0, psycopg2-binary 2.9.12.
+
+The exact built image also passed the CPU-only API smoke on 8 vCPU/16 GiB. Serial n=3 p50/max
+1.420/5.129s; concurrency 2/4/8 p50 1.499/2.922/5.691s and max 2.860/5.698/11.184s; observed
+container memory 6.697/16 GiB. This was a single bounded concurrency burst, not an SLA. Build
+published only the immutable community artifact
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine:community-39a70cf`,
+digest `sha256:2b60c9c9859992cc0879c8e2bb5622d867e88d940f3b916dbb4cadf7b3ca80d9`, after the gates
+passed. Production is unchanged: revision `prereasoner-api-00236-noz` still receives 100% traffic.
+
+This closes the clean release-build and public-seed product-regression gap for the existing
+0.5B product image. It does **not** validate or ship the requested +10.4-point 7B candidate. The
+remaining gating work is still a frozen, model/pool/selector-matched 7B runtime package and its
+own exact-image regression/CPU checks; then production-data acceptance (not run because it
+touches customer data), and a defined sustained-load SLA. No merge, production image promotion,
+or traffic change occurred. See `PRODUCTION_READINESS.md` for the consolidated release decision.
+
+---
+
 ## 2026-09-28 — First full release build caught missing suite provenance
 
 The new commit-tagged release build `2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef` built its image,

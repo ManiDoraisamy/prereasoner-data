@@ -296,14 +296,25 @@ check, and bounded CPU API smoke at concurrency 1/2/4/8 have passed. The concurr
 was one bounded burst, not sustained-load acceptance or an agreed latency SLA. Those results
 do not validate the separate 7B Spider accuracy claim.
 
-The standard deployment build is being hardened to run offline regression, startup health, and
-the disposable live-product gate against the exact candidate image before publication. Its new
-wiring exposed and is fixing a clean-context provenance omission: build
-`2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef` built the image, passed offline regression and health, then
-the live-suite runner failed closed because `/app/tests/build_provenance.json` was missing. The
-HTTP join smoke still passed (29/29 requests, exact answers), but the product gate is a failure.
-Cloud Build did not publish the declared image. The `release` context now emits the separate test
-source inventory expected by the runner; a second full build is required before this gate closes.
+The standard deployment build now gates publication on offline regression, startup health, and
+the disposable live-product suite against the exact candidate image. The first attempt,
+`2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef`, failed closed because the clean release context omitted
+`/app/tests/build_provenance.json`. I fixed the release-context generator to emit both the runtime
+weight provenance and hermetic-suite source inventory. The corrected build
+`db2c9921-d638-45e3-963b-4478bce02943` from commit `39a70cf` completed **SUCCESS**. Offline
+regression, Python 3.11 package consistency, startup health, live public-seed PostgreSQL/world
+checks, routing, geography, schema probes, and dataset prompt/follow-up tests all passed. The
+runner reported `ALL SUITES PASSED`; runtime versions were Python `3.11.16`, Torch `2.13.0+cpu`,
+Transformers `5.10.4`, spaCy `3.8.13`, sqlglot `30.18.0`, and psycopg2-binary `2.9.12`.
+
+The same build's CPU-only 8-vCPU/16-GiB API smoke returned the expected result and healthy
+components. Serial requests: n=3, p50 `1.420s`, p95/max `5.129s`. Concurrency 2/4/8: p50
+`1.499/2.922/5.691s`, p95/max `2.860/5.698/11.184s`; container memory snapshot `6.697/16 GiB`.
+This is a bounded burst, not a sustained-load or agreed SLA. The immutable community image was
+published only after these gates passed:
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine:community-39a70cf`, digest
+`sha256:2b60c9c9859992cc0879c8e2bb5622d867e88d940f3b916dbb4cadf7b3ca80d9`. This is a non-traffic
+candidate build, not a production promotion and not evidence for the separate 7B Spider gain.
 
 The old “remaining acceptance work” list immediately below is historical and superseded by
 these completed gates. The actual blockers are now:
@@ -323,9 +334,11 @@ these completed gates. The actual blockers are now:
 5. No sustained-load acceptance target is defined. Agree p95, error-rate, throughput, and test
    duration before calling the bounded concurrency smoke a load gate.
 
-No merge, image publication, traffic change, or deployment is justified until the requested
-candidate itself has a frozen matched bundle and passes blockers 1–3. The refactor and release
-harness can be reviewed independently, but they do not ship or prove the 7B gain.
+No merge, production traffic change, or deployment is justified until the requested candidate
+itself has a frozen matched bundle and passes blockers 1–3. The release harness now publishes a
+separate, immutable community-tagged image only after its gates pass; that is not promotion to
+production. The refactor and harness can be reviewed independently, but they do not prove the 7B
+gain.
 
 ## Historical diagnostic-bundle checklist (superseded)
 
