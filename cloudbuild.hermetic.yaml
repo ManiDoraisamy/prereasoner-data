@@ -23,7 +23,7 @@ steps:
           ${_BASE_IMAGE} /workspace/deploy/gcp/run_hermetic_suite.sh
 
 substitutions:
-  _BASE_IMAGE: us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482
+  _BASE_IMAGE: us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd
 
 options:
   machineType: E2_HIGHCPU_8

@@ -13,6 +13,18 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Retargeting acceptance to the actual production digest
+
+After the successful live suite and CPU sweep, I compared the test image to the live Cloud Run
+revision instead of assuming they matched. They did not: `prereasoner-api-00236-noz` is serving
+`sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd`, while the earlier suite
+used `57d49a…`. Traffic remains 100% on revision 00236; this check made no service changes. I have
+retargeted both `cloudbuild.product.yaml` and `cloudbuild.hermetic.yaml`, plus the release contract
+test, to the exact current production digest. The full isolated live and hermetic gates must pass
+again against `3cbb003…`; until then, earlier live/CPU and hermetic results are valid only for
+`57d49a…`. This distinction also does not bridge to the separate 7B/+10.4 Spider diagnostic, which
+still has no matched selector/package in this production branch.
+
 ## 2026-09-28 — Disposable live product gate and CPU API smoke pass
 
 Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` completed successfully on source commit

@@ -1,14 +1,16 @@
 # Production-readiness workstream
 
-Status as of 2026-09-28: the isolated public-seed live product suites, current-source CPU API smoke,
-Python 3.11 dependency check, and static CI lint/compile gates pass on branch `codex/prod-readiness`.
-Nothing has been merged, promoted, or deployed. Release remains blocked for any claim that this
-ships the +10.4 Spider DEV points: the measured 7B artifact has no pool-matched selector/runtime
-package in this branch. The separate 80% Spider accuracy work remains in its own worktree.
+Status as of 2026-09-28: public-seed live product suites and CPU API checks pass against immutable
+image `57d49a…`, and static CI lint/compile gates pass on branch `codex/prod-readiness`. A read-only
+check then found the current production revision uses newer image `3cbb003…`; the full disposable
+product gate is being rerun against that exact digest before claiming current-production parity.
+Nothing has been merged, promoted, or deployed. Release remains blocked for any claim that this ships
+the +10.4 Spider DEV points: the measured 7B artifact has no pool-matched selector/runtime package
+in this branch. The separate 80% Spider accuracy work remains in its own worktree.
 
 ### Latest release work (2026-09-28)
 
-- **Latest live product gate passed:** Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` ran
+- **Previous release-image live product gate passed:** Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` ran
   source commit `78dbcd91bc10a8f0f5eeefc3de21705f58fd385e` on an `E2_HIGHCPU_32` worker. On the
   release image `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482`,
   the Python 3.11 runtime check passed `pip check` and
@@ -35,6 +37,11 @@ package in this branch. The separate 80% Spider accuracy work remains in its own
   isolated product regression/runtime only. They are not the 7B Spider DEV experiment or its
   +10.4-point diagnostic delta. That 7B bundle still lacks a selector matched to its candidate pool
   and a verified production runtime package; this branch has not packaged or promoted it.
+- Exact-current-revision check found production revision `prereasoner-api-00236-noz` uses image
+  digest `sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd`, whereas the
+  completed live suite above used `57d49a…`. Both product and hermetic build configs are now
+  retargeted to the current production digest; do not treat earlier results as exact-current-image
+  acceptance until both reruns pass.
 
 - Live build `d635705f-58e5-401a-bf7a-c580fcd92af3` passed offline and the two curated world
   goldens, then reported SIGKILL (`-9`) for `tests.test_world`/`tests.test_geo` and a 600-second

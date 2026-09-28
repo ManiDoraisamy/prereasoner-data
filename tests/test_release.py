@@ -758,7 +758,7 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
 def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
     cloudbuild = _text("cloudbuild.hermetic.yaml")
     suite_runner = _text("deploy/gcp/run_hermetic_suite.sh")
-    assert "engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482" in cloudbuild
+    assert "engine@sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd" in cloudbuild
     assert "docker run --rm --cpus=8 --memory=16g" in cloudbuild
     assert "--volume /workspace:/workspace:ro" in cloudbuild
     assert "cp -a /workspace/. /app/" in suite_runner
@@ -796,7 +796,7 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     cloudbuild = _text("cloudbuild.product.yaml")
     runner = _text("deploy/gcp/run_product_suite.sh")
     assert "pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067" in cloudbuild
-    assert "engine@sha256:57d49a5da4e5ec2fa03881969e9424bb5032584aaf94bc581b6bbfc74aeb8482" in cloudbuild
+    assert "engine@sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd" in cloudbuild
     assert "2c39e749e2ae87654cca80881cdec4de924e131b1f8199179f6c7ceef2d8840a" in runner
     assert "docker network create" in runner and "docker volume create" in runner
     assert "docker rm -f" in runner and "docker volume rm" in runner and "docker network rm" in runner
