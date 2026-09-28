@@ -1,5 +1,39 @@
 # Production-readiness workstream
 
+## Combined-tree release gate (2026-09-28)
+
+An isolated merge rehearsal at `codex/merge-readiness-rehearsal` combines current `main`
+(`6d8b7dd`) with `codex/prod-readiness` (`a1ece3e`). The rehearsal resolved one real conflict in
+`tests/test_world.py` (duplicate reasoner setup) and corrected one stale deploy-contract assertion
+in `tests/test_community_deploy.py`. The combined tree is at `ba130b77ab5a67bfb800f1751c2b0628923fe811`
+and has 0 commits behind `main`; no change was made to `main` or the product-readiness checkout.
+
+The full configured offline suite passed with the model bundle present: all 31 configured suites,
+including `test_complex_datasets` (7 passed, 0 skipped), schema coverage, release, and community
+deploy tests. Focused reruns passed `test_community_deploy` 21/21 and `test_release` 40/40.
+`git diff --check` passed. The rehearsal also corrected the stale example command in `cloudbuild.yaml`
+to pass `--target release`.
+
+Fresh exact-source release Cloud Build `1e04710b-2b5e-4c9e-a490-1fb25126d952` completed **SUCCESS**
+in 35m23s from rehearsal commit `ba130b7`. Its image passed the offline product regression, runtime
+startup/health, all configured live suites against disposable PostgreSQL 16/pgvector restored from
+the checksum-pinned public seed (world joins, nongeo, routed, geography, schema probes, and datasets),
+and the live CPU API join smoke. CPU API world-join latency was serial n=3 p50 1.276s/max 4.954s;
+concurrency 2/4/8 p50 1.502/2.805/5.197s and max 2.773/5.284/10.496s. Container memory was
+6.699/16 GiB; process RSS 6.86 GiB. These are bounded samples, not an SLA. External authenticated
+orchestrator and production Cloud SQL were not exercised.
+
+The gated build published the uniquely tagged candidate
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine:merge-ba130b7`, digest
+`sha256:6868b1b869caff21257dc05f6853cd1528c289fdea2a2c6979311acf98f4a219`. Read-only verification
+afterwards confirmed production remains revision `prereasoner-api-00236-noz`, 100% traffic, image
+digest `sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd`.
+
+**Decision boundary:** this is strong merge/release evidence for the existing 0.5B product path. It
+does not contain or validate the separate 7B Spider candidate, its real-likelihood selector, or its
+latency; that candidate still cannot be promoted. No merge to `main`, Terraform apply, Cloud Run
+revision creation, or traffic change occurred. The image tag is a gated rehearsal artifact only.
+
 Status as of 2026-09-28: the full public-seed product suite and bounded CPU API check passed
 against the exact current production image `3cbb003…` in Cloud Build
 `17436fb4-3251-433d-9966-37da60eb9551` (source `39b1aa9`). Full hermetic validation also passed

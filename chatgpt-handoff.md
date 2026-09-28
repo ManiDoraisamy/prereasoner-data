@@ -13,6 +13,35 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Combined-tree release rehearsal passed; production unchanged
+
+I continued the user's explicit request to take concrete steps toward merge readiness instead of
+returning only a status note. In isolated worktree `merge-ready`, I merged current `main` with
+`codex/prod-readiness`, resolved the duplicate `KnowledgeReasoner` setup in `tests/test_world.py`,
+fixed a stale `build_context.py` expectation in `tests/test_community_deploy.py`, and corrected the
+`cloudbuild.yaml` release example. I did not alter `main`, the original product branch, or the 7B
+accuracy worktree. Rehearsal commit: `ba130b77ab5a67bfb800f1751c2b0628923fe811` (0 behind main).
+
+Validation: all 31 configured offline suites passed with the ignored model bundle present; notably
+`test_complex_datasets` ran 7 cases with 0 skips. Focused deploy/release suites passed 21/21 and
+40/40. A fresh exact-source release build, Cloud Build
+`1e04710b-2b5e-4c9e-a490-1fb25126d952`, passed offline product regression, startup/health, the full
+configured live product suite against a disposable public-seed PostgreSQL database, and the actual
+CPU-only HTTP multi-source join smoke. Runtime sample: serial p50 1.276s/max 4.954s (n=3);
+concurrency 2/4/8 p50 1.502/2.805/5.197s, max 2.773/5.284/10.496s; memory 6.699/16 GiB.
+This is bounded evidence, not a sustained-load SLA. The gated build published only the rehearsal
+tag `engine:merge-ba130b7`, digest `sha256:6868b1b869caff21257dc05f6853cd1528c289fdea2a2c6979311acf98f4a219`.
+
+Read-only check confirms production is still revision `prereasoner-api-00236-noz` at 100% traffic
+on digest `sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd`. Nothing was
+deployed or merged. This validates the existing 0.5B product implementation only—not the research
+7B Spider accuracy candidate, which still lacks a matched selector/runtime integration and its own
+CPU/product gates. Remaining launch checks are production-data acceptance, external authenticated
+orchestrator coverage, and a defined sustained-load latency/SLA target. See
+`PRODUCTION_READINESS.md` for the full evidence and boundaries.
+
+---
+
 ## 2026-09-28 — Corrected release build passed the complete product gate
 
 I fixed the clean-build bug from `2c82e9f5-c3e1-4837-bd8f-a0ad676b21ef`: the release context now
