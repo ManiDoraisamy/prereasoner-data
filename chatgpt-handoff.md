@@ -13,6 +13,12 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Direct-served replay checkpoint: 710/1,034
+
+Latest full-dataset served replay checkpoint is **710/1,034 unique; 598 strict-correct (84.2% partial)**. By difficulty: easy 175/189, medium 259/304, hard 98/115, extra 66/102. Latency p50 7.0s, p90 16.2s, p95 20.0s, p99 131.5s, max 184.5s; 175/710 exceeded the evaluator's soft 12s budget. The top-1 accuracy remains above 80% on each prefix, but the complete final count and long-tail release decision are still outstanding. Exact official Spider test-suite evaluator source has been pinned locally at commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c`; its README identifies test-suite accuracy as Spider's official execution metric, and requires no `--plug_value` for a model that predicts literal values. Official suite databases are not yet downloaded; evaluate the final saved predictions against them after the served replay completes.
+
+---
+
 ## 2026-09-28 — Direct-served replay checkpoint: 600/1,034
 
 At 600 unique Spider DEV rows, the integrated CPU-served candidate has **496 strict-correct (82.7% partial)**. Difficulty counts: easy 137/149, medium 215/256, hard 83/99, extra 61/96. The 12s soft-budget exceedances are 173/600 (28.8%); p50 7.0s, p90 16.7s, p95 29.8s, p99 142.1s, max 184.5s. Three no-connected-AST-candidate errors remain visible at indices 104, 135 and 136. Current checkpoint is preserved locally; SHA-256 `3f855a56d205fef37673883313293f65b8777aa8882033846afccaf22a840554`. Accuracy is promising but partial; latency still needs a measured decision before promotion.
