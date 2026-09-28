@@ -27,6 +27,17 @@ Spider accuracy work remains in its own worktree.
   dataset, MCP, and orchestrator unit tests. `RUN_ENGINE_TESTS=0` and
   `RUN_ORCHESTRATOR_TESTS=0` are explicit in the hermetic harness, so live external-engine and
   authenticated external-orchestrator behavior are not covered by this gate.
+- **Configured CPU concurrency cap checked:** Cloud Run's current service config is 8 vCPU / 16 GiB,
+  container concurrency 8, max scale 3. The initial smoke (`d1cd9876-d700-46cd-8170-d7eefa9eac8f`)
+  sent 45 calls under one principal per minute and correctly received HTTP 429 at the engine's
+  30/minute limiter; this was a test-rate-budget bug, not an application capacity failure. The test
+  was corrected to stay within the limiter and rerun as CPU-smoke-only build
+  `ae908abb-962c-4e70-ac5a-38401fa79d9c` (source `423535b`). It passed all **8/8** simultaneous
+  read-only world-join requests at concurrency 8. At concurrency 1/2/4/8, p50 was
+  `1.367/1.578/3.768/5.435s` and max `5.182/3.078/6.505/10.729s`; the eight-sample p95 is its max.
+  Process peak was ~7.64 GiB; container snapshot `6.709/16 GiB`. This is one bounded burst, not a
+  sustained-load, multi-instance, or latency-percentile SLA. The smoke-only build skipped product
+  modules already passed in the full live gate and produced no image.
 - These results validate the already-serving candidate, not the 7B Spider +10.4 DEV-point change.
   A model/pool-matched 7B selector and verified runtime artifact remain necessary before that result
   can enter this release path. Authenticated external-orchestrator coverage, production-database

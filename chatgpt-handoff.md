@@ -30,6 +30,20 @@ Cloud Build produced no image (`images: -`); Cloud Run traffic/configuration is 
 The exact image's runtime checks passed on Python `3.11.16`, Torch `2.13.0+cpu`, Transformers
 `5.10.4`, spaCy `3.8.13`, sqlglot `30.18.0`, and psycopg2-binary `2.9.12`; `pip check` exited 0.
 
+I compared the measured burst to Cloud Run's read-only service configuration: 8 vCPU, 16 GiB,
+container concurrency 8, max scale 3. I extended the isolated smoke to the configured concurrency
+cap. Its first attempt (`d1cd9876-d700-46cd-8170-d7eefa9eac8f`) correctly failed: the test sent 45
+requests for one test principal inside a minute, exceeding the engine's intentional 30/minute
+principal limit and receiving HTTP 429. Inspection confirmed this was the test over-running the
+rate budget, not a CPU failure. The test now uses one 8-request burst after the existing 21 samples
+(29 total, below the 30/minute gate). Focused release-contract tests pass **39/39**. The corrected
+CPU-only smoke (`ae908abb-962c-4e70-ac5a-38401fa79d9c`, source `423535b`) passed all **8/8**
+simultaneous requests at concurrency 8. At concurrency 1/2/4/8, p50 was `1.367/1.578/3.768/5.435s`
+and max was `5.182/3.078/6.505/10.729s`; the n=8 p95 is its max. Process peak was `8,012,288 KiB`
+(~7.64 GiB), container snapshot `6.709/16 GiB`. This checks an 8-request burst under the service's
+rate contract; it is still not a sustained-load or percentile SLA. That smoke intentionally skipped
+the already-passed full product modules and built/pushed no image.
+
 The full hermetic suite also completed **SUCCESS** as Cloud Build
 `66370892-0dd4-4a3c-84ce-237c41e35524`, using the same source commit and exact image. All **31
 configured suites exited 0**, including `test_complex_datasets` and the MCP/orchestrator unit
