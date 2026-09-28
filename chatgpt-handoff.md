@@ -13,6 +13,20 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — 7B release verification actively progressing
+
+Continuing the user's request to carry the 7B candidate through merge, release, deployment, and browser/product verification. The accuracy branch's authoritative ledger reports **865/1,034 strict DEV (83.7%)** and **832/1,034 official Spider test-suite (80.46%)** for the pinned XiYanSQL Q4_K_M model using the neutral-likelihood selector; DEV is a repeatedly consulted engineering/tuning set, not an unbiased holdout. Those scores are not, by themselves, proof of production readiness.
+
+The release integration is isolated in `codex/7b-production-main`, PR [#30](https://github.com/ManiDoraisamy/prereasoner-data/pull/30), currently draft. On `0c7e980`, CI fixed a real failing-test issue: three new coverage tests imported the production spaCy POS tagger despite being deterministic checker tests. They now stub only the POS layer; production semantic behavior remains unchanged. Added a bounded `SQL_PROPOSER_THREADS` resolver and made full-evaluation checkpoints record effective thread count. Focused SQL AST tests and deterministic-emitter tests pass. GitHub CI is now fully green on `0c7e980`: Python hermetic suites, PostgreSQL numeric parity, secret scan, Terraform validation, browser journey, and image/SBOM/critical-vulnerability scan all succeeded.
+
+The old 16-thread RunPod run did not match Cloud Run's 8-thread model contract; it was checkpointed at 190/1,034 and stopped (partial diagnostic only). The same pod `h4h6uni6jbq23f`, created for this replay, is now running a fresh, full `SQL_PROPOSER_THREADS=8` replay pinned to production source commit `0c7e980`, with affinity restricted to eight of its allowed CPUs. At 250/1,034, 202 are strict-correct (80.8%); this prefix is not a stable full-set estimate. It measures p50 6.57s, p90 9.32s, p95 12.41s, max 146.18s, with 14/250 above the 12-second soft target. Slow calls occur in several databases, including the first six `concert_singer` rows, index 85 (`pets_1`), index 136 (`car_1`, no connected AST candidate), and indices 182–184 (`flight_2`). This is not solely process startup; tail behavior is still being investigated. A paired prefix audit against the earlier neutral-likelihood pool run's selected-rank records agrees on 207/210 strict flags (one win, two losses), so the two runs appear broadly consistent on that slice; the full exact-source replay remains authoritative. The pod costs `$0.96/hour`; the latest itemized billing read is `$0.6936195356538519` through the 17:00Z bucket (the later bucket has not posted). The pod remains ours and will be terminated only after recovering/verifying final artifacts and restoring the SSH key list.
+
+An exact-source release Cloud Build is also running against `0c7e980`: build ID `ca63fdc5-a34f-411e-9ac8-cab8ff1e3d37`, tag `engine:0c7e980`. A live status read at 17:31Z still showed `WORKING`; it runs the offline regression, startup/health probe, bounded 8-vCPU/16-GiB API smoke, and complete live product suite against disposable seeded PostgreSQL. It does not deploy or change Cloud Run traffic. Production remains on `prereasoner-api-00236-noz` until all 7B CPU, product, and release gates pass. The browser CI suite includes the full release browser journey and passed on this source.
+
+Next: finish the exact 8-thread full Spider replay, split cold versus warm latency by database (rather than hiding the cold prefix in an aggregate), inspect full accuracy/difficulty, CPU/RSS and checkpoint provenance; finish this gated image build; compare the candidate's served path and product behavior against the exact Cloud Run 8-vCPU/16-GiB configuration. Fix any gate failures before marking PR ready. No merge, production traffic change, or deployment has occurred yet.
+
+---
+
 ## 2026-09-28 — Combined-tree release rehearsal passed; production unchanged
 
 I continued the user's explicit request to take concrete steps toward merge readiness instead of
