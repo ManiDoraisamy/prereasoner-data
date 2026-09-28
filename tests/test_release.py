@@ -828,7 +828,7 @@ def test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed():
     assert 'float(rows[0][0]) != 270.0' in runner and "docker stats --no-stream" in runner
     assert 'cpu_api_reason_world_join_ms=' in runner
     assert 'cpu_api_reason_world_join_load=' in runner
-    assert 'for workers in (2, 4)' in runner
+    assert 'for workers in (2, 4, 8)' in runner
     assert 'live_product_suites=skipped by explicit CPU-smoke-only invocation' in runner
     assert "gcloud sql" not in runner and "cloud-sql-proxy" not in runner
     assert "RUN_WORLD_REGRESSION" in _text("deploy/gcp/run_hermetic_suite.sh")

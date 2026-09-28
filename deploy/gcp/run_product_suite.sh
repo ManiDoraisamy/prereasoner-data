@@ -116,7 +116,8 @@ else
 fi
 
 # Exercise the production HTTP entrypoint under CPU-only Cloud Run resource limits. Repeated
-# read-only world joins at concurrency 1/2/4 provide a bounded latency/resource smoke, not a load SLA.
+# read-only world joins at concurrency 1/2/4/8 match the configured per-instance concurrency cap;
+# this bounded smoke is not a sustained-load SLA.
 docker run -d --name "$server_name" --network "$network" --cpus=8 --memory=16g \
   --env KB_PG_HOST=product-db --env KB_PG_PORT=5432 --env KB_PG_DB=world \
   --env KB_PG_USER=serving --env "KB_PG_PASSWORD=$role_password" --env KB_PG_SSLMODE=disable \
@@ -178,7 +179,7 @@ single = [call_once() for _ in range(3)]
 print("cpu_api_reason_world_join_ms=" + json.dumps(summary(single), sort_keys=True), flush=True)
 
 load = {}
-for workers in (2, 4):
+for workers in (2, 4, 8):
     latencies = []
     for _ in range(3):
         with ThreadPoolExecutor(max_workers=workers) as executor:
