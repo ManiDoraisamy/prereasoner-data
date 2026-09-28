@@ -288,7 +288,42 @@ not rewrite. Regression tests cover both accepted rewrites and rejected ambiguit
 decomposition suite passes **14/14**; the top-category fixture also passes when rerun against
 the final projection tightening. SQL AST/runtime contract tests pass **124/124**.
 
-## Not ready to claim or promote
+## Current release decision (2026-09-28)
+
+For the exact candidate already serving at `prereasoner-api-00236-noz` (0.5B bundle),
+the full hermetic suite, disposable public-seed live product suite, Python 3.11 dependency
+check, and bounded CPU API smoke at concurrency 1/2/4/8 have passed. The concurrency-8 test
+was one bounded burst, not sustained-load acceptance or an agreed latency SLA. Those results
+do not validate the separate 7B Spider accuracy claim.
+
+The standard deployment build is being hardened to run offline regression, startup health, and
+the disposable live-product gate against the exact candidate image before publication. Its new
+wiring passes local release-contract tests; it has not yet been exercised as one Cloud Build from
+a clean, weight-complete release context.
+
+The old “remaining acceptance work” list immediately below is historical and superseded by
+these completed gates. The actual blockers are now:
+
+1. The deployed manifest/image is 0.5B. The separate 7B result is not a releasable model/pool/
+   selector package, and the last committed fold-1 7B full-DEV measurement is 755/1,034 strict,
+   below the 828 target. Do not label 0.5B release tests as evidence for the claimed 7B gain.
+2. No accepted, immutable, model-matched 7B selector/runtime bundle has been installed in the
+   production manifest. It must pin weights, tokenizer, runtime, prompt/pool and scoring
+   contracts, and be reproducibly fetchable from a clean build.
+3. Once that bundle exists, repeat the full offline and disposable live product gates and
+   complete-engine CPU latency/memory checks against that exact bundle. Existing 0.5B results
+   cannot be reused for it.
+4. Authenticated external-LLM integration incurs provider cost; production Cloud SQL tests touch
+   user data. Neither has been run. The public-seed test is the completed routine product gate;
+   any further external spend or production-data access needs explicit operator scope.
+5. No sustained-load acceptance target is defined. Agree p95, error-rate, throughput, and test
+   duration before calling the bounded concurrency smoke a load gate.
+
+No merge, image publication, traffic change, or deployment is justified until the requested
+candidate itself has a frozen matched bundle and passes blockers 1–3. The refactor and release
+harness can be reviewed independently, but they do not ship or prove the 7B gain.
+
+## Historical diagnostic-bundle checklist (superseded)
 
 The self-contained diagnostic bundle passed its 13-case offline CPU gate and, after the
 decomposition fix, all seven complex product fixtures in a standalone run. It is still not a

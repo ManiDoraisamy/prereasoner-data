@@ -715,7 +715,9 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     sync_dockerfile = _text("Dockerfile.sync")
     assert "COPY engine/enrichment/registry.py" in sync_dockerfile
     assert "COPY engine/ /app/engine/" not in sync_dockerfile
-    assert 'choices=("engine", "suite", "chat", "sync", "hosting")' in source
+    assert '"release": SOURCE_SUITE_ALLOWLIST' in source
+    assert 'target in {"engine", "release"}' in source
+    assert '"release", "suite", "chat"' in source
     assert '"build_target": target' in source
     hosting = _text("cloudbuild.hosting.yaml")
     assert "firebase deploy" in hosting
@@ -740,7 +742,7 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
         "  - id: runtime-server-smoke", 1
     )[0]
     smoke = cloudbuild.split("  - id: runtime-server-smoke", 1)[1].split(
-        "  # WORLD tier", 1
+        "  # Exercise the full live-product suite", 1
     )[0]
     assert "--cpus=8" in offline and "--memory=16g" in offline
     assert "offline_case_latency_ms" in _text("regress/run_regression.py")
@@ -753,6 +755,26 @@ def test_engine_release_build_runs_the_real_server_until_health_ready():
     assert "runtime_startup_seconds" in smoke
     assert "docker rm -f" in smoke
     assert "gcloud run" not in smoke and "terraform" not in smoke
+    deploy = _text("deploy/gcp/deploy.sh")
+    assert "build_context.py --target release" in deploy
+    assert '--ignore-file="$BUILD_CONTEXT/cloudbuild.hermetic.ignore"' in deploy
+    assert "--timeout=5400s" in deploy
+
+
+def test_engine_release_runs_full_live_product_gate_before_image_publication():
+    cloudbuild = _text("cloudbuild.yaml")
+    product = cloudbuild.split("  - id: live-product-suite", 1)[1].split(
+        "images:", 1
+    )[0]
+    assert "waitFor: ['runtime-server-smoke']" in product
+    assert "deploy/gcp/run_product_suite.sh" in product
+    assert "_RUN_PRODUCT_SUITES: \"1\"" in cloudbuild
+    assert "_PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:" in cloudbuild
+    assert "machineType: E2_HIGHCPU_32" in cloudbuild
+    assert "timeout: 5400s" in cloudbuild
+    assert "gcloud sql" not in product and "cloud-sql-proxy" not in product
+    # Cloud Build publishes declared images only after every step succeeds.
+    assert cloudbuild.index("- id: live-product-suite") < cloudbuild.index("images:")
 
 
 def test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image():
@@ -1117,6 +1139,7 @@ TESTS = [
     test_runpod_retries_only_idempotent_transfers,
     test_cloud_build_context_is_git_archive_plus_manifested_weights,
     test_engine_release_build_runs_the_real_server_until_health_ready,
+    test_engine_release_runs_full_live_product_gate_before_image_publication,
     test_hermetic_suite_build_runs_full_tests_in_the_pinned_cpu_image,
     test_live_product_gate_uses_disposable_postgres_and_pinned_public_seed,
     test_live_database_tests_allocate_production_shaped_schemas,

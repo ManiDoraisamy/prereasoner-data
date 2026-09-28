@@ -156,6 +156,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
     allowlists = {
         "engine": SOURCE_ALLOWLIST,
+        "release": SOURCE_SUITE_ALLOWLIST,
         "suite": SOURCE_SUITE_ALLOWLIST,
         "chat": SOURCE_CHAT_ALLOWLIST,
         "sync": SOURCE_SYNC_ALLOWLIST,
@@ -191,7 +192,7 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
                 shutil.copyfileobj(source, handle)
             destination.chmod(member.mode & 0o777)
 
-    if target == "engine":
+    if target in {"engine", "release"}:
         data = ROOT / "engine" / "data"
         manifest = load_weights_manifest(data)
         if manifest is None:
@@ -230,7 +231,10 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--target", choices=("engine", "suite", "chat", "sync", "hosting"), default="engine")
+    parser.add_argument(
+        "--target", choices=("engine", "release", "suite", "chat", "sync", "hosting"),
+        default="engine",
+    )
     args = parser.parse_args()
     commit, fingerprint = create_context(args.output, args.target)
     print(f"build context ready: target={args.target} commit={commit} weights={fingerprint}")

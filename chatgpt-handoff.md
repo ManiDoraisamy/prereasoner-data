@@ -13,6 +13,29 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Full live-product gate is now part of the release build
+
+I closed a release-pipeline gap rather than treating the earlier manual acceptance build as
+enough: `deploy.sh` now requests a clean `release` build context containing the allowlisted test
+sources plus the same manifest-validated weights, and supplies the no-filter upload contract so
+`.gcloudignore` cannot silently remove live suite dependencies. `cloudbuild.yaml` now runs the
+disposable, checksum-pinned public-seed product suite against the exact just-built image after
+offline regression and startup health. Cloud Build only publishes its declared image after every
+step succeeds. The build worker/timeout match the already exercised product lane (32-CPU worker,
+90 minutes); no Cloud SQL is used.
+
+Validation: release-contract suite **40/40**, Ruff `F,E9`, Cloud Build YAML parse, shell syntax,
+and `git diff --check` all pass. The required Cloud Build from a clean checkout with the actual
+weight bundle has not yet run, so this pipeline change is not yet remotely verified. Production
+traffic and artifact publication remain untouched.
+
+This advances the single-source release path, but does not solve the separate 7B candidate gap:
+the production manifest is still 0.5B, and the latest committed 7B fold-1 DEV serving result is
+755/1,034 strict with a mismatched selector. I left its active CPU screen and dirty worktree
+untouched. There is still no valid 7B bundle to publish as the +10.4-point candidate.
+
+---
+
 ## 2026-09-28 — Latest-source hermetic gate and concurrency-8 CPU check
 
 After the exact-current-image full product pass, I extended the disposable `/api/reason` CPU smoke
