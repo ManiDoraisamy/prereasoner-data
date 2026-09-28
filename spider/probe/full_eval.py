@@ -652,13 +652,25 @@ def main():
                 current_tabs=tabs,
                 current_question=ex["question"],
                 current_fks=selected_fks,
+                current_index=i,
             ):
-                return predict(
-                    enc, eng, reader, current_tabs, current_question,
-                    current_fks, ast_schema_cache,
-                    args.selection, not args.no_compose,
-                    args.backend, args.python_row_limit,
-                )
+                from engine import request_timing
+
+                token = request_timing.begin(f"spider-{current_index}")
+                try:
+                    result = predict(
+                        enc, eng, reader, current_tabs, current_question,
+                        current_fks, ast_schema_cache,
+                        args.selection, not args.no_compose,
+                        args.backend, args.python_row_limit,
+                    )
+                    # Keep privacy-safe phase timings with this offline record. These contain only
+                    # stage names and durations—not prompts, values, or SQL—and let us locate a
+                    # production-relevant long tail without assuming generation is the cause.
+                    result["_timing_spans_ms"] = request_timing.snapshot()
+                    return result
+                finally:
+                    request_timing.end(token)
 
             r, terr, prediction_seconds, over_budget = run_with_budget(
                 predict_current,

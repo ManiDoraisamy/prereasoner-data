@@ -13,6 +13,57 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-28 — Final exact-source 7B score and official Spider test-suite metric
+
+The production-matched CPU-served XiYanSQL Q4_K_M candidate completed the full Spider DEV replay:
+**864/1,034 strict (83.56%)**, compared with the recorded 0.5B main baseline of 647/1,034
+(62.57%), a **+217 questions / +20.99 percentage points** engineering-set difference. DEV has
+been repeatedly consulted during development; this is a tuning result, not an unbiased estimate.
+The replay has 1,034 rows with unique indices 0–1,033. Three `car_1` AST-search failures
+(indices 104, 135, 136; no selected SQL) count wrong. Difficulty strict: easy 233/248, medium
+378/446, hard 149/174, extra 104/166. The separate `spider/results/RESULTS.md` baseline remains
+the historical 0.5B score; this candidate result does not replace it.
+
+The pinned official evaluator `taoyds/test-suite-sql-eval` at
+`e97acc546ecbee8fa27fa8dbf025ef61493a876c`, run against the official Spider test-suite SQLite
+databases, scored **839/1,034 (81.14%) test-suite execution accuracy**. Difficulty counts were
+easy 233/248, medium 375/446, hard 148/174, extra 83/166. The prediction file retained model
+SQL literals; `--plug_value` was not used. This secondary Spider-only metric does not test the
+product's multi-source Knowledgebase joins. Suite archive SHA-256:
+`9ec24ea8debc6bd04abfe137b5f1a739b5a8836f32c0464e4dfc94eb7f41da96`. Official evaluator output
+SHA-256 `cf4458fbbcb5bedc46bbfc88df1e2c22624fb88cad804e0b5a553bfdbee2e669` is preserved in the
+analysis temp directory.
+
+Replay provenance is in the final checkpoint and summary, copied from the pod and hash-verified:
+summary `05792b3a3304a40d5e119673813d71f20ef58f5ac461c431b0874d72dc8fe56a`, per-example
+`1bcec9318fe3bbb6a430e9a401722a52e530255f45d67a01840ce1efae30ea26`, checkpoint
+`0d9987aa6d21a64f6bef0982c853b147df866d2f29294e707ae60b2ae9860610`. The contract pins source
+commit `0c7e98050f7ab9a88066b6197dccd684c700b9a8`, proposer SHA
+`50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb`, arbiter SHA
+`fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d`, and effective eight
+proposer threads. The source worktree was dirty; artifact hashes are the reproducibility
+contract.
+
+Latency remains an explicit caveat: full-evaluator prediction-time p50/p90/p95/p99/max was
+7.513/17.614/21.686/129.397/231.588 seconds; **273/1,034** exceeded the evaluator's soft
+12-second threshold (which does not cancel work). This is not the same path/load as the earlier
+Cloud Run API smoke (8-vCPU/16-GiB candidate image; concurrent-8 max 11.648 seconds), so neither
+result is substituted for the other. A privacy-safe targeted timing probe of the ten longest
+rows finished: those exact examples now take 4.3–7.2 seconds; proposer spans are 3.7–6.5 seconds,
+encode at most 1.56 seconds, and pool execution under 8 ms. The earlier 142–232-second spikes did
+not reproduce in this controlled sample, so no root cause is asserted. A new full 1,034-row replay
+with per-stage telemetry and fixed eight-core affinity is running to confirm whether the extreme
+tail recurs.
+
+The E2E browser suite remains **33/33 passing** against its isolated fixture server; the
+production browser inspection and healthz check were read-only. Current RunPod pod
+`h4h6uni6jbq23f` is this evaluation worker at `$0.96/hour`; its last billing read through
+21:00Z was `$4.399270317167975` for this pod. Preserve the result artifacts, finish the full
+timing replay, then remove only this task's temporary pod and restore the original SSH-key list.
+PR #30 remains
+open/draft on branch `codex/7b-production-main`; all six GitHub checks are green as of
+`b87551b`. No merge, production deploy, or traffic change has occurred yet.
+
 ## 2026-09-28 — Direct-served replay checkpoint: 980/1,034; browser suite passed
 
 The production-matched 8-thread replay is at **980/1,034 contiguous unique rows**, **812
