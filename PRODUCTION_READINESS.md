@@ -32,6 +32,17 @@ Spider accuracy work remains in its own worktree.
   can enter this release path. Authenticated external-orchestrator coverage, production-database
   acceptance, operational approval, and a sustained CPU load/SLA target also remain open; no
   production deployment is authorized by these test results alone.
+- **Verified model-contract mismatch:** this branch pins `Qwen/Qwen2.5-0.5B` in
+  `engine/model_revisions.py` and its existing adapter/artifact hashes in
+  `engine/data/weights_manifest.json`. The +10.4 Spider DEV result belongs to the separate 7B
+  experiment; its matched proposer pool, selector, and runtime artifact are absent here. Thus a
+  merge of this branch alone would not ship or reproduce that measured 7B delta. Do not label this
+  current-image acceptance as 7B promotion evidence.
+- Read-only production verification after the builds still shows revision
+  `prereasoner-api-00236-noz` at 100% traffic; `/api/healthz` reports `ok`, `reason`, `world`, and
+  `dimension` healthy. The disposable product suite did not query production Cloud SQL. Parallel
+  local accuracy jobs were left untouched because their Python processes were using about 12 GiB
+  combined at the time of inspection.
 
 - **Previous release-image live product gate passed:** Cloud Build `9c12a8ab-55dd-4469-817a-876c93b75db7` ran
   source commit `78dbcd91bc10a8f0f5eeefc3de21705f58fd385e` on an `E2_HIGHCPU_32` worker. On the

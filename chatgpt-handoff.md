@@ -44,6 +44,19 @@ sustained CPU latency/memory/load target. I am checking which can safely proceed
 disturbing the parallel accuracy jobs, rather than treating these passes as permission to claim
 or ship the 7B delta.
 
+I also checked the actual model provenance before any release action: this branch's
+`engine/model_revisions.py` pins `Qwen/Qwen2.5-0.5B`, and `engine/data/weights_manifest.json`
+pins the matching existing adapter bundle. The +10.4 Spider DEV result is from the distinct 7B
+experiment; its selector/runtime bundle is not in this branch. Therefore these passing gates do
+not make that 7B result releasable. I will not build or deploy a different model under the
+7B result's label. The local 7B CPU screen and independent full-eval Python processes were still
+active when checked (about 7.9 GiB and 4.2 GiB RSS; about 4.9 GiB host memory free); they were
+left alone, and no further memory-heavy local test was started.
+
+Read-only production verification after both builds: Cloud Run remains on
+`prereasoner-api-00236-noz` at 100% traffic, and `/api/healthz` returned all four checks true.
+No production database was queried; the product regression used only its disposable public seed.
+
 ## 2026-09-28 — Retargeting acceptance to the actual production digest
 
 After the successful live suite and CPU sweep, I compared the test image to the live Cloud Run
