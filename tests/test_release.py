@@ -736,6 +736,9 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     # Release provenance attests the full public source archive, including GitHub workflows.
     # Excluding .github at upload time made the Cloud Build snapshot incomplete.
     assert ".github" not in cloudbuild_ignores
+    # These trees are part of the same attested suite archive; ordinary engine build contexts
+    # omit them before upload, so they do not need global gcloudignore exclusions.
+    assert not {"docs/", "infra/", "training/", "spider/"} & set(cloudbuild_ignores)
     workflow = _text(".github/workflows/ci.yml")
     assert "--target chat --output /tmp/prereasoner-chat-build" in workflow
     assert "prereasoner-chat:ci /tmp/prereasoner-chat-build" in workflow

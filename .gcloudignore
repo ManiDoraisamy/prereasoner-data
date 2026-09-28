@@ -2,8 +2,8 @@
 #
 # CRITICAL: without this file, gcloud derives its ignore list from .gitignore, which
 # excludes the model weights (engine/data/*.pt, *.npz, qwen_lora/) — the built image
-# would then fail at container start. This file keeps engine/ (weights included) in the
-# upload and trims everything the Docker build doesn't need, mirroring .dockerignore.
+# would then fail at container start. The build-context generator already applies a per-target
+# source allowlist, so this global filter should cover only local and secret artifacts.
 .git
 .env
 .env.*
@@ -23,12 +23,9 @@ service-account*.json
 *.key
 *.p12
 engine/data/*.previous
-docs/
-infra/
-training/
-# The engine image COPYs only engine/ + regress/ (+ tests/ for the orchestrator build); everything
-# below is build-irrelevant and was silently bloating the upload (spider caches/DBs alone were ~1.3 GB).
-spider/
+# Build contexts are already created from per-target Git allowlists. Do not globally exclude source
+# trees such as docs/, infra/, training/, or spider/: suite/release contexts attest those exact files,
+# and the engine context omits them before upload. Ignore only generated/local artifacts below.
 .model_taxbak/
 scratch/
 *.tar.gz
