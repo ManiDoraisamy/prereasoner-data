@@ -5,7 +5,6 @@
 # would then fail at container start. This file keeps engine/ (weights included) in the
 # upload and trims everything the Docker build doesn't need, mirroring .dockerignore.
 .git
-.github
 .env
 .env.*
 !.env.example

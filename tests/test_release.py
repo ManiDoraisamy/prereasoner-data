@@ -731,7 +731,11 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert "node deploy/gcp/hosting_release.js" in hosting
     assert 'writeFileSync("web/public/lib/config.js"' in _text("deploy/gcp/hosting_release.js")
     assert "web/firebase.release.json" in hosting
-    assert "web/" not in _text(".gcloudignore").splitlines()
+    cloudbuild_ignores = _text(".gcloudignore").splitlines()
+    assert "web/" not in cloudbuild_ignores
+    # Release provenance attests the full public source archive, including GitHub workflows.
+    # Excluding .github at upload time made the Cloud Build snapshot incomplete.
+    assert ".github" not in cloudbuild_ignores
     workflow = _text(".github/workflows/ci.yml")
     assert "--target chat --output /tmp/prereasoner-chat-build" in workflow
     assert "prereasoner-chat:ci /tmp/prereasoner-chat-build" in workflow
