@@ -34,10 +34,11 @@ The isolated Playwright suite passed **33/33** against its synthetic local backe
 regression evidence only, not exact-image/authenticated production browser E2E.
 
 Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
-CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 725/1,034
-indices it has 615 strict-correct rows (84.83% partial); 309 rows remain. This is not a final score.
-For the first 700 rows, prediction p50/p90 were 19.00s/35.94s and 608/700 exceeded the 12s soft
-latency budget. Both strict count and full tail-latency distribution must be reported at completion.
+CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 750/1,034
+indices it has 639 strict-correct rows (85.20% partial); 284 rows remain. This is not a final score.
+For these 750 rows, prediction p50/p90/max were 19.31s/35.84s/61.71s and 658/750 exceeded the
+12s soft latency budget. Both strict count and full tail-latency distribution must be reported at
+completion.
 The replay checkpoint is under `%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`.
 Official Spider test-suite evaluation has not run yet. Production remains unchanged on the existing
 100%-traffic revision; no merge, deployment, official TEST evaluation, or authenticated browser
