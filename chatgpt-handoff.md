@@ -38,7 +38,10 @@ CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID
 indices it has 639 strict-correct rows (85.20% partial); 284 rows remain. This is not a final score.
 For these 750 rows, prediction p50/p90/max were 19.31s/35.84s/61.71s and 658/750 exceeded the
 12s soft latency budget. Both strict count and full tail-latency distribution must be reported at
-completion.
+completion. Instrumentation shows proposer decoding ran on all 750 rows and the proposal-origin
+candidate was selected on 450/750; decode alone had p50/p90 17.98s/34.03s. This makes a blanket
+“skip the proposer” optimization incompatible with preserving the measured candidate behavior;
+any latency optimization must be paired and re-evaluated for correctness.
 The replay checkpoint is under `%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`.
 Official Spider test-suite evaluation has not run yet. Production remains unchanged on the existing
 100%-traffic revision; no merge, deployment, official TEST evaluation, or authenticated browser
