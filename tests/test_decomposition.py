@@ -474,7 +474,8 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
     Chrome release gate found both failure directions: a lower-ranked member that projected a
     SUM but ordered category-product pairs by product name, and a choice that ranked customers
     by units where the question said spend."""
-    from engine.decomposition import leaf_candidate, leaf_measure_rejection
+    from engine.decomposition import leaf_measure_rejection
+    from engine.deterministic.lower import lower_select_query
     from engine.sql_ast import Join, OrderTerm
 
     product = ColumnRef("products", "product_name", SQLType.TEXT)
@@ -499,6 +500,37 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
         return PoolSelection(pool, frozenset(), (True,) * n, (True,) * n, ((-1.0, 9),) * n,
                              tuple(float(n - index) for index in range(n)), tuple(range(n)), 0, n)
 
+    def served_query(selection, node_id, question):
+        # Observe the real dual-emitter lowering, after production's guard and
+        # leaf selection. No test-only reimplementation of the selection rule.
+        tables = [
+            {"name": "products", "columns": ["product_id", "product_name", "category"],
+             "rows": [[1, "Coat", "Clothes"]]},
+            {"name": "customers", "columns": ["customer_id", "customer_name"],
+             "rows": [[1, "Mina"]]},
+            {"name": "order_items", "columns": ["product_id", "customer_id", "quantity", "line_total"],
+             "rows": [[1, 1, 2, 20.0]]},
+        ]
+        schema = [{"table": t["name"], "name": c,
+                   "affinity": "TEXT" if isinstance(t["rows"][0][i], str) else "REAL",
+                   "values": [row[i] for row in t["rows"]]}
+                  for t in tables for i, c in enumerate(t["columns"])]
+        planner = Mock()
+        planner.postgres_row_identity = False
+        planner.select_query.return_value = selection
+        planner.guard.return_value = (True, None)
+        proposal = {
+            "subquestions": [{"id": node_id, "question": question},
+                             {"id": "evidence", "question": question}],
+            "merges": [{"id": "missing", "op": "anti_join", "inputs": [node_id, "evidence"]}],
+            "output": "missing", "grain": "one entity",
+        }
+        with patch("engine.deterministic.lower.lower_select_query", wraps=lower_select_query) as lower:
+            plan = build_decomposed_plan(planner, "ranked", tables, schema, (), proposal,
+                                         question=question)
+        assert plan.output and len(plan.sections) == 3
+        return lower.call_args_list[0].args[1]
+
     # The choice names the right measure without showing it: served projected, never the
     # lower-ranked reading that shows a SUM but orders category-product pairs by name.
     units = "top 3 product names by total quantity sold"
@@ -507,9 +539,7 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
         (SelectItem(category), SelectItem(product), SelectItem(quantity)), "order_items",
         joins=(join,), group_by=(category, product), order_by=(OrderTerm(product, "DESC"),), limit=3)
     selection = pool_selection(names_only, other_reading)
-    served = leaf_candidate(selection, "top_products", units, True)
-    assert served.query == ranking(product, quantity, show=True)
-    assert "leaf:ranked-measure-projected" in served.evidence
+    assert served_query(selection, "top_products", units) == ranking(product, quantity, show=True)
     assert leaf_measure_rejection("top_products", units, names_only, selection.pool) is not None
     assert "ranks by something other" in leaf_measure_rejection(
         "top_products", units, other_reading, selection.pool)
@@ -519,18 +549,17 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
     spend = "top 2 customer names by total spend"
     by_units = ranking(customer, quantity, limit=2)
     by_spend = ranking(customer, line_total, show=True, limit=2)
-    served = leaf_candidate(pool_selection(by_units, by_spend), "top_customers", spend, True)
-    assert served.query == by_spend
+    assert served_query(pool_selection(by_units, by_spend), "top_customers", spend) == by_spend
 
     # A choice that already shows the named measure is served as it is.
     shown = pool_selection(by_spend)
-    assert leaf_candidate(shown, "top_customers", spend, True) is shown.pool[0]
+    assert served_query(shown, "top_customers", spend) == shown.pool[0].query
 
     # A compound choice yields to the best single query; with none, there is no leaf query.
     compound = SetQuery(names_only, "EXCEPT", names_only)
-    assert leaf_candidate(pool_selection(compound, names_only), "top_products", units, True).query \
+    assert served_query(pool_selection(compound, names_only), "top_products", units) \
         == ranking(product, quantity, show=True)
-    assert leaf_candidate(pool_selection(compound), "top_products", units, True) is None
+    _reject(lambda: served_query(pool_selection(compound), "top_products", units))
 
 
 TESTS = [

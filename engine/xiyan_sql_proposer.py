@@ -5,6 +5,8 @@ import json
 import os
 import re
 import threading
+import time
+import weakref
 from collections import OrderedDict
 from pathlib import Path
 
@@ -12,12 +14,18 @@ from engine import request_timing
 from engine.artifact_provenance import sha256_file
 from engine.sql_ast import render_query, validate_query
 from engine.sql_candidate import ScoredQuery
-from engine.sql_import import Unsupported, import_sql
+from engine.sql_import import Unsupported, import_sql, normalize_decoded_sql
 from engine.sql_prompt import xiyansql_prompt
 from engine.sql_rank import proposal_score
 
 _CONTRACT = Path(__file__).resolve().parent / "data" / "xiyan_sql_proposer.json"
 _DEFAULT_MODEL = Path(__file__).resolve().parent / "data" / "xiyan_sql_proposer.gguf"
+QUEUE_TIMEOUT_SECONDS = 15.0
+DECODE_TIMEOUT_SECONDS = 60.0
+
+
+class SQLProposerUnavailable(RuntimeError):
+    """Inference admission or execution exhausted its bounded CPU budget."""
 
 
 def load_contract(path: str | Path = _CONTRACT) -> dict:
@@ -31,8 +39,8 @@ def load_contract(path: str | Path = _CONTRACT) -> dict:
     if contract.get("selector", {}).get("likelihood_policy") != "neutral-sentinel-v1":
         raise RuntimeError("XiYanSQL selector contract has an unsupported likelihood policy")
     selector = contract["selector"]
-    if selector.get("model_matched_arbiter") is not False:
-        raise RuntimeError("the deployed arbiter must disclose that it was fit with another proposer")
+    if type(selector.get("model_matched_arbiter")) is not bool:
+        raise RuntimeError("the selector must explicitly disclose whether its proposer is matched")
     for field in ("sha256", "fit_source_proposer_sha256"):
         if not isinstance(selector.get(field), str) or not re.fullmatch(
             r"[0-9a-f]{64}", selector[field]
@@ -46,6 +54,9 @@ def load_contract(path: str | Path = _CONTRACT) -> dict:
             or artifact.get("quantization") != "Q4_K_M"
             or artifact.get("license") != "Apache-2.0"):
         raise RuntimeError("XiYanSQL GGUF contract is incomplete or unsupported")
+    if (selector["model_matched_arbiter"]
+            and selector["fit_source_proposer_sha256"] != artifact["sha256"]):
+        raise RuntimeError("selector claims a model match but its fit proposer differs from the GGUF")
     generation = contract.get("generation")
     if (not isinstance(generation, dict)
             or generation.get("temperature") != 0.0
@@ -105,6 +116,8 @@ class XiYanSQLProposer:
         self.max_new_tokens = int(contract["generation"]["max_new_tokens"])
         self._decoded: OrderedDict[str, tuple[str, ...]] = OrderedDict()
         self._model_lock = threading.Lock()
+        self._deadline = None
+        self._closed = False
 
     @staticmethod
     def read_contract(path: str | Path = _CONTRACT) -> dict:
@@ -127,6 +140,11 @@ class XiYanSQLProposer:
         runtime = contract["runtime"]
         generation = contract["generation"]
         threads = effective_cpu_threads(contract)
+        tokenizer = AutoTokenizer.from_pretrained(
+            contract["tokenizer"]["repository"],
+            revision=contract["tokenizer"]["revision"],
+            local_files_only=True,
+        )
         model = Llama(
             model_path=str(path.resolve()),
             n_ctx=int(runtime["context"]),
@@ -139,37 +157,98 @@ class XiYanSQLProposer:
             logits_all=False,
             verbose=False,
         )
-        tokenizer = AutoTokenizer.from_pretrained(
-            contract["tokenizer"]["repository"],
-            revision=contract["tokenizer"]["revision"],
-            local_files_only=True,
-        )
-        return cls(model, tokenizer, contract, actual)
+        instance = cls(model, tokenizer, contract, actual)
+        # The pinned CPU backend supports cooperative cancellation inside native
+        # decode, including prompt evaluation. Retain the callback until close.
+        from llama_cpp import llama_cpp
+        reference = weakref.ref(instance)
+        def should_abort(_):
+            owner = reference()
+            return owner is None or owner._expired()
+        instance._abort_callback = llama_cpp.ggml_abort_callback(should_abort)
+        llama_cpp.llama_set_abort_callback(model._ctx.ctx, instance._abort_callback, None)
+        # A strong atexit-bound method would retain every temporary proposer in
+        # model-backed tests. Finalize on collection OR before interpreter exit.
+        instance._finalizer = weakref.finalize(instance, model.close)
+        return instance
+
+    def _expired(self):
+        return self._deadline is not None and time.monotonic() >= self._deadline
+
+    def close(self):
+        """Release native resources before interpreter teardown; safe to call twice."""
+        with self._model_lock:
+            if not self._closed:
+                finalizer = getattr(self, "_finalizer", None)
+                if finalizer is not None:
+                    finalizer()
+                else:
+                    self.model.close()
+                self._closed = True
+                self._decoded.clear()
 
     def propose(self, tables, question: str, graph, floor: float) -> list[ScoredQuery]:
         prompt = xiyansql_prompt(self.tokenizer, graph, question)
-        cached = self._decoded.get(prompt)
-        if cached is not None:
-            self._decoded.move_to_end(prompt)
-            lines = cached
-        else:
-            config = self.contract["generation"]
-            with request_timing.span("propose"), self._model_lock:
-                result = self.model.create_completion(
-                    prompt=prompt,
-                    max_tokens=int(config["max_new_tokens"]),
-                    temperature=float(config["temperature"]),
-                    top_p=float(config["top_p"]),
-                    seed=int(config["seed"]),
-                    stop=[self.tokenizer.eos_token] if self.tokenizer.eos_token else [],
-                )
-            choice = result["choices"][0]
-            text = str(choice.get("text", ""))
-            from engine.sql_proposer import normalize_decoded_sql
-            lines = (normalize_decoded_sql(text),)
-            self._decoded[prompt] = lines
-            while len(self._decoded) > self._DECODE_CACHE_CAP:
-                self._decoded.popitem(last=False)
+        # Lookup and insertion share the model lock. A waiter must re-check the
+        # cache after the previous request finishes, and eviction must not race
+        # another request's move_to_end.
+        with request_timing.span("propose_queue"):
+            acquired = self._model_lock.acquire(timeout=QUEUE_TIMEOUT_SECONDS)
+        if not acquired:
+            request_timing.count("proposer_queue_rejections")
+            raise SQLProposerUnavailable("SQL model is busy; retry shortly")
+        try:
+            if self._closed:
+                raise SQLProposerUnavailable("SQL model is closed")
+            cached = self._decoded.get(prompt)
+            if cached is not None:
+                self._decoded.move_to_end(prompt)
+                request_timing.count("proposer_cache_hits", 1)
+                lines = cached
+            else:
+                config = self.contract["generation"]
+                # Reserve the entire output budget. Two additional positions
+                # conservatively cover backend-added BOS/EOS tokens; do not let
+                # llama.cpp silently shorten the configured completion budget.
+                prompt_tokens = len(self.model.tokenize(
+                    prompt.encode("utf-8"), add_bos=False, special=True))
+                if prompt_tokens + 2 + self.max_new_tokens > int(self.contract["runtime"]["context"]):
+                    request_timing.count("proposer_context_rejections", 1)
+                    return []
+                with request_timing.span("propose"):
+                    request_timing.count("proposer_decodes", 1)
+                    self._deadline = time.monotonic() + DECODE_TIMEOUT_SECONDS
+                    try:
+                        result = self.model.create_completion(
+                            prompt=prompt,
+                            max_tokens=int(config["max_new_tokens"]),
+                            temperature=float(config["temperature"]),
+                            top_p=float(config["top_p"]),
+                            seed=int(config["seed"]),
+                            stop=[self.tokenizer.eos_token] if self.tokenizer.eos_token else [],
+                        )
+                        if self._expired():
+                            raise SQLProposerUnavailable("SQL decoding exceeded its CPU budget")
+                    except RuntimeError as exc:
+                        if self._expired():
+                            self.model.reset()
+                            request_timing.count("proposer_deadline_rejections")
+                            raise SQLProposerUnavailable(
+                                "SQL decoding exceeded its CPU budget") from exc
+                        raise
+                    finally:
+                        self._deadline = None
+                choice = result["choices"][0]
+                if choice.get("finish_reason") != "stop":
+                    request_timing.count("proposer_incomplete_rejections", 1)
+                    return []
+                text = str(choice.get("text", ""))
+                lines = (normalize_decoded_sql(text),)
+                self._decoded[prompt] = lines
+                while len(self._decoded) > self._DECODE_CACHE_CAP:
+                    self._decoded.popitem(last=False)
+        finally:
+            self._model_lock.release()
 
         proposals = []
         seen = set()

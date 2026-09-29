@@ -69,8 +69,8 @@ path with `sql` or the default policy; explicit `py` and `both` requests return 
 Responses report the actual backend. Opening a saved conversation does not rerun it in the new mode.
 See [the execution contract](docs/DETERMINISTIC_EMITTERS.md) for coverage, source lifetime, and limits.
 
-Two frozen adapters on Qwen2.5-0.5B supply model evidence. An encoder reads intent and schema signals. A
-SQL proposer suggests candidate queries for own-data questions with deterministic beam search; a suggestion
+A frozen Qwen2.5-0.5B encoder reads intent and schema signals. A pinned, CPU-quantized XiYanSQL 7B
+SQL proposer suggests candidate queries for own-data questions with deterministic greedy decoding; a suggestion
 competes only after it imports into the engine's typed AST and validates, so its raw text never reaches a
 database, and no model writes a number. A fitted linear arbiter picks the served query from the
 search's candidates and the proposer's, and every response shows which source won and the arbiter's
@@ -147,7 +147,7 @@ engine/knowledge.py              one serving entry point
         +--> own-data typed AST planner: deterministic search + SQL proposer,
         |       pooled, executed, and chosen by a linear arbiter
         |       engine/tables.py (select_query), engine/sql_search.py,
-        |       engine/sql_proposer.py, engine/sql_rank.py, engine/sql_ast.py
+        |       engine/xiyan_sql_proposer.py, engine/sql_rank.py, engine/sql_ast.py
         |
         +--> world grounding when a public entity relation is required
                 engine/knowledge_query.py, engine/knowledge_compose.py
@@ -225,6 +225,7 @@ building the engine image, then seed the database before making a world-dependen
 Copy-Item .env.example .env
 # Edit .env and set: ANTHROPIC_API_KEY=...
 python -m engine.fetch_weights
+python -m engine.fetch_xiyan_sql
 docker compose up -d db
 docker compose --profile seed run --rm seed
 docker compose up --build

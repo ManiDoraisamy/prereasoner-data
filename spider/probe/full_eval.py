@@ -315,10 +315,15 @@ def ast_predict(
         pool = []
         for rank, candidate in enumerate(candidates):
             entry = {"rank": rank, "sql": candidate.sql,
-                     "score": round(candidate.score, 6),
+                     "score": candidate.score,
                      "features": dict(candidate.features),
                      "evidence": list(candidate.evidence),
-                     "proposed": candidate.sql in chosen.proposed}
+                     "proposed": candidate.sql in chosen.proposed,
+                     "executable": chosen.executable[rank],
+                     "grounded": chosen.grounded[rank],
+                     "eligible": chosen.executable[rank] and chosen.grounded[rank],
+                     "calculation_satisfied": chosen.calculation_satisfied[rank],
+                     "money_total": chosen.money_total[rank]}
             entry["likelihood"], entry["likelihood_tokens"] = likelihoods[rank]
             ok, why = enc.guard(candidate.sql)
             if not ok:
@@ -378,6 +383,22 @@ def _score_pool_oracle(record, gold_rows):
 
         pool = []
         for entry in raw:
+            eligible = bool(entry.get("eligible")) and "error" not in entry
+            features = dict(entry.get("features") or {})
+            if entry.get("likelihood") is not None:
+                features["proposer:scored_logprob"] = entry["likelihood"]
+                features["proposer:scored_tokens"] = float(entry["likelihood_tokens"])
+            serving_facts = {
+                "score": entry.get("score"),
+                "features": features,
+                "evidence": list(entry.get("evidence") or ()),
+                "proposed": bool(entry.get("proposed")),
+                "executable": bool(entry.get("executable")),
+                "grounded": bool(entry.get("grounded")),
+                "eligible": bool(entry.get("eligible")),
+                "calculation_satisfied": bool(entry.get("calculation_satisfied")),
+                "money_total": bool(entry.get("money_total")),
+            }
             if "rows" in entry:
                 comparison = compare(gold_rows, entry["rows"])
                 normalized = sorted(
@@ -385,21 +406,27 @@ def _score_pool_oracle(record, gold_rows):
                     for row in entry["rows"]
                 )
                 pool.append({"rank": entry["rank"], "sql": entry["sql"],
+                             **serving_facts,
                              "strict": bool(comparison.get("strict")),
                              "lenient": bool(comparison.get("lenient")),
                              "scalar_exact": bool(comparison.get("scalar_exact")),
+                             "eligible": eligible,
+                             "oracle_executed": True,
                              # denotation identity for offline agreement arbitration:
                              # equal hashes == equal normalized result multisets
                              "denotation": hashlib.sha1(
                                  repr(normalized).encode()).hexdigest()[:10]})
             else:
                 pool.append({"rank": entry["rank"], "sql": entry["sql"],
+                             **serving_facts,
+                             "oracle_executed": False,
                              "error": entry["error"]})
         record["pool"] = pool
     pool = record.get("pool") or []
 
     def first_rank(key):
-        return next((entry["rank"] for entry in pool if entry.get(key)), None)
+        return next((entry["rank"] for entry in pool
+                     if entry.get("eligible") and entry.get(key)), None)
 
     record["oracle_rank"] = {key: first_rank(key)
                              for key in ("strict", "lenient", "scalar_exact")}
@@ -411,6 +438,33 @@ def _score_pool_oracle(record, gold_rows):
     if top1 is not None and "error" not in top1:
         top1_cmp = {key: top1[key] for key in ("strict", "lenient", "scalar_exact")}
     return oracle_cmp, top1_cmp
+
+
+def _load_checkpoint_records(records, picked, retry_timeouts=False):
+    """Validate a partial replay checkpoint before reusing predictions.
+
+    A checkpoint may omit unfinished questions, but may not duplicate an index or
+    introduce an index outside this evaluation's frozen denominator.
+    """
+    if not isinstance(records, list):
+        raise ValueError("checkpoint records must be a JSON list")
+    expected = set(picked)
+    completed = {}
+    seen = set()
+    for record in records:
+        try:
+            index = int(record["idx"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("checkpoint record has no valid question index") from exc
+        if index not in expected:
+            raise ValueError(f"checkpoint contains unexpected question index {index}")
+        if index in seen:
+            raise ValueError(f"checkpoint contains duplicate question index {index}")
+        seen.add(index)
+        if retry_timeouts and record.get("stage") == "timeout":
+            continue
+        completed[index] = record
+    return completed
 
 
 def compose_predict(eng, tabs, question):
@@ -548,7 +602,7 @@ def main():
     engine_code = ("routing.py", "tables.py", "sql_search.py", "sql_rank.py", "sql_ast.py", "sql_candidate.py",
                    "sql_schema.py", "sql_expansion.py", "sql_constraints.py", "sql_extrema.py",
                    "sql_recursive.py", "sql_parsimony.py", "sql_profile.py", "sql_profile_expansion.py",
-                   "sql_proposer.py", "xiyan_sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
+                   "xiyan_sql_proposer.py", "sql_prompt.py", "sql_import.py", "sql_grounding.py",
                    "model_revisions.py",
                    "decomposition.py",
                    "knowledge_compose.py", "primitive_head.py", "compose.py", "encoder_overlay.py",
@@ -590,11 +644,9 @@ def main():
             checkpoint = json.load(handle)
         if checkpoint.get("contract") != checkpoint_contract:
             ap.error("checkpoint does not match this evaluation contract")
-        completed = {
-            int(record["idx"]): record
-            for record in checkpoint["records"]
-            if not (args.retry_timeouts and record.get("stage") == "timeout")
-        }
+        completed = _load_checkpoint_records(
+            checkpoint.get("records"), picked, retry_timeouts=args.retry_timeouts
+        )
         print(f"resuming from {len(completed)} checkpointed examples", flush=True)
 
     print("loading the runtime bundle (encoder, SQL proposer, arbiter)...", flush=True)
@@ -783,6 +835,8 @@ def main():
             "top1_strict": tot["top1_strict"],
             "top1_lenient": tot["top1_lenient"],
             "top1_scalar_correct": tot["top1_scalar_correct"],
+            "eligible_strict": tot["correct_strict"],
+            "eligible_lenient": tot["correct_lenient"],
             "strict_rank_histogram": {
                 str(rank): count
                 for rank, count in sorted(oracle_strict_rank_hist.items())

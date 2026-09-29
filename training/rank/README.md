@@ -1,60 +1,50 @@
-# SQL arbiter training and promotion
+# CPU SQL selector training and bundle staging
 
-This pipeline produces `engine/data/sql_arbiter.json`, the linear score that chooses the served
-own-data query among the deterministic search's candidates and the proposer's
-(`engine/sql_rank.py:SQLArbiter`), and installs it together with its proposer adapter.
+Production has one proposer: XiYanSQL 7B Q4_K_M, deterministic greedy decoding.
+The recorded baseline uses neutral likelihood sentinels with a disclosed historical
+0.5B-fit arbiter. New selectors must be fitted and validated on this 7B's own pools.
 
-## Steps
-
-1. **Label pools** — `build_pool_labels.py` runs Spider TRAIN questions through the production
-   selection (`TableQuery.select_query`, via the evaluator's `pool_oracle` mode) and labels every
-   pooled candidate strict/lenient against the gold execution on the same capped tables. Each record
-   carries the proposer likelihood and the pool contract it was built under. Pools come from the
-   runtime bundle; to label a candidate adapter, point `PREREASONER_DATA_DIR` at a candidate bundle.
-   Shards partition the work (`--dbs-filter`); train gold never reaches a serving decision and dev is
-   never read.
+1. Label official Spider TRAIN examples through the production selection owner:
 
    ```bash
-   python -m training.rank.build_pool_labels \
+   python -m training.rank.build_pool_labels --data <spider-data> --dbs <sqlite-directory> \
        --out training/rank/data/experiments/<id>/pools.jsonl --dbs-filter <dbs>
    ```
 
-2. **Fit** — `fit_arbiter.py` computes `ARBITER_FEATURES` for every labeled candidate of the fit
-   databases with the serving code (`engine.sql_rank.arbiter_features`), standardizes them and fits a
-   logistic regression (seed 7). Validation databases are never fit on; they are replayed with the
-   serving rule and reported against the pool oracle. Shards must share one pool contract and one
-   proposer identity; duplicate questions or SQL fail the load.
+   The header pins generation, source hashes, dataset and database hashes, model bundle,
+   CPU threads, and every expected question identity. Resume refuses any changed contract.
+   Missing/failed examples remain in the denominator. Each candidate retains exact score,
+   structural origin, eligibility and gold-blind calculation/money-total facts.
+   DEV and TEST are never label inputs. Use `PREREASONER_DATA_DIR` for a candidate bundle.
+
+2. Fit on database-disjoint fit and validation sets declared in a preregistered split JSON:
 
    ```bash
-   python -m training.rank.fit_arbiter --pools training/rank/data/experiments/<id>/pools*.jsonl \
-       --split training/rank/data/experiments/<id>/split.json \
+   python -m training.rank.fit_arbiter --pools <complete-shards> --split <split.json> \
        --out training/rank/data/experiments/<id>/sql_arbiter.json
    ```
 
-   The split file lists `fit_dbs` and `validation_dbs`.
+   The split has `fit_dbs` and `validation_dbs`. Seed is 7. All shards must share the same
+   source/model/data contract and contain every declared index once. Ineligible candidates
+   cannot be fitted or selected. Replay calls the same post-ranking rule as serving.
+   Fitting-side holdout does not prove the pretrained proposer never saw those databases.
+   Compare baseline and candidate on identical pools before expanding an experiment.
 
-3. **Promote** — `promote.py` is the only writer of `engine/data/sql_proposer/` and
-   `engine/data/sql_arbiter.json`. It refuses an arbiter fit on a different adapter, copies both
-   atomically, and records their hashes in `engine/data/weights_manifest.json`. Install locally for
-   the release gates, publish the adapter to the weights repository, then pin its revision:
+3. Stage one complete immutable bundle, never a hot per-file update:
 
    ```bash
-   python -m training.rank.promote --adapter training/proposer/data/experiments/<id> \
-       --arbiter training/rank/data/experiments/<id>/sql_arbiter.json --local-only
-   # gates: python -m tests.test_sql_ast, regress --offline, a fresh Spider whole_db run
-   python -m training.rank.promote ... --revision <immutable-hf-commit>
+   python -m training.rank.promote --source-bundle engine/data --arbiter <candidate.json> \
+       --destination training/rank/data/experiments/<id>/bundle
    ```
 
-   Rollback is the previous commit's `sql_arbiter.json` and manifest plus `python -m
-   engine.fetch_weights`, which restores the pinned adapter bytes.
+   The destination must not exist. The tool validates binding and hashes in a temporary sibling
+   directory, then publishes it with one directory rename. It rejects a new mismatched selector;
+   the exact frozen baseline can be restaged without pretending it is model-matched.
+   Staging is NOT evidence that release gates passed. Test the candidate via
+   `PREREASONER_DATA_DIR`, run full paired CPU DEV and official test-suite metrics and the full
+   product/browser gates, then release one immutable image. Rollback is the previous image and
+   its original hash-bound bundle, not an unverified mix of model files.
 
 Candidate artifacts live only in `training/rank/data/experiments/<id>/` (gitignored).
-
-## The shipped arbiter
-
-The served arbiter was fit by the arbitration pilot on d2 4-beam pools of 15 Spider TRAIN databases
-(31,086 candidates from 1,625 questions; 5 validation databases held out). The pilot's two-proposer
-layout also carried six slots that are constant with coefficient exactly 0.0 when one proposer
-serves; they were dropped, which leaves every score bit-identical. `fit_arbiter.py` on the same pools
-reproduces the means, scales and intercept exactly and the coefficients within 1e-14 relative. The
-artifact records its pools, split, adapter identity and the Spider evidence it was served under.
+No experiment overwrites the deployed bundle. No gold-derived information enters a serving
+decision; gold is used only to label TRAIN examples or grade an independently selected answer.

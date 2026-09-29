@@ -13,6 +13,155 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-29 — full 7B replay and official Spider metric complete; release still gated
+
+The final clean-source CPU replay produced all 1,034 rows with exact ordered indices and
+verified provenance (`worktree_dirty=false`; source commit `40cd5a44947edaa62b788210afdfd1fcf112875b`).
+XiYanSQL QwenCoder 7B Q4_K_M, eight CPU threads, frozen served neutral-score arbiter, no gold
+substitution: **865/1,034 strict (83.72%)**, **868/1,034 lenient (83.95%)**. By difficulty,
+strict is easy 234/248, medium 378/446, hard 150/174, extra 103/166. This clears 80% on a
+repeatedly consulted DEV engineering set; it is not an unbiased generalization claim.
+
+The pinned official Spider test-suite evaluator also passed the full denominator: **832/1,034
+(80.46%)**, evaluator commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c`, 695 suite SQLite
+files, `keep_distinct`, no `--plug_value`, zero timed-out rows. It is a secondary Spider-only
+metric, not product Knowledgebase-join accuracy. Its exact run artifacts and hashes are in
+`%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`; the ledger is updated in
+`spider/results/RESULTS.md`.
+
+Paired against the prior `clean-engine-q4-8t` full replay, strict gains are four and losses three
+(861 unchanged correct, 166 unchanged wrong); 23 SQL outputs differ. Those 23 score 15/23 on the
+official test-suite metric for this candidate versus 14/23 for the paired control. The distinct
+historical deployed record at 839/1,034 is not this paired control.
+
+The hard blocker is now latency, not accuracy: p50/p90/p95/max are 19.335/37.111/42.834/61.705s,
+with 893/1,034 exceeding the 12s soft target. Four rows failed (three connected-AST misses on
+`car_1`, idx 104/135/136; one proposer CPU decode-budget failure, idx 575). The experimental
+model-matched arbiter did not improve the preregistered held-out sample, so no new selector was
+installed. A bounded 16-thread pilot on 32 difficulty-balanced rows preserved selected SQL and
+strict labels 32/32; p50/p90/max improved from 14.781/26.544/35.609s to 12.271/22.146/28.839s,
+though 18/32 remained over 12s. The test used a 16-logical-CPU host, so it does not qualify a
+thread override for the 8-vCPU Cloud Run service. Reran `npm run test:browser`: **33/33** passed
+against its synthetic backend; this is not signed-in exact-image browser E2E. Release Cloud Build
+`b0cc8a30-0a32-4a6c-9efb-98b18277f12f`
+passed startup/health, seven disposable-Postgres suites and the bounded CPU API smoke; its image
+digest is `sha256:da66e69be2c73b71c1200a006cb439f785ae9f8a30e313619f597504db8cc0a6`. Synthetic
+Playwright passed 33/33, but authenticated orchestrator cases remain untested because no external
+model credential is available. Production remains unchanged: revision `prereasoner-api-00122-zc4`
+serves 100% traffic. No merge or deployment has occurred.
+
+## 2026-09-29 — release build green; full CPU replay in progress (earlier checkpoint)
+
+Commit `7817f69f0f8055a988022b9fab8d18e6c6a349dd` adds the community-seed post-migration QID
+projection rebuild and bumps the bootstrap marker so upgraded databases apply it. Focused tests
+passed (`tests.test_community_deploy`: 24/24; QID projection tests: 3/3), as did compileall and
+`git diff --check`. Ruff's changed-file `F,I`/`F` checks passed; the repository-wide style check
+still reports pre-existing line-length violations in these files.
+
+Attested release-context Cloud Build `b0cc8a30-0a32-4a6c-9efb-98b18277f12f` completed SUCCESS
+from that commit. Immutable image:
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:da66e69be2c73b71c1200a006cb439f785ae9f8a30e313619f597504db8cc0a6`.
+Offline regression and startup/health passed (17s startup); all seven configured live suites passed
+against disposable PostgreSQL: world, nongeo, world joins, route-wired, geo, schema probes, and
+datasets. API health was true for all components. Candidate CPU API world-join sample was n=3,
+p50 1.396s, max/p95 4.930s. Across 42 proposer timing spans recorded inside the live dataset
+suite’s 8-CPU container, decode p50/p90/max was 6.713s/10.104s/36.419s. This is useful exact-image
+CPU evidence but not a Cloud Run request-latency/concurrency measurement. This build did not deploy
+to Cloud Run. `test_datasets` explicitly skips authenticated orchestrated follow-ups; those remain
+an open gate.
+
+The isolated Playwright suite passed **33/33** against its synthetic local backend. This is client
+regression evidence only, not exact-image/authenticated production browser E2E. Additional reruns
+passed `tests.test_orchestrator_unit` (20/20) and `tests.test_release` (43/43); the seed-import
+focused suites remain 24/24 and 3/3 as above.
+
+Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
+CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 1,025/1,034
+indices it has 857 strict-correct rows (83.61% partial); 9 rows remain. The 80% floor is crossed in
+this partial prefix; seven of the remaining nine correct would match the historical 864 strict
+score. For these 1,025 rows, prediction p50/p90/max were 19.36s/37.11s/61.71s and 886/1,025
+exceeded the 12s soft latency budget. Difficulty so far: easy 233/247, medium 376/443, hard 145/169,
+extra 103/166. Four records are errors and will be classified in the final report. Both strict
+count and full tail-latency distribution must be reported at completion.
+Verified `git diff 40cd5a4 7817f69 -- engine spider/probe` is empty: the tested release image’s
+serving/evaluation code is identical to the replay source; the intervening fix is seed-import-only.
+Instrumentation shows proposer decoding ran on all 750 rows and the proposal-origin candidate was
+selected on 450/750; decode alone had p50/p90 17.98s/34.03s. The live `tests.test_orchestrator`
+API test self-skipped because `ANTHROPIC_API_KEY` is unavailable in this workspace, so its live
+external-model/browser gate remains open. This makes a blanket
+“skip the proposer” optimization incompatible with preserving the measured candidate behavior;
+any latency optimization must be paired and re-evaluated for correctness.
+The replay checkpoint is under `%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`.
+Official Spider test-suite evaluation has not run yet. Production remains unchanged on the existing
+100%-traffic revision; no merge, deployment, official TEST evaluation, or authenticated browser
+claim is made here.
+
+## 2026-09-29 — neutral arbiter pilot complete; candidate rejected
+
+The local 240-question XiYan CPU pool build completed against `train_spider.json`: exactly 24
+questions each for the preregistered ten databases, 240 unique indices, 239 labeled rows and one
+malformed gold query (`idx=4514`, `document_management`, invalid ORDER BY placement before
+INTERSECT). The row remains in the denominator. Model/proposer hash is
+`50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb`; the pool contract uses
+CPU, neutral-sentinel likelihood, one 1,024-token beam and deterministic search budget 25. Pool
+JSONL SHA256: `2e98974a4c8b1308afef40e7b9f105631aba7e1419e6832eb2d7f077a3be46bd`.
+
+Fit used 144 questions / six TRAIN databases; validation used 96 questions / four disjoint TRAIN
+databases. This holds out selector-fitting DBs only; XiYan pretraining exposure is unknown. The
+fitted arbiter and frozen production arbiter both selected **82/96 strict-correct** candidates,
+with **0 paired wins and 0 losses**. Eligible pool-oracle coverage was 85/96. Per validation DB:
+customer_complaints 19/24, program_share 24/24, student_1 21/24, wine_1 18/24 for both selectors.
+This fails the preregistered selector-gain gate; the candidate was not installed or promoted.
+Experimental arbiter SHA256: `e37d48dd50fe380c2d220cf0fd3b577e94d0ab9810f84e29d7e7f47fad129061`.
+
+The new replay serializer change and regression test passed `tests.test_sql_ast` (129/129). Next is
+a fresh full CPU DEV replay of the frozen current serving arbiter from a clean, fingerprinted
+commit, followed by the official Spider test-suite evaluation on those exact saved SQL strings.
+The older 864 strict / 839 test-suite records remain historical and do not validate the new source
+tree. No merge/deploy/browser gate has been claimed from this pilot. No RunPod was used.
+
+## 2026-09-29 — review fixes underway; new release gates NOT complete
+
+User requested the full review-fix/80%+/merge/deploy/browser plan, then authorized continuing
+overnight. Work is isolated in `7b-production`, branch `codex/7b-release-hardening` from
+`e50b4a5`; Claude/main and the dirty `af15` research checkout are unchanged. The active plan
+is now at the top of `PRODUCTION_READINESS.md`, not a second plan document.
+
+Corrected the prior completion framing: the deployed baseline recorded 864/1,034 strict and
+839/1,034 official test-suite, but its authenticated production demo/follow-up Chrome gate
+was not complete. Those scores are not yet verified for the new source changes.
+
+Reproduced and fixed exact decimal threshold rounding, accepting truncated completions,
+missing context preflight, and duplicate concurrent prompt decoding. Focused results:
+XiYan 9/9, compose 23/23, SQL AST 129/129, calculations 104/104 on local Python 3.14
+(not a substitute for the Python 3.11 image gate). Saved pools now retain structural
+proposer origin, full-precision scores, execution/grounding eligibility and calculation/money
+facts. Serving and fitter replay call the same post-ranking rule. Resume and denominator
+contracts are being hardened before any matched pilot. No new model promoted or deployed.
+
+The prior full offline run finished with every invoked suite exit-zero, but its `complex_datasets`
+suite imported the proposer before the final lifecycle fix, so that run is diagnostic only. The
+native model now has a weak-reference finalizer (no temporary test instance is retained to process
+exit); a real local GGUF load was collected and finalized successfully. I also corrected the pool
+oracle: only candidates that were serving-eligible and actually produced a labeled denotation count
+toward oracle coverage. Checkpoints now reject duplicate/out-of-split indices. Current focused
+results: SQL AST 128/128, XiYan proposer 12/12, release 43/43; Ruff, compileall and `git diff
+--check` pass. I will rerun the frozen full suite after the preregistered local pilot source is
+committed. The 240-question pilot uses six TRAIN databases for fit and four disjoint TRAIN databases
+for validation; it is not a claim of independent proposer pretraining exposure or a promotion gate.
+
+Follow-up commit `71da66d` makes the pilot replay the fitted selector and the frozen production
+arbiter on the same validation candidate pools, with paired wins/losses by question and database.
+The old arbiter declares a 4-beam/96-token fit pool while production now generates one 1,024-token
+CPU beam; the report retains that historical mismatch, while the comparison uses the actual new
+production pool. Pool collection is running locally from source commit `95c33c9`; at the last check
+it had written 44/240 examples, with no errors and stable memory. No selector has been fit, and
+these partial counts are not accuracy evidence.
+
+RunPod MCP read-only check: no account pods. Billing for Aug 30–Sep 29 totals $32.500336
+across prior work (not all charged to this experiment); Sep 28 total $7.716525. No paid run
+has been started in this change. Remaining budget must be reconciled before a new lease.
+
 ## 2026-09-29 — 7B merged, fully cut over, and post-deploy checks complete
 
 The unified 7B implementation is merged to `main` via [PR #30](https://github.com/ManiDoraisamy/prereasoner-data/pull/30).

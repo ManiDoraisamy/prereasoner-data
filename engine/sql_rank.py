@@ -6,7 +6,7 @@ Two deterministic stages, each recorded as named features:
    and encoder similarities (engine/sql_search.py applies it). Every adjustment is a named
    feature, so model similarity can improve ordering without hiding why a candidate won.
 2. ``SQLArbiter`` chooses the served query from the executed pool of search candidates plus
-   the SQL proposer's suggestions (engine/sql_proposer.py): a fitted linear score over the
+   the SQL proposer's suggestions (engine/xiyan_sql_proposer.py): a fitted linear score over the
    nine ``ARBITER_FEATURES``. The highest-scoring candidate that executes wins; a tie goes to
    the earlier pool position. ``PoolSelection`` records the whole decision.
 """
@@ -637,6 +637,8 @@ class PoolSelection:
     ranking: tuple[int, ...]
     selected: int | None
     searched: int
+    calculation_satisfied: tuple[bool, ...] = ()
+    money_total: tuple[bool, ...] = ()
 
     @property
     def candidate(self) -> ScoredQuery | None:
@@ -690,6 +692,23 @@ class PoolSelection:
                 intercept=round(arbiter.intercept, 6),
             )
         return evidence
+
+
+def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
+                            money_total: Sequence[bool]) -> int | None:
+    """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
+
+    Prefer a satisfied calculation, if any. A named money total then constrains
+    that choice, retaining it when compatible or taking the first ranked total.
+    Training replays these exact facts rather than copying this policy.
+    """
+    if not ranking:
+        return None
+    selected = next((i for i in ranking if calculation_satisfied[i]), ranking[0])
+    totals = [i for i in ranking if money_total[i]]
+    if totals and not money_total[selected]:
+        selected = totals[0]
+    return selected
 
 
 def arbitrate(pool: Sequence[ScoredQuery], proposed: frozenset[str],

@@ -3,6 +3,13 @@
 Prereasoner has hermetic tests, browser-state tests, live database integrations, a deployment regression gate, and
 Spider accuracy evaluation. They answer different questions and should not be collapsed into one green badge.
 
+Model-backed tests need both `python -m engine.fetch_weights` and
+`python -m engine.fetch_xiyan_sql` (GGUF plus tokenizer). Set `SQL_PROPOSER_MODEL_PATH` only
+when reusing a verified GGUF outside `engine/data/`. The runner gives live engine and complex
+dataset suites 7,200 seconds on CPU; other suites retain 900 seconds.
+`TEST_SUITE_TIMEOUT_SECONDS` explicitly overrides either default. A suite exiting zero after
+reporting SKIP is not evidence that the skipped integration passed.
+
 ## Dual-emitter verification
 
 The emitter suite executes real generated Python and SQL over SQLite fixtures. It covers stage

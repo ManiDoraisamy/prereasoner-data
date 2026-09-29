@@ -1,6 +1,6 @@
 """Check the proposer's batched likelihood scorer against a naive full-forward reference.
 
-engine/sql_proposer.py scores every pooled query in padded batches that share one encoding of the
+training/proposer/inference.py scores every pooled query in padded batches that share one encoding of the
 prompt. This script recomputes each likelihood with one plain forward pass over prompt + query and
 checks three properties: the values agree (within --tolerance), a batch gives exactly the values
 the same queries get one at a time (batching changes cost, not values), and reversing the order
@@ -51,7 +51,7 @@ def naive_reference(proposer, prompt, sqls):
 def main():
     from engine.config import DATA_DIR, DEVICE
     from engine.sql_prompt import schema_prompt
-    from engine.sql_proposer import SQLProposer
+    from training.proposer.inference import SQLProposer
     from engine.sql_rank import SQLArbiter
 
     ap = argparse.ArgumentParser()

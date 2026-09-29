@@ -269,7 +269,7 @@ SQL statements. Serving also retains its SELECT-only execution guard.
 | `engine/sql_extrema.py` | Extrema, top-N, and set difference. |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT). |
 | `engine/sql_rank.py` | Hand-written search ranking features; the pool merge and the linear arbiter (`SQLArbiter`, `PoolSelection`). |
-| `engine/sql_proposer.py` | The frozen SQL proposer: deterministic beams and teacher-forced likelihoods. |
+| `engine/xiyan_sql_proposer.py` | Pinned 7B CPU SQL proposer: greedy completion and an explicit neutral-scoring contract. |
 | `engine/sql_prompt.py` | The one proposer prompt, shared with training. |
 | `engine/sql_import.py` | SQL text to typed AST; the gate every proposal passes. |
 | `engine/calculations/core.py` | Typed plans and branch-preserving computation evidence. |

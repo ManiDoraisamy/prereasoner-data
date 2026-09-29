@@ -20,6 +20,14 @@ def sha256(path: Path) -> str:
 
 def fetch(contract_path: Path, output: Path) -> str:
     contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    # Provision the exact tokenizer even when the large model is already cached.
+    # Serving stays offline; Docker and local setup share this one source of pins.
+    from transformers import AutoTokenizer
+
+    AutoTokenizer.from_pretrained(
+        contract["tokenizer"]["repository"], revision=contract["tokenizer"]["revision"],
+        token=os.environ.get("HF_TOKEN") or None,
+    )
     artifact = contract["gguf"]
     expected = artifact["sha256"]
     if output.is_file() and output.stat().st_size == artifact["size_bytes"]:

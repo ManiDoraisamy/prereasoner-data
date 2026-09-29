@@ -97,6 +97,11 @@ def load_sql_selection(obj, deploy_dir=DATA_DIR):
     obj.sql_arbiter = SQLArbiter.from_payload(
         arbiter_payload, str(arbiter_path)
     )
+    if contract["selector"]["model_matched_arbiter"]:
+        if (obj.sql_arbiter.proposer_beams != 1
+                or obj.sql_arbiter.proposer_max_new_tokens != contract["generation"]["max_new_tokens"]
+                or arbiter_payload["fit"].get("likelihood_policy") != contract["likelihood_policy"]):
+            raise RuntimeError("matched arbiter generation/scoring contract differs from the CPU runtime")
     obj.sql_proposer = XiYanSQLProposer.load(
         os.environ.get("SQL_PROPOSER_MODEL_PATH") or d / "xiyan_sql_proposer.gguf",
         contract_path=contract_path,

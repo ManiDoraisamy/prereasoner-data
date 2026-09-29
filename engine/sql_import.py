@@ -2,7 +2,7 @@
 
 One importer serves three callers: Spider gold SQL becomes proposer training targets
 (``training/proposer/import_gold.py``), and at serving time every SQL line the proposer model
-decodes is imported here before it may join the candidate pool (``engine/sql_proposer.py``).
+decodes is imported here before it may join the candidate pool (``engine/xiyan_sql_proposer.py``).
 Only shapes the typed AST can express are mapped; anything else raises ``Unsupported``, so model
 text can never reach a database except as a validated, re-rendered AST. The importer has no
 dataset access and never receives a gold answer or an execution label.
@@ -18,6 +18,17 @@ from engine.sql_ast import (
     SelectQuery, SetQuery, Star,
 )
 from engine.sql_schema import SchemaGraph
+
+
+def normalize_decoded_sql(text: str) -> str:
+    """Remove an optional Markdown fence without truncating multiline SQL."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
 
 
 class Unsupported(Exception):

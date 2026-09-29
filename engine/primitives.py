@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+from engine.numeric import canonical_decimal, parse_decimal
+
 
 def q(name):
     """quote an identifier"""
@@ -33,7 +35,10 @@ def filter_view(src, conds):
     every group and 'sales < 50' none (2026-09-28). A text value keeps its text comparison."""
     def one(c, op, v):
         if isinstance(v, (int, float, Decimal)) and not isinstance(v, bool):
-            return f'decimal_cmp({q(c)}, {lit(v)}) {op} 0'
+            # Pass decimal text, not a SQLite REAL/integer literal: SQLite would
+            # round high-precision values before decimal_cmp receives them.
+            exact = canonical_decimal(parse_decimal(v, enforce_input_bounds=False))
+            return f"decimal_cmp({q(c)}, '{exact}') {op} 0"
         return f'{q(c)} {op} {lit(v)}'
     where = " AND ".join(one(c, op, v) for c, op, v in conds)
     return f'SELECT * FROM {q(src)} WHERE {where}'

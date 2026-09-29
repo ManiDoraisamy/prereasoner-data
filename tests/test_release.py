@@ -1125,7 +1125,106 @@ def test_class_metrics_separate_evidence_coverage_from_accuracy():
     assert metrics["evidence_coverage"] == 0.5
 
 
+def test_xiyan_cached_model_still_provisions_the_pinned_tokenizer():
+    import types
+    from engine.fetch_xiyan_sql import fetch
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        model = root / "model.gguf"
+        model.write_bytes(b"fixture")
+        digest = hashlib.sha256(b"fixture").hexdigest()
+        contract = root / "contract.json"
+        contract.write_text(json.dumps({
+            "gguf": {"sha256": digest, "size_bytes": 7},
+            "tokenizer": {"repository": "fixture/tokenizer", "revision": "a" * 40},
+        }), encoding="utf-8")
+        from unittest.mock import Mock
+        tokenizer = Mock()
+        with patch.dict(sys.modules, {"transformers": types.SimpleNamespace(AutoTokenizer=tokenizer)}):
+            assert fetch(contract, model) == digest
+        assert tokenizer.from_pretrained.call_args.args == ("fixture/tokenizer",)
+        assert tokenizer.from_pretrained.call_args.kwargs["revision"] == "a" * 40
+
+
+def test_cpu_suite_timeouts_are_bounded_and_overridable():
+    import os
+    from tests.run_all import suite_timeout_seconds
+    with patch.dict(os.environ, {}, clear=True):
+        assert suite_timeout_seconds("tests.test_sql_ast") == 900
+        assert suite_timeout_seconds("tests.test_datasets") == 7200
+        assert suite_timeout_seconds("tests.test_world") == 7200
+    with patch.dict(os.environ, {"TEST_SUITE_TIMEOUT_SECONDS": "42"}):
+        assert suite_timeout_seconds("tests.test_datasets") == 42
+    with patch.dict(os.environ, {"TEST_SUITE_TIMEOUT_SECONDS": "0"}):
+        try:
+            suite_timeout_seconds("tests.test_datasets")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("unbounded timeout accepted")
+
+
+def test_sql_bundle_is_validated_before_atomic_publication():
+    from engine.artifact_provenance import sha256_file, validate_weight_bundle, write_json_artifact
+    from training.rank.promote import promote
+
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "source"
+        source.mkdir()
+        (source / "xiyan_sql_proposer.gguf").write_bytes(b"public-fixture")
+        model_sha = sha256_file(source / "xiyan_sql_proposer.gguf")
+        contract = json.loads(_text("engine/data/xiyan_sql_proposer.json"))
+        contract["gguf"].update(sha256=model_sha, size_bytes=len(b"public-fixture"))
+        payload = json.loads(_text("engine/data/sql_arbiter.json"))
+        write_json_artifact(source / "sql_arbiter.json", payload)
+        contract["selector"]["sha256"] = sha256_file(source / "sql_arbiter.json")
+        write_json_artifact(source / "xiyan_sql_proposer.json", contract)
+        manifest = {"version": 1, "files": {}, "committed_artifacts": {
+            name: {"sha256": sha256_file(source / name)}
+            for name in ("sql_arbiter.json", "xiyan_sql_proposer.json")}}
+        write_json_artifact(source / "weights_manifest.json", manifest)
+        original = validate_weight_bundle(source)
+        payload["fit"].update(proposer_adapter_sha256=model_sha, likelihood_policy="neutral-sentinel-v1")
+        payload["pool"].update(proposer_beams=1, proposer_max_new_tokens=1024)
+        payload["validation"] = {"metric": "saved_pool_serving_selection"}
+        candidate = root / "candidate.json"
+        write_json_artifact(candidate, payload)
+        destination = root / "published"
+        with patch("training.rank.promote.shutil.copytree", side_effect=OSError("disk full")):
+            try:
+                promote(source, candidate, destination)
+            except OSError:
+                pass
+            else:
+                raise AssertionError("failed copy published a bundle")
+        assert not destination.exists()
+        assert validate_weight_bundle(source) == original
+        report = promote(source, candidate, destination)
+        assert report["model_matched_arbiter"] and not report["release_gates_passed"]
+        assert validate_weight_bundle(destination) == report["bundle"]
+        assert validate_weight_bundle(source) == original
+        try:
+            promote(source, candidate, destination)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("immutable destination overwritten")
+        payload["fit"]["proposer_adapter_sha256"] = "f" * 64
+        write_json_artifact(candidate, payload)
+        try:
+            promote(source, candidate, root / "mismatch")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("new mismatched selector installed")
+
+
 TESTS = [
+    test_xiyan_cached_model_still_provisions_the_pinned_tokenizer,
+    test_cpu_suite_timeouts_are_bounded_and_overridable,
+    test_sql_bundle_is_validated_before_atomic_publication,
     test_public_artifact_boundary,
     test_vendored_xlsx_parser_has_the_reviewed_identity,
     test_spider_evaluator_supports_module_invocation,

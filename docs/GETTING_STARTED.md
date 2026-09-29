@@ -56,11 +56,15 @@ Runtime artifacts are deliberately not committed. Fetch the manifest-pinned bund
 
 ```powershell
 python -m engine.fetch_weights
+python -m engine.fetch_xiyan_sql
 ```
 
 The default [weight repository](https://huggingface.co/prereasoner/prereasoner-weights) is public and
 requires no account or token. The fetch command pins an immutable repository commit and validates every
 file hash before installation. `HF_TOKEN` is only needed for an explicitly configured private replacement.
+The second command provisions the 4.68-GB CPU SQL model and its pinned tokenizer. An existing
+verified model can be reused with `--out <path>`; set `SQL_PROPOSER_MODEL_PATH` to that path when
+running the engine or model-backed tests. The Docker build performs the same fetch step.
 
 ## 3. Run fast tests first
 

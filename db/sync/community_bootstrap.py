@@ -20,7 +20,7 @@ from db.sync._conn import connect
 
 ROOT = Path(__file__).resolve().parents[2]
 INIT_SQL = ROOT / "db" / "init.sql"
-BOOTSTRAP_VERSION = 4
+BOOTSTRAP_VERSION = 5
 DEFAULT_DATASETS = frozenset({"iana_country"})
 _ROLE = re.compile(r"^[a-z][a-z0-9_]*$")
 _LOCK_NAME = "prereasoner-community-bootstrap"

@@ -1,0 +1,9 @@
+{
+  "fit_dbs": ["soccer_2", "loan_1", "document_management", "company_office", "chinook_1", "voter_2"],
+  "validation_dbs": ["wine_1", "program_share", "customer_complaints", "student_1"],
+  "sample_per_db": 24,
+  "sample_seed": 7,
+  "train_sha256": "c43d0d72e59e1a9e1a60837da9bf70d5a6277226bdb7f634d544f380646f527a",
+  "db_selection": "First ten TRAIN databases with at least 24 examples, sorted by SHA256(xiyan-neutral-pilot-7:db_id); first six fit, last four validation",
+  "claim_boundary": "Selector DB holdout only; pretrained XiYan training exposure is not established"
+}
