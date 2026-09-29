@@ -1,5 +1,46 @@
 # Spider Results
 
+## 7B hardening-source full CPU replay (2026-09-29; not a deployment)
+
+The current release-hardening source was evaluated end to end on all 1,034 Spider DEV
+questions with the frozen served arbiter and XiYanSQL QwenCoder 7B Q4_K_M on CPU (8 threads,
+no gold-value substitution). The replay has 1,034 unique ordered indices, 1,030 answered
+rows, and **865/1,034 strict (83.72%)** / **868/1,034 lenient (83.95%)**. Difficulty strict
+results: easy 234/248, medium 378/446, hard 150/174, extra 103/166. Against the paired
+`clean-engine-q4-8t` replay, strict labels changed on seven examples: **4 wins / 3 losses**,
+861 both-correct and 166 both-wrong; strict total is +1. The two replay outputs differ on 23
+SQL rows. The official test-suite score on those 23 changed outputs is 15 correct for this
+source and 14 for the paired control; the other 1,011 SQL outputs are identical.
+
+The separate pinned `taoyds/test-suite-sql-eval` execution metric is **832/1,034 (80.46%)**.
+It used evaluator commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c`, 695 test-suite SQLite
+files, `keep_distinct=true`, and **did not pass `--plug_value`**. All 1,034 rows completed in
+73 bounded evaluator segments with no timeout; four invalid/failed predictions were replaced
+by a deliberately invalid SQL sentinel. This is a Spider-only benchmark, not product accuracy.
+Its paired control (`clean-engine-q4-8t`) is 831/1,034 when derived from the exact 23 changed
+rows; this is not the different historical 839/1,034 deployed record below.
+
+Reproduction evidence is currently in
+`%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`:
+summary SHA256 `336dcdf29142b18018d74ebc595cc4cb25434921b71cd945c27666d2ed1592f9`, per-example
+JSON SHA256 `d4333943bab9c721b30f8c46a3d205811f8febea5caec25cf76f900b290a70c1`, and official
+metric JSON SHA256 `6aa19c39b6450d51849260b3497daa8fbdaec02bb6274edf22055a01c42fec12`. Source contract
+commit `40cd5a44947edaa62b788210afdfd1fcf112875b`, proposer SHA256
+`50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb`, arbiter SHA256
+`fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d`, and dirty-tree flag
+false. The current serving/evaluation source files match release image source `7817f69`.
+
+The accuracy target is crossed, but complete-evaluator latency is **19.335s p50, 37.111s p90,
+42.834s p95, 61.705s max**; 893/1,034 requests exceed the 12s soft target. Errors are three
+connected-AST search misses (`car_1`, indices 104/135/136) and one XiYan CPU decode-budget
+failure (`student_transcripts_tracking`, index 575). Therefore this is an accuracy result, not
+yet a demonstrated 12-second CPU-serving result. A paired 32-row, 8-per-difficulty thread pilot
+replayed the exact same SQL on all 32 rows; increasing `SQL_PROPOSER_THREADS` from 8 to 16 moved
+subset p50/p90/max from 14.781/26.544/35.609s to 12.271/22.146/28.839s, while 18/32 still
+exceeded 12s. This pilot is CPU-host-specific, not Cloud Run evidence; do not promote the 16-thread
+override without exact 8-vCPU concurrency measurement. Production remains on revision
+`prereasoner-api-00122-zc4`, 100% traffic; this replay did not change traffic.
+
 ## Model-matched-neutral selector pilot (2026-09-29; rejected)
 
 On a preregistered CPU-generated 240-question sample from Spider TRAIN (24 questions per each of

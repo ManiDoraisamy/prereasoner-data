@@ -53,8 +53,42 @@ Execution sequence and fallback decisions:
    conversations. Roll back on release-blocking regression. Record image/commit/model hashes,
    measured results, outstanding limitations, spend, and worker cleanup.
 
-Stages 1–2 are in progress. Stages 3–6 have not passed for this new source tree. The existing
-83.56%/81.14% evidence must not be relabeled as a result of the hardening changes.
+#### Latest full replay and release status — 2026-09-29
+
+The clean-source hardening replay completed all 1,034 Spider DEV rows with the frozen served
+arbiter and CPU XiYanSQL Q4_K_M: **865/1,034 strict (83.72%)**, **868/1,034 lenient (83.95%)**.
+The official Spider test-suite score on those exact SQL predictions is **832/1,034 (80.46%)**,
+using pinned evaluator commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c` and no gold-value
+substitution. This is a repeatedly tuned DEV engineering result, not a generalization estimate.
+Paired with `clean-engine-q4-8t`, it gains four strict examples and loses three (861 unchanged
+correct, 166 unchanged wrong); 23 SQL outputs differ. On those 23, official test-suite scores
+are 15/23 current versus 14/23 control. The older 839/1,034 official score describes another
+historical deployed record, not this paired control.
+
+The correctness target passes, but the release does **not** pass CPU latency: full replay p50/p90/
+p95/max are 19.335/37.111/42.834/61.705 seconds and 893/1,034 exceed the 12-second soft target.
+Four rows fail execution: three connected-AST search misses in `car_1` and one proposer CPU
+decode-budget failure. The model-matched selector pilot was rejected (no held-out gain), so the
+candidate still uses the frozen neutral-score arbiter. The latest attested candidate image is
+`sha256:da66e69be2c73b71c1200a006cb439f785ae9f8a30e313619f597504db8cc0a6`; its startup, health,
+disposable-PostgreSQL product suites and bounded API smoke passed, but authenticated conversation
+follow-ups were skipped for lack of an external-model credential. Browser Playwright passed 33/33
+against a synthetic local backend only. No merge or traffic change has occurred: the production
+service remains at 100% on `prereasoner-api-00122-zc4` (`sha256:82f8f154…`).
+
+A paired 32-question experiment with `SQL_PROPOSER_THREADS=16` preserved all 32 selected SQLs
+and labels relative to eight threads. On that subset, p50/p90/max improved from 14.781/26.544/
+35.609s to 12.271/22.146/28.839s, but 18/32 rows still exceeded 12 seconds. This was a local
+host with 16 logical CPUs, not the production 8-vCPU Cloud Run shape; it does not justify a
+thread override or establish production latency. The full 8-thread replay remains the accepted
+accuracy result.
+
+Therefore the accuracy objective is achieved, while the production objective is **not yet ready**.
+The immediate work is a bounded 8-vCPU exact-image tail/concurrency test, resolving or explicitly
+waiving the 12-second target, and obtaining a credentialed authenticated-orchestrator/browser run
+without touching real user data. Preserve the current revision until these gates are resolved or
+explicitly waived. Full provenance and results are in
+`spider/results/RESULTS.md` and `chatgpt-handoff.md`.
 
 #### 2026-09-29 pilot decision
 

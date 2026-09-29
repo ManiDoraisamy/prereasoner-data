@@ -13,7 +13,44 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
-## 2026-09-29 — release build green; full CPU replay in progress
+## 2026-09-29 — full 7B replay and official Spider metric complete; release still gated
+
+The final clean-source CPU replay produced all 1,034 rows with exact ordered indices and
+verified provenance (`worktree_dirty=false`; source commit `40cd5a44947edaa62b788210afdfd1fcf112875b`).
+XiYanSQL QwenCoder 7B Q4_K_M, eight CPU threads, frozen served neutral-score arbiter, no gold
+substitution: **865/1,034 strict (83.72%)**, **868/1,034 lenient (83.95%)**. By difficulty,
+strict is easy 234/248, medium 378/446, hard 150/174, extra 103/166. This clears 80% on a
+repeatedly consulted DEV engineering set; it is not an unbiased generalization claim.
+
+The pinned official Spider test-suite evaluator also passed the full denominator: **832/1,034
+(80.46%)**, evaluator commit `e97acc546ecbee8fa27fa8dbf025ef61493a876c`, 695 suite SQLite
+files, `keep_distinct`, no `--plug_value`, zero timed-out rows. It is a secondary Spider-only
+metric, not product Knowledgebase-join accuracy. Its exact run artifacts and hashes are in
+`%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`; the ledger is updated in
+`spider/results/RESULTS.md`.
+
+Paired against the prior `clean-engine-q4-8t` full replay, strict gains are four and losses three
+(861 unchanged correct, 166 unchanged wrong); 23 SQL outputs differ. Those 23 score 15/23 on the
+official test-suite metric for this candidate versus 14/23 for the paired control. The distinct
+historical deployed record at 839/1,034 is not this paired control.
+
+The hard blocker is now latency, not accuracy: p50/p90/p95/max are 19.335/37.111/42.834/61.705s,
+with 893/1,034 exceeding the 12s soft target. Four rows failed (three connected-AST misses on
+`car_1`, idx 104/135/136; one proposer CPU decode-budget failure, idx 575). The experimental
+model-matched arbiter did not improve the preregistered held-out sample, so no new selector was
+installed. A bounded 16-thread pilot on 32 difficulty-balanced rows preserved selected SQL and
+strict labels 32/32; p50/p90/max improved from 14.781/26.544/35.609s to 12.271/22.146/28.839s,
+though 18/32 remained over 12s. The test used a 16-logical-CPU host, so it does not qualify a
+thread override for the 8-vCPU Cloud Run service. Reran `npm run test:browser`: **33/33** passed
+against its synthetic backend; this is not signed-in exact-image browser E2E. Release Cloud Build
+`b0cc8a30-0a32-4a6c-9efb-98b18277f12f`
+passed startup/health, seven disposable-Postgres suites and the bounded CPU API smoke; its image
+digest is `sha256:da66e69be2c73b71c1200a006cb439f785ae9f8a30e313619f597504db8cc0a6`. Synthetic
+Playwright passed 33/33, but authenticated orchestrator cases remain untested because no external
+model credential is available. Production remains unchanged: revision `prereasoner-api-00122-zc4`
+serves 100% traffic. No merge or deployment has occurred.
+
+## 2026-09-29 — release build green; full CPU replay in progress (earlier checkpoint)
 
 Commit `7817f69f0f8055a988022b9fab8d18e6c6a349dd` adds the community-seed post-migration QID
 projection rebuild and bumps the bootstrap marker so upgraded databases apply it. Focused tests
