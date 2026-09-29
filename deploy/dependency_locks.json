@@ -25,7 +25,7 @@
     "orchestrator/requirements.lock.txt": {
       "input": "orchestrator/requirements.txt",
       "input_sha256": "ba46f7ef86f803a2fcdfa425725b714f8dc481837aecdd535b7415ee189cd645",
-      "lock_sha256": "e7059734a08cc11b130e67164bc66cb58fbd5de8fab7a2e871e20f6e4fa3ce91",
+      "lock_sha256": "80b107af6f7c4310ae9866af78bb43e77c9d06a086a0cd4a8c52fc99a54b2ace",
       "target": "linux-x86_64-python3.11"
     },
     "requirements-build.lock.txt": {
@@ -37,19 +37,19 @@
     "requirements-ci-windows.lock.txt": {
       "input": "requirements-ci.txt",
       "input_sha256": "efa090c61507f9f9c6aa5612134093fcd5eb309463d9e1a68ebf75e38c42e26a",
-      "lock_sha256": "0f065c7f7ea420ef1398d43b1c94568616dcc113be08c0701eb39259648555a9",
+      "lock_sha256": "a35c0c14c2312f03875e44d9e5f5e13f6909b105933139fc7e85c6103d946b56",
       "target": "windows-x86_64-python3.11"
     },
     "requirements-ci.lock.txt": {
       "input": "requirements-ci.txt",
       "input_sha256": "efa090c61507f9f9c6aa5612134093fcd5eb309463d9e1a68ebf75e38c42e26a",
-      "lock_sha256": "ae165d7286c49c1fa782c4c5ea55566ad4a6b7fe87e24bdc178106b8fe6c7be6",
+      "lock_sha256": "9b5773349979e46316efb23e6fd00074e9f495da76a1a0a9f61cd4c55ddffe23",
       "target": "linux-x86_64-python3.11"
     },
     "requirements.lock.txt": {
       "input": "requirements.txt",
       "input_sha256": "9916642b576d88a4f381b93454f889233e0f19d5abf102f499d6d99553ba5cc1",
-      "lock_sha256": "e9ea06dbfc8220b50fd1dea31a77c840d8bbf285d312599a6e65ff6835efd539",
+      "lock_sha256": "66899293f5ba3d086d3793c48c0e8c5b28a2d159496bbf88b3c7501ae423c5fa",
       "target": "linux-x86_64-python3.11"
     },
     "training/requirements.lock.txt": {
