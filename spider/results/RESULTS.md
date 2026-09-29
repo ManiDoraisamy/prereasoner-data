@@ -1,6 +1,33 @@
 # Spider Results
 
-## Integrated 7B release-candidate diagnostic (2026-09-28; experimental, not the main baseline)
+## Integrated 7B production release and final replay (2026-09-29)
+
+The single production Cloud Run service now runs the merged 7B implementation at 100% traffic:
+revision `prereasoner-api-00122-zc4`, image
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:82f8f154d8c655bb23e05e0c1a98d956175f3ef1ab13a3fbfe6eb3bd9313b79c`.
+The source merged via PR #30 (`ad4f4076fc8f7b09c146811e84aa96802794ce2a`); health, release,
+live disposable-PostgreSQL product, CPU HTTP, and browser checks passed. See the newest entry in
+`chatgpt-handoff.md` for revision, cutover, test, rollback, and RunPod details.
+
+The production-matched full Spider DEV diagnostic is **864/1,034 strict (83.56%)** and
+**867/1,034 lenient (83.85%)**, versus the historical 0.5B main baseline **647/1,034 strict
+(62.57%)**: +217 examples / +20.99 percentage points. Full row-by-row replay comparison found
+zero SQL, strict-label, or identity differences from the initial complete replay. The identical
+predictions score **839/1,034 (81.14%)** on the official Spider test-suite evaluator. These are
+separate metrics: DEV is a repeatedly consulted engineering/tuning set, while test-suite is a
+Spider-only benchmark and does not measure product joins. Neither should be described as an
+unbiased generalization estimate or as multi-source product accuracy.
+
+Final full-evaluator prediction latency p50/p90/p95/p99/max was **7.172/16.384/17.840/19.965/
+138.576 seconds**, with 220/1,034 beyond the evaluator's soft 12-second threshold. A separate
+bounded HTTP smoke on the exact image reached a concurrency-8 maximum of 11.648 seconds; the two
+paths/loads differ. Keep the full-replay latency tail visible as follow-up optimization work.
+
+The RunPod replay artifacts were copied and hash-verified before task pod termination; final
+itemized pod billing was `$6.81668396841269`. The worker was confirmed gone. No production database
+was used for the live suite, and no signed-in user request was submitted.
+
+## Integrated 7B release-candidate diagnostic (2026-09-28; historical pre-deployment record)
 
 Using the pinned XiYanSQL Q4_K_M CPU proposer integrated with the unified engine and its served
 neutral-sentinel arbiter, the exact production-matched full DEV replay scored **864/1,034 strict
@@ -8,8 +35,8 @@ neutral-sentinel arbiter, the exact production-matched full DEV replay scored **
 points over the historical 0.5B baseline below (647/1,034, 62.57%). Spider DEV was consulted
 repeatedly during model and selector development, so this is an engineering/tuning result, not an
 unbiased generalization estimate. It is not the official Spider TEST score and does not measure
-multi-source Knowledgebase joins. The historical 0.5B result remains the main baseline until the
-candidate passes release and deployment gates.
+multi-source Knowledgebase joins. This subsection records the pre-deployment release-candidate
+measurement; the production release and final replay are recorded above.
 
 | Difficulty | n | Answered | Strict | Lenient | Scalar-gold |
 |---|---:|---:|---:|---:|---:|
@@ -36,17 +63,18 @@ Reproduction artifacts were hash-verified from the CPU3c run: summary SHA-256
 `worktree_dirty=true`; use its individual artifact hashes rather than the commit alone as
 provenance.
 
-Latency is a release caveat, not hidden by the accuracy result: the Spider evaluator observed
+Latency at this historical checkpoint was a release caveat, not hidden by the accuracy
+result: the Spider evaluator observed
 p50/p90/p95/p99/max **7.513/17.614/21.686/129.397/231.588 seconds**, with **273/1,034** beyond
 its soft 12-second budget (no cancellation). An earlier bounded Cloud Run API smoke on the
 candidate image was materially faster (concurrent-8 max 11.648 seconds); these measure different
 request paths and are reported separately. A privacy-safe targeted probe of the ten longest rows
 finished in 4.3–7.2 seconds on the same eight-thread CPU; proposal spans were 3.7–6.5 seconds,
 encode at most 1.56 seconds, and pool execution under 8 ms. The earlier 142–232-second spikes did
-not reproduce in the controlled sample. A full 1,034-row replay with per-stage telemetry and fixed
-eight-core affinity is running before the final production-readiness decision.
+not reproduce in the controlled sample. The completed final replay and updated latency telemetry
+are summarized above; this paragraph is retained as the earlier checkpoint record.
 
-This integrated experiment is supplemental and must not overwrite the baseline table below.
+The 0.5B baseline table below remains historical and is not overwritten by this candidate result.
 
 This is the current, reproducible measurement of the served own-data planner:
 `engine/tables.py:TableQuery.select_query` — the deterministic typed-AST search (25 candidates), the
