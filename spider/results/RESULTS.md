@@ -93,6 +93,15 @@ unchanged (DECISIONS.md). The money-noun rule added later that day ("the sales" 
 is its money total) fires only when a money noun names a table. None of the 20 dev databases has such a
 table and 0 of the 1,034 dev questions fire it, so it cannot change a dev answer either.
 
+`6d8b7dd` (2026-09-28) replaced eleven surrogate-key tests with one (`engine/sql_schema.is_surrogate_key`),
+and the search reads it, so it was measured again. The run used the same settings, dev set, tables,
+encoder, arbiter and proposer as the table below. It ran from `3a40c8e` with that change uncommitted
+(`worktree_dirty=true`); every recorded source file and the harness are byte-identical to `6d8b7dd`,
+except `engine/deterministic/service.py`, which the SQL backend does not load. Result: 647 strict, 696
+lenient and 304/408 scalar, with the same counts in every difficulty. Two selected queries changed (wta_1
+#451, tvshow #629), and both are wrong before and after. So the strict and lenient transitions are 0 wins
+and 0 losses. The run's JSON is not committed, so the table keeps `841f08c` as its evidence.
+
 | Configuration | Evidence commit | Strict | Lenient | Scalar-gold |
 |---|---|---:|---:|---:|
 | `whole_db` — all tables, gold-blind (standard Spider comparison) | `841f08c` | **647/1,034 (62.6%)** | **696/1,034 (67.3%)** | **304/408 (74.5%)** |

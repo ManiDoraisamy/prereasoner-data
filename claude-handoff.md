@@ -7,6 +7,170 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-28/29 — COMMITTED, not deployed: eleven follow-ups (1–6 `6d8b7dd`, 7–11 `e4896b1`) on the 7B proposer that production runs
+
+The owner committed the first six with the Excel add-on work as `6d8b7dd` ("office addon", pushed). Codex's
+`ad4f407` (#30, the XiYan 7B SQL proposer) then landed on main. `e7fb4ad` (#31) records its production
+cutover: Cloud Run `prereasoner-api-00122-zc4` has 100% of traffic (created 2026-09-28 22:32, confirmed with
+`gcloud run services describe`). Tasks 7–11 were rebased onto `e7fb4ad` without conflicts. The only change
+from `ad4f407` to `e7fb4ad` is two Markdown files, so the gates below ran on byte-identical code. They are
+committed as `e4896b1`, and `f995224` registers the 7B proposer's tests, which no gate ran. Neither is
+deployed: production runs `ad4f407`'s engine without tasks 7–11. The owner chose to keep the 7B; the
+problems found reviewing it are listed at the end of this section. For task 9 the owner approved rebuilding
+the live world tables `city` and `country` (below).
+
+- **Grammar words (1).** "who ordered a trench coat in France" answered COUNT = 5: the operator readout fires
+  COUNT above 0.05, and the article "a" read 0.15. `engine/closed_class.py` owns the engine's one spaCy model
+  and the closed-class reading of a question. Those words carry no aggregate and are never searched for;
+  negation and exclusion cues still count. Trench coat → order 109; "how many orders in France" → 5.
+- **Rule 3 (2).** A one-sheet trail starts at the lookup. Both emitters read a one-table entry inside its one
+  consumer: an inline subquery in SQL, the ORM load at the top of the Python stage. Emitter versions: SQL 6,
+  Python 9. A real join of two sheets keeps its combined sheet.
+- **Rule 5 (3).** Displayed rows show labels (France), not QIDs; the executed SQL and Python keep `'Q142'`.
+  A filter step names its condition ("where country = 'France'").
+- **World projections (4).** "which continent has the highest total amount" and "average atomic mass" errored
+  in production ("world projection requires typed projection bindings"). `lower_world_query` now lowers them:
+  Asia 310, and an exact atomic-mass average because both programs read double precision as NUMERIC.
+- **One surrogate-key rule (5).** Eleven drifting copies became `engine/sql_schema.is_surrogate_key`. Compose had
+  summed "order ID" as a measure. On Spider dev the ranker's features are unchanged, and 539 of the 551
+  questions in the affected databases build byte-identical pools. The served selection changes on 2 (wta_1
+  #451, tvshow #629), wrong before and after. A fresh `whole_db` evaluation (`3a40c8e` plus the change; its
+  recorded sources and harness are byte-identical to `6d8b7dd` except the unused `service.py`) measured 647
+  strict, 696 lenient and 304/408 scalar: 0 wins and 0 losses over 1,034, and exactly those two selections
+  changed. RESULTS.md records it and keeps `841f08c` as the table's committed evidence.
+- **One world implementation (6).** Every live world suite and both regress goldens now serve through
+  `regress.live_schema.served`, the context production enters. The context-less branches and `_labelize_qids`
+  are deleted. Transition matrix over 147 named checks (context-less → served): 126 unchanged correct, 13
+  unchanged wrong, 1 win (average element mass), 1 change (sales in big cities: clarify → a wrong table, the
+  production defect task 8 fixes). 3 test_geo checks were renamed to the served trail's steps and pass.
+  run_all at `6d8b7dd`: 38/38 suites OK, `test_orchestrator` skipped.
+- **Type nouns (7, uncommitted).** "how many countries are the customers in" answered 0: `EntityQuery._resolve`'s
+  embedding fallback read "countries" as China (0.803 ≥ 0.80) and filtered every row out. "which countries"
+  read as the United Kingdom (0.807), and "total sales in European countries" filtered to China. A phrase whose
+  head word names a world type (`words` rows of type 'type') no longer reaches the fallback. Served: 0 → 3;
+  "how many customers in China" still filters China; "Chinese cities" still resolves China from "Chinese".
+  Residual: "states" is also an exact alias of the United States, so "how many states …" still filters to it.
+- **Comparisons (8, uncommitted).** "What is the total sales in big cities with population over 1,000,000?" was
+  served as an empty per-city table: compose bound every comparison to the aggregated metric and grouped by
+  every mentioned text column, and the delegate's world path (equality filters only) declined. Compose now
+  binds a comparison to the attribute it names (right before it, or right after its value; scale words; an
+  aggregate word before the attribute keeps it a threshold on that aggregate). A row attribute other than the
+  measure filters rows before the aggregate, and the noun it qualifies is not a grouping unless the question
+  groups it or asks for no aggregate. `world_dependency['world_threshold']` makes the comparison necessary, and
+  `route()` gives it to compose. Served, both programs compared: 350; "under" → 70; "cities with total sales
+  over 100" → Osaka 200; "by city" → one row per big city; "which cities have a population over 1,000,000" →
+  Tokyo, Osaka, Nagoya. The same work found a task-4 regression: the delegate summed the text-typed
+  `knowledgebase."city".population` into 1426479827518622326844519127886040. `AnalysisPlan` now refuses SUM/AVG
+  (and window totals) over text, so "What is the total population?" is declined, as it was before task 4.
+- **Gates (7+8).** `tests.run_all` with live Postgres: 38/38 suites OK (`test_orchestrator` skipped). That includes
+  test_world 48/48, test_geo 61/61, test_compose 20/20, test_routing 14/14, deterministic emitters 52/52,
+  SQL AST 121/121, and `test_datasets` PASS (24 prompts, 40 follow-ups and 1 rewrite in four modes, 260
+  records; the 13 `chat:` follow-ups are skipped by design). Against the task-6 run: 844 named checks, 815
+  unchanged pass, 13 unchanged fail or clarify, 0 losses, 1 win (capability "sales in big cities" FAIL →
+  PASS) and 15 new checks that pass; all 65 dataset answers are identical. Capability golden (35 cases,
+  PASS/FAIL/CLARIFY): 20/7/8 context-less, 21/7/7 served, 22/6/7 with 7+8; `world_cases` passes in all
+  three. On the old engine the new tests fail for the observed reasons: the empty per-city HAVING, no
+  `world_threshold`, SUM over text accepted, and when served, 0 with a China filter and the concatenated digits.
+- **Typed world measures (9, uncommitted; the live world tables were rebuilt).** With the text guard in place,
+  "What is the total population?" was declined, because `knowledgebase."city".population` was text. Its
+  maintainer, `db/sync/build_qid_world.py`, already declared bigint. But the live table had been pre-created with
+  all-TEXT columns, and the builder only added missing columns. Each rebuild now converges the declared column
+  types on the emptied table before inserting. `world_target` keeps binding `"city"`. With the owner's
+  approval, `python -m db.sync.build_qid_world` ran on the live world database on 2026-09-28 (13:38 UTC, 9 s).
+  `city` and `country` population are now bigint, and 0 rows changed besides the type and `updated_at` (checked
+  against `public.settlement`/`public.country` first). Served in verify mode: the five cities total 20,748,671;
+  France, Germany and Japan total 275,984,756; "total currency" still lists JPY 3 and EUR 2; the big-cities
+  total stays 350. Rollback: `ALTER TABLE knowledgebase."city" ALTER COLUMN population TYPE text USING
+  population::text`, and the same for `"country"`. The builder's existing test had never been registered in
+  `tests/test_community_deploy.py`'s `TESTS`; it is now, with the new convergence test (23/23).
+- **Gates (9).** test_world 50/50: the task-8 "sum or declined" check became three strict checks. Against the
+  7+8 run, over 849 named checks: 830 unchanged pass, 13 unchanged fail or clarify, 5 new passes, 0 losses. The
+  capability golden is unchanged at 22/6/7. `tests.run_all` gave 37/38: `test_datasets` lost one verify request
+  to a dropped Cloud SQL connection (the proxy logged failed dials from 16:30 to 18:05). That dataset re-run on
+  its own passes in all four modes, and the other 64 dataset answers are identical to the 7+8 run.
+- **Aggregate domains (10, uncommitted).** Compose grouped by every text column a question mentioned, so "What
+  is the average population of these cities?" and "… total population of these cities combined?" were
+  per-city tables; both capability cases failed on every run. `ComposeEngine._aggregated_over` generalizes the
+  task-8 rule. When the question asks for an aggregate, a noun whose every mention is the object of a domain
+  word (of/in/for/from/among/across, over determiners and at most one other word) or the noun a row threshold
+  qualifies is not a grouping. A grouping cue (by/per/each/every, "each of the cities"), a ranking word or a
+  number keeps it one, and so does a listing without an aggregate or a threshold on each group's aggregate.
+  The scalar measure then goes to the world path, which read "combined" as a dropped constraint; "combined",
+  "altogether" and "overall" are now operator words. Served, both programs compared: the five cities average
+  4,149,734.2 and total 20,748,671; "the population of each city", "total sales by country" and "the top 2
+  cities by population" keep their rows.
+- **Gates (10).** test_compose 21/21, test_world 55/55. Against the task-9 run, over 854 named checks: 835
+  unchanged pass, 11 unchanged fail or clarify, 8 wins (the two capability cases and 6 new checks), 0 losses.
+  The capability golden goes from 22/6/7 to 24/4/7. My run script's 3-hour cap killed `tests.run_all` inside
+  `test_datasets` (the Cloud SQL link was slow and dropping dials again); every other suite passed, 37/38.
+  `test_datasets` then ran in full on its own and PASSES: 24 prompts, 40 follow-ups and 1 rewrite, 260 records.
+  All answers equal the task-9 run's except the six USD conversions, which moved by one factor (0.99781) with
+  the ECB refresh at 16:34 UTC between the runs.
+- **Numeric comparisons in compose's candidate (11).** Compose materializes its candidate in SQLite before
+  routing. `filter_view` wrote a number bare, and a `decimal_sum` view column is TEXT with no affinity; SQLite
+  orders every TEXT above every number. So "cities with total sales over 100" kept all five cities and "under
+  50" kept none. Served answers were right, since they run the shared plan in Postgres. But routing
+  (`_composes`) and the scalar re-expression (`_same_answer`) read the candidate. A number now compares
+  through the registered `decimal_cmp`; a text value keeps its text comparison.
+- **Gates on the 7B tree (7–11 plus `ad4f407`).** The GGUF came from the `7b-production` worktree via
+  `SQL_PROPOSER_MODEL_PATH`, hash-verified. `tests.run_all` with live Postgres gave 39/39 suites
+  (`test_orchestrator` skipped, `TEST_SUITE_TIMEOUT_SECONDS=14400`): SQL AST 127/127, XiYan 6/6,
+  compose 22/22, test_world 55/55, test_geo 61/61, and `test_datasets` PASS (24 prompts, 40 follow-ups and
+  1 rewrite, 260 records, answers identical to the 0.5B run). `world_cases` passes and the capability golden
+  holds at 24/4/7. Against the last pre-merge run, over 877 named checks: 843 unchanged pass, 11 unchanged
+  fail or clarify, 23 new passes, 0 losses.
+- **Not run.** `test_orchestrator` (external API, untouched); the Chrome pass (no release).
+- **Separate tasks suggested.** `"u_s_state"` holds no population values, because its builder never writes
+  them. "list the cities with population over 1 million" reads a spurious COUNT (0.158).
+
+### Problems in the 7B integration (`ad4f407`) for Codex to fix
+
+1. **Production serves the 7B with a selector that was not fit on it.** Since the cutover (revision
+   `00122-zc4`), `load_sql_selection` (`engine/encoder_overlay.py`) loads `XiYanSQLProposer`, whose GGUF the
+   Dockerfile bakes into the image. The arbiter (`sql_arbiter.json`) was fit on the 0.5B proposer's
+   four-beam pools, with teacher-forced likelihood features. The 7B gives one proposal per question and
+   constant neutral likelihoods `(0.0, 1)`, which the contract admits with `model_matched_arbiter: false`.
+   `PRODUCTION_READINESS.md` blockers 1–2 still say it must not be merged or deployed until a
+   model-matched selector bundle exists; the cutover happened anyway, and the document was not updated. The two GGUF loaders also contradict each other: `GGUFSQLProposer` refuses an
+   uncalibrated pair outside development/test, while `XiYanSQLProposer` requires the mismatch to be
+   disclosed and then serves it in production. Fix: fit the arbiter on the 7B's own execution-labeled
+   pools (`training/rank`) and promote the matched bundle through `training/rank/promote.py`, or gate the
+   mismatch the same way in both loaders.
+2. **Three proposer runtimes and a stale ownership map.** `engine/sql_proposer.py:SQLProposer` (HF LoRA) is
+   now used only by `training/proposer/verify_scorer.py`. `GGUFSQLProposer` has no production caller.
+   `engine/xiyan_sql_proposer.py` is what production loads. CLAUDE.md still names the 0.5B LoRA as the
+   proposer and `training/rank/promote.py` as the only writer of the served selection bundle, yet
+   `xiyan_sql_proposer.json` was committed by hand. Delete or move the unused runtimes out of `engine/`
+   (CLAUDE.md: experiments stay out of production imports). Then propose the ownership-map change to the
+   owner; CLAUDE.md changes need their explicit request.
+3. **Latency and concurrency.** The final CPU replay (`e7fb4ad`) measured p50 7.2 s, p90 16.4 s, p99 20.0 s and
+   max 138.6 s, with 220/1,034 over the 12 s budget. The evaluator tail is recorded, not explained. `XiYanSQLProposer` decodes under one process-wide lock, so concurrent requests queue behind each
+   other, and `max_new_tokens=1024` is the only bound on a runaway decode. A time/token budget, a
+   concurrency plan and an agreed SLA are needed before deploy (readiness blockers 3 and 5).
+4. **A fresh checkout cannot start the engine.** `EncoderQuery` raises `FileNotFoundError` unless the 4.68 GB
+   GGUF is at `engine/data/xiyan_sql_proposer.gguf` or `SQL_PROPOSER_MODEL_PATH`. So every live suite in
+   `tests.run_all` fails on a machine that has not run `python -m engine.fetch_xiyan_sql`. Document the step
+   where `run_all` and `engine/data/README.md` describe local setup, or make `engine.fetch_weights` fetch it
+   too.
+5. **The runner's suite timeout kills the live suites.** `tests/run_all.py` defaults `TEST_SUITE_TIMEOUT_SECONDS`
+   to 900 s. `test_datasets` takes about an hour here, and `test_world`/`test_geo` take 15+ minutes. Only
+   `deploy/gcp/run_product_suite.sh` raises it (to 1800 s). Raise the default, or set it only where CI needs
+   a bound.
+6. **Tests exercise a leftover wrapper, not production.** `engine/decomposition.leaf_candidate` ("preserving the
+   legacy single result") has no production caller. It re-implements the compatibility filter that
+   production applies inside `leaf_candidates`' caller, and `tests/test_decomposition.py` asserts through it.
+   Point those tests at the production path and delete the wrapper.
+7. **The evidence disagrees with itself.** RESULTS.md reports 864/1,034 strict for the deployed 7B, tuned with
+   repeated DEV use. `PRODUCTION_READINESS.md` blocker 1 still cites the last committed 7B full-DEV as
+   755/1,034, below an 828 target, and says the deployed image is 0.5B. RESULTS' baseline section still opens
+   "This is the current, reproducible measurement of the served own-data planner" for the 0.5B d2 proposer,
+   which production no longer runs. Update the readiness document to the deployed state, and word the 0.5B
+   section as historical throughout.
+8. **Minor.** On Python 3.14, llama-cpp-python 0.3.35 prints a `Llama.__del__` traceback
+   (`free_model: 'NoneType' object is not callable`) at every interpreter exit, in every suite log; close the
+   model explicitly at shutdown. The `diskcache` advisory exception in SECURITY.md must be reassessed by
+   2026-12-28.
+
 ## 2026-09-27 — RELEASED: world listings show their steps ("amount in france"); slow-SQL lines never carry cells (engine 00236-noz)
 
 The owner compared "amount in france" with "total sales in france". The first showed one step ("result
