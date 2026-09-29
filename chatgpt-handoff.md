@@ -36,11 +36,11 @@ passed `tests.test_orchestrator_unit` (20/20) and `tests.test_release` (43/43); 
 focused suites remain 24/24 and 3/3 as above.
 
 Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
-CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 825/1,034
-indices it has 694 strict-correct rows (84.24% partial); 209 rows remain. This is not a final score.
-For these 825 rows, prediction p50/p90/max were 19.49s/35.33s/61.71s and 732/825 exceeded the
-12s soft latency budget. Difficulty so far: easy 194/208, medium 300/350, hard 114/135, extra
-86/132. Both strict count and full tail-latency distribution must be reported at completion.
+CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 850/1,034
+indices it has 717 strict-correct rows (84.35% partial); 184 rows remain. This is not a final score.
+For these 850 rows, prediction p50/p90/max were 19.40s/35.16s/61.71s and 757/850 exceeded the
+12s soft latency budget. Difficulty so far: easy 205/219, medium 312/362, hard 114/135, extra
+86/134. Both strict count and full tail-latency distribution must be reported at completion.
 Instrumentation shows proposer decoding ran on all 750 rows and the proposal-origin candidate was
 selected on 450/750; decode alone had p50/p90 17.98s/34.03s. The live `tests.test_orchestrator`
 API test self-skipped because `ANTHROPIC_API_KEY` is unavailable in this workspace, so its live
