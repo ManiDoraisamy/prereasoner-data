@@ -44,6 +44,8 @@ indices it has 760 strict-correct rows (84.44% partial); 134 rows remain. This i
 For these 900 rows, prediction p50/p90/max were 19.04s/34.76s/61.71s and 781/900 exceeded the
 12s soft latency budget. Difficulty so far: easy 217/231, medium 327/382, hard 130/151, extra
 86/136. Both strict count and full tail-latency distribution must be reported at completion.
+Verified `git diff 40cd5a4 7817f69 -- engine spider/probe` is empty: the tested release image’s
+serving/evaluation code is identical to the replay source; the intervening fix is seed-import-only.
 Instrumentation shows proposer decoding ran on all 750 rows and the proposal-origin candidate was
 selected on 450/750; decode alone had p50/p90 17.98s/34.03s. The live `tests.test_orchestrator`
 API test self-skipped because `ANTHROPIC_API_KEY` is unavailable in this workspace, so its live
