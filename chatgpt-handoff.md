@@ -31,7 +31,9 @@ p50 1.396s, max/p95 4.930s. This build did not deploy to Cloud Run. `test_datase
 skips authenticated orchestrated follow-ups; those remain an open gate.
 
 The isolated Playwright suite passed **33/33** against its synthetic local backend. This is client
-regression evidence only, not exact-image/authenticated production browser E2E.
+regression evidence only, not exact-image/authenticated production browser E2E. Additional reruns
+passed `tests.test_orchestrator_unit` (20/20) and `tests.test_release` (43/43); the seed-import
+focused suites remain 24/24 and 3/3 as above.
 
 Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
 CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 775/1,034
