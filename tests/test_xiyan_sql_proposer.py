@@ -235,9 +235,57 @@ def test_close_is_idempotent_and_rejects_further_inference():
         raise AssertionError("closed native context was reused")
 
 
+def test_load_finalizer_releases_temporary_proposers_without_retaining_them():
+    import gc
+    import hashlib
+    import json
+    import sys
+    import types
+    import weakref
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+    from unittest.mock import Mock, patch
+
+    class NativeModel:
+        def __init__(self, **kwargs):
+            self._ctx = types.SimpleNamespace(ctx=object())
+            self.close = Mock()
+
+    llama_cpp_api = types.SimpleNamespace(
+        ggml_abort_callback=lambda callback: callback,
+        llama_set_abort_callback=Mock(),
+    )
+    llama_module = types.ModuleType("llama_cpp")
+    llama_module.Llama = NativeModel
+    llama_module.llama_cpp = llama_cpp_api
+    transformers_module = types.ModuleType("transformers")
+    transformers_module.AutoTokenizer = types.SimpleNamespace(
+        from_pretrained=lambda *args, **kwargs: FakeTokenizer())
+
+    with TemporaryDirectory() as directory:
+        root = Path(directory)
+        model_path = root / "fixture.gguf"
+        model_path.write_bytes(b"fixture model")
+        contract = load_contract()
+        contract["gguf"]["sha256"] = hashlib.sha256(model_path.read_bytes()).hexdigest()
+        contract["gguf"]["size_bytes"] = model_path.stat().st_size
+        contract_path = root / "contract.json"
+        contract_path.write_text(json.dumps(contract), encoding="utf-8")
+        with patch.dict(sys.modules, {"llama_cpp": llama_module,
+                                     "transformers": transformers_module}):
+            proposer = XiYanSQLProposer.load(model_path, contract_path=contract_path)
+            native = proposer.model
+            reference = weakref.ref(proposer)
+            del proposer
+            gc.collect()
+            assert reference() is None, "the finalizer callback retained the proposer instance"
+            native.close.assert_called_once()
+
+
 # Registered in tests/run_all.py: the release gates run that runner, not pytest, so these tests
 # never ran after the 7B proposer landed (2026-09-28).
 TESTS = [
+    test_load_finalizer_releases_temporary_proposers_without_retaining_them,
     test_admission_timeout_never_starts_another_decode,
     test_decode_deadline_rejects_partial_sql_and_recovers_context,
     test_close_is_idempotent_and_rejects_further_inference,
