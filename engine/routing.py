@@ -91,11 +91,17 @@ def route(plan, world_dependency=None, result_rows=None, required=frozenset()) -
     AND composes over it. Otherwise Route.DELEGATE — hand off to the delegate, which owns own-data (the
     typed-AST planner) and ordinary world lookups (KnowledgeQuery). route() decides ONLY compose-ownership;
     the AST-vs-KnowledgeQuery split is made downstream, so a necessary-but-non-composing world lookup is
-    DELEGATE, not COMPOSE."""
+    DELEGATE, not COMPOSE.
+
+    A comparison on a world attribute the upload lacks ('cities with population over 1,000,000', recorded as
+    ``world_dependency['world_threshold']``) composes: the delegate's world path binds equality filters only,
+    so it declined those questions or answered them without the comparison (2026-09-28)."""
     if required and not set(required) <= set(_ops(plan)):
         return Route.DELEGATE                                 # an explicit requirement the plan cannot realize
     if not (world_dependency and world_dependency.get("is_necessary")):
         return Route.DELEGATE                                 # no NECESSARY world dependency -> delegate (own-data)
+    if world_dependency.get("world_threshold"):
+        return Route.COMPOSE                                  # a row threshold on a world attribute
     return Route.COMPOSE if _composes(plan, result_rows) else Route.DELEGATE
 
 

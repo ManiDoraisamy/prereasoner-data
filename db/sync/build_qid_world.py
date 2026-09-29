@@ -54,12 +54,27 @@ _COUNTRY_COLUMNS = {
 
 
 def _ensure_columns(cursor, table: str, columns: dict[str, str]) -> None:
-    """Upgrade legacy discovered tables without replacing their extra columns."""
+    """Bring a legacy discovered table to the declared columns and types, keeping its extra columns.
+
+    Adding a missing column never changes an existing one, so a table pre-created with all-TEXT property
+    columns kept population as text through every rebuild, and "What is the total population?" summed
+    text (2026-09-28). The rebuild calls this on the emptied tables, so a type change converts no rows."""
+    cursor.execute(
+        "SELECT column_name, data_type FROM information_schema.columns "
+        "WHERE table_schema = 'knowledgebase' AND table_name = %s",
+        (table,),
+    )
+    existing = dict(cursor.fetchall())
     for column, sql_type in columns.items():
-        cursor.execute(
-            f'ALTER TABLE knowledgebase."{table}" '
-            f'ADD COLUMN IF NOT EXISTS "{column}" {sql_type}'
-        )
+        if column not in existing:
+            cursor.execute(
+                f'ALTER TABLE knowledgebase."{table}" ADD COLUMN "{column}" {sql_type}'
+            )
+        elif existing[column] != sql_type:
+            cursor.execute(
+                f'ALTER TABLE knowledgebase."{table}" ALTER COLUMN "{column}" '
+                f'TYPE {sql_type} USING "{column}"::{sql_type}'
+            )
 
 
 def rebuild(connection) -> dict[str, int]:
@@ -68,9 +83,9 @@ def rebuild(connection) -> dict[str, int]:
     try:
         cursor.execute(CITY_DDL)
         cursor.execute(COUNTRY_DDL)
+        cursor.execute('TRUNCATE knowledgebase."city", knowledgebase."country"')
         _ensure_columns(cursor, "city", _CITY_COLUMNS)
         _ensure_columns(cursor, "country", _COUNTRY_COLUMNS)
-        cursor.execute('TRUNCATE knowledgebase."city", knowledgebase."country"')
         cursor.execute(
             """
             INSERT INTO knowledgebase."country"

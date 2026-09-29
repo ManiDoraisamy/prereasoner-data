@@ -214,6 +214,122 @@ def main():
     response, got = projected([CUST], "which continent is Tokyo in")
     ok("projection: compose still answers 'which continent is Tokyo in'", got == [["Asia", 1]], f"got={got}")
 
+    # --- (J) a word that names a world type is never one of its members (2026-09-28) ---
+    # 'how many countries are the customers in' answered 0: the resolver's embedding fallback read 'countries'
+    # as China (0.803, over the 0.80 threshold), and that filter cancelled the country column the question
+    # counts. Paris and Lyon are in France, Berlin in Germany, Tokyo in Japan.
+    def first_cell(response):
+        return (((response.get("result") or {}).get("rows") or [[None]])[0] or [None])[0]
+
+    for question in ("how many countries are the customers in", "how many countries"):
+        response = served(sub, wr.serve, [CUST], question, sub)
+        ok(f"type noun: '{question}' counts the customers' countries", str(first_cell(response)) == "3",
+           f"got={first_cell(response)} views={[v.get('label') for v in response.get('views') or []]}")
+    # Contrastive: a country's name still filters by that country (its label is the knowledgebase's,
+    # "People's Republic of China").
+    china = served(sub, wr.serve, [CUST], "how many customers in China", sub)
+    filters = [view.get("label") for view in china.get("views") or [] if view.get("op") == "filter"]
+    ok("type noun: 'how many customers in China' still filters China",
+       str(first_cell(china)) == "0" and len(filters) == 1 and "China" in filters[0],
+       f"got={first_cell(china)} filters={filters}")
+    # Negative: 'which countries' names the type, not the United Kingdom (0.807 before).
+    which = served(sub, wr.serve, [CUST], "which countries are the customers in", sub)
+    listed = {str(row[0]) for row in (which.get("result") or {}).get("rows") or []}
+    ok("type noun: 'which countries are the customers in' lists France, Germany and Japan",
+       listed == {"France", "Germany", "Japan"}, f"rows={(which.get('result') or {}).get('rows')}")
+
+    # --- (K) a comparison binds the attribute it names (2026-09-28) ---
+    # 'What is the total sales in big cities with population over 1,000,000?' was served as an empty table of
+    # cities: the comparison thresholded the sales total. Tokyo, Osaka and Nagoya have over 1,000,000 people;
+    # Lyon (519,127) and Marseille (886,040) do not. Both programs run and are compared.
+    CITY_SALES = {"name": "s", "columns": ["city", "sales"],
+                  "rows": [["Tokyo", 100], ["Osaka", 200], ["Nagoya", 50], ["Lyon", 30], ["Marseille", 40]]}
+
+    def rows_of(response):
+        return (response.get("result") or {}).get("rows") or []
+
+    for question, expected, condition in (
+            ("What is the total sales in big cities with population over 1,000,000?", 350, "population > 1000000"),
+            ("What is the total sales in cities with population under 1,000,000?", 70, "population < 1000000")):
+        response = served(sub, wr.serve, [CITY_SALES], question, sub, mode="verify")
+        filters = [view.get("label") for view in response.get("views") or [] if view.get("op") == "filter"]
+        ok(f"threshold: '{question}' -> {expected}",
+           rows_of(response) == [[expected]] and filters == [f"where {condition}"]
+           and (response.get("execution") or {}).get("verified"),
+           f"rows={rows_of(response)} filters={filters} error={response.get('error')}")
+    # Contrast: a comparison on the measure thresholds each city's total.
+    response = served(sub, wr.serve, [CITY_SALES], "cities with total sales over 100", sub)
+    ok("threshold: 'cities with total sales over 100' keeps Osaka's total",
+       [list(row) for row in rows_of(response)] in ([["Osaka", 200]], [["Osaka"]]), f"rows={rows_of(response)}")
+    # Negative: an explicit grouping keeps one row per restricted city, and 'which cities' lists them.
+    response = served(sub, wr.serve, [CITY_SALES],
+                      "total sales by city for cities with population over 1,000,000", sub)
+    ok("threshold: grouped by city keeps a row per big city",
+       {tuple(row) for row in rows_of(response)} == {("Tokyo", 100), ("Osaka", 200), ("Nagoya", 50)},
+       f"rows={rows_of(response)}")
+    CITY_ORDERS = {"name": "c", "columns": ["city", "orders"],
+                   "rows": [["Tokyo", 1], ["Osaka", 1], ["Nagoya", 1], ["Lyon", 1], ["Marseille", 1]]}
+    response = served(sub, wr.serve, [CITY_ORDERS], "Which cities have a population greater than 1,000,000?", sub)
+    ok("threshold: 'which cities have a population over 1,000,000' lists them",
+       sorted(str(row[0]) for row in rows_of(response)) == ["Nagoya", "Osaka", "Tokyo"], f"rows={rows_of(response)}")
+
+    # --- (L) a world measure sums a numerically typed column (2026-09-28) ---
+    # knowledgebase."city" and "country" kept population as text through every rebuild, so "What is the total
+    # population?" concatenated the populations, and once text sums were refused it was declined. The rebuild
+    # now converges both to their declared bigint (db/sync/build_qid_world.py). The five cities hold 14,264,798
+    # + 2,751,862 + 2,326,844 + 519,127 + 886,040 people. Section K holds the contrast: the big-cities total,
+    # which compose reads from "Cities", stays 350.
+    response = served(sub, wr.serve, [CITY_SALES], "What is the total population?", sub, mode="verify")
+    ok("world measure: the five cities' total population is 20748671",
+       [[str(cell) for cell in row] for row in rows_of(response)] == [["20748671"]]
+       and (response.get("execution") or {}).get("verified"),
+       f"rows={rows_of(response)} error={response.get('error')}")
+    COUNTRY_SALES = {"name": "c", "columns": ["country", "sales"],
+                     "rows": [["France", 120], ["Germany", 80], ["Japan", 60]]}
+    cn = _pg(); cur = cn.cursor()
+    cur.execute("SELECT sum(population) FROM public.country WHERE qid = ANY(%s)", (["Q142", "Q183", "Q17"],))
+    expected = str(cur.fetchone()[0]); cn.close()
+    response = served(sub, wr.serve, [COUNTRY_SALES], "What is the total population?", sub, mode="verify")
+    ok("world measure: the three countries' total population is their synchronized sum",
+       [[str(cell) for cell in row] for row in rows_of(response)] == [[expected]]
+       and (response.get("execution") or {}).get("verified"),
+       f"rows={rows_of(response)} expected={expected} error={response.get('error')}")
+    # Negative: a text attribute is never summed; the currencies are listed with their row counts.
+    response = served(sub, wr.serve, [CITY_SALES], "What is the total currency?", sub)
+    ok("world measure: a text attribute (currency) is listed, never summed",
+       {tuple(str(cell) for cell in row) for row in rows_of(response)} == {("JPY", "3"), ("EUR", "2")},
+       f"rows={rows_of(response)} error={response.get('error')}")
+
+    # --- (M) a noun an aggregate runs over is not a grouping (2026-09-28) ---
+    # 'What is the average population of these cities?' and 'What is the total population of these cities
+    # combined?' were served as per-city tables: compose grouped by every text column a question mentioned. A
+    # noun named only as the set an aggregate runs over is one set, so the measure is one number. The five cities
+    # hold 20,748,671 people, 4,149,734.2 on average.
+    from decimal import Decimal
+
+    for question, total in (("What is the average population of these cities?", Decimal("4149734.2")),
+                            ("What is the total population of these cities combined?", Decimal("20748671"))):
+        response = served(sub, wr.serve, [CITY_SALES], question, sub, mode="verify")
+        got = rows_of(response)
+        ok(f"aggregate domain: '{question}' is one number",
+           len(got) == 1 and len(got[0]) == 1 and Decimal(str(got[0][0])) == total
+           and (response.get("execution") or {}).get("verified"),
+           f"rows={got} error={response.get('error')} reason={response.get('reason')}")
+    # Contrast: a grouping cue keeps a row per city, and a grouping by a world attribute stays.
+    response = served(sub, wr.serve, [CITY_SALES], "What is the population of each city?", sub)
+    ok("aggregate domain: 'the population of each city' keeps a row per city",
+       {tuple(str(cell) for cell in row) for row in rows_of(response)} == {
+           ("Tokyo", "14264798"), ("Osaka", "2751862"), ("Nagoya", "2326844"), ("Lyon", "519127"),
+           ("Marseille", "886040")}, f"rows={rows_of(response)}")
+    response = served(sub, wr.serve, [CITY_SALES], "total sales by country", sub)
+    ok("aggregate domain: 'total sales by country' keeps a row per country",
+       {tuple(str(cell) for cell in row) for row in rows_of(response)} == {("Japan", "350"), ("France", "70")},
+       f"rows={rows_of(response)}")
+    # Negative: a ranking keeps the cities it ranks.
+    response = served(sub, wr.serve, [CITY_SALES], "Which are the top 2 cities by population?", sub)
+    ok("aggregate domain: 'the top 2 cities by population' ranks the cities",
+       [str(row[0]) for row in rows_of(response)] == ["Tokyo", "Osaka"], f"rows={rows_of(response)}")
+
     print(f"\n{P}/{P+F} passed" + ("" if not F else f"  ({F} FAILED)"))
     sys.exit(1 if F else 0)
 

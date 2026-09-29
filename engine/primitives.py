@@ -7,6 +7,8 @@ These are pure SQL-string builders (no model, no I/O) — the deterministic core
 """
 from __future__ import annotations
 
+from decimal import Decimal
+
 
 def q(name):
     """quote an identifier"""
@@ -25,8 +27,15 @@ def lit(v):
 
 
 def filter_view(src, conds):
-    """row filter. conds: [(col, op, value)] -> SELECT * WHERE c1 op v1 AND ...  (e.g. exclude returns)"""
-    where = " AND ".join(f'{q(c)} {op} {lit(v)}' for c, op, v in conds)
+    """row filter. conds: [(col, op, value)] -> SELECT * WHERE c1 op v1 AND ...  (e.g. exclude returns). A number
+    compares numerically through decimal_cmp (engine.numeric), whatever the column holds. A view's decimal
+    aggregate is TEXT with no affinity, and SQLite orders every TEXT above every number, so 'sales > 100' kept
+    every group and 'sales < 50' none (2026-09-28). A text value keeps its text comparison."""
+    def one(c, op, v):
+        if isinstance(v, (int, float, Decimal)) and not isinstance(v, bool):
+            return f'decimal_cmp({q(c)}, {lit(v)}) {op} 0'
+        return f'{q(c)} {op} {lit(v)}'
+    where = " AND ".join(one(c, op, v) for c, op, v in conds)
     return f'SELECT * FROM {q(src)} WHERE {where}'
 
 

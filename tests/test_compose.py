@@ -9,11 +9,15 @@ Run:  python -m tests.test_compose
 """
 from __future__ import annotations
 
+import sqlite3
 import sys
+from decimal import Decimal
 
 from engine.compose import ComposeEngine
 from engine.joins import discover_fks, join_plan
 from engine.knowledge_query import content_words, semantic_predicate, verify_nonempty
+from engine.numeric import register_sqlite_decimal
+from engine.primitives import filter_view
 
 
 ORDERS = {"name": "orders", "columns": ["city", "amount"],
@@ -35,6 +39,21 @@ WORLD2 = {"name": "knowledgebase facts", "columns": ["city", "country"],
 
 def _run(question, world=WORLD, tables=(ORDERS,)):
     return ComposeEngine(reader=None).run([dict(t) for t in tables], question, world=world)
+
+
+# Cities with their sales, and the populations the knowledgebase lookup supplies for them: Tokyo, Osaka and
+# Nagoya have over 1,000,000 people, Lyon and Marseille do not.
+CITY_SALES = {"name": "s", "columns": ["city", "sales"],
+              "rows": [["Tokyo", 100], ["Osaka", 200], ["Nagoya", 50], ["Lyon", 30], ["Marseille", 40]]}
+CITY_ORDERS = {"name": "c", "columns": ["city", "orders"],
+               "rows": [["Tokyo", 1], ["Osaka", 1], ["Nagoya", 1], ["Lyon", 1], ["Marseille", 1]]}
+CITY_WORLD = {"name": "knowledgebase facts", "columns": ["city", "country", "population"],
+              "rows": [["Tokyo", "Japan", 14264798], ["Osaka", "Japan", 2751862], ["Nagoya", "Japan", 2326844],
+                       ["Lyon", "France", 519127], ["Marseille", "France", 886040]]}
+
+
+def _steps(run):
+    return [(step["op"], step.get("conds", step.get("by"))) for step in run["bindings"]["steps"]]
 
 
 def test_named_input_value_filters_directly_without_world_model():
@@ -221,6 +240,117 @@ def test_grammar_computations_and_exclusions_are_not_searched_for():
     assert semantic_predicate("gold customers in france", ["France", "Gold"], sales, closed={"in"}) == ""
     assert content_words("who ordered a trench coat in paris", ["Paris"], sales,
                          closed={"who", "a", "in"}) == ["trench", "coat"]
+    # An adverb that asks for the total is realized by the operator, not a constraint the query dropped: 'the
+    # total population of these cities combined' was declined for 'combined' (2026-09-28). Contrast: a real
+    # content word beside it still counts.
+    cities = [{"table": "jp", "name": name} for name in ("city", "units")]
+    for question, expected in (("What is the total population of these cities combined?", ["population"]),
+                               ("units sold altogether", ["sold"]), ("the overall average units", [])):
+        assert content_words(question, [], cities, closed={"what", "is", "the", "of", "these", "?"}) \
+            == expected, question
+    assert content_words("units sold in gold cities combined", [], cities, closed={"in"}) == ["sold", "gold"]
+
+
+def test_a_comparison_binds_the_attribute_it_names():
+    # 'What is the total sales in big cities with population over 1,000,000?' was served as an empty table of
+    # cities: the comparison thresholded the sales total whatever it named, and the mentioned cities became a
+    # grouping (2026-09-28). Population is a row attribute, so it keeps rows before the one total.
+    for question, cmp, value, total in (
+        ("What is the total sales in big cities with population over 1,000,000?", ">", 1000000, 350),
+        ("What is the total sales in cities with population under 1,000,000?", "<", 1000000, 70),
+        ("total sales in cities with a population of over 2.5 million", ">", 2500000, 300),
+        ("total sales in cities with more than 1 million population", ">", 1000000, 350),
+        ("What is the total sales in cities whose population is at least 2,751,862?", ">=", 2751862, 300),
+    ):
+        run = _run(question, world=CITY_WORLD, tables=(CITY_SALES,))
+        assert _steps(run) == [("filter", [("population", cmp, Decimal(value))]), ("group_agg", [])], \
+            (question, _steps(run))
+        assert run["answer"]["rows"] == [[total]], (question, run["answer"])
+
+
+def test_a_comparison_on_the_measure_still_thresholds_each_total():
+    # Contrast: 'cities with total sales over 100' compares the aggregated measure, so it stays a threshold on
+    # each city's total. A comparison that names no column ('cities that sold over 100') thresholds the metric
+    # as before.
+    for question in ("cities with total sales over 100", "which cities sold over 100"):
+        run = _run(question, world=CITY_WORLD, tables=(CITY_SALES,))
+        assert _steps(run) == [("group_agg", ["city"]), ("having", [("sales", ">", Decimal(100))])], \
+            (question, _steps(run))
+    # 'total amount' is what is compared, so another numeric column never takes over as the measure.
+    orders = {"name": "orders", "columns": ["customer", "quantity", "amount"],
+              "rows": [["Ada", 1, 120], ["Bob", 5, 80], ["Ada", 2, 150], ["Eve", 9, 40]]}
+    run = _run("customers with total amount over 100", world=None, tables=(orders,))
+    assert _steps(run) == [("group_agg", ["customer"]), ("having", [("amount", ">", Decimal(100))])], _steps(run)
+    assert run["bindings"]["steps"][0]["aggs"] == [("SUM", "amount", "amount")], run["bindings"]["steps"]
+
+
+def test_the_restricted_noun_groups_only_when_the_question_asks_for_it():
+    # Negative: the cities a row threshold restricts are one set to total, unless the question groups them
+    # ('by city') or asks for no aggregate at all ('which cities ...'), which lists them.
+    run = _run("total sales by city for cities with population over 1,000,000",
+               world=CITY_WORLD, tables=(CITY_SALES,))
+    assert _steps(run) == [("filter", [("population", ">", Decimal(1000000))]), ("group_agg", ["city"])], _steps(run)
+    assert sorted(map(tuple, run["answer"]["rows"])) == [("Nagoya", 50), ("Osaka", 200), ("Tokyo", 100)]
+    run = _run("Which cities have a population greater than 1,000,000?", world=CITY_WORLD, tables=(CITY_ORDERS,))
+    assert _steps(run)[0] == ("filter", [("population", ">", Decimal(1000000))]), _steps(run)
+    assert sorted(row[0] for row in run["answer"]["rows"]) == ["Nagoya", "Osaka", "Tokyo"], run["answer"]
+    run = _run("How many cities have a population over 1,000,000?", world=CITY_WORLD, tables=(CITY_SALES,))
+    assert run["answer"]["rows"] == [[3]], run["answer"]
+
+
+def test_a_noun_an_aggregate_runs_over_is_not_a_grouping():
+    # 'What is the average population of these cities?' and 'What is the total population of these cities
+    # combined?' were served as per-city tables: every text column a question mentioned became a grouping
+    # (2026-09-28). A noun named only as the set an aggregate runs over is one set.
+    for question, function in (("What is the average population of these cities?", "AVG"),
+                               ("What is the total population of these cities combined?", "SUM"),
+                               ("total population for the cities", "SUM")):
+        run = _run(question, world=CITY_WORLD, tables=(CITY_SALES,))
+        steps = [(step["op"], step["by"], step["aggs"]) for step in run["bindings"]["steps"]]
+        assert steps == [("group_agg", [], [(function, "population", "population")])], (question, steps)
+    run = _run("What is the total population of these cities combined?", world=CITY_WORLD, tables=(CITY_SALES,))
+    assert run["answer"]["rows"] == [[20748671]], run["answer"]
+    # Contrast: a grouping cue keeps the grouping, including 'each of the cities' and a second column's 'by'.
+    for question, by in (("total population by country", ["country"]),
+                         ("What is the population of each city?", ["city"]),
+                         ("total sales for each of the cities", ["city"]),
+                         ("average population of these cities by country", ["country"])):
+        run = _run(question, world=CITY_WORLD, tables=(CITY_SALES,))
+        assert run["bindings"]["steps"][0]["by"] == by, (question, run["bindings"]["steps"])
+    # Negative: a ranked noun is what the answer lists, whether ranked by a number or by a ranking word.
+    for question in ("Which are the top 2 cities by population?", "total population of the top 3 cities"):
+        run = _run(question, world=CITY_WORLD, tables=(CITY_SALES,))
+        assert [(step["op"], step.get("by")) for step in run["bindings"]["steps"]][:1] == [("group_agg", ["city"])] \
+            and run["bindings"]["steps"][-1]["op"] == "topn", (question, run["bindings"]["steps"])
+
+
+def test_a_threshold_on_an_aggregate_compares_numbers():
+    # Compose's SQLite candidate kept every city for 'cities with total sales over 100' and none for 'under 50': a
+    # view's decimal_sum is TEXT with no affinity, and SQLite orders every TEXT above every number (2026-09-28).
+    # Served answers run the shared plan in Postgres and were right; routing and the re-expression of a
+    # world-filtered scalar read this answer.
+    for question, rows in (("cities with total sales over 100", [["Osaka", 200]]),
+                           ("cities with total sales under 50", [["Lyon", 30], ["Marseille", 40]]),
+                           ("cities with total sales of at least 100", [["Osaka", 200], ["Tokyo", 100]])):
+        run = _run(question, world=None, tables=(CITY_SALES,))
+        assert sorted(run["answer"]["rows"]) == rows, (question, run["answer"])
+    # Contrast: a stored decimal column and a year compared numerically already, and still do.
+    run = _run("What is the total sales in big cities with population over 1,000,000?",
+               world=CITY_WORLD, tables=(CITY_SALES,))
+    assert run["answer"]["rows"] == [[350]], run["answer"]
+    years = {"name": "y", "columns": ["city", "year", "sales"],
+             "rows": [["Tokyo", 2022, 10], ["Tokyo", 2023, 20], ["Osaka", 2023, 5]]}
+    assert _run("total sales since 2023", world=None, tables=(years,))["answer"]["rows"] == [[25]]
+    # Negative: a text value keeps its text comparison, and a cell that is not a number never passes a numeric
+    # comparison (it used to pass every 'greater than', as TEXT above any number).
+    assert _run("total sales in Osaka", world=None, tables=(CITY_SALES,))["answer"]["rows"] == [[200]]
+    connection = sqlite3.connect(":memory:")
+    register_sqlite_decimal(connection)
+    connection.execute("CREATE TABLE t (city TEXT, n)")
+    connection.execute("INSERT INTO t VALUES ('Paris', '120'), ('Lyon', 'n/a')")
+    assert connection.execute(filter_view("t", [("n", ">", 100)])).fetchall() == [("Paris", "120")]
+    assert connection.execute(filter_view("t", [("city", ">", 5)])).fetchall() == []
+    assert connection.execute(filter_view("t", [("city", "=", "Lyon")])).fetchall() == [("Lyon", "n/a")]
 
 
 def test_an_id_column_is_never_offered_as_a_measure():
@@ -248,6 +378,11 @@ TESTS = [
     test_words_that_name_the_sheet_leave_nothing_to_search_for,
     test_grammar_computations_and_exclusions_are_not_searched_for,
     test_an_id_column_is_never_offered_as_a_measure,
+    test_a_comparison_binds_the_attribute_it_names,
+    test_a_comparison_on_the_measure_still_thresholds_each_total,
+    test_the_restricted_noun_groups_only_when_the_question_asks_for_it,
+    test_a_noun_an_aggregate_runs_over_is_not_a_grouping,
+    test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,
     test_regression_the_named_filter_is_not_dropped,

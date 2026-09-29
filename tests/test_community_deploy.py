@@ -53,6 +53,9 @@ def test_qid_world_projection_is_an_offline_atomic_transform():
         def fetchone(self):
             return self.one
 
+        def fetchall(self):
+            return []
+
         def close(self):
             return None
 
@@ -79,6 +82,70 @@ def test_qid_world_projection_is_an_offline_atomic_transform():
     assert connection.commits == 1 and connection.rollbacks == 0
     source = _text("db/sync/build_qid_world.py")
     assert "urllib" not in source and "requests" not in source
+
+
+def test_qid_world_rebuild_converges_a_legacy_text_column_to_its_declared_type():
+    # knowledgebase."city" was pre-created with all-TEXT property columns, and the rebuild only added missing
+    # columns, so population stayed text: the served "What is the total population?" summed the text into
+    # 1426479827518622326844519127886040 and, once text sums were refused, was declined (2026-09-28).
+    from db.sync.build_qid_world import rebuild
+
+    live = {
+        "city": [("qid", "text"), ("name", "text"), ("country", "text"), ("population", "text"),
+                 ("updated_at", "date"), ("source", "text"), ("described_by_source", "text")],
+        "country": [("qid", "text"), ("name", "text"), ("continent", "text"), ("currency", "text"),
+                    ("capital", "text"), ("population", "bigint"), ("updated_at", "date")],
+    }
+
+    class Cursor:
+        rowcount = 1
+
+        def __init__(self):
+            self.statements = []
+            self.rows = []
+
+        def execute(self, statement, params=None):
+            text = str(statement)
+            self.statements.append(text)
+            self.rows = live[params[0]] if "information_schema.columns" in text else []
+
+        def fetchall(self):
+            return list(self.rows)
+
+        def fetchone(self):
+            return (0,)
+
+        def close(self):
+            return None
+
+    class Connection:
+        def __init__(self):
+            self.cursor_value = Cursor()
+
+        def cursor(self):
+            return self.cursor_value
+
+        def commit(self):
+            return None
+
+        def rollback(self):
+            raise AssertionError("the rebuild rolled back")
+
+    connection = Connection()
+    rebuild(connection)
+    statements = connection.cursor_value.statements
+    changed = [s for s in statements if s.startswith('ALTER TABLE knowledgebase."') and " ADD COLUMN " not in s]
+    assert changed == [
+        'ALTER TABLE knowledgebase."city" ALTER COLUMN "population" TYPE bigint USING "population"::bigint'
+    ], changed
+    # Contrast: a column already of its declared type is left alone ("country".population), and so is an extra
+    # legacy column; a declared column the table lacks is added.
+    assert 'ALTER TABLE knowledgebase."country" ADD COLUMN "source" text' in statements
+    assert not any('"described_by_source"' in s for s in statements)
+    # The type changes on the emptied table, before any row is inserted, so no value is converted.
+    truncate = next(i for i, s in enumerate(statements) if s.startswith("TRUNCATE"))
+    insert = next(i for i, s in enumerate(statements) if 'INSERT INTO knowledgebase."city"' in s)
+    assert truncate < statements.index(changed[0]) < insert
 
 
 def test_state_projection_builder_does_not_pull_the_model_runtime():
@@ -671,6 +738,8 @@ def test_marketing_button_opens_the_pinned_public_walkthrough():
 
 TESTS = [
     test_bootstrap_plan_is_minimal_deterministic_and_non_shell,
+    test_qid_world_projection_is_an_offline_atomic_transform,
+    test_qid_world_rebuild_converges_a_legacy_text_column_to_its_declared_type,
     test_state_projection_builder_does_not_pull_the_model_runtime,
     test_state_projection_rebuild_is_atomic_and_reports_unresolved_rows,
     test_bootstrap_builds_every_table_the_maintenance_catalog_promises,

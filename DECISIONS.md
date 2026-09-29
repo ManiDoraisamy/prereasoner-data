@@ -786,3 +786,89 @@ step 4 and rule 5), and recorded sheets carried Decimal and date cells that the 
 as leaks. It also exposed a production answer the context-less golden had hidden: a population threshold
 ("total sales in big cities with population over 1,000,000") returns a compose table instead of 350 or a
 clarify. That is a separate task.
+
+## A word that names a world type is not one of its members (2026-09-28)
+
+"how many countries are the customers in" answered 0. For a phrase that names no entity exactly,
+`EntityQuery._resolve` takes the nearest entity by embedding when it is at least 0.80 similar. "countries" sat
+0.803 from China, so the question filtered to China and counted no customers. "which countries" sat 0.807 from
+the United Kingdom, and "total sales in European countries" filtered to China as well. A phrase whose head word,
+in singular form, names a world type (`knowledgebase."words"` rows of type 'type': country, city, state, ...) is
+that type, and it no longer reaches the embedding fallback. Exact names still resolve first ("Mexico City",
+"China"), and a qualifier that is its own phrase still resolves ("Chinese" in "Chinese cities" is China).
+
+"states" is also an exact alias of the United States, so "how many states are the customers in" still filters
+to it. Telling the alias ("sales in the States") from the common noun needs the phrase's grammar, not a word
+list.
+
+## A comparison binds the attribute it names (2026-09-28)
+
+"What is the total sales in big cities with population over 1,000,000?" was served as an empty table of
+cities. Compose bound every comparison to the aggregated metric (`_having`), so it applied the million to each
+city's sales total, and it grouped by every text column the question mentions, so the cities became a
+grouping. The delegate's world path binds equality filters only, and it declined the question.
+
+Compose now binds a comparison to the column named right before it ('population over', 'a population of over',
+'whose mass is above') or right after its value ('more than 1 million population'), and reads scale words
+('1 million'). A comparison on a row attribute other than the aggregated measure keeps rows before the
+aggregate. One on the measure, or one that names no column, still thresholds the aggregate ('cities with total
+sales over 100'). The noun such a comparison qualifies ('big cities with ...') is the set the aggregate runs
+over, not a grouping, unless the question groups it ('by city') or asks for no aggregate ('which cities have
+...', which lists them). A world attribute the upload lacks, compared this way, is a necessary world
+dependency (`world_dependency['world_threshold']`), and `route()` gives the question to compose. The answer is
+350, and both programs compute it through the shared plan. An own-data comparison on a column other than the
+measure ('how many orders with amount over 100') no longer has a composition step, so it goes to the typed
+AST, its owner.
+
+On the delegate path, "What is the total population?" summed `knowledgebase."city".population`, which is
+stored as text. The Python program concatenated the digits into 1426479827518622326844519127886040 and served
+the result. This was a regression from the world-measure lowering of 2026-09-27. `AnalysisPlan` now refuses
+SUM, AVG and window totals over a column stored as text, whether read directly or carried through views,
+before either program is emitted. The question is declined, as it was before that lowering. Answering it needs
+a numeric population column in that table.
+
+## A world measure reads the type its maintainer declares (2026-09-28)
+
+`db/sync/build_qid_world.py` maintains `knowledgebase."city"` and `"country"` (`db/sync/schedule.py`), and it
+already declared `population bigint`. The live tables had been pre-created with all-TEXT property columns, and
+the builder's upgrade step only added missing columns. So population stayed text through every rebuild, and
+the delegate's world measure had no number to sum. The fix is at the maintainer, not at the reader: each
+rebuild now converges a pre-created table to the declared column types, on the emptied table, before any row
+is inserted. `world_target` keeps binding `"city"`; binding compose's `"Cities"` would have given the delegate
+a second source for city attributes and left `"city"` out of its own contract. The plan still never casts, and
+SUM or AVG over text stays refused.
+
+The rebuild ran on the live world database on 2026-09-28, with approval. It re-derived the same 200,886 cities
+and 209 countries from `public.settlement` and `public.country`, so 0 rows changed besides the type and
+`updated_at`. "What is the total population?" over Tokyo, Osaka, Nagoya, Lyon and Marseille is now 20,748,671,
+the same in both programs. The same question over France, Germany and Japan is 275,984,756. `"u_s_state"`
+has no population values at all, because its builder never writes that column; typing it would not answer
+anything.
+
+## A noun an aggregate runs over is not a grouping (2026-09-28)
+
+Compose grouped by every text column a question mentioned (`_dims`), so "What is the average population of these
+cities?" and "What is the total population of these cities combined?" were served as per-city tables. Both
+capability cases failed on every run. The task-8 rule already treated the noun a row threshold qualifies as one
+set. `ComposeEngine._aggregated_over` now generalizes it. When the question asks for an aggregate, a text column is
+not a grouping if every mention of it is either the object of a domain word (`of`, `in`, `for`, `from`, `among`,
+`across`), reached over determiners and at most one other word, or the noun a row threshold qualifies. A grouping
+cue ('by city', 'per city', 'each city', 'for each of the cities'), a ranking word or a number ('the top 3 cities')
+keeps the mention a grouping. So does any other position ('which cities', 'city totals'), a question that asks for
+no aggregate ('which cities have ...' lists them), and a threshold on each group's aggregate. The scalar measure is
+not a composition, so it goes to the world path, which reads the typed population (the entry before this one).
+
+The world path then declined the "combined" question for having dropped the word "combined". An adverb that asks
+for a total ("combined", "altogether", "overall") is now one of the operator words (`knowledge_query._OPERATOR_WORDS`),
+as "total" is.
+
+## Compose's candidate compares numbers as numbers (2026-09-28)
+
+Compose materializes its candidate in SQLite before routing. `filter_view` wrote a number bare, and a view's
+decimal aggregate (`decimal_sum`) is TEXT with no affinity or collation. SQLite orders every TEXT above every number,
+so "cities with total sales over 100" kept all five cities and "under 50" kept none. Served answers were right,
+because they run the shared plan in Postgres. But routing (`_composes` reads the result rows) and the
+re-expression of a world-filtered scalar (`_same_answer`) read this answer, and so do hermetic tests. `filter_view`
+now compares a number through the registered `decimal_cmp`, whatever the column holds: a decimal aggregate, a
+count, a stored decimal, a year. A text value keeps its text comparison. A cell that is not a number fails a
+numeric comparison instead of passing every 'greater than'. Ordering already used `COLLATE decimal`.

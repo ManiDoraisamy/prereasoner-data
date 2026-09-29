@@ -19,6 +19,7 @@ remaining heuristic is a clearly-marked encoder-free seam.
 from __future__ import annotations
 import re
 import sqlite3
+from decimal import Decimal
 
 import numpy as np
 
@@ -107,18 +108,20 @@ class ComposeEngine:
         named = [c for c in numeric if c.lower() in MEASURE_WORDS]   # encoder-free fallback (hardcoded noun list)
         return named[0] if named else numeric[0]
 
-    def _operator(self, low, table=None, question=None):
-        """The aggregate operator. FROM THE MODEL (read_op_model reads intent_agg_sum/count/avg off the question's
-        verb — 'how much'->SUM with no keyword cue) when an encoder is present; else the keyword map. Defaults to SUM
-        when no aggregate intent fires, because group_agg still needs an aggregator (e.g. SUM within a YoY pre-agg)."""
+    def _intent(self, low, table=None, question=None):
+        """The aggregate the question asks for, or None when it asks for none ('which cities have ...'). FROM THE
+        MODEL (read_op_model reads intent_agg_sum/count/avg off the question's verb — 'how much'->SUM with no
+        keyword cue) when an encoder is present; else the keyword map."""
         if self.enc is not None and table is not None and question is not None:
             op, _ = self.enc.read_op_model([table], question)
-            return op or "SUM"
+            return op
         if re.search(r'\baverage\b|\bmean\b|\bavg\b', low):
             return "AVG"
         if re.search(r'how many|number of|\bcount\b', low):
             return "COUNT"
-        return "SUM"
+        if re.search(r'\btotal\b|\bsum\b', low):
+            return "SUM"
+        return None
 
     def _pick_dim(self, low, texts, question=None):
         """The grouping / entity dimension when none is named explicitly. Explicit mention (data-driven) > COSINE in
@@ -218,16 +221,121 @@ class ComposeEngine:
             return [(tcol, "=", yrs[0])]
         return [(tcol, ">=", min(yrs)), (tcol, "<=", max(yrs))]
 
-    def _having(self, low):
-        """A post-aggregate threshold on the metric: 'over/more than 1000' -> ('>',1000), 'at least 5' -> ('>=',5),
-        'under/less than 100' -> ('<',100), 'at most 3' -> ('<=',3). Returns (op, value) or None."""
-        m = re.search(r'(?:over|above|more than|greater than|exceed(?:s|ing)?|at least)\s*\$?([\d,]+(?:\.\d+)?)', low)
-        if m:
-            return (">=" if "at least" in low else ">", parse_decimal(m.group(1)))
-        m = re.search(r'(?:under|below|less than|fewer than|at most)\s*\$?([\d,]+(?:\.\d+)?)', low)
-        if m:
-            return ("<=" if "at most" in low else "<", parse_decimal(m.group(1)))
-        return None
+    # A scale word after a comparison's number ('over 1 million').
+    _SCALE = {"thousand": 10 ** 3, "million": 10 ** 6, "billion": 10 ** 9, "trillion": 10 ** 12}
+    # Words between an attribute and its comparison that name nothing ('a population of over 1 million', 'whose
+    # mass is above 10').
+    _COMPARED_FILLER = frozenset({"a", "an", "the", "of", "is", "are", "was", "were", "be", "been", "being"})
+    # Words that join a noun to the clause qualifying it ('cities with / whose / that have a population ...').
+    _CLAUSE_LINK = frozenset({"with", "whose", "where", "having", "that", "which", "who", "have", "has", "had",
+                              "a", "an", "the", "their", "its"})
+    # An aggregate word before the compared attribute makes the comparison one on that aggregate ('customers
+    # with total amount over 100' thresholds each customer's total).
+    _AGGREGATE_WORDS = frozenset({"total", "sum", "average", "avg", "mean"})
+    # Words that make the noun after them the set an aggregate runs over ('the average population OF these
+    # cities', 'total amount FOR cities in France'), and the determiners that may stand in between.
+    _DOMAIN_LINK = frozenset({"of", "in", "for", "from", "among", "across"})
+    _DETERMINERS = frozenset({"the", "these", "those", "this", "that", "all", "both", "our", "my", "your", "its",
+                              "their", "any", "some"})
+    # Words that make the noun after them a grouping ('by city', 'per city', 'each city', 'each of the cities'),
+    # and words that rank it ('the top 3 cities', 'the biggest cities'): either keeps a mention a grouping.
+    _GROUPING_CUES = frozenset({"by", "per", "each", "every"})
+    _RANKING_WORDS = frozenset({"top", "bottom", "highest", "lowest", "largest", "smallest", "biggest", "best",
+                                "worst", "most", "least", "first", "last"})
+
+    @staticmethod
+    def _forms(words):
+        """A name's words as a question says them: as named, or with the last word plural ('city', 'cities')."""
+        last = words[-1]
+        return {words, words[:-1] + ((last[:-1] + "ies") if last.endswith("y") else (last + "s"),)}
+
+    def _threshold(self, low, cols):
+        """A threshold and the attribute it compares. 'over/more than 1000' -> ('>', 1000), 'at least 5' ->
+        ('>=', 5), 'under/less than 100' -> ('<', 100), 'at most 3' -> ('<=', 3); a scale word multiplies ('over
+        1 million' -> 1000000). The comparison binds the column of `cols` named right before it ('cities with
+        population over 1,000,000', 'whose mass is above 10') or right after its value ('more than 1 million
+        population'). -> (column | None, op, value, (start, end), aggregated) or None, where (start, end) spans
+        the named column and the comparison in `low`, column is None when the comparison names no column, and
+        aggregated says an aggregate word precedes the column ('total amount over 100')."""
+        for pattern, strict, inclusive in (
+                (r"over|above|more than|greater than|exceed(?:s|ing)?|at least", ">", "at least"),
+                (r"under|below|less than|fewer than|at most", "<", "at most")):
+            m = re.search(r"\b(" + pattern + r")\s*\$?(\d[\d,]*(?:\.\d+)?)(?:\s+(thousand|million|billion|trillion)\b)?",
+                          low)
+            if m:
+                break
+        else:
+            return None
+        op = strict + "=" if m.group(1) == inclusive else strict
+        value = parse_decimal(m.group(2)) * self._SCALE.get(m.group(3), 1)
+        if value == value.to_integral_value():
+            value = Decimal(int(value))
+        before = list(re.finditer(r"[a-z0-9]+", low[:m.start()]))
+        while before and before[-1].group() in self._COMPARED_FILLER:
+            before.pop()
+        after = list(re.finditer(r"[a-z0-9]+", low[m.end():]))
+        best = None                                          # ((name length, named before), column, span)
+        for c in cols:
+            name = tuple(re.findall(r"[a-z0-9]+", str(c).lower()))
+            n = len(name)
+            if not n:
+                continue
+            if len(before) >= n and tuple(w.group() for w in before[-n:]) in self._forms(name):
+                key, span = (n, 1), (before[-n].start(), m.end())
+            elif len(after) >= n and tuple(w.group() for w in after[:n]) in self._forms(name):
+                key, span = (n, 0), (m.start(), m.end() + after[n - 1].end())
+            else:
+                continue
+            if best is None or key > best[0]:
+                best = (key, c, span)
+        if best is None:
+            return None, op, value, (m.start(), m.end()), False
+        (n, named_before), column, span = best
+        lead = [w.group() for w in before[:-n]] if named_before else []
+        while lead and lead[-1] in self._COMPARED_FILLER:
+            lead.pop()
+        return column, op, value, span, bool(lead) and lead[-1] in self._AGGREGATE_WORDS
+
+    def _aggregated_over(self, c, low, clause_start=None):
+        """Is text column `c` named only as the set an aggregate runs over, never as a grouping? Each mention must
+        be the object of a domain word, with determiners and at most one other word in between ('the average
+        population of these cities', 'total amount for cities in France', 'in big cities'), or the noun a row
+        threshold qualifies ('big cities with population over 1,000,000', the clause starting at `clause_start`).
+        A grouping cue ('by city', 'per city', 'each city', 'for each of the cities'), a ranking word or a number
+        ('the top 3 cities') keeps a mention a grouping, and so does any other position ('which cities', 'top
+        cities', 'city totals')."""
+        name = tuple(re.findall(r"[a-z0-9]+", str(c).lower()))
+        if not name:
+            return False
+        tokens = [(m.group(), m.start()) for m in re.finditer(r"[a-z0-9]+", low)]
+        words = [word for word, _ in tokens]
+        n, forms = len(name), self._forms(name)
+        mentions = [i for i in range(len(words) - n + 1) if tuple(words[i:i + n]) in forms]
+        if not mentions:
+            return False
+        for i in mentions:
+            if i and words[i - 1] in self._GROUPING_CUES:
+                return False
+            qualified = clause_start is not None and tokens[i + n - 1][1] < clause_start and all(
+                word in self._CLAUSE_LINK for word, start in tokens[i + n:] if start < clause_start)
+            if not (qualified or self._domain_object(words, i)):
+                return False
+        return True
+
+    def _domain_object(self, words, i):
+        """Is the noun at `words[i]` the object of a domain word ('of these cities'), reached over determiners and
+        at most one other word, with no grouping cue before that word ('each of the cities')?"""
+        other, j = 0, i - 1
+        while j >= 0 and words[j] not in self._DOMAIN_LINK:
+            word = words[j]
+            if word in self._GROUPING_CUES or word in self._RANKING_WORDS or word.isdigit():
+                return False
+            if word not in self._DETERMINERS:
+                other += 1
+                if other > 1:
+                    return False
+            j -= 1
+        return j >= 0 and not (j and words[j - 1] in self._GROUPING_CUES)
 
     def _divide(self, low, numeric):
         """Two-measure ratio ('profit to revenue ratio', 'revenue per order'): needs TWO numeric columns named in the
@@ -241,24 +349,42 @@ class ComposeEngine:
 
     def plan(self, question, table, prims=None, used=None):
         """question + one table -> ordered list of primitive steps (the view DAG), in the canonical analytics pipeline
-        order: filters (exclusion, temporal) -> aggregate (+ a derive: yoy / running / share / divide) -> having
-        -> rank (top-N / sort). `prims` is the primitive SET from the learned head; the newer primitives + all
-        operands are read by transparent regex/value-matching seams. Operands are extracted regardless of where the
-        structure decision comes from."""
+        order: filters (exclusion, temporal, a row threshold) -> aggregate (+ a derive: yoy / running / share /
+        divide) -> having -> rank (top-N / sort). `prims` is the primitive SET from the learned head; the newer
+        primitives + all operands are read by transparent regex/value-matching seams. Operands are extracted
+        regardless of where the structure decision comes from."""
         low = " " + question.lower() + " "
         cols = table["columns"]; rows = table["rows"]; typ = self._types(cols, rows)
         numeric = [c for c in cols if typ[c] == "num" and not is_surrogate_key(c)]
         times = [c for c in cols if typ[c] == "time"]
         texts = [c for c in cols if typ[c] == "text"]
-        measure = self._pick_measure(low, numeric, question)
-        op = self._operator(low, table, question)
+        # A comparison binds the attribute it names. On a row attribute other than the aggregated measure it keeps
+        # rows before aggregating ('total sales in big cities with population over 1,000,000' is 350, not a
+        # threshold on the total sales); on the measure it thresholds the aggregate ('cities with total sales over
+        # 100'). It once bound the metric whatever it named, and served an empty per-city table (2026-09-28).
+        threshold = self._threshold(low, numeric)
+        bound, _, _, span, aggregated = threshold or (None, None, None, None, False)
+        unbound = low if bound is None else low[:span[0]] + " " + low[span[1]:]   # the question minus that clause
+        measure = bound if aggregated else self._pick_measure(
+            unbound, [c for c in numeric if c != bound or self._names_attribute(c, unbound)] or numeric, question)
+        intent = self._intent(low, table, question)
+        op = intent or "SUM"            # group_agg still needs an aggregator (e.g. SUM within a YoY pre-agg)
+        row_threshold = (threshold if bound is not None and not aggregated and (op == "COUNT" or bound != measure)
+                         else None)
         # operands (extracted regardless of where the structure decision comes from)
         excl_val = self._excluded_value(low, texts, cols, rows)
         time_preds = self._time_pred(low, times)
-        having_pred = self._having(low)
+        having_pred = threshold[1:3] if threshold and row_threshold is None else None
         divide_pair = self._divide(low, numeric)
         topn_op = self._topn(low); sort_desc = self._sort(low)
-        dims = [c for c in self._dims(low, texts) if not (excl_val and c == excl_val[0])]
+        # A noun named only as the set an aggregate runs over is not a grouping: 'the average population of these
+        # cities' and 'total sales in big cities with population over 1,000,000' are one number each. Every
+        # mention used to group, so those questions were served as per-city tables (2026-09-28). A question that
+        # asks for no aggregate ('which cities have a population over ...') lists the noun, and a threshold on
+        # each group's aggregate needs the groups, so both keep it.
+        dims = [c for c in self._dims(low, texts) if not (excl_val and c == excl_val[0])
+                and not (intent and having_pred is None
+                         and self._aggregated_over(c, low, span[0] if row_threshold else None))]
         # structure: ALL 10 primitives come from the LEARNED head when present (operands are still extracted above);
         # else the encoder-free regex/value seams. The operand-bearing steps below additionally require their operand
         # (a year, a threshold, two measures) to actually build — head structure + the parsed literal.
@@ -303,6 +429,9 @@ class ComposeEngine:
         if has["TIME"] and time_preds:                      # 2. temporal filter
             add({"op": "time_filter", "conds": time_preds},
                 "where " + " and ".join(f"{c} {o} {v}" for c, o, v in time_preds))
+        if row_threshold:                                   # 2b. a row threshold on the attribute it names
+            column, cmp, value, _, _ = row_threshold
+            add({"op": "filter", "conds": [(column, cmp, value)]}, f"where {column} {cmp} {value}")
 
         key = dims[0] if dims else self._pick_dim(low, texts, question)
         metric = None; rank_select = None
@@ -503,7 +632,7 @@ class ComposeEngine:
                 views.append(self._materialize(con, s["out"], self._sql(s), s["op"], s.get("label")))
             final = views[-1] if views else None
             # EXPLICIT world-dependency record for the router. A world_join proves world data was JOINED, not that
-            # it was NECESSARY. Necessity has two independent sources:
+            # it was NECESSARY. Necessity has three independent sources:
             #   (a) a world-supplied ATTRIBUTE the upload lacks that the QUESTION names and the ANSWER actually
             #       uses (in the final columns). BOTH conditions are required: this engine can inject a world
             #       attribute into its own group-by, and an attribute nobody asked for must not make the join
@@ -513,6 +642,8 @@ class ComposeEngine:
             #       value-filter `vf` (base A' above) binds an uploaded (column, value) when the value is present, so
             #       a world_filter on the SAME value is REDUNDANT -> own-data. Uploaded ABBREVIATIONS ('FR') never
             #       bind 'France' directly, so `vf` is empty there and world resolution stays necessary.
+            #   (c) a world ATTRIBUTE the upload lacks that a row threshold compares ('cities with population over
+            #       1,000,000'): the kept rows depend on it though the answer does not show it.
             # We do NOT treat world_filtered alone as necessary (that was the bug: a redundant world join over an
             # already-satisfiable filter would wrongly claim the query).
             world_dependency = None
@@ -525,11 +656,15 @@ class ComposeEngine:
                 direct_bound_same_value = bool(vf and value is not None
                                                and str(vf[1]).strip().lower() == str(value).strip().lower())
                 world_filter_necessary = bool(world_filtered and not direct_bound_same_value)
+                world_threshold = sorted({column for step in steps if step["op"] == "filter"
+                                          for column, cmp, _ in step["conds"]
+                                          if cmp in (">", ">=", "<", "<=") and column in supplied
+                                          and column.lower() not in own_cols})
                 world_dependency = {
                     "supplied": supplied, "own_columns": sorted(own_cols), "necessary": used_necessary,
                     "world_filtered": world_filtered, "world_filter_necessary": world_filter_necessary,
-                    "direct_filter": (list(vf) if vf else None),
-                    "is_necessary": bool(world_filter_necessary or used_necessary),
+                    "direct_filter": (list(vf) if vf else None), "world_threshold": world_threshold,
+                    "is_necessary": bool(world_filter_necessary or used_necessary or world_threshold),
                     "filter_attribute": wcol, "filter_value": value,
                 }
         finally:

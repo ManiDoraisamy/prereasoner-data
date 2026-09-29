@@ -162,6 +162,35 @@ def test_contrastive_abbreviation_still_needs_world():
     print("  PASS  contrastive: uploaded abbreviation 'FR' -> world resolution still necessary")
 
 
+def test_a_threshold_on_a_world_attribute_composes():
+    # 'What is the total sales in big cities with population over 1,000,000?' compares a world attribute the
+    # upload lacks. The delegate's world path binds equality filters only and declined it ('no rows matched'),
+    # while compose served a threshold on the sales total (2026-09-28). The comparison is a necessary world
+    # dependency, and it composes.
+    threshold = {"is_necessary": True, "necessary": [], "world_threshold": ["population"]}
+    assert route(_views("world_join", "filter", "group_agg"), threshold, result_rows=[[300]]) is Route.COMPOSE
+    world = {"name": "world", "columns": ["city", "country", "population"],
+             "rows": [["Tokyo", "Japan", 14264798], ["Osaka", "Japan", 2751862], ["Lyon", "France", 519127]]}
+    sales = {"name": "s", "columns": ["city", "sales"], "rows": [["Tokyo", 100], ["Osaka", 200], ["Lyon", 30]]}
+    question = "What is the total sales in big cities with population over 1,000,000?"
+    res = ComposeEngine(reader=None).run([sales], question, world=world)
+    dep = res["world_dependency"]
+    assert dep["world_threshold"] == ["population"] and dep["is_necessary"], dep
+    assert res["answer"]["rows"] == [[300]] and compose_owns(res["views"], dep, res["answer"]["rows"]), res["answer"]
+    # Contrast: an upload with its own population is own-data. Serving leaves the colliding world attribute out
+    # of the lookup (ComposedKnowledgeQuery._world_lookup), so nothing from the world is compared.
+    own = {"name": "s", "columns": ["city", "population", "sales"],
+           "rows": [["Tokyo", 14264798, 100], ["Osaka", 2751862, 200], ["Lyon", 519127, 30]]}
+    res = ComposeEngine(reader=None).run([own], question, world={**world, "columns": ["city", "country"],
+                                                                   "rows": [r[:2] for r in world["rows"]]})
+    assert res["answer"]["rows"] == [[300]], res["answer"]
+    assert not compose_owns(res["views"], res["world_dependency"], res["answer"]["rows"]), res["world_dependency"]
+    # Negative: a necessary world EQUALITY filter with nothing composed still belongs to the delegate.
+    equality = {"is_necessary": True, "necessary": [], "world_filter_necessary": True, "world_threshold": []}
+    assert route(_views("world_join", "world_filter", "group_agg"), equality, result_rows=[[270]]) is Route.DELEGATE
+    print("  PASS  a threshold on a world attribute composes; own-data and equality lookups do not")
+
+
 def test_injected_attribute_cannot_make_its_own_join_necessary():
     # CIRCULAR-NECESSITY regression: compose can put a world attribute in its OWN group-by; an attribute
     # the question never names must not make the join that supplied it "necessary". The shipped failure:
@@ -225,6 +254,7 @@ TESTS = [
     test_contrastive_redundant_world_filter_with_joinable_city,
     test_contrastive_abbreviation_still_needs_world,
     test_injected_attribute_cannot_make_its_own_join_necessary,
+    test_a_threshold_on_a_world_attribute_composes,
     test_cross_process_sql_repeatability,
 ]
 

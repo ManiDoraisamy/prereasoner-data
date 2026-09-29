@@ -570,6 +570,10 @@ class AnalysisPlan:
         emitted: set[str] = set()
         tables_by_view: dict[str, set[str]] = {}
         values_by_view: dict[str, set[str]] = {}
+        # The values that carry a TEXT column unchanged. A SUM or AVG over one has no single meaning: PostgreSQL
+        # rejects it and Python concatenated the strings ('14264798' + '2751862' ...) into a wrong number
+        # (2026-09-28).
+        text_by_view: dict[str, set[str]] = {}
         columns_by_view: dict[str, tuple[str, ...]] = {}
         for view in self.views:
             if len(view.name.encode("utf-8")) > 63:
@@ -607,6 +611,7 @@ class AnalysisPlan:
                     joined.add(table_name)
                 stage_tables = set(view.tables)
                 stage_values: set[str] = set()
+                stage_text: set[str] = set()
             else:
                 inputs = self.inputs(view)
                 if any(source not in emitted for source in inputs):
@@ -627,8 +632,13 @@ class AnalysisPlan:
                         if len(set(left_columns + right_output)) != len(left_columns) + len(right_output):
                             raise ValueError("cross-view output columns must be unique")
                         stage_values = set(left_columns + right_output)
+                        stage_text = set(text_by_view[view.left]) | {
+                            output for column, output in zip(right_columns, right_output)
+                            if column in text_by_view[view.right]
+                        }
                     else:
                         stage_values = set(left_columns)
+                        stage_text = set(text_by_view[view.left])
                         for key in view.keys:
                             if key.left not in left_columns or key.right not in right_columns:
                                 raise ValueError("anti-join keys must name input columns")
@@ -637,6 +647,7 @@ class AnalysisPlan:
                 else:
                     stage_tables = set(tables_by_view[view.source])
                     stage_values = set(values_by_view[view.source])
+                    stage_text = set(text_by_view[view.source])
                 if isinstance(view, EnrichedView):
                     targets = [
                         enrichment.target_table for enrichment in view.enrichments
@@ -695,6 +706,9 @@ class AnalysisPlan:
                         )
                     for item in view.values:
                         self._validate_value(item.value, stage_tables, stage_values)
+                    stage_text.update(
+                        item.name for item in view.values if self._carries_text(item.value, stage_text)
+                    )
                     stage_values.update(names)
                 elif isinstance(view, ProjectedView):
                     names = [item.name for item in view.values]
@@ -702,6 +716,9 @@ class AnalysisPlan:
                         raise ValueError("projected values must be unique")
                     for item in view.values:
                         self._validate_value(item.value, stage_tables, stage_values)
+                    stage_text = {
+                        item.name for item in view.values if self._carries_text(item.value, stage_text)
+                    }
                     stage_tables = set()
                     stage_values = set(names)
                 elif isinstance(view, ReducedView):
@@ -717,6 +734,22 @@ class AnalysisPlan:
                             self._validate_value(
                                 aggregate.operand, stage_tables, stage_values
                             )
+                            if aggregate.function in {"SUM", "AVG"} and self._carries_text(
+                                aggregate.operand, stage_text
+                            ):
+                                raise ValueError(
+                                    f"{aggregate.function} needs numbers, but "
+                                    f"{_value_label(aggregate.operand)} is stored as text"
+                                )
+                    stage_text = {
+                        item.name for item in view.group_by if self._carries_text(item.value, stage_text)
+                    } | {
+                        aggregate.name
+                        for aggregate in view.aggregates
+                        if aggregate.function in {"MIN", "MAX"}
+                        and aggregate.operand is not None
+                        and self._carries_text(aggregate.operand, stage_text)
+                    }
                     stage_tables = set()
                     stage_values = set(names)
                 elif isinstance(view, SortedView):
@@ -729,6 +762,11 @@ class AnalysisPlan:
                         *((view.time,) if view.time else ()),
                     ):
                         self._validate_value(value, stage_tables, stage_values)
+                    if self._carries_text(view.measure, stage_text):
+                        raise ValueError(
+                            f"a {view.function} needs numbers, but "
+                            f"{_value_label(view.measure)} is stored as text"
+                        )
                     if view.output in stage_values or view.output in {
                         table_by_name[name].attribute for name in stage_tables
                     }:
@@ -737,6 +775,7 @@ class AnalysisPlan:
             emitted.add(view.name)
             tables_by_view[view.name] = set(stage_tables)
             values_by_view[view.name] = set(stage_values)
+            text_by_view[view.name] = set(stage_text)
             columns_by_view[view.name] = self._view_columns(
                 view, columns_by_view
             )
@@ -997,6 +1036,12 @@ class AnalysisPlan:
         self._validate_value(predicate.left, tables, values)
         self._validate_value(predicate.right, tables, values)
 
+    def _carries_text(self, value: Value, text_values: set[str]) -> bool:
+        """Is ``value`` a TEXT column, read directly or carried unchanged through earlier views?"""
+        if isinstance(value, ColumnValue):
+            return self.table(value.table).column(value.column).type is SQLType.TEXT
+        return isinstance(value, ViewValue) and value.name in text_values
+
     def _validate_value(self, value: Value, tables: set[str], values: set[str]) -> None:
         if isinstance(value, LiteralValue):
             return
@@ -1017,6 +1062,12 @@ class AnalysisPlan:
             self._validate_value(value.operand, tables, values)
             return
         raise TypeError(f"unsupported value: {type(value).__name__}")
+
+
+def _value_label(value: Value) -> str:
+    if isinstance(value, ColumnValue):
+        return f"{value.table}.{value.column}"
+    return value.name if isinstance(value, ViewValue) else type(value).__name__
 
 
 def _require_identifier(

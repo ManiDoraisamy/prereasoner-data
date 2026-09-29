@@ -2136,6 +2136,51 @@ def test_world_projections_group_the_kept_rows_by_the_named_world_attribute():
             raise AssertionError(f"lowered an unsupported projection: {binding}")
 
 
+def test_sum_or_avg_over_a_text_column_is_refused():
+    # 'What is the total population?' summed knowledgebase."city".population, which is stored as text: the Python
+    # program concatenated the strings into 1426479827518622326844519127886040 and served it, and the SQL
+    # program cannot sum text at all (2026-09-28). Such a plan has no one meaning, so it is refused before
+    # either program exists. MIN and MAX of text are an ordering, not arithmetic, and stay.
+    table = TableSpec(
+        "cities",
+        "City",
+        "cities",
+        "conversation",
+        (
+            ColumnSpec("id", "id", SQLType.INTEGER, primary_key=True, nullable=False),
+            ColumnSpec("name", "name", SQLType.TEXT),
+            ColumnSpec("population", "population", SQLType.TEXT),
+            ColumnSpec("sales", "sales", SQLType.INTEGER),
+        ),
+    )
+
+    def plan(function, column, carried=False):
+        views = [CombinedView("cities_combined", ("cities",))]
+        operand = ColumnValue("cities", column)
+        if carried:                                   # the column crosses a projection first
+            views.append(
+                ProjectedView("cities_base", "cities_combined", (SelectedValue(column, operand),))
+            )
+            operand = ViewValue(column)
+        views.append(
+            ReducedView("cities_total", views[-1].name, (AggregateValue("total", function, operand),))
+        )
+        return AnalysisPlan("cities", (table,), tuple(views))
+
+    for function in ("SUM", "AVG"):
+        for carried in (False, True):
+            try:
+                plan(function, "population", carried)
+            except ValueError as exc:
+                assert "stored as text" in str(exc), exc
+            else:
+                raise AssertionError(f"{function} over a text column was accepted (carried={carried})")
+    plan("SUM", "sales")
+    plan("AVG", "sales", carried=True)
+    plan("MAX", "population")
+    plan("MIN", "name", carried=True)
+
+
 def test_a_binary_float_reference_column_is_read_as_numeric_by_both_programs():
     # 'average atomic mass' reads knowledgebase."Elements in the World".mass, a double precision column keyed
     # by name (2026-09-27). The ORM read 1.008 as 1.00800000000000000711 while SQL read 1.008, so verify

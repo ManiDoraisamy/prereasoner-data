@@ -139,11 +139,13 @@ _SPREADSHEET_WORDS = frozenset({
 # Words that ask for a computation: an aggregate or an extreme. The operator realizes them, so a question that
 # uses one asks for a number or a ranking, and the semantic search (rows listed by similarity) never answers
 # it. The operator readout models only COUNT/SUM/AVG; 'What is the highest amount paid?' went unread once the
-# readout stopped counting articles, and 'paid' alone would have sent it to the search (2026-09-27).
+# readout stopped counting articles, and 'paid' alone would have sent it to the search (2026-09-27). An adverb
+# that asks for the total is one of them: 'the total population of these cities combined' was declined as
+# having dropped 'combined' (2026-09-28).
 _OPERATOR_WORDS = frozenset({
     "many", "much", "number", "average", "avg", "mean", "total", "sum", "count", "per", "each",
     "highest", "lowest", "largest", "smallest", "most", "least", "maximum", "minimum", "max", "min",
-    "top", "bottom",
+    "top", "bottom", "combined", "altogether", "overall",
 })
 
 # Question and aggregate words are realized by the OPERATOR, not by a filter: they are never a world entity

@@ -179,6 +179,25 @@ class EntityQuery(RoutedQuery):
         r = rows[0] if rows else None
         return (r[0], float(r[1])) if r else (None, -1.0)                                            # the resolved qid
 
+    @staticmethod
+    def _type_forms(candidate):
+        """The normalized singular forms under which a candidate could NAME a world type: its head (last)
+        word ('which countries' -> country) and the whole phrase ('human settlements' -> humansettlement)."""
+        words = candidate.lower().split()
+        if not words:
+            return set()
+        head = words[-1]
+        singulars = {head}
+        if head.endswith("s"):
+            singulars.add(head[:-1])
+        if head.endswith("es"):
+            singulars.add(head[:-2])
+        if head.endswith("ies"):
+            singulars.add(head[:-3] + "y")
+        forms = {normalize_surface(word) for word in singulars}
+        forms |= {normalize_surface(" ".join(words[:-1] + [word])) for word in singulars}
+        return {form for form in forms if form}
+
     def _resolve(self, question, type_):
         """resolve `question` to a canonical world PK of `type_`. HYBRID:
         (1) normalized-EXACT match of a candidate surface form against the words index (deterministic — this is
@@ -190,7 +209,8 @@ class EntityQuery(RoutedQuery):
         if not cands:
             return None
         norms = {c: normalize_surface(c) for c in cands}
-        uniq = sorted({n for n in norms.values() if n})
+        type_forms = {c: self._type_forms(c) for c in cands}
+        uniq = sorted({n for n in norms.values() if n} | {f for forms in type_forms.values() for f in forms})
         by_type = {}                                              # norm -> {type: {canonical}} across ALL types
         if uniq:
             for nm, ty, q_ in self._kb_rows(
@@ -202,8 +222,13 @@ class EntityQuery(RoutedQuery):
             if cs and len(cs) == 1:
                 return (next(iter(cs)), 1.0, c)
         # (2) fuzzy fallback — ONLY for candidates that exact-match NOTHING. A token that IS a known state/city/etc
-        # (Indiana, Houston) is that entity, not a typo of a country, so it must not fuzzy-match a country.
-        fuzzy = [c for c in cands if not by_type.get(norms[c])]
+        # (Indiana, Houston) is that entity, not a typo of a country, so it must not fuzzy-match a country. Nor
+        # may a candidate that NAMES a world type ('countries', 'which countries'): it is the type, never one of
+        # its members. The embedding put 'countries' 0.803 from China and 'which countries' 0.807 from the
+        # United Kingdom, over THRESH, so 'how many countries are the customers in' filtered China and answered
+        # 0 (2026-09-28). Exact names still win above ('Mexico City', 'New York State').
+        fuzzy = [c for c in cands if not by_type.get(norms[c])
+                 and not any("type" in by_type.get(form, {}) for form in type_forms[c])]
         if not fuzzy:
             return None
         vecs = Embedder.get().encode(fuzzy)
