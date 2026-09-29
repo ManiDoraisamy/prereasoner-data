@@ -37,6 +37,16 @@ ENGINE_SUITES = ["tests.test_world", "tests.test_nongeo", "tests.test_world_join
                  "tests.test_datasets"]
 
 
+def suite_timeout_seconds(module):
+    """Bound every suite while allowing full CPU/model-backed dataset replays."""
+    override = os.environ.get("TEST_SUITE_TIMEOUT_SECONDS")
+    default = 7200 if module in ENGINE_SUITES or module == "tests.test_complex_datasets" else 900
+    seconds = int(override) if override is not None else default
+    if seconds <= 0:
+        raise ValueError("TEST_SUITE_TIMEOUT_SECONDS must be positive")
+    return seconds
+
+
 def main():
     if os.environ.get("LIVE_ENGINE_ONLY", "0") == "1":
         suites = list(ENGINE_SUITES)
@@ -48,8 +58,8 @@ def main():
             suites += ENGINE_SUITES
 
     results = []
-    suite_timeout = int(os.environ.get("TEST_SUITE_TIMEOUT_SECONDS", "900"))
     for mod in suites:
+        suite_timeout = suite_timeout_seconds(mod)
         print(f"\n{'='*70}\n# {mod}\n{'='*70}", flush=True)
         try:
             completed = subprocess.run(
@@ -70,7 +80,8 @@ def main():
     if failed:
         print(f"\n{len(failed)} suite(s) FAILED: {', '.join(failed)}")
         sys.exit(1)
-    print("\nALL SUITES PASSED (skipped suites count as pass)")
+    print("\nAll invoked suites exited successfully. Inspect SKIP messages above: "
+          "skipped tests are NOT passes, and omitted live/orchestrator suites were not run.")
     sys.exit(0)
 
 

@@ -478,7 +478,7 @@ class TableQuery:
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
         1. The deterministic search proposes up to ``search_candidates`` typed ASTs.
-        2. The SQL proposer adds its validated beams (engine/sql_proposer.py); SQL both found is
+        2. The SQL proposer adds its validated beams (engine/xiyan_sql_proposer.py); SQL both found is
            pooled once and marked endorsed.
         3. Every pooled query that passes the guard is run on an in-memory SQLite copy of the
            request's tables under a fixed step budget. A query that fails cannot be chosen, and
@@ -498,10 +498,10 @@ class TableQuery:
         if self.sql_proposer is None or self.sql_arbiter is None:
             raise RuntimeError("SQL selection models are not loaded - construct the planner through "
                                "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
-        from engine.calculations import select_calculation_candidate
+        from engine.calculations import select_calculation_candidate, detect_calculations
         from engine.sql_expansion import aggregates_money_column, money_total_columns
         from engine.sql_grounding import grounded_members
-        from engine.sql_rank import PoolSelection, arbitrate, merge_proposals
+        from engine.sql_rank import PoolSelection, arbitrate, merge_proposals, select_ranked_candidate
         from engine.sql_schema import SchemaGraph
 
         arbiter = self.sql_arbiter
@@ -520,25 +520,26 @@ class TableQuery:
         for index, value in zip(runnable, scored):
             likelihoods[index] = value
         scores, ranking = arbitrate(pool, proposed, likelihoods, arbiter)
-        selected = None
-        if ranking:
-            _, _, position = select_calculation_candidate(
-                question, norm, graph, [pool[index] for index in ranking])
-            selected = ranking[position]
-        request_timing.count("pool", len(pool))
-        selection = PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
-                                  scores, ranking, selected, len(searched))
+        calculation_satisfied = [False] * len(pool)
+        if detect_calculations(question):
+            for index in ranking:
+                _, assessments, _ = select_calculation_candidate(
+                    question, norm, graph, [pool[index]])
+                calculation_satisfied[index] = bool(assessments) and all(
+                    row.get("status") == "satisfied" for row in assessments)
+        money_total = [False] * len(pool)
         money = money_total_columns(question, sch)
         if money is not None:
             table, columns = money
             names = [column["name"] for column in columns]
 
-            def aggregates_money(candidate):
-                return aggregates_money_column(candidate.query, table, names)
-
-            if any(aggregates_money(pool[index]) for index in ranking):
-                selection = selection.constrained(aggregates_money)
-        return selection
+            for index in ranking:
+                money_total[index] = aggregates_money_column(pool[index].query, table, names)
+        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total)
+        request_timing.count("pool", len(pool))
+        return PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
+                             scores, ranking, selected, len(searched),
+                             tuple(calculation_satisfied), tuple(money_total))
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""

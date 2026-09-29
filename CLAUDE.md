@@ -60,7 +60,7 @@ Extend these owners. Do not build parallel replacements.
 | Bounded compound-question proposal validation and typed leaf-plan fusion | `engine/decomposition.py`; the existing AST planner still owns every leaf and `engine/deterministic/` still owns the one executable DAG |
 | Own-data AST search orchestration | `engine/sql_search.py`, called by `engine/tables.py:TableQuery.select_query` |
 | Own-data query selection (search + proposer + pool execution + arbiter) — the ONE selection used by serving, decomposition leaves, the Spider evaluator, the offline regression gate, and arbiter training; the decomposition probe reads its first stage (`search_pool`) | `engine/tables.py:TableQuery.select_query` |
-| SQL candidate proposer (frozen LoRA on the pinned Qwen base: deterministic beams + likelihoods), its one prompt, and the SQL-to-typed-AST gate every proposal passes | `engine/sql_proposer.py` + `engine/sql_prompt.py` + `engine/sql_import.py` |
+| CPU SQL candidate proposer (pinned XiYanSQL 7B GGUF, deterministic greedy decoding), its prompt, and the SQL-to-typed-AST gate every proposal passes | `engine/xiyan_sql_proposer.py` + `engine/sql_prompt.py` + `engine/sql_import.py`; HF adapter verification is training-only in `training/proposer/inference.py` |
 | Composition DAG, view execution, and the world-dependency record | `engine/compose.py` |
 | World/compose routing decision (the ONE shared `route()`) | `engine/routing.py` |
 | Compose serving host + world-grounding lookup | `engine/knowledge_compose.py` |
@@ -73,7 +73,7 @@ Extend these owners. Do not build parallel replacements.
 | Runtime model bundle | `engine/data/`, pinned by `engine/data/weights_manifest.json` |
 | Property-model training pipeline | `training/props/` |
 | SQL arbiter training pipeline (execution-labeled Spider-train pools from the served selection + linear arbiter fit; candidates only, in `training/rank/data/experiments/<id>/`) | `training/rank/` |
-| Promotion of a SQL selection bundle (proposer adapter + the arbiter fit on its pools) into the runtime | `training/rank/promote.py` — the ONE writer of `engine/data/sql_proposer/` and `engine/data/sql_arbiter.json` |
+| SQL selection bundle staging (pinned GGUF + bound selector + runtime contract + manifest), validated before the immutable release image is deployed | `training/rank/promote.py`; never hot-replace individual files in a live bundle |
 | Proposer training pipeline (gold→typed-AST import, SFT targets, adapter training; candidates only, in `training/proposer/data/experiments/<id>/`) | `training/proposer/` |
 | Schema.org ontology contract (compiled vocabulary + inheritance) | `engine/schema_org.py` + `engine/data/schema_org_v30.json` |
 | Schema.org typing cache/evidence and learned family proposals | `engine/knowledge_typing.py` + `engine/schema_decode.py` + `engine/schema_model.py` + `engine/router.py`; source-key authorization stays in `engine/knowledge_query.py` |

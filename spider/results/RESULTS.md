@@ -76,7 +76,7 @@ are summarized above; this paragraph is retained as the earlier checkpoint recor
 
 The 0.5B baseline table below remains historical and is not overwritten by this candidate result.
 
-This is the current, reproducible measurement of the served own-data planner:
+This is the historical, reproducible 0.5B reference measurement (not the current 7B deployment):
 `engine/tables.py:TableQuery.select_query` — the deterministic typed-AST search (25 candidates), the
 d2 SQL proposer (4 beams, every line imported, validated and re-rendered), in-memory pool execution, the
 literal-grounding eligibility rule (`engine/sql_grounding.py`), and the linear arbiter

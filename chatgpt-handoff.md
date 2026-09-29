@@ -13,6 +13,40 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-29 — review fixes underway; new release gates NOT complete
+
+User requested the full review-fix/80%+/merge/deploy/browser plan, then authorized continuing
+overnight. Work is isolated in `7b-production`, branch `codex/7b-release-hardening` from
+`e50b4a5`; Claude/main and the dirty `af15` research checkout are unchanged. The active plan
+is now at the top of `PRODUCTION_READINESS.md`, not a second plan document.
+
+Corrected the prior completion framing: the deployed baseline recorded 864/1,034 strict and
+839/1,034 official test-suite, but its authenticated production demo/follow-up Chrome gate
+was not complete. Those scores are not yet verified for the new source changes.
+
+Reproduced and fixed exact decimal threshold rounding, accepting truncated completions,
+missing context preflight, and duplicate concurrent prompt decoding. Focused results:
+XiYan 9/9, compose 23/23, SQL AST 129/129, calculations 104/104 on local Python 3.14
+(not a substitute for the Python 3.11 image gate). Saved pools now retain structural
+proposer origin, full-precision scores, execution/grounding eligibility and calculation/money
+facts. Serving and fitter replay call the same post-ranking rule. Resume and denominator
+contracts are being hardened before any matched pilot. No new model promoted or deployed.
+
+The prior full offline run finished with every invoked suite exit-zero, but its `complex_datasets`
+suite imported the proposer before the final lifecycle fix, so that run is diagnostic only. The
+native model now has a weak-reference finalizer (no temporary test instance is retained to process
+exit); a real local GGUF load was collected and finalized successfully. I also corrected the pool
+oracle: only candidates that were serving-eligible and actually produced a labeled denotation count
+toward oracle coverage. Checkpoints now reject duplicate/out-of-split indices. Current focused
+results: SQL AST 128/128, XiYan proposer 12/12, release 43/43; Ruff, compileall and `git diff
+--check` pass. I will rerun the frozen full suite after the preregistered local pilot source is
+committed. The 240-question pilot uses six TRAIN databases for fit and four disjoint TRAIN databases
+for validation; it is not a claim of independent proposer pretraining exposure or a promotion gate.
+
+RunPod MCP read-only check: no account pods. Billing for Aug 30–Sep 29 totals $32.500336
+across prior work (not all charged to this experiment); Sep 28 total $7.716525. No paid run
+has been started in this change. Remaining budget must be reconciled before a new lease.
+
 ## 2026-09-29 — 7B merged, fully cut over, and post-deploy checks complete
 
 The unified 7B implementation is merged to `main` via [PR #30](https://github.com/ManiDoraisamy/prereasoner-data/pull/30).

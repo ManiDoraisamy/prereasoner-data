@@ -85,9 +85,10 @@ hand-written, named ranking rules.
 
 ## Stage 4 — the proposer adds candidates the grammar rules missed
 
-A bounded search only finds shapes its rules enumerate. [`engine/sql_proposer.py`](../engine/sql_proposer.py)
-covers that gap with a Qwen2.5-0.5B LoRA adapter fine-tuned on Spider TRAIN gold SQL. It reads one compact prompt
-([`engine/sql_prompt.py`](../engine/sql_prompt.py)):
+A bounded search only finds shapes its rules enumerate. [`engine/xiyan_sql_proposer.py`](../engine/xiyan_sql_proposer.py)
+covers that gap with the pinned XiYanSQL QwenCoder 7B Q4_K_M CPU model. It reads the publisher's
+M-Schema prompt with column types, bounded value examples, and foreign keys, serialized by
+[`engine/sql_prompt.py`](../engine/sql_prompt.py). Conceptually:
 
 ```
 -- schema
@@ -97,7 +98,7 @@ total amount in France
 -- sql
 ```
 
-and decodes **four deterministic beams** (beam search, no sampling). Each beam's first line goes through
+and decodes **one deterministic greedy completion** (no sampling). The complete SQL goes through
 [`engine/sql_import.py:import_sql`](../engine/sql_import.py), which maps it into the same `SelectQuery` nodes
 or raises `Unsupported`; the validator and renderer then run exactly as for search candidates. A line the
 importer cannot map, the validator rejects, or the renderer cannot reproduce is dropped, so model text never
@@ -109,8 +110,9 @@ search candidate is not added twice but marks that candidate `proposer:endorsed`
 [`engine/tables.py:select_query`](../engine/tables.py) runs every pooled query on an in-memory copy of the
 tables (SELECT guard, fixed step budget); a query that fails is out, and so is one that compares a text
 column with a literal the column never holds while another column does
-([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The proposer then scores each remaining
-query's likelihood under its prompt, and the arbiter ([`engine/sql_rank.py:SQLArbiter`](../engine/sql_rank.py))
+([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The deployed measured policy uses neutral
+likelihood sentinels `(0.0, 1)`, not real language-model likelihoods. The arbiter
+([`engine/sql_rank.py:SQLArbiter`](../engine/sql_rank.py))
 computes one number per query:
 
 ```
@@ -120,7 +122,12 @@ score = sum over 9 features of (value - mean) / scale * coefficient  +  intercep
 The features are the likelihood, its length and per-token average, the pool score and position, whether the
 search, the proposer, or both produced the query, and the pool size. The highest score is served; the earlier
 pool position breaks ties. The response's `planner.selection` lists the winner's feature values and each
-feature's contribution to its score, so a reader can see why it won.
+feature's contribution to its score, so a reader can see why it won. Calculation and named money-total
+constraints can select another eligible ranked candidate through the shared post-ranking rule.
+The currently deployed coefficients were fit on the earlier 0.5B proposer: this mismatch is explicitly
+recorded in the model contract. Its measured DEV result is not proof that the arbiter is calibrated
+for new 7B pools. Matched retraining and production-entry-point regression gates are required for a
+replacement.
 
 ## Stage 6 — render the tree to a SQL string
 
@@ -175,7 +182,7 @@ See [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) for how routing decides own-data v
 | The typed AST node grammar | `engine/sql_ast.py` · `SelectQuery`, `SelectItem`, `Aggregate`, `Comparison`, … |
 | The search that assembles the tree | `engine/sql_search.py` · `SQLSearcher.search` |
 | One scored candidate | `engine/sql_candidate.py` · `ScoredQuery` |
-| Proposer: beams + likelihoods | `engine/sql_proposer.py` · `SQLProposer.propose`, `SQLProposer.likelihoods` |
+| Proposer: greedy CPU decoding + explicit neutral scores | `engine/xiyan_sql_proposer.py` · `XiYanSQLProposer.propose`, `XiYanSQLProposer.likelihoods` |
 | Model text → typed AST gate | `engine/sql_import.py` · `import_sql` |
 | Pool merge + arbiter | `engine/sql_rank.py` · `merge_proposals`, `SQLArbiter`, `PoolSelection` |
 | Serving entry point (select, render, execute) | `engine/tables.py` · `select_query`, `_serve_ast` |

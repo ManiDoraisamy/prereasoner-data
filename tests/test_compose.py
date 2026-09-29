@@ -372,7 +372,31 @@ def test_an_id_column_is_never_offered_as_a_measure():
     assert offered == [["amount"]], offered
 
 
+def test_numeric_filter_preserves_decimal_boundary_and_large_integer():
+    import sqlite3
+    from decimal import Decimal
+    from engine.numeric import register_sqlite_decimal
+    from engine.primitives import filter_view
+
+    with sqlite3.connect(":memory:") as connection:
+        register_sqlite_decimal(connection)
+        connection.execute('CREATE TABLE values_to_filter (amount TEXT)')
+        values = ["0.10000000000000000002", "0.10000000000000000003",
+                  "0.10000000000000000004"]
+        connection.executemany('INSERT INTO values_to_filter VALUES (?)', [(v,) for v in values])
+        threshold = Decimal(values[1])
+        for op, expected in ((">", values[2:]), ("<", values[:1]), ("=", values[1:2]),
+                             (">=", values[1:]), ("<=", values[:2]), ("!=", values[::2])):
+            sql = filter_view("values_to_filter", [("amount", op, threshold)])
+            assert [r[0] for r in connection.execute(sql)] == expected, (op, sql)
+        connection.execute('DELETE FROM values_to_filter')
+        connection.execute('INSERT INTO values_to_filter VALUES (?)', ("9223372036854775809",))
+        assert not connection.execute(filter_view(
+            "values_to_filter", [("amount", ">", 9223372036854775810)])).fetchall()
+
+
 TESTS = [
+    test_numeric_filter_preserves_decimal_boundary_and_large_integer,
     test_aggregate_over_zero_rows_is_not_presented_as_an_answer,
     test_real_aggregates_and_plain_selects_are_untouched,
     test_words_that_name_the_sheet_leave_nothing_to_search_for,

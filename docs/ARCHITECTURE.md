@@ -254,7 +254,7 @@ The own-data path pools two candidate sources over one typed SQL AST and selects
 | `engine/sql_extrema.py` | Row, aggregate, frequency, and zero-inclusive extrema |
 | `engine/sql_parsimony.py` | Bounded projection/table variants of pooled candidates (minimal join, binding, drop/add column, operand swap, DISTINCT) |
 | `engine/sql_profile_expansion.py` | Typed variants driven by predicted structural profiles |
-| `engine/sql_proposer.py` | Frozen SQL proposer: deterministic beams, teacher-forced likelihoods |
+| `engine/xiyan_sql_proposer.py` | Pinned 7B GGUF CPU proposer: deterministic greedy decoding, explicit neutral likelihood policy |
 | `engine/sql_prompt.py` / `engine/sql_import.py` | The proposer's one prompt; the SQL-to-typed-AST gate every proposal passes |
 | `engine/sql_rank.py` | Search ranking features; pool merge and the linear arbiter over executed candidates |
 | `engine/tables.py` | Planner facade (`select_query`), SQL guard, pool and local SQLite execution |
@@ -262,13 +262,13 @@ The own-data path pools two candidate sources over one typed SQL AST and selects
 
 1. The deterministic search builds up to 25 validated candidates and orders them with named rules;
    the encoder contributes table, column-role, and structural-profile similarities.
-2. The SQL proposer decodes four deterministic beams from a compact schema-plus-question prompt. Each
-   beam's first line is imported into the typed AST, validated, and re-rendered; anything else is
+2. The SQL proposer decodes one greedy completion from the pinned M-Schema prompt. Complete SQL
+   is imported into the typed AST, validated, and re-rendered; incomplete or oversized requests are
    dropped. A proposal that renders to SQL the search already found marks that candidate endorsed.
 3. Every pooled query runs on an in-memory SQLite copy of the request's tables under the SELECT guard
    and a fixed VM-step budget. A query that fails cannot be chosen. Neither can one that tests a text
    column against a literal the column never holds while another column does
-   (`engine/sql_grounding.py`): the proposer reads the schema, never the values, and once wrote
+   (`engine/sql_grounding.py`): bounded prompt values do not guarantee correct binding; an earlier proposer wrote
    `customer_name = 'Lyon'` for "Lyon customers". Eligibility is not evidence that the query answers
    the question.
 4. The arbiter scores each runnable query: a standardized linear function of nine named features
@@ -276,6 +276,8 @@ The own-data path pools two candidate sources over one typed SQL AST and selects
    it, endorsement, pool size). The best score wins; the earlier pool position breaks ties. Calculation
    intents, the single-branch serving contract and the decomposition leaf contract constrain this
    ranking rather than rescoring it.
+   The current 7B policy supplies neutral likelihood sentinels, not measured likelihoods. Its
+   contract discloses the historical 0.5B-fit arbiter until a matched replacement passes paired gates.
 5. For a named request, a compound question — the search reads it as a set operation — requests
    decomposition instead of executing a single query. Otherwise one dual-emitter branch serves it: the
    best-ranked single query, so a set operation that only a proposer beam reads into the question is

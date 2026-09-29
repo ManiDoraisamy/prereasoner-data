@@ -58,10 +58,6 @@ AutoModelForCausalLM.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
 AutoTokenizer.from_pretrained(QWEN_MODEL_ID, revision=QWEN_REVISION)
 AutoModel.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
 AutoTokenizer.from_pretrained(BGE_MODEL_ID, revision=BGE_REVISION)
-AutoTokenizer.from_pretrained(
-    "XGenerationLab/XiYanSQL-QwenCoder-7B-2504",
-    revision="681ba8b35480da7fd297b40fd3bb1e709148df2b",
-)
 PY
 
 # Bake the verified public XiYanSQL GGUF into the image. Runtime startup must not download models.

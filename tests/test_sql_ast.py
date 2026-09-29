@@ -47,13 +47,8 @@ from engine.sql_rank import (
     arbitrate,
     merge_proposals,
 )
-from engine.sql_proposer import (
-    GGUFSQLProposer,
-    SQLProposer,
-    normalize_decoded_sql,
-    validate_proposer_arbiter_contract,
-    validate_proposer_runtime_pin,
-)
+from training.proposer.inference import SQLProposer
+from engine.sql_import import normalize_decoded_sql
 from engine.sql_search import SQLSearcher, SchemaGraph, ScoredQuery
 from engine.sql_profile_expansion import ProfileQueryExpander, ProfileSearchConfig
 from spider.probe.evalutil import run_with_budget
@@ -658,7 +653,7 @@ SHIPPED_ARBITER = SQLArbiter.load(Path(__file__).resolve().parents[1] / "engine"
 
 
 class ScriptedProposer(SQLProposer):
-    """The production proposer with only its two model calls replaced.
+    """A scripted HF training proposer used to exercise the real selection owner.
 
     `beam_lines` stands in for beam search and `likelihood` for the teacher-forced score, so
     import, validation, rendering, de-duplication, pool scoring and caching all run for real.
@@ -772,113 +767,8 @@ def test_arbiter_refuses_an_artifact_fit_under_another_contract():
             raise AssertionError("an arbiter fit under a different contract was accepted")
 
 
-def test_proposer_arbiter_binding_rejects_stale_or_mislabeled_runtime():
-    arbiter = {"fit": {"proposer_adapter_sha256": "fitted-adapter",
-                        "likelihood_protocol": "neutral-sentinel-v1"}}
-    validate_proposer_arbiter_contract(
-        arbiter, {"backend": "huggingface-peft", "adapter_sha256": "fitted-adapter"},
-        "arbiter-hash",
-    )
-    validate_proposer_arbiter_contract(
-        arbiter,
-        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
-         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": False,
-         "likelihood_protocol": "neutral-sentinel-v1"},
-        "arbiter-hash",
-    )
-    validate_proposer_arbiter_contract(
-        arbiter,
-        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
-         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": True,
-         "selected_peft_adapter_sha256": "fitted-adapter",
-         "likelihood_protocol": "neutral-sentinel-v1"},
-        "arbiter-hash",
-    )
-    bad_identities = (
-        {"backend": "huggingface-peft", "adapter_sha256": "other-adapter"},
-        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "stale-arbiter",
-         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": False},
-        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
-         "arbiter_fit_proposer_sha256": "other-adapter", "model_matched_arbiter": False},
-        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
-         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": True,
-         "selected_peft_adapter_sha256": "other-adapter"},
-        {"backend": "llama-cpp-gguf-lora", "arbiter_sha256": "arbiter-hash",
-         "arbiter_fit_proposer_sha256": "fitted-adapter", "model_matched_arbiter": True,
-         "selected_peft_adapter_sha256": "fitted-adapter",
-         "likelihood_protocol": "teacher-forced-logprob-v1"},
-    )
-    for identity in bad_identities:
-        try:
-            validate_proposer_arbiter_contract(arbiter, identity, "arbiter-hash")
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("a proposer/arbiter identity mismatch was accepted")
 
 
-def test_proposer_runtime_requires_an_exact_weights_manifest_pin():
-    manifest = {"version": 1, "files": {"sql_proposer/runtime.json": "runtime-hash"}}
-    validate_proposer_runtime_pin(manifest, "runtime-hash")
-    try:
-        validate_proposer_runtime_pin(manifest, "different-runtime-hash")
-    except (TypeError, ValueError) as exc:
-        assert "SHA-256 mismatch" in str(exc)
-    else:
-        raise AssertionError("a runtime.json not matching its manifest pin was accepted")
-    try:
-        validate_proposer_runtime_pin({"version": 1, "files": {}}, "runtime-hash")
-    except TypeError as exc:
-        assert "does not pin" in str(exc)
-    else:
-        raise AssertionError("an unpinned runtime.json was accepted")
-
-
-def test_gguf_runtime_refuses_uncalibrated_pair_in_production():
-    runtime = {
-        "version": 1,
-        "backend": "llama-cpp-gguf-lora",
-        "likelihood_protocol": "neutral-sentinel-v1",
-        "model_matched_arbiter": False,
-        "max_new_tokens": 96,
-        "prompt_variants": ["Return one SQL query."],
-    }
-    with tempfile.TemporaryDirectory() as temp:
-        runtime_path = Path(temp) / "runtime.json"
-        runtime_path.write_text(json.dumps(runtime), encoding="utf-8")
-        with patch("engine.config.APP_ENV", "production"):
-            try:
-                GGUFSQLProposer.load(runtime_path, expected_beams=1,
-                                     expected_max_new_tokens=96)
-            except RuntimeError as exc:
-                assert "uncalibrated" in str(exc)
-            else:
-                raise AssertionError("production loaded an uncalibrated proposer/arbiter pair")
-
-
-def test_gguf_runtime_requires_its_exact_candidate_count_and_multiline_sql_is_preserved():
-    runtime = {
-        "version": 1,
-        "backend": "llama-cpp-gguf-lora",
-        "likelihood_protocol": "neutral-sentinel-v1",
-        "model_matched_arbiter": True,
-        "max_new_tokens": 96,
-        "prompt_variants": ["Return one SQL query."],
-    }
-    with tempfile.TemporaryDirectory() as temp:
-        runtime_path = Path(temp) / "runtime.json"
-        runtime_path.write_text(json.dumps(runtime), encoding="utf-8")
-        with patch("engine.config.APP_ENV", "test"):
-            try:
-                GGUFSQLProposer.load(runtime_path, expected_beams=4,
-                                     expected_max_new_tokens=96)
-            except ValueError as exc:
-                assert "expects 4 proposer outputs" in str(exc)
-            else:
-                raise AssertionError("runtime with one candidate was accepted for four-beam arbiter")
-    assert normalize_decoded_sql("```sql\nSELECT name\nFROM people\n```") == (
-        "SELECT name\nFROM people"
-    )
 
 
 def test_xiyan_runtime_thread_override_is_recorded_and_bounded():
@@ -894,31 +784,6 @@ def test_xiyan_runtime_thread_override_is_recorded_and_bounded():
     else:
         raise AssertionError("unsupported thread override was accepted")
 
-
-def test_gguf_prompt_preserves_the_pinned_chat_template_mode():
-    class Tokenizer:
-        def __init__(self):
-            self.calls = []
-
-        def apply_chat_template(self, messages, **options):
-            self.calls.append((messages, options))
-            return "rendered prompt"
-
-    for thinking in (None, False, True):
-        tokenizer = Tokenizer()
-        runtime = {"system_prompt": "system", "thinking": thinking,
-                   "prompt_variants": ["variant"]}
-        proposer = GGUFSQLProposer(
-            None, tokenizer, runtime=runtime, model_fingerprint="test",
-            max_new_tokens=96, context=2048, threads=4,
-        )
-        assert proposer._prompt([], "question", "variant") == "rendered prompt"
-        messages, options = tokenizer.calls[0]
-        assert messages[0] == {"role": "system", "content": "system"}
-        assert options["tokenize"] is False and options["add_generation_prompt"] is True
-        assert options.get("enable_thinking") == thinking if thinking is not None else (
-            "enable_thinking" not in options
-        )
 
 
 def test_shipped_arbiter_is_the_manifested_served_contract():
@@ -1081,7 +946,6 @@ def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_on
     offers one join that lists what Paris DID buy, and the arbiter prefers it. Evaluation (no
     analysis context) serves the arbiter's choice. A named product request must instead ask for
     decomposition and execute nothing: a single query cannot answer a compound question."""
-    from unittest.mock import patch
 
     from engine.deterministic.context import analysis_execution_context
     from tests.test_datasets import DATASET_DIR, _tables
@@ -1123,7 +987,6 @@ def test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation(
     so every named request asked for a decomposition and the world join never ran. Compound
     structure is the search's reading: a named request neither decomposes nor serves that beam,
     it serves the best-ranked single query. Evaluation still serves the arbiter's choice."""
-    from unittest.mock import patch
 
     from engine.decomposition import compound_decomposition_required, single_branch
     from engine.deterministic.context import analysis_execution_context
@@ -1188,7 +1051,6 @@ def test_proposal_import_rejects_malformed_model_text():
 
 
 def test_decoded_sql_normalizer_preserves_multiline_statements_and_strips_fences():
-    from engine.sql_proposer import normalize_decoded_sql
 
     assert normalize_decoded_sql("SELECT name\nFROM people;") == "SELECT name\nFROM people;"
     assert normalize_decoded_sql("```sql\nSELECT name\nFROM people;\n```") == (
@@ -1208,6 +1070,140 @@ def test_evaluator_grades_the_served_selection():
     oracle = ast_predict(planner, [PEOPLE], "list person names", selection="pool_oracle")
     assert [entry["sql"] for entry in oracle["pool_execution"]] == [c.sql for c in served.pool]
     assert all("likelihood" in entry for entry in oracle["pool_execution"])
+    for rank, entry in enumerate(oracle["pool_execution"]):
+        assert entry["score"] == served.pool[rank].score
+        assert entry["proposed"] == (served.pool[rank].sql in served.proposed)
+        assert entry["executable"] == served.executable[rank]
+        assert entry["grounded"] == served.grounded[rank]
+        assert entry["eligible"] == (served.executable[rank] and served.grounded[rank])
+
+
+def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints():
+    from spider.probe.full_eval import _load_checkpoint_records, _score_pool_oracle
+
+    record = {
+        "ok": True,
+        "selected_candidate_rank": 1,
+        "pool_execution": [
+            {"rank": 0, "sql": "SELECT 1", "rows": [["gold"]], "eligible": False,
+             "proposed": True},
+            {"rank": 1, "sql": "SELECT 2", "rows": [["gold"]], "eligible": True,
+             "proposed": False},
+        ],
+    }
+    oracle, top1 = _score_pool_oracle(record, [["gold"]])
+    assert oracle["strict"] and record["oracle_rank"]["strict"] == 1
+    assert top1["strict"] is True
+    assert record["pool"][0]["strict"] and not record["pool"][0]["eligible"]
+    assert record["pool"][1]["eligible"]
+
+    selected = {"idx": 4, "stage": "ok"}
+    assert _load_checkpoint_records([selected], [3, 4]) == {4: selected}
+    assert _load_checkpoint_records([{"idx": 4, "stage": "timeout"}], [4], True) == {}
+    for rows in ([selected, selected], [{"idx": 9}], None):
+        try:
+            _load_checkpoint_records(rows, [3, 4])
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("duplicate, out-of-denominator, or malformed checkpoint accepted")
+
+
+def test_arbiter_labels_preserve_structural_origin_and_grounding():
+    from training.rank.fit_arbiter import pool_rows, replay
+
+    candidate = {"sql": "SELECT 1", "score": 0.0,
+                 "evidence": ["proposer:variant0"],
+                 "features": {"proposer:scored_logprob": 0.0, "proposer:scored_tokens": 1},
+                 "strict": True, "proposed": True, "eligible": True,
+                 "executable": True, "grounded": True,
+                 "calculation_satisfied": False, "money_total": False}
+    record = {"db_id": "fixture", "idx": 0, "candidates": [candidate]}
+    row = pool_rows(record)[0]
+    assert row[1][ARBITER_FEATURES.index("from_search")] == 0.0
+    candidate["proposed"] = False  # Structural origin overrides copied decode tags.
+    assert pool_rows(record)[0][1][ARBITER_FEATURES.index("from_search")] == 1.0
+    candidate["grounded"] = False
+    assert not pool_rows(record)[0][3]
+    total, _ = replay([record], _toy_arbiter())
+    assert total == {"n": 1, "strict": 0, "oracle": 0}
+
+
+def test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails():
+    from training.rank.fit_arbiter import pool_rows
+
+    candidate = {"sql": "SELECT 1", "score": 0.0, "evidence": [],
+                 "features": {"proposer:scored_logprob": -1.0,
+                              "proposer:scored_tokens": 2},
+                 "error": "label pass timeout", "proposed": False,
+                 "eligible": True, "executable": True, "grounded": True}
+    _, _, _, eligible = pool_rows({"candidates": [candidate]})[0]
+    assert eligible, "a failed second label pass must not change serving-time eligibility"
+
+    candidate["features"] = {"proposer:scored_logprob": float("nan"),
+                              "proposer:scored_tokens": 2}
+    try:
+        pool_rows({"candidates": [candidate]})
+    except ValueError as exc:
+        assert "invalid proposer likelihood" in str(exc)
+    else:
+        raise AssertionError("non-finite scorer features silently entered arbiter fitting")
+
+
+def test_pool_contract_records_live_proposer_not_arbiter_fit_defaults():
+    from types import SimpleNamespace
+    from training.rank.build_pool_labels import pool_contract
+
+    enc = SimpleNamespace(sql_arbiter=SHIPPED_ARBITER,
+                          sql_proposer=SimpleNamespace(beams=1, max_new_tokens=1024))
+    contract = pool_contract(enc)
+    assert contract["proposer_beams"] == 1
+    assert contract["proposer_max_new_tokens"] == 1024
+
+
+def test_pool_resume_and_fitting_reject_changed_contracts_and_missing_questions():
+    from training.rank.build_pool_labels import resume_indices
+    from training.rank.fit_arbiter import load_pools
+
+    meta = {"schema_version": 2, "selection_policy": "shared-ranked-intents-v1",
+            "pool": {}, "proposer_adapter_sha256": "a" * 64,
+            "expected_examples": [[0, "fixture"], [1, "fixture"]],
+            "source_hashes": {"engine/tables.py": "b" * 64},
+            "databases": {"fixture": "c" * 64}}
+    records = [{"idx": i, "db_id": "fixture", "candidates": [], "error": "missing_db"}
+               for i in range(2)]
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "pools.jsonl"
+        def write(items):
+            path.write_text("".join(json.dumps(item) + "\n" for item in items), encoding="utf-8")
+        write([{"_meta": meta}])
+        assert resume_indices(path, meta) == set()  # header-only resumes do not add another header
+        write([{"_meta": meta}, *records])
+        assert resume_indices(path, meta) == {0, 1}
+        assert len(load_pools([path])[0]) == 2  # failed examples retain the denominator
+        try:
+            resume_indices(path, {**meta, "proposer_adapter_sha256": "d" * 64})
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("changed source contract resumed")
+        for items in ([{"_meta": meta}, records[0]], records,
+                      [{"_meta": meta}, records[0], records[0]]):
+            write(items)
+            try:
+                load_pools([path])
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("missing/headerless/duplicated denominator fitted")
+
+
+def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
+    from engine.sql_rank import select_ranked_candidate
+    assert select_ranked_candidate((), (), ()) is None
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3) == 1
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (True, False, True)) == 2
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False, True, True)) == 1
 
 def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
     """The proposer importer maps row/order arithmetic over numeric columns into BinaryExpr
@@ -1858,7 +1854,6 @@ def test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word():
     COUNT threshold is 0.05, and the article 'a' read 0.15 (the real cue 'many' reads 0.92), so a listing
     question became a count. Closed-class words carry grammar; the readout skips them as it skips column
     names ('ordered' read 0.22) and cell values. The activations are the production readout's."""
-    from unittest.mock import patch
 
     import numpy as np
 
@@ -2815,17 +2810,18 @@ def test_ast_failure_diagnosis_separates_recall_and_linking_bottlenecks():
 
 
 TESTS = [
+    test_pool_resume_and_fitting_reject_changed_contracts_and_missing_questions,
+    test_shared_ranking_rule_preserves_calculation_then_money_precedence,
+    test_arbiter_labels_preserve_structural_origin_and_grounding,
+    test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails,
+    test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoints,
+    test_pool_contract_records_live_proposer_not_arbiter_fit_defaults,
     test_mentioned_table_join_keeps_minimal_variant_in_pool,
     test_duplicate_named_projection_keeps_single_binding_variant_in_pool,
     test_proposal_merge_endorses_search_sql_and_appends_novel_beams,
     test_arbiter_score_is_named_linear_arithmetic_with_pool_order_ties,
     test_arbiter_refuses_an_artifact_fit_under_another_contract,
-    test_proposer_arbiter_binding_rejects_stale_or_mislabeled_runtime,
-    test_proposer_runtime_requires_an_exact_weights_manifest_pin,
-    test_gguf_runtime_refuses_uncalibrated_pair_in_production,
-    test_gguf_runtime_requires_its_exact_candidate_count_and_multiline_sql_is_preserved,
     test_xiyan_runtime_thread_override_is_recorded_and_bounded,
-    test_gguf_prompt_preserves_the_pinned_chat_template_mode,
     test_shipped_arbiter_is_the_manifested_served_contract,
     test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
     test_select_query_never_chooses_a_query_that_does_not_run,

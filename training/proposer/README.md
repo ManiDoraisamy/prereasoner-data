@@ -1,10 +1,10 @@
 # SQL proposer training
 
-This pipeline produces the proposer adapter that serving loads from `engine/data/sql_proposer/`
-(`engine/sql_proposer.py`). The proposer is a LoRA adapter on the pinned Qwen2.5-0.5B base. It
-suggests candidate SQL; serving accepts a suggestion only if it imports into the typed AST and
-validates, and a fitted arbiter decides whether it beats the search's candidates
-(`training/rank/`).
+This is the historical HF adapter research pipeline. Its inference/scoring utilities live in
+`training/proposer/inference.py` and are not a serving backend. Production now uses the pinned
+XiYanSQL 7B GGUF in `engine/xiyan_sql_proposer.py`. Do not install an HF adapter into production
+using these historical experiments. The common typed-AST importer remains `engine/sql_import.py`;
+current selector training and whole-bundle staging live in `training/rank/`.
 
 ## Steps
 
@@ -20,7 +20,7 @@ validates, and a fitted arbiter decides whether it beats the search's candidates
 
 2. **Fine-tune** — `train_sft.py` trains the adapter on (serving prompt, rendered SQL + EOS) pairs:
    seed 7, prompt tokens masked from the loss, databases in the `is_validation_db` bucket held out.
-   The prompt is `engine/sql_prompt.py:schema_prompt`, the one serving uses. GPU leases go through
+   The historical prompt is `engine/sql_prompt.py:schema_prompt`, not the current XiYan serving prompt. GPU leases go through
    `training/tools/runpod_api.py lease`.
 
    ```bash
@@ -288,7 +288,7 @@ and 80% as observed milestones, not automatic forecasts from oracle coverage.
 
 ### Stage 5: freeze, verify, and replace one runtime
 
-Integrate the chosen CPU backend by extending `engine/sql_proposer.py`; migrate its callers
+Integrate the chosen CPU backend by extending `training/proposer/inference.py`; migrate its callers
 and remove the replaced proposer-specific PyTorch decode/scoring implementation in the same
 change. PyTorch may still serve the existing encoder. Keep `schema_prompt`, `import_sql`,
 `TableQuery.select_query`, and the ranking/evaluation owners shared across all consumers.

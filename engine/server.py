@@ -50,6 +50,7 @@ from engine.analysis import (
 )
 from engine.auth import _bearer, _verify_principal
 from engine.config import HOST, PORT, external_llm_enabled
+from engine.xiyan_sql_proposer import QUEUE_TIMEOUT_SECONDS, SQLProposerUnavailable
 from engine.conversations import (
     DatasetOpsLimitError,
     NotOwned,
@@ -782,7 +783,8 @@ class H(BaseHTTPRequestHandler):
             # queueing behind another request and doing the work are different problems with different
             # fixes, and one line has to tell them apart.
             with request_timing.span("lock_wait"):
-                WORLD_LOCK.acquire()
+                if not WORLD_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
+                    raise SQLProposerUnavailable("Engine is busy; retry shortly")
             try:
                 set_ctx(emit)                                # so the DEEP bridge build streams the cell→qid lookup live
                 try:
@@ -866,6 +868,12 @@ class H(BaseHTTPRequestHandler):
                         discard_analysis()
             stream_final(emit, res)                          # terminal state -> RTDB (decoupled from this response)
             self._send(200, json.dumps(res, default=_json_safe))
+        except SQLProposerUnavailable as exc:
+            discard_analysis()
+            if emit is not None:
+                emit("error", str(exc))
+                emit("status", "error")
+            self._send(503, json.dumps({"error": str(exc), "retryable": True}))
         except Exception as e:                           # noqa: BLE001
             discard_analysis()
             if emit is not None:                         # don't leave the client stuck on 'running' — stream the error

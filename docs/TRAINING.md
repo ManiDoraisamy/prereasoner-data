@@ -79,13 +79,15 @@ metrics. Selection uses train and validation only. Test is untouched until final
 
 Two artifacts that ship and promote together choose own-data queries:
 
-- the **SQL proposer**, a LoRA adapter on the same pinned Qwen2.5-0.5B base, fine-tuned on Spider
-  TRAIN gold SQL that the serving importer maps into the typed AST (`training/proposer/`);
+- the **SQL proposer**, pinned XiYanSQL 7B Q4_K_M with greedy CPU decoding; the older HF LoRA
+  experiments remain training-only (`training/proposer/`);
 - the **arbiter**, a logistic regression over nine named features, fit on execution-labeled pools of
-  search candidates plus that adapter's beams (`training/rank/`).
+  search candidates plus proposer completions (`training/rank/`).
 
-An arbiter is valid only for the adapter whose pools it was fit on, so `training/rank/promote.py`
-installs both at once and refuses a mismatched pair. Spider TRAIN is the only training data; Spider dev
+The deployed baseline explicitly discloses an older 0.5B-fit arbiter with neutral likelihoods.
+New fitted arbiters must match the 7B generation/scoring contract; `training/rank/promote.py`
+stages and validates an entire immutable bundle before it is used in a release image. Spider TRAIN
+is the only selector training data; Spider dev
 is the measurement set recorded in `spider/results/RESULTS.md`. See `training/proposer/README.md` and
 `training/rank/README.md` for the commands.
 

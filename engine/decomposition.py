@@ -302,17 +302,6 @@ def leaf_candidates(selection, node_id: str, question: str, feeds_cross: bool):
     return readings
 
 
-def leaf_candidate(selection, node_id: str, question: str, feeds_cross: bool):
-    """Return the highest-ranked compatible reading, preserving the legacy single result."""
-    candidates = leaf_candidates(selection, node_id, question, feeds_cross)
-    compatible = [
-        candidate for candidate in candidates
-        if leaf_measure_rejection(node_id, question, candidate.query, selection.pool) is None
-        and ranked_leaf_grain_rejection(node_id, candidate.query, feeds_cross) is None
-    ]
-    return (compatible or candidates[:1])[0] if candidates else None
-
-
 def compound_decomposition_required(planner, tables, question) -> dict[str, Any] | None:
     """Execution-free probe: does the search read the question as compound?
 

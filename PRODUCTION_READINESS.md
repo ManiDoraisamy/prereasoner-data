@@ -1,5 +1,85 @@
 # Production-readiness workstream
 
+## Active 7B hardening and release plan — 2026-09-29
+
+This section supersedes the dated historical checkpoints below. The last deployed 7B bundle
+is recorded at revision `prereasoner-api-00122-zc4`, digest `82f8f154…`, with 100% traffic.
+Its CPU DEV evidence is **864/1,034 strict (83.56%)** and **839/1,034 official Spider
+test-suite (81.14%)**. These are repeatedly consulted DEV engineering results, not an untouched
+generalization estimate. Official TEST remains untouched. The encoder is still 0.5B; the SQL
+proposer is XiYanSQL 7B Q4_K_M. The selector is explicitly NOT model-matched.
+
+The previous claim that post-deployment checks were complete was too broad: fixture browser
+tests, health checks, and disposable-Postgres product tests did not verify every authenticated
+production demo and conversation follow-up. That gate remains required.
+
+User authorization: implement the reviewed fixes and proceed through testing, refactoring,
+merge, deployment, and browser regressions. Do not weaken acceptance to meet a morning deadline.
+Preserve Claude/main and research worktrees; work on `codex/7b-release-hardening` from `e50b4a5`.
+
+Execution sequence and fallback decisions:
+
+1. **Correctness and reproducibility.** Fix exact decimal thresholds, incomplete completion
+   rejection, context admission, cache synchronization, tokenizer provisioning, suite timeouts,
+   stale ownership/docs, obsolete loaders, and test-only decomposition filtering. Every fix gets
+   a registered regression. Keep the encoder and one active CPU SQL proposer.
+2. **Faithful selection data.** Save structural origin, exact scores, execution/grounding
+   eligibility, and gold-blind calculation/money constraints. Replay the shared serving rule.
+   Require matching source/model/data contracts on resume and full expected denominators,
+   including failed questions. Reject incompatible historical pools rather than recycling them.
+3. **Matched arbiter pilot.** Freeze the 7B prompt/quantization/neutral-scoring configuration;
+   generate TRAIN-only pools with database-disjoint selector fit/validation. Keep the deployed
+   arbiter as a paired control. Preregister the sample and seed before labels. Pretrained XiYan
+   exposure is unknown: this is held-out selector validation, not proven end-to-end independence.
+   Expand labels only on useful held-out wins without product regression. If the fitted arbiter
+   loses, retain the measured baseline and diagnose coverage/selection; do not install a worse
+   model just to remove the mismatch flag. Real likelihood scoring is a separate experiment,
+   accepted only if accuracy gains justify CPU cost.
+4. **Runtime and bundle.** Extend the existing promotion owner for one hash-bound GGUF/tokenizer/
+   selector contract. Validate the full staged bundle before a release image is published.
+   Measure uncached own-data requests and model queue/decode time, memory, cold startup, and
+   concurrency 1/2/4/8; repeated cached world joins do not establish 7B capacity. Add bounded
+   admission/cancellation without leaving native inference running after a returned timeout.
+   If saturation fails, reduce per-instance admission instead of accepting unbounded queues.
+5. **Freeze and evaluate.** New serving-source fingerprints invalidate cached DEV predictions.
+   Run all 1,034 questions through the exact CPU-serving configuration. Require no regression
+   from 864 strict and 839 official test-suite unless a separately justified correctness change
+   is explicitly accepted; at minimum both benchmark metrics must remain over 80%. Report paired
+   wins/losses, difficulty/database strata and tail latency. No gold-value substitution.
+6. **Release.** Full configured hermetic/live product gates, authenticated orchestrator gate,
+   exact-image CPU and browser tests; merge only a verified source tree. Deploy one image to the
+   existing service, retain the previous immutable revision for rollback, and run every shipped
+   `prompt.txt` plus every `eval.txt` (including `chat:`) in Chrome on fresh AND existing test
+   conversations. Roll back on release-blocking regression. Record image/commit/model hashes,
+   measured results, outstanding limitations, spend, and worker cleanup.
+
+Stages 1–2 are in progress. Stages 3–6 have not passed for this new source tree. The existing
+83.56%/81.14% evidence must not be relabeled as a result of the hardening changes.
+
+### Preregistered neutral-selector pilot (before labeling)
+
+- Hypothesis: a selector fitted on this exact 7B/neutral-score candidate distribution improves
+  selection over the frozen historical arbiter without changing proposals or eligibility.
+- Baseline model SHA `50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb`;
+  arbiter SHA `fc84162a4dc9900f963bbea751ccf13f2d9218842a0f781ee1cb7e964584977d`.
+- Public `train_spider.json` SHA `c43d0d72e59e1a9e1a60837da9bf70d5a6277226bdb7f634d544f380646f527a`.
+  First ten DBs with >=24 examples sorted by SHA256(`xiyan-neutral-pilot-7:` + db_id).
+  Fit: soccer_2, loan_1, document_management, company_office, chinook_1, voter_2.
+  Validation: wine_1, program_share, customer_complaints, student_1. Pick 24 indices per DB
+  by SHA256(`7:` + db_id + `:` + index): 144 fit / 96 validation, fixed before results.
+- Objective: standardized logistic strict-correctness prediction, seed 7; only coefficients
+  change. Generation remains one greedy CPU Q4_K_M completion, neutral `(0,1)` scores.
+- Expand only for >=3 net validation wins, no lost eligibility/oracle coverage, and no DB
+  losing more than two questions. Report wins/losses and uncertainty; this small pilot cannot
+  establish generalization or justify promotion by itself. On failure, do not bulk-relabel.
+- Output: `training/rank/data/experiments/xiyan-neutral-pilot/`. No promoted weights overwritten.
+  Final acceptance still requires full CPU DEV strict >=864 and official test-suite >=839 plus
+  product/browser gates. Rollback is the current immutable production image.
+- First run is local CPU (no RunPod charge). If throughput is prohibitive, price a bounded
+  public-data-only RunPod lease after reconciling existing budget; do not invent new funding.
+
+## Historical checkpoints (superseded for current deployment status)
+
 ## Combined-tree release gate (2026-09-28)
 
 An isolated merge rehearsal at `codex/merge-readiness-rehearsal` combines current `main`
