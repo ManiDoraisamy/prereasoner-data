@@ -221,6 +221,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL
+          timeout: 15m
       - name: Scan chat for critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -230,6 +231,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL
+          timeout: 15m
       - name: Scan source-sync for critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -239,3 +241,4 @@ jobs:
           ignore-unfixed: true
           vuln-type: os,library
           severity: CRITICAL
+          timeout: 15m

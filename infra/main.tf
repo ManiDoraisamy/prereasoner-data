@@ -281,11 +281,10 @@ resource "google_cloud_run_v2_service" "api" {
     containers {
       image = local.image
 
-      # Sizing: 8 vCPU / 16Gi. The world reasoner, the dimension encoder and the SQL proposer are
-      # three Qwen2.5-0.5B fp32 stacks (~7.5 GB resident together), so 8Gi no longer leaves headroom
-      # for request-time tensors, 10 MB bodies, and the in-memory SQLite copies of uploaded sheets.
-      # The proposer's beam search dominates own-data latency on CPU: measured on Cloud Run over the
-      # offline regression questions, median 9.5 s per question at 8 vCPU vs 14.0 s at 4 vCPU.
+      # Sizing: 8 vCPU / 16Gi for the existing reasoner/encoder models plus the XiYanSQL 7B
+      # Q4_K_M SQL proposer. Leave memory headroom for request-time tensors, 10 MB request bodies,
+      # and the in-memory SQLite copies of uploaded sheets. A short 8-vCPU Cloud Run release sample
+      # measured proposer-decode p90 at 10.1 s; this is a smoke result, not a sustained-load SLA.
       resources {
         limits = {
           cpu    = "8"
@@ -417,6 +416,13 @@ resource "google_cloud_run_v2_service" "api" {
         failure_threshold     = 60
       }
     }
+  }
+
+  # Single-version production policy: route all requests to the latest ready revision.
+  # This keeps the deployed image and Terraform source of truth aligned without a canary split.
+  traffic {
+    percent = 100
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
   }
 
   depends_on = [
