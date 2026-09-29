@@ -27,6 +27,7 @@ import datetime
 import json
 import os
 import threading
+import time
 import traceback
 import uuid
 from decimal import Decimal
@@ -926,30 +927,42 @@ class H(BaseHTTPRequestHandler):
 
 
 def main():
-    global MODEL, DIM_MODEL, ENRICHMENT
+    global MODEL, DIM_MODEL, ENRICHMENT, DIM_LOCK
     from engine.dimension import DimensionModel
     from engine.knowledge import KnowledgeReasoner
-    print("loading world reasoner (composition engine + unified Qwen + bge resolver + spaCy; LIVE Postgres)...",
-          flush=True)
-    MODEL = KnowledgeReasoner()
+    def startup_phase(name, fn):
+        started = time.monotonic()
+        print(f"startup phase start: {name}", flush=True)
+        try:
+            value = fn()
+        except Exception as exc:
+            print(f"startup phase failed: {name} ({type(exc).__name__})", flush=True)
+            raise
+        print(f"startup phase ready: {name} seconds={time.monotonic() - started:.1f}", flush=True)
+        return value
+
+    MODEL = startup_phase("world reasoner", KnowledgeReasoner)
     from engine.enrichment import (
         EnrichmentRuntime,
         SnapshotStore,
         deployment_dataset_allowlist,
     )
     from engine.pg import _pg
-    ENRICHMENT = EnrichmentRuntime(
+    ENRICHMENT = startup_phase("enrichment runtime", lambda: EnrichmentRuntime(
         SnapshotStore(_pg),
         enabled_datasets=deployment_dataset_allowlist(os.environ.get("ENRICHMENT_ACTIVE_DATASETS")),
-    )
+    ))
     try:
         from engine.embeddings import Embedder
-        Embedder.get().encode(["warmup"])               # load bge weights at startup, not on first request
-        MODEL.qw._spacy()                               # load spaCy model at startup too
+        startup_phase("embedding warmup", lambda: Embedder.get().encode(["warmup"]))
+        startup_phase("spaCy warmup", MODEL.qw._spacy)
     except Exception as e:                              # noqa: BLE001
-        print("warmup note:", e, flush=True)
-    print("loading dimension model (taxonomy unified Qwen + LoRA + relational readout)...", flush=True)
-    DIM_MODEL = DimensionModel()
+        print(f"startup warmup note: {type(e).__name__}", flush=True)
+    DIM_MODEL = startup_phase("dimension model (shared world encoder)",
+                              lambda: DimensionModel(shared_encoder=MODEL.qw))
+    # Both APIs now execute on the same Qwen/LoRA instance; keep calls serialized
+    # across endpoints rather than protecting one shared model with two locks.
+    DIM_LOCK = WORLD_LOCK
     print(f"engine ready: http://{HOST}:{PORT}  (POST /api/reason /api/knowledge /api/dimension)", flush=True)
     ThreadingHTTPServer((HOST, PORT), H).serve_forever()
 

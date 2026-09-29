@@ -310,7 +310,9 @@ def test_supported_model_stack_is_security_baseline():
     assert "weights_only=False" not in model_sources
     assert "allow_pickle=True" not in model_sources
     assert "revision=MODEL_REVISION" in _text("engine/encoder_overlay.py")
-    assert "revision=MODEL_REVISION" in _text("engine/dimension.py")
+    dimension = _text("engine/dimension.py")
+    assert "from engine.encoder_overlay import load_encoder" in dimension
+    assert "AutoModel.from_pretrained" not in dimension
     artifact_docs = _text("engine/data/README.md")
     all_docs = "\n".join(path.read_text(encoding="utf-8") for path in ROOT.rglob("*.md"))
     assert "weights_only=False" not in all_docs
