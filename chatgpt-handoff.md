@@ -36,13 +36,15 @@ passed `tests.test_orchestrator_unit` (20/20) and `tests.test_release` (43/43); 
 focused suites remain 24/24 and 3/3 as above.
 
 Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
-CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 775/1,034
-indices it has 660 strict-correct rows (85.16% partial); 259 rows remain. This is not a final score.
-For these 775 rows, prediction p50/p90/max were 19.54s/35.61s/61.71s and 683/775 exceeded the
-12s soft latency budget. Difficulty so far: easy 185/199, medium 285/328, hard 108/125, extra
-82/123. Both strict count and full tail-latency distribution must be reported at completion.
+CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 800/1,034
+indices it has 677 strict-correct rows (84.63% partial); 234 rows remain. This is not a final score.
+For these 800 rows, prediction p50/p90/max were 19.63s/35.48s/61.71s and 708/800 exceeded the
+12s soft latency budget. Difficulty so far: easy 187/201, medium 292/338, hard 112/131, extra
+86/130. Both strict count and full tail-latency distribution must be reported at completion.
 Instrumentation shows proposer decoding ran on all 750 rows and the proposal-origin candidate was
-selected on 450/750; decode alone had p50/p90 17.98s/34.03s. This makes a blanket
+selected on 450/750; decode alone had p50/p90 17.98s/34.03s. The live `tests.test_orchestrator`
+API test self-skipped because `ANTHROPIC_API_KEY` is unavailable in this workspace, so its live
+external-model/browser gate remains open. This makes a blanket
 “skip the proposer” optimization incompatible with preserving the measured candidate behavior;
 any latency optimization must be paired and re-evaluated for correctness.
 The replay checkpoint is under `%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`.
