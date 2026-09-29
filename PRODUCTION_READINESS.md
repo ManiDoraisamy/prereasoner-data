@@ -1,6 +1,45 @@
 # Production-readiness workstream
 
-## Active 7B hardening and release plan — 2026-09-29
+## Deployment completion and remaining live-browser gap — 2026-09-30
+
+This is the current release status and supersedes the dated pre-deployment checkpoints below.
+
+PR #35 merged at `a5d42109bd7389b5b76fe35a85af59a76dcfef15`; Cloud Build
+`5a79b52d-236a-490f-a27d-6de3d9708112` published immutable engine image
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:131edc4f683e8694e564f69f2ac3e169338a32d8ed4868810eb519c8c7fd0f1f`.
+Runtime startup/health, offline regression, and all configured live product suites on disposable
+PostgreSQL passed. The reviewed Terraform apply changed only the API service and two engine jobs
+(0 add / 3 in-place / 0 destroy). No SQL instance, deletion-protection, or orchestrator resources
+were modified by that apply.
+
+Production now serves revision `prereasoner-api-00125-jsx` at 100% traffic. Its digest matches
+the build above; `GET /api/healthz` returns all four health flags true. Startup took 9m45s total,
+with the container healthy at 5m50s, within the 10m10s startup-probe budget. Prior revision
+`prereasoner-api-00122-zc4` (`82f8f154…`) is retained at 0% for rollback. Observe cold-start timing;
+passing readiness does not make the remaining delay disappear.
+
+The orchestrator's `GET /readyz` returns HTTP 200. The exact-image bounded CPU API smoke measured
+world-join latency at serial n=3 p50 1.304s and p95/max 8.849s; concurrency 2/4/8 p50
+1.484/2.801/5.212s and max 2.692/5.267/9.990s, with 6.288 GiB/16 GiB container memory.
+Small smoke samples are not an SLA.
+
+Browser regression passed **33/33** with the repo's synthetic fixture backend. A bounded
+two-turn provider-authenticated orchestrator check passed **5/5** assertions using synthetic sample
+data, a local stub engine, and the existing Anthropic service credential. These are not a live
+Firebase-authenticated browser request to the production orchestrator. The isolated browser tab
+had no usable Firebase session token and the upload picker did not open through the browser bridge;
+no production conversation or user data was created or changed. Keep the authenticated production
+conversation gate open until it is run with an explicitly disposable, valid test identity and
+verified cleanup. Do not use an existing user conversation as a substitute.
+
+The post-apply full Terraform plan still reports API scaling and chat-service configuration drift.
+It was reviewed but not applied because that would make unrelated configuration changes outside
+the approved engine rollout. The targeted apply completed successfully; Terraform's output values
+may remain stale until a separately reviewed reconciliation. Current accuracy evidence remains
+865/1,034 strict and 832/1,034 official Spider test-suite on the repeatedly consulted Spider DEV
+set; neither is an untouched generalization estimate.
+
+## Pre-deployment gate plan (historical checkpoint — superseded 2026-09-30)
 
 This section supersedes the dated historical checkpoints below. The last deployed 7B bundle
 is recorded at revision `prereasoner-api-00122-zc4`, digest `82f8f154…`, with 100% traffic.

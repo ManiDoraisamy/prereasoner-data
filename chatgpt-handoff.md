@@ -13,6 +13,45 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-30 — merged release deployed; live health and browser regressions verified
+
+PR #35 is merged at `a5d42109bd7389b5b76fe35a85af59a76dcfef15`. Cloud Build
+`5a79b52d-236a-490f-a27d-6de3d9708112` succeeded for immutable engine image
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:131edc4f683e8694e564f69f2ac3e169338a32d8ed4868810eb519c8c7fd0f1f`.
+The runtime smoke, offline regression, and full disposable-PostgreSQL product suites passed in that
+build. The API, ECB-refresh job, and retention-cleanup job were applied with a reviewed targeted
+Terraform plan (0 added / 3 changed / 0 destroyed; no Cloud SQL or deletion-protection changes).
+
+Cloud Run revision `prereasoner-api-00125-jsx` is ready and receives **100% traffic** at
+`https://prereasoner-api-3vfsfkezsq-uc.a.run.app`; `GET /api/healthz` reports `ok`, `reason`,
+`world`, and `dimension` all true. Startup completed in 9m45s total, including 5m50s for
+container health, within the configured 10m10s probe window. The earlier revision
+`prereasoner-api-00122-zc4` (digest `82f8f154…`) remains available at 0% as rollback. The release
+fix moves spaCy warmup off the readiness path; the long cold start is still an operational metric
+to monitor.
+
+The existing orchestrator's `GET /readyz` also returns HTTP 200. The exact-image bounded CPU API
+smoke measured a world-join serial sample (n=3) at p50 1.304s and p95/max 8.849s; concurrency
+2/4/8 p50 was 1.484/2.801/5.212s and max 2.692/5.267/9.990s. Container memory was 6.288 GiB
+of 16 GiB. These short samples are regression evidence, not an SLA or sustained-load guarantee.
+
+`npm run test:browser` passed **33/33** on the merged source, including synthetic sign-in, upload,
+answer, trace inspection, follow-up, and deletion flows against its disposable fixture backend.
+Separately, two synthetic orchestrator turns using the existing Anthropic service credential and
+the local stub engine passed **5/5** checks: engine answer/grounding, follow-up qualifier retention,
+and bearer-token passthrough. The credential was not printed or retained in the environment.
+
+The production app is Firebase-authenticated. The isolated browser tab had no usable signed-in
+token, and its CSV picker did not open through the available browser bridge. No production chat,
+user table, or durable conversation was created, and no open user conversation was touched. Thus
+the authenticated **production-browser** conversation gate remains unverified; the 33/33 fixture
+suite and stub-engine orchestrator test must not be described as that gate. The temporary
+synthetic CSV was removed. A complete post-apply Terraform plan shows only residual API scaling
+and chat-service configuration diffs; it was not applied because it includes unrelated service
+configuration changes. No benchmark score changed: the accepted 7B DEV result remains 865/1,034
+strict and official Spider test-suite DEV remains 832/1,034; both are repeatedly consulted DEV
+engineering metrics, not untouched test-set generalization claims.
+
 ## 2026-09-29 — full 7B replay and official Spider metric complete; release still gated
 
 The final clean-source CPU replay produced all 1,034 rows with exact ordered indices and
