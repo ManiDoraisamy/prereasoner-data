@@ -1,5 +1,28 @@
 # Spider Results
 
+## Model-matched-neutral selector pilot (2026-09-29; rejected)
+
+On a preregistered CPU-generated 240-question sample from Spider TRAIN (24 questions per each of
+10 databases), one gold query was invalid SQL and is retained in the denominator without labels;
+239 rows were labeled. The fitted selector used 144 questions / six fit databases and was replayed
+against the frozen arbiter on the same 96 examples / four selector-held-out databases. The exact
+pool file SHA256 is `2e98974a4c8b1308afef40e7b9f105631aba7e1419e6832eb2d7f077a3be46bd` and the
+experimental arbiter SHA256 is
+`e37d48dd50fe380c2d220cf0fd3b577e94d0ab9810f84e29d7e7f47fad129061`.
+
+| Selector | Held-out strict | Eligible pool oracle |
+|---|---:|---:|
+| Frozen production arbiter | 82/96 (85.4%) | 85/96 (88.5%) |
+| Newly fitted neutral-sentinel arbiter | 82/96 (85.4%) | 85/96 (88.5%) |
+
+Paired outcome: **0 wins, 0 losses, 82 unchanged-correct, 14 unchanged-wrong**. Per held-out DB,
+both selectors scored customer_complaints 19/24, program_share 24/24, student_1 21/24, and
+wine_1 18/24. The gain gate failed, so the experimental selector was **not promoted**. This pilot
+holds out selector-fitting databases only; XiYan pretraining exposure is unknown. It is a small
+TRAIN-side selector diagnostic, not the full Spider DEV result and not an unbiased generalization
+estimate. The frozen full-DEV replay and official test-suite evaluation are still required for the
+current source tree.
+
 ## Integrated 7B production release and final replay (2026-09-29)
 
 The single production Cloud Run service now runs the merged 7B implementation at 100% traffic:

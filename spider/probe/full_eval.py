@@ -384,6 +384,21 @@ def _score_pool_oracle(record, gold_rows):
         pool = []
         for entry in raw:
             eligible = bool(entry.get("eligible")) and "error" not in entry
+            features = dict(entry.get("features") or {})
+            if entry.get("likelihood") is not None:
+                features["proposer:scored_logprob"] = entry["likelihood"]
+                features["proposer:scored_tokens"] = float(entry["likelihood_tokens"])
+            serving_facts = {
+                "score": entry.get("score"),
+                "features": features,
+                "evidence": list(entry.get("evidence") or ()),
+                "proposed": bool(entry.get("proposed")),
+                "executable": bool(entry.get("executable")),
+                "grounded": bool(entry.get("grounded")),
+                "eligible": bool(entry.get("eligible")),
+                "calculation_satisfied": bool(entry.get("calculation_satisfied")),
+                "money_total": bool(entry.get("money_total")),
+            }
             if "rows" in entry:
                 comparison = compare(gold_rows, entry["rows"])
                 normalized = sorted(
@@ -391,19 +406,20 @@ def _score_pool_oracle(record, gold_rows):
                     for row in entry["rows"]
                 )
                 pool.append({"rank": entry["rank"], "sql": entry["sql"],
+                             **serving_facts,
                              "strict": bool(comparison.get("strict")),
                              "lenient": bool(comparison.get("lenient")),
                              "scalar_exact": bool(comparison.get("scalar_exact")),
                              "eligible": eligible,
-                             "proposed": bool(entry.get("proposed")),
+                             "oracle_executed": True,
                              # denotation identity for offline agreement arbitration:
                              # equal hashes == equal normalized result multisets
                              "denotation": hashlib.sha1(
                                  repr(normalized).encode()).hexdigest()[:10]})
             else:
                 pool.append({"rank": entry["rank"], "sql": entry["sql"],
-                             "eligible": False,
-                             "proposed": bool(entry.get("proposed")),
+                             **serving_facts,
+                             "oracle_executed": False,
                              "error": entry["error"]})
         record["pool"] = pool
     pool = record.get("pool") or []

@@ -1085,10 +1085,20 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
         "ok": True,
         "selected_candidate_rank": 1,
         "pool_execution": [
-            {"rank": 0, "sql": "SELECT 1", "rows": [["gold"]], "eligible": False,
+            {"rank": 0, "sql": "SELECT 1", "rows": [["gold"]], "score": 0.0,
+             "features": {}, "evidence": [], "eligible": False, "executable": True,
+             "grounded": False, "calculation_satisfied": False, "money_total": False,
+             "likelihood": 0.0, "likelihood_tokens": 1, "proposed": True},
+            {"rank": 1, "sql": "SELECT 2", "rows": [["gold"]], "score": -5.0,
+             "features": {}, "evidence": ["proposer:variant0"], "eligible": True,
+             "executable": True, "grounded": True, "calculation_satisfied": False,
+             "money_total": True, "likelihood": -3.0, "likelihood_tokens": 10,
              "proposed": True},
-            {"rank": 1, "sql": "SELECT 2", "rows": [["gold"]], "eligible": True,
-             "proposed": False},
+            {"rank": 2, "sql": "SELECT 3", "score": -6.0,
+             "features": {}, "evidence": [], "eligible": True, "executable": True,
+             "grounded": True, "calculation_satisfied": False, "money_total": False,
+             "likelihood": -4.0, "likelihood_tokens": 10, "proposed": False,
+             "error": "label pass timeout"},
         ],
     }
     oracle, top1 = _score_pool_oracle(record, [["gold"]])
@@ -1096,6 +1106,11 @@ def test_pool_oracle_counts_only_eligible_denotation_hits_and_validates_checkpoi
     assert top1["strict"] is True
     assert record["pool"][0]["strict"] and not record["pool"][0]["eligible"]
     assert record["pool"][1]["eligible"]
+    assert record["pool"][1]["features"]["proposer:scored_logprob"] == -3.0
+    assert record["pool"][1]["calculation_satisfied"] is False
+    assert record["pool"][1]["money_total"] is True
+    assert record["pool"][1]["oracle_executed"] is True
+    assert record["pool"][2]["eligible"] is True and not record["pool"][2]["oracle_executed"]
 
     selected = {"idx": 4, "stage": "ok"}
     assert _load_checkpoint_records([selected], [3, 4]) == {4: selected}

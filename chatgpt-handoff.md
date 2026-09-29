@@ -13,6 +13,30 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-29 — neutral arbiter pilot complete; candidate rejected
+
+The local 240-question XiYan CPU pool build completed against `train_spider.json`: exactly 24
+questions each for the preregistered ten databases, 240 unique indices, 239 labeled rows and one
+malformed gold query (`idx=4514`, `document_management`, invalid ORDER BY placement before
+INTERSECT). The row remains in the denominator. Model/proposer hash is
+`50840d65a753074a670d7929ca0a4b5d633b0a4b435f1a68b4a6fba26c4d18bb`; the pool contract uses
+CPU, neutral-sentinel likelihood, one 1,024-token beam and deterministic search budget 25. Pool
+JSONL SHA256: `2e98974a4c8b1308afef40e7b9f105631aba7e1419e6832eb2d7f077a3be46bd`.
+
+Fit used 144 questions / six TRAIN databases; validation used 96 questions / four disjoint TRAIN
+databases. This holds out selector-fitting DBs only; XiYan pretraining exposure is unknown. The
+fitted arbiter and frozen production arbiter both selected **82/96 strict-correct** candidates,
+with **0 paired wins and 0 losses**. Eligible pool-oracle coverage was 85/96. Per validation DB:
+customer_complaints 19/24, program_share 24/24, student_1 21/24, wine_1 18/24 for both selectors.
+This fails the preregistered selector-gain gate; the candidate was not installed or promoted.
+Experimental arbiter SHA256: `e37d48dd50fe380c2d220cf0fd3b577e94d0ab9810f84e29d7e7f47fad129061`.
+
+The new replay serializer change and regression test passed `tests.test_sql_ast` (129/129). Next is
+a fresh full CPU DEV replay of the frozen current serving arbiter from a clean, fingerprinted
+commit, followed by the official Spider test-suite evaluation on those exact saved SQL strings.
+The older 864 strict / 839 test-suite records remain historical and do not validate the new source
+tree. No merge/deploy/browser gate has been claimed from this pilot. No RunPod was used.
+
 ## 2026-09-29 — review fixes underway; new release gates NOT complete
 
 User requested the full review-fix/80%+/merge/deploy/browser plan, then authorized continuing

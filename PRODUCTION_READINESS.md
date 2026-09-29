@@ -56,6 +56,32 @@ Execution sequence and fallback decisions:
 Stages 1–2 are in progress. Stages 3–6 have not passed for this new source tree. The existing
 83.56%/81.14% evidence must not be relabeled as a result of the hardening changes.
 
+#### 2026-09-29 pilot decision
+
+The preregistered CPU pool build completed with 240 unique TRAIN questions (24 per database),
+using the pinned XiYan Q4_K_M proposer (`50840d65…`, CPU), neutral-sentinel likelihoods, one
+greedy 1,024-token proposer beam, and deterministic search budget 25. The pool input SHA256 is
+`2e98974a4c8b1308afef40e7b9f105631aba7e1419e6832eb2d7f077a3be46bd`; source/model/split details
+are recorded in its header. One malformed Spider TRAIN gold query (idx 4514, invalid ORDER BY
+placement before INTERSECT) remains in the 240 denominator and was not assigned candidate labels;
+239 questions were labeled. It is a data-quality exception, not a model miss.
+
+The selector was fit on 144 questions from six databases and evaluated on 96 questions from four
+disjoint databases. This is selector-DB holdout only; XiYan pretraining exposure to those DBs is
+unknown. The candidate and frozen production arbiter each selected **82/96 strict-correct SQLs**;
+paired comparison was **0 wins / 0 losses**, with 85/96 eligible pool-oracle hits. Every validation
+database was unchanged (customer_complaints 19/24, program_share 24/24, student_1 21/24, wine_1
+18/24). Therefore the preregistered gain gate failed: **do not promote or install the fitted
+arbiter**. Its experimental file SHA256 is
+`e37d48dd50fe380c2d220cf0fd3b577e94d0ab9810f84e29d7e7f47fad129061`; pool SHA above. The
+validation result is a diagnostic on this sample, not a new full-DEV score or unbiased estimate.
+
+Next: freeze the existing arbiter and run a fresh, full 1,034-question CPU DEV replay from a clean
+source commit with current serving code, then evaluate those exact saved SQL predictions with the
+official Spider test-suite evaluator (without gold-value substitution). The prior 864/1,034 and
+839/1,034 records are historical evidence, not substitutes for that replay. No merge, deployment,
+production browser gate, or official Spider TEST access follows from this pilot.
+
 ### Preregistered neutral-selector pilot (before labeling)
 
 - Hypothesis: a selector fitted on this exact 7B/neutral-score candidate distribution improves
