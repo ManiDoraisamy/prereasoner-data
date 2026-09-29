@@ -355,6 +355,56 @@ def test_bootstrap_records_failure_and_rejects_privileged_serving_role():
         bootstrap_module._mark = original_mark
 
 
+def test_seed_import_rebuilds_typed_qid_projections_before_granting_access(monkeypatch, tmp_path):
+    from db.sync import community_seed_import as seed_import
+
+    events = []
+    seed_path = tmp_path / "community.dump"
+    seed_path.write_bytes(b"fixture")
+
+    class Cursor:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, statement, params=None):
+            events.append(("sql", str(statement)))
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def commit(self):
+            events.append(("commit", None))
+
+        def rollback(self):
+            events.append(("rollback", None))
+
+    monkeypatch.setattr(seed_import, "_initialize_database", lambda connection: None)
+    monkeypatch.setattr(seed_import, "_ready", lambda connection: False)
+    monkeypatch.setattr(seed_import, "_mark", lambda connection, status, error=None: events.append(
+        ("mark", status)
+    ))
+    monkeypatch.setattr(seed_import, "_download", lambda *args: str(seed_path))
+    monkeypatch.setattr(seed_import, "_restore", lambda path: events.append(("restore", path)))
+    monkeypatch.setattr(seed_import.subprocess, "run", lambda command, check: events.append(
+        ("run", tuple(command))
+    ))
+    monkeypatch.setattr(seed_import, "_grant_serving_access", lambda *args: events.append(("grant", None)))
+
+    assert seed_import.import_seed(
+        Connection(), "serving", frozenset(), "https://example.invalid/seed.dump", "a" * 64,
+    )
+    commands = [event[1] for event in events if event[0] == "run"]
+    assert commands == [
+        (sys.executable, "-m", "db.sync.app_migrations"),
+        (sys.executable, "-m", "db.sync.build_qid_world"),
+    ]
+    assert events.index(("grant", None)) > events.index(("run", commands[-1]))
+
+
 def test_public_deployer_has_isolated_state_and_cost_safe_defaults():
     versions = _text("infra/versions.tf")
     assert 'backend "gcs" {}' in versions

@@ -19,10 +19,10 @@ from collections.abc import Sequence
 
 from db.sync._conn import connect
 from db.sync.community_bootstrap import (
-    BOOTSTRAP_VERSION,
-    DEFAULT_DATASETS,
     _LOCK_NAME,
     _ROLE,
+    BOOTSTRAP_VERSION,
+    DEFAULT_DATASETS,
     _grant_serving_access,
     _initialize_database,
     _mark,
@@ -170,6 +170,10 @@ def import_seed(connection, role: str, datasets: frozenset[str], uri: str,
             # chat/knowledgebase migrations after restore so the imported public data and the
             # application schema always use the code shipped in this image.
             subprocess.run((sys.executable, "-m", "db.sync.app_migrations"), check=True)
+            # The public seed's derived QID projections can predate the typed bigint schema.
+            # Rebuild them from public.country/public.settlement on every seed import so
+            # aggregates such as total population work on fresh and explicitly refreshed installs.
+            subprocess.run((sys.executable, "-m", "db.sync.build_qid_world"), check=True)
             _grant_serving_access(connection, role, datasets)
         except Exception as exc:
             connection.rollback()
