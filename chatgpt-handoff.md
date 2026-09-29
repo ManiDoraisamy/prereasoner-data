@@ -27,8 +27,11 @@ from that commit. Immutable image:
 Offline regression and startup/health passed (17s startup); all seven configured live suites passed
 against disposable PostgreSQL: world, nongeo, world joins, route-wired, geo, schema probes, and
 datasets. API health was true for all components. Candidate CPU API world-join sample was n=3,
-p50 1.396s, max/p95 4.930s. This build did not deploy to Cloud Run. `test_datasets` explicitly
-skips authenticated orchestrated follow-ups; those remain an open gate.
+p50 1.396s, max/p95 4.930s. Across 42 proposer timing spans recorded inside the live dataset
+suite’s 8-CPU container, decode p50/p90/max was 6.713s/10.104s/36.419s. This is useful exact-image
+CPU evidence but not a Cloud Run request-latency/concurrency measurement. This build did not deploy
+to Cloud Run. `test_datasets` explicitly skips authenticated orchestrated follow-ups; those remain
+an open gate.
 
 The isolated Playwright suite passed **33/33** against its synthetic local backend. This is client
 regression evidence only, not exact-image/authenticated production browser E2E. Additional reruns
