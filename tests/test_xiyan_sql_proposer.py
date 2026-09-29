@@ -98,14 +98,48 @@ def test_contract_pins_the_measured_gguf_and_one_cpu_sample():
     )
 
 
-def test_runtime_contract_rejects_an_undisclosed_model_mismatch(tmp_path):
+def test_runtime_contract_rejects_an_undisclosed_model_mismatch():
     import json
-
-    import pytest
+    import tempfile
+    from pathlib import Path
 
     contract = load_contract()
     contract["selector"]["model_matched_arbiter"] = True
-    path = tmp_path / "runtime.json"
-    path.write_text(json.dumps(contract), encoding="utf-8")
-    with pytest.raises(RuntimeError, match="disclose that it was fit with another proposer"):
-        load_contract(path)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "runtime.json"
+        path.write_text(json.dumps(contract), encoding="utf-8")
+        try:
+            load_contract(path)
+        except RuntimeError as exc:
+            assert "disclose that it was fit with another proposer" in str(exc), exc
+        else:
+            raise AssertionError("an undisclosed proposer/arbiter mismatch was accepted")
+
+
+# Registered in tests/run_all.py: the release gates run that runner, not pytest, so these tests
+# never ran after the 7B proposer landed (2026-09-28).
+TESTS = [
+    test_xiyan_mschema_keeps_inferred_type_examples_and_foreign_keys,
+    test_xiyan_prompt_uses_the_publisher_user_template_and_chat_generation_prefix,
+    test_proposer_uses_measured_greedy_contract_normalization_and_neutral_scores,
+    test_proposer_rejects_sql_that_cannot_import_into_the_typed_ast,
+    test_contract_pins_the_measured_gguf_and_one_cpu_sample,
+    test_runtime_contract_rejects_an_undisclosed_model_mismatch,
+]
+
+
+def main() -> None:
+    failures = []
+    for test in TESTS:
+        try:
+            test()
+            print(f"  ok   {test.__name__}")
+        except Exception as exc:  # noqa: BLE001
+            failures.append(test.__name__)
+            print(f"  FAIL {test.__name__}: {type(exc).__name__}: {exc}")
+    print(f"\nXiYanSQL proposer: {len(TESTS) - len(failures)} passed, {len(failures)} failed")
+    raise SystemExit(1 if failures else 0)
+
+
+if __name__ == "__main__":
+    main()
