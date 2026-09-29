@@ -39,10 +39,10 @@ passed `tests.test_orchestrator_unit` (20/20) and `tests.test_release` (43/43); 
 focused suites remain 24/24 and 3/3 as above.
 
 Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
-CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 850/1,034
-indices it has 717 strict-correct rows (84.35% partial); 184 rows remain. This is not a final score.
-For these 850 rows, prediction p50/p90/max were 19.40s/35.16s/61.71s and 757/850 exceeded the
-12s soft latency budget. Difficulty so far: easy 205/219, medium 312/362, hard 114/135, extra
+CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 875/1,034
+indices it has 741 strict-correct rows (84.69% partial); 159 rows remain. This is not a final score.
+For these 875 rows, prediction p50/p90/max were 19.24s/34.92s/61.71s and 769/875 exceeded the
+12s soft latency budget. Difficulty so far: easy 215/229, medium 320/371, hard 120/141, extra
 86/134. Both strict count and full tail-latency distribution must be reported at completion.
 Instrumentation shows proposer decoding ran on all 750 rows and the proposal-origin candidate was
 selected on 450/750; decode alone had p50/p90 17.98s/34.03s. The live `tests.test_orchestrator`
