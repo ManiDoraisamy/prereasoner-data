@@ -23,6 +23,7 @@ import argparse
 import json
 import math
 import os
+from pathlib import Path
 import sys
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -34,6 +35,7 @@ from engine.sql_candidate import ScoredQuery
 from engine.sql_rank import (
     ARBITER_FEATURES, ENDORSED, SQLArbiter, arbiter_features, arbitrate, select_ranked_candidate,
 )
+from spider.probe.full_eval import _git_provenance
 
 SEED = 7
 
@@ -129,6 +131,29 @@ def pool_rows(record):
     return rows
 
 
+def selected_index(record, arbiter):
+    """Return the served candidate for one saved pool, using only serving-time fields."""
+    candidates = record.get("candidates") or []
+    required = {"proposed", "eligible", "executable", "grounded",
+                "calculation_satisfied", "money_total"}
+    if any(not required.issubset(candidate) for candidate in candidates):
+        raise ValueError("pool lacks serving selection facts; regenerate labels before replay")
+    rows = pool_rows(record)
+    pool = [ScoredQuery(None, candidate["sql"], candidate["score"],
+                        tuple(candidate.get("evidence") or ())) for candidate in candidates]
+    likelihoods = [None] * len(pool)
+    proposed = set()
+    for rank, features, _, eligible in rows:
+        if eligible:
+            likelihoods[rank] = (features[0], features[1])
+        if features[ARBITER_FEATURES.index("from_search")] == 0.0:
+            proposed.add(pool[rank].sql)
+    _, ranking = arbitrate(pool, frozenset(proposed), likelihoods, arbiter)
+    return select_ranked_candidate(
+        ranking, [c["calculation_satisfied"] for c in candidates],
+        [c["money_total"] for c in candidates])
+
+
 def replay(pools, arbiter):
     """Apply the serving ranking/intent rule; refuse pools missing its required facts."""
     per_db = {}
@@ -136,28 +161,44 @@ def replay(pools, arbiter):
         tally = per_db.setdefault(record["db_id"], {"n": 0, "strict": 0, "oracle": 0})
         tally["n"] += 1
         candidates = record.get("candidates") or ()
-        required = {"proposed", "eligible", "executable", "grounded",
-                    "calculation_satisfied", "money_total"}
-        if any(not required.issubset(candidate) for candidate in candidates):
-            raise ValueError("pool lacks serving selection facts; regenerate labels before replay")
         tally["oracle"] += any(strict and eligible for _, _, strict, eligible in pool_rows(record))
-        pool = [ScoredQuery(None, candidate["sql"], candidate["score"],
-                            tuple(candidate.get("evidence") or ())) for candidate in candidates]
-        likelihoods = [None] * len(pool)
-        proposed = set()
-        for rank, features, _, executable in pool_rows(record):
-            if executable:
-                likelihoods[rank] = (features[0], features[1])
-            if features[ARBITER_FEATURES.index("from_search")] == 0.0:
-                proposed.add(pool[rank].sql)
-        _, ranking = arbitrate(pool, frozenset(proposed), likelihoods, arbiter)
-        selected = select_ranked_candidate(
-            ranking, [c["calculation_satisfied"] for c in candidates],
-            [c["money_total"] for c in candidates])
+        selected = selected_index(record, arbiter)
         if selected is not None:
             tally["strict"] += bool(candidates[selected].get("strict"))
     total = {key: sum(tally[key] for tally in per_db.values()) for key in ("n", "strict", "oracle")}
     return total, per_db
+
+
+def paired_replay(pools, candidate_arbiter, baseline_arbiter):
+    """Compare two selectors question-by-question on exactly the same saved candidate pools."""
+    per_db = {}
+    totals = {"n": 0, "candidate_strict": 0, "baseline_strict": 0,
+              "wins": 0, "losses": 0, "oracle": 0}
+    for record in pools:
+        db = record["db_id"]
+        tally = per_db.setdefault(db, {key: 0 for key in totals})
+        candidates = record.get("candidates") or []
+        candidate_index = selected_index(record, candidate_arbiter)
+        baseline_index = selected_index(record, baseline_arbiter)
+        candidate_correct = bool(candidates[candidate_index].get("strict")) if candidate_index is not None else False
+        baseline_correct = bool(candidates[baseline_index].get("strict")) if baseline_index is not None else False
+        oracle = any(strict and eligible for _, _, strict, eligible in pool_rows(record))
+        tally["n"] += 1
+        tally["candidate_strict"] += candidate_correct
+        tally["baseline_strict"] += baseline_correct
+        tally["wins"] += candidate_correct and not baseline_correct
+        tally["losses"] += baseline_correct and not candidate_correct
+        tally["oracle"] += oracle
+        totals["n"] += 1
+        totals["candidate_strict"] += candidate_correct
+        totals["baseline_strict"] += baseline_correct
+        totals["wins"] += candidate_correct and not baseline_correct
+        totals["losses"] += baseline_correct and not candidate_correct
+        totals["oracle"] += oracle
+    totals["net_wins"] = totals["wins"] - totals["losses"]
+    for tally in per_db.values():
+        tally["net_wins"] = tally["wins"] - tally["losses"]
+    return totals, per_db
 
 
 def main():
@@ -166,6 +207,8 @@ def main():
     ap.add_argument("--split", required=True,
                     help="JSON with fit_dbs and validation_dbs lists")
     ap.add_argument("--out", required=True)
+    ap.add_argument("--baseline-arbiter", default=os.path.join(ROOT, "engine", "data", "sql_arbiter.json"),
+                    help="frozen arbiter used as the paired control on the same validation pools")
     args = ap.parse_args()
 
     from sklearn.linear_model import LogisticRegression
@@ -190,6 +233,8 @@ def main():
             if eligible:
                 features.append(list(row))
                 labels.append(int(strict))
+    if len(set(labels)) < 2:
+        raise ValueError("fit pools must contain both strict-correct and strict-incorrect candidates")
     scaler = StandardScaler().fit(features)
     model = LogisticRegression(random_state=SEED, max_iter=1000).fit(
         scaler.transform(features), labels)
@@ -214,13 +259,31 @@ def main():
     }
     arbiter = SQLArbiter.from_payload(artifact, args.out)
     total, per_db = replay(validation, arbiter)
+    baseline_payload = json.loads(Path(args.baseline_arbiter).read_text(encoding="utf-8"))
+    baseline_arbiter = SQLArbiter.from_payload(baseline_payload, args.baseline_arbiter)
+    if (baseline_arbiter.search_candidates != contract["search_candidates"]
+            or baseline_arbiter.execution_op_limit != contract["execution_op_limit"]):
+        raise ValueError("baseline arbiter and validation pools use different deterministic-search contracts")
+    baseline_total, baseline_per_db = replay(validation, baseline_arbiter)
+    paired, paired_per_db = paired_replay(validation, arbiter, baseline_arbiter)
+    if paired["candidate_strict"] != total["strict"] or paired["oracle"] != total["oracle"]:
+        raise AssertionError("paired replay and candidate validation totals disagree")
+    artifact["fit"]["trainer_sha256"] = sha256_file(__file__)
+    artifact["fit"]["baseline_arbiter_sha256"] = sha256_file(args.baseline_arbiter)
+    artifact["fit"]["trainer_source"] = _git_provenance(ROOT)
+    artifact["fit"]["baseline_fit_pool"] = baseline_payload["pool"]
     artifact["validation"] = {"metric": "saved_pool_serving_selection",
                               "questions": total["n"], "strict": total["strict"],
-                              "pool_oracle": total["oracle"], "per_db": per_db}
+                              "pool_oracle": total["oracle"], "per_db": per_db,
+                              "baseline_strict": baseline_total["strict"],
+                              "paired": paired, "paired_per_db": paired_per_db,
+                              "baseline_per_db": baseline_per_db}
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
     write_json_artifact(args.out, artifact, indent=2)
     print(f"fit {len(features)} candidates from {len(fit)} questions; validation "
-          f"{total['strict']}/{total['n']} strict (pool oracle {total['oracle']}) -> {args.out}")
+          f"{total['strict']}/{total['n']} strict vs baseline "
+          f"{baseline_total['strict']}/{baseline_total['n']} "
+          f"(paired +{paired['wins']}/-{paired['losses']}, oracle {total['oracle']}) -> {args.out}")
 
 
 if __name__ == "__main__":

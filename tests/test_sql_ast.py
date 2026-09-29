@@ -1130,7 +1130,7 @@ def test_arbiter_labels_preserve_structural_origin_and_grounding():
 
 
 def test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails():
-    from training.rank.fit_arbiter import pool_rows
+    from training.rank.fit_arbiter import paired_replay, pool_rows
 
     candidate = {"sql": "SELECT 1", "score": 0.0, "evidence": [],
                  "features": {"proposer:scored_logprob": -1.0,
@@ -1148,6 +1148,24 @@ def test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails()
         assert "invalid proposer likelihood" in str(exc)
     else:
         raise AssertionError("non-finite scorer features silently entered arbiter fitting")
+
+    candidates = [
+        {"sql": "SELECT 1", "score": 0.0, "evidence": ["search:fixture"],
+         "features": {"proposer:scored_logprob": -1.0, "proposer:scored_tokens": 1},
+         "strict": False, "proposed": False, "eligible": True, "executable": True,
+         "grounded": True, "calculation_satisfied": False, "money_total": False},
+        {"sql": "SELECT 2", "score": -5.0, "evidence": ["proposer:variant0"],
+         "features": {"proposer:scored_logprob": -2.0, "proposer:scored_tokens": 1},
+         "strict": True, "proposed": True, "eligible": True, "executable": True,
+         "grounded": True, "calculation_satisfied": False, "money_total": False},
+    ]
+    record = {"db_id": "fixture", "idx": 0, "candidates": candidates}
+    old = _toy_arbiter(coef=(1.0, 0, 0, 0, 0, 0, 0, 0, 0))
+    new = _toy_arbiter(coef=(-1.0, 0, 0, 0, 0, 0, 0, 0, 0))
+    paired, by_db = paired_replay([record], new, old)
+    assert paired == {"n": 1, "candidate_strict": 1, "baseline_strict": 0,
+                      "wins": 1, "losses": 0, "oracle": 1, "net_wins": 1}
+    assert by_db["fixture"]["net_wins"] == 1
 
 
 def test_pool_contract_records_live_proposer_not_arbiter_fit_defaults():
