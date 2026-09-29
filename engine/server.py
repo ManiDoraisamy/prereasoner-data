@@ -102,6 +102,26 @@ DIM_MODEL = None                   # the ONE DimensionModel for /api/dimension
 ENRICHMENT = None                  # request-local enrichment; registry activation remains authoritative
 WORLD_LOCK = threading.Lock()      # one request at a time through the shared world model (set_ctx is per-request)
 DIM_LOCK = threading.Lock()        # one request at a time through the dimension model
+
+
+def _start_spacy_warmup(model):
+    """Warm the lazy spaCy singleton without blocking Cloud Run model readiness."""
+    def warm():
+        started = time.monotonic()
+        print("startup phase start: spaCy background warmup", flush=True)
+        try:
+            model.qw._spacy()
+        except Exception as exc:                      # noqa: BLE001
+            print(f"spaCy background warmup note: {type(exc).__name__}", flush=True)
+        else:
+            print(f"startup phase ready: spaCy background warmup seconds={time.monotonic() - started:.1f}",
+                  flush=True)
+
+    worker = threading.Thread(target=warm, name="spacy-warmup", daemon=True)
+    worker.start()
+    return worker
+
+
 MAX_BODY = 10 * 1024 * 1024
 MAX_SHEETS = 8
 MAX_REFERENCE_ROWS = 5000
@@ -955,7 +975,6 @@ def main():
     try:
         from engine.embeddings import Embedder
         startup_phase("embedding warmup", lambda: Embedder.get().encode(["warmup"]))
-        startup_phase("spaCy warmup", MODEL.qw._spacy)
     except Exception as e:                              # noqa: BLE001
         print(f"startup warmup note: {type(e).__name__}", flush=True)
     DIM_MODEL = startup_phase("dimension model (shared world encoder)",
@@ -963,6 +982,13 @@ def main():
     # Both APIs now execute on the same Qwen/LoRA instance; keep calls serialized
     # across endpoints rather than protecting one shared model with two locks.
     DIM_LOCK = WORLD_LOCK
+    # spaCy is lazy and is only needed by entity extraction on a subset of queries.
+    # It is not part of model readiness: loading it synchronously here can consume
+    # the last seconds of Cloud Run's 600s startup-probe budget after the Qwen,
+    # SQL proposer, and embedding models are already usable. Start its cache warmup
+    # in the background; spacy_model() is internally locked, so a first request
+    # racing this warmup safely waits on the same singleton initialization.
+    _start_spacy_warmup(MODEL)
     print(f"engine ready: http://{HOST}:{PORT}  (POST /api/reason /api/knowledge /api/dimension)", flush=True)
     ThreadingHTTPServer((HOST, PORT), H).serve_forever()
 

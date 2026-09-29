@@ -7,7 +7,9 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import call, patch
 from urllib.parse import unquote
 
@@ -44,6 +46,28 @@ def test_public_artifact_boundary():
     workflow = _text(".github/workflows/ci.yml")
     assert "gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e" in workflow
     assert "fetch-depth: 0" in workflow
+
+
+def test_spacy_warmup_does_not_block_model_readiness():
+    from engine.server import _start_spacy_warmup
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    class FakeWorldModel:
+        def _spacy(self):
+            entered.set()
+            release.wait(timeout=2)
+
+    worker = _start_spacy_warmup(SimpleNamespace(qw=FakeWorldModel()))
+    try:
+        assert worker.daemon
+        assert entered.wait(timeout=2), "background spaCy warmup did not start"
+        assert worker.is_alive(), "background warmup unexpectedly blocked or finished before release"
+    finally:
+        release.set()
+        worker.join(timeout=2)
+    assert not worker.is_alive(), "background spaCy warmup failed to exit"
 
 
 def test_vendored_xlsx_parser_has_the_reviewed_identity():
@@ -1228,6 +1252,7 @@ TESTS = [
     test_cpu_suite_timeouts_are_bounded_and_overridable,
     test_sql_bundle_is_validated_before_atomic_publication,
     test_public_artifact_boundary,
+    test_spacy_warmup_does_not_block_model_readiness,
     test_vendored_xlsx_parser_has_the_reviewed_identity,
     test_spider_evaluator_supports_module_invocation,
     test_public_weight_bundle_is_manifested_and_documented,
