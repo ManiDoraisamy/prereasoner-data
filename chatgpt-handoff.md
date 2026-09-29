@@ -13,6 +13,36 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-29 — release build green; full CPU replay in progress
+
+Commit `7817f69f0f8055a988022b9fab8d18e6c6a349dd` adds the community-seed post-migration QID
+projection rebuild and bumps the bootstrap marker so upgraded databases apply it. Focused tests
+passed (`tests.test_community_deploy`: 24/24; QID projection tests: 3/3), as did compileall and
+`git diff --check`. Ruff's changed-file `F,I`/`F` checks passed; the repository-wide style check
+still reports pre-existing line-length violations in these files.
+
+Attested release-context Cloud Build `b0cc8a30-0a32-4a6c-9efb-98b18277f12f` completed SUCCESS
+from that commit. Immutable image:
+`us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:da66e69be2c73b71c1200a006cb439f785ae9f8a30e313619f597504db8cc0a6`.
+Offline regression and startup/health passed (17s startup); all seven configured live suites passed
+against disposable PostgreSQL: world, nongeo, world joins, route-wired, geo, schema probes, and
+datasets. API health was true for all components. Candidate CPU API world-join sample was n=3,
+p50 1.396s, max/p95 4.930s. This build did not deploy to Cloud Run. `test_datasets` explicitly
+skips authenticated orchestrated follow-ups; those remain an open gate.
+
+The isolated Playwright suite passed **33/33** against its synthetic local backend. This is client
+regression evidence only, not exact-image/authenticated production browser E2E.
+
+Fresh full Spider DEV replay uses source contract commit `40cd5a4`, frozen current serving arbiter,
+CPU XiYan Q4_K_M, 8 threads, no value substitution, and continues in process PID 8316. At 725/1,034
+indices it has 615 strict-correct rows (84.83% partial); 309 rows remain. This is not a final score.
+For the first 700 rows, prediction p50/p90 were 19.00s/35.94s and 608/700 exceeded the 12s soft
+latency budget. Both strict count and full tail-latency distribution must be reported at completion.
+The replay checkpoint is under `%LOCALAPPDATA%/Temp/prereasoner-7b-hardening-20260929/`.
+Official Spider test-suite evaluation has not run yet. Production remains unchanged on the existing
+100%-traffic revision; no merge, deployment, official TEST evaluation, or authenticated browser
+claim is made here.
+
 ## 2026-09-29 — neutral arbiter pilot complete; candidate rejected
 
 The local 240-question XiYan CPU pool build completed against `train_spider.json`: exactly 24
