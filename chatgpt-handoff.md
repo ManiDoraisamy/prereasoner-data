@@ -43,6 +43,14 @@ results: SQL AST 128/128, XiYan proposer 12/12, release 43/43; Ruff, compileall 
 committed. The 240-question pilot uses six TRAIN databases for fit and four disjoint TRAIN databases
 for validation; it is not a claim of independent proposer pretraining exposure or a promotion gate.
 
+Follow-up commit `71da66d` makes the pilot replay the fitted selector and the frozen production
+arbiter on the same validation candidate pools, with paired wins/losses by question and database.
+The old arbiter declares a 4-beam/96-token fit pool while production now generates one 1,024-token
+CPU beam; the report retains that historical mismatch, while the comparison uses the actual new
+production pool. Pool collection is running locally from source commit `95c33c9`; at the last check
+it had written 44/240 examples, with no errors and stable memory. No selector has been fit, and
+these partial counts are not accuracy evidence.
+
 RunPod MCP read-only check: no account pods. Billing for Aug 30–Sep 29 totals $32.500336
 across prior work (not all charged to this experiment); Sep 28 total $7.716525. No paid run
 has been started in this change. Remaining budget must be reconciled before a new lease.
