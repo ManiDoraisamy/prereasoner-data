@@ -736,6 +736,21 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
                 if tool["name"] == "prereasoner_query")["input_schema"]["properties"]["slug"]
     assert f"at most {orchestrator.MAX_ANALYSIS_SLUG_BYTES} characters" in slug["description"]
 
+    # Told the limit, the model still proposed a longer name for a second analysis of the promotions
+    # demo, and the heading read "top customers products never bo c9272891". A new name is cut at a
+    # word boundary before the engine sees it; an existing one is sent exactly as stored.
+    long_name = "top_customers_products_never_bought_by_revenue"
+    for action, sent in (("create", "top_customers_products_never_bought"), ("modify", long_name)):
+        spec = {"action": action, "slug": long_name}
+        if action == "modify":
+            spec["analysis_id"] = "a_" + "6" * 32
+        assert orchestrator._named_within_limit(spec)["slug"] == sent, action
+    assert orchestrator._named_within_limit({"action": "create", "slug": "total_amount"})["slug"] == "total_amount"
+    _result, _model_calls, engine_calls = asyncio.run(_run(
+        "answered", query_input={"question": "top products nobody bought", "action": "create",
+                                 "slug": long_name}))
+    assert engine_calls[0][1]["analysis"]["slug"] == "top_customers_products_never_bought"
+
 
 def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
     question = (

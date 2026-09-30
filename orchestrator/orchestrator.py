@@ -319,6 +319,32 @@ def _recalculation_target(user_message: str, catalog: list[dict[str, Any]],
     return analysis, question
 
 
+_NAME_CONNECTORS = frozenset({
+    "a", "an", "and", "by", "for", "from", "in", "of", "on", "or", "per", "the", "to", "with",
+})
+
+
+def _named_within_limit(spec: dict[str, Any]) -> dict[str, Any]:
+    """A new analysis's proposed name, cut at a word boundary to the engine's limit.
+
+    The engine cuts a longer name mid-word and adds a hash, which became the workbook's heading:
+    "top customers products never bo c9272891" (Chrome pass, 2026-09-30). The tool schema states
+    the limit and the model still exceeds it. An existing analysis keeps its stored name, which
+    `modify` and `inspect` must match exactly.
+    """
+    slug = spec.get("slug")
+    if spec.get("action") != "create" or not isinstance(slug, str):
+        return spec
+    words = [word for word in re.split(r"[^A-Za-z0-9]+", slug) if word]
+    if len("_".join(words)) <= MAX_ANALYSIS_SLUG_BYTES:
+        return spec
+    # Drop words from the end until it fits, then any connector the cut left dangling ("..._by").
+    while len(words) > 1 and (len("_".join(words)) > MAX_ANALYSIS_SLUG_BYTES
+                              or words[-1].lower() in _NAME_CONNECTORS):
+        words.pop()
+    return {**spec, "slug": "_".join(words)}
+
+
 def _terminal_fallback(shaped: dict[str, Any]) -> str:
     """Last-resort text when the presentation model returns no prose.
 
@@ -681,11 +707,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             analysis_spec = dict(forced_analysis)
                         else:
                             try:
-                                analysis_spec = validate_analysis_spec({
+                                analysis_spec = validate_analysis_spec(_named_within_limit({
                                     key: (block.input or {}).get(key)
                                     for key in ("action", "slug", "analysis_id", "revision")
                                     if (block.input or {}).get(key) is not None
-                                })
+                                }))
                             except AnalysisError as exc:
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,

@@ -1049,9 +1049,10 @@ What changed, all in the chat orchestrator:
    back, that a rank is named only when the rows list the whole ranking, and that figures from earlier turns stay out
    of a reply. This one is a prompt rule with no deterministic check behind it, so its live test is a rate (at most 1
    promotion in 4 replies).
-4. A new analysis is named for what is measured and how it is grouped, without places, dates or currencies, and the
-   tool schema states the engine's 40-character limit; a longer name was cut with a hash ("top customers never bought
-   top 5e0be233").
+4. A new analysis is named for what is measured and how it is grouped, without places, dates or currencies. The engine
+   cuts a name over 40 characters mid-word and adds a hash ("top customers products never bo c9272891"). The tool
+   schema now states the limit, the model still exceeded it on the promotions demo's second analysis, and so the chat
+   cuts a new name at a word boundary before the engine sees it. An existing analysis keeps its stored name.
 
 On claude-sonnet-5, with the same engine results and the model's text read before the guard: a currency named for the
 plain price in 6 of 8 replies before and 0 of 8 after; a name holding the place or currency in 8 of 8 and 0 of 8; the
