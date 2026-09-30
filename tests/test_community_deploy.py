@@ -79,6 +79,8 @@ def test_qid_world_projection_is_an_offline_atomic_transform():
     sql = "\n".join(statement for statement, _ in connection.cursor_value.statements)
     assert "FROM public.settlement" in sql and "FROM public.country" in sql
     assert 'TRUNCATE knowledgebase."city", knowledgebase."country"' in sql
+    # Name lookups are indexed: a missing index made each served place lookup a ~150 ms scan (2026-09-30).
+    assert 'ON knowledgebase."city" (lower(name))' in sql and 'ON knowledgebase."country" (lower(name))' in sql
     assert connection.commits == 1 and connection.rollbacks == 0
     source = _text("db/sync/build_qid_world.py")
     assert "urllib" not in source and "requests" not in source

@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS knowledgebase."country" (
 )
 """
 
+# Serving resolves an uploaded place by its lowercased NAME (engine/pg.py:ambiguities, the world joins):
+# without these a lookup is a sequential scan of ~200k cities, ~150 ms each, once per distinct value.
+NAME_INDEXES = (
+    'CREATE INDEX IF NOT EXISTS ix_kb_city_lower_name ON knowledgebase."city" (lower(name))',
+    'CREATE INDEX IF NOT EXISTS ix_kb_country_lower_name ON knowledgebase."country" (lower(name))',
+)
+
 _CITY_COLUMNS = {
     "name": "text",
     "country": "text",
@@ -86,6 +93,8 @@ def rebuild(connection) -> dict[str, int]:
         cursor.execute('TRUNCATE knowledgebase."city", knowledgebase."country"')
         _ensure_columns(cursor, "city", _CITY_COLUMNS)
         _ensure_columns(cursor, "country", _COUNTRY_COLUMNS)
+        for statement in NAME_INDEXES:
+            cursor.execute(statement)
         cursor.execute(
             """
             INSERT INTO knowledgebase."country"

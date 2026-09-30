@@ -215,6 +215,46 @@ def test_world_connection_commits_success_and_rolls_back_failed_sql():
     assert (failed.commits, failed.rollbacks, failed.closes) == (0, 1, 1)
 
 
+def test_place_ambiguity_is_one_lookup_for_every_value():
+    """PgQuery.ambiguities ran one query per distinct uploaded place: seven cities, seven ~150 ms scans of
+    the 200k-row city table on every world request (2026-09-30). One batched lookup must flag the same
+    values in the upload's own order and spelling."""
+    import engine.pg as pg
+
+    rows = [("paris", "Q142"), ("paris", "Q30"), ("london", "Q145"), ("london", "Q30"), ("lyon", "Q142")]
+    statements = []
+
+    class Cursor:
+        def execute(self, statement, params=None):
+            statements.append((statement, params))
+
+        def fetchall(self):
+            wanted = set(statements[-1][1][0])
+            return [row for row in rows if row[0] in wanted]
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+        def close(self):
+            pass
+
+    query = object.__new__(pg.PgQuery)
+    query.words = {"city": {"key": "qid", "columns": ["qid", "name", "country"]}}
+    table = {"columns": ["customer", "city"],
+             "rows": [["a", "Paris"], ["b", "Lyon"], ["c", "PARIS"], ["d", "London"], ["e", None]]}
+    original = pg._pg
+    pg._pg = Connection
+    try:
+        warnings = query.ambiguities(table, "city", "city")
+    finally:
+        pg._pg = original
+    lookups = [statement for statement, _ in statements if "SELECT" in statement]
+    assert len(lookups) == 1 and "= ANY(%s)" in lookups[0], statements
+    assert statements[-1][1] == (["paris", "lyon", "london"],), statements[-1]
+    assert warnings == ["'Paris' is ambiguous in city: Q142, Q30", "'London' is ambiguous in city: Q145, Q30"], warnings
+
+
 TESTS = [
     test_statement_count_is_bounded_by_pages_not_rows,
     test_every_row_is_loaded_with_the_same_coercion,
@@ -226,6 +266,7 @@ TESTS = [
     test_changed_working_table_does_not_invalidate_unrelated_analyses,
     test_removed_working_table_is_dropped_without_cross_analysis_invalidation,
     test_world_connection_commits_success_and_rolls_back_failed_sql,
+    test_place_ambiguity_is_one_lookup_for_every_value,
 ]
 
 

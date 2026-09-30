@@ -423,23 +423,27 @@ class PgQuery(KnowledgeTableQuery):
         vals = [v for v in vals if v and v != "None"]
         if not vals:
             return []
-        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO knowledgebase")
-        warns, seen = [], set()
+        first = {}                                    # lowercased value -> the upload's first spelling of it
         for v in vals:
-            vl = v.lower()
-            if vl in seen:
-                continue
-            seen.add(vl)
-            if haskind:
-                cur.execute(f'SELECT DISTINCT country FROM {qident(wt)} WHERE lower({qident(name_col)})=%s', (vl,))
-                opts = [r[0] for r in cur.fetchall()]
-                if len(opts) > 1:
-                    warns.append(f"'{v}' is ambiguous in {wt}: {', '.join(sorted(opts))}")
-            else:
-                cur.execute(f'SELECT COUNT(*) FROM {qident(wt)} WHERE lower({qident(name_col)})=%s', (vl,))
-                if cur.fetchone()[0] > 1:
-                    warns.append(f"'{v}' is ambiguous in {wt}: multiple rows")
+            first.setdefault(v.lower(), v)
+        # ONE lookup for every distinct value (it was one round trip each, ~150 ms apiece on the
+        # 200k-row city table, 2026-09-30); knowledgebase."city"/"country" index lower(name).
+        conn = _pg(); cur = conn.cursor(); cur.execute("SET search_path TO knowledgebase")
+        name = f"lower({qident(name_col)})"
+        if haskind:
+            cur.execute(f'SELECT DISTINCT {name}, country FROM {qident(wt)} WHERE {name} = ANY(%s)', (list(first),))
+        else:
+            cur.execute(f'SELECT {name}, NULL FROM {qident(wt)} WHERE {name} = ANY(%s)', (list(first),))
+        options = {}
+        for value, country in cur.fetchall():
+            options.setdefault(value, []).append(country)
         conn.close()
+        warns = []
+        for vl, v in first.items():
+            opts = options.get(vl, [])
+            if len(opts) > 1:
+                warns.append(f"'{v}' is ambiguous in {wt}: {', '.join(sorted(map(str, opts)))}" if haskind
+                             else f"'{v}' is ambiguous in {wt}: multiple rows")
         return warns
 
     def _world_rows(self, joins, seed_values, cap=12):
