@@ -68,12 +68,6 @@ def _composes(plan, result_rows) -> bool:
     return False
 
 
-def realizes(plan, required) -> bool:
-    """Whether the plan realizes every op the question demands (``required_ops``). No ownership path may
-    stand on a plan that fails this: ``route`` and the compose host's local-composition branch both ask it."""
-    return set(required) <= set(_ops(plan))
-
-
 def required_ops(question) -> frozenset:
     """Ops the QUESTION explicitly demands, derived from the shared intent owners (never re-detected by
     callers — both serving and the eval call THIS). Currently: an explicit currency-conversion target
@@ -102,7 +96,7 @@ def route(plan, world_dependency=None, result_rows=None, required=frozenset()) -
     A comparison on a world attribute the upload lacks ('cities with population over 1,000,000', recorded as
     ``world_dependency['world_threshold']``) composes: the delegate's world path binds equality filters only,
     so it declined those questions or answered them without the comparison (2026-09-28)."""
-    if not realizes(plan, required):
+    if required and not set(required) <= set(_ops(plan)):
         return Route.DELEGATE                                 # an explicit requirement the plan cannot realize
     if not (world_dependency and world_dependency.get("is_necessary")):
         return Route.DELEGATE                                 # no NECESSARY world dependency -> delegate (own-data)

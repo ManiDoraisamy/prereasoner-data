@@ -369,6 +369,44 @@ def test_a_learned_ranking_needs_a_ranking_word():
         assert steps[-1]["op"] == "topn" and steps[0].get("by") == ["customer"], (question, steps)
 
 
+def test_serving_hands_an_own_data_composition_to_the_planner():
+    """The compose host let compose own any plan with a composition op whenever a request carried an analysis
+    context, which every served request does; the Spider evaluator asks route() alone. On Spider DEV that
+    served 180 of 1,034 questions from compose (3 right) where the planner the evaluator scores gets 146
+    (2026-09-30). Serving now asks route() alone: an own-data top-N comes back unlowered, so serve()
+    delegates it, while a composition over a necessary world dependency is still lowered and owned."""
+    from unittest.mock import Mock
+
+    from engine.deterministic.context import analysis_execution_context
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+
+    class Lowered(Exception):
+        pass
+
+    def plan(ops, dependency):
+        views = [{"name": f"v{i}", "op": op, "sql": "SELECT 1", "columns": ["x"], "rows": [[1]]}
+                 for i, op in enumerate(ops)]
+        return {"views": views, "world_dependency": dependency, "plan": list(ops), "primitives": [],
+                "bindings": {}, "answer": {"columns": ["x"], "rows": [[1], [2]]}}
+
+    host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)
+    host.qw = Mock()
+    host.qw.ingest.side_effect = Lowered("the composition was lowered")
+    host.reason = Mock()
+    with analysis_execution_context({"slug": "top", "revision": 1}, "c_" + "6" * 32):
+        host.reason.run.return_value = plan(["group_agg", "topn"], None)
+        local = host._run_engine([], "top 3 customers by total amount", "c_" + "6" * 32, None, world={})
+        assert not local.get("deterministic") and local["model"] == "engine - composed view stack", local
+        host.reason.run.return_value = plan(["world_join", "world_filter", "group_agg", "topn"],
+                                            {"is_necessary": True, "necessary": ["continent"]})
+        try:
+            host._run_engine([], "top 3 cities in Europe by total amount", "c_" + "6" * 32, None, world={})
+        except Lowered:
+            pass
+        else:
+            raise AssertionError("a world composite that route() gives compose was not lowered")
+
+
 def test_a_threshold_on_an_aggregate_compares_numbers():
     # Compose's SQLite candidate kept every city for 'cities with total sales over 100' and none for 'under 50': a
     # view's decimal_sum is TEXT with no affinity, and SQLite orders every TEXT above every number (2026-09-28).
@@ -453,6 +491,7 @@ TESTS = [
     test_a_noun_an_aggregate_runs_over_is_not_a_grouping,
     test_the_table_name_is_not_a_grouping_column,
     test_a_learned_ranking_needs_a_ranking_word,
+    test_serving_hands_an_own_data_composition_to_the_planner,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,

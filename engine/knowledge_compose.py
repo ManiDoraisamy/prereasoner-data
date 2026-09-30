@@ -28,11 +28,9 @@ from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
 from engine.compose import ComposeEngine
 from engine.routing import (
-    COMPOSITION_OPS,
     DEPTH_PRIMS,
     WORLD_MEASURES,
     compose_owns,
-    realizes,
     required_ops,
 )
 from engine.numeric import parse_decimal
@@ -63,9 +61,9 @@ class ComposedKnowledgeQuery:
     _serve_locks = tuple(threading.RLock() for _ in range(64))
 
     # Routing constants (DEPTH_PRIMS = primitive-head EVIDENCE to build a compose plan; WORLD_MEASURES = a world
-    # attribute the upload can't expose) and the world-ownership authority (compose_owns) live in engine.routing.
-    # The shared deterministic adapter additionally lowers selected local compositions, so explicit Python/verify
-    # requests do not fall back to the legacy SQLite candidate executor.
+    # attribute the upload can't expose) and the ownership authority (compose_owns) live in engine.routing. A plan
+    # compose owns is lowered through the shared deterministic adapter, so explicit Python/verify requests never
+    # fall back to the SQLite candidate executor.
     def __init__(self):
         self.qw = KnowledgeQuery()                            # resolution + world DB + auth + bridge machinery
         self.reader = PrimitiveReader(encoder=self.qw)    # the learned 10-primitive head on the SAME unified encoder
@@ -410,23 +408,15 @@ class ComposedKnowledgeQuery:
         res = self.reason.run(tables, question, world=world)
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
-        plan_ops = {
-            view.get("op")
-            for view in (res.get("views") or [])
-            if isinstance(view, dict)
-        }
-        # A local composition runs on the shared emitters, but only a plan that realizes every op the question
-        # demands may own it: 'total amount in North America in USD' composed a top-3 of USD rows with no
-        # conversion and bypassed route()'s convert requirement (2026-09-30).
-        shared_composition = bool(plan_ops & COMPOSITION_OPS) and realizes(res.get("views"), required_ops(question))
-        if context is not None and (
-            shared_composition
-            or compose_owns(
-                res.get("views"),
-                res.get("world_dependency"),
-                (res.get("answer") or {}).get("rows"),
-                required_ops(question),
-            )
+        # route() alone decides ownership, here as in the Spider evaluator. A local composition (top-N, sort,
+        # having, share, yoy over the upload alone) belongs to the typed-AST planner: a branch that let compose
+        # own any plan with a composition op served 180 of Spider DEV's 1,034 questions from compose, 3 of them
+        # right, where the planner the evaluator scores answers 146 (2026-09-30).
+        if context is not None and compose_owns(
+            res.get("views"),
+            res.get("world_dependency"),
+            (res.get("answer") or {}).get("rows"),
+            required_ops(question),
         ):
             from engine.deterministic.compose import lower_composition
             from engine.numeric import wire_rows
@@ -557,8 +547,8 @@ class ComposedKnowledgeQuery:
                                  explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
         if self._composed(tables, question):
             # _composed is EVIDENCE (primitive-head / world-measure cue) that a compose plan is worth building.
-            # World ownership still goes through engine.routing.compose_owns, while an explicit deterministic
-            # execution context may lower a selected local composition through the shared plan as well.
+            # Ownership goes through engine.routing.compose_owns alone, as in evaluation; a plan it accepts is
+            # lowered through the shared deterministic plan.
             #
             # A compound question can also carry compose surface ("top 3 ... and top 2 ..."), and a
             # composed top-N would answer one fragment of it. Consult the SAME selected-candidate
