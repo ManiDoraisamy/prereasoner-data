@@ -293,6 +293,62 @@ def main():
         ok(len(sent_h) == 1 and "notice" in sent_h[0].lower(),
            f"the short re-asked question reaches the engine once (got {sent_h})")
 
+        # Chrome gate (2026-09-30, payment-commissions, existing conversation): "how much commission
+        # came from cards?" reached the engine as typed and its clarification became the reply,
+        # although an earlier turn had asked for the total commission amount. A transcript that
+        # already held that clarification made it 5 of 8 turns. Whether the model writes the
+        # follow-up from the earlier turn or answers the engine's clarification from it, the answer
+        # is the amount. With nothing earlier to settle it, the clarification is asked.
+        print("[1i] an engine clarification an earlier turn settles is answered from it")
+        from orchestrator.orchestrator import _question_words
+
+        def clarifying_engine(typed, clarify, sent):
+            async def query(question, *_args, **_kwargs):
+                sent.append(question)
+                if _question_words(question) == _question_words(typed):
+                    return {"status": "clarify", "clarify": clarify}
+                return {"status": "answered",
+                        "answer": {"columns": ["commission_amount"], "rows": [["9.28"]]}}
+            return query
+
+        payments = Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "payment-commissions"
+        payment_tables = [{"name": name, "data": (payments / f"{name}.csv").read_text(encoding="utf-8")}
+                          for name in ("payments", "commission_rates")]
+        follow_up = "how much commission came from cards?"
+        amount = "total commission amount for card payments"
+        settled_history = [
+            {"role": "user", "content": amount},
+            {"role": "assistant", "content": "The commission from card payments comes to 9.28."},
+            {"role": "user", "content": "total amount after subtracting commission for digital wallet payments"},
+            {"role": "assistant", "content": "For your digital wallet payments, the total after "
+                                             "subtracting commission comes to 226.09."},
+            {"role": "user", "content": follow_up},
+            {"role": "assistant", "content": "I want to make sure I get this right: are you asking for "
+                                             "the total commission earned from card payments, or about "
+                                             "a commission percentage rate?"},
+            {"role": "user", "content": amount},
+            {"role": "assistant", "content": "The commission from card payments comes to 9.28."},
+        ]
+        sent_i = []
+        with patch("orchestrator.orchestrator.engine_client.call_query", clarifying_engine(
+                follow_up, {"proposed": "total commission_percent", "dropped": ["came", "cards"]}, sent_i)):
+            settled = asyncio.run(chat(follow_up, history=settled_history, tables=payment_tables))
+        ok(bool(sent_i) and "commission" in sent_i[-1].lower() and "card" in sent_i[-1].lower()
+           and _question_words(sent_i[-1]) != _question_words(follow_up) and "9.28" in settled["reply"],
+           f"the follow-up is answered with the amount an earlier turn asked for "
+           f"(sent {sent_i}, reply {settled['reply']!r})")
+        typed = "total amount in GBP"
+        sent_j = []
+        with patch("orchestrator.orchestrator.engine_client.call_query", clarifying_engine(
+                typed, {"reason": "GBP can mean converting every order into GBP or keeping only the "
+                                  "orders recorded in GBP"}, sent_j)):
+            asked = asyncio.run(chat(typed, history=[
+                {"role": "user", "content": "how many orders are there?"},
+                {"role": "assistant", "content": "There are 25 orders."}]))
+        ok(sent_j == [typed] and "?" in asked["reply"] and "9.28" not in asked["reply"],
+           f"a clarification nothing earlier settles is asked of the user "
+           f"(sent {sent_j}, reply {asked['reply']!r})")
+
         # Production regression (2026-09-08): this follow-up was decomposed into five progressively
         # weaker queries, ended on a grouped COUNT, and discarded all useful terminal results with
         # "step budget". The shipped workbook now includes the exact tier schedule as a fixture.

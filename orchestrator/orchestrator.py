@@ -63,6 +63,14 @@ RECALCULATION_NOTE = (
     "recalculation: call prereasoner_query for it. An earlier reply is not a result, and the data "
     "or exchange rates behind it may have changed since."
 )
+# The engine could not read a follow-up sent in the user's own words, and earlier turns may already
+# say what it means. The model gets this one chance to answer the clarification from them (see _run_turn).
+SETTLE_FROM_CONVERSATION = (
+    "The engine read the user's message word for word and could not tell what it asks for (see "
+    "`clarify`). If an earlier turn of this conversation already settles that, call prereasoner_query "
+    "once more with one complete question in the words that turn used, keeping this message's filters "
+    "and the same analysis. If no earlier turn settles it, do not call the tool: ask the user."
+)
 TOOL_EXHAUSTED_REPLY = (
     "I couldn't complete that request. Please try one specific question about the attached data."
 )
@@ -548,6 +556,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
     dataset_ops_repaired = False
     recalculation_requested = False
     recalculation_forced = False
+    clarification_offered = False                            # the one chance to settle an engine clarify
+    unsettled: dict[str, Any] | None = None                  # that clarify, while the model answers it
     conv = conversation_id                                   # ONE conversation for the whole session (captured from the first call if new)
 
     def _emit(node, value):
@@ -644,6 +654,10 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             stream_buffer.update("")
                         messages.append({"role": "user", "content": RECALCULATION_NOTE})
                         continue
+                    if unsettled is not None:
+                        # The model asks the user instead: that is the engine's clarification,
+                        # presented, and it may add no number of its own.
+                        text = _grounded_presentation(unsettled, text, asked=user_message)
                     final_text = text
                     break
                 if stream_buffer is not None and round_text:
@@ -672,7 +686,9 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         question = forced_question if forced_analysis else (block.input or {}).get("question", "")
                         try:
                             question = validate_question(question)
-                            if not forced_analysis:
+                            # An answer to the engine's clarification is written in an earlier turn's
+                            # words: the user's own words alone are what it could not read.
+                            if not forced_analysis and unsettled is None:
                                 question = _verbatim_standalone(question, user_message)
                         except RequestValidationError as exc:
                             # The model repairs its own malformed call. Sent on, the engine would
@@ -686,6 +702,17 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                 "is_error": True,
                             })
                             continue
+                        if unsettled is not None:
+                            clarified, unsettled = unsettled, None
+                            if _question_words(question) == _question_words(traces[-1]["question"]):
+                                # The same words would get the same clarification, so it stands.
+                                terminal_query = clarified
+                                tool_results.append({
+                                    "type": "tool_result", "tool_use_id": block.id,
+                                    "content": json.dumps(_trim_for_model(clarified)),
+                                    "is_error": False,
+                                })
+                                continue
                         decomposition = (block.input or {}).get("decomposition")
                         # The system prompt (rules 3-4) owns question fidelity: a standalone question is
                         # passed in the user's exact words, and a follow-up rewrite carries every
@@ -864,6 +891,28 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                     "is_error": False,
                                 })
                             continue
+                        if (shaped.get("status") == "clarify" and not clarification_offered
+                                and not forced_analysis and decomposition is None
+                                and _question_words(question) == _question_words(user_message)
+                                and any(item.get("role") == "user" for item in history or ())):
+                            # Chrome gate (2026-09-30, payment-commissions, existing conversation): "how
+                            # much commission came from cards?" went to the engine as typed, and its
+                            # clarification (a SUM of commission_percent, "cards" dropped) became the
+                            # reply, although "total commission amount for card payments" two turns
+                            # earlier had said what the user means. A transcript that already held that
+                            # clarification made it 5 of 8 turns. The clarification of a follow-up sent in
+                            # the user's own words goes back to the model once, to be answered from an
+                            # earlier turn or asked of the user; the result after it is terminal.
+                            clarification_offered = True
+                            unsettled = shaped
+                            tool_results.append({
+                                "type": "tool_result", "tool_use_id": block.id,
+                                "content": json.dumps({**_trim_for_model(shaped),
+                                                       "status": "ambiguous_wording",
+                                                       "detail": SETTLE_FROM_CONVERSATION}),
+                                "is_error": False,
+                            })
+                            continue
                         if shaped.get("status") == "decompose":
                             if decomposition_attempted:
                                 shaped = {
@@ -928,7 +977,9 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         print(f"[chat] presentation_failed error={type(exc).__name__}", flush=True)
                     break
             else:
-                final_text = final_text or TOOL_EXHAUSTED_REPLY
+                final_text = final_text or (
+                    _terminal_fallback(unsettled) if unsettled is not None else TOOL_EXHAUSTED_REPLY
+                )
         finally:
             if stream_buffer is not None:
                 stream_buffer.close()             # the _emit('reply', final_text) below stays authoritative

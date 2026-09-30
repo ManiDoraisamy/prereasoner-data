@@ -62,8 +62,9 @@ Every orchestrated query also carries `action` and `slug`. `modify` and `inspect
 slug, verifies conversation ownership, allocates IDs/revisions, and returns the authoritative `analysis` object.
 
 An empty or unknown response shape is an error, never a fabricated answer. Clarification is passed through rather
-than smoothed into a guess. Its `reason`, `unmet`, and typed evidence fields survive HTTP, MCP, RTDB streaming, and
-the browser fallback; adapters must not reduce it to a generic rephrase message.
+than smoothed into a guess; an earlier turn of the conversation may answer it first (see Routing Discipline). Its
+`reason`, `unmet`, and typed evidence fields survive HTTP, MCP, RTDB streaming, and the browser fallback; adapters
+must not reduce it to a generic rephrase message.
 
 ## Routing Discipline
 
@@ -78,6 +79,11 @@ the model never supplies identifiers, code, merge keys, or intermediate result r
 Short follow-ups that name a data value, such as `how about Belgium?`, are still data questions even when they
 repeat the current value: the orchestrator rewrites them into a complete query and calls the engine again. It must
 not replace a numeric answer with a conversational confirmation.
+A follow-up that is a complete question is sent as typed, so the engine may clarify words that an earlier turn has
+already explained ("how much commission came from cards?" after "total commission amount for card payments"). Once per
+turn, a clarification of the user's own words, in a conversation with earlier turns, goes back to the model as
+`ambiguous_wording` in a round that can call the tool. The model either sends one complete question in the earlier
+turn's words or asks the user, and the result after it is terminal.
 After the engine returns `answered`, `clarify`, or `error`, the orchestrator performs one tool-disabled presentation
 round. This keeps natural phrasing in the language model while making a terminal engine outcome structurally unable
 to start a reformulation loop. The prose is kept only while it agrees with that outcome: a scalar answer must be

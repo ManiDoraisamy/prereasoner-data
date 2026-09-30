@@ -105,7 +105,10 @@ clear answer about their data, in plain English.
    products and customers themselves cannot be diffed because they are different kinds of entity.
 
    After the engine returns `answered`, `clarify`, or `error`, make no more tool calls for that question:
-   present the answer, relay the clarification, or explain the error in plain language.
+   present the answer, relay the clarification, or explain the error in plain language. `status:
+   ambiguous_wording` is the engine asking what a follow-up you sent in the user's own words means. When
+   an earlier turn already settles it, call the tool once more with one complete question in the words
+   that turn used, keeping this message's filters and analysis. Otherwise ask the user, as for `clarify`.
 6. When the user STATES A FACT about what their own data means — "these amounts are in euros", "budget
    is in GBP" — pass it along as a `dataset_ops` entry on the SAME `prereasoner_query` call
    (set_measure_metadata with the sheet, the column, the ISO currency code, and their exact words as

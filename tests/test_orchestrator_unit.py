@@ -515,6 +515,132 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
         assert result["reply"] == reply
 
 
+COMMISSION_HISTORY = [
+    {"role": "user", "content": "total commission amount for card payments"},
+    {"role": "assistant", "content": "The commission from card payments comes to 9.28."},
+]
+COMMISSION_FOLLOW_UP = "how much commission came from cards?"
+# The engine's own clarification of the follow-up, as production returned it (2026-09-30).
+COMMISSION_CLARIFY = {
+    "status": "clarify",
+    "clarify": {"proposed": "total commission_percent", "dropped": ["came", "cards"],
+                "original_sql": 'SELECT SUM("aggregate_operand_1") AS "total_commission" '
+                                'FROM "query_calculated"'},
+}
+COMMISSION_ANSWER = {"status": "answered",
+                     "answer": {"columns": ["commission_amount"], "rows": [["9.28"]]}}
+
+
+def _clarified_follow_up(model_turns, engine_answers, history=COMMISSION_HISTORY,
+                         user_message=COMMISSION_FOLLOW_UP):
+    """A turn whose model rounds are scripted by ``model_turns``: a question string is a query call
+    with it, any other value a text reply; once the script ends, a tool-disabled round presents.
+    ``engine_answers`` scripts the engine. Returns (result, model_calls, engine_calls); each model
+    call records whether tools were offered and the tool result it was shown."""
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            last = kwargs["messages"][-1]["content"]
+            seen = json.loads(last[0]["content"]) if isinstance(last, list) else None
+            model_calls.append({"tools": "tools" in kwargs, "tool_result": seen})
+            turn = model_turns[len(model_calls) - 1] if len(model_calls) <= len(model_turns) else None
+            if isinstance(turn, dict):
+                response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                    type="tool_use", name="prereasoner_query", id=f"q{len(model_calls)}",
+                    input={"action": "create", "slug": "card_commission", **turn},
+                )])
+            else:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text=turn or "The commission from card payments comes to 9.28.")])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append(args[0])
+        return engine_answers[len(engine_calls) - 1]
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query):
+            return await orchestrator._run_turn(
+                user_message, [{"name": "payments", "data": "payment_instrument,amount\ncard,120\n"}],
+                history, engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model",
+            )
+
+    return asyncio.run(run()), model_calls, engine_calls
+
+
+def test_an_engine_clarification_the_conversation_settles_is_answered():
+    """Chrome gate (2026-09-30, payment-commissions, existing conversation): "how much commission
+    came from cards?" went to the engine as typed, and its clarification became the reply, although
+    "total commission amount for card payments" two turns earlier had said what the user means. The
+    clarification of a follow-up sent in the user's own words goes back to the model once, with the
+    tools; the model answers it from the earlier turn, and the next result is terminal."""
+    settled = "total commission amount for card payments"
+    result, model_calls, engine_calls = _clarified_follow_up(
+        [{"question": COMMISSION_FOLLOW_UP}, {"question": settled}],
+        [COMMISSION_CLARIFY, COMMISSION_ANSWER])
+    assert engine_calls == [COMMISSION_FOLLOW_UP, settled], engine_calls
+    offered = model_calls[1]
+    assert offered["tools"], "the clarification goes back to a round that can call the tool"
+    assert offered["tool_result"]["status"] == "ambiguous_wording", offered["tool_result"]
+    assert offered["tool_result"]["detail"] == orchestrator.SETTLE_FROM_CONVERSATION
+    assert offered["tool_result"]["clarify"] == COMMISSION_CLARIFY["clarify"]
+    assert [call["tools"] for call in model_calls] == [True, True, False]
+    assert result["reply"] == "The commission from card payments comes to 9.28."
+    assert [trace["engine"]["status"] for trace in result["traces"]] == ["clarify", "answered"]
+
+    # The answer is written in the earlier turn's words, so the user's words are not restored.
+    appended = COMMISSION_FOLLOW_UP + " meaning the total commission amount for card payments"
+    _result, _model_calls, engine_calls = _clarified_follow_up(
+        [{"question": COMMISSION_FOLLOW_UP}, {"question": appended}],
+        [COMMISSION_CLARIFY, COMMISSION_ANSWER])
+    assert engine_calls == [COMMISSION_FOLLOW_UP, appended], engine_calls
+
+
+def test_an_engine_clarification_is_settled_at_most_once():
+    ask = "Do you want the commission amount from card payments, or the commission rate?"
+    # The same words again would get the same clarification: it stands, and the engine is not asked.
+    result, model_calls, engine_calls = _clarified_follow_up(
+        [{"question": COMMISSION_FOLLOW_UP}, {"question": COMMISSION_FOLLOW_UP}, ask],
+        [COMMISSION_CLARIFY])
+    assert engine_calls == [COMMISSION_FOLLOW_UP]
+    assert [call["tools"] for call in model_calls] == [True, True, False]
+    assert model_calls[2]["tool_result"]["status"] == "clarify"
+    assert result["reply"] == ask
+    # A second clarification is terminal.
+    _result, model_calls, engine_calls = _clarified_follow_up(
+        [{"question": COMMISSION_FOLLOW_UP}, {"question": "total commission for card payments"}],
+        [COMMISSION_CLARIFY, COMMISSION_CLARIFY])
+    assert len(engine_calls) == 2 and [call["tools"] for call in model_calls] == [True, True, False]
+    # The model may ask the user itself; that reply is the clarification and adds no number.
+    result, model_calls, engine_calls = _clarified_follow_up(
+        [{"question": COMMISSION_FOLLOW_UP}, ask], [COMMISSION_CLARIFY])
+    assert (len(model_calls), engine_calls, result["reply"]) == (2, [COMMISSION_FOLLOW_UP], ask)
+    result, _model_calls, _engine_calls = _clarified_follow_up(
+        [{"question": COMMISSION_FOLLOW_UP}, "It is 9.28, as before."], [COMMISSION_CLARIFY])
+    assert "9.28" not in result["reply"], result["reply"]
+
+
+def test_a_clarification_nothing_earlier_can_settle_is_terminal():
+    """No offer for a first question, or for a question the model already wrote from the
+    conversation: the engine's clarification goes to a tool-disabled presentation round."""
+    for history, question in (([], COMMISSION_FOLLOW_UP),
+                              (COMMISSION_HISTORY, "total commission from card payments")):
+        _result, model_calls, engine_calls = _clarified_follow_up(
+            [{"question": question}, "Do you mean the commission amount or the rate?"],
+            [COMMISSION_CLARIFY], history=history)
+        assert engine_calls == [question]
+        assert [call["tools"] for call in model_calls] == [True, False], (history, question)
+        assert model_calls[1]["tool_result"]["status"] == "clarify"
+
+
 def test_named_workbook_tool_contract_and_catalog_boundary():
     query_tool = next(tool for tool in orchestrator.CLAUDE_TOOLS
                       if tool["name"] == "prereasoner_query")
@@ -1327,6 +1453,9 @@ TESTS = [
     test_recalculation_identity_and_scalar_presentation_are_grounded,
     test_presentation_that_states_the_engine_value_in_prose_is_kept,
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
+    test_an_engine_clarification_the_conversation_settles_is_answered,
+    test_an_engine_clarification_is_settled_at_most_once,
+    test_a_clarification_nothing_earlier_can_settle_is_terminal,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
     test_followup_prompt_separates_geography_from_output_currency_and_executes_yes,

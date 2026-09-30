@@ -1081,3 +1081,34 @@ appended its dataset ops, and the 503 does not return the conversation id, so a 
 conversation and append the ops twice. Queueing belongs to the engine's admission, and that is unchanged here: a longer
 window has to be measured against the 180 s engine call and the 240 s turn (a decomposition's p90 is 140 s), which is
 the capacity item already open for the owner.
+
+## An engine clarification that an earlier turn settles is answered from it (2026-09-30)
+
+The payment-commissions follow-up "how much commission came from cards?" missed in both existing-conversation Chrome
+passes. The model sent it as typed, as rule 3 says for a complete question. The engine read it literally: it proposed
+"total commission_percent" and dropped "came" and "cards". The clarification became the reply, although "total
+commission amount for card payments" two turns earlier had said what the user means. The dataset marks the line
+`chat:` because the conversation, not the engine, resolves it, and the engine side is unchanged.
+
+Replayed on claude-sonnet-5 with the engine's clarification, the miss depends on the transcript. It happened in 0 of 8
+turns on the fresh pass's transcript and 1 of 8 once the question had been asked before (1 of 12 in the replay after
+the first gate). It happened in 5 of 8 on the smoke transcript, which already held one relayed clarification. With
+that exchange removed from the same transcript it happened in 0 of 8.
+
+The engine's clarification of a follow-up sent in the user's own words now goes back to the model once, as
+`status: ambiguous_wording` with the engine's `clarify`, in a round that can call the tool. When an earlier turn
+settles it, the model sends one complete question in that turn's words. `_verbatim_standalone` is skipped for that
+question, since the user's words alone are what the engine could not read. Otherwise the model asks the user. The
+reply is then grounded as a clarification, so it may add no number. The bounds are structural:
+
+- there is one offer per turn, and none for a first question or a question the model already rewrote;
+- the result after the offer is terminal;
+- the same words sent again are not sent to the engine, and the clarification stands.
+
+After the change, the smoke transcript missed in 0 of 8 turns: 4 answered the clarification from the earlier turn and
+4 rewrote the follow-up directly. The fresh transcript missed in 0 of 8. Clarifications that nothing earlier settles
+were asked of the user in 8 of 8 turns each: "total amount in GBP" after a count (convert or filter) and "total amount
+by region" when the data has no region. One looser reading was measured and kept. After only "how many card payments
+are there?", the follow-up was resolved to the commission amount in 7 of 8 turns. In 5 of those the model rewrote it
+directly, as rule 4's example already teaches, and in 2 of 3 offers it answered the clarification. The engine's own
+reading there was a sum of percentages.
