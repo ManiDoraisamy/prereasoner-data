@@ -7,6 +7,139 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-30 — COMMITTED, not deployed: the Europe/GBP family, the 7B serving defects, a question-family suite
+
+The owner reported conversation `c_c4468…` (customer-orders, production `00122-zc4`): "total amount in France in
+US dollars" → $1,103.67 (right); "in GBP for the whole of Europe?" → "For all of Europe, your total comes to about
+£810 GBP"; two follow-ups later the assistant said it could not convert currencies. The stored revisions
+(`chat.analysis_revision`, read-only) show the orchestrator sent the engine sensible questions: "total amount in
+Europe in GBP", "which countries are included in the total amount for Europe in GBP", "total amount for all
+European countries in GBP". The engine:
+
+- answered 810: the plan converted to GBP **and** filtered `currency = 'GBP'` (the five London rows at rate 1);
+  the 13 European rows come to 1,917.48 GBP;
+- clarified the next two ("'in GBP' can mean convert ... or filter" and "not every set-operation branch produces a
+  scalable numeric aggregate": "countries" had become the world column to list);
+- and the reply turned that clarification into "the exchange rate info I'd need isn't available".
+
+`00125-jsx` (`a5d4210`) serves the same engine code for all of this (reproduced locally on `a5d4210`).
+
+### Merged into main from Codex
+
+`eedee7d` (rollout record) fast-forwarded, and its uncommitted `7b-production` work, with four changes:
+
+- Its tests used "British pounds", which matches no cell of the currency column, so they passed on the broken
+  engine. Each now also runs the wording that failed ("in GBP"), and the dataset `eval.txt` carries it.
+- Its prompt rule quoted the reported conversation (a question-specific patch); it is restated generally.
+- Two `eval.txt` chat lines only made sense after the wrong £810 answer (the "why is France not included?" and
+  "yes" → per-currency table); the orchestrator test that carries that exact history keeps them.
+- Its new prompt unit test was not in `TESTS`, so the reported 20/20 never ran it. It is registered (22/22).
+
+### Fixes (each with a test that fails on the old code for the production reason; details in DECISIONS.md)
+
+- **Output currency is not a row filter.** `knowledge_tables` claims the conversion phrase from own-value filters,
+  and the currency verdict treats convert + keep-only-the-target as the filter reading. Europe in GBP → 1,917.48;
+  Belgium in USD → 365.63; "total amount in GBP" → 7,208.74 (every order converted).
+- **A value the upload holds is the upload's.** Own values are claimed before the world resolver reads the
+  question: "how many orders in GBP" counted Guinea-Bissau (0) and now counts 5.
+- **Place nouns and names.** A world word is the answer only under a cue ("which", "by", "how many countries", a
+  ranking); a continent demonym resolves to its continent exactly; the meaning walk takes exact names before
+  fuzzy ones across hops ("North American" filtered the United States); the coverage gate reads 1–3 word places,
+  demonyms and the counted noun as covered ("the United Kingdom", "European", "North American", "leads").
+- **Compose.** The uploaded sheet's own name is not a grouping ("GBP orders" grouped by `ordered`); a learned
+  TOPN/SORT needs a ranking word ("… in North America in USD" was the top 3 customers); `routing.realizes` is the
+  one required-op check, and the local-composition branch now asks it.
+- **Routing (the largest accuracy fix).** Serving asks `route()` alone. The `shared_composition` branch gave
+  compose 180 of Spider DEV's 1,034 questions (top-N, sort, having, yoy, time filter, share), with 3 right against
+  the planner's 146. Production answered those shapes from a path that Spider never measures.
+- **Measure names.** `read_op_all` names a two-word measure ("total weight kg for deliveries in Germany" was
+  COUNT(*) = 1; now 2).
+- **7B serving.** A compound named request decides decomposition from `search_pool` before any decode
+  (`test_complex_datasets` passes again, 7/7); a decode past its budget abstains and is recorded
+  (`proposer_abstention`) instead of a 200 error; a busy model reaches the 503; `/api/dimension` waits 15 s, not
+  forever; `PoolSelection.search_top` deleted.
+- **Place lookups.** `build_qid_world` creates `lower(name)` indexes on `city`/`country` (148.6 ms seq scan per
+  value before); `PgQuery.ambiguities` and value-membership routing are one lookup per table; routing ties go by
+  type name, not hash order.
+- **Chat.** The prompt keeps place and output currency apart, executes a "yes" as the offered action, and never
+  substitutes a cause the tool did not give; the model now receives the answer's filter labels (`filters`) and
+  must describe exactly those rows.
+
+### The sweep
+
+189 generated questions over customer-orders, customers-orders, orders-tiers, formesign-contracts,
+formfacade-leads and neartail-shipping, golds from the CSVs + a fixed geography map + the stored ECB rate (0.5%).
+On the code as of 02:19 (currency, own-value, place-noun, compose fixes in): 168 exact, 6 averages that clarify
+(accepted: AVG conversion is not supported and declines), 13 clarifications and 2 wrong answers. The 15 were two
+more families (demonyms/counted nouns, two-word measures), fixed afterwards; all 15 pass on the final code.
+`tests.test_question_families` keeps 34 of these as a live suite (registered in `ENGINE_SUITES`).
+
+### Latency (local Ryzen 9 8945HS, 8 threads, remote DB through the proxy)
+
+- **Mode does not matter.** Five own-data eval questions, cold decode each serve, alternating which mode ran first:
+  python wall mean 15.9 s / decode 4.3 s / execution 1.16 s; sql 14.1 s / 4.6 s / 0.81 s; the same answer every time.
+  The first serve of a question is slow whichever mode runs it (13.6–27.2 s), and the second fast (6.6–11.0 s):
+  llama.cpp reuses the KV cache of the prompt prefix it has just evaluated.
+- **The 7B decode is greedy (temperature 0) XiYan generation of one SQL string.** Across the 15 own-data demo
+  prompts it read the prompt at a median 62.8 tok/s and wrote SQL at 5.1 tok/s. A typical question is a
+  200–670-token prompt (3.2–10.6 s) plus 5–50 SQL tokens (1–10 s), 6–14 s in total (median 7.5 s). A compound
+  query writes 200–232 tokens (47–57 s); named compound requests no longer decode.
+- **World questions never decode.** Production's four world requests in the reported conversation took 13.6–29.4 s
+  with no proposer time at all: about 120 SQL statements (sql_ms 3.9–10 s), 12 connections, encode 1–4 s, and 6–7 s
+  of serve's own time. Tonight's lookup batching removes ~12 round trips per request. Profile `serve` next.
+- **Prompt-lookup speculative decoding: rejected.** It needs `logits_all=True` (+5 GB at the 8k context), which made
+  prefill 30–40% slower. It changed the greedy SQL of 2 of the 15 prompts (batched verification is not
+  bit-identical), and it was a net loss on the short queries that dominate (6.2 → 7.9 s). Long outputs gained
+  only 54 → 50 s.
+- **Next measured levers.** (a) Put the schema before the question in the proposer prompt, so follow-ups in one
+  conversation reuse the schema's KV cache (3–10 s of prefill each). This changes XiYan's trained format, so it needs
+  a Spider DEV run before promotion. (b) A GPU (L4) for the proposer alone would cut both phases by an order of
+  magnitude, but it is an always-on cost for the owner to decide. (c) Lower quantization trades accuracy for about
+  20%, which is not worth it. TPUs have no llama.cpp backend.
+
+### Open
+
+For the owner:
+
+1. **Deploy** these commits the usual way: no-traffic, smoke `/api/healthz`, `tests.test_datasets` and
+   `tests.test_question_families` on the exact commit, flip. Then the **Chrome gate** with `?load=<dataset>` on the
+   deployed build, on a fresh and an existing conversation. Neither happened tonight; the last Chrome gate was
+   2026-09-25, on the 0.5B.
+2. `REQUIRE_ORCHESTRATOR_TESTS=1 python -m tests.test_orchestrator` with the Anthropic key. The prompt rules and the
+   new `filters` field have unit tests only (no key here).
+3. Optional: the `lower(name)` indexes on the live world DB now (`DECISIONS.md` has the DDL); otherwise they arrive
+   with the next `build_qid_world` rebuild.
+4. **Sonnet 5.5** costs the same as Sonnet 5 ($2/$10 per MTok). To switch, the forced recalculation round
+   (`orchestrator.py`: `tool_choice {"type": "tool"}`, a 400 on Sonnet 5.5) must become `auto` plus an instruction
+   and a check that the call happened. Then change `anthropic_model` (infra/orchestrator.tf) and run the live suite.
+
+For Codex (7B):
+
+5. The arbiter is still the 0.5B fit (`model_matched_arbiter: false`).
+6. (Fixed tonight, verify in production.) Serving vs evaluation: `knowledge_compose.py`'s `shared_composition`
+   (2026-09-10) let compose own any plan with a composition op in every served request; the evaluator asks
+   `compose_owns` alone. On Spider DEV, with serving's gate, compose served 180/1,034 questions and got 3 right;
+   the evaluated planner gets 146 of those. The branch is removed, so serving now asks `route()` alone.
+7. Cold start 5m50s healthy / 9m45s total; `WORLD_LOCK` serializes a whole request with concurrency 8 and a 15 s
+   admission, so concurrent heavy requests get 503s.
+
+Known gaps kept honest:
+
+8. "average amount in Europe in USD" declines (AVG conversion is not implemented); it clarifies, never answers wrong.
+9. A world request still makes ~80 statements, 7 liveness pings and 6–7 s of self time in `serve` (production
+   `[timing]` lines, 2026-09-29). Batching the per-column `_dominant_nongeo_type` lookups is the next step.
+
+Commits (main, not deployed): `17b3a40` (Codex: ?load matrix, FX reply grading), `c55f00a` (currency and place
+reading), `b35f971` (7B serving), `f1c0e84` (place lookups), `abcfb82` (chat), `7d5d61d` (counted-noun bound),
+`06819d6` (routing), and the records commit. Gates on the final code: every hermetic suite (33 suites +
+`test_complex_datasets` 7/7); live `test_world` 55/55, `test_nongeo`, `test_world_joins` 6/6, `test_route_wired`,
+`test_geo` 71/71, `test_schema_probes`, `test_datasets` (sql, python, verify, default), `test_question_families`
+34/34; `regress.world_cases` no failures; `regress.world_capability` 24 pass / 7 clarify / 4 fail, identical case by
+case to the previous run; Playwright fixture suite 34/34; `npm run test:web` passes. Skipped: `tests.test_orchestrator`
+(no Anthropic key).
+
+---
+
 ## 2026-09-28/29 — COMMITTED, not deployed: eleven follow-ups (1–6 `6d8b7dd`, 7–11 `e4896b1`) on the 7B proposer that production runs
 
 The owner committed the first six with the Excel add-on work as `6d8b7dd` ("office addon", pushed). Codex's

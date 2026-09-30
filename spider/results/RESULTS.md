@@ -1,5 +1,24 @@
 # Spider Results
 
+## Serving answered 180 DEV questions from compose (2026-09-30; measured, fixed in `06819d6`)
+
+The evaluator (`spider/probe/full_eval.py`) lets compose own a question only when `compose_owns` accepts it, so every
+DEV question is scored on the typed-AST planner. Serving did not. From `0397569` (2026-09-10) to `06819d6`, the compose
+host also gave compose any plan with a composition op whenever the request carried an analysis context, and every
+served request does. Measured with serving's own gate on all 1,034 DEV questions (`whole_db`, row cap 5,000, the
+learned primitive head's depth evidence, then a composition op in `ComposeEngine.run(..., world=None)`'s plan):
+
+| | questions | strict correct |
+|---|---|---|
+| served by compose | **180/1,034** (17.4%) | compose **3/180** |
+| same questions, scored planner (frozen replay above) | 180 | **146/180** |
+
+Composition ops on those 180: having 51, top-N 43, yoy 40, time filter 29, sort 25, share 7, running 3. So production
+answered about 722/1,034 of DEV-shaped questions correctly, not the 865 above. The measurement ran on commit `abcfb82` (code
+clean; only documentation uncommitted) against the frozen replay's per-example verdicts; the two scripts are
+session scratch, not committed. `06819d6` removes the branch, and serving now asks `route()` alone, as evaluation does. The evaluator's own
+numbers do not change: it never had the branch.
+
 ## 7B hardening-source full CPU replay (2026-09-29; not a deployment)
 
 The current release-hardening source was evaluated end to end on all 1,034 Spider DEV

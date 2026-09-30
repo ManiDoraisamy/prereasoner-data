@@ -872,3 +872,112 @@ re-expression of a world-filtered scalar (`_same_answer`) read this answer, and 
 now compares a number through the registered `decimal_cmp`, whatever the column holds: a decimal aggregate, a
 count, a stored decimal, a year. A text value keeps its text comparison. A cell that is not a number fails a
 numeric comparison instead of passing every 'greater than'. Ordering already used `COLLATE decimal`.
+
+## A currency named as the output unit is not also a row filter (2026-09-30)
+
+Production, customer-orders: "total amount in Europe in GBP" answered £810. The plan joined the rates and
+converted to GBP, and it also kept only the rows whose currency was GBP, the five London orders at rate 1. The 13
+European rows (810 GBP, 322 EUR in Brussels, 970 EUR in Paris) come to 1,917.48 GBP. Every "in <ISO code>" total
+over a sheet that holds that code did the same: "total amount in Belgium in USD" kept no rows at all. The world
+path already claimed the conversion phrase from the world filters ("in US dollars" is not the country United
+States). `_own_value_matches` still read the whole question, so the code inside the phrase matched a cell of the
+currency column. It now reads the question with the conversion phrase claimed. A currency named outside the
+phrase still filters ("GBP orders in Europe in USD"), and a COUNT "in GBP" is still a row selection.
+
+The currency verdict (`engine/calculations/specifications.py`) called that plan satisfied, because every branch
+applied the typed rate. A branch that also keeps only the rows already in the target realizes one phrase twice,
+and it is now the filter reading, which is ambiguous. Selection takes the best-ranked query that converts every row.
+
+A value the upload holds is claimed by the upload before the world resolver reads the question. "how many orders
+in GBP" counted 0: "GBP" is in no alias list, and the resolver's embedding fallback read it as Guinea-Bissau. It is
+now the currency filter the sheet answers, 5.
+
+## A place noun names the rows, not the answer (2026-09-30)
+
+The assistant's accepted offer, "total amount for all European countries in GBP", made "countries" the world
+column to project. The world path returned DISTINCT countries instead of the total, and the currency verdict
+declined. A named TEXT world column (`_world_word_is_output`) is the answer only under a cue that puts it there:
+which/what, by/per/each/every, list/show/name, a ranking word, an aggregate word right before it ("What is the
+total currency?" lists each currency with its row count, as before), or, for a COUNT, a count cue that governs it
+("how many countries"). "how many orders from European countries" counts orders, 13.
+
+A place is read as one name. The coverage gate (`KnowledgeQuery._uncovered`) judged places word by word and
+declined correct plans: "united" in "the United Kingdom" surfaced another country, "north" in "North American" a
+town called North, and "European" Germany (Q183, 0.75). A span of one to three words that names a qid the SQL filters
+on now covers its words, and a demonym is its place plus '-n'/'-an'. "the United States in USD" had passed only
+because "united" and "states" are USD's own currency words.
+
+The resolver (`EntityQuery._resolve`) reads a continent's demonym exactly ("North American" is North America, Q49).
+The embedding had put it nearer the United States, and "orders from North American countries" filtered one
+country. The stem is tried only for continents, where it must itself be a continent; for every type, "plan" would
+read as "pl" and "can" as "ca". The meaning walk (`meaning_filter`) then took the nearest hop first, and there the
+fuzzy "American" → United States (0.85, via `city.country`) beat the exact continent one hop further. It now walks
+the graph for exact names first and falls back to fuzzy ones, the rule `_resolve` already applied inside one lookup.
+
+## A counted noun and a two-word measure name what the aggregate uses (2026-09-30)
+
+The sweep of the shipped sheets found two more readings that dropped part of a question. "how many leads from
+Europe" was declined: the sheet calls its rows "responses", so "leads" was no schema word, and the coverage gate's
+fuzzy fallback put it 0.85 from the city of Leeds. The noun a count cue governs is what COUNT counts: the head of
+the words after "how many" or "number of", up to the first grammar word. Only the head is covered, so "German" in
+"how many German leads" is still a place the query must filter on.
+
+"total weight kg for deliveries in Germany" answered COUNT(*) = 1 instead of 2. The measure matcher in
+`EncoderQuery.read_op_all` knew one-word column names only. So `weight kg` went unnamed, and the table noun
+"deliveries" read as "count the deliveries", which is the rule for "total customers". A column named by all of its
+words, or by a first word that starts no other numeric column ("total weight for deliveries"), is now the measure.
+The one-word rule and the table-noun count are unchanged.
+
+## Compose: the sheet's name, learned rankings, and required ops (2026-09-30)
+
+"total amount of GBP orders in Europe" listed five items. `_mentions` matches a text column by a loose stem
+('ordered'[:5] == 'order'), so "orders", the sheet's own name, grouped by the `ordered` column. The names of the
+uploaded sheets under the view stack are now claimed before that match; a column the question names outright still
+groups.
+
+"total amount in North America in USD" was composed as the top 3 customers by amount, over the USD rows only. The
+learned head fired TOPN with no ranking word in the question, and the default top 3 grouped by the first text column.
+TOPN and SORT change which rows answer, so they now need a ranking word, a number, or an explicit sort cue, like the
+other operand-gated primitives.
+
+That plan should never have owned the question. The compose host's local-composition branch (`shared_composition`,
+2026-09-10) let compose own any plan with a composition op whenever the request carried an analysis context, which
+every served request does. It skipped `route()` entirely, including its required-op check, so a question that
+needs a `convert` was served by a plan with none. The Spider evaluator never had that branch: it asks
+`compose_owns` alone, as `docs/ARCHITECTURE.md` and `tests/test_routing.py` say it must ("own-data HAVING / share /
+group-by / yoy ... the typed-AST planner owns them"). Measured on Spider DEV with serving's own gate (the head's
+depth evidence, then a composition op), serving handed 180 of 1,034 questions to compose. Compose answered 3 of them
+correctly, and the planner the evaluator scores answered 146. The branch is removed: serving asks `route()` alone,
+and a plan it gives compose is still lowered through the shared deterministic plan. For those question shapes,
+production now runs what Spider measures.
+
+## Decomposition before the decode, and a decode past its budget abstains (2026-09-30)
+
+`tests.test_complex_datasets` failed on the CPU 7B. A named compound request decoded the whole prompt before asking
+the search whether it is compound. The decode ran past its 60 s budget, and the request failed instead of asking for
+a decomposition. Compound structure is the search's reading alone (`compound_candidate`), so `_serve_ast` now reads it
+from `search_pool` first, and a compound named request never decodes. `select_query` takes the search pool it
+already ran (`searched=`), and the unused `PoolSelection.search_top` is gone.
+
+A decode past its budget used to escape the selection, and `TableQuery.serve` turned it into a 200 response whose
+error was "SQLProposerUnavailable: SQL decoding exceeded its CPU budget". Greedy decoding of the same prompt takes as
+long again, so a retry cannot help. The proposer raises `SQLDecodeBudgetExceeded`, and `select_query` serves the
+search pool without proposals and records `proposer_abstention` in the selection. One Spider DEV question in the
+frozen replay hit the budget and was scored wrong, so this can only add. A busy or closed model is different, since
+a retry can succeed. `serve` no longer swallows it, and it reaches the server's 503 `{retryable: true}`.
+`/api/dimension` now waits on the shared engine lock for `QUEUE_TIMEOUT_SECONDS` and answers the same 503; before, it
+waited without a bound.
+
+## Place lookups are indexed and batched (2026-09-30)
+
+`knowledgebase."city"` (200,886 rows) had no index on `lower(name)`. `db/init.sql` indexes the retired friendly
+tables, and the qid projections that replaced them were never indexed. Each served ambiguity check was a parallel
+sequential scan (148.6 ms for "paris"), run once per distinct uploaded place. `db/sync/build_qid_world.py`, the
+owner of both projections, now creates `lower(name)` indexes on `"city"` and `"country"`, and
+`PgQuery.ambiguities` makes one `= ANY(...)` lookup for all values. Value-membership routing
+(`EntityQuery._value_membership_routes`) likewise made one lookup per column, seven for the customer-orders sheet,
+and now makes one per table. Its tie between two types for one value (Georgia) went by hash order and now goes by
+type name. A world request on that sheet issued 88 statements locally before these changes. The live database gets
+the indexes on its next rebuild. Creating them sooner is a production database change for the owner to approve:
+`CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_kb_city_lower_name ON knowledgebase."city" (lower(name));` and the same
+for `"country"`.

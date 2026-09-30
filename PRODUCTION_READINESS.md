@@ -1,5 +1,31 @@
 # Production-readiness workstream
 
+## Correctness fixes on main, not deployed — 2026-09-30
+
+Production `prereasoner-api-00125-jsx` (`a5d4210`) still answers the owner's customer-orders conversation
+wrong: "total amount in Europe in GBP" is 810 (the London rows alone; the 13 European rows are 1,917.48 GBP),
+and "total amount in Belgium in USD" keeps no rows. The fixes are on main (see `DECISIONS.md`, 2026-09-30
+entries): an output currency is never also a row filter; a value the upload holds is never read as a
+country ("how many orders in GBP" counted Guinea-Bissau); a place noun is the scope, not the answer; a place
+is read as one name, and a continent's demonym as that continent, in the resolver, the meaning walk and the
+coverage gate; the sheet's own name is not a compose grouping; a learned ranking needs a ranking word; a counted
+noun is what COUNT counts; a measure named in two words is summed, not counted; and serving decides compose
+ownership with `route()` alone, as evaluation does. Before that, 180 of Spider DEV's 1,034 questions were served by
+compose (3 correct) instead of the evaluated planner (146 correct on the same questions). `tests.test_question_families` (new, live) holds these
+families to CSV-derived golds, FX to 0.5%.
+
+Before this reaches production:
+
+1. Build and deploy no-traffic; smoke `/api/healthz`; run `python -m tests.test_datasets` and
+   `python -m tests.test_question_families` against the exact commit; then flip.
+2. Chrome gate on the deployed build, fresh and existing conversations, with `?load=<dataset>`
+   (`regress/browser_matrix.js` now opens the public demos that way). Not run tonight: it needs a
+   deployed build and an authorized browser session.
+3. `REQUIRE_ORCHESTRATOR_TESTS=1 python -m tests.test_orchestrator` with the Anthropic key. It was skipped
+   here (no key), so the prompt changes are covered by unit tests only.
+4. Optional, owner's call: the `lower(name)` indexes on the live `knowledgebase."city"`/`"country"` (DDL in
+   `DECISIONS.md`); otherwise they arrive with the next `db.sync.build_qid_world` rebuild.
+
 ## Deployment completion and remaining live-browser gap — 2026-09-30
 
 This is the current release status and supersedes the dated pre-deployment checkpoints below.
