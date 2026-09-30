@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import sys
 import threading
 import urllib.error
@@ -349,6 +350,83 @@ def main():
             ok(cross is not None and 'customer' in leaves.get(cross['inputs'][0], '')
                and 'categor' in leaves.get(cross['inputs'][1], ''),
                'customer sort is primary even though categories were mentioned first')
+
+        # Chrome pass, 2026-09-30: replies that the numeric grading passed still said things the
+        # result did not. Each case replays the engine result of the reported turn.
+        def presented(message, shaped, history=None):
+            seen = {}
+
+            async def answer(_question, _tables, _job_id, _conversation, **kwargs):
+                seen["slug"] = str((kwargs.get("analysis") or {}).get("slug") or "")
+                return shaped
+
+            with patch("orchestrator.orchestrator.engine_client.call_query", answer):
+                return asyncio.run(chat(message, history=history))["reply"], seen.get("slug", "")
+
+        usd = [{"specification": "currency", "status": "satisfied", "realization": "converted",
+                "target": "USD"}]
+
+        print("[6] a figure with no currency is presented as a bare number")
+        price, _ = presented("average price for VIP customers", {
+            "status": "answered",
+            "sql": "SELECT AVG(price) AS avg_price FROM orders WHERE customer_segment = 'VIP'",
+            "answer": {"columns": ["avg_price"], "rows": [["250.77935327248009322198"]]},
+        })
+        ok("250.78" in price and not re.search(r"[$£€]|\b(?:dollars?|usd|pounds?|euros?)\b", price, re.I),
+           f"the average of a plain price column names no currency (got {price!r})")
+        duration, _ = presented("average duration", {
+            "status": "answered", "sql": "SELECT AVG(duration) AS avg_duration FROM leads",
+            "answer": {"columns": ["avg_duration"], "rows": [["263.96129174961291749613"]]},
+        })
+        ok(re.search(r"26[34]", duration) and not re.search(r"second|minute|hour", duration, re.I),
+           f"the average of a plain duration column guesses no unit (got {duration!r})")
+
+        # The one row of the category-gaps demo holds the SECOND of each top 2 (Cleo spent 340 and
+        # Office earned 300). This is a prompt rule, so the check is a rate: the prompt before it
+        # promoted Ava or Travel in 6 of 8 replies and this one in 0 of 24. "At most 1 of 4" fails
+        # about 95% of the time at the old rate and about 1% of the time at a 5% rate.
+        print("[6] a row from a top N is not promoted to the top")
+        gaps_prompt = (Path(__file__).resolve().parents[1] / "web" / "public" / "dataset"
+                       / "complex-category-gaps" / "prompt.txt").read_text(encoding="utf-8").strip()
+
+        async def gap_replies():
+            async def answer(*_args, **_kwargs):
+                return {"status": "answered",
+                        "answer": {"columns": ["customer_name", "sum", "category", "top_categories_sum"],
+                                   "rows": [["Ava", 200, "Travel", 240]]}}
+
+            with patch("orchestrator.orchestrator.engine_client.call_query", answer):
+                return [turn["reply"] for turn in
+                        await asyncio.gather(*(chat(gaps_prompt) for _ in range(4)))]
+
+        gaps = asyncio.run(gap_replies())
+        promoted = [reply for reply in gaps if re.search(
+            r"\b(?:your|the)\s+(?:top|highest|biggest|largest|best|leading|number[- ]one|#\d)"
+            r"(?:[-\s](?:spending|earning|selling|grossing|performing|revenue))?\s+"
+            r"(?:spender|customer|category|earner|buyer)\b", reply, re.I)]
+        ok(all("Ava" in reply and "Travel" in reply for reply in gaps) and len(promoted) <= 1,
+           f"Ava and Travel are two of a top 2, not the top of it (promoted in {promoted!r} of {len(gaps)})")
+
+        print("[6] a reply leaves out the figure of an earlier turn")
+        discounted, _ = presented(
+            "total amount in France in US dollars after customer tier discount",
+            {"status": "answered", "calculations": usd,
+             "answer": {"columns": ["total_usd_and_net_amount"], "rows": [["995.26575"]]}},
+            history=[
+                {"role": "user", "content": "total amount in France in US dollars"},
+                {"role": "assistant", "content": "Your total for France comes to $1,101.44 in US dollars."},
+            ])
+        ok("995.27" in discounted and "1,101" not in discounted and "1101" not in discounted
+           and re.search(r"\$|\busd\b|us dollars?", discounted, re.I),
+           f"the discounted total stands alone, in its verified currency (got {discounted!r})")
+
+        print("[7] an analysis is named for its measure, not its filter")
+        _, slug = presented("total amount in France in US dollars", {
+            "status": "answered", "calculations": usd,
+            "answer": {"columns": ["total_usd"], "rows": [["1101.435"]]},
+        })
+        ok(bool(slug) and not re.search(r"franc|french|usd|dollar", slug, re.I) and len(slug) <= 40,
+           f"the new workbook's name survives a change of place or currency (got {slug!r})")
 
         # server wiring — POST /chat returns a well-formed envelope (cheap, no tool needed).
         print("[S] POST /chat server envelope")

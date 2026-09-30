@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 import uuid
 from decimal import Decimal
 from typing import Any
@@ -25,7 +26,7 @@ from typing import Any
 import httpx
 
 from engine import dataset_attestation, request_timing
-from engine.analysis import AnalysisError, validate_analysis_spec
+from engine.analysis import MAX_ANALYSIS_SLUG_BYTES, AnalysisError, validate_analysis_spec
 from engine.decomposition import DecompositionError, validate_decomposition
 from engine.request_validation import RequestValidationError, validate_question
 from mcp_server import engine_client
@@ -173,7 +174,8 @@ CLAUDE_TOOLS = [
                 },
                 "slug": {
                     "type": "string",
-                    "description": "A concise snake-case name for the analysis, such as total_sales.",
+                    "description": "A concise snake-case name for the analysis, at most "
+                                   f"{MAX_ANALYSIS_SLUG_BYTES} characters, such as total_sales.",
                 },
                 "analysis_id": {
                     "type": "string",
@@ -210,6 +212,12 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
                and str(view.get("label") or "").startswith("where ")]
     if filters:
         out["filters"] = filters
+    # The currency the engine verified the answer is in, so the reply has one to name and an answer
+    # without it is visibly unitless. The model wrote "$250.78" for the average of a plain `price`
+    # column, and "$128,831,117.68" for a sheet titled in pounds (Chrome pass, 2026-09-30).
+    currency = _output_currency(shaped)
+    if currency:
+        out["currency"] = currency
     if shaped.get("sql") is not None:
         out["sql"] = shaped["sql"]
     if shaped.get("clarify") is not None:
@@ -344,8 +352,40 @@ def _output_currency(shaped: dict[str, Any]) -> str:
     return ""
 
 
-def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
-    """Never let optional presentation prose contradict a terminal engine outcome."""
+# Currency signs as Unicode classes them (category Sc): $, £, €, ¥, ₹ and the rest of the BMP's.
+_CURRENCY_SIGNS = re.escape("".join(
+    chr(point) for point in range(0x10000) if unicodedata.category(chr(point)) == "Sc"
+))
+# A sign written against an amount: before it ("$250", "US$ 250") or after it ("250 €").
+_AMOUNT_SIGN = re.compile(
+    rf"(?:(?<![A-Za-z])[A-Z]{{1,3}})?(?P<before>[{_CURRENCY_SIGNS}])\s?(?=\d)"
+    rf"|(?<=\d)\s?(?P<after>[{_CURRENCY_SIGNS}])"
+)
+
+
+def _given_currency_signs(shaped: dict[str, Any], prose: str, asked: str) -> str:
+    """Remove a currency sign the turn never gave.
+
+    A sign against an amount stays when the engine satisfied a currency calculation for the answer
+    (a conversion, a unit, a currency filter), or when that sign is in what the user asked or in the
+    result the model was shown, such as a sheet titled "over £5000". Any other sign is the model's
+    assumption, and the amount stands without it: "$250.78" for the average of a `price` column
+    becomes "250.78". A currency written as a word is left to the prompt.
+    """
+    if any(isinstance(calculation, dict) and calculation.get("specification") == "currency"
+           and calculation.get("status") == "satisfied"
+           for calculation in shaped.get("calculations") or ()):
+        return prose
+    given = asked + json.dumps(_trim_for_model(shaped), ensure_ascii=False)
+    return _AMOUNT_SIGN.sub(
+        lambda match: match.group(0) if (match.group("before") or match.group("after")) in given else "",
+        prose,
+    )
+
+
+def _grounded_presentation(shaped: dict[str, Any], presentation: str, asked: str = "") -> str:
+    """Never let optional presentation prose contradict a terminal engine outcome. `asked` is the
+    user's message and the question the engine answered."""
     fallback = _terminal_fallback(shaped)
     if shaped.get("status") != "answered":
         # A presentation model can make a clarification or error friendlier, but it cannot safely
@@ -358,16 +398,17 @@ def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
         if claimed_numbers - allowed_numbers:
             return fallback
         return prose or fallback
+    prose = _given_currency_signs(shaped, presentation.strip(), asked)
     answer = shaped.get("answer") or {}
     rows = answer.get("rows") or []
     if len(rows) != 1 or len(rows[0]) != 1:
-        return presentation.strip() or fallback
+        return prose or fallback
     scalar = str(rows[0][0]).strip()
     if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", scalar):
-        return presentation.strip() or fallback
-    if not _states_value(presentation, Decimal(scalar)):
+        return prose or fallback
+    if not _states_value(prose, Decimal(scalar)):
         return fallback
-    return presentation.strip() or fallback
+    return prose or fallback
 
 
 # A number as prose writes it: thousands groups (1,240 or the Indian 1,25,000), a decimal part, and
@@ -834,7 +875,10 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                         presentation_text = "".join(
                             block.text for block in presentation.content if block.type == "text"
                         ).strip()
-                        final_text = _grounded_presentation(terminal_query, presentation_text)
+                        final_text = _grounded_presentation(
+                            terminal_query, presentation_text,
+                            asked=" ".join((user_message, *(trace["question"] for trace in traces[-1:]))),
+                        )
                     except Exception as exc:  # noqa: BLE001 - presentation is optional after terminal data
                         print(f"[chat] presentation_failed error={type(exc).__name__}", flush=True)
                     break

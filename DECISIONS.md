@@ -1003,3 +1003,57 @@ Five paths remain, each for a consumer outside the current code:
 | A Sheets sidebar session with no `chat.sheet_session` row reopens the latest conversation on the same source (`engine/sheet_sessions.py`, `legacy`; `60fa976`, 2026-09-14) | Sheets conversations older than sheet sessions | every unexpired Sheets conversation has a session row | 2026-12-13 |
 | A dataset op without authenticated provenance asks to be restated (`engine/dataset_semantics.py:validate_replay`; `8a84991`, 2026-09-07) | ops persisted before attestation | no unexpired conversation holds an unattested op | 2026-12-06 |
 | `/api/dimension` keeps the per-cell `evolution` beside `schema_org` (`engine/dimension.py`) | the MCP `describe` coverage hints (`mcp_server/engine_client.py`) | `describe` reads `schema_org` | when that tool changes, no date |
+
+## An output currency survives a complete question in between; a fallback names its currency (2026-09-30)
+
+The Chrome gate on the release found one miss in 136 graded turns. In a fresh formfacade-leads conversation, after
+"This is in euros. Whats in USD" and the complete question "total budget in Africa", the shorthand "How about all of
+Europe?" reached the engine as "total budget in Europe" (62,000, unconverted). Prompt rule 3 correctly sent the Africa
+question verbatim, and rule 4 said to carry every qualifier "from the conversation", but the model read "the same
+question" as the Africa one. Rule 4 now says it directly: an output currency the user asked for stays in force for
+follow-ups about the same measure until the user names another or asks for the original figures; a complete question in
+between is still verbatim and does not cancel it; another measure (a count, a rating) does not take it. With the
+reported history on claude-sonnet-5, the old prompt carried USD 4/5 times and the new one 5/5.
+
+A rerun on the old prompt converted but replied "70401". The grounding check keeps the model's sentence only when it
+states the engine's scalar, and it could not read an abbreviated amount; the fallback was the bare value. The check now
+reads a magnitude word after a number ("$70.4k", "1.2 million", "2.5bn") as that multiple, as it already read "%", and
+the fallback names the ISO currency the engine verified ("70401 USD"). That verification is the currency entry of
+`calculations`, which the MCP tool output now carries for answered results (docs/MCP.md); a rows-already-in-it filter
+or an unverified reading adds no unit.
+
+## A reply says only what the result shows (2026-09-30)
+
+The release gate grades numbers, and every graded number was right. Reading the 163 recorded replies found sentences
+that said more than the result did:
+
+- "average price for VIP customers", over a plain `price` column, was "$250.78"; a purchase-order sheet titled in
+  pounds was "$128,831,117.68 ... over $5,000".
+- The category-gaps demo opened with "Ava, your top spender at 200" and "Travel (your top-earning category)". Both were
+  second in a top 2: Cleo spent 340 and Office earned 300.
+- A discounted total was set against "the original $1,101.44" of an earlier turn, converted at that turn's rate.
+- The workbook named "total amount france usd" kept that heading over the Europe-in-GBP and Belgium turns that
+  modified it.
+
+What changed, all in the chat orchestrator:
+
+1. The model is shown a verified output currency as `currency` on the trimmed tool result, and the prompt says when a
+   figure has one: that field, a currency filter, a column that names one, or the currency the question asked for.
+   Otherwise the figure is a bare number and no unit is guessed.
+2. `_grounded_presentation` removes a currency sign written against an amount unless the engine satisfied a currency
+   calculation for the answer, or that sign is in the user's message, the engine question or the result the model was
+   shown. It removes the sign and nothing else; a currency written as a word is left to the prompt. Signs are Unicode
+   category Sc, so the orchestrator holds no currency table beside `engine/currency_intent.py`. Replacing the whole
+   sentence with the bare scalar was rejected: it discards a correct sentence over one character.
+3. The prompt says that a result listing some of a top N does not say where each one ranks, even when one row came
+   back, that a rank is named only when the rows list the whole ranking, and that figures from earlier turns stay out
+   of a reply. This one is a prompt rule with no deterministic check behind it, so its live test is a rate (at most 1
+   promotion in 4 replies).
+4. A new analysis is named for what is measured and how it is grouped, without places, dates or currencies, and the
+   tool schema states the engine's 40-character limit; a longer name was cut with a hash ("top customers never bought
+   top 5e0be233").
+
+On claude-sonnet-5, with the same engine results and the model's text read before the guard: a currency named for the
+plain price in 6 of 8 replies before and 0 of 8 after; a name holding the place or currency in 8 of 8 and 0 of 8; the
+second of a top 2 called the top in 6 of 8 before, 1 of 24 with a first wording of the rule and 0 of 24 with the one
+shipped. These are wording changes. No graded answer moves.

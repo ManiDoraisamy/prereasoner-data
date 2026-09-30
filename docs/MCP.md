@@ -80,7 +80,11 @@ repeat the current value: the orchestrator rewrites them into a complete query a
 not replace a numeric answer with a conversational confirmation.
 After the engine returns `answered`, `clarify`, or `error`, the orchestrator performs one tool-disabled presentation
 round. This keeps natural phrasing in the language model while making a terminal engine outcome structurally unable
-to start a reformulation loop.
+to start a reformulation loop. The prose is kept only while it agrees with that outcome: a scalar answer must be
+stated in it, a clarification or error may add no number, and a currency sign against an amount stays only when the
+engine satisfied a currency calculation for the answer or the sign is in the question or in the result the model was
+shown. The model sees a verified output currency as `currency` on that result; an answer without one is a bare
+number.
 
 Workbook routing is separate from SQL routing. A qualifier change such as `in US dollars` modifies the existing
 analysis; a new output grain such as `top selling products` creates another analysis. Sonnet proposes that choice

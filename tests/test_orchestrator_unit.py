@@ -48,10 +48,12 @@ class _MessageStream:
 
 
 class _Messages:
-    def __init__(self, calls, fail_presentation=False, query_input=None):
+    def __init__(self, calls, fail_presentation=False, query_input=None,
+                 presentation="The verified result is ready."):
         self.calls = calls
         self.fail_presentation = fail_presentation
         self.query_input = query_input
+        self.presentation = presentation
 
     def stream(self, **kwargs):
         self.calls.append(kwargs)
@@ -72,14 +74,14 @@ class _Messages:
                 raise RuntimeError("presentation unavailable")
             response = SimpleNamespace(
                 stop_reason="end_turn",
-                content=[SimpleNamespace(type="text", text="The verified result is ready.")],
+                content=[SimpleNamespace(type="text", text=self.presentation)],
             )
         return _MessageStream(response)
 
 
 class _Client:
-    def __init__(self, calls, fail_presentation=False, query_input=None):
-        self.messages = _Messages(calls, fail_presentation, query_input)
+    def __init__(self, calls, fail_presentation=False, query_input=None, **options):
+        self.messages = _Messages(calls, fail_presentation, query_input, **options)
 
     async def __aenter__(self):
         return self
@@ -97,7 +99,7 @@ class _HTTP:
 
 
 async def _run(status: str, *, fail_presentation=False, use=None, query_input=None,
-               user_message=None, tables=None, catalog=None, analysis_override=None):
+               user_message=None, tables=None, catalog=None, analysis_override=None, **client_options):
     model_calls, engine_calls = [], []
     shaped = {"status": status}
     if status == "answered":
@@ -119,7 +121,7 @@ async def _run(status: str, *, fail_presentation=False, use=None, query_input=No
     original_query = orchestrator.engine_client.call_query
     original_catalog = orchestrator.engine_client.call_analysis_catalog
     orchestrator.AsyncAnthropic = lambda **_kwargs: _Client(
-        model_calls, fail_presentation, query_input,
+        model_calls, fail_presentation, query_input, **client_options,
     )
     orchestrator.httpx.AsyncClient = lambda **_kwargs: _HTTP()
     orchestrator.engine_client.call_query = query
@@ -368,9 +370,13 @@ def test_presentation_that_states_the_engine_value_in_prose_is_kept():
     # Production, 2026-09-26: the Sheets sidebar showed "125" for "total amount in india". The
     # model had written "Your total amount in India comes to 125.", and the grounding check
     # read the full stop as a decimal point and replaced the sentence with the bare value.
-    # Replays on claude-sonnet-5 kept 4 of 14 correct sentences; these are the model's own.
+    # Replays on claude-sonnet-5 kept 4 of 14 correct sentences; these are the model's own. The
+    # engine had satisfied a currency for the answer, so a sign against the amount stays as well
+    # (test_a_currency_sign_the_turn_never_gave_is_dropped holds the other case).
     def kept(value, prose):
-        shaped = {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]}}
+        shaped = {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]},
+                  "calculations": [{"specification": "currency", "status": "satisfied",
+                                    "realization": "unit_annotation", "target": "USD"}]}
         return orchestrator._grounded_presentation(shaped, prose) == prose
 
     for value, prose in [
@@ -578,6 +584,103 @@ def test_fallback_names_the_verified_output_currency():
     assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[70401]]}}) == "70401"
     assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70401 USD"
     assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "Converted, it comes to $70,401."
+
+
+def test_a_currency_sign_the_turn_never_gave_is_dropped():
+    """Chrome pass, 2026-09-30: "average price for VIP customers" over a plain `price` column was
+    answered "$250.78", and a purchase-order sheet titled in pounds "$128,831,117.68 ... over $5,000".
+    The engine had satisfied no currency and nothing the turn was given carried that sign. A sign
+    stays when the engine satisfied a currency calculation, or when the question or the result the
+    model was shown has it."""
+    price = {"status": "answered", "sql": "SELECT AVG(price) AS avg_price FROM orders",
+             "answer": {"columns": ["avg_price"], "rows": [["250.77935327248009322198"]]}}
+
+    def reply(shaped, prose, asked="average price for VIP customers"):
+        return orchestrator._grounded_presentation(shaped, prose, asked)
+
+    assert reply(price, "The average price for your VIP customers comes to about $250.78 per order.") == \
+        "The average price for your VIP customers comes to about 250.78 per order."
+    assert reply(price, "About US$250.78, or 250.78 €.") == "About 250.78, or 250.78."
+    orders = {"status": "answered", "answer": {"columns": ["total"], "rows": [["128831117.68"]]},
+              "sql": 'SELECT SUM("Net PO Value") AS total FROM "Purchase orders over £5000"'}
+    asked = "What is the total Net PO Value?"
+    assert reply(orders, "Your purchase orders over $5,000 add up to $128,831,117.68.", asked) == \
+        "Your purchase orders over 5,000 add up to 128,831,117.68."
+    table = {"status": "answered",
+             "answer": {"columns": ["customer", "spend"], "rows": [["Cleo", 340], ["Ava", 200]]}}
+    assert reply(table, "Cleo spent $340 and Ava $200.", "spend by customer") == "Cleo spent 340 and Ava 200."
+
+    # Contrasts: the sheet's own sign, the user's own sign, a currency the engine satisfied, and a
+    # sign that is not written against an amount.
+    in_pounds = "Your total Net PO Value comes to £128,831,117.68."
+    assert reply(orders, in_pounds, asked) == in_pounds
+    assert reply(price, "About $250.78.", "average price in $ for VIP customers") == "About $250.78."
+    for realization in ("converted", "identity", "unit_annotation", "currency_filter"):
+        satisfied = {**price, "calculations": [{"specification": "currency", "status": "satisfied",
+                                                 "realization": realization, "target": "USD"}]}
+        assert reply(satisfied, "About $250.78.") == "About $250.78.", realization
+    ambiguous = {**price, "calculations": [{"specification": "currency", "status": "ambiguous",
+                                             "realization": "currency_filter", "target": "USD"}]}
+    assert reply(ambiguous, "About $250.78.") == "About 250.78."
+    unsigned = "Prices are listed in $; the average is 250.78, up 4%."
+    assert reply(price, unsigned) == unsigned
+
+    # The turn's reply and the transcript the next turn reads both carry the amount without it.
+    result, _model_calls, _engine_calls = asyncio.run(_run(
+        "answered", user_message="total amount after the customer tier discount",
+        presentation="Your net amount after the discount comes to $876.50.",
+    ))
+    assert result["reply"] == "Your net amount after the discount comes to 876.50."
+    assert result["history"][-1] == {"role": "assistant", "content": result["reply"]}
+
+
+def test_the_model_is_told_the_currency_the_engine_verified():
+    """The model guessed a currency because the result it was shown never said whether there was
+    one. A verified output currency now reaches it as `currency`; a rows-already-in-it filter and
+    an answer with no currency calculation carry none, and the prompt says such a figure is a bare
+    number."""
+    def trimmed(**calculation):
+        return orchestrator._trim_for_model({
+            "status": "answered", "answer": {"columns": ["total"], "rows": [[70401]]},
+            "calculations": [{"specification": "currency", "status": "satisfied", **calculation}],
+        })
+
+    assert trimmed(realization="converted", target="USD")["currency"] == "USD"
+    assert trimmed(realization="identity", target="gbp")["currency"] == "GBP"
+    assert "currency" not in trimmed(realization="currency_filter", target="GBP")
+    assert "currency" not in orchestrator._trim_for_model(
+        {"status": "answered", "answer": {"columns": ["avg_price"], "rows": [["250.78"]]}})
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "a figure is in a currency only when you were given one for it" in prompt
+    assert "give the bare number" in prompt and "never guess a unit" in prompt
+
+
+def test_a_reply_says_only_what_the_result_shows():
+    """Chrome pass, 2026-09-30: the category-gaps demo opened with "Ava, your top spender at 200" and
+    "Travel (your top-earning category)" for rows that were second in a top 2 (Cleo spent 340, Office
+    earned 300), and a discounted total was set against "the original $1,101.44" of an earlier turn,
+    converted at that turn's rate. The demo replies are the live cases in tests.test_orchestrator, so
+    the prompt carries the rule and not the demo."""
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "say only what the result shows" in prompt
+    assert "the result does not say where each one ranks, not even when a single row came back" in prompt
+    assert "name a rank only when the rows list the whole ranking in order" in prompt
+    assert "leave out figures from earlier turns, and comparisons with them" in prompt
+    assert "ava" not in prompt.split() and "cleo" not in prompt.split()
+
+
+def test_an_analysis_is_named_for_its_measure_not_its_filter():
+    """Chrome pass, 2026-09-30: the workbook created for "total amount in France in US dollars" was
+    named "total amount france usd" and kept that heading over the Europe-in-GBP and Belgium turns
+    that modified it. A name holding a filter value or a currency is stale after one follow-up."""
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "names only what is measured and how it is grouped" in prompt
+    assert "leave out places, dates, currencies and other filter values" in prompt
+    # A longer name is cut to the engine's limit with a hash ("top customers never bought top
+    # 5e0be233"), so the model is told the limit.
+    slug = next(tool for tool in orchestrator.CLAUDE_TOOLS
+                if tool["name"] == "prereasoner_query")["input_schema"]["properties"]["slug"]
+    assert f"at most {orchestrator.MAX_ANALYSIS_SLUG_BYTES} characters" in slug["description"]
 
 
 def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
@@ -1146,6 +1249,10 @@ TESTS = [
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_fallback_names_the_verified_output_currency,
+    test_a_currency_sign_the_turn_never_gave_is_dropped,
+    test_the_model_is_told_the_currency_the_engine_verified,
+    test_a_reply_says_only_what_the_result_shows,
+    test_an_analysis_is_named_for_its_measure_not_its_filter,
     test_recalculation_identity_and_scalar_presentation_are_grounded,
     test_presentation_that_states_the_engine_value_in_prose_is_kept,
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
