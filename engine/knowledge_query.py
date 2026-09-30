@@ -616,10 +616,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             low = question.lower()
             for cue in _re.finditer(r"\b(?:how\s+many|number\s+of|count\s+of|count\s+the)\s+", low):
                 run = []
-                for word in _re.findall(r"[a-z]+", low[cue.end():]):
-                    if word in closed:
-                        break
-                    run.append(word)
+                for token in _re.findall(r"[a-z]+|[.,;:!?]", low[cue.end():]):
+                    if token in closed or not token.isalpha() or len(run) == 4:
+                        break                                # a noun phrase ends at grammar or punctuation
+                    run.append(token)
                 if run:
                     content = [word for word in content if word != run[-1]]
         if content:
