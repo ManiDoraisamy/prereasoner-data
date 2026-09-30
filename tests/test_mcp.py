@@ -54,6 +54,14 @@ def test_shape():
     ok(ans.get("sql") == "SELECT ...", "answer carries sql")
     ok(ans.get("views") == [{"op": "group_agg"}], "answer carries views")
     ok(ans["trace"]["jobId"] == "job1", "answer carries trace.jobId")
+    calculations = [{"specification": "currency", "status": "satisfied", "realization": "converted",
+                     "target": "USD"}]
+    converted = engine_client.shape_reason_response(
+        {"question": "q", "result": {"columns": ["total_usd"], "rows": [[70401]]},
+         "calculations": calculations, "currency": calculations[0]}, "job2")
+    ok(converted.get("calculations") == calculations,
+       "answer carries the calculation evidence (the verified output currency)")
+    ok("currency" not in converted, "the compatibility projection is not a second copy in the tool output")
 
     clar = engine_client.shape_reason_response(
         {"question": "q", "clarify": True, "proposed": "by country", "dropped": ["region"],

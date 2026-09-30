@@ -386,6 +386,11 @@ def test_presentation_that_states_the_engine_value_in_prose_is_kept():
         (250.77935327248008, "The average price is around 250."),
         (0.4166, "France accounts for about 42% of sales."),
         (-12, "Sales were down 12 compared with last year."),
+        # Abbreviated magnitudes (Chrome pass, 2026-09-30: a correct converted total became "70401").
+        (70401, "Across Europe, your budget comes to about $70.4k in US dollars."),
+        (70401, "That is roughly 70.4 thousand US dollars."),
+        ("128831117.68", "Your purchase orders total about £128.8 million."),
+        (2500000000, "Revenue reached 2.5bn this year."),
     ]:
         assert kept(value, prose), (value, prose)
 
@@ -402,6 +407,9 @@ def test_presentation_that_states_the_engine_value_in_prose_is_kept():
         (0.034, "That is 0 percent of sales."),
         (125, "Your total amount in India is ready in the tabs."),
         (10 ** 30, "It comes to 0.00000000000000000000000000001."),
+        (70401, "Across Europe, your budget comes to about $70.4 million."),
+        (70401, "That is roughly 70.4 in total."),
+        (70401, "About 7k of it came from Germany."),
     ]:
         assert not kept(value, prose), (value, prose)
         assert orchestrator._grounded_presentation(
@@ -538,6 +546,38 @@ def test_followup_prompt_separates_geography_from_output_currency_and_executes_y
     assert "never substitute a reason the tool did not give" in prompt
     assert "report only the failure the tool returned" in prompt
     assert "europe" not in prompt and "£810" not in prompt
+
+
+def test_an_output_currency_survives_a_complete_question_in_between():
+    """Chrome pass, 2026-09-30 (formfacade-leads, fresh conversation): after "This is in euros. Whats in
+    USD" and the standalone "total budget in Africa", "How about all of Europe?" reached the engine as
+    "total budget in Europe": the USD request was dropped, 62,000 instead of about $70,000. The same
+    shorthand converted in the existing conversation. The rule is general, and the reported conversation
+    is the live case in tests.test_orchestrator, so the prompt must not quote it."""
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "an output currency the user asked for stays in force" in prompt
+    assert "it does not cancel the currency" in prompt
+    assert "a follow-up about another measure, such as a count or a rating, does not take the currency" in prompt
+    assert "africa" not in prompt and "total budget in" not in prompt
+
+
+def test_fallback_names_the_verified_output_currency():
+    """Chrome pass, 2026-09-30: a converted Europe total whose prose the grounding check could not read
+    was replaced by the bare scalar "70401". The fallback names the currency the engine verified, and
+    only that one: a rows-already-in-it filter or an unverified reading is not an output unit."""
+    def shaped(realization="converted", status="satisfied", target="USD"):
+        return {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [[70401]]},
+                "calculations": [{"specification": "currency", "status": status,
+                                  "realization": realization, "target": target}]}
+
+    assert orchestrator._terminal_fallback(shaped()) == "70401 USD"
+    assert orchestrator._terminal_fallback(shaped(realization="identity", target="gbp")) == "70401 GBP"
+    assert orchestrator._terminal_fallback(shaped(realization="currency_filter")) == "70401"
+    assert orchestrator._terminal_fallback(shaped(status="ambiguous")) == "70401"
+    assert orchestrator._terminal_fallback(shaped(target="dollars")) == "70401"
+    assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[70401]]}}) == "70401"
+    assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70401 USD"
+    assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "Converted, it comes to $70,401."
 
 
 def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
@@ -1105,12 +1145,14 @@ TESTS = [
     test_a_second_dataset_op_rejection_is_terminal,
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
+    test_fallback_names_the_verified_output_currency,
     test_recalculation_identity_and_scalar_presentation_are_grounded,
     test_presentation_that_states_the_engine_value_in_prose_is_kept,
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
     test_followup_prompt_separates_geography_from_output_currency_and_executes_yes,
+    test_an_output_currency_survives_a_complete_question_in_between,
     test_the_model_sees_the_rows_the_answer_covers,
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,
     test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_the_engine,

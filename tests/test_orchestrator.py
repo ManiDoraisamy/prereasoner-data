@@ -189,6 +189,32 @@ def main():
            and "don't have a reliable way" not in accepted["reply"].lower(),
            "the assistant does not invent a missing-rate failure before the engine responds")
 
+        # Chrome pass, 2026-09-30 (formfacade-leads, fresh conversation): the complete question "total
+        # budget in Africa" between the USD request and the shorthand made the rewrite drop USD, so
+        # Europe came back as 62,000 in euros. The standalone question itself stays verbatim ([1e]).
+        print("[1c] an output currency survives a complete question in between")
+        usd_history = [
+            {"role": "user", "content": "total budget in Europe"},
+            {"role": "assistant", "content": "Your total budget for Europe comes to 62,000."},
+            {"role": "user", "content": "total budget in Germany"},
+            {"role": "assistant", "content": "Your total budget for Germany comes to 33,000."},
+            {"role": "user", "content": "This is in euros. Whats in USD"},
+            {"role": "assistant", "content": "Converted to US dollars, Germany's budget comes to $37,471.50."},
+            {"role": "user", "content": "total budget in Africa"},
+            {"role": "assistant", "content": "There's no budget data recorded for Africa in your sheet."},
+        ]
+        carried = asyncio.run(chat("How about all of Europe?", history=usd_history))
+        carried_sent = [t.get("question", "").lower() for t in carried["traces"]]
+        ok(len(carried_sent) == 1 and "europe" in carried_sent[0] and "budget" in carried_sent[0]
+           and ("usd" in carried_sent[0] or "us dollar" in carried_sent[0]),
+           f"the shorthand keeps the USD the user asked for (got {carried_sent})")
+        renamed = asyncio.run(chat("and in euros for all of Europe?", history=usd_history))
+        renamed_sent = [t.get("question", "").lower() for t in renamed["traces"]]
+        ok(len(renamed_sent) == 1 and "europe" in renamed_sent[0]
+           and ("eur" in renamed_sent[0]) and "usd" not in renamed_sent[0]
+           and "us dollar" not in renamed_sent[0],
+           f"naming another currency replaces the one in force (got {renamed_sent})")
+
         print("[1c] follow-up rewrite carries grouping and limit qualifiers")
         r1d = asyncio.run(chat("what about 2024?", history=[
             {"role": "user", "content": "top 3 customers by total amount per month in 2025"},

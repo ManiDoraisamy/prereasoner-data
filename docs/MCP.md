@@ -51,7 +51,8 @@ verification. See the execution contract for the transient direct-request slug a
 
 `prereasoner_query` normalizes engine responses into one of:
 
-- `answered`: result rows, SQL, views, and trace metadata;
+- `answered`: result rows, SQL, views, the calculation evidence (`calculations`, including a verified output
+  currency), and trace metadata;
 - `decompose`: a non-terminal request for one bounded semantic split; no answer rows are returned;
 - `clarify`: the engine rejected a query that would drop or ambiguously realize part of the question;
 - `error`: transport, server, or malformed-response failure.

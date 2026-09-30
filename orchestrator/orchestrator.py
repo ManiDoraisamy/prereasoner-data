@@ -325,8 +325,23 @@ def _terminal_fallback(shaped: dict[str, Any]) -> str:
     answer = shaped.get("answer") or {}
     rows = answer.get("rows") or []
     if len(rows) == 1 and len(rows[0]) == 1:
-        return str(rows[0][0])
+        currency = _output_currency(shaped)
+        return f"{rows[0][0]} {currency}" if currency else str(rows[0][0])
     return "I completed the calculation; the result and its reasoning are shown in the workbook."
+
+
+def _output_currency(shaped: dict[str, Any]) -> str:
+    """The ISO code the engine verified the answer is in: a satisfied currency calculation that
+    converted the rows into it or found them already in it. A bare "70401" for a converted total
+    named no currency at all (Chrome pass, 2026-09-30)."""
+    for calculation in shaped.get("calculations") or ():
+        if (isinstance(calculation, dict) and calculation.get("specification") == "currency"
+                and calculation.get("status") == "satisfied"
+                and calculation.get("realization") in ("converted", "identity")):
+            target = str(calculation.get("target") or "").strip().upper()
+            if re.fullmatch(r"[A-Z]{3}", target):
+                return target
+    return ""
 
 
 def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
@@ -356,9 +371,14 @@ def _grounded_presentation(shaped: dict[str, Any], presentation: str) -> str:
 
 
 # A number as prose writes it: thousands groups (1,240 or the Indian 1,25,000), a decimal part, and
-# an optional percent sign. Scanning left to right keeps "0.125" one number, so its "125" never
-# stands alone, while the full stop that ends "comes to 125." is not a decimal point.
-_PROSE_NUMBER = re.compile(r"(\d{1,3}(?:,\d{2,3})+|\d+)(?:\.(\d+))?(\s?(?:%|percent\b))?")
+# an optional percent sign or magnitude word ("$70.4k", "1.2 million"). Scanning left to right keeps
+# "0.125" one number, so its "125" never stands alone, while the full stop that ends "comes to 125."
+# is not a decimal point.
+_PROSE_NUMBER = re.compile(
+    r"(\d{1,3}(?:,\d{2,3})+|\d+)(?:\.(\d+))?(\s?(?:%|percent\b))?"
+    r"(?:\s?(k|K|thousand|m|M|mn|million|bn|b|B|billion)\b)?"
+)
+_MAGNITUDES = {"k": 3, "thousand": 3, "m": 6, "mn": 6, "million": 6, "b": 9, "bn": 9, "billion": 9}
 
 
 def _states_value(prose: str, value: Decimal) -> bool:
@@ -367,12 +387,13 @@ def _states_value(prose: str, value: Decimal) -> bool:
     A number in the prose states it when it equals the value, or equals the value rounded to the
     precision that number shows ("about 264" for 263.96, "$250.78" for 250.779..., "around 250")
     and stays within 5% of it, so "about 5" does not pass for 4.667. A number followed by "%" may
-    also read as a fraction (42% for 0.4166). Magnitudes are compared, since prose says "down 12",
-    not "-12". Any other number, such as a stale one copied from the chat, does not state it.
+    also read as a fraction (42% for 0.4166), and one followed by a magnitude word as that multiple
+    ("$70.4k" for 70,401, "1.2 million" for 1,204,300). Magnitudes are compared, since prose says
+    "down 12", not "-12". Any other number, such as a stale one copied from the chat, does not state it.
     """
     target = abs(value)
     for match in _PROSE_NUMBER.finditer(prose):
-        whole, fraction, percent = match.groups()
+        whole, fraction, percent, magnitude = match.groups()
         digits = whole.replace(",", "")
         number = Decimal(digits + ("." + fraction if fraction else ""))
         if fraction:
@@ -380,6 +401,9 @@ def _states_value(prose: str, value: Decimal) -> bool:
         else:
             step = Decimal(1).scaleb(len(digits) - len(digits.rstrip("0")) if number else 0)
         readings = [(number, step)] + ([(number / 100, step / 100)] if percent else [])
+        if magnitude and not percent:
+            exponent = _MAGNITUDES[magnitude.lower()]
+            readings.append((number.scaleb(exponent), step.scaleb(exponent)))
         for stated, unit in readings:
             if stated == target:
                 return True

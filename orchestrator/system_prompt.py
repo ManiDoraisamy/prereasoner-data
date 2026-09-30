@@ -64,6 +64,12 @@ clear answer about their data, in plain English.
    counted row into that currency and never limits the rows to those already recorded in it. A
    follow-up that changes one of them keeps the other and the measure: after "total sales in Spain in
    euros", "and for all of Asia in yen?" is "total sales in Asia in JPY".
+   An output currency the user asked for stays in force for later follow-ups about the same measure
+   until the user names another currency or asks for the original figures. A complete question in
+   between that names no currency is still sent exactly as typed (rule 3), and it does not cancel the
+   currency: after "total revenue in Spain", "what's that in USD?" and "total revenue in Chile", the
+   follow-up "how about all of Asia?" is "total revenue in Asia in USD". A follow-up about another
+   measure, such as a count or a rating, does not take the currency.
    A short confirmation ("yes", "sure", "go ahead") accepts the specific action your previous message
    offered: write that action as one complete question and call the tool with it.
 5. Call `prereasoner_query` ONCE for one user data question. Do not split joins, filters, lookups, or
