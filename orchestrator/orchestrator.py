@@ -311,12 +311,6 @@ def _recalculation_target(user_message: str, catalog: list[dict[str, Any]],
     return analysis, question
 
 
-def _matching_analysis(user_message: str, catalog: list[dict[str, Any]],
-                       requested: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    """Compatibility wrapper returning only the resolved analysis identity."""
-    return _recalculation_target(user_message, catalog, requested)[0]
-
-
 def _terminal_fallback(shaped: dict[str, Any]) -> str:
     """Last-resort text when the presentation model returns no prose.
 

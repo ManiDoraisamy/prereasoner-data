@@ -20,9 +20,9 @@ from engine.request_validation import (
     RequestValidationError,
     canonical_table_name,
     upload_row_limit_error,
+    validate_chat_request,
     validate_reason_request,
 )
-from orchestrator.validation import validate_chat_request
 
 
 def test_sliding_window_limiter_is_bounded_and_expires():

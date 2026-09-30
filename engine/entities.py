@@ -25,12 +25,13 @@ from engine.resolve_base import RoutedQuery
 from engine.pg import _pg
 from engine.knowledge_tables import qident, qlit
 from engine.dataset_semantics import is_synthetic_currency_column
-from engine.embeddings import Embedder, pgvector_literal, normalize_surface
+from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
 
 # filter attr (as named in word_*.json) -> the entity `type` it is matched against in knowledgebase."words"
 ENTITY_TYPES = {"country": "country", "nation": "country", "continent": "continent",
                 "state": "state", "american_state": "state", "province": "state", "region": "state",
                 "element": "element", "city": "city", "municipality": "city"}
+PLACE_TYPES = frozenset(ENTITY_TYPES.values()) - {"element"}   # the entity types that name a place
 # Closed-class function words that are never an entity — dropped as candidates BEFORE the NN lookup.
 # This is a correctness guard, not an optimization: the embedding NN happily clears the threshold on
 # them ("from" -> Belarus at 0.82 turned "orders from Paris" into a Belarus filter and a wrong 0),
@@ -145,6 +146,17 @@ class EntityQuery(RoutedQuery):
             memo[key] = rows
         return rows
 
+    def _names_by_type(self, norms):
+        """{norm: {type: {qid}}} for the normalized names in ``norms`` that name a world entity exactly, in
+        one lookup. The resolver's exact pass and the coverage gate's place check both read names here."""
+        by_type = {}
+        if norms:
+            for nm, ty, q_ in self._kb_rows(
+                    'SELECT norm, type, qid FROM knowledgebase."words" WHERE norm = ANY(%s) AND qid IS NOT NULL',
+                    (sorted(norms),)):
+                by_type.setdefault(nm, {}).setdefault(ty, set()).add(q_)      # collect QIDS — resolve to qid, not name
+        return by_type
+
     def _candidates(self, question):
         """surface forms worth resolving: spaCy place-ish entities + noun chunks + proper nouns + bare alpha
         tokens. Deduped (case-insensitive), function words dropped, capped. The threshold does the real filtering;
@@ -214,16 +226,11 @@ class EntityQuery(RoutedQuery):
         # embedding put 'North American' nearer the United States, so 'orders from North American countries'
         # filtered one country (2026-09-30). Only for continents, where the stem must itself be a continent;
         # for every type, 'plan' would read as 'pl' and 'can' as 'ca'.
-        stems = {c: [normalize_surface(c[:-len(end)]) for end in ("n", "an") if c.lower().endswith(end)]
+        stems = {c: [normalize_surface(stem) for stem in demonym_stems(c)]
                  for c in cands} if type_ == "continent" else {}
-        uniq = sorted({n for n in norms.values() if n} | {f for forms in type_forms.values() for f in forms}
-                      | {stem for group in stems.values() for stem in group if stem})
-        by_type = {}                                              # norm -> {type: {canonical}} across ALL types
-        if uniq:
-            for nm, ty, q_ in self._kb_rows(
-                    'SELECT norm, type, qid FROM knowledgebase."words" WHERE norm = ANY(%s) AND qid IS NOT NULL',
-                    (uniq,)):
-                by_type.setdefault(nm, {}).setdefault(ty, set()).add(q_)      # collect QIDS — resolve to qid, not name
+        by_type = self._names_by_type(                           # norm -> {type: {qid}} across ALL types
+            {n for n in norms.values() if n} | {f for forms in type_forms.values() for f in forms}
+            | {stem for group in stems.values() for stem in group if stem})
         for c in sorted(cands, key=lambda x: -len(x)):           # (1) exact match of the requested type, longest first
             cs = by_type.get(norms[c], {}).get(type_)
             for stem in ([] if cs else stems.get(c, ())):

@@ -29,6 +29,13 @@ def normalize_surface(s):
     return re.sub(r"[^a-z0-9]+", "", s)
 
 
+def demonym_stems(name):
+    """The place names a demonym can stand for: its name minus '-n' or '-an' ('European' -> 'Europe',
+    'North American' -> 'North America'). Every stem is only a candidate: a caller keeps it only when it is
+    itself a world name of the kind the caller reads."""
+    return [name[:-len(end)] for end in ("n", "an") if name.lower().endswith(end)]
+
+
 class Embedder:
     """Lazy singleton around bge-small. `.encode(texts) -> (n, 384) float32`, L2-normalized rows."""
     _inst = None

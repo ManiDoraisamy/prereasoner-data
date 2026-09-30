@@ -47,8 +47,8 @@ European countries in GBP". The engine:
   fuzzy ones across hops ("North American" filtered the United States); the coverage gate reads 1–3 word places,
   demonyms and the counted noun as covered ("the United Kingdom", "European", "North American", "leads").
 - **Compose.** The uploaded sheet's own name is not a grouping ("GBP orders" grouped by `ordered`); a learned
-  TOPN/SORT needs a ranking word ("… in North America in USD" was the top 3 customers); `routing.realizes` is the
-  one required-op check, and the local-composition branch now asks it.
+  TOPN/SORT needs a ranking word ("… in North America in USD" was the top 3 customers). (A `routing.realizes`
+  helper existed only while the local-composition branch did; both were removed with it in `06819d6`.)
 - **Routing (the largest accuracy fix).** Serving asks `route()` alone. The `shared_composition` branch gave
   compose 180 of Spider DEV's 1,034 questions (top-N, sort, having, yoy, time filter, share), with 3 right against
   the planner's 146. Production answered those shapes from a path that Spider never measures.

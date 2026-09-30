@@ -30,12 +30,13 @@ import re
 import numpy as np
 
 from engine.config import DATA_DIR, kb_model_route_enabled
-from engine.entities import EntityQuery, WORLD_TABLE_TYPE
+from engine.entities import EntityQuery, PLACE_TYPES, WORLD_TABLE_TYPE
 from engine.dataset_semantics import is_synthetic_currency_column
-from engine.embeddings import Embedder, pgvector_literal, normalize_surface
+from engine.embeddings import Embedder, demonym_stems, pgvector_literal, normalize_surface
 from engine.encoder_overlay import EncoderQuery, load_encoder, load_sql_selection
 from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
+from engine.knowledge_tables import COUNT_CUE
 from engine.bridge import STOP
 from engine.closed_class import EXCLUSION_CUES, closed_class_words
 from engine.currency_intent import (
@@ -614,7 +615,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # 'number of', up to the first grammar word. 'how many leads from Europe' was declined because
             # 'leads' sat 0.85 from the city of Leeds; in 'how many German leads' 'German' is still checked.
             low = question.lower()
-            for cue in _re.finditer(r"\b(?:how\s+many|number\s+of|count\s+of|count\s+the)\s+", low):
+            for cue in _re.finditer(r"\b(?:" + COUNT_CUE + r")\s+", low):
                 run = []
                 for token in _re.findall(r"[a-z]+|[.,;:!?]", low[cue.end():]):
                     if token in closed or not token.isalpha() or len(run) == 4:
@@ -631,8 +632,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             words = _re.findall(r"[a-z]+", question.lower())
             spans = {" ".join(words[i:i + n]): words[i:i + n]
                      for n in (3, 2, 1) for i in range(len(words) - n + 1)}
-            forms = {phrase: {phrase} | {phrase[:-len(end)] for end in ("n", "an") if phrase.endswith(end)}
-                     for phrase in spans}
+            forms = {phrase: {phrase, *demonym_stems(phrase)} for phrase in spans}
             qids = self._phrase_qids({form for group in forms.values() for form in group})
             covered = {word for phrase, group in forms.items()
                        if any(qid.lower() in sqll for form in group for qid in qids.get(form, ()))
@@ -661,24 +661,21 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return dropped
 
     def _phrase_qids(self, phrases):
-        """The geo qids each phrase names exactly (normalized match in knowledgebase."words"), in one lookup."""
+        """The place qids each phrase names exactly (the resolver's exact-name lookup), in one lookup."""
         norms = {}
         for phrase in phrases:
             norm = normalize_surface(phrase)
             if norm:
                 norms.setdefault(norm, []).append(phrase)
-        if not norms:
-            return {}
         try:
-            rows = self._kb_rows('SELECT norm, qid FROM knowledgebase."words" WHERE norm = ANY(%s) '
-                                 "AND qid IS NOT NULL AND type IN ('country','continent','city','state')",
-                                 (sorted(norms),))
+            by_type = self._names_by_type(set(norms))
         except Exception:                                        # noqa: BLE001 — same contract as _word_qid
             return {}
         found = {}
-        for norm, qid in rows:
-            for phrase in norms.get(norm, ()):
-                found.setdefault(phrase, set()).add(qid)
+        for norm, types in by_type.items():
+            qids = {qid for type_, group in types.items() if type_ in PLACE_TYPES for qid in group}
+            for phrase in norms.get(norm, ()) if qids else ():
+                found.setdefault(phrase, set()).update(qids)
         return found
 
     def _best_world_entity(self, tokens, floor=0.6):

@@ -38,8 +38,9 @@ def load_encoder(obj, deploy_dir=DATA_DIR):
     obj.sid = {dm["name"]: dm["dim_id"] for dm in obj.dims}
     z = np.load(d / "anchor_assignment.npz", allow_pickle=False)          # per-dim Youden-J thresholds (incl. intent)
     obj.thr = {str(n): float(t) for n, t in zip(z["dims"], z["thr"])}
-    # Operator gates are calibrated on question graphs for this exact checkpoint. Older bundles did not
-    # carry them, so retain their historical values only as a compatibility fallback.
+    # Operator gates are calibrated on question graphs for one checkpoint. The promoted bundle's metadata
+    # does not carry them (encoder_meta.pt holds alloc and cfg only), so these are its gates; a bundle that
+    # records intent_thresholds replaces them.
     intent_thresholds = pt.get("intent_thresholds") or {
         "COUNT": 0.05,
         "SUM": 0.30,

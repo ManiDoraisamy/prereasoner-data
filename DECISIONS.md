@@ -981,3 +981,25 @@ type name. A world request on that sheet issued 88 statements locally before the
 the indexes on its next rebuild. Creating them sooner is a production database change for the owner to approve:
 `CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_kb_city_lower_name ON knowledgebase."city" (lower(name));` and the same
 for `"country"`.
+
+## Compatibility paths: three removed, five kept for real consumers (2026-09-30)
+
+The release audit found compatibility code that this file never recorded, as the one-implementation rule requires.
+Three paths had only internal callers and are gone: `orchestrator/validation.py` re-exported
+`engine.request_validation.validate_chat_request` (the orchestrator imports it directly now),
+`orchestrator._matching_analysis` wrapped `_recalculation_target` for two unit tests, and `Router.route` took a
+`world_only` argument it discarded (only `spider/probe/typing_probe.py` passed it). The world-path fixes of the same
+night had written the demonym rule and the exact place-name lookup twice; `engine.embeddings.demonym_stems`,
+`EntityQuery._names_by_type` and `knowledge_tables.COUNT_CUE` are now the one definition the resolver, the coverage
+gate and the world-word role each read. The shared count cue also covers a bare "count leads from Europe", which the
+coverage gate's own copy had missed.
+
+Five paths remain, each for a consumer outside the current code:
+
+| Path | Consumer | Removal condition | Earliest removal |
+|---|---|---|---|
+| The response's `currency`, a copy of the currency entry of `calculations` (`calculations/registry.py:attach_calculation_evidence`) | the workbook's `/api/converse` clarify payload (`web/public/lib/workbook.js`) and `regress/browser_gold.py` | both read `calculations[specification == "currency"]` | a public response field: the owner's decision, no date |
+| Dropping pre-rename bridge tables ("… connected/unconnected to wikipedia", `engine/knowledge_bridges.py`; renamed in `00e16b4`, 2026-09-06) | conversation schemas persisted before the rename | no `c_*` schema holds a table with either suffix | 2026-12-05 (90-day retention) |
+| A Sheets sidebar session with no `chat.sheet_session` row reopens the latest conversation on the same source (`engine/sheet_sessions.py`, `legacy`; `60fa976`, 2026-09-14) | Sheets conversations older than sheet sessions | every unexpired Sheets conversation has a session row | 2026-12-13 |
+| A dataset op without authenticated provenance asks to be restated (`engine/dataset_semantics.py:validate_replay`; `8a84991`, 2026-09-07) | ops persisted before attestation | no unexpired conversation holds an unattested op | 2026-12-06 |
+| `/api/dimension` keeps the per-cell `evolution` beside `schema_org` (`engine/dimension.py`) | the MCP `describe` coverage hints (`mcp_server/engine_client.py`) | `describe` reads `schema_org` | when that tool changes, no date |

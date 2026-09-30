@@ -87,13 +87,11 @@ class Router:
     def _class_evidence(self, profile, class_uri):
         return self.decoder.evidence(profile, class_uri, self.thresholds)
 
-    def route(self, values, header=None, world_only=False, min_fire=0.0):
+    def route(self, values, header=None, min_fire=0.0):
         """Return calibrated class/family evidence or ``None`` for explicit abstention.
 
-        ``world_only`` remains an interface-compatibility argument; source-table
-        availability and value grounding are enforced by the deterministic caller.
+        Source-table availability and value grounding are enforced by the deterministic caller.
         """
-        del world_only
         profile = self._profile(values, header)
         if profile is None:
             return None

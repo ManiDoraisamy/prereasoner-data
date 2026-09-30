@@ -300,12 +300,13 @@ def test_the_coverage_gate_reads_a_place_as_one_name():
     import numpy as np
     from engine import knowledge_query
 
-    words = {"unitedkingdom": "Q145", "northamerica": "Q49", "europe": "Q46", "america": "Q30"}
+    words = {"unitedkingdom": ("country", "Q145"), "northamerica": ("continent", "Q49"),
+             "europe": ("continent", "Q46"), "america": ("country", "Q30")}
     fuzzy = {"united": ("united", "Q30", "country", 0.80), "north": ("north", "Q14692921", "city", 0.91),
              "european": ("european", "Q183", "country", 0.75), "american": ("american", "Q30", "country", 0.8),
              "leads": ("leads", "Q584982", "city", 0.85), "german": ("german", "Q183", "country", 0.75)}
     gate = object.__new__(knowledge_query.KnowledgeQuery)
-    gate._kb_rows = lambda _sql, params: [(norm, words[norm]) for norm in params[0] if norm in words]
+    gate._kb_rows = lambda _sql, params: [(norm, *words[norm]) for norm in params[0] if norm in words]
     gate._word_qid = lambda _word: None
     gate._best_world_entity = lambda tokens: fuzzy.get(tokens[0])
     gate._encode = lambda texts: np.zeros((len(texts), 2), dtype=np.float32)
@@ -331,6 +332,8 @@ def test_the_coverage_gate_reads_a_place_as_one_name():
     # the head: 'German' in 'how many German leads' is still a place the query must filter on.
     ok(dropped("how many leads from Europe", "Q46", "COUNT(*)") == [],
        "the counted noun is covered by COUNT, however close it sits to a town")
+    ok(dropped("count leads from Europe", "Q46", "COUNT(*)") == [],
+       "a bare 'count' governs its noun like 'how many' (the one COUNT_CUE the world-word role reads)")
     ok(dropped("how many German leads", "Q46", "COUNT(*)") == ["german"],
        "a place before the counted noun is still checked")
 

@@ -54,6 +54,8 @@ ARGMAX_CUES = frozenset({"highest", "largest", "most", "maximum", "max", "top"})
 ARGMIN_CUES = frozenset({"lowest", "smallest", "least", "minimum", "min", "bottom"})
 AGG_CUES = {"COUNT": {"count", "counts", "number", "many"}, "SUM": {"sum", "total", "totals"} | MEASURE_NOUNS,
             "AVG": {"avg", "average", "mean", "averages"}}
+# A count cue and the noun phrase it governs: "how many orders", "number of leads", "count (of|the) deliveries".
+COUNT_CUE = r"how\s+many|number\s+of|count(?:\s+(?:of|the))?"
 STALE_DAYS = 730                                          # a fact last verified > ~2y before the decision = stale
 # every rate_to_<code> column the physical knowledgebase."exchange_rate" table carries
 # (db/sync/build_exchange_rate.py builds one per ECB series + EUR)
@@ -92,7 +94,7 @@ def _world_word_is_output(question, word, agg):
     fillers = r"(?:\s+(?:the|all|distinct|different|unique|separate))*"
     cues = r"which|what|by|per|each|every|list|show|name|total|sum|average|avg|mean"
     if agg[0] == "COUNT":
-        cues += r"|how\s+many|number\s+of|count(?:\s+of)?"
+        cues += "|" + COUNT_CUE
     return re.search(r"\b(?:" + cues + r")" + fillers + r"\s+" + re.escape(word) + r"\b", low) is not None
 
 

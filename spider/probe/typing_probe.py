@@ -81,8 +81,8 @@ def main():
     geo_cols = 0
     geo_world_ok = 0
     for c in cols:
-        o_type = r.route(c["values"], header=c["column"], world_only=False, min_fire=0.12)
-        o_world = r.route(c["values"], header=c["column"], world_only=True)
+        o_type = r.route(c["values"], header=c["column"], min_fire=0.12)
+        o_world = r.route(c["values"], header=c["column"])
         tleaf = o_type["leaf"] if o_type else "__abstain__"
         wleaf = o_world["leaf"] if o_world else "__none__"
         typ[tleaf] += 1

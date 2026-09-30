@@ -329,7 +329,7 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
     }
     question = ("Count the unique values in the order ID column across all data rows. "
                 "Return the count and show the calculation steps.")
-    assert orchestrator._matching_analysis(question, [other, distinct]) == {
+    assert orchestrator._recalculation_target(question, [other, distinct])[0] == {
         "action": "modify", "analysis_id": distinct["analysis_id"], "slug": distinct["slug"],
     }
     analysis, engine_question = orchestrator._recalculation_target(question, [other, distinct])
@@ -337,9 +337,9 @@ def test_recalculation_identity_and_scalar_presentation_are_grounded():
         "action": "modify", "analysis_id": distinct["analysis_id"], "slug": distinct["slug"],
     }
     assert engine_question == distinct["latest_question"]
-    assert orchestrator._matching_analysis(
+    assert orchestrator._recalculation_target(
         distinct["latest_question"] + " In France.", [other, distinct],
-    ) is None
+    )[0] is None
     explicit, explicit_question = orchestrator._recalculation_target(
         question + " Please show the reasoning.", [other, distinct],
         {"analysis_id": distinct["analysis_id"], "slug": distinct["slug"]},

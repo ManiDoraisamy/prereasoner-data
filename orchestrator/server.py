@@ -29,8 +29,7 @@ from engine.request_limits import (
     JSONBodyError, RequestGate, allowed_origin, parse_content_length, read_json_object,
 )
 from orchestrator.orchestrator import run_chat
-from engine.request_validation import RequestValidationError
-from orchestrator.validation import validate_chat_request
+from engine.request_validation import RequestValidationError, validate_chat_request
 
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
 MAX_BODY = 8 * 1024 * 1024

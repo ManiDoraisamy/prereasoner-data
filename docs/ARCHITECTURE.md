@@ -227,7 +227,7 @@ replay. The legacy Wikidata schema migration is still pending.
 
 ## Request And Provenance Contracts
 
-There is one request validator. `orchestrator.validation` is a compatibility import, not a second policy. A table
+There is one request validator, `engine.request_validation`; the orchestrator imports it directly. A table
 display name never reaches SQL directly: `engine.request_validation.canonical_table_name()` removes known file
 extensions, normalizes to ASCII, reserves space for runtime bridge suffixes, and hashes overlong names. The engine
 revalidates orchestrator calls at its own trust boundary.
