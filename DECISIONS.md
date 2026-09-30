@@ -1055,8 +1055,17 @@ What changed, all in the chat orchestrator:
 
 On claude-sonnet-5, with the same engine results and the model's text read before the guard: a currency named for the
 plain price in 6 of 8 replies before and 0 of 8 after; a name holding the place or currency in 8 of 8 and 0 of 8; the
-second of a top 2 called the top in 6 of 8 before, 1 of 24 with a first wording of the rule and 0 of 24 with the one
-shipped. These are wording changes. No graded answer moves.
+second of a top 2 called the top in 19 of 24 replies before (and given a guessed rank in 4 more) and in 0 of 24 after.
+These are wording changes. No graded answer moves.
+
+The first gate run on these rules found their cost. Told to add no sign of its own, the model also stopped writing the
+sign it was entitled to: "In US dollars, your total budget for the German entries comes to 37,471.50." and "comes to
+70,401 in US dollars." were right and failed the gate, whose comparator (`regress/browser_gold.py`) binds a converted
+value to the currency written against it. With the conversation that produced them replayed, 16 of 20 replies left the
+amount without its currency. The prompt now says to write the currency right beside the amount, and
+`_grounded_presentation` adds the verified ISO code after the amount that states the answer when neither a sign nor
+the code is already against it ("comes to 70,401 USD."). Measured end to end on the same three conversations: 0 of 36
+unpaired. The comparator is unchanged.
 
 ## A busy engine is reported as busy; the chat does not resend (2026-09-30)
 

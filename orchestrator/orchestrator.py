@@ -406,9 +406,28 @@ def _grounded_presentation(shaped: dict[str, Any], presentation: str, asked: str
     scalar = str(rows[0][0]).strip()
     if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", scalar):
         return prose or fallback
-    if not _states_value(prose, Decimal(scalar)):
+    stated = _stating_number(prose, Decimal(scalar))
+    if stated is None:
         return fallback
-    return prose or fallback
+    currency = _output_currency(shaped)
+    return _beside_its_currency(prose, stated, currency) if currency else prose
+
+
+def _beside_its_currency(prose: str, stated: re.Match, currency: str) -> str:
+    """Write the verified output currency beside the amount that states the answer.
+
+    The amount carries it when a currency sign or the ISO code stands right before it, or the code
+    right after it. Otherwise the code is added after the amount: "In US dollars, your budget comes
+    to 70,401." names the currency eight words from its amount, and the release gate
+    (`regress.browser_gold`) binds a converted value to the currency written against it.
+    """
+    before, after = prose[:stated.start()], prose[stated.end():]
+    code = re.escape(currency)
+    if (stated.group(3)                                  # a percentage is not an amount of money
+            or re.search(rf"(?:[{_CURRENCY_SIGNS}]|\b{code})\s*$", before, re.I)
+            or re.match(rf"\s*{code}\b", after, re.I)):
+        return prose
+    return f"{before}{stated.group(0)} {currency}{after}"
 
 
 # A number as prose writes it: thousands groups (1,240 or the Indian 1,25,000), a decimal part, and
@@ -422,8 +441,8 @@ _PROSE_NUMBER = re.compile(
 _MAGNITUDES = {"k": 3, "thousand": 3, "m": 6, "mn": 6, "million": 6, "b": 9, "bn": 9, "billion": 9}
 
 
-def _states_value(prose: str, value: Decimal) -> bool:
-    """Whether the prose states the engine's scalar.
+def _stating_number(prose: str, value: Decimal) -> re.Match | None:
+    """The first number in the prose that states the engine's scalar, if one does.
 
     A number in the prose states it when it equals the value, or equals the value rounded to the
     precision that number shows ("about 264" for 263.96, "$250.78" for 250.779..., "around 250")
@@ -447,13 +466,13 @@ def _states_value(prose: str, value: Decimal) -> bool:
             readings.append((number.scaleb(exponent), step.scaleb(exponent)))
         for stated, unit in readings:
             if stated == target:
-                return True
+                return match
             # Rounded half up to `unit`, the value lands on `stated` exactly when it lies in
             # [stated - unit/2, stated + unit/2).
             if (target and stated - unit / 2 <= target < stated + unit / 2
                     and abs(stated - target) <= target * Decimal("0.05")):
-                return True
-    return False
+                return match
+    return None
 
 
 async def run_chat(user_message: str, tables: list[dict], history: list[dict], **kw) -> dict[str, Any]:

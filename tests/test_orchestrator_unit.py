@@ -634,6 +634,50 @@ def test_a_currency_sign_the_turn_never_gave_is_dropped():
     assert result["history"][-1] == {"role": "assistant", "content": result["reply"]}
 
 
+def test_a_verified_currency_is_written_beside_the_amount():
+    """Chrome pass, 2026-09-30 (formfacade-leads): two converted totals were right and their replies
+    failed the gate, "In US dollars, your total budget for the German entries comes to 37,471.50." and
+    "your total budget comes to 70,401 in US dollars." The gold comparator binds a converted value to
+    the currency written against it, so the chat writes the verified currency there itself."""
+    from regress.browser_gold import _grade_fx_presentation
+
+    shaped = {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [[70401]]},
+              "calculations": [{"specification": "currency", "status": "satisfied",
+                                "realization": "converted", "target": "USD"}]}
+
+    def reply(prose, outcome=shaped):
+        return orchestrator._grounded_presentation(outcome, prose)
+
+    for prose, expected in [
+        ("In US dollars, your total budget for the European entries comes to 70,401.",
+         "In US dollars, your total budget for the European entries comes to 70,401 USD."),
+        ("For all of Europe, your total budget comes to 70,401 in US dollars.",
+         "For all of Europe, your total budget comes to 70,401 USD in US dollars."),
+        # Already beside it: a sign or the code before the amount, or the code after it.
+        ("Converted, it comes to $70,401.", "Converted, it comes to $70,401."),
+        ("Your total comes to **$70,401.00**.", "Your total comes to **$70,401.00**."),
+        ("That is 70,401 USD across Europe.", "That is 70,401 USD across Europe."),
+        ("In total: USD 70,401.", "In total: USD 70,401."),
+        # Markdown between the two is not beside, to the comparator or here.
+        ("That is **70,401** USD.", "That is **70,401 USD** USD."),
+    ]:
+        assert reply(prose) == expected, (prose, reply(prose))
+        assert _grade_fx_presentation(
+            {"currency": {"target": "USD"}, "assistant_reply": reply(prose)}, 70401) is None, prose
+
+    # The code follows the whole amount, magnitude word included.
+    assert reply("Across Europe that is about **70.4k** in total.") == \
+        "Across Europe that is about **70.4k USD** in total."
+
+    # Only a verified output currency is added: not a filter's, and not where none was computed.
+    bare = "Your total budget for Europe comes to 70,401."
+    filtered = {**shaped, "calculations": [{**shaped["calculations"][0], "realization": "currency_filter"}]}
+    assert reply(bare, filtered) == bare
+    assert reply(bare, {"status": "answered", "answer": shaped["answer"]}) == bare
+    share = {**shaped, "answer": {"columns": ["share"], "rows": [["0.4166"]]}}
+    assert reply("France accounts for about 42% of it.", share) == "France accounts for about 42% of it."
+
+
 def test_the_model_is_told_the_currency_the_engine_verified():
     """The model guessed a currency because the result it was shown never said whether there was
     one. A verified output currency now reaches it as `currency`; a rows-already-in-it filter and
@@ -652,6 +696,7 @@ def test_the_model_is_told_the_currency_the_engine_verified():
         {"status": "answered", "answer": {"columns": ["avg_price"], "rows": [["250.78"]]}})
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "a figure is in a currency only when you were given one for it" in prompt
+    assert "write that currency right beside the amount" in prompt
     assert "give the bare number" in prompt and "never guess a unit" in prompt
 
 
@@ -1261,6 +1306,7 @@ TESTS = [
     test_terminal_fallback_preserves_the_engine_outcome,
     test_fallback_names_the_verified_output_currency,
     test_a_currency_sign_the_turn_never_gave_is_dropped,
+    test_a_verified_currency_is_written_beside_the_amount,
     test_the_model_is_told_the_currency_the_engine_verified,
     test_a_reply_says_only_what_the_result_shows,
     test_a_failed_turn_promises_no_retry,
