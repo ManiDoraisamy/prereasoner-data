@@ -97,6 +97,30 @@ def test_production_entry_opens_the_request():
     assert "begin_request()" in serve, "KnowledgeReasoner.serve must open the request memo"
 
 
+def test_value_membership_routing_is_one_lookup_per_table():
+    """Routing read the words index once per column: seven round trips for the customer-orders sheet on
+    every world request (2026-09-30). One lookup must route every column exactly as before, and a value
+    that names two types (Georgia) breaks the tie by type name, never by hash order."""
+    import engine.entities as entities
+
+    rows = {"london": {"city"}, "paris": {"city"}, "brussels": {"city"}, "france": {"country"},
+            "belgium": {"country"}, "georgia": {"country", "state"}, "chad": {"country"}}
+    calls = []
+    q = EntityQuery.__new__(EntityQuery)
+    q.words = {"city": {}, "country": {}, "u_s_state": {}}
+    q._kb_rows = lambda sql, params: calls.append(params) or [
+        (norm, kind) for norm in params[0] for kind in sorted(rows.get(norm, ()))]
+    table = {"name": "t", "columns": ["city", "country", "note", "tie"],
+             "rows": [["London", "France", "x", "Georgia"], ["Paris", "Belgium", "y", "Georgia"],
+                      ["Brussels", "France", "z", "Georgia"]]}
+    routes = q._value_membership_routes(table)
+    assert len(calls) == 1, f"one lookup for every column, got {len(calls)}"
+    assert routes[("t", "city")] == entities.TYPE_TO_FRIENDLY["city"], routes
+    assert routes[("t", "country")] == entities.TYPE_TO_FRIENDLY["country"], routes
+    assert ("t", "note") not in routes
+    assert routes[("t", "tie")] == entities.TYPE_TO_FRIENDLY["country"], routes   # 'country' < 'state'
+
+
 TESTS = [
     test_identical_lookup_executes_once_per_request,
     test_different_params_never_collide,
@@ -104,6 +128,7 @@ TESTS = [
     test_no_open_request_is_an_uncached_passthrough,
     test_list_params_hash_by_value,
     test_production_entry_opens_the_request,
+    test_value_membership_routing_is_one_lookup_per_table,
 ]
 
 

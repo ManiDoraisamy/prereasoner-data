@@ -154,6 +154,7 @@ The runner executes the canonical suites in this order:
 | `tests.test_geo` | Haversine, population, composition, delegation, and concurrency |
 | `tests.test_schema_probes` | Live property/class generalization and cross-process determinism |
 | `tests.test_datasets` | Every example and release-only eval prompt and direct follow-up against the seeded serving path |
+| `tests.test_question_families` | Question families over the shipped sheets (output currency vs row filter, codes that live in the upload, place nouns, multi-word places, the sheet's own name, learned rankings); golds from the CSVs and the stored ECB rate, FX to 0.5% |
 
 For a hosted release, set `REQUIRE_ORCHESTRATOR_TESTS=1` before running
 `python -m tests.test_orchestrator`. With that flag, a missing `ANTHROPIC_API_KEY` is a failure rather

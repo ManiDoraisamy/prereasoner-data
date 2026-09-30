@@ -76,6 +76,26 @@ WORLD_NAMES = {"word_city": "city", "word_country": "country", "word_state": "u_
                "word_exchange_rate": "exchange_rate"}
 
 
+def _world_word_is_output(question, word, agg):
+    """Whether a named TEXT world column ("countries", "continent") is what the answer lists, groups or
+    counts, rather than the noun of the scope an aggregate runs over.
+
+    "which countries", "by country", "how many countries", a ranking ("the country with the highest
+    total") and an aggregate word right before it ("the total currency", listed per value, never summed) put
+    the column in the answer. In "total amount for all European countries" it only names the rows: the
+    answer is the one total, and projecting DISTINCT countries dropped it (the customer-orders
+    conversation, 2026-09-29). A COUNT counts the world word only when the count cue governs it: "how many
+    orders from European countries" counts orders."""
+    low = " ".join(question.lower().replace("?", " ").split())
+    if set(low.split()) & (ARGMAX_CUES | ARGMIN_CUES):
+        return True
+    fillers = r"(?:\s+(?:the|all|distinct|different|unique|separate))*"
+    cues = r"which|what|by|per|each|every|list|show|name|total|sum|average|avg|mean"
+    if agg[0] == "COUNT":
+        cues += r"|how\s+many|number\s+of|count(?:\s+of)?"
+    return re.search(r"\b(?:" + cues + r")" + fillers + r"\s+" + re.escape(word) + r"\b", low) is not None
+
+
 def _friendly(t):
     return WORLD_NAMES.get(t, t)
 
@@ -152,9 +172,10 @@ class KnowledgeTableQuery:
             out[c["name"]] = [dt] + ["ace_" + a.replace(" ", "_") for a in c.get("ace", [])]
         return out
 
-    def _find_value(self, low_q, w):
+    def _find_value(self, low_q, w, exact_only=False):
         """does a filter-attr value of word table `w` appear in the question? Uses the PRECOMPUTED distinct
-        `filter_values` (so we never scan 200k rows). Longest match wins; tolerant of a trailing plural 's'."""
+        `filter_values` (so we never scan 200k rows). Longest match wins; tolerant of a trailing plural 's'.
+        Always an exact reading, so ``exact_only`` changes nothing here."""
         vals = {}
         for attr in w.get("filter_attrs", []):
             for v in w.get("filter_values", {}).get(attr, []):
@@ -171,21 +192,25 @@ class KnowledgeTableQuery:
         that matched. 'France' resolves in 1 hop (city.country); 'euros' / 'Europe' in 2 hops
         (city -> country.currency / .continent)."""
         low_q = " " + question.lower() + " "
-        for (t, col), wt0 in routes.items():
-            start = {"left_table": t, "left_col": col, "right_table": wt0, "right_col": self.words[wt0]["key"]}
-            frontier, seen = [(wt0, [start])], {wt0}
-            while frontier:
-                wt, path = frontier.pop(0)
-                hit = self._find_value(low_q, self.words[wt])
-                if hit:
-                    return {"csv_table": t, "csv_col": col, "joins": path,
-                            "filter_table": wt, "attr": hit[0], "value": hit[1]}
-                for link in self.words[wt].get("links", []):
-                    tt = link["to_table"]
-                    if tt in self.words and tt not in seen:
-                        seen.add(tt)
-                        frontier.append((tt, path + [{"left_table": wt, "left_col": link["col"],
-                                                       "right_table": tt, "right_col": link["to_col"]}]))
+        # An exact name anywhere in the graph beats a fuzzy guess at a nearer hop, as it does inside one
+        # lookup: the nearest hop used to win outright, so 'North American' matched the country United
+        # States (0.85, via city.country) before the exact continent one hop further (2026-09-30).
+        for exact_only in (True, False):
+            for (t, col), wt0 in routes.items():
+                start = {"left_table": t, "left_col": col, "right_table": wt0, "right_col": self.words[wt0]["key"]}
+                frontier, seen = [(wt0, [start])], {wt0}
+                while frontier:
+                    wt, path = frontier.pop(0)
+                    hit = self._find_value(low_q, self.words[wt], exact_only=exact_only)
+                    if hit:
+                        return {"csv_table": t, "csv_col": col, "joins": path,
+                                "filter_table": wt, "attr": hit[0], "value": hit[1]}
+                    for link in self.words[wt].get("links", []):
+                        tt = link["to_table"]
+                        if tt in self.words and tt not in seen:
+                            seen.add(tt)
+                            frontier.append((tt, path + [{"left_table": wt, "left_col": link["col"],
+                                                           "right_table": tt, "right_col": link["to_col"]}]))
         return None
 
     @staticmethod
@@ -600,11 +625,14 @@ class KnowledgeTableQuery:
         q_for_mf = question
         if conversion_early or world_rate:
             # The conversion phrase is CLAIMED by the conversion: "in US dollars" must not also read
-            # as the country United States. A country named OUTSIDE the phrase still filters.
+            # as the country United States, and "in GBP" must not also keep only the rows already in
+            # GBP — the own-value filters below read the same claimed question. A country or a source
+            # currency named OUTSIDE the phrase ("GBP orders in Europe in USD") still filters.
             from engine.currency_intent import currency_intent as _ci
             intent = _ci(question)
             if intent is not None and getattr(intent, "phrase", None):
                 q_for_mf = question.replace(intent.phrase, " ")
+        q_claimed = q_for_mf
         # Words that name the UPLOADED SCHEMA are CLAIMED by the schema, same as the conversion phrase:
         # the 'ID' in an 'order ID' column is the column word, not Indonesia's ISO code — that alias once
         # turned 'Count all non-empty Order ID rows' into country='Q252' and a count of 0 (2026-09-14).
@@ -614,9 +642,15 @@ class KnowledgeTableQuery:
                             for p in re.split(r"[^a-zA-Z0-9]+", str(nm)) if p}, key=len, reverse=True):
             q_for_mf = re.sub(r"(?<![A-Za-z0-9])" + re.escape(part) + r"(?![A-Za-z0-9])", " ",
                               q_for_mf, flags=re.IGNORECASE)
+        own = self._own_value_matches(q_claimed, norm)        # values quoted in the question that live in the upload
+        # A value the upload itself holds is CLAIMED by the upload: 'how many orders in GBP' filters the
+        # currency column, and the world resolver's fuzzy fallback never gets to read 'GBP' as a country
+        # (it resolved Guinea-Bissau and counted 0 — 2026-09-30).
+        for _table, _column, value in sorted(own, key=lambda item: len(item[2]), reverse=True):
+            q_for_mf = re.sub(r"(?<![A-Za-z0-9])" + re.escape(value) + r"(?![A-Za-z0-9])", " ",
+                              q_for_mf, flags=re.IGNORECASE)
         self._q_meaning = q_for_mf                            # the entities layer resolves values from this
         mf = self.meaning_filter(q_for_mf, routes)
-        own = self._own_value_matches(question, norm)         # values quoted in the question that live in the upload
         if mf is not None and any(mf["value"].lower() in v.lower() for _, _, v in own):
             mf = None                                         # the value (or a longer own value CONTAINING it — world
                                                               # "United States" vs uploaded "United States of America")
@@ -635,6 +669,11 @@ class KnowledgeTableQuery:
                            for c in sch for w in name_words(c["name"])):
             wtarget = None                                   # the upload has its OWN column of that name ("unique
                                                              # countries" + a Country column) -> own data wins
+        if (wtarget and wtarget["affinity"] == "TEXT" and agg is not None and not proj_world_col
+                and (agg[0] == "COUNT" or agg[2] is not None)          # an aggregate over the UPLOAD's rows
+                and not _world_word_is_output(question, wtarget["word"], agg)):
+            wtarget = None                                   # "total amount for all European countries": the world
+                                                             # word only names the rows the aggregate runs over
         if mf is None and wtarget is None and world_rate is None:   # neither a world filter NOR a world column NOR a
             r = (self.q11.serve(tables, question, explicit_fks=explicit_fks)
                  if explicit_fks else self.q11.serve(tables, question))

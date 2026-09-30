@@ -488,6 +488,68 @@ def main():
        one_trail == ["world_join", "filter", "world_join", "convert", "group_agg"],
        f"trail={[(v.get('op'), v.get('name')) for v in (rone or {}).get('views') or []]}")
 
+    # The reported Europe-in-GBP failure selected the five London/GBP rows (810) and omitted
+    # Brussels/Paris EUR rows. Geography scopes which rows belong; GBP is the output unit. Keep
+    # non-European USD/INR rows as contrastive negatives and require a genuine FX conversion.
+    _EU_ORDERS = {"name": "orders", "columns": ["city", "currency", "amount"], "rows": [
+        ["London", "GBP", 118], ["London", "GBP", 95], ["London", "GBP", 72],
+        ["London", "GBP", 340], ["London", "GBP", 185],
+        ["Brussels", "EUR", 38], ["Brussels", "EUR", 64], ["Brussels", "EUR", 220],
+        ["Paris", "EUR", 310], ["Paris", "EUR", 210], ["Paris", "EUR", 180],
+        ["Paris", "EUR", 95], ["Paris", "EUR", 175],
+        ["Burbank", "USD", 25], ["Burbank", "USD", 480],
+        ["Kolkata", "INR", 40], ["Kolkata", "INR", 85],
+    ]}
+    # 'in GBP' is the wording that failed: the ISO code is also a cell value of the currency column,
+    # so the own-value matcher read it as a second, row-level filter. 'British pounds' matches no cell
+    # and always passed — it is the contrast, not the regression.
+    for phrasing in ("total amount in Europe in GBP", "total amount in Europe in British pounds"):
+        europe_gbp = _retry(lambda: served(sub, qc.serve, [_EU_ORDERS], phrasing, sub))
+        europe_views = (europe_gbp or {}).get("views") or []
+        europe_filtered = next((view for view in europe_views if view.get("op") == "filter"), {})
+        europe_calculated = next((view for view in europe_views if view.get("op") == "convert"), {})
+        europe_amount = (((europe_gbp or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+        ok(f"[{phrasing}] fx+world Europe to GBP is a conversion, not a GBP source-currency filter",
+           bool(europe_gbp) and not europe_gbp.get("clarify") and not europe_gbp.get("error")
+           and (europe_gbp.get("currency") or {}).get("realization") == "converted"
+           and europe_amount is not None
+           and exact(europe_amount) > Decimal("810") and exact(europe_amount) < Decimal("2102"),
+           f"result={europe_amount} currency={((europe_gbp or {}).get('currency') or {}).get('realization')}")
+        filtered_columns = europe_filtered.get("columns") or []
+        city_index = next((i for i, name in enumerate(filtered_columns) if name.endswith("__city") or name == "city"), -1)
+        included_cities = {str(row[city_index]) for row in europe_filtered.get("rows") or []} if city_index >= 0 else set()
+        ok(f"[{phrasing}] fx+world Europe scope includes London, Brussels and Paris, not only GBP rows",
+           len(europe_filtered.get("rows") or []) == 13
+           and {"London", "Brussels", "Paris"}.issubset(included_cities)
+           and "Burbank" not in included_cities and "Kolkata" not in included_cities,
+           f"filter_cols={filtered_columns} cities={sorted(included_cities)}")
+        converted_columns = europe_calculated.get("columns") or []
+        ok(f"[{phrasing}] fx+world Europe scope materializes converted per-row amounts before totaling",
+           len(europe_calculated.get("rows") or []) == 13
+           and any("rate_to_gbp" in str(column).lower() for column in converted_columns),
+           f"calculated_cols={converted_columns} rows={len(europe_calculated.get('rows') or [])}")
+        if europe_calculated.get("rows") and "calculated_value" in converted_columns:
+            converted_total = sum((exact(row[converted_columns.index("calculated_value")])
+                                   for row in europe_calculated["rows"]
+                                   if row[converted_columns.index("calculated_value")] != ""), Decimal(0))
+            ok(f"[{phrasing}] fx+world Europe result equals the sum of converted GBP row values",
+               europe_amount is not None and converted_total == exact(europe_amount),
+               f"converted_total={converted_total} result={europe_amount}")
+        else:
+            ok(f"[{phrasing}] fx+world Europe result equals the sum of converted GBP row values", False,
+               f"missing calculated_value column; columns={converted_columns}")
+
+    # Contrast: a source currency named OUTSIDE the output-unit phrase is still a row filter, and a
+    # COUNT 'in GBP' is a row selection. Neither may lose its GBP predicate.
+    gbp_rows = _retry(lambda: served(sub, qc.serve, [_EU_ORDERS], "total amount of GBP orders in Europe", sub))
+    gbp_total = (((gbp_rows or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("a source currency outside the unit phrase still filters (GBP orders in Europe = 810)",
+       gbp_total is not None and exact(gbp_total) == Decimal("810"), f"result={gbp_total}")
+    gbp_count = _retry(lambda: served(sub, qc.serve, [_EU_ORDERS], "how many orders in GBP", sub))
+    counted = (((gbp_count or {}).get("result") or {}).get("rows") or [[None]])[0][0]
+    ok("how many orders in GBP stays a GBP row filter (5)",
+       counted is not None and exact(counted) == Decimal("5"), f"result={counted}")
+
     # ROUTING: an explicit conversion target must never be owned by compose (its op library has no
     # 'convert'). The shipped failure: 'total value for contracts in Asia in US dollars' -> compose
     # grounded Asia via continent, grouped by contract, and RAW-SUMMED JPY+KRW as bare numbers while

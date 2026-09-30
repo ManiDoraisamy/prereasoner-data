@@ -609,6 +609,35 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 and currency_rate_attribute(currency_target) in sqll):
             realized = currency_conversion_words(currency_target)
             content = [word for word in content if word not in realized]
+        if content and _re.search(r'\bcount\s*\(', sqll):
+            # The noun a count cue governs is what COUNT counts: the head of the words after 'how many' /
+            # 'number of', up to the first grammar word. 'how many leads from Europe' was declined because
+            # 'leads' sat 0.85 from the city of Leeds; in 'how many German leads' 'German' is still checked.
+            low = question.lower()
+            for cue in _re.finditer(r"\b(?:how\s+many|number\s+of|count\s+of|count\s+the)\s+", low):
+                run = []
+                for word in _re.findall(r"[a-z]+", low[cue.end():]):
+                    if word in closed:
+                        break
+                    run.append(word)
+                if run:
+                    content = [word for word in content if word != run[-1]]
+        if content:
+            # A place is ONE name however many words it has, and its demonym is that name plus '-n'/'-an'
+            # ('European' Europe, 'North American' North America). When a span names a qid the query filters
+            # on, its words are covered. Word by word, 'united' in 'the United Kingdom' surfaced another country,
+            # 'north' surfaced a town called North, and 'European' surfaced Germany: each declined a correct
+            # plan (2026-09-30).
+            words = _re.findall(r"[a-z]+", question.lower())
+            spans = {" ".join(words[i:i + n]): words[i:i + n]
+                     for n in (3, 2, 1) for i in range(len(words) - n + 1)}
+            forms = {phrase: {phrase} | {phrase[:-len(end)] for end in ("n", "an") if phrase.endswith(end)}
+                     for phrase in spans}
+            qids = self._phrase_qids({form for group in forms.values() for form in group})
+            covered = {word for phrase, group in forms.items()
+                       if any(qid.lower() in sqll for form in group for qid in qids.get(form, ()))
+                       for word in spans[phrase]}
+            content = [word for word in content if word not in covered]
         if not content:
             return []
         nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
@@ -630,6 +659,27 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 if max(_cos(uv[i], np.asarray(c["qvec"], np.float32)) for c in nonid) > 0.5:
                     dropped.append(w)
         return dropped
+
+    def _phrase_qids(self, phrases):
+        """The geo qids each phrase names exactly (normalized match in knowledgebase."words"), in one lookup."""
+        norms = {}
+        for phrase in phrases:
+            norm = normalize_surface(phrase)
+            if norm:
+                norms.setdefault(norm, []).append(phrase)
+        if not norms:
+            return {}
+        try:
+            rows = self._kb_rows('SELECT norm, qid FROM knowledgebase."words" WHERE norm = ANY(%s) '
+                                 "AND qid IS NOT NULL AND type IN ('country','continent','city','state')",
+                                 (sorted(norms),))
+        except Exception:                                        # noqa: BLE001 — same contract as _word_qid
+            return {}
+        found = {}
+        for norm, qid in rows:
+            for phrase in norms.get(norm, ()):
+                found.setdefault(phrase, set()).add(qid)
+        return found
 
     def _best_world_entity(self, tokens, floor=0.6):
         """Best (token, canonical, type, sim) world-entity guess across tokens, even BELOW the 0.80 resolve

@@ -101,7 +101,7 @@ class RoutedQuery(PgQuery):
             self._caliases = m
         return self._caliases
 
-    def _find_value(self, low_q, w):
+    def _find_value(self, low_q, w, exact_only=False):
         """Normalize a where-condition value via the world Country-Aliases table BEFORE the generic match — so
         "cities in US" resolves "us" -> the canonical PK "United States" (world join), instead of falling through
         to the own-data planner where the preposition "in" wrongly matched a 2-letter State code ('IN'). Longest
@@ -114,7 +114,7 @@ class RoutedQuery(PgQuery):
                     canon = amap[alias]
                     if canon.lower() in cvals and re.search(r"(?<![a-z])" + re.escape(alias) + r"(?![a-z])", low_q):
                         return "country", canon
-        return super()._find_value(low_q, w)
+        return super()._find_value(low_q, w, exact_only=exact_only)
 
     def _families(self):
         """[(specific_concepts, friendly_table)] for the routing targets present in self.words, in ROUTE_ORDER.

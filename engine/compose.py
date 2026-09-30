@@ -178,8 +178,20 @@ class ComposeEngine:
                     best = (c, v, len(vl))
         return (best[0], best[1]) if best else None
 
-    def _dims(self, low, texts):
-        return [c for c in texts if self._mentions(c, low)]
+    def _dims(self, low, texts, table_names=()):
+        """Text columns the question mentions: each one a grouping candidate. An uploaded table's own name names
+        the rows being aggregated, so it is claimed before the loose stem match — 'total amount of GBP orders in
+        Europe' grouped the `ordered` column because 'ordered'[:5] == 'order' (2026-09-30). A column the question
+        names outright ('by product' over a 'products' table) still groups."""
+        claimed = low
+        for table_name in table_names:
+            name = " ".join(re.findall(r"[a-z0-9]+", str(table_name).lower()))
+            if not name:
+                continue
+            singular = name[:-1] if name.endswith("s") else name
+            for form in sorted({name, singular, singular + "s"}, key=len, reverse=True):
+                claimed = re.sub(r"(?<![a-z0-9])" + re.escape(form) + r"(?![a-z0-9])", " ", claimed)
+        return [c for c in texts if self._names_attribute(c, low) or self._mentions(c, claimed)]
 
     def _topn(self, low):
         m = re.search(r'(?:top|highest|best|largest|biggest)\s+(\d+)', low)
@@ -382,7 +394,8 @@ class ComposeEngine:
         # mention used to group, so those questions were served as per-city tables (2026-09-28). A question that
         # asks for no aggregate ('which cities have a population over ...') lists the noun, and a threshold on
         # each group's aggregate needs the groups, so both keep it.
-        dims = [c for c in self._dims(low, texts) if not (excl_val and c == excl_val[0])
+        dims = [c for c in self._dims(low, texts, table.get("sources") or [table["name"]])
+                if not (excl_val and c == excl_val[0])
                 and not (intent and having_pred is None
                          and self._aggregated_over(c, low, span[0] if row_threshold else None))]
         # structure: ALL 10 primitives come from the LEARNED head when present (operands are still extracted above);
@@ -398,6 +411,13 @@ class ComposeEngine:
             has["TIME"] = has["TIME"] or bool(time_preds)
             has["HAVING"] = has["HAVING"] or having_pred is not None
             has["DIVIDE"] = has["DIVIDE"] or divide_pair is not None
+            # A ranking changes WHICH rows answer (a LIMIT, a grouping by the first text column), so the head
+            # alone cannot add one: the question must rank ('top', 'highest', 'most', 'sorted by'). The head fired
+            # TOPN on 'total amount in North America in USD' and composed the top 3 customers (2026-09-30).
+            ranked = (topn_op is not None or sort_desc is not None
+                      or bool(set(re.findall(r"[a-z]+", low)) & self._RANKING_WORDS))
+            has["TOPN"] = has["TOPN"] and ranked
+            has["SORT"] = has["SORT"] and ranked
             # a named grouping dimension in the question IS a group-by, even when the head misfires (it fires TIME,
             # not GROUP, on 'by continent'). dims are column names actually mentioned, so this only adds a real
             # group-by ("total sales by continent" -> group by continent), never a spurious one on a scalar query.
@@ -624,7 +644,8 @@ class ComposeEngine:
                         base.append(cur)
                         world_filtered = True
                     world_grounding = (list(keep or []) + ([wcol] if wcol else []), own_cols, wcol, value, world_filtered)
-            table = {"name": cur["name"], "columns": cur["columns"], "rows": cur["rows"]}
+            table = {"name": cur["name"], "columns": cur["columns"], "rows": cur["rows"],
+                     "sources": [t["name"] for t in tables]}   # the uploaded sheets under the view stack
             prims = self.reader.present(question) if self.reader else None   # learned readout (or None=heuristic)
             steps = self.plan(question, table, prims, used)
             views = list(base)

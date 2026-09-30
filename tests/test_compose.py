@@ -324,6 +324,51 @@ def test_a_noun_an_aggregate_runs_over_is_not_a_grouping():
             and run["bindings"]["steps"][-1]["op"] == "topn", (question, run["bindings"]["steps"])
 
 
+def test_the_table_name_is_not_a_grouping_column():
+    """'total amount of GBP orders in Europe' on the customer-orders sheet listed five items instead of one
+    total (2026-09-30): 'orders' names the rows being summed, but the loose stem match read it as the
+    `ordered` column ('ordered'[:5] == 'order') and grouped by it."""
+    import csv
+    from pathlib import Path
+
+    rows = list(csv.reader((Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "customer-orders"
+                            / "orders.csv").read_text(encoding="utf-8").splitlines()))
+    table = {"name": "orders", "columns": rows[0], "rows": rows[1:]}
+    engine = ComposeEngine()
+    for question, by in (("total amount of GBP orders", []),          # the table's rows: one total
+                         ("total amount of orders", []),
+                         ("total amount by ordered", ["ordered"]),    # contrast: the column named outright
+                         ("total amount of orders by tier", ["tier"]),
+                         ("total amount by customer", ["customer"])):  # negative: another column is untouched
+        steps = engine.plan(question, table)
+        assert [step.get("by") for step in steps if step.get("op") == "group_agg"] == [by], (question, steps)
+    # Served through the view stack, the plan reads a materialized view ('filter_1'), not the sheet: the uploaded
+    # sheet's name must still be claimed there. The GBP value filter keeps the five London rows: 810.
+    run = _run("total amount of GBP orders", world=None, tables=(table,))
+    assert run["answer"]["rows"] == [[810]], run["answer"]
+
+
+def test_a_learned_ranking_needs_a_ranking_word():
+    """The learned head fired TOPN (and GROUP) on 'total amount in North America in USD' and compose served
+    the top 3 customers (2026-09-30). A ranking changes which rows answer, so it needs the question to rank."""
+    import csv
+    from pathlib import Path
+
+    rows = list(csv.reader((Path(__file__).resolve().parents[1] / "web" / "public" / "dataset" / "customer-orders"
+                            / "orders.csv").read_text(encoding="utf-8").splitlines()))
+    table = {"name": "orders", "columns": rows[0], "rows": rows[1:]}
+    engine = ComposeEngine(reader=None)
+    head = frozenset({"TOPN", "GROUP"})
+    steps = engine.plan("total amount in North America", table, prims=head)
+    assert [(step["op"], step.get("by")) for step in steps] == [("group_agg", [])], steps
+    steps = engine.plan("total amount sorted by", table, prims=frozenset({"SORT"}))   # an explicit sort cue
+    assert any(step["op"] == "sort" for step in steps), steps
+    # Contrast: a ranking word keeps the head's ranking, with its entity.
+    for question in ("top customers by total amount", "which customer spent the most"):
+        steps = engine.plan(question, table, prims=head)
+        assert steps[-1]["op"] == "topn" and steps[0].get("by") == ["customer"], (question, steps)
+
+
 def test_a_threshold_on_an_aggregate_compares_numbers():
     # Compose's SQLite candidate kept every city for 'cities with total sales over 100' and none for 'under 50': a
     # view's decimal_sum is TEXT with no affinity, and SQLite orders every TEXT above every number (2026-09-28).
@@ -406,6 +451,8 @@ TESTS = [
     test_a_comparison_on_the_measure_still_thresholds_each_total,
     test_the_restricted_noun_groups_only_when_the_question_asks_for_it,
     test_a_noun_an_aggregate_runs_over_is_not_a_grouping,
+    test_the_table_name_is_not_a_grouping_column,
+    test_a_learned_ranking_needs_a_ranking_word,
     test_a_threshold_on_an_aggregate_compares_numbers,
     test_named_input_value_filters_directly_without_world_model,
     test_named_input_value_filters_even_when_world_available,

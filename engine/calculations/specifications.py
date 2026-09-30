@@ -345,10 +345,21 @@ class CurrencySpecification:
         monetary = bool(measure_columns) and all(
             is_currency_measure_column(column) for _, column in measure_columns
         )
+        # An output unit converts every row it totals. A branch that also keeps only the rows already
+        # denominated in the target realizes the one phrase twice: "total amount in Europe in GBP"
+        # summed the five GBP rows and multiplied each by 1 (810), dropping every EUR row in Europe.
+        target_restricted = any(
+            is_currency_source_column(fact.column)
+            and _literal_code(fact.value) == target
+            and fact.operator == "="
+            for branch in evidence.branches
+            for fact in branch.predicates
+        )
         exact_conversion = (
             every_branch_numeric
             and monetary
             and bool(converted)
+            and not target_restricted
             and all(match is not None and match[1] == target for match in converted)
             and any(
                 all(branch_realizes_plan(branch, plan, graph) for branch in evidence.branches)
@@ -373,9 +384,15 @@ class CurrencySpecification:
                 "reason": (
                     f"{intent.phrase!r} can mean convert the aggregate to {target} or filter {target} rows; "
                     "the selected query used the filter reading"
+                    + (f" (it converts, but only the rows already in {target})" if any(converted) else "")
                 ),
                 "proposal": substitute_currency_filter(original_question, target) or "",
             }
+        if target_restricted:
+            return {**common, "reason": (
+                f"{intent.phrase!r} names the output unit, but a query branch keeps only the rows "
+                f"already in {target}"
+            )}
         if not every_branch_numeric:
             reason = "not every set-operation branch produces a scalable numeric aggregate"
         elif measure_columns and not monetary:

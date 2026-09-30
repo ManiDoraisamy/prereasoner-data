@@ -91,11 +91,15 @@ def _currency_assessment(question, tables, graph, computation):
 def test_intent_is_not_a_bare_currency_phrase():
     count = currency_intent("how many orders in USD")
     output = currency_intent("total order amount in euros")
+    european_output = currency_intent("total amount in Europe in British pounds")
     explicit = currency_intent("convert USD to EUR")
     ok(count is not None and count.kind == CurrencyIntentKind.FILTER,
        "COUNT + in USD is a row filter")
     ok(output is not None and output.kind == CurrencyIntentKind.OUTPUT,
        "aggregate + in euros is an output-unit request")
+    ok(european_output is not None and european_output.kind == CurrencyIntentKind.OUTPUT
+       and european_output.target == "GBP",
+       "geographic Europe plus GBP on a total keeps GBP as output units, not a row filter")
     ok(explicit is not None and explicit.kind == CurrencyIntentKind.OUTPUT and explicit.explicit,
        "explicit convert-to phrase is an output conversion")
     ok(currency_conversion_target("how many orders in USD") is None,
@@ -106,6 +110,20 @@ def test_intent_is_not_a_bare_currency_phrase():
        "ordinary lowercase words that collide with ISO codes do not become currency intent")
     ok(currency_rate_target("rate_to_abc") is None,
        "malformed rate columns cannot enter typed FX availability")
+
+    # Contrastive intent matrix: geography does not turn an output unit into a source-currency
+    # filter, while COUNT and explicit negation remain row-selection requests.
+    matrix = (
+        ("how many orders are in GBP", CurrencyIntentKind.FILTER, "GBP"),
+        ("total amount in Europe in GBP", CurrencyIntentKind.OUTPUT, "GBP"),
+        ("total amount in Europe in British pounds", CurrencyIntentKind.OUTPUT, "GBP"),
+        ("convert total amount from EUR to GBP", CurrencyIntentKind.OUTPUT, "GBP"),
+        ("orders not in USD", CurrencyIntentKind.FILTER, "USD"),
+    )
+    for phrase, expected_kind, expected_target in matrix:
+        intent = currency_intent(phrase)
+        ok(intent is not None and intent.kind == expected_kind and intent.target == expected_target,
+           f"currency intent keeps scope and output/filter semantics: {phrase!r}")
 
 
 def test_filter_conversion_and_annotation_matrix():
@@ -197,6 +215,210 @@ def test_an_output_unit_request_is_not_satisfied_by_a_query_that_drops_its_aggre
                                      describe_computation(summed))
     ok(ambiguous["status"] == "ambiguous" and ambiguous["realization"] == "currency_filter",
        "a summed measure filtered to the unit remains an explicit convert-or-filter question")
+
+
+def test_an_output_unit_is_not_also_a_filter_on_the_same_currency():
+    """Production 2026-09-29 (customer-orders): "total amount in Europe in GBP" answered £810 —
+    the plan converted to GBP AND kept only the rows whose currency was GBP (the five London
+    orders, each times 1), dropping every EUR order in Brussels and Paris. The phrase "in GBP"
+    names the output unit; it was realized twice and the verdict said satisfied."""
+    graph = SchemaGraph.from_tables((ORDERS, USD_RATES), (EDGE,))
+    amount, currency, rate, code = (graph.column_map[key].ref for key in (
+        ("orders", "amount"), ("orders", "currency"), ("fx", "rate_to_usd"), ("fx", "currency_code")))
+    join = Join("fx", currency, code)
+    converted_sum = (SelectItem(Aggregate("SUM", BinaryExpr(amount, "*", rate))),)
+    convert_only = SelectQuery(converted_sum, "orders", joins=(join,))
+    convert_and_keep = SelectQuery(converted_sum, "orders", joins=(join,),
+                                   where=Comparison(currency, "=", Literal("USD", SQLType.TEXT)))
+    question = "total order amount in USD"
+
+    doubled = _currency_assessment(question, (ORDERS, USD_RATES), graph,
+                                   describe_computation(convert_and_keep))
+    ok(doubled["status"] != "satisfied" and "only the rows already in USD" in doubled["reason"],
+       f"converting while keeping only USD rows does not satisfy 'in USD' (got {doubled['status']})")
+    whole = _currency_assessment(question, (ORDERS, USD_RATES), graph,
+                                 describe_computation(convert_only))
+    ok(whole["status"] == "satisfied" and whole["realization"] == "converted",
+       "the same conversion over every row satisfies the output unit")
+
+    # Selection takes the best-ranked SATISFIED query, so the doubled reading ranked first loses.
+    class Ranked:
+        def __init__(self, query):
+            self.query = query
+    chosen, _, index = select_calculation_candidate(
+        question, (ORDERS, USD_RATES), graph, [Ranked(convert_and_keep), Ranked(convert_only)])
+    ok(index == 1 and chosen.query is convert_only,
+       "selection skips the filtered conversion for the one that converts every row")
+
+    # Contrast: a SOURCE currency named outside the target phrase is a real filter.
+    source = SelectQuery(converted_sum, "orders", joins=(join,),
+                         where=Comparison(currency, "=", Literal("GBP", SQLType.TEXT)))
+    gbp_in_usd = _currency_assessment("total amount of GBP orders in USD", (ORDERS, USD_RATES), graph,
+                                      describe_computation(source))
+    ok(gbp_in_usd["status"] == "satisfied" and gbp_in_usd["realization"] == "converted",
+       "GBP orders converted to USD keep their GBP filter")
+
+    # Negative: a COUNT "in USD" is a row selection and keeps its filter.
+    counted = SelectQuery((SelectItem(Aggregate("COUNT", amount)),), "orders",
+                          where=Comparison(currency, "=", Literal("USD", SQLType.TEXT)))
+    count = _currency_assessment("how many orders in USD", (ORDERS, USD_RATES), graph,
+                                 describe_computation(counted))
+    ok(count["status"] == "satisfied" and count["realization"] == "currency_filter",
+       "how many orders in USD is still a USD row filter")
+
+
+def test_a_world_word_that_names_the_scope_is_not_the_answer():
+    """Production 2026-09-29: the assistant's accepted offer "total amount for all European countries
+    in GBP" projected DISTINCT countries instead of the total, and the engine clarified. A world
+    column word lists, groups or counts only under a cue that puts it in the answer."""
+    from engine.knowledge_tables import _world_word_is_output
+    total, count = ("SUM", "orders", "amount"), ("COUNT", "orders", None)
+    for question, agg, expected in (
+        ("total amount for all European countries in GBP", total, False),
+        ("average amount in Asian countries", ("AVG", "orders", "amount"), False),
+        ("how many orders from European countries", count, False),
+        ("total amount by country", total, True),
+        ("total amount for each continent", total, True),
+        ("which country has the highest total amount", total, True),
+        ("how many countries are the customers in", count, True),
+        ("number of distinct countries", count, True),
+        ("which countries are the customers in", count, True),
+        ("What is the total currency?", total, True),     # the attribute itself, listed per value
+    ):
+        word = next(w for w in ("continent", "countries", "currency", "country") if w in question)
+        ok(_world_word_is_output(question, word, agg) is expected,
+           f"world word role: {question!r} -> {'answer' if expected else 'scope'}")
+
+
+def test_the_coverage_gate_reads_a_place_as_one_name():
+    """The coverage gate declined three correct plans in the customer-orders sweep (2026-09-30), each by
+    resolving one word of a place on its own: 'united' of 'the United Kingdom' surfaced another country,
+    'north' of 'North American' a town called North, 'European' Germany. A span that names a qid the SQL
+    filters on covers its words, and a demonym is its place plus '-n'/'-an'."""
+    from unittest.mock import patch
+
+    import numpy as np
+    from engine import knowledge_query
+
+    words = {"unitedkingdom": "Q145", "northamerica": "Q49", "europe": "Q46", "america": "Q30"}
+    fuzzy = {"united": ("united", "Q30", "country", 0.80), "north": ("north", "Q14692921", "city", 0.91),
+             "european": ("european", "Q183", "country", 0.75), "american": ("american", "Q30", "country", 0.8),
+             "leads": ("leads", "Q584982", "city", 0.85), "german": ("german", "Q183", "country", 0.75)}
+    gate = object.__new__(knowledge_query.KnowledgeQuery)
+    gate._kb_rows = lambda _sql, params: [(norm, words[norm]) for norm in params[0] if norm in words]
+    gate._word_qid = lambda _word: None
+    gate._best_world_entity = lambda tokens: fuzzy.get(tokens[0])
+    gate._encode = lambda texts: np.zeros((len(texts), 2), dtype=np.float32)
+    schema = [{"table": "orders", "name": "amount", "affinity": "INTEGER", "qvec": [0.0, 0.0]},
+              {"table": "orders", "name": "currency", "affinity": "TEXT", "qvec": [0.0, 0.0]}]
+
+    def dropped(question, filtered_qid, aggregate='SUM("amount" * "rate_to_gbp")'):
+        sql = f'SELECT {aggregate} FROM t WHERE "country__continent" = \'{filtered_qid}\''
+        with patch.object(knowledge_query, "closed_class_words",
+                          lambda _text: frozenset({"the", "for", "all", "in", "from", "how", "many"})):
+            return gate._uncovered(question, schema, sql)
+
+    ok(dropped("total amount in the United Kingdom in GBP", "Q145") == [],
+       "'the United Kingdom' is one place the query filters on")
+    ok(dropped("total amount for all European countries in GBP", "Q46") == [],
+       "'European' names Europe (Q46)")
+    ok(dropped("total amount for all North American countries in GBP", "Q49") == [],
+       "'North American' names North America (Q49), not a town called North")
+    # Negative: a place the query did NOT filter on is still dropped.
+    ok(dropped("total amount for all European countries in GBP", "Q30") == ["european"],
+       "a Europe question over a United States filter still declines")
+    # The noun a count cue governs is what COUNT counts ('leads' sat 0.85 from the city of Leeds), but only
+    # the head: 'German' in 'how many German leads' is still a place the query must filter on.
+    ok(dropped("how many leads from Europe", "Q46", "COUNT(*)") == [],
+       "the counted noun is covered by COUNT, however close it sits to a town")
+    ok(dropped("how many German leads", "Q46", "COUNT(*)") == ["german"],
+       "a place before the counted noun is still checked")
+
+
+def test_a_continent_demonym_resolves_to_its_continent():
+    """'how many orders from North American countries' filtered the United States (Q30): 'North American'
+    has no exact entry, and the embedding fallback put it nearer the country than the continent. A
+    continent's demonym is its name plus '-n'/'-an', read exactly, and only for continents."""
+    from unittest.mock import patch
+
+    from engine import entities
+
+    words = {"northamerica": ("continent", "Q49"), "europe": ("continent", "Q46"), "pl": ("country", "Q36")}
+    resolver = object.__new__(entities.EntityQuery)
+    resolver._kb_rows = lambda _sql, params: [(norm, *words[norm]) for norm in params[0] if norm in words]
+    resolver._nn = lambda _vector, _type: (None, -1.0)
+    embedder = type("Embedder", (), {"encode": staticmethod(lambda texts: [[0.0] for _ in texts])})
+
+    def resolve(candidates, type_):
+        resolver._candidates = lambda _question: list(candidates)
+        with patch.object(entities.Embedder, "get", lambda: embedder):
+            return resolver._resolve("question", type_)
+
+    ok(resolve(["North American countries", "North American", "countries"], "continent") == ("Q49", 1.0, "North American"),
+       "'North American' is North America")
+    ok(resolve(["European countries", "European", "countries"], "continent") == ("Q46", 1.0, "European"),
+       "'European' is Europe")
+    ok(resolve(["North American"], "country") is None, "the stem is read only as a continent")
+    ok(resolve(["plan", "cost"], "country") is None and resolve(["plan"], "continent") is None,
+       "'plan' never reads as Poland's 'pl'")
+
+
+def test_an_exact_world_name_beats_a_nearer_fuzzy_guess():
+    """With 'North American' read exactly, the meaning walk still filtered the United States: it takes the
+    nearest hop first, and there the embedding guess 'American' -> United States (0.85, via city.country)
+    was accepted before the exact continent one hop further. Exact names win across hops too."""
+    words = {"city": {"key": "qid", "links": [{"col": "country", "to_table": "country", "to_col": "qid"}]},
+             "country": {"key": "qid", "links": []}}
+    seen = []
+
+    def find_value(_low_q, w, exact_only=False):
+        table = next(name for name, value in words.items() if value is w)
+        seen.append((table, exact_only))
+        if table == "country":
+            return "continent", "Q49"                       # exact: 'North American' -> North America
+        return None if exact_only else ("country", "Q30")  # fuzzy: 'American' -> United States
+
+    walker = object.__new__(KnowledgeTableQuery)
+    walker.words = words
+    walker._find_value = find_value
+    hit = walker.meaning_filter("how many orders from North American countries", {("orders", "city"): "city"})
+    ok(hit is not None and (hit["attr"], hit["value"]) == ("continent", "Q49")
+       and [join["right_table"] for join in hit["joins"]] == ["city", "country"],
+       f"the exact continent two hops away wins over the nearer fuzzy country (got {hit})")
+    ok(seen[:2] == [("city", True), ("country", True)], f"exact pass walks the whole graph first ({seen})")
+    # Contrast: with no exact name anywhere, the nearest fuzzy hit still resolves.
+    words["country"]["links"] = []
+    walker._find_value = lambda _q, w, exact_only=False: None if exact_only or w is words["country"] else ("country", "Q30")
+    hit = walker.meaning_filter("orders from American customers", {("orders", "city"): "city"})
+    ok(hit is not None and hit["value"] == "Q30", "a fuzzy reading still resolves when nothing is exact")
+
+
+def test_a_measure_named_in_two_words_is_summed_not_counted():
+    """The sweep of the shipped sheets found "total weight kg for deliveries in Germany" answered COUNT(*)
+    = 1: the measure matcher knew one-word column names only, so the table noun "deliveries" read as
+    "count the deliveries". A column named by all of its words, or by a first word no other numeric column
+    starts with, is the measure; the one-word rule and the table-noun count are unchanged."""
+    import numpy as np
+    from engine.encoder_overlay import EncoderQuery
+
+    reader = object.__new__(EncoderQuery)
+    reader.ingest = lambda tables, *args, **kwargs: (tables, [])
+    reader._encode = lambda texts: np.ones((len(texts), 2), dtype=np.float32)
+    schema = [{"table": "deliveries", "name": name, "affinity": affinity}
+              for name, affinity in (("delivery ID", "INTEGER"), ("customer", "TEXT"), ("city", "TEXT"),
+                                     ("weight kg", "INTEGER"), ("fee", "INTEGER"))]
+
+    def read(question, op="SUM"):
+        reader.read_op_model = lambda *_args: (op, {})
+        return reader.read_op_all(question, schema)
+
+    for question in ("total weight kg for deliveries in Germany", "total weight for deliveries in Germany",
+                     "total weight in kg for deliveries in Germany"):
+        ok(read(question) == ("SUM", "deliveries", "weight kg"), f"{question!r} sums weight kg (got {read(question)})")
+    ok(read("total fee for deliveries in Germany") == ("SUM", "deliveries", "fee"), "a one-word measure is unchanged")
+    ok(read("total deliveries in Germany") == ("COUNT", "deliveries", None),
+       "a table noun with no measure still counts the rows")
+    ok(read("how many deliveries in Germany", "COUNT") == ("COUNT", "deliveries", None), "a COUNT is unchanged")
 
 
 def test_set_query_requires_every_numeric_branch_to_convert():
@@ -1050,6 +1272,12 @@ def test_training_database_adapter_preserves_postgres_decimal():
 
 TESTS = [
     test_an_output_unit_request_is_not_satisfied_by_a_query_that_drops_its_aggregate,
+    test_an_output_unit_is_not_also_a_filter_on_the_same_currency,
+    test_a_world_word_that_names_the_scope_is_not_the_answer,
+    test_the_coverage_gate_reads_a_place_as_one_name,
+    test_a_continent_demonym_resolves_to_its_continent,
+    test_an_exact_world_name_beats_a_nearer_fuzzy_guess,
+    test_a_measure_named_in_two_words_is_summed_not_counted,
     test_intent_is_not_a_bare_currency_phrase,
     test_filter_conversion_and_annotation_matrix,
     test_set_query_requires_every_numeric_branch_to_convert,

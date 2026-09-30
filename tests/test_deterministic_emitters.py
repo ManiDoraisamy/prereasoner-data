@@ -1514,6 +1514,7 @@ def test_coverage_checks_filters_in_the_full_emitted_program():
     adapter = SimpleNamespace(
         _encode=lambda words: [[0] for word in words],
         _word_qid=lambda word: None,
+        _phrase_qids=lambda phrases: {},
         _best_world_entity=lambda words: (words[0], "France", "country", 1),
     )
     schema = [{"table": "orders", "name": "amount", "affinity": "REAL"}]
@@ -1540,6 +1541,7 @@ def test_coverage_prose_is_not_a_place_or_an_ignored_status():
     adapter = SimpleNamespace(
         _encode=lambda words: [[0] for _ in words],
         _word_qid=lambda word: None,
+        _phrase_qids=lambda phrases: {},
         _best_world_entity=lambda words: (words[0], "Spurious Place", "city", 0.61),
     )
     schema = [{"table": "payments", "name": "amount", "affinity": "REAL", "values": [10]}]
@@ -1569,6 +1571,7 @@ def test_distinct_count_operator_and_sheet_scope_are_covered():
     adapter = SimpleNamespace(
         _encode=lambda words: [[0] for _ in words],
         _word_qid=lambda word: None,
+        _phrase_qids=lambda phrases: {},
         _best_world_entity=lambda words: (words[0], 'Spurious Place', 'city', 0.61),
     )
     schema = [

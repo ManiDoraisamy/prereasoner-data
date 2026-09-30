@@ -198,7 +198,7 @@ class EntityQuery(RoutedQuery):
         forms |= {normalize_surface(" ".join(words[:-1] + [word])) for word in singulars}
         return {form for form in forms if form}
 
-    def _resolve(self, question, type_):
+    def _resolve(self, question, type_, exact_only=False):
         """resolve `question` to a canonical world PK of `type_`. HYBRID:
         (1) normalized-EXACT match of a candidate surface form against the words index (deterministic — this is
             what nails US/USA/UK/Holland/the-United-States, which embeddings get wrong); longest candidate first,
@@ -210,7 +210,14 @@ class EntityQuery(RoutedQuery):
             return None
         norms = {c: normalize_surface(c) for c in cands}
         type_forms = {c: self._type_forms(c) for c in cands}
-        uniq = sorted({n for n in norms.values() if n} | {f for forms in type_forms.values() for f in forms})
+        # A continent's demonym is its name plus '-n'/'-an' ('European', 'North American'), read EXACTLY: the
+        # embedding put 'North American' nearer the United States, so 'orders from North American countries'
+        # filtered one country (2026-09-30). Only for continents, where the stem must itself be a continent;
+        # for every type, 'plan' would read as 'pl' and 'can' as 'ca'.
+        stems = {c: [normalize_surface(c[:-len(end)]) for end in ("n", "an") if c.lower().endswith(end)]
+                 for c in cands} if type_ == "continent" else {}
+        uniq = sorted({n for n in norms.values() if n} | {f for forms in type_forms.values() for f in forms}
+                      | {stem for group in stems.values() for stem in group if stem})
         by_type = {}                                              # norm -> {type: {canonical}} across ALL types
         if uniq:
             for nm, ty, q_ in self._kb_rows(
@@ -219,8 +226,14 @@ class EntityQuery(RoutedQuery):
                 by_type.setdefault(nm, {}).setdefault(ty, set()).add(q_)      # collect QIDS — resolve to qid, not name
         for c in sorted(cands, key=lambda x: -len(x)):           # (1) exact match of the requested type, longest first
             cs = by_type.get(norms[c], {}).get(type_)
+            for stem in ([] if cs else stems.get(c, ())):
+                cs = by_type.get(stem, {}).get(type_)
+                if cs:
+                    break
             if cs and len(cs) == 1:
                 return (next(iter(cs)), 1.0, c)
+        if exact_only:
+            return None
         # (2) fuzzy fallback — ONLY for candidates that exact-match NOTHING. A token that IS a known state/city/etc
         # (Indiana, Houston) is that entity, not a typo of a country, so it must not fuzzy-match a country. Nor
         # may a candidate that NAMES a world type ('countries', 'which countries'): it is the type, never one of
@@ -245,9 +258,10 @@ class EntityQuery(RoutedQuery):
         return super().serve(tables, question, as_of=as_of, schema=schema,
                              explicit_fks=explicit_fks, dataset_semantics=dataset_semantics)
 
-    def _find_value(self, low_q, w):
+    def _find_value(self, low_q, w, exact_only=False):
         """resolve a where value via embedding NN over the world `words` index for any ENTITY-typed filter attr;
-        fall back to the plain matcher (bypassing the alias table) for non-entity attrs."""
+        fall back to the plain matcher (bypassing the alias table) for non-entity attrs. ``exact_only`` admits
+        exact names alone (meaning_filter's first pass)."""
         # _q_meaning = the question with spans already CLAIMED by another reading removed (the
         # conversion phrase: "in US dollars" must not also resolve as the country United States).
         q = getattr(self, "_q_meaning", None) or getattr(self, "_q_orig", None) or low_q
@@ -256,12 +270,12 @@ class EntityQuery(RoutedQuery):
             t = ENTITY_TYPES.get(attr)
             if not t:
                 continue
-            r = self._resolve(q, t)
+            r = self._resolve(q, t, exact_only=exact_only)
             if r and (best is None or r[1] > best[2]):
                 best = (attr, r[0], r[1])
         if best:
             return best[0], best[1]
-        return super(RoutedQuery, self)._find_value(low_q, w)   # skip the alias table -> plain string match
+        return super(RoutedQuery, self)._find_value(low_q, w, exact_only=exact_only)   # skip the alias table -> plain match
 
     # ---- routing: deterministic VALUE-MEMBERSHIP (header-independent) over the model fallback ----
     def _value_membership_routes(self, table):
@@ -271,6 +285,7 @@ class EntityQuery(RoutedQuery):
         (IN = India vs the state Indiana). -> {(table, col): friendly_world_table}."""
         base = table["name"]
         routes = {}
+        columns = []                                              # (col, cells, norms) of every candidate column
         for ci, col in enumerate(table["columns"]):
             # A synthesized measure-currency column is ENGINE METADATA, not user data: every cell is
             # the same ISO code. Value-membership resolution happily matched 'EUR' to a city QID and
@@ -283,21 +298,25 @@ class EntityQuery(RoutedQuery):
             if len(cells) < 3:
                 continue
             norms = [normalize_surface(c) for c in cells]
-            uniq = sorted({n for n in norms if n})
-            if not uniq:
-                continue
-            ntypes = {}
+            if any(norms):
+                columns.append((col, cells, norms))
+        # ONE membership lookup for every column's values: it was one round trip per column (seven for the
+        # customer-orders sheet) on every world request, 2026-09-30.
+        uniq = sorted({n for _col, _cells, norms in columns for n in norms if n})
+        ntypes = {}
+        if uniq:
             for nm, ty in self._kb_rows(
                     'SELECT DISTINCT norm, type FROM knowledgebase."words" WHERE norm = ANY(%s) '
                     "AND type IN ('city','country','state','element','continent')", (uniq,)):
                 ntypes.setdefault(nm, set()).add(ty)
+        for col, cells, norms in columns:
             counts = {}
             for n in norms:
                 for ty in ntypes.get(n, ()):                      # a cell may match >1 type (Georgia); count each
                     counts[ty] = counts.get(ty, 0) + 1
             if not counts:
                 continue
-            best_ty, best = max(counts.items(), key=lambda kv: kv[1])
+            best_ty, best = max(sorted(counts.items()), key=lambda kv: kv[1])   # a tie takes the first type by name
             friendly = TYPE_TO_FRIENDLY.get(best_ty)
             if best / len(cells) >= VALUE_ROUTE_MIN and friendly in self.words:
                 routes[(base, col)] = friendly

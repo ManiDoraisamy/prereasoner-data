@@ -7,6 +7,7 @@ readout, the operator/intent decision, and the free-text bridge embeddings.
 """
 from __future__ import annotations
 
+import re
 from typing import ClassVar
 
 import numpy as np
@@ -238,9 +239,25 @@ class EncoderQuery(TableQuery):
             return next((t for w in low for t in tnames
                          if w == t or w == t + "s" or w.rstrip("s") == t.rstrip("s")), None)
 
+        def name_words(column):
+            return [word.rstrip("s") for word in re.findall(r"[a-z]+", column["name"].lower())]
+
         def token_measure():
-            return next((c for c in nonid_num for w in low
-                         if w == c["name"].lower() or w.rstrip("s") == c["name"].lower().rstrip("s")), None)
+            exact = next((c for c in nonid_num for w in low
+                          if w == c["name"].lower() or w.rstrip("s") == c["name"].lower().rstrip("s")), None)
+            if exact:
+                return exact
+            # A column named in more than one word ('weight kg') is named when every word of it is in the
+            # question, or by its first word when that word starts no other numeric column ('total weight
+            # for deliveries'). Missing it let the table noun "deliveries" read as a row count: "total weight
+            # kg for deliveries in Germany" answered COUNT(*) = 1 instead of 2 (2026-09-30).
+            said = {w.strip("?,.!").rstrip("s") for w in low}
+            heads = [name_words(c)[:1] for c in nonid_num]
+            named = [c for c in nonid_num
+                     if (words := name_words(c))
+                     and (set(words) <= said
+                          or (words[0] in said and len(words[0]) > 2 and heads.count([words[0]]) == 1))]
+            return named[0] if len(named) == 1 else None
 
         def money_total():
             if not money:

@@ -32,6 +32,7 @@ from engine.routing import (
     DEPTH_PRIMS,
     WORLD_MEASURES,
     compose_owns,
+    realizes,
     required_ops,
 )
 from engine.numeric import parse_decimal
@@ -414,7 +415,10 @@ class ComposedKnowledgeQuery:
             for view in (res.get("views") or [])
             if isinstance(view, dict)
         }
-        shared_composition = bool(plan_ops & COMPOSITION_OPS)
+        # A local composition runs on the shared emitters, but only a plan that realizes every op the question
+        # demands may own it: 'total amount in North America in USD' composed a top-3 of USD rows with no
+        # conversion and bypassed route()'s convert requirement (2026-09-30).
+        shared_composition = bool(plan_ops & COMPOSITION_OPS) and realizes(res.get("views"), required_ops(question))
         if context is not None and (
             shared_composition
             or compose_owns(
