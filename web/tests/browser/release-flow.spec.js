@@ -542,6 +542,57 @@ test('an orchestrated turn keeps backend provenance per engine call',async({page
   await page.locator('#popmenu button').filter({hasText:'SQL'}).click();
 });
 
+test('customer-orders ?load prompt carries its Europe-to-GBP follow-up in the same chat',async({page})=>{
+  await mockAuth(page,'1');
+  const calls=[];
+  page.on('request',request=>{
+    if(new URL(request.url()).pathname==='/chat'&&request.method()==='POST')calls.push(request.postDataJSON());
+  });
+  await page.goto('/?load=customer-orders');
+  await expect(page.locator('#chips .nm')).toHaveText(['orders']);
+  await expect(page.locator('#q')).toHaveValue('total amount in France in US dollars');
+  const loaded=await page.evaluate(()=>{
+    const {cols,rows}=parseCSV(SHEETS[0].data);
+    const city=cols.indexOf('city'),currency=cols.indexOf('currency'),amount=cols.indexOf('amount');
+    return {
+      rows:rows.length,
+      hasLondon:rows.some(row=>row[city]==='London'&&row[currency]==='GBP'&&row[amount]==='118'),
+      hasParis:rows.some(row=>row[city]==='Paris'&&row[currency]==='EUR'&&row[amount]==='310'),
+    };
+  });
+  expect(loaded).toEqual({rows:23,hasLondon:true,hasParis:true});
+
+  await page.getByRole('button',{name:'Ask',exact:true}).click();
+  await expect(page).toHaveURL(new RegExp(`/reason/${conversationPattern()}`));
+  await expect(page.locator('.turn-answer').last()).toContainText('Your total is 180.');
+  await page.locator('#chatq').fill('in GBP for the whole of Europe?');
+  await page.getByRole('button',{name:'Send'}).click();
+  await expect(page.locator('.turn-answer').last()).toContainText('Your total is 180.');
+  await page.locator('#chatq').fill('why is France and other European countries not included?');
+  await page.getByRole('button',{name:'Send'}).click();
+  await expect(page.locator('.turn-answer').last()).toContainText('Your total is 180.');
+  await page.locator('#chatq').fill('yes');
+  await page.getByRole('button',{name:'Send'}).click();
+  await expect(page.locator('.turn-answer').last()).toContainText('Your total is 180.');
+
+  expect(calls).toHaveLength(4);
+  expect(calls[0].message).toBe('total amount in France in US dollars');
+  expect(calls[1].message).toBe('in GBP for the whole of Europe?');
+  expect(calls[2].message).toBe('why is France and other European countries not included?');
+  expect(calls[3].message).toBe('yes');
+  expect(calls[1].history).toEqual(expect.arrayContaining([
+    expect.objectContaining({role:'user',content:'total amount in France in US dollars'}),
+  ]));
+  expect(calls[1].tables).toHaveLength(1);
+  expect(calls[2].tables).toHaveLength(1);
+  expect(calls[3].tables).toHaveLength(1);
+  expect(calls[3].history).toEqual(expect.arrayContaining([
+    expect.objectContaining({role:'user',content:'why is France and other European countries not included?'}),
+  ]));
+  expect(calls[1].tables[0].data).toContain('101,Sherlock Holmes,London,Gold,"Magnifying Glass, Brass",GBP,118');
+  expect(calls[1].tables[0].data).toContain('109,Inspector Clouseau,Paris,Bronze,Gabardine Trench Coat,EUR,310');
+});
+
 test('signed-in conversations remain reachable on mobile home',async({page})=>{
   await page.setViewportSize({width:390,height:844});
   await mockAuth(page);

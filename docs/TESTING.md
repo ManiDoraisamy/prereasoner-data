@@ -209,12 +209,18 @@ test principal, `APP_ENV=test`, `RTDB_URL` empty, and `EXTERNAL_LLM_ENABLED=1` e
 the requested Sonnet evaluation. PostgreSQL should use the IAM proxy and serving role. No database
 firewall changes or production auth bypasses are required. For a deployed origin, supply an authorized
 Playwright `EVAL_STORAGE_STATE`; the harness does not mint credentials or automate Google login.
-The runner uploads originals, sends initial and conversational follow-ups without `decomposition.json`,
+For customer-facing examples listed in `dataset.txt`, the runner opens the exact `?load=<dataset>` URL,
+verifies its `prompt.txt` prefill, and sends the prompt followed by every ordered `eval.txt` follow-up
+in the SAME conversation. Evaluation-only datasets are uploaded because they are intentionally not
+registered as public demos. The runner sends conversational follow-ups without `decomposition.json`,
 checks `py,sql,both`, and uses the shared `tests.test_datasets.grade_answer` golds. It records source
 revision/dirty state, requested/actual mode, full responses and browser failures in
 `regress/private/browser-matrix.json` (`EVAL_BROWSER_REPORT` overrides). `EVAL_DATASETS` and
 `EVAL_BROWSER_MODES` narrow a diagnostic run; report such runs as partial. Only conversations created
 by the harness are deleted after their evidence is recorded. Never commit authentication state or reports.
+FX golds require both an in-tolerance result and typed engine evidence that the output currency was
+realized by a supported conversion or identity mapping; a numerically plausible raw mixed-currency
+sum or source-currency filter is not a pass.
 
 The RTDB wire format wraps arrays in `{__pr_wire__: "array/v1", json: "[...]"}` to preserve nulls,
 empty arrays and exact row positions. HTTP and saved snapshots retain ordinary JSON; `result-wire.js`

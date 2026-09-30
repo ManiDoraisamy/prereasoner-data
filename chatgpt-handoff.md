@@ -13,6 +13,38 @@ Transcript excerpts below are explicitly labeled and are not a full verbatim cha
 
 ---
 
+## 2026-09-30 — Europe scope / GBP follow-up regressions added; not deployed
+
+Reviewed the two annotated turns from the live conversation. The product bug is real: the prior
+Europe-in-GBP answer was £810 (only the five London rows already denominated in GBP), omitting the
+13 Brussels/Paris EUR rows; the assistant then claimed it could not convert currencies even though
+the engine's supported FX path is intended to do that. Updated the orchestrator follow-up contract
+to keep geography separate from output currency, preserve the Europe+GBP request, execute a clear
+"yes" against the immediately preceding offer, and relay only an engine-reported FX limitation.
+
+Added regression coverage at three levels: (1) a deterministic live-Postgres engine case requires
+Europe scope to include London/Brussels/Paris (13 rows), exclude Burbank/Kolkata, and materialize
+per-row `rate_to_gbp` conversion; (2) a credential-gated orchestrator integration case checks the
+exact Europe/GBP rewrite and the screenshot's follow-up/"yes" flow; and (3) the public
+`customer-orders` demo gold now covers that ordered conversation, while a Chrome fixture test opens
+`?load=customer-orders` and carries all four turns with the same table/history. The unmocked browser
+matrix was updated to use each public demo's exact `?load=<dataset>` URL and shipped `prompt.txt`,
+then send every ordered `eval.txt` follow-up in one conversation.
+
+Verification on the isolated `codex/cloudrun-cold-start-spacy` worktree (`eedee7d` base): Chrome
+fixture suite **34/34**, `npm run test:web` passed, `tests.test_calculations` **105/105**,
+`tests.test_orchestrator_unit` **20/20**, modified Python files compile, and `git diff --check`
+passes. `tests.test_datasets` skipped because `KB_PG_PASSWORD` is absent; live Postgres geo checks
+were not run. `tests.test_orchestrator` skipped because `ANTHROPIC_API_KEY` is absent; its exact
+conversation integration assertions were therefore not exercised against a real model. The full
+unmocked Chrome release matrix (`?load` across all public datasets and their ordered follow-ups)
+was **not run**: this checkout has no `EVAL_STORAGE_STATE` or live model/database credentials.
+The 34 Chrome tests use the disposable fixture backend, not the deployed model.
+
+No merge, commit, push, Cloud Build, or deployment occurred. The currently deployed revision
+recorded above (`prereasoner-api-00125-jsx`) does not contain these uncommitted changes, so this
+fix is **not live yet**. No existing user conversation was modified.
+
 ## 2026-09-30 — merged release deployed; live health and browser regressions verified
 
 PR #35 is merged at `a5d42109bd7389b5b76fe35a85af59a76dcfef15`. Cloud Build

@@ -217,6 +217,11 @@ def grade_answer(response, expected, *, fx=False, followup=False):
         return None if response.get('clarify') else 'expected clarification'
     if response.get('error') or response.get('clarify'):
         return 'no answer: ' + str(response.get('error') or response.get('reason') or 'clarification')
+    if fx:
+        currency = response.get('currency') or {}
+        if currency.get('status') != 'satisfied' or currency.get('realization') not in {'converted', 'identity'}:
+            return ('FX result lacks verified output-currency evidence: '
+                    f"status={currency.get('status')!r}, realization={currency.get('realization')!r}")
     result = response.get('result') or {}
     rows = result.get('rows') or []
     if isinstance(expected, list):

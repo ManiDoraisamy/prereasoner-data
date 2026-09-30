@@ -1,15 +1,18 @@
 """Manifest/correctness bridge: browser reports reuse the existing dataset golds."""
 import json
+import re
 from pathlib import Path
 import sys
 
 from tests.test_datasets import (
     DATASET_DIR, EXAMPLE_MANIFEST, EVAL_MANIFEST, EXPECTED, REWRITE_EXPECTATIONS,
     _manifest_names, _eval_cases, grade_answer,
+    FX_TOLERANCE,
 )
 
 
 def manifest():
+    demo_names = _manifest_names(EXAMPLE_MANIFEST)
     out = []
     for name in sorted(_manifest_names(EXAMPLE_MANIFEST) | _manifest_names(EVAL_MANIFEST)):
         directory = DATASET_DIR / name
@@ -24,16 +27,65 @@ def manifest():
             if question not in seen:
                 cases.append(dict(question=question, expected=expected, fx=fx, followup=True, chat=chat))
                 seen.add(question)
-        out.append(dict(dataset=name, cases=cases, files=[
+        out.append(dict(dataset=name, load_demo=name in demo_names, cases=cases, files=[
             str(f.resolve()) for f in sorted(directory.iterdir()) if f.suffix in ('.csv', '.xls', '.xlsx')
         ]))
     return out
 
 
 def grade(item):
-    reason = grade_answer(item['response'], item['expected'], fx=item.get('fx', False),
+    response = item['response']
+    fx = item.get('fx', False)
+    reason = grade_answer(response, item['expected'], fx=fx,
                           followup=item.get('followup', False))
+    if reason is None and fx:
+        reason = _grade_fx_presentation(response, item['expected'])
     return dict(passed=reason is None, reason=reason)
+
+
+def _grade_fx_presentation(response, expected):
+    """Ensure the user-facing FX sentence agrees with the verified engine result and target."""
+    try:
+        target = str((response.get('currency') or {})['target']).upper()
+        expected = float(expected)
+    except (KeyError, TypeError, ValueError):
+        return 'FX answer lacks a scalar expectation or typed target currency'
+    reply = str(response.get('assistant_reply') or '')
+    if not reply.strip():
+        return 'FX answer lacks a user-facing reply to verify'
+    number = r'(?<![\w.])[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?'
+    currency_markers = {
+        'GBP': r'(?:£|\bGBP\b|\bBritish pounds?\b|\bpounds? sterling\b)',
+        'USD': r'(?:\$|\bUSD\b|\bUS dollars?\b|\bUnited States dollars?\b)',
+        'EUR': r'(?:€|\bEUR\b|\beuros?\b)',
+    }.get(target, rf'\b{re.escape(target)}\b')
+    # Bind the target unit to the *same* numeric token. Independent searches let an answer such
+    # as "the conversion is £1,925; the actual total is £810" pass by finding 1,925 and GBP
+    # separately. A short textual separator supports natural variants like "GBP total: 1,925".
+    amount = re.compile(
+        rf'(?:{currency_markers}\s*(?:(?:(?:total|amount)\s*[:=]?|is|of|:|=)\s*)?{number}'
+        rf'|{number}\s*{currency_markers})', re.I,
+    )
+    if not re.search(currency_markers, reply, re.I):
+        return f'user-facing FX answer does not identify target currency {target}'
+    paired_values = []
+    for match in amount.finditer(reply):
+        numeric = re.search(number, match.group(0))
+        if numeric:
+            try:
+                paired_values.append(float(numeric.group(0).replace(',', '')))
+            except ValueError:
+                pass
+    # Fail closed if the reply explicitly pairs a target-currency label with a conflicting
+    # amount, even if it also repeats the expected amount elsewhere.
+    if not paired_values:
+        return f'user-facing FX answer does not pair a value with target currency {target}'
+    tolerance = abs(expected) * FX_TOLERANCE
+    if not any(abs(value - expected) <= tolerance for value in paired_values):
+        return f'user-facing FX answer omits the expected converted value {expected:g} {target}'
+    if any(abs(value - expected) > tolerance for value in paired_values):
+        return f'user-facing FX answer also states a conflicting {target} amount'
+    return None
 
 
 def regrade(report):

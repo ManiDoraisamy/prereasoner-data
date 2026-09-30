@@ -30,10 +30,20 @@ async function main(){
       const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
       let conversation=null;
       try{
-        await page.goto(origin+'/?use='+mode);
-        await page.locator('#file').setInputFiles(dataset.files);
-        await page.waitForFunction(()=>!UPLOAD_PENDING,{},{timeout:20000});
-        const upload=await page.evaluate(()=>({error:UPLOAD_ERROR,tables:SHEETS.map(s=>({name:s.name,rows:parseCSV(s.data).rows.length,import:s.import}))}));
+        if(dataset.load_demo){
+          // Customer-facing examples must exercise the shipped ?load= URL and prompt.txt, not a
+          // manually reconstructed upload that bypasses the public demo loader.
+          await page.goto(origin+'/?load='+encodeURIComponent(dataset.dataset)+'&use='+mode);
+          await page.waitForFunction(()=>document.querySelectorAll('#chips .chip').length>0
+            &&document.querySelector('#q').value.trim().length>0,{},{timeout:20000});
+        }else{
+          await page.goto(origin+'/?use='+mode);
+          await page.locator('#file').setInputFiles(dataset.files);
+          await page.waitForFunction(()=>!UPLOAD_PENDING,{},{timeout:20000});
+        }
+        const upload=await page.evaluate(()=>({error:UPLOAD_ERROR,
+          prompt:document.querySelector('#q').value.trim(),
+          tables:SHEETS.map(s=>({name:s.name,rows:parseCSV(s.data).rows.length,import:s.import}))}));
         if(upload.error)throw new Error(upload.error);
         for(let i=0;i<dataset.cases.length;i++){
           const pause=Math.max(0,lastCaseStart+minCaseMs-Date.now());
@@ -42,14 +52,20 @@ async function main(){
           const pending=page.waitForResponse(r=>new URL(r.url()).pathname==='/chat'&&r.request().method()==='POST',{timeout:250000});
           // Attach the rejection handler immediately, including upload/navigation failures.
           pending.catch(()=>{});
-          if(!i){await page.locator('#q').fill(test.question);await page.getByRole('button',{name:'Ask',exact:true}).click();}
+          if(!i){
+            if(dataset.load_demo&&upload.prompt!==test.question)
+              throw new Error('the ?load prompt differs from prompt.txt: '+JSON.stringify(upload.prompt));
+            if(!dataset.load_demo)await page.locator('#q').fill(test.question);
+            await page.getByRole('button',{name:'Ask',exact:true}).click();
+          }
           else{await page.locator('#chatq').fill(test.question);await page.locator('#chatsend').click();}
           const http=await pending;const body=await http.json();
           await page.waitForFunction(()=>SETTLED||FAILMSG,{},{timeout:250000});
           conversation=body.conversation_id||conversation;
           const trace=(body.traces||[]).filter(t=>t.engine).at(-1);
           const eng=trace&&trace.engine||{};
-          const response={...eng,result:eng.answer||eng.result,clarify:eng.status==='clarify'||eng.clarify};
+          const response={...eng,result:eng.answer||eng.result,clarify:eng.status==='clarify'||eng.clarify,
+            assistant_reply:body.reply};
           const graded=cp.spawnSync('python',['-m','regress.browser_gold','grade'],{input:JSON.stringify({...test,response}),encoding:'utf8'});
           if(graded.status)throw new Error('gold comparator failed');
           const grade=JSON.parse(graded.stdout);
