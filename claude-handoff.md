@@ -7,6 +7,49 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-30 (late) — urllib3 rebuild released; chat `cb00714` answers a clarification an earlier turn settles; its Chrome gate is still open
+
+**Production now:** engine `prereasoner-api-00127-695` = `engine@sha256:45d001c0…`, built from `85d5c07` (Cloud Build
+`06709de0`), and chat `prereasoner-chat-00076-sjl` = `chat@sha256:ec8e4311…`, built from `cb00714` (Cloud Build
+`e149168e`). Hosting is unchanged. Rollback: chat `00075-sq5` (`dd6e01b8…`), then `00074-pjz`; engine `00126-vjc`.
+- `08c8d20` and `85d5c07` move every lock that pinned urllib3 2.7.0 to 2.8.0 and record the lock provenance, after
+  `pip_audit` failed CI on new advisories. CI is green. The first engine build (`ec9cbcc8`) failed its CPU HTTP smoke
+  with one 503 at concurrency 8, from the 15 s admission window. The rebuild passed with nothing changed.
+- A smoke on `00127-695` + `00075-sq5` passed 30/31 turns over six datasets. The miss was payment-commissions "how much
+  commission came from cards?" in its existing conversation, the same one as in the final gate.
+
+**Root cause.** Rule 3 sends a complete follow-up as typed. The engine reads that one literally: it proposes "total
+commission_percent" and drops "came" and "cards". The model then relays the clarification, although "total commission
+amount for card payments" earlier in the conversation says what the user means. On replay the miss depends on the
+transcript:
+
+| Transcript | Missed |
+|---|---|
+| Fresh pass | 0/8 |
+| Question asked once before | 1/8 |
+| Smoke conversation, which already held one relayed clarification | 5/8 |
+| The same, with that exchange removed | 0/8 |
+
+**Fix, `cb00714`** (details in `DECISIONS.md`). Once per turn, the engine's clarification of a follow-up sent in the
+user's own words, with earlier turns present, goes back to the model as `ambiguous_wording` in a round that can call
+the tool. The model answers it in an earlier turn's words, or asks the user.
+- Bounds: the next result is terminal, the same words are not resent, and a first question or an already rewritten
+  one keeps the terminal clarification.
+- Replay: the smoke transcript missed 0/8 (4 via the clarification, 4 rewritten directly), and the fresh one 0/8.
+  Unsettled clarifications were asked of the user 8/8 each: GBP after a count, and a region the data lacks.
+- Tests: orchestrator unit 33/33. Its three new tests fail on the previous code. The live orchestrator suite passed
+  39/39 with the new `[1i]` positive and negative, and MCP 46/46.
+
+**Not done: the Chrome gate on `00076-sjl`.** The check in the existing payment-commissions conversation started while
+the engine had scaled to zero. After that, the session's permission settings blocked driving the browser. The gate
+driver was removed from the page's localStorage and the tab was closed. Run the full gate (fresh and existing) on
+`00076-sjl` before calling this release closed.
+
+**Also seen, not investigated.** The clarified turn's reasoning panel showed a digital-wallet total converted at ECB
+rates. That matches neither the question nor the engine's clarification.
+
+---
+
 ## 2026-09-30 (evening) — RELEASED: main in production; replies say only what the result shows; Chrome gate fresh 80/80, existing 55/56
 
 **Production now** (project `prereasoner-inference`, one serving revision per service, no tags):

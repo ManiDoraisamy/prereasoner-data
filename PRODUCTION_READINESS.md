@@ -4,17 +4,20 @@
 
 This supersedes the deployment section below (`00125-jsx`) as the current release status.
 
-Production serves main's code. Engine `prereasoner-api-00126-vjc` =
-`engine@sha256:1f4f3b6adcc51d07e56c61ba51630fef488a41981901d0de5fb24a82a046f5bd`, built from `d3f7751` (Cloud Build
-`abd8e42e`); `engine/`, `db/` and `regress/` are unchanged since. Chat `prereasoner-chat-00074-pjz` =
-`chat@sha256:610bad83aaa7a0f75e19a41e1f5f33f305f17cecd59cbe63c6a76957c186c57c`, built from `75b420d` (Cloud Build
-`dbc70617`). Each is at 100% with no tags. Firebase Hosting serves `d3f7751`'s `web/public`, which main has not
-changed. The ECB refresh, retention and release-smoke jobs run the engine image. Rollback: engine `00125-jsx`
-(`131edc4f…`), chat `00070-hnh` (`98109c53…`, `d67575d`).
+Production serves main's code. Engine `prereasoner-api-00127-695` =
+`engine@sha256:45d001c049674b52b45e32aa0e46aed23fa7bec7eb877efef690e956ac9f1565`, built from `85d5c07` (Cloud Build
+`06709de0`). Its `engine/`, `db/` and `regress/` are `d3f7751`'s; `85d5c07` moved every lock that pinned urllib3 2.7.0
+to 2.8.0 after `pip_audit` failed CI on new advisories. The first build of it (`ec9cbcc8`) failed the CPU HTTP smoke:
+one request at concurrency 8 got the 503 of the 15 s admission window (item 2 below). The rebuild passed unchanged.
+Chat `prereasoner-chat-00076-sjl` = `chat@sha256:ec8e4311c2d5e4085bb98deaeecd0beab5970657ffeecbf58e0c7ffdde75ad0d`,
+built from `cb00714` (Cloud Build `e149168e`). Each is at 100% with no tags. Firebase Hosting serves `d3f7751`'s
+`web/public`, which main has not changed. The ECB refresh, retention and release-smoke jobs run the engine image, and
+release-smoke passed on it. Rollback: chat `00075-sq5` (`dd6e01b8…`, `85d5c07`, the code before `cb00714`), then
+`00074-pjz` (`610bad83…`); engine `00126-vjc` (`1f4f3b6a…`).
 
 Live now: every fix in the 2026-09-30 `DECISIONS.md` entries. That covers the Europe/GBP family, serving that decides
-compose ownership with `route()` alone, an output currency that survives a complete question in between, and replies
-that say only what the result shows.
+compose ownership with `route()` alone, an output currency that survives a complete question in between, replies
+that say only what the result shows, and an engine clarification that an earlier turn settles being answered from it.
 
 Gates on the released code:
 
@@ -22,7 +25,9 @@ Gates on the released code:
   the 7B. The live orchestrator suite (claude-sonnet-5) missed one case in that run: "only use the top 2 customers",
   which the model sometimes sends with a decomposition before the engine asks for one, and which the runtime then
   ends with "I couldn't split this question". Replayed 60 times on each prompt, that happened 4 times with the prompt
-  before today's changes and 4 times with the released prompt. It passed 37/37 on the next run.
+  before today's changes and 4 times with the released prompt. It passed 37/37 on the next run. On `cb00714`: the
+  orchestrator unit suite passed 33/33 and MCP 46/46, both also run in the chat image's build. Dataset gold passed 29
+  checks, dataset semantics 18/18, request limits 18/18, calculations 145/145, release 44/44 and community deploy 23/23.
 - Engine image: offline 13/13, boot smoke, the live product suites on a disposable seed, and the CPU HTTP smoke. The
   8 live suites also passed against production data through the Cloud SQL proxy.
 - Chrome gate, run in the owner's signed-in Chrome on chat.prereasoner.com. It covered every shipped dataset, through
@@ -30,8 +35,20 @@ Gates on the released code:
   - Fresh conversations: 80/80 turns over 24 datasets (shorthand 14/14, FX 17/17).
   - Conversations created before the release: 55/56. The miss was payment-commissions "how much commission came
     from cards?", which clarified. Replayed twelve times with that conversation on claude-sonnet-5, the model sent the
-    shorthand verbatim once. The engine reads the literal question as a digital-wallet total converted at ECB rates
+    shorthand verbatim once. Sent as typed, the engine proposes "total commission_percent", drops "came" and "cards",
     and asks a question back. Asked again in the same conversation, it answered 9.28.
+  - These gates ran on engine `00126-vjc` and chat `00074-pjz`. After the urllib3 rebuild, a smoke on engine
+    `00127-695` and chat `00075-sq5` passed 30 of 31 turns over six datasets, fresh and existing. The miss was the
+    same payment-commissions follow-up in its existing conversation. That conversation's transcript already held the
+    earlier clarification, and on replay the follow-up missed 5 of 8 times with it. `cb00714` fixes this in the chat:
+    the engine's clarification of a follow-up sent in the user's own words goes back to the model once, and the model
+    answers it from the earlier turn or asks the user (`DECISIONS.md`). On replay on claude-sonnet-5, that transcript
+    missed 0 of 8. A fresh one also missed 0 of 8, and clarifications that nothing earlier settles were still asked of
+    the user, 8 of 8 each. The live orchestrator suite passed 39/39.
+  - The Chrome gate has not run on chat `00076-sjl`. The check in that same existing conversation started when the
+    engine had scaled to zero, so its first question waited on a cold start (item 1). Driving the browser further was
+    then blocked by the session's permission settings. To close the gate, run it on `00076-sjl`, fresh and existing,
+    starting with payment-commissions.
 
 The authenticated production conversation gate that the section below keeps open ran in this pass, on conversations
 the gate created. About a hundred gate conversations remain in the owner's account.
@@ -47,8 +64,11 @@ Open, for the owner (capacity and cost; nothing here was changed):
    minutes to load. Requests routed to them meanwhile waited 60–80 s or failed at the Hosting proxy.
    `max_instance_count = 1` avoids this at no cost but caps throughput. Warm capacity costs as in item 1.
 4. The daily ECB refresh (16:30 UTC, about 4.5 minutes) held a lock that stalled one FX question for 49 s.
-5. The shorthand miss above. It would not happen if the engine read "cards" as the `card` payment instrument, since
-   the question would then be answered even when it arrives verbatim.
+5. The shorthand miss above is fixed in the chat (`cb00714`), and the fix is waiting for its Chrome gate. The
+   engine's literal reading is unchanged, because the dataset marks the line `chat:`. An engine that read "cards" as
+   the `card` payment instrument would still sum a percentage for "how much commission". Separately, the clarified
+   turn's reasoning panel showed a digital-wallet total converted at ECB rates, which matches neither the question nor
+   the engine's clarification. That was not investigated.
 6. A decomposition the model proposes before the engine asks for one ends the turn at once (no repair round), about
    1 time in 15 for the category-gaps cutoff follow-up in replay. A repair round that says to ask the question first
    would recover it.
