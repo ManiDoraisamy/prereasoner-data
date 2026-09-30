@@ -938,8 +938,16 @@ class H(BaseHTTPRequestHandler):
             row_error = upload_row_limit_error([tbl])
             if row_error:
                 self._send(413, json.dumps({"error": row_error})); return
-            with DIM_LOCK:
+            # DIM_LOCK is WORLD_LOCK: the dimension model shares the world encoder, so it queues behind a
+            # /api/reason decode. Wait as long as /api/reason does, then answer 503 like it — an unbounded
+            # wait held a request thread for the whole decode.
+            if not DIM_LOCK.acquire(timeout=QUEUE_TIMEOUT_SECONDS):
+                self._send(503, json.dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
+                return
+            try:
                 res = DIM_MODEL.analyze(tbl)
+            finally:
+                DIM_LOCK.release()
             self._send(200, json.dumps(res))
         except Exception as e:                               # noqa: BLE001
             print(f"dimension request failed: {type(e).__name__}", flush=True)

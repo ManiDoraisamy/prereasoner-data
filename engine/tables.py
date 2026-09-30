@@ -474,12 +474,13 @@ class TableQuery:
         return self.search_ast(question, sch, norm, fks,
                                max_candidates=self.sql_arbiter.search_candidates)
 
-    def select_query(self, question, norm, fks, sch, tablemap):
+    def select_query(self, question, norm, fks, sch, tablemap, searched=None):
         """Choose the query to serve for an own-data question; returns a ``PoolSelection``.
 
         1. The deterministic search proposes up to ``search_candidates`` typed ASTs.
         2. The SQL proposer adds its validated beams (engine/xiyan_sql_proposer.py); SQL both found is
-           pooled once and marked endorsed.
+           pooled once and marked endorsed. A decode that runs past its CPU budget adds none, and the
+           record says so (``proposer_abstention``).
         3. Every pooled query that passes the guard is run on an in-memory SQLite copy of the
            request's tables under a fixed step budget. A query that fails cannot be chosen, and
            neither can one that tests a text column against a literal the column never holds
@@ -493,7 +494,8 @@ class TableQuery:
 
         This is the one own-data selection: serving, decomposition leaves, the Spider evaluator,
         the offline regression gate and arbiter training all call it. The decomposition probe
-        reads only its first stage (``search_pool``).
+        reads only its first stage (``search_pool``); a caller that already ran that stage passes
+        its pool as ``searched``.
         """
         if self.sql_proposer is None or self.sql_arbiter is None:
             raise RuntimeError("SQL selection models are not loaded - construct the planner through "
@@ -503,13 +505,18 @@ class TableQuery:
         from engine.sql_grounding import grounded_members
         from engine.sql_rank import PoolSelection, arbitrate, merge_proposals, select_ranked_candidate
         from engine.sql_schema import SchemaGraph
+        from engine.xiyan_sql_proposer import SQLDecodeBudgetExceeded
 
         arbiter = self.sql_arbiter
-        searched = self.search_pool(question, norm, fks, sch)
+        if searched is None:
+            searched = self.search_pool(question, norm, fks, sch)
         graph = SchemaGraph.from_planner(sch, fks)
         floor = min((candidate.score for candidate in searched), default=0.0)
-        pool, proposed = merge_proposals(
-            searched, self.sql_proposer.propose(norm, question, graph, floor))
+        try:
+            proposals, abstention = self.sql_proposer.propose(norm, question, graph, floor), ""
+        except SQLDecodeBudgetExceeded as exc:
+            proposals, abstention = [], str(exc)
+        pool, proposed = merge_proposals(searched, proposals)
         executable = self._executable(pool, tablemap, sch, arbiter.execution_op_limit)
         with request_timing.span("pool_grounding"):
             grounded = grounded_members(pool, tablemap)
@@ -539,11 +546,27 @@ class TableQuery:
         request_timing.count("pool", len(pool))
         return PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
                              scores, ranking, selected, len(searched),
-                             tuple(calculation_satisfied), tuple(money_total))
+                             tuple(calculation_satisfied), tuple(money_total), abstention)
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""
-        selection = self.select_query(question, norm, fks, sch, tablemap)
+        from engine.deterministic.context import current_analysis_context
+        analysis_context = current_analysis_context()
+        searched = None
+        if analysis_context is not None:
+            from engine.decomposition import compound_candidate
+
+            searched = self.search_pool(question, norm, fks, sch)
+            compound = compound_candidate(searched)
+            if compound is not None:
+                # A named compound request needs a branch proposal before it has an
+                # executable dual-emitter plan. Do not run a single query that answers one
+                # fragment of the question and then throw its rows away. The search's own
+                # reading decides it, so the proposer's decode is not paid either: on the CPU
+                # 7B a long compound prompt ran past its decode budget and the request failed
+                # instead of asking for the decomposition (tests.test_complex_datasets).
+                return compound, None, None, tuple(searched), None
+        selection = self.select_query(question, norm, fks, sch, tablemap, searched=searched)
         candidates = selection.pool
         if not candidates:
             return None, None, "planner: no valid AST candidate", candidates, selection
@@ -551,17 +574,9 @@ class TableQuery:
         if candidate is None:
             return None, None, "planner: no executable AST candidate", candidates, selection
         deterministic_plan = None
-        from engine.deterministic.context import current_analysis_context
-        analysis_context = current_analysis_context()
         if analysis_context is not None:
-            from engine.decomposition import compound_candidate, single_branch
+            from engine.decomposition import single_branch
 
-            compound = compound_candidate(selection)
-            if compound is not None:
-                # A named compound request needs a branch proposal before it has an
-                # executable dual-emitter plan. Do not run a single query that answers one
-                # fragment of the question and then throw its rows away.
-                return compound, None, None, candidates, selection
             # One dual-emitter branch serves a named request. A set operation that only a
             # proposer beam reads into the question is outranked by the best single query.
             selection = selection.constrained(single_branch)
@@ -741,10 +756,13 @@ class TableQuery:
         """tables: [{name, columns, rows}]. Full multi-table pipeline for the web UI."""
         norm, fks = self.ingest(tables, explicit_fks=explicit_fks)
         sch, colidx, tablemap = self.schema(norm, fks)
+        from engine.xiyan_sql_proposer import SQLProposerUnavailable
         try:
             candidate, result, err, candidates, selection = self._serve_ast(
                 question, norm, fks, sch, tablemap
             )
+        except SQLProposerUnavailable:
+            raise                      # busy or closed: engine/server.py answers 503 {retryable: true}
         except Exception as exc:
             candidate, result, candidates, selection = None, None, (), None
             err = f"{type(exc).__name__}: {exc}"

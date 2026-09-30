@@ -144,17 +144,17 @@ def selected_decomposition_required(candidate) -> dict[str, Any] | None:
     return None
 
 
-def compound_candidate(selection):
+def compound_candidate(searched):
     """The search's compound reading that makes a named request need decomposition, or None.
 
-    Compound structure is the deterministic search's own reading of the question: its top
-    candidate, from a grammar that models set operations. The arbiter's choice never decides
-    it. A proposer beam can read a single-goal question as a set operation over invented
-    values (a world question over data that lacks the world attribute), and a single-query
-    answer to a multi-goal question is only a fragment of it; the decomposition proposal owns
-    such questions.
+    Compound structure is the deterministic search's own reading of the question: the top
+    candidate of its pool (``search_pool``), from a grammar that models set operations. Neither
+    the proposer nor the arbiter decides it, so it is read before any decode. A proposer beam can
+    read a single-goal question as a set operation over invented values (a world question over
+    data that lacks the world attribute), and a single-query answer to a multi-goal question is
+    only a fragment of it; the decomposition proposal owns such questions.
     """
-    top = selection.search_top
+    top = searched[0] if searched else None
     return top if selected_decomposition_required(top) is not None else None
 
 
@@ -317,7 +317,7 @@ def compound_decomposition_required(planner, tables, question) -> dict[str, Any]
         norm, inferred_fks = planner.ingest(tables)
         schema, _, _ = planner.schema(norm, inferred_fks)
         searched = planner.search_pool(question, norm, inferred_fks, schema)
-        return selected_decomposition_required(searched[0] if searched else None)
+        return selected_decomposition_required(compound_candidate(searched))
     except Exception as exc:
         raise DecompositionError(
             "could not check the selected query for decomposition"

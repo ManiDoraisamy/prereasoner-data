@@ -960,7 +960,7 @@ def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_on
         else (-90.0, 40)))
     planner = _hermetic_planner(proposer)
     selection = _select(planner, question, tables)
-    assert isinstance(selection.search_top.query, SetQuery)
+    assert isinstance(selection.pool[0].query, SetQuery)
     assert selection.origin(selection.selected) == "proposer"
 
     evaluated = planner.serve(tables, question)
@@ -978,6 +978,63 @@ def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_on
     probe = ScriptedProposer((one_query,))
     assert compound_decomposition_required(_hermetic_planner(probe), tables, question)
     assert probe.decodes == 0
+
+
+def test_a_compound_named_request_asks_for_decomposition_before_any_decode():
+    """tests.test_complex_datasets failed on the CPU 7B (2026-09-30): a named compound request
+    decoded the whole prompt before asking whether the search read it as compound, the decode ran
+    past its CPU budget, and the request failed instead of asking for a decomposition. The search's
+    top alone decides compound structure, so a named compound request never decodes."""
+
+    from engine.deterministic.context import analysis_execution_context
+    from tests.test_datasets import DATASET_DIR, _tables
+
+    tables = _tables(DATASET_DIR / "complex-unsold-products")
+    question = "List the product names that no customer from Paris has bought, ordered by product name."
+    one_query = "SELECT products.product_name FROM products ORDER BY products.product_name"
+    proposer = ScriptedProposer((one_query,))
+    planner = _hermetic_planner(proposer)
+    with analysis_execution_context({"slug": "unsold", "revision": 1}, "c_" + "9" * 32),             patch.object(planner, "execute", side_effect=AssertionError("partial answer executed")):
+        named = planner.serve(tables, question)
+    assert named.get("decomposition_required"), named
+    assert named["result"] is None and named["error"] is None
+    assert proposer.decodes == 0, f"a compound named request decoded {proposer.decodes} time(s)"
+    # Contrast: evaluation (no analysis context) serves the arbiter's choice, so it decodes.
+    planner.serve(tables, question)
+    assert proposer.decodes == 1
+
+
+def test_a_decode_past_its_budget_abstains_and_a_busy_model_is_retryable():
+    """A decode past DECODE_TIMEOUT_SECONDS used to escape the selection, and TableQuery.serve turned
+    it into a 200 response whose error read "SQLProposerUnavailable: SQL decoding exceeded its CPU
+    budget". Greedy decoding of the same prompt takes as long again, so the proposer abstains: the
+    search pool is served and the record says why. A busy model is different — a retry can succeed —
+    so it reaches engine/server.py's 503 {retryable: true} instead of becoming an error answer."""
+    from engine.xiyan_sql_proposer import SQLDecodeBudgetExceeded, SQLProposerUnavailable
+
+    class Stalled(ScriptedProposer):
+        def __init__(self, failure):
+            super().__init__()
+            self.failure = failure
+
+        def _decode(self, prompt):
+            raise self.failure
+
+    planner = _hermetic_planner(Stalled(SQLDecodeBudgetExceeded("SQL decoding exceeded its CPU budget")))
+    selection = _select(planner, "how many purchases are there", [PURCHASES])
+    assert selection.candidate is not None and not selection.proposed, selection
+    assert selection.record(planner.sql_arbiter)["proposer_abstention"] ==         "SQL decoding exceeded its CPU budget"
+    served = planner.serve([PURCHASES], "how many purchases are there")
+    assert served["error"] is None and served["result"]["rows"], served
+    assert served["selection"]["proposer_abstention"], served["selection"]
+
+    busy = _hermetic_planner(Stalled(SQLProposerUnavailable("SQL model is busy; retry shortly")))
+    try:
+        busy.serve([PURCHASES], "how many purchases are there")
+    except SQLProposerUnavailable:
+        pass
+    else:
+        raise AssertionError("a busy proposer became an answer instead of a retryable 503")
 
 
 def test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation():
@@ -1005,7 +1062,7 @@ def test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation(
     planner = _hermetic_planner(proposer())
     selection = _select(planner, question, tables)
     assert isinstance(selection.candidate.query, SetQuery), "the arbiter prefers the beam"
-    assert isinstance(selection.search_top.query, SelectQuery), "the search reads one goal"
+    assert isinstance(selection.pool[0].query, SelectQuery), "the search reads one goal"
     evaluated = planner.serve(tables, question)
     assert evaluated["sql"] == selection.candidate.sql, "evaluation serves the arbiter's choice"
 
@@ -2861,6 +2918,8 @@ TESTS = [
     test_literal_grounding_names_the_column_a_value_actually_occupies,
     test_select_query_never_serves_a_misgrounded_proposal,
     test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query,
+    test_a_compound_named_request_asks_for_decomposition_before_any_decode,
+    test_a_decode_past_its_budget_abstains_and_a_busy_model_is_retryable,
     test_named_request_never_serves_or_decomposes_a_proposer_only_set_operation,
     test_proposal_import_rejects_malformed_model_text,
     test_evaluator_grades_the_served_selection,

@@ -625,8 +625,8 @@ class PoolSelection:
     those can never be selected. ``ranking`` lists the eligible members best first. ``selected`` is
     usually ``ranking[0]``; a question with a registered calculation intent takes the best
     ranked member that satisfies it (engine/calculations), when one exists. The first
-    ``searched`` pool members are the deterministic search's, in its order, so ``search_top``
-    is the search's own structural reading of the question.
+    ``searched`` pool members are the deterministic search's, in its order, so the first member
+    is the search's own structural reading of the question (engine/decomposition.compound_candidate).
     """
     pool: tuple[ScoredQuery, ...]
     proposed: frozenset[str]
@@ -639,14 +639,11 @@ class PoolSelection:
     searched: int
     calculation_satisfied: tuple[bool, ...] = ()
     money_total: tuple[bool, ...] = ()
+    proposer_abstention: str = ""
 
     @property
     def candidate(self) -> ScoredQuery | None:
         return None if self.selected is None else self.pool[self.selected]
-
-    @property
-    def search_top(self) -> ScoredQuery | None:
-        return self.pool[0] if self.searched else None
 
     def constrained(self, admissible) -> PoolSelection:
         """This selection under a caller's contract, a filter on the ranking and never a rescore.
@@ -681,6 +678,8 @@ class PoolSelection:
                                for ran, sound in zip(self.executable, self.grounded)),
             "selected": self.selected,
         }
+        if self.proposer_abstention:
+            evidence["proposer_abstention"] = self.proposer_abstention
         if self.selected is not None:
             features = self.features(self.selected)
             evidence.update(

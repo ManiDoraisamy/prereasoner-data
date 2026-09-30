@@ -28,6 +28,12 @@ class SQLProposerUnavailable(RuntimeError):
     """Inference admission or execution exhausted its bounded CPU budget."""
 
 
+class SQLDecodeBudgetExceeded(SQLProposerUnavailable):
+    """One decode ran past DECODE_TIMEOUT_SECONDS. Greedy decoding of the same prompt takes as long
+    again, so a retry cannot help: the selection serves its search pool without proposals and
+    records the abstention (engine/tables.py:TableQuery.select_query)."""
+
+
 def load_contract(path: str | Path = _CONTRACT) -> dict:
     contract = json.loads(Path(path).read_text(encoding="utf-8"))
     if contract.get("version") != 1 or contract.get("backend") != "llama-cpp-gguf":
@@ -228,12 +234,12 @@ class XiYanSQLProposer:
                             stop=[self.tokenizer.eos_token] if self.tokenizer.eos_token else [],
                         )
                         if self._expired():
-                            raise SQLProposerUnavailable("SQL decoding exceeded its CPU budget")
+                            raise SQLDecodeBudgetExceeded("SQL decoding exceeded its CPU budget")
                     except RuntimeError as exc:
                         if self._expired():
                             self.model.reset()
                             request_timing.count("proposer_deadline_rejections")
-                            raise SQLProposerUnavailable(
+                            raise SQLDecodeBudgetExceeded(
                                 "SQL decoding exceeded its CPU budget") from exc
                         raise
                     finally:
