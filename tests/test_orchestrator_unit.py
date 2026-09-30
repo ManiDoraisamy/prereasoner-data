@@ -527,6 +527,19 @@ def test_followup_prompt_treats_tier_calculation_as_a_data_question():
     assert "retains the latest country, currency, and measure" in prompt
 
 
+def test_followup_prompt_separates_geography_from_output_currency_and_executes_yes():
+    """Production 2026-09-29: after '£810 for Europe' (the engine had kept only GBP rows), 'yes' to
+    the assistant's offer reached an engine clarification and the reply invented missing exchange
+    rates. The rules are general; the reported conversation itself is the live test in
+    tests.test_orchestrator, so the prompt must not quote it."""
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "never limits the rows to those already recorded in it" in prompt
+    assert 'accepts the specific action your previous message offered' in prompt
+    assert "never substitute a reason the tool did not give" in prompt
+    assert "report only the failure the tool returned" in prompt
+    assert "europe" not in prompt and "£810" not in prompt
+
+
 def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
     question = (
         "Find the top selling products and top buying customers and list the top "
@@ -1065,6 +1078,25 @@ def test_tool_exhaustion_never_exposes_an_internal_budget():
     assert "step budget" not in result["reply"].lower()
 
 
+def test_the_model_sees_the_rows_the_answer_covers():
+    """The £810 reply said "For all of Europe": the model saw only the final SUM step, which hides that the
+    engine also kept only the GBP rows. The filter steps' own labels now reach the model, and the prompt
+    tells it to describe exactly those rows."""
+    shaped = {"status": "answered", "answer": {"columns": ["total_gbp"], "rows": [[810]]},
+              "sql": 'SELECT SUM("calculated_value") AS "total_gbp" FROM "t_calculated"',
+              "views": [{"op": "world_join", "label": "enriched 1"},
+                        {"op": "filter", "label": "where continent = 'Europe' and currency = 'GBP'"},
+                        {"op": "convert", "label": "calculated"},
+                        {"op": "group_agg", "label": "total"}]}
+    trimmed = orchestrator._trim_for_model(shaped)
+    assert trimmed["filters"] == ["where continent = 'Europe' and currency = 'GBP'"], trimmed
+    assert "views" not in trimmed
+    unfiltered = orchestrator._trim_for_model({**shaped, "views": [{"op": "group_agg", "label": "total"}]})
+    assert "filters" not in unfiltered
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "describe exactly the rows the answer covers" in prompt
+
+
 TESTS = [
     test_request_execution_mode_reaches_each_orchestrated_engine_call,
     test_unambiguous_column_as_table_is_rebound_before_attestation,
@@ -1078,6 +1110,8 @@ TESTS = [
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
+    test_followup_prompt_separates_geography_from_output_currency_and_executes_yes,
+    test_the_model_sees_the_rows_the_answer_covers,
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,
     test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_the_engine,
     test_decomposition_contract_has_no_schema_or_code_escape_hatch,

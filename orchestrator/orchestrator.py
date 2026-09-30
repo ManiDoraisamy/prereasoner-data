@@ -203,6 +203,13 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     out = {"status": shaped.get("status")}
     if shaped.get("answer") is not None:
         out["answer"] = shaped["answer"]
+    # The rows the answer covers, as its filter steps name them. The final SQL alone hides them: the
+    # reply to a total that had also kept only GBP rows said "For all of Europe" (2026-09-29).
+    filters = [str(view["label"]) for view in shaped.get("views") or ()
+               if isinstance(view, dict) and view.get("op") in ("filter", "world_filter", "time_filter")
+               and str(view.get("label") or "").startswith("where ")]
+    if filters:
+        out["filters"] = filters
     if shaped.get("sql") is not None:
         out["sql"] = shaped["sql"]
     if shaped.get("clarify") is not None:

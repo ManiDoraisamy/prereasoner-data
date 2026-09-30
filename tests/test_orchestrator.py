@@ -149,6 +149,46 @@ def main():
         ok("total or a rate" not in r1f["reply"].lower(),
            "an established metric cannot be reopened as a metric-choice clarification")
 
+        # Customer-orders Chrome report: "in GBP for the whole of Europe?" must change the
+        # geographic scope and output unit, not select only source rows already denominated in GBP.
+        print("[1c] European geography and GBP output units remain separate")
+        europe_history = [
+            {"role": "user", "content": "total amount in France in US dollars"},
+            {"role": "assistant", "content": "Your total amount for France comes to about $1,103.67 USD."},
+        ]
+        europe_turn = asyncio.run(chat("in GBP for the whole of Europe?", history=europe_history))
+        europe_sent = [t.get("question", "") for t in europe_turn["traces"]]
+        ok(len(europe_sent) == 1 and "europe" in europe_sent[0].lower()
+           and "gbp" in europe_sent[0].lower()
+           and any(term in europe_sent[0].lower() for term in ("total", "sum", "amount"))
+           and "france" not in europe_sent[0].lower()
+           and "where currency is gbp" not in europe_sent[0].lower(),
+           f"the follow-up requests an all-Europe amount in GBP, not a source-currency filter (got {europe_sent})")
+
+        # Exact failure conversation from the reported bug: after the assistant offers to include
+        # every European country and convert the result, "yes" executes that offered calculation.
+        print("[1c] yes accepts the specific Europe-to-GBP offer")
+        offer_history = [
+            *europe_history,
+            {"role": "user", "content": "in GBP for the whole of Europe?"},
+            {"role": "assistant", "content": "For all of Europe, your total comes to about £810 GBP."},
+            {"role": "user", "content": "why is France and other European countries not included?"},
+            {"role": "assistant", "content": (
+                "Would you like me to instead pull the total for all European countries, regardless "
+                "of original currency, converted into GBP?"
+            )},
+        ]
+        accepted = asyncio.run(chat("yes", history=offer_history))
+        accepted_sent = [t.get("question", "") for t in accepted["traces"]]
+        ok(len(accepted_sent) == 1 and "europe" in accepted_sent[0].lower()
+           and "gbp" in accepted_sent[0].lower()
+           and any(term in accepted_sent[0].lower() for term in ("total", "sum", "amount"))
+           and "where currency is gbp" not in accepted_sent[0].lower(),
+           f"acceptance executes the offered geographic conversion (got {accepted_sent})")
+        ok("not available" not in accepted["reply"].lower()
+           and "don't have a reliable way" not in accepted["reply"].lower(),
+           "the assistant does not invent a missing-rate failure before the engine responds")
+
         print("[1c] follow-up rewrite carries grouping and limit qualifiers")
         r1d = asyncio.run(chat("what about 2024?", history=[
             {"role": "user", "content": "top 3 customers by total amount per month in 2025"},
