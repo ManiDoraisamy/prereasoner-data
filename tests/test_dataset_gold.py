@@ -62,7 +62,26 @@ def main():
         **fx_item['response'],
         'assistant_reply': 'GBP total: 1,925.',
     }})['passed']
-    print('dataset gold: 25 checks passed')
+    # The chat writes a verified currency beside the amount, so a right value cannot fail on wording.
+    # These are the replies the 2026-09-30 gate failed (formfacade-leads), as the chat now sends them.
+    from orchestrator.orchestrator import _grounded_presentation
+    converted = {
+        'status': 'answered', 'answer': {'columns': ['total_usd'], 'rows': [[70401]]},
+        'calculations': [{'specification': 'currency', 'status': 'satisfied',
+                          'realization': 'converted', 'target': 'USD'}],
+    }
+    for prose in (
+        'In US dollars, your total budget for the European entries comes to 70,401.',
+        'For all of Europe, your total budget comes to 70,401 in US dollars.',
+        'Your total comes to **$70,401.00**.',
+        'That is **70,401** USD.',
+    ):
+        sent = _grounded_presentation(converted, prose)
+        assert grade_browser_case({'expected': 70401, 'fx': True, 'response': {
+            'result': converted['answer'], 'assistant_reply': sent,
+            'currency': {'status': 'satisfied', 'realization': 'converted', 'target': 'USD'},
+        }})['passed'] is True, (prose, sent)
+    print('dataset gold: 29 checks passed')
 
 
 if __name__=='__main__':

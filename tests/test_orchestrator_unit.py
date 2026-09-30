@@ -638,9 +638,9 @@ def test_a_verified_currency_is_written_beside_the_amount():
     """Chrome pass, 2026-09-30 (formfacade-leads): two converted totals were right and their replies
     failed the gate, "In US dollars, your total budget for the German entries comes to 37,471.50." and
     "your total budget comes to 70,401 in US dollars." The gold comparator binds a converted value to
-    the currency written against it, so the chat writes the verified currency there itself."""
-    from regress.browser_gold import _grade_fx_presentation
-
+    the currency written against it, so the chat writes the verified currency there itself.
+    tests.test_dataset_gold grades these same replies with that comparator; this suite also runs in
+    the chat image's build, which does not carry it."""
     shaped = {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [[70401]]},
               "calculations": [{"specification": "currency", "status": "satisfied",
                                 "realization": "converted", "target": "USD"}]}
@@ -662,8 +662,6 @@ def test_a_verified_currency_is_written_beside_the_amount():
         ("That is **70,401** USD.", "That is **70,401 USD** USD."),
     ]:
         assert reply(prose) == expected, (prose, reply(prose))
-        assert _grade_fx_presentation(
-            {"currency": {"target": "USD"}, "assistant_reply": reply(prose)}, 70401) is None, prose
 
     # The code follows the whole amount, magnitude word included.
     assert reply("Across Europe that is about **70.4k** in total.") == \

@@ -424,7 +424,6 @@ def main():
         # sign rule, replies read "In US dollars, ... comes to 70,401." and failed it with the right
         # value; the chat now writes the verified currency beside the amount itself.
         print("[6] a converted total is written beside its currency")
-        from regress.browser_gold import _grade_fx_presentation
         europe, _ = presented(
             "How about all of Europe?",
             {"status": "answered", "calculations": usd,
@@ -436,8 +435,8 @@ def main():
                 {"role": "assistant", "content":
                  "In US dollars, your total budget for the German entries comes to 37,471.50."},
             ])
-        unpaired = _grade_fx_presentation({"currency": {"target": "USD"}, "assistant_reply": europe}, 70401)
-        ok(unpaired is None, f"the converted total carries its currency (got {europe!r}: {unpaired})")
+        ok(re.search(r"(?:\$|\bUSD)\s*70,401\b|\b70,401(?:\.00)?\s*(?:USD|US dollars)\b", europe),
+           f"the converted total carries its currency (got {europe!r})")
 
         # Three conversations asked at once: the engine serves one question at a time, and two of the
         # first six turns came back busy. The replies were "Let me try that again." with nothing
