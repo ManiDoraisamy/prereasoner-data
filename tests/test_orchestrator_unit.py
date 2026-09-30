@@ -669,6 +669,17 @@ def test_a_reply_says_only_what_the_result_shows():
     assert "ava" not in prompt.split() and "cleo" not in prompt.split()
 
 
+def test_a_failed_turn_promises_no_retry():
+    """Chrome pass, 2026-09-30: three conversations asked at once, and two of the first six turns came
+    back from the engine as "Engine is busy; retry shortly" (it serves one question at a time and
+    admits a waiting one for 15 s). The replies were "Let me try that again." and "there was a hiccup on
+    my end just now, let me try that again", and nothing was retried: a terminal engine outcome ends the
+    turn (test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation)."""
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "never say you will try again" in prompt
+    assert "ask the user to send the question again in a moment" in prompt
+
+
 def test_an_analysis_is_named_for_its_measure_not_its_filter():
     """Chrome pass, 2026-09-30: the workbook created for "total amount in France in US dollars" was
     named "total amount france usd" and kept that heading over the Europe-in-GBP and Belgium turns
@@ -1252,6 +1263,7 @@ TESTS = [
     test_a_currency_sign_the_turn_never_gave_is_dropped,
     test_the_model_is_told_the_currency_the_engine_verified,
     test_a_reply_says_only_what_the_result_shows,
+    test_a_failed_turn_promises_no_retry,
     test_an_analysis_is_named_for_its_measure_not_its_filter,
     test_recalculation_identity_and_scalar_presentation_are_grounded,
     test_presentation_that_states_the_engine_value_in_prose_is_kept,

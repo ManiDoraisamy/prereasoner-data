@@ -420,6 +420,17 @@ def main():
            and re.search(r"\$|\busd\b|us dollars?", discounted, re.I),
            f"the discounted total stands alone, in its verified currency (got {discounted!r})")
 
+        # Three conversations asked at once: the engine serves one question at a time, and two of the
+        # first six turns came back busy. The replies were "Let me try that again." with nothing
+        # retried, since a terminal engine outcome ends the turn.
+        print("[6] a failed turn promises no retry")
+        busy, _ = presented("total budget in Germany",
+                            {"status": "error", "error": "Engine is busy; retry shortly"})
+        ok(re.search(r"again", busy, re.I) and not re.search(
+            r"\b(?:let me|i'll|i will|i'm going to|i am going to)\s+(?:try|retry|re-?run|run|give)",
+            busy, re.I),
+           f"a busy engine is reported and the user is asked to send the question again (got {busy!r})")
+
         print("[7] an analysis is named for its measure, not its filter")
         _, slug = presented("total amount in France in US dollars", {
             "status": "answered", "calculations": usd,

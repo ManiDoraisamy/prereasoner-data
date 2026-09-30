@@ -1057,3 +1057,17 @@ On claude-sonnet-5, with the same engine results and the model's text read befor
 plain price in 6 of 8 replies before and 0 of 8 after; a name holding the place or currency in 8 of 8 and 0 of 8; the
 second of a top 2 called the top in 6 of 8 before, 1 of 24 with a first wording of the rule and 0 of 24 with the one
 shipped. These are wording changes. No graded answer moves.
+
+## A busy engine is reported as busy; the chat does not resend (2026-09-30)
+
+Three conversations were asked at once during the gate. The engine serves one question at a time per instance and
+admits a waiting request for `QUEUE_TIMEOUT_SECONDS` (15 s), so two of the first six turns came back as 503
+`{retryable: true}`, "Engine is busy; retry shortly". The chat replied "Let me try that again." and retried nothing: a
+terminal engine outcome ends the turn. The prompt now says there is one attempt per question and that the user is
+asked to send it again. On claude-sonnet-5 a retry was promised in 5 of 10 replies before and 0 of 10 after.
+
+The chat does not resend the call itself. A request rejected at admission has already minted its conversation and
+appended its dataset ops, and the 503 does not return the conversation id, so a resend would mint a second
+conversation and append the ops twice. Queueing belongs to the engine's admission, and that is unchanged here: a longer
+window has to be measured against the 180 s engine call and the 240 s turn (a decomposition's p90 is 140 s), which is
+the capacity item already open for the owner.
