@@ -7,6 +7,65 @@ results, and open questions. Newest section at the top. Committed evidence lives
 
 ---
 
+## 2026-09-30 (evening) — RELEASED: main in production; replies say only what the result shows; Chrome gate fresh 80/80, existing 55/56
+
+**Production now** (project `prereasoner-inference`, one serving revision per service, no tags):
+- Engine `prereasoner-api-00126-vjc` = `engine@sha256:1f4f3b6a…`, built from `d3f7751` (Cloud Build `abd8e42e`).
+  `engine/`, `db/` and `regress/` are unchanged since that commit.
+- Chat `prereasoner-chat-00074-pjz` = `chat@sha256:610bad83…`, built from `75b420d` (Cloud Build `dbc70617`).
+- Hosting serves `d3f7751`'s `web/public`, which main has not changed.
+- The ECB refresh and retention jobs (Terraform) and release-smoke (gcloud) run the engine image.
+- Rollback: engine `00125-jsx` (`131edc4f…`), chat `00070-hnh` (`98109c53…`).
+- Deploy path: a clean worktree, then `deploy/gcp/build_context.py --target release|chat`, then `gcloud builds submit`,
+  then a targeted `terraform plan/apply` pinned to image digests. The service-level
+  `scaling { min_instance_count = 0 -> null }` diff it shows is cosmetic.
+
+**Commits** (main, pushed):
+- `d3f7751`: one definition each for demonyms, place-name lookups and count cues. Three internal shims are gone, and
+  five compatibility paths are recorded with removal dates.
+- `d67575d`: an output currency survives a complete question in between, and the fallback names its currency. This
+  was the one miss in the first pass.
+- `0dbd107`: a reply says only what the result shows. That means no currency sign the turn never gave, no promoted
+  rank and no earlier-turn figures, and a workbook is named for its measure.
+- `9b87f2b`: a busy engine is reported as busy, with no promise to retry.
+- `5401046`: a verified currency is written beside the amount. Without it, the sign rule made correct FX replies fail
+  the gate's comparator.
+- `6f43211`: the chat suites no longer import the comparator. `5401046`'s chat image failed at its build test step,
+  and nothing was deployed from it.
+- `75b420d`: a new analysis name is cut at a word boundary.
+
+**Chrome gate** (owner's Chrome, every shipped dataset through `?load=` or an upload, `eval.txt` in order, one
+conversation at a time):
+- First pass, both images from `d3f7751`: existing 56/56, fresh 79/80. The miss was formfacade-leads dropping USD,
+  fixed in `d67575d`.
+- Final pass, `00126-vjc` with `00074-pjz`: fresh 80/80 over 24 datasets (shorthand 14/14, FX 17/17), existing 55/56.
+  The miss was payment-commissions "how much commission came from cards?", which clarified. On replay the model
+  forwarded the shorthand verbatim 1 time in 12, and the engine reads that literal question as a digital-wallet FX
+  total. Asked again in the same conversation, it answered 9.28.
+- Wording, which the numeric grading does not check: no invented currency sign in either pass. One workbook name
+  still held a filter value ("products not bought by paris").
+
+**Found, measured, left for the owner** (details in `PRODUCTION_READINESS.md`):
+- Scale-to-zero cold start.
+- One-question-at-a-time admission: three conversations at once gave 2 of 6 turns "busy".
+- CPU autoscaling to cold instances: requests routed to them hung for 60–80 s.
+- The ECB refresh lock stalled one FX question for 49 s.
+- The shorthand flake above.
+- A proactive decomposition is terminal. The cutoff follow-up "only use the top 2 customers" ended as "I couldn't split
+  this question" about 1 time in 15 in replay, the same rate with either prompt, and it failed the live suite once.
+
+**Gates on the final code:** hermetic `tests.run_all` 32/33 (test_complex_datasets 7/7 with the 7B). The live
+orchestrator suite missed that cutoff case once and then passed 37/37 on the next run. Orchestrator unit tests pass
+30/30, MCP 46/46, and the dataset gold suite 29 checks.
+
+**Gate tooling, for the next pass:**
+- Drive one conversation at a time; parallel conversations hit the admission window.
+- Read each turn from the `/chat` body trace, where `calculations` carries the currency. `/api/analysis` can hang
+  during an autoscale, so read it only with a timeout.
+- Keep a Claude in Chrome batch under about 90 s; longer ones dropped the connection twice.
+
+---
+
 ## 2026-09-30 — COMMITTED, not deployed: the Europe/GBP family, the 7B serving defects, a question-family suite
 
 The owner reported conversation `c_c4468…` (customer-orders, production `00122-zc4`): "total amount in France in

@@ -1,30 +1,57 @@
 # Production-readiness workstream
 
-## Correctness fixes on main, not deployed — 2026-09-30
+## Released — 2026-09-30
 
-Production `prereasoner-api-00125-jsx` (`a5d4210`) still answers the owner's customer-orders conversation
-wrong: "total amount in Europe in GBP" is 810 (the London rows alone; the 13 European rows are 1,917.48 GBP),
-and "total amount in Belgium in USD" keeps no rows. The fixes are on main (see `DECISIONS.md`, 2026-09-30
-entries): an output currency is never also a row filter; a value the upload holds is never read as a
-country ("how many orders in GBP" counted Guinea-Bissau); a place noun is the scope, not the answer; a place
-is read as one name, and a continent's demonym as that continent, in the resolver, the meaning walk and the
-coverage gate; the sheet's own name is not a compose grouping; a learned ranking needs a ranking word; a counted
-noun is what COUNT counts; a measure named in two words is summed, not counted; and serving decides compose
-ownership with `route()` alone, as evaluation does. Before that, 180 of Spider DEV's 1,034 questions were served by
-compose (3 correct) instead of the evaluated planner (146 correct on the same questions). `tests.test_question_families` (new, live) holds these
-families to CSV-derived golds, FX to 0.5%.
+This supersedes the deployment section below (`00125-jsx`) as the current release status.
 
-Before this reaches production:
+Production serves main's code. Engine `prereasoner-api-00126-vjc` =
+`engine@sha256:1f4f3b6adcc51d07e56c61ba51630fef488a41981901d0de5fb24a82a046f5bd`, built from `d3f7751` (Cloud Build
+`abd8e42e`); `engine/`, `db/` and `regress/` are unchanged since. Chat `prereasoner-chat-00074-pjz` =
+`chat@sha256:610bad83aaa7a0f75e19a41e1f5f33f305f17cecd59cbe63c6a76957c186c57c`, built from `75b420d` (Cloud Build
+`dbc70617`). Each is at 100% with no tags. Firebase Hosting serves `d3f7751`'s `web/public`, which main has not
+changed. The ECB refresh, retention and release-smoke jobs run the engine image. Rollback: engine `00125-jsx`
+(`131edc4f…`), chat `00070-hnh` (`98109c53…`, `d67575d`).
 
-1. Build and deploy no-traffic; smoke `/api/healthz`; run `python -m tests.test_datasets` and
-   `python -m tests.test_question_families` against the exact commit; then flip.
-2. Chrome gate on the deployed build, fresh and existing conversations, with `?load=<dataset>`
-   (`regress/browser_matrix.js` now opens the public demos that way). Not run tonight: it needs a
-   deployed build and an authorized browser session.
-3. `REQUIRE_ORCHESTRATOR_TESTS=1 python -m tests.test_orchestrator` with the Anthropic key. It was skipped
-   here (no key), so the prompt changes are covered by unit tests only.
-4. Optional, owner's call: the `lower(name)` indexes on the live `knowledgebase."city"`/`"country"` (DDL in
-   `DECISIONS.md`); otherwise they arrive with the next `db.sync.build_qid_world` rebuild.
+Live now: every fix in the 2026-09-30 `DECISIONS.md` entries. That covers the Europe/GBP family, serving that decides
+compose ownership with `route()` alone, an output currency that survives a complete question in between, and replies
+that say only what the result shows.
+
+Gates on the released code:
+
+- Hermetic suites: `tests.run_all` with the engine suites off, 32 of 33, with `tests.test_complex_datasets` 7/7 on
+  the 7B. The live orchestrator suite (claude-sonnet-5) missed one case in that run: "only use the top 2 customers",
+  which the model sometimes sends with a decomposition before the engine asks for one, and which the runtime then
+  ends with "I couldn't split this question". Replayed 60 times on each prompt, that happened 4 times with the prompt
+  before today's changes and 4 times with the released prompt. It passed 37/37 on the next run.
+- Engine image: offline 13/13, boot smoke, the live product suites on a disposable seed, and the CPU HTTP smoke. The
+  8 live suites also passed against production data through the Cloud SQL proxy.
+- Chrome gate, run in the owner's signed-in Chrome on chat.prereasoner.com. It covered every shipped dataset, through
+  `?load=` or an upload, in order, one conversation at a time.
+  - Fresh conversations: 80/80 turns over 24 datasets (shorthand 14/14, FX 17/17).
+  - Conversations created before the release: 55/56. The miss was payment-commissions "how much commission came
+    from cards?", which clarified. Replayed twelve times with that conversation on claude-sonnet-5, the model sent the
+    shorthand verbatim once. The engine reads the literal question as a digital-wallet total converted at ECB rates
+    and asks a question back. Asked again in the same conversation, it answered 9.28.
+
+The authenticated production conversation gate that the section below keeps open ran in this pass, on conversations
+the gate created. About a hundred gate conversations remain in the owner's account.
+
+Open, for the owner (capacity and cost; nothing here was changed):
+
+1. `min_instances = 0`. After about 15 idle minutes the engine scales to zero, and loading the 7B takes 5 to 7
+   minutes. The first question then fails in the chat ("the assistant hit an error" after the 240 s turn). One warm
+   8 vCPU / 16 GiB instance costs about $460 a month at on-demand rates.
+2. One question at a time per instance, with a 15 s admission window. Three conversations asked at once, and 2 of the
+   first 6 turns came back "Engine is busy". The chat now reports that plainly instead of promising a retry.
+3. Autoscaling on CPU during a long decomposition (60–120 s) starts up to two more instances, and each takes about 7
+   minutes to load. Requests routed to them meanwhile waited 60–80 s or failed at the Hosting proxy.
+   `max_instance_count = 1` avoids this at no cost but caps throughput. Warm capacity costs as in item 1.
+4. The daily ECB refresh (16:30 UTC, about 4.5 minutes) held a lock that stalled one FX question for 49 s.
+5. The shorthand miss above. It would not happen if the engine read "cards" as the `card` payment instrument, since
+   the question would then be answered even when it arrives verbatim.
+6. A decomposition the model proposes before the engine asks for one ends the turn at once (no repair round), about
+   1 time in 15 for the category-gaps cutoff follow-up in replay. A repair round that says to ask the question first
+   would recover it.
 
 ## Deployment completion and remaining live-browser gap — 2026-09-30
 
