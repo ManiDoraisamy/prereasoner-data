@@ -856,6 +856,11 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "names only what is measured and how it is grouped" in prompt
     assert "leave out places, dates, currencies and other filter values" in prompt
+    # Chrome gate, 2026-10-01: a second promotions analysis was named "..._v2", and "1082.41" was
+    # written without a separator (5 of 6 replies on replay; 0 of 6 with the rule).
+    assert "never name a new analysis as a version of an existing one" in prompt
+    assert "the same kind of result asked again with other cutoffs or measures is also `modify`" in prompt
+    assert "write large numbers with thousands separators" in prompt
     # A longer name is cut to the engine's limit with a hash ("top customers never bought top
     # 5e0be233"), so the model is told the limit.
     slug = next(tool for tool in orchestrator.CLAUDE_TOOLS
@@ -870,8 +875,28 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
         spec = {"action": action, "slug": long_name}
         if action == "modify":
             spec["analysis_id"] = "a_" + "6" * 32
-        assert orchestrator._named_within_limit(spec)["slug"] == sent, action
-    assert orchestrator._named_within_limit({"action": "create", "slug": "total_amount"})["slug"] == "total_amount"
+        assert orchestrator._named_for_its_result(spec)["slug"] == sent, action
+    assert orchestrator._named_for_its_result({"action": "create", "slug": "total_amount"})["slug"] == "total_amount"
+
+    # Chrome gate, 2026-10-01: told to leave filter values out, the model still named "products not
+    # bought by paris customers" (it headed the Lyon answer) and "intake consent count" (created again
+    # as "treatment agreement count"). A word of a cell value the question names is a filter and is
+    # removed; a name left with only an aggregate word takes that value's column.
+    purchases = [{"name": "purchases", "data": "customer,city,product\nAva,Paris,Alpha\nBen,Lyon,Beta\n"}]
+    intake = [{"name": "intake", "data": "document,patient\nIntake Consent,A\nTreatment Agreement,B\n"}]
+    for slug, message, tables, sent in (
+            ("products_not_bought_by_paris_customers",
+             "List the product names that no customer from Paris has bought.", purchases,
+             "products_not_bought_by_customers"),
+            ("intake_consent_count", "how many Intake Consent documents", intake, "document_count"),
+            ("treatment_agreement_count", "how many Treatment Agreement documents", intake, "document_count"),
+            # Contrasts: a value the question does not name, and a measure that is not a value, stay.
+            ("paris_orders", "how many orders are there?", purchases, "paris_orders"),
+            ("total_amount", "total amount in Paris", purchases, "total_amount")):
+        assert orchestrator._named_for_its_result(
+            {"action": "create", "slug": slug}, message, tables)["slug"] == sent, slug
+    existing = {"action": "modify", "slug": "intake_consent_count", "analysis_id": "a_" + "6" * 32}
+    assert orchestrator._named_for_its_result(existing, "how many Intake Consent documents", intake) == existing
     _result, _model_calls, engine_calls = asyncio.run(_run(
         "answered", query_input={"question": "top products nobody bought", "action": "create",
                                  "slug": long_name}))

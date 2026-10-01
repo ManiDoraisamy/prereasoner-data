@@ -16,6 +16,8 @@ for the reasoning player while feeding the model only a trimmed result.
 """
 from __future__ import annotations
 
+import csv
+import io
 import json
 import re
 import unicodedata
@@ -330,10 +332,54 @@ def _recalculation_target(user_message: str, catalog: list[dict[str, Any]],
 _NAME_CONNECTORS = frozenset({
     "a", "an", "and", "by", "for", "from", "in", "of", "on", "or", "per", "the", "to", "with",
 })
+# Words that cannot be a name alone: "count" says nothing about what is counted.
+_GENERIC_NAME_WORDS = frozenset({
+    "average", "avg", "count", "highest", "lowest", "max", "maximum", "mean", "min", "minimum",
+    "number", "sum", "total",
+})
+# Rows of each uploaded table read for the values a question names.
+_NAMED_VALUE_ROWS = 20_000
 
 
-def _named_within_limit(spec: dict[str, Any]) -> dict[str, Any]:
-    """A new analysis's proposed name, cut at a word boundary to the engine's limit.
+def _contains_run(words: tuple[str, ...], run: tuple[str, ...]) -> bool:
+    return any(words[index:index + len(run)] == run for index in range(len(words) - len(run) + 1))
+
+
+def _named_values(user_message: str, tables: list[dict]) -> list[tuple[tuple[str, ...], str]]:
+    """The cell values of the uploaded tables that the message names, each with its column.
+
+    A value of the user's own data named in a question is a filter: "from Paris", "Intake Consent
+    documents", "with PayPal". The longest value comes first.
+    """
+    asked = _question_words(user_message)
+    vocabulary = set(asked)
+    found: dict[tuple[str, ...], str] = {}
+    for table in tables or ():
+        reader = csv.reader(io.StringIO(str(table.get("data") or "")))
+        try:
+            header = next(reader)
+            for _, row in zip(range(_NAMED_VALUE_ROWS), reader):
+                for column, cell in zip(header, row):
+                    value = _question_words(cell)
+                    if (value and value not in found and set(value) <= vocabulary
+                            and any(word.isalpha() and len(word) > 2 for word in value)
+                            and _contains_run(asked, value)):
+                        found[value] = column
+        except (StopIteration, csv.Error):
+            continue
+    return sorted(found.items(), key=lambda item: -len(item[0]))
+
+
+def _named_for_its_result(spec: dict[str, Any], user_message: str = "",
+                          tables: list[dict] | None = None) -> dict[str, Any]:
+    """A new analysis's proposed name, without the filter values the question named, cut at a word
+    boundary to the engine's limit.
+
+    A name holding a filter is wrong after the first follow-up: "products not bought by paris
+    customers" headed the Lyon answer, and "intake consent count" was created again as "treatment
+    agreement count" (Chrome gate, 2026-10-01). The prompt says to leave filter values out, and the
+    model kept them in 12 of 12 names on replay. A word of a cell value the question names is
+    removed; a name left with only "count" or "total" takes that value's column ("document count").
 
     The engine cuts a longer name mid-word and adds a hash, which became the workbook's heading:
     "top customers products never bo c9272891" (Chrome pass, 2026-09-30). The tool schema states
@@ -344,8 +390,18 @@ def _named_within_limit(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("action") != "create" or not isinstance(slug, str):
         return spec
     words = [word for word in re.split(r"[^A-Za-z0-9]+", slug) if word]
+    named = _named_values(user_message, tables or [])
+    filters = {word for value, _column in named for word in value}
+    kept = [word for word in words if word.casefold() not in filters]
+    if kept and kept != words:
+        if all(word.casefold() in _GENERIC_NAME_WORDS | _NAME_CONNECTORS for word in kept):
+            column = [word for word in re.split(r"[^A-Za-z0-9]+", named[0][1].casefold()) if word]
+            kept = column + [word for word in kept if word.casefold() not in _NAME_CONNECTORS]
+        while len(kept) > 1 and kept[-1].casefold() in _NAME_CONNECTORS:
+            kept.pop()
+        words = kept
     if len("_".join(words)) <= MAX_ANALYSIS_SLUG_BYTES:
-        return spec
+        return spec if "_".join(words) == slug else {**spec, "slug": "_".join(words)}
     # Drop words from the end until it fits, then any connector the cut left dangling ("..._by").
     while len(words) > 1 and (len("_".join(words)) > MAX_ANALYSIS_SLUG_BYTES
                               or words[-1].lower() in _NAME_CONNECTORS):
@@ -734,11 +790,11 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             analysis_spec = dict(forced_analysis)
                         else:
                             try:
-                                analysis_spec = validate_analysis_spec(_named_within_limit({
+                                analysis_spec = validate_analysis_spec(_named_for_its_result({
                                     key: (block.input or {}).get(key)
                                     for key in ("action", "slug", "analysis_id", "revision")
                                     if (block.input or {}).get(key) is not None
-                                }))
+                                }, user_message, tables))
                             except AnalysisError as exc:
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,
