@@ -261,13 +261,17 @@ resource "google_cloud_run_v2_service" "api" {
     service_account = google_service_account.run.email
 
     scaling {
-      min_instance_count = var.min_instances # default 1: see the variable — cold start is 2-3 min
-      max_instance_count = 3
+      min_instance_count = var.min_instances # default 1: see the variable — cold start is 3-5 min
+      # One instance. A new engine instance needs 3-5 minutes to load its models, and Cloud Run
+      # holds a request for an instance it is starting: on 2026-10-01 a question waited 3.5
+      # minutes for a new instance while three were ready, and the chat gave up at 180 s. An
+      # instance answers one question at a time (WORLD_LOCK), so a second question gets "busy"
+      # after the engine's admission window instead of waiting on a cold start.
+      max_instance_count = 1
     }
 
-    # The world/reason paths serialize on one in-process model lock, so high per-instance
-    # concurrency only queues requests behind the lock; keep it modest so load fans out
-    # to new instances instead.
+    # The world/reason paths serialize on one in-process model lock. The other requests (the
+    # analysis catalog, master data, health checks) are short and share the instance.
     max_instance_request_concurrency = 8
     timeout                          = "300s"
 

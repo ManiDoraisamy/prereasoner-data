@@ -218,16 +218,17 @@ variable "enrichment_active_datasets" {
 variable "min_instances" {
   description = <<-EOT
     Minimum warm engine instances. 1 is the production default: a cold start pulls the image and
-    loads three model stacks, 2-3 minutes on 8 vCPU (measured on Cloud Run 2026-09-23), far past
-    Firebase Hosting's ~60s proxy timeout, so a first visitor's answer would fall back to the RTDB
-    stream. A warm 4-CPU/8Gi instance cost roughly $30-35/month at idle rates; the 8-CPU/16Gi
-    instance idles at about twice that. Use 0 for disposable dev environments.
+    loads the model stacks including the 7B SQL proposer, 3-5 minutes on 8 vCPU (measured on Cloud
+    Run 2026-10-01). That is longer than the chat's 180 s engine call, so with 0 the first question
+    after an idle period fails. The engine runs with CPU always allocated (instance-based billing),
+    so one warm 8-CPU/16Gi instance costs about $450 a month at list prices. Use 0 for disposable
+    dev environments. The service runs at most one instance (see main.tf).
   EOT
   type        = number
   default     = 1
 
   validation {
-    condition     = var.min_instances >= 0 && var.min_instances <= 3
-    error_message = "min_instances must be between 0 and 3."
+    condition     = var.min_instances >= 0 && var.min_instances <= 1
+    error_message = "min_instances must be 0 or 1: the engine service runs at most one instance."
   }
 }
