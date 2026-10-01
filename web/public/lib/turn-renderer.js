@@ -179,7 +179,11 @@
       var text = String((view.sql || '') + ' ' + (view.label || '')).toLowerCase();
       if (/\bcount\b/.test(text)) return 'count';
       if (/\bavg\b|average/.test(text)) return 'average';
-      if (/\bmin\b|\bmax\b/.test(text)) return 'extremes';
+      // "What is the highest purchase cost?" was badged EXTREMES (2026-10-01): one extreme is named.
+      var highest = /\bmax\b/.test(text), lowest = /\bmin\b/.test(text);
+      if (highest && lowest) return 'extremes';
+      if (highest) return 'highest';
+      if (lowest) return 'lowest';
       return 'total';
     }
     return STEP_NAMES[op] || (view && view.label) || op || '';
@@ -207,11 +211,20 @@
     }
     if (op === 'time_filter') return 'Kept only the rows in that time period.';
     if (op === 'convert') {
-      return 'Converted each amount at its ECB reference rate — the rate and its publication date are ' +
-        'columns on this sheet, so the Result is just the converted column summed.';
+      // Every per-row calculation is a `convert` step (docs/SHEETS_AS_REASONING.md). Only a step with a
+      // column the server traced to the exchange-rate reference converted currency: the commission
+      // arithmetic of payment-commissions was described as an ECB conversion (2026-10-01).
+      var converted = (view.column_provenance || []).some(function (item) {
+        return item && item.kind === 'reference' && /central bank/i.test(String(item.source || ''));
+      });
+      return converted
+        ? 'Converted each amount at its ECB reference rate — the rate and its publication date are ' +
+          'columns on this sheet, so the Result is just the converted column summed.'
+        : 'Calculated a new value for each row from the columns before it.';
     }
     if (op === 'group_agg') {
       return {count: 'Counted the rows.', average: 'Averaged the values.',
+        highest: 'Found the highest value.', lowest: 'Found the lowest value.',
         extremes: 'Found the highest and lowest values.'}[stepLabel(view)] || 'Added up the values to get the total.';
     }
     var sentences = {topn: 'Kept just the top-ranked results.',
@@ -294,7 +307,10 @@
 
   // The questions the assistant asked the engine this turn ("read as …").
   function renderAsks(questions) {
-    var list = (questions || []).filter(Boolean);
+    // A decomposition sends its question twice (the probe, then the proposal); say it once.
+    var list = (questions || []).filter(function (question, index, all) {
+      return question && all.indexOf(question) === index;
+    });
     return list.length ? '<div class=cotask>read as ' + list.map(function (question) {
       return '&ldquo;' + escapeHtml(question) + '&rdquo;';
     }).join(', ') + '</div>' : '';

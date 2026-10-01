@@ -125,6 +125,10 @@ const DATASET=(p=>Object.prototype.hasOwnProperty.call(DATASETS,p)?p:'customer-o
   new URLSearchParams(location.search).get('load'));
 const $=id=>document.getElementById(id);
 const Q0=$('q').value;                                     // the HTML fallback question, captured before any restore
+let DEMO_Q=Q0;                                             // the demo's question while the box still holds it
+// The demo's question belongs to the demo's sheet. When the user's own file replaces the sample, an
+// untouched demo question would ask about France of an assets register (Chrome gate, 2026-10-01).
+function clearDemoQuestion(){ if($('q').value===DEMO_Q){ $('q').value=''; $('q').focus(); } }
 let SHEETS=[], isSample=true;                              // first real upload replaces the demo
 let UPLOAD_PENDING=false, UPLOAD_ERROR='', UPLOAD_BATCH=0;
 const DEMO_LOAD=Promise.all([
@@ -147,7 +151,7 @@ const DEMO_LOAD=Promise.all([
 ]).then(([t,p])=>{
   if(isSample){ SHEETS=t.flat(); renderChips(); }          // an upload or picker return that landed first wins
   p=p.trim();                                              // the dataset's prompt fills a PRISTINE box only — never
-  if(p&&$('q').value===Q0)$('q').value=p;                  // a question the user typed or a picker round-trip restored
+  if(p&&$('q').value===Q0){ $('q').value=p; DEMO_Q=p; }    // a question the user typed or a picker round-trip restored
 }).catch(e=>{ if(isSample)$('err').textContent='The demo data did not load ('+(e&&e.message||e)+'). Attach your own file, or reload.'; });
 function renderChips(){
   $('chips').innerHTML=SHEETS.map((s,i)=>'<span class=chip role=button tabindex=0 data-i="'+i+'" title="Preview '+escAttr(s.filename||s.name)+'"><span class=ic aria-hidden=true><svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"></rect><path d="M2.5 6h11M6 2.5v11"></path></svg></span><span class=nm>'+esc(s.name)+'</span><button class=chipx type=button aria-label="Remove '+escAttr(s.name)+'" title="Remove">&times;</button></span>').join('');
@@ -206,7 +210,7 @@ try{                                                       // returning from /pi
 }catch(_){}
 renderChips();
 function baseName(n){return (n||'').replace(/\.(csv|tsv|txt|xlsx|xlsm|xls)$/i,'');}
-function addSheet(name,data,kind){if(isSample){SHEETS=[];isSample=false;}SHEETS.push({name:name,data:data,source:{kind:kind||'csv'}});}
+function addSheet(name,data,kind){if(isSample){SHEETS=[];isSample=false;clearDemoQuestion();}SHEETS.push({name:name,data:data,source:{kind:kind||'csv'}});}
 $('file').addEventListener('change',async function(e){     // CSV/TSV read as text; .xlsx/.xls parsed client-side -> ONE table per worksheet (FK-joinable like multi-CSV)
   const files=[...e.target.files]; if(!files.length)return;
   const batch=++UPLOAD_BATCH, pending=[];
@@ -229,6 +233,7 @@ $('file').addEventListener('change',async function(e){     // CSV/TSV read as te
     const next=(isSample?[]:SHEETS).concat(pending);
     if(next.length>UPLOAD_LIMITS.sheets)throw new Error('Attach at most 8 tables.');
     if(next.reduce((n,s)=>n+s.data.length,0)>UPLOAD_LIMITS.totalChars)throw new Error('The combined tables are too large.');
+    if(isSample)clearDemoQuestion();
     SHEETS=next; isSample=false; renderChips();
   }catch(err){
     if(batch!==UPLOAD_BATCH)return;

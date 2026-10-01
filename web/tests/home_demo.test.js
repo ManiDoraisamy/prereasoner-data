@@ -354,3 +354,9 @@ assert(html.includes('<title>Ask your spreadsheet a question | Prereasoner</titl
   'the application website must use the canonical add-on name');
 assert(html.includes('<span>Prereasoner</span>'),
   'the application header must use the canonical add-on name');
+// The demo's question belongs to the demo's sheet: when the user's own file replaces the sample, an
+// untouched demo question is cleared instead of being asked of their data (Chrome gate, 2026-10-01).
+assert(/function clearDemoQuestion\(\)\{ if\(\$\('q'\)\.value===DEMO_Q\)/.test(html),
+  'the demo question must be cleared only while the box still holds it');
+assert(html.includes('if(isSample)clearDemoQuestion();') && html.includes('isSample=false;clearDemoQuestion();'),
+  'both ways a user file replaces the sample must clear the demo question');

@@ -173,7 +173,14 @@ function analysisHeading(value){
 
 /* ---------------- rendering: the sheet ---------------- */
 function isNum(v){return v!==''&&v!=null&&/^-?\$?[\d,]*\.?\d+%?$/.test(String(v).trim());}
-function fmt(v){ if(typeof v==='number'&&!Number.isInteger(v)) return (Math.round(v*1000)/1000).toString(); return v==null?'':String(v); }
+// A computed sheet carries an exact decimal as a string ("19040.46312152585994148", result-wire.js).
+// It displays like a number, at three decimals at most, and the cell's tooltip keeps the exact value.
+// Uploaded and reference cells are shown as typed.
+function fmt(v,computed){
+  if(typeof v==='number'&&!Number.isInteger(v)) return (Math.round(v*1000)/1000).toString();
+  if(computed&&typeof v==='string'&&/^-?\d+\.\d{4,}$/.test(v)){ const n=Number(v); if(Number.isFinite(n)) return (Math.round(n*1000)/1000).toString(); }
+  return v==null?'':String(v);
+}
 function renderGrid(m){
   const cols=m.cols||[],rows=(m.rows||[]);
   const numeric=cols.map((_,ci)=>rows.length>0&&rows.every(r=>r[ci]===''||r[ci]==null||isNum(r[ci])));
@@ -228,11 +235,11 @@ function renderGrid(m){
   for(let ri=0;ri<Math.max(nrows,edit?1:0);ri++){ const row=shown[ri]||cols.map(()=>'');
     const isNew=edit&&ri===shown.length;                                    // the Access-style "new record" row (editable only)
     h+='<tr'+(isNew?' class=newrow':'')+'><td class=rn>'+(isNew?'<span class=newstar title="New row — type here to add">&lowast;</span>':((ri+1)+(edit?'<button class=rowdel title="Delete row" onclick="delRow(\''+m.id+'\','+ri+')">&times;</button>':'')))+'</td>';
-    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci]);
+    for(let ci=0;ci<cols.length;ci++){ const val=fmt(row[ci],!edit), exact=row[ci]==null?'':String(row[ci]);
       let mark=''; if(rc){ if(ri===SEL.r&&ci===SEL.c)mark=' sel'; else if(ri>=rc.r0&&ri<=rc.r1&&ci>=rc.c0&&ci<=rc.c1)mark=' insel'; }
       const aic=(m.cls==='master'&&m.cellAI&&m.cellAI.has(ri+','+ci))?' aicell':'';   // B3: autofilled cell (edit to confirm)
       h+='<td class="'+(numeric[ci]?'n ':'')+'wbc'+mark+aic+'"'   // EVERY cell is a navigable wbc; only editable sheets accept edits/paste/new-row
-        +' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"'+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr(val+(aic?'  ·  AI-generated — edit to confirm':''))+'">'+esc(val)+'</td>'; }
+        +' data-sid="'+m.id+'" data-r="'+ri+'" data-c="'+ci+'" tabindex="-1"'+(isNew&&ci===0?' data-ph="+ new row"':'')+' title="'+escAttr((val===exact||isNew?val:exact)+(aic?'  ·  AI-generated — edit to confirm':''))+'">'+esc(val)+'</td>'; }
     if(m.cls==='master') h+='<td class=newcol onclick="addMasterCol(\''+m.id+'\')"></td>';   // ghost cells under the "+ new column" header
     h+='</tr>'; }
   if(!rows.length&&!edit) h+='<tr><td class=rn>1</td><td colspan='+Math.max(1,cols.length)+' style="color:#9a93b5">no rows</td></tr>';
@@ -248,11 +255,26 @@ function tokCls(tk){const u=tk.toUpperCase();
   return '';}
 const KINDLBL={input:'Your data',deriv:'Derived',ref:'Public source',master:'Reference'};
 function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|knowledgebase|reference)[_ ]lookup/i.test(n)) n='enriched'; return n; }
+// The tab strip is flat, so each sheet's name there must be its own. Steps share names ("combined" in
+// every branch of a compound question, two "enriched" lookups): a shared name carries its branch, and
+// a name still shared is numbered in order. The reasoning tree keeps the short names; its branches
+// already say which is which.
+function flatNames(){
+  const steps=BOOK.filter(s=>(s.cls==='deriv'||s.cls==='ref')&&!s.result);
+  const tally=key=>steps.reduce((m,s)=>m.set(key(s),(m.get(key(s))||0)+1),new Map());
+  const plain=tally(dispName);
+  const branch=s=>plain.get(dispName(s))>1&&s.sectionLabel?s.sectionLabel+' · '+dispName(s):dispName(s);
+  const named=tally(branch), seen=new Map(), out=new Map();
+  steps.forEach(s=>{ const n=branch(s);
+    if(named.get(n)>1){ const k=(seen.get(n)||0)+1; seen.set(n,k); out.set(s.id,n+' '+k); } else out.set(s.id,n); });
+  return out;
+}
+function flatName(s,names){ return (names||flatNames()).get(s.id)||dispName(s); }
 function renderSheet(){
   const m=sheetById(ACTIVE);
   if(!m){ $('sheetcard').innerHTML='<div class=sheetmsg id=sheetmsg>'+(FAILMSG?'&#9888; '+esc(FAILMSG):'<span class=spin></span> '+esc(STATUS))+'</div>'; return; }
   let h='<div class="bandbar band-'+m.cls+'"></div><div class=sheetband>'
-    +'<span class="dot '+m.cls+'"></span><span class=snm title="'+esc(m.result?'Result':m.name)+'">'+esc(m.result?'Result':dispName(m))+'</span>'
+    +'<span class="dot '+m.cls+'"></span><span class=snm title="'+esc(m.result?'Result':flatName(m))+'">'+esc(m.result?'Result':flatName(m))+'</span>'
     +'<span class="skind '+m.cls+'">'+(m.result?esc(m.name):KINDLBL[m.cls])+'</span>'
     +srcBadge(m)
     +(m.cls==='master'?'<span class=spacer></span>'
@@ -283,7 +305,8 @@ function renderSheet(){
     const fallback=BOOK.filter(s=>s.cls==='deriv'&&!s.result).slice(-1);
     const sources=feeders.length?feeders:fallback;
     if(sources.length){
-      const links=sources.map(src=>'<button class=mlink onclick="pick(\''+src.id+'\')">'+esc(dispName(src))+'</button>').join(' + ');
+      const names=flatNames();
+      const links=sources.map(src=>'<button class=mlink onclick="pick(\''+src.id+'\')">'+esc(flatName(src,names))+'</button>').join(' + ');
       h+='<div class=resultcap>= built from '+links+'</div>'; }
   }
   $('sheetcard').innerHTML=h;
@@ -371,7 +394,7 @@ function closePopMenu(){
   if(_popDoc){ document.removeEventListener('mousedown', _popDoc); _popDoc=null; }
   const m=document.getElementById('popmenu'); if(m) m.remove();
 }
-function tabTxt(s){ const t=s.result?'Result':dispName(s); return t.length>26?t.slice(0,24)+'…':t; }
+function tabTxt(s,names){ const t=s.result?'Result':flatName(s,names); return t.length>26?t.slice(0,24)+'…':t; }
 function renderTabs(){
   // A5: group the strip by pipeline role — Sources · Reference · Steps · Result — so inputs and the answer are never
   // lost among the machine scratch sheets. The zone labels double as a non-color cue for sheet kind (E3).
@@ -379,7 +402,8 @@ function renderTabs(){
   const reference=BOOK.filter(s=>s.cls==='master');
   const result=BOOK.filter(s=>s.result);
   const steps=BOOK.filter(s=>(s.cls==='deriv'||s.cls==='ref')&&!s.result);
-  const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')" title="'+esc((s.result?'Result':s.name)+(s.cls==='master'&&!s.saved?' — unsaved reference':''))+'"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s))+(s.cls==='master'&&!s.saved?'<span class=unsaveddot title="unsaved" aria-label="unsaved"> •</span>':'')+'</button>';
+  const names=flatNames();
+  const tab=s=>'<button class="wtab'+(s.id===ACTIVE?' active':'')+'" onclick="pick(\''+s.id+'\')" title="'+esc((s.result?'Result':flatName(s,names))+(s.cls==='master'&&!s.saved?' — unsaved reference':''))+'"><span class="dot '+s.cls+'"></span>'+esc(tabTxt(s,names))+(s.cls==='master'&&!s.saved?'<span class=unsaveddot title="unsaved" aria-label="unsaved"> •</span>':'')+'</button>';
   const zone=(label,arr,extra)=> (arr.length||extra) ? '<span class=tabzone>'+arr.map(tab).join('')+(extra||'')+'</span>' : '';   // grouped (subtle dividers) but no space-wasting labels
   const suggest = REFCANDS.length ? '<button class="wtab refsuggest" title="'+REFCANDS.length+' reference '+(REFCANDS.length===1?'table':'tables')+' not shown — click to add as a sheet" onclick="refSuggestMenu(this,event)">+ Reference</button>' : '';
   $('tabstrip').innerHTML = zone('Sources',sources) + zone('Reference',reference,suggest) + zone('Steps',steps) + zone('Result',result);
@@ -400,8 +424,8 @@ function updateTabArrows(){
 /* ---------------- rendering: the chat rail ---------------- */
 function resultSummary(){
   const r=(J&&J.result)||null; if(!r||!r.rows||!r.rows.length) return null;
-  if(r.rows.length===1&&r.columns&&r.columns.length===1) return {k:r.columns[0],v:fmt(r.rows[0][0]),big:true};
-  if(r.rows.length===1) return {k:'result',v:r.columns.map((c,i)=>c+': '+fmt(r.rows[0][i])).join('  ·  '),big:false};
+  if(r.rows.length===1&&r.columns&&r.columns.length===1) return {k:r.columns[0],v:fmt(r.rows[0][0],true),big:true};
+  if(r.rows.length===1) return {k:'result',v:r.columns.map((c,i)=>c+': '+fmt(r.rows[0][i],true)).join('  ·  '),big:false};
   return {k:'result',v:r.rows.length+' rows — see the Result sheet',big:false};
 }
 function conv2html(t){
@@ -937,7 +961,19 @@ function renderFromJSON(j,executionKey=null){
   DONE=true; finalize();
   if(wasSettled)saveConvState();
 }
-function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} renderRail(); renderSourceStatus(); }   // the source chip leaves "checking" with the turn
+// While it plans, a turn grounds text columns against the world ("Looking up loan…"), and each match
+// streams in as a reference sheet. A lookup the finished derivation never joined is not part of the
+// answer: the bank-marketing leads showed two "city" sheets (yes/no columns matched a town) beside a
+// count that used no reference data (Chrome gate, 2026-10-01).
+function dropUnusedLookups(){
+  if(!VIEWS.length||VIEWS.some(v=>v&&(v.op==='world_join'||v.op==='world_filter')))return;
+  const prefix='r'+RUN+'_', before=BOOK.length;
+  BOOK=BOOK.filter(s=>!(s.cls==='ref'&&String(s.id).startsWith(prefix)));
+  if(BOOK.length===before)return;
+  if(!BOOK.some(s=>s.id===ACTIVE)){ const out=BOOK.find(s=>s.result); ACTIVE=(out||BOOK[0]||{}).id||null; }
+  paint();
+}
+function settle(){ SETTLED=true; clearTimeout(doneTimer); if(UNSUB){try{UNSUB();}catch(_){}UNSUB=null;} dropUnusedLookups(); renderRail(); renderSourceStatus(); }   // the source chip leaves "checking" with the turn
 // Answer a clarify / non-data question IN THE RAIL (no page redirect). Try the Sonnet fallback
 // (POST /api/converse); if it isn't deployed yet or errors, degrade to a payload-based "did you mean".
 async function conversationalReply(c){

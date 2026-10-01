@@ -87,6 +87,47 @@ const checks = `
     if (sheetSource(pySheet).primary !== 'py') throw new Error('a later SQL call relabelled a Python sheet');
     if (sheetSource(sqlSheet).primary !== 'sql') throw new Error('a SQL sheet did not retain its own backend');
 
+    // An exact decimal from the engine displays at three decimals; an uploaded cell shows as typed
+    // (formesign-contracts showed "19040.46312152585994148" on its Result sheet, 2026-10-01).
+    if (fmt('19040.46312152585994148', true) !== '19040.463') throw new Error('a computed decimal was not rounded for display');
+    if (fmt('3.14159') !== '3.14159') throw new Error('an uploaded cell was reformatted');
+    if (fmt('365.631', true) !== '365.631' || fmt('ACME 1.2345', true) !== 'ACME 1.2345')
+      throw new Error('a short decimal or a text cell was changed');
+
+    // A world lookup the finished derivation never joined leaves the workbook when the turn settles
+    // (bank-marketing leads, 2026-10-01); one a world_join used stays.
+    const lookupBook = BOOK, lookupViews = VIEWS, lookupRun = RUN, lookupPaint = paint;
+    paint = () => {}; RUN = 9;
+    for (const [op, kept] of [['filter', 0], ['world_join', 2]]) {
+      BOOK = [{id:'u', cls:'input', name:'leads'}, {id:'r9_1', cls:'ref', name:'city'},
+              {id:'r9_2', cls:'ref', name:'city'}, {id:'v9_1', cls:'deriv', name:'count', result:true}];
+      VIEWS = [{op, name:'step'}, {op:'group_agg', name:'count'}];
+      dropUnusedLookups();
+      if (BOOK.filter(s => s.cls === 'ref').length !== kept)
+        throw new Error(op + ' kept ' + BOOK.filter(s => s.cls === 'ref').length + ' lookup sheets');
+    }
+    BOOK = lookupBook; VIEWS = lookupViews; RUN = lookupRun; paint = lookupPaint;
+
+    // The flat tab strip names each sheet once: a branch name tells shared step names apart, and
+    // a name still shared is numbered (complex-promotions and the two-lookup FX trail, 2026-10-01).
+    const tabBook = BOOK;
+    BOOK = [
+      {id:'u', cls:'input', name:'orders'},
+      {id:'a', cls:'deriv', name:'combined', sectionLabel:'top customers'},
+      {id:'b', cls:'deriv', name:'total', sectionLabel:'top customers'},
+      {id:'c', cls:'deriv', name:'combined', sectionLabel:'top products'},
+      {id:'d', cls:'deriv', name:'candidate pairs', sectionLabel:'gaps'},
+      {id:'e', cls:'deriv', name:'reference lookup'},
+      {id:'f', cls:'deriv', name:'reference lookup'},
+      {id:'r', cls:'deriv', name:'not yet matched', result:true},
+    ];
+    const flat = flatNames();
+    const named = ['a','b','c','d','e','f'].map(id => flat.get(id)).join(' | ');
+    if (named !== 'top customers · combined | total | top products · combined | candidate pairs | enriched 1 | enriched 2')
+      throw new Error('tab names were not made unique: ' + named);
+    if (flatName(BOOK[0]) !== 'orders') throw new Error('an uploaded sheet lost its own name');
+    BOOK = tabBook;
+
     CHAT = [{q:'prior', reply:'answer'}]; SETTLED=false; REFCANDS=[];
     const perSheet = convSnapshot();
     if (perSheet.sheets[0].execution.actual !== 'python' || perSheet.sheets[1].execution.actual !== 'sql')
@@ -221,6 +262,20 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
   const legacyLink = R.renderStepLink({title: 'Legacy step', operation: 'filter'}, 0);
   assert(legacyLink.includes('Legacy step'), legacyLink);
   assert.strictEqual(R.renderAsks(['total amount in France']), '<div class=cotask>read as &ldquo;total amount in France&rdquo;</div>');
+  // A decomposition sends the same question twice (probe, then proposal): it is read once.
+  assert.strictEqual(R.renderAsks(['top customers by spend', 'top customers by spend']),
+    '<div class=cotask>read as &ldquo;top customers by spend&rdquo;</div>');
+  // Every per-row calculation is a `convert` step. Only one whose columns the server traced to the
+  // exchange-rate reference is described as a currency conversion (payment-commissions, 2026-10-01).
+  const commission = {op: 'convert', label: 'calculated', columns: ['payments__amount', 'aggregate_operand_1'],
+    column_provenance: [{kind: 'input', source: 'upload'}, {kind: 'derived', source: 'Prereasoner'}]};
+  const fx = {op: 'convert', label: 'calculated', columns: ['orders__amount', 'exchange_rate__rate_to_usd'],
+    column_provenance: [{kind: 'input', source: 'upload'}, {kind: 'reference', source: 'European Central Bank'}]};
+  assert.strictEqual(R.stepDescription(commission), 'Calculated a new value for each row from the columns before it.');
+  // One extreme is named as such; only a step computing both is "extremes".
+  assert.deepStrictEqual(['SELECT MAX(cost) FROM a', 'SELECT MIN(cost) FROM a', 'SELECT MIN(cost), MAX(cost) FROM a']
+    .map(sql => R.stepLabel({op: 'group_agg', sql: sql, label: 'total'})), ['highest', 'lowest', 'extremes']);
+  assert(/ECB reference rate/.test(R.stepDescription(fx)), R.stepDescription(fx));
 }
 vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});
 vm.runInContext(conversationSource, context, {filename: 'workbook-conversations.js'});
