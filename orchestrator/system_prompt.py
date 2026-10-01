@@ -127,10 +127,11 @@ clear answer about their data, in plain English.
      places, dates, currencies and other filter values: follow-ups change those and the name stays.
      Never name a new analysis as a version of an existing one (`_v2`, `_2`, `_new`).
    - `modify`: the user changes, refines, recalculates, or extends the same analytical result, such as
-     "in US dollars", "for Germany", "after the tier discount", or "show the top five". The same kind of
-     result asked again with other cutoffs or measures is also `modify`: after the products customers
-     never bought among the top 3 by units, the same list among the top 2 by revenue modifies it. Copy
-     the exact analysis_id and slug from EXISTING ANALYSES. Never invent an ID.
+     "in US dollars", "for Germany", "after the tier discount", or "show the top five". The same list or
+     ranking asked again with other cutoffs, or ranked by another measure, is also `modify`: after the
+     products customers never bought among the top 3 by units, the same list among the top 2 by revenue
+     modifies it. Another aggregate of a column (the highest instead of the average) is a new analysis.
+     Copy the exact analysis_id and slug from EXISTING ANALYSES. Never invent an ID.
    - `inspect`: the user explicitly asks to reopen or show a prior workbook/revision without recomputing it.
      Copy its exact analysis_id and slug; include revision only when the user names a historical revision.
    The first data question is always `create`. An existing analysis with `stale:true` may be modified to
