@@ -562,11 +562,110 @@ def test_a_leaf_serves_the_chosen_ranking_with_its_measure_projected():
     _reject(lambda: served_query(pool_selection(compound), "top_products", units))
 
 
+
+def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
+    """Production 2026-10-01, complex-promotions: the evidence leaf "For each customer, list
+    every product name they have ever bought" was ranked first as a product-only reading, so
+    the anti-join could not tell which customer bought what and the plan failed. The
+    customer-and-product reading ranked next is the evidence the merge needs; a reading that
+    keeps the left grain is served as it is, and with none the first reading's error stands."""
+    from engine.deterministic.lower import lower_select_query
+    from engine.deterministic.plan import AntiJoinView
+    from engine.sql_ast import Join, OrderTerm
+
+    product = ColumnRef("products", "product_name", SQLType.TEXT)
+    customer = ColumnRef("customers", "customer_name", SQLType.TEXT)
+    quantity = Aggregate("SUM", ColumnRef("order_items", "quantity", SQLType.INTEGER))
+    line_total = Aggregate("SUM", ColumnRef("order_items", "line_total", SQLType.REAL))
+    item = Join("products", ColumnRef("order_items", "product_id", SQLType.INTEGER),
+                ColumnRef("products", "product_id", SQLType.INTEGER))
+    buyer = Join("customers", ColumnRef("order_items", "customer_id", SQLType.INTEGER),
+                 ColumnRef("customers", "customer_id", SQLType.INTEGER))
+    top_customers = SelectQuery(
+        (SelectItem(customer), SelectItem(line_total)), "order_items", joins=(buyer,),
+        group_by=(customer,), order_by=(OrderTerm(line_total, "DESC"),), limit=2)
+    top_products = SelectQuery(
+        (SelectItem(product), SelectItem(quantity)), "order_items", joins=(item,),
+        group_by=(product,), order_by=(OrderTerm(quantity, "DESC"),), limit=3)
+    products_only = SelectQuery((SelectItem(product),), "order_items", joins=(item,))
+    purchases = SelectQuery((SelectItem(customer), SelectItem(product)), "order_items",
+                            joins=(item, buyer))
+
+    def pool_selection(*queries):
+        pool = tuple(ScoredQuery(query, f"q{index}", 1.0, ()) for index, query in enumerate(queries))
+        n = len(pool)
+        return PoolSelection(pool, frozenset(), (True,) * n, (True,) * n, ((-1.0, 9),) * n,
+                             tuple(float(n - index) for index in range(n)), tuple(range(n)), 0, n)
+
+    tables = [
+        {"name": "products", "columns": ["product_id", "product_name"], "rows": [[1, "Coat"]]},
+        {"name": "customers", "columns": ["customer_id", "customer_name"], "rows": [[1, "Mina"]]},
+        {"name": "order_items", "columns": ["product_id", "customer_id", "quantity", "line_total"],
+         "rows": [[1, 1, 2, 20.0]]},
+    ]
+    schema = [{"table": t["name"], "name": c,
+               "affinity": "TEXT" if isinstance(t["rows"][0][i], str) else "REAL",
+               "values": [row[i] for row in t["rows"]]}
+              for t in tables for i, c in enumerate(t["columns"])]
+    leaves = {
+        "top 2 customer names by total spend": pool_selection(top_customers),
+        "top 3 product names by total quantity sold": pool_selection(top_products),
+    }
+    evidence = "For each customer, list every product name they have ever bought"
+    proposal = {
+        "subquestions": [
+            {"id": "top_customers", "question": "top 2 customer names by total spend"},
+            {"id": "top_products", "question": "top 3 product names by total quantity sold"},
+            {"id": "purchases", "question": evidence},
+        ],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["top_customers", "top_products"]},
+            {"id": "missing", "op": "anti_join", "inputs": ["pairs", "purchases"]},
+        ],
+        "output": "missing", "grain": "one customer-product pair",
+    }
+    question = ("Find the top 3 products by units sold and the top 2 customers by total spend, "
+                "then list each top-customer and top-product pair where that customer has never "
+                "bought that product.")
+
+    def plan_with(*readings):
+        planner = Mock()
+        planner.postgres_row_identity = False
+        planner.select_query.side_effect = lambda leaf, *_: (
+            leaves[leaf] if leaf in leaves else pool_selection(*readings))
+        planner.guard.return_value = (True, None)
+        with patch("engine.deterministic.lower.lower_select_query",
+                   wraps=lower_select_query) as lower:
+            plan = build_decomposed_plan(planner, "promotions", tables, schema, (), proposal,
+                                         question=question)
+        served = [call.args[1] for call in lower.call_args_list if call.args[0] == "purchases"][-1]
+        return plan, served
+
+    plan, served = plan_with(products_only, purchases)
+    assert served == purchases
+    assert [section.id for section in plan.sections] == [
+        "top_customers", "top_products", "purchases", "pairs", "missing"]
+    missing = next(view for view in plan.views if isinstance(view, AntiJoinView))
+    assert [(key.left, key.right) for key in missing.keys] == [
+        ("customer_name", "customer_name"), ("product_name", "product_name")]
+
+    plan, served = plan_with(purchases, products_only)
+    assert served == purchases
+
+    try:
+        plan_with(products_only)
+    except DecompositionError as exc:
+        assert "must also preserve the left-side dimension(s) 'customer_name'" in str(exc), exc
+    else:
+        raise AssertionError("evidence without the left grain was accepted")
+
+
 TESTS = [
     test_validation_is_closed_and_idempotent_at_transport_boundaries,
     test_size_limit_counts_utf8_bytes_not_characters,
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
+    test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,
     test_decomposition_expands_a_wildcard_leaf_before_dual_lowering,
     test_decomposition_tries_next_ranked_candidate_when_best_cannot_dual_lower,

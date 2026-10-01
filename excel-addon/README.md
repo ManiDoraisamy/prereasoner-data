@@ -1,4 +1,4 @@
-# Prereasoner - Excel Copilot
+# Prereasoner
 
 Excel task-pane add-in for the existing Prereasoner conversation APIs. This folder owns the Office XML manifest; its hosted task pane lives in `web/public/office/excel/` so it is served from the same HTTPS origin and Firebase project as the existing web app.
 

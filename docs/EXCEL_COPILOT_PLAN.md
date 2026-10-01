@@ -1,10 +1,10 @@
-# Prereasoner - Excel Copilot — implementation plan
+# Prereasoner — Excel Copilot implementation plan
 
 Status: **Excel web UI and manifest deployed; marketplace release remains blocked on identity and validation**, September 25, 2026. The task pane, Office manifest, bounded workbook reader, Microsoft sign-in bridge, conversation history, and host-aware session persistence are implemented. The synthetic workbook was opened in Excel for the web and the add-in loaded and read the workbook. Frontend and spreadsheet-session tests pass, and Microsoft's production manifest validator passes. A real question/answer flow has not been verified because Firebase Microsoft sign-in is disabled and has no Entra application ID or secret. Production database migration/grant status and Windows/Mac host validation also remain to be confirmed. The manifest requests `ReadWriteDocument` because Excel's application-specific APIs require it; the add-in itself does not write to the workbook. Marketplace publisher enrollment and certification remain later release work.
 
 ## 1. Product and release scope
 
-Build an Office.js task-pane add-in that brings the existing Prereasoner conversation and reasoning experience into Excel. Proposed product name: **Prereasoner - Excel Copilot**. Use the existing Prereasoner logo artwork from `C:\work\FormFacade\public`, with the same identity across the manifest, sign-in, sidebar, website, and listing.
+Build an Office.js task-pane add-in that brings the existing Prereasoner conversation and reasoning experience into Excel. Product name: **Prereasoner**. Use the existing Prereasoner logo artwork from `C:\work\FormFacade\public`, with the same identity across the manifest, sign-in, sidebar, website, and listing.
 
 First release:
 
@@ -159,7 +159,7 @@ Use Excel's native task-pane title, a quiet neutral surface, readable typography
 Excel ribbon: Prereasoner
   [Ask a question]  [Previous conversations]
 
-Task pane: Prereasoner - Excel Copilot
+Task pane: Prereasoner
   + New chat                         2 sheets
   ------------------------------------------
        What is the total amount in France?
@@ -263,7 +263,7 @@ No further input is required to complete this plan or begin the local scaffold. 
 4. **Microsoft auth configuration:** allow configuring the chosen Entra registration and Firebase Microsoft provider when implementation reaches integration. These credentials/configuration are separate from existing Google approvals.
 5. **Commercial ownership:** identify the production subscription/usage service if it lives outside this repository, so Excel uses the same account entitlements and pricing.
 
-Defaults unless changed: product name **Prereasoner - Excel Copilot**, existing Prereasoner backend and hosting, same pricing, no source-file modification, server-authoritative history, Microsoft and Google sign-in, and Windows/Mac/web as target clients. Automatic restoration after moving/renaming a workbook is best effort under the no-file-modification default; history remains available in all cases.
+Defaults unless changed: product name **Prereasoner**, existing Prereasoner backend and hosting, same pricing, no source-file modification, server-authoritative history, Microsoft and Google sign-in, and Windows/Mac/web as target clients. Automatic restoration after moving/renaming a workbook is best effort under the no-file-modification default; history remains available in all cases.
 
 ## 13. Completion criteria
 

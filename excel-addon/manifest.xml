@@ -5,10 +5,10 @@
   xmlns:ov="http://schemas.microsoft.com/office/taskpaneappversionoverrides"
   xsi:type="TaskPaneApp">
   <Id>29a43de1-c071-45d3-9c43-7ce8ba8de91f</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.1.0</Version>
   <ProviderName>MailRecipe LLC</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Prereasoner - Excel Copilot" />
+  <DisplayName DefaultValue="Prereasoner" />
   <Description DefaultValue="Ask questions about Excel workbooks and inspect the reasoning behind each answer." />
   <IconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-32.png" />
   <HighResolutionIconUrl DefaultValue="https://chat.prereasoner.com/office/excel/assets/logo-64.png" />
@@ -100,7 +100,7 @@
         <bt:String id="Group.Label" DefaultValue="Prereasoner" />
         <bt:String id="Ask.Label" DefaultValue="Ask a question" />
         <bt:String id="Previous.Label" DefaultValue="Previous conversations" />
-        <bt:String id="Commands.Title" DefaultValue="Prereasoner - Excel Copilot" />
+        <bt:String id="Commands.Title" DefaultValue="Prereasoner" />
       </bt:ShortStrings>
       <bt:LongStrings>
         <bt:String id="Ask.Description" DefaultValue="Ask about this workbook and inspect the reasoning steps." />

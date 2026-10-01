@@ -38,7 +38,7 @@ from engine.sql_ast import (
     validate_query,
 )
 from engine.artifact_provenance import sha256_file, validate_weight_bundle
-from engine.sql_grounding import grounded_members, literal_bindings
+from engine.sql_grounding import grounded_members, join_pairs, literal_bindings
 from engine.sql_rank import (
     ARBITER_FEATURES,
     SQLArbiter,
@@ -862,7 +862,8 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
 
     def grounded(q):
         validate_query(q)
-        return grounded_members([ScoredQuery(q, render_query(q), 0.0, ())], tables)[0]
+        graph = SchemaGraph.from_tables(list(tables.values()), ())
+        return grounded_members([ScoredQuery(q, render_query(q), 0.0, ())], tables, graph)[0]
 
     lyon = Literal("Lyon", text)
     assert not grounded(query(Comparison(customer, "=", lyon))), "a city bound to a name column"
@@ -910,7 +911,7 @@ def test_literal_grounding_names_the_column_a_value_actually_occupies():
                           where=Comparison(ship, "=", Literal("Paris", text)))
     validate_query(shipped)
     assert not grounded_members([ScoredQuery(shipped, render_query(shipped), 0.0, ())],
-                                {"orders": orders})[0]
+                                {"orders": orders}, SchemaGraph.from_tables([orders], ()))[0]
 
 
 def test_select_query_never_serves_a_misgrounded_proposal():
@@ -939,6 +940,142 @@ def test_select_query_never_serves_a_misgrounded_proposal():
         likelihood=lambda sql: (-1.0, 12) if alice in sql else (-80.0, 12)))
     selection = _select(planner, "product names bought by Alice", [PURCHASES])
     assert alice in selection.candidate.sql and all(selection.grounded)
+
+
+def _promotions():
+    """complex-promotions, in its production upload order (web/public/index.html DATASETS)."""
+    from tests.test_datasets import DATASET_DIR, _tables
+
+    tables = {table["name"]: table for table in _tables(DATASET_DIR / "complex-promotions")}
+    return [tables[name] for name in ("customers", "products", "orders", "order_items")]
+
+
+def test_select_query_never_serves_a_join_the_foreign_keys_contradict():
+    """Production 2026-10-01, complex-promotions leaf "For each customer, list every product name
+    they have ever bought": the proposer joined products ON orders.order_id = products.product_id,
+    skipping order_items. The query ran and matched no row, the arbiter ranked it first, and the
+    anti-join it fed removed nothing, so six customer-product pairs were listed instead of three."""
+    bypass = '"orders"."order_id" = "products"."product_id"'
+    bridge = '"order_items"."product_id" = "products"."product_id"'
+    planner = _hermetic_planner(ScriptedProposer((
+        "SELECT T1.customer_name , T3.product_name FROM customers AS T1 JOIN orders AS T2 "
+        "ON T1.customer_id = T2.customer_id JOIN products AS T3 ON T2.order_id = T3.product_id",)))
+    selection = _select(planner, "For each customer, list every product name they have ever bought",
+                        _promotions())
+    wrong = next(index for index, candidate in enumerate(selection.pool) if bypass in candidate.sql)
+    assert selection.executable[wrong], "it runs: execution is not evidence"
+    assert not selection.grounded[wrong], "two keys the foreign keys tell apart"
+    assert selection.scores[wrong] is None and wrong not in selection.ranking
+    assert bridge in selection.candidate.sql, selection.candidate.sql
+    assert selection.record(planner.sql_arbiter)["misgrounded"] == 1
+
+    # The same bypass inside a subquery is the same defect.
+    planner = _hermetic_planner(ScriptedProposer((
+        "SELECT customer_name FROM customers WHERE customer_id IN (SELECT orders.customer_id "
+        "FROM orders JOIN products ON orders.order_id = products.product_id "
+        "WHERE products.product_name = 'Alpha')",)))
+    selection = _select(planner, "customers who bought Alpha", _promotions())
+    wrong = next(index for index, candidate in enumerate(selection.pool) if bypass in candidate.sql)
+    assert not selection.grounded[wrong] and wrong not in selection.ranking
+
+    # A key equated with a column whose values it never holds (Spider car_1: model_list.ModelId
+    # joined to car_names.Model, a name) can never match either.
+    models = {"name": "model_list", "columns": ["model_id", "maker", "model"],
+              "rows": [[1, 1, "amc"], [2, 2, "audi"], [3, 3, "bmw"]]}
+    names = {"name": "car_names", "columns": ["make_id", "model", "make"],
+             "rows": [[1, "amc", "amc hornet"], [2, "amc", "amc gremlin"], [3, "audi", "audi 100ls"],
+                      [4, "bmw", "bmw 2002"]]}
+    planner = _hermetic_planner(ScriptedProposer((
+        "SELECT car_names.make FROM model_list JOIN car_names ON model_list.model_id = car_names.model",)))
+    selection = _select(planner, "which makes does each model have", [models, names])
+    wrong = next(index for index, candidate in enumerate(selection.pool)
+                 if '"model_list"."model_id" = "car_names"."model"' in candidate.sql)
+    assert not selection.grounded[wrong] and wrong not in selection.ranking
+
+
+def test_select_query_serves_the_bridge_join_the_foreign_keys_state():
+    """Same profile: the proposer's join through order_items is eligible and served."""
+    bridge = '"order_items"."product_id" = "products"."product_id"'
+    planner = _hermetic_planner(ScriptedProposer((
+        "SELECT T1.customer_name , T4.product_name FROM customers AS T1 JOIN orders AS T2 ON "
+        "T1.customer_id = T2.customer_id JOIN order_items AS T3 ON T2.order_id = T3.order_id "
+        "JOIN products AS T4 ON T3.product_id = T4.product_id",)))
+    selection = _select(planner, "customer name and product name for each purchase", _promotions())
+    assert all(selection.grounded)
+    assert selection.origin(selection.selected) == "proposer" and bridge in selection.candidate.sql
+
+
+def test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict():
+    def eligible(question, tables, line):
+        selection = _select(_hermetic_planner(ScriptedProposer((line,))), question, tables)
+        member = next(index for index, candidate in enumerate(selection.pool)
+                      if candidate.sql in selection.proposed)
+        assert selection.grounded[member] and member in selection.ranking, selection.pool[member].sql
+
+    # A shortcut through a shared parent key (world_1: city.CountryCode = countrylanguage.CountryCode).
+    country = {"name": "country", "columns": ["code", "country_name"],
+               "rows": [["FR", "France"], ["ES", "Spain"], ["MX", "Mexico"]]}
+    city = {"name": "city", "columns": ["city_id", "city_name", "country_code"],
+            "rows": [[1, "Paris", "FR"], [2, "Lyon", "FR"], [3, "Madrid", "ES"], [4, "Puebla", "MX"],
+                     [5, "Seville", "ES"]]}
+    language = {"name": "language", "columns": ["country_code", "language"],
+                "rows": [["FR", "French"], ["ES", "Spanish"], ["MX", "Spanish"], ["ES", "Catalan"]]}
+    eligible("cities in countries that speak Spanish", [country, city, language],
+             "SELECT city.city_name FROM city JOIN language ON city.country_code = "
+             "language.country_code WHERE language.language = 'Spanish'")
+
+    # An attribute join between tables the foreign keys connect.
+    promotions = _promotions()
+    customers = dict(promotions[0], columns=promotions[0]["columns"] + ["signup_date"],
+                     rows=[row + [date] for row, date in zip(promotions[0]["rows"], [
+                         "2026-01-10", "2026-01-01", "2026-02-20", "2025-12-31"])])
+    eligible("customers who ordered on their signup date", [customers] + promotions[1:],
+             "SELECT customers.customer_name FROM customers JOIN orders ON orders.customer_id = "
+             "customers.customer_id AND orders.order_date = customers.signup_date")
+
+    # A key join between tables no foreign key connects (flight_2's undeclared airline key).
+    airlines = {"name": "airlines", "columns": ["uid", "airline"],
+                "rows": [[1, "United"], [2, "JetBlue"], [3, "Delta"]]}
+    flights = {"name": "flights", "columns": ["flight_no", "operator"],
+               "rows": [[10, 1], [11, 1], [12, 2], [13, 3], [14, 2]]}
+    eligible("how many JetBlue flights", [airlines, flights],
+             "SELECT COUNT(*) FROM flights JOIN airlines ON airlines.uid = flights.operator "
+             "WHERE airlines.airline = 'JetBlue'")
+
+    # A role key the discovery did not resolve (two of its four values are not customers) whose
+    # values overlap the key it is joined to.
+    shoppers = {"name": "customers", "columns": ["customer_id", "customer_name"],
+                "rows": [[1, "Alice"], [2, "Bob"], [3, "Cara"]]}
+    shipments = {"name": "orders", "columns": ["order_id", "customer_id", "ship_to_id", "amount"],
+                 "rows": [[10, 1, 2, 5.0], [11, 1, 9, 7.5], [12, 2, 1, 3.0], [13, 3, 8, 4.0],
+                          [14, 3, 2, 6.0]]}
+    eligible("names of the customers orders were shipped to", [shoppers, shipments],
+             "SELECT customers.customer_name FROM orders JOIN customers "
+             "ON orders.ship_to_id = customers.customer_id")
+
+
+def test_join_grounding_reads_every_equated_column_pair():
+    """JOIN ... ON pairs and column equalities in WHERE, in every scope, with aliases resolved."""
+    integer, text = SQLType.INTEGER, SQLType.TEXT
+    correlated = SelectQuery(
+        (SelectItem(ColumnRef("o", "customer_id", integer)),), "orders", from_alias="o",
+        where=Comparison(ColumnRef("o", "order_id", integer), "=",
+                         ColumnRef("products", "product_id", integer)))
+    query = SelectQuery(
+        (SelectItem(ColumnRef("products", "product_name", text)),), "products",
+        joins=(Join("order_items", ColumnRef("order_items", "product_id", integer),
+                    ColumnRef("products", "product_id", integer)),),
+        where=ExistsPredicate(correlated))
+    assert join_pairs(query) == (
+        (("order_items", "product_id"), ("products", "product_id")),
+        (("orders", "order_id"), ("products", "product_id")),
+    )
+    # A self join equates nothing across tables.
+    boss = SelectQuery(
+        (SelectItem(ColumnRef("e", "name", text)),), "employees", from_alias="e",
+        joins=(Join("employees", ColumnRef("e", "manager_id", integer),
+                    ColumnRef("m", "employee_id", integer), alias="m"),))
+    assert join_pairs(boss) == ()
 
 
 def test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query():
@@ -2917,6 +3054,10 @@ TESTS = [
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_literal_grounding_names_the_column_a_value_actually_occupies,
     test_select_query_never_serves_a_misgrounded_proposal,
+    test_select_query_never_serves_a_join_the_foreign_keys_contradict,
+    test_select_query_serves_the_bridge_join_the_foreign_keys_state,
+    test_join_grounding_leaves_joins_the_foreign_keys_do_not_contradict,
+    test_join_grounding_reads_every_equated_column_pair,
     test_named_request_decomposes_a_compound_question_the_proposer_answers_in_one_query,
     test_a_compound_named_request_asks_for_decomposition_before_any_decode,
     test_a_decode_past_its_budget_abstains_and_a_busy_model_is_retryable,

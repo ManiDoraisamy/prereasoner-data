@@ -484,7 +484,8 @@ class TableQuery:
         3. Every pooled query that passes the guard is run on an in-memory SQLite copy of the
            request's tables under a fixed step budget. A query that fails cannot be chosen, and
            neither can one that tests a text column against a literal the column never holds
-           while another column does (engine/sql_grounding.py).
+           while another column does, or one that joins two columns the foreign keys keep apart
+           (engine/sql_grounding.py).
         4. The proposer scores each eligible query's likelihood and the arbiter ranks them
            (engine/sql_rank.py). A registered calculation intent (engine/calculations) takes the
            best-ranked query that satisfies it, when one exists.
@@ -519,7 +520,7 @@ class TableQuery:
         pool, proposed = merge_proposals(searched, proposals)
         executable = self._executable(pool, tablemap, sch, arbiter.execution_op_limit)
         with request_timing.span("pool_grounding"):
-            grounded = grounded_members(pool, tablemap)
+            grounded = grounded_members(pool, tablemap, graph)
         runnable = [index for index, (ran, sound) in enumerate(zip(executable, grounded))
                     if ran and sound]
         scored = self.sql_proposer.likelihoods(norm, question, [pool[i].sql for i in runnable])

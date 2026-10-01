@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import keyword
 import re
+from collections import Counter
 from dataclasses import replace
+from itertools import chain
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -428,12 +430,14 @@ def build_decomposed_plan(
 
     `question` is the question the proposal decomposes: a leaf may keep only a row cutoff it
     states (`unstated_cutoff_rejection`).
+
+    An anti-join's evidence leaf is chosen when its merge is built: the first of its
+    contract-compatible readings, in arbiter order, that keeps every dimension of the left
+    input (`_bind_merge_keys`). "For each customer, list every product name they have ever
+    bought" was ranked first as a product-only reading, which cannot say which customer bought
+    what; the customer-and-product reading ranked next is the evidence the merge needs.
     """
     from engine.analysis import analysis_view_name
-    from engine.deterministic.lower import (
-        UnsupportedDeterministicPlan,
-        lower_select_query,
-    )
     from engine.deterministic.plan import (
         AnalysisPlan,
         AntiJoinView,
@@ -449,94 +453,217 @@ def build_decomposed_plan(
         for merge in proposal["merges"] if merge["op"] == "cross"
         for node_id in merge["inputs"]
     }
-    views = []
-    sections = []
+    uses = Counter(source for merge in proposal["merges"] for source in merge["inputs"])
+    leaf_ids = {node["id"] for node in proposal["subquestions"]}
+    evidence = {
+        merge["inputs"][1] for merge in proposal["merges"]
+        if merge["op"] == "anti_join" and merge["inputs"][1] in leaf_ids
+        and uses[merge["inputs"][1]] == 1
+    }
     tables_by_name: dict[str, TableSpec] = {}
+    leaf_views: dict[str, tuple] = {}
+    merge_views = []
+    merge_sections = []
     outputs: dict[str, str] = {}
     row_bounds: dict[str, int | None] = {}
+    pending = {}
+
+    def fused(trial=()):
+        """Every committed leaf view in subquestion order, a trial leaf's, then the merges."""
+        return tuple(
+            view for node in proposal["subquestions"] for view in leaf_views.get(node["id"], ())
+        ) + tuple(trial) + tuple(merge_views)
+
+    def with_tables(child):
+        merged = dict(tables_by_name)
+        for table in child.tables:
+            merged[table.name] = _merge_table(merged.get(table.name), table)
+        return merged
+
+    def commit(node_id, child, merged):
+        tables_by_name.clear()
+        tables_by_name.update(merged)
+        leaf_views[node_id] = child.views
+        outputs[node_id] = str(child.output)
+        row_bounds[node_id] = _row_bound(child, str(child.output))
 
     tablemap = {table["name"]: table for table in tables}
     for node in proposal["subquestions"]:
-        selection = planner.select_query(
-            node["question"], tables, foreign_keys, schema, tablemap
+        readings = _leaf_readings(
+            planner, slug, node, tables, schema, foreign_keys, tablemap,
+            feeds_cross=node["id"] in cross_inputs, question=question,
         )
-        candidates = selection.pool
-        if not candidates:
-            raise DecompositionError(
-                f"subquestion {node['id']!r} produced no typed AST candidate"
+        first = next(readings)
+        if node["id"] in evidence:
+            pending[node["id"]] = (first, readings)
+        else:
+            commit(node["id"], first, with_tables(first))
+    _shapes(fused(), tuple(tables_by_name.values()), slug)
+
+    for merge in proposal["merges"]:
+        left_id, right_id = merge["inputs"]
+        name = analysis_view_name(slug, merge["id"])
+        if merge["op"] == "cross":
+            left_bound = row_bounds[left_id]
+            right_bound = row_bounds[right_id]
+            if (
+                left_bound is None
+                or right_bound is None
+                or left_bound * right_bound > MAX_INTERMEDIATE_ROWS
+            ):
+                raise DecompositionError(
+                    "cross inputs require explicit limits, stated by the question, whose "
+                    "product is at most 10,000 rows"
+                )
+            view = CrossView(name, outputs[left_id], outputs[right_id], right_prefix=f"{right_id}_")
+            row_bounds[merge["id"]] = left_bound * right_bound
+        else:
+            left = outputs[left_id]
+            if right_id in pending:
+                first, rest = pending.pop(right_id)
+                keys = None
+                first_failure = None
+                for child in chain((first,), rest):
+                    try:
+                        merged = with_tables(child)
+                        trial = fused(child.views)
+                        keys = _bind_merge_keys(
+                            trial, _shapes(trial, tuple(merged.values()), slug),
+                            left, str(child.output), foreign_keys,
+                        )
+                    except DecompositionError as exc:
+                        if first_failure is None:
+                            first_failure = exc
+                        continue
+                    commit(right_id, child, merged)
+                    break
+                if keys is None:
+                    raise first_failure
+            else:
+                current = fused()
+                keys = _bind_merge_keys(
+                    current, _shapes(current, tuple(tables_by_name.values()), slug),
+                    left, outputs[right_id], foreign_keys,
+                )
+            view = AntiJoinView(
+                name,
+                left,
+                outputs[right_id],
+                keys,
+                _inherited_order(fused(), left),
             )
-        options = leaf_candidates(
-            selection, node["id"], node["question"], node["id"] in cross_inputs,
+            row_bounds[merge["id"]] = row_bounds[left_id]
+        merge_views.append(view)
+        outputs[merge["id"]] = name
+        merge_sections.append(
+            PlanSection(
+                merge["id"],
+                merge["label"],
+                merge["label"],
+                (name,),
+                merge["inputs"],
+            )
         )
-        if not options:
-            raise DecompositionError(
-                f"subquestion {node['id']!r} requires an unsupported compound query"
+        _shapes(fused(), tuple(tables_by_name.values()), slug)
+
+    views = fused()
+    shapes = _shapes(views, tuple(tables_by_name.values()), slug)
+    repeated = duplicated_output_dimension(views, shapes, outputs[proposal["output"]])
+    if repeated is not None:
+        raise DecompositionError(repeated)
+
+    sections = [
+        PlanSection(
+            node["id"],
+            node["label"],
+            node["question"],
+            tuple(view.name for view in leaf_views[node["id"]]),
+        )
+        for node in proposal["subquestions"]
+    ]
+    return AnalysisPlan(
+        slug,
+        tuple(tables_by_name.values()),
+        views,
+        outputs[proposal["output"]],
+        tuple(sections + merge_sections),
+    )
+
+
+def _leaf_readings(planner, slug, node, tables, schema, foreign_keys, tablemap, *,
+                   feeds_cross: bool, question: str):
+    """Yield a leaf's contract-compatible readings, lowered and named for the root slug.
+
+    Readings come in the arbiter's order (`leaf_candidates`). Raises DecompositionError,
+    naming the first reason a reading failed, when the leaf has none.
+    """
+    from engine.analysis import analysis_view_name
+    from engine.deterministic.lower import (
+        UnsupportedDeterministicPlan,
+        lower_select_query,
+    )
+
+    selection = planner.select_query(
+        node["question"], tables, foreign_keys, schema, tablemap
+    )
+    candidates = selection.pool
+    if not candidates:
+        raise DecompositionError(
+            f"subquestion {node['id']!r} produced no typed AST candidate"
+        )
+    options = leaf_candidates(selection, node["id"], node["question"], feeds_cross)
+    if not options:
+        raise DecompositionError(
+            f"subquestion {node['id']!r} requires an unsupported compound query"
+        )
+    first_rejection = None
+    first_guard_failure = None
+    first_lowering_failure = None
+    found = False
+    # Pool order is the arbiter's order, but compatibility with the typed AST does
+    # not imply compatibility with the stricter dual-emitter subset. Try each
+    # already-ranked, contract-compatible reading before clarifying. This preserves
+    # all semantic and deterministic guards while avoiding a false failure caused
+    # solely by an unsupported top-ranked representation.
+    for option in options:
+        ok, reason = planner.guard(option.sql)
+        if not ok:
+            if first_guard_failure is None:
+                first_guard_failure = reason
+            continue
+        rejection = leaf_measure_rejection(
+            node["id"], node["question"], option.query, candidates
+        ) or ranked_leaf_grain_rejection(
+            node["id"], option.query, feeds_cross
+        ) or unstated_cutoff_rejection(
+            node["id"], question, option.query.limit
+        )
+        if rejection is not None:
+            if first_rejection is None:
+                first_rejection = rejection
+            continue
+        try:
+            child = lower_select_query(
+                node["id"],
+                option.query,
+                schema,
+                foreign_keys,
+                postgres_row_identity=getattr(planner, "postgres_row_identity", False),
+                # A natural-language leaf such as "for each purchase" can be selected
+                # as a typed SELECT * even when its downstream merge only needs named
+                # dimensions. Normalize that AST before either emitter is built.
+                expand_stars=True,
             )
-        child = None
-        first_rejection = None
-        first_guard_failure = None
-        first_lowering_failure = None
-        # Pool order is the arbiter's order, but compatibility with the typed AST does
-        # not imply compatibility with the stricter dual-emitter subset. Try each
-        # already-ranked, contract-compatible reading before clarifying. This preserves
-        # all semantic and deterministic guards while avoiding a false failure caused
-        # solely by an unsupported top-ranked representation.
-        for option in options:
-            ok, reason = planner.guard(option.sql)
-            if not ok:
-                if first_guard_failure is None:
-                    first_guard_failure = reason
-                continue
-            rejection = leaf_measure_rejection(
-                node["id"], node["question"], option.query, candidates
-            ) or ranked_leaf_grain_rejection(
-                node["id"], option.query, node["id"] in cross_inputs
-            ) or unstated_cutoff_rejection(
-                node["id"], question, option.query.limit
-            )
-            if rejection is not None:
-                if first_rejection is None:
-                    first_rejection = rejection
-                continue
-            try:
-                lowered = lower_select_query(
-                    node["id"],
-                    option.query,
-                    schema,
-                    foreign_keys,
-                    postgres_row_identity=getattr(planner, "postgres_row_identity", False),
-                    # A natural-language leaf such as "for each purchase" can be selected
-                    # as a typed SELECT * even when its downstream merge only needs named
-                    # dimensions. Normalize that AST before either emitter is built.
-                    expand_stars=True,
-                )
-            except UnsupportedDeterministicPlan as exc:
-                if first_lowering_failure is None:
-                    first_lowering_failure = exc
-                continue
-            child = lowered
-            break
-        if child is None:
-            if first_rejection is not None:
-                raise DecompositionError(first_rejection)
-            if first_guard_failure is not None:
-                raise DecompositionError(
-                    f"subquestion {node['id']!r} failed the query guard: "
-                    f"{first_guard_failure}"
-                )
-            if first_lowering_failure is not None:
-                raise DecompositionError(
-                    f"subquestion {node['id']!r} cannot use both emitters: "
-                    f"{first_lowering_failure}"
-                ) from first_lowering_failure
-            raise DecompositionError(
-                f"subquestion {node['id']!r} has no candidate satisfying the leaf contract"
-            )
+        except UnsupportedDeterministicPlan as exc:
+            if first_lowering_failure is None:
+                first_lowering_failure = exc
+            continue
+        found = True
         # Every leaf is linear, but its names must use the ROOT slug's 63-byte
         # naming contract. PostgreSQL truncates long identifiers silently; raw
         # slug + node + stage concatenation can collapse multiple stages to one.
         names = {view.name: analysis_view_name(slug, view.name) for view in child.views}
-        child = replace(
+        yield replace(
             child,
             slug=slug,
             views=tuple(
@@ -553,72 +680,22 @@ def build_decomposed_plan(
             ),
             output=names[child.output],
         )
-        for table in child.tables:
-            tables_by_name[table.name] = _merge_table(
-                tables_by_name.get(table.name), table
-            )
-        branch_views = tuple(view.name for view in child.views)
-        views.extend(child.views)
-        outputs[node["id"]] = str(child.output)
-        row_bounds[node["id"]] = _row_bound(child, str(child.output))
-        sections.append(
-            PlanSection(node["id"], node["label"], node["question"], branch_views)
+    if found:
+        return
+    if first_rejection is not None:
+        raise DecompositionError(first_rejection)
+    if first_guard_failure is not None:
+        raise DecompositionError(
+            f"subquestion {node['id']!r} failed the query guard: "
+            f"{first_guard_failure}"
         )
-
-    shapes = _shapes(tuple(views), tuple(tables_by_name.values()), slug)
-    for merge in proposal["merges"]:
-        left_id, right_id = merge["inputs"]
-        left, right = outputs[left_id], outputs[right_id]
-        name = analysis_view_name(slug, merge["id"])
-        if merge["op"] == "cross":
-            left_bound = row_bounds[left_id]
-            right_bound = row_bounds[right_id]
-            if (
-                left_bound is None
-                or right_bound is None
-                or left_bound * right_bound > MAX_INTERMEDIATE_ROWS
-            ):
-                raise DecompositionError(
-                    "cross inputs require explicit limits, stated by the question, whose "
-                    "product is at most 10,000 rows"
-                )
-            view = CrossView(name, left, right, right_prefix=f"{right_id}_")
-            row_bounds[merge["id"]] = left_bound * right_bound
-        else:
-            keys = _bind_merge_keys(views, shapes, left, right, foreign_keys)
-            view = AntiJoinView(
-                name,
-                left,
-                right,
-                keys,
-                _inherited_order(views, left),
-            )
-            row_bounds[merge["id"]] = row_bounds[left_id]
-        views.append(view)
-        outputs[merge["id"]] = name
-        sections.append(
-            PlanSection(
-                merge["id"],
-                merge["label"],
-                merge["label"],
-                (name,),
-                merge["inputs"],
-            )
-        )
-        shapes = _shapes(tuple(views), tuple(tables_by_name.values()), slug)
-
-    repeated = duplicated_output_dimension(
-        tuple(views), shapes, outputs[proposal["output"]]
-    )
-    if repeated is not None:
-        raise DecompositionError(repeated)
-
-    return AnalysisPlan(
-        slug,
-        tuple(tables_by_name.values()),
-        tuple(views),
-        outputs[proposal["output"]],
-        tuple(sections),
+    if first_lowering_failure is not None:
+        raise DecompositionError(
+            f"subquestion {node['id']!r} cannot use both emitters: "
+            f"{first_lowering_failure}"
+        ) from first_lowering_failure
+    raise DecompositionError(
+        f"subquestion {node['id']!r} has no candidate satisfying the leaf contract"
     )
 
 
