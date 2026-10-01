@@ -826,11 +826,24 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             except DecompositionError as exc:
                                 decomposition_rejections += 1
                                 terminal = (
-                                    pending_decomposition is None
-                                    or decomposition_attempted
+                                    decomposition_attempted
                                     or decomposition_rejections >= MAX_DECOMPOSITION_PROPOSALS
                                 )
-                                if terminal:
+                                if pending_decomposition is None and not terminal:
+                                    # A split proposed before the engine asked for one ended the turn with
+                                    # "I couldn't split this question" (about 1 time in 15 for the
+                                    # category-gaps cutoff follow-up, 2 of 8 on 2026-10-01). The model is
+                                    # told to send the question alone, within the same proposal budget.
+                                    rejection = {
+                                        "status": "repair_required",
+                                        "code": "decomposition_not_requested",
+                                        "attempts_remaining": MAX_DECOMPOSITION_PROPOSALS - decomposition_rejections,
+                                        "retry": {"question": question, **analysis_spec},
+                                        "detail": "a decomposition is proposed only after the tool returns "
+                                                  "status: decompose. Call the tool again with the same "
+                                                  "question and analysis and no decomposition.",
+                                    }
+                                elif terminal:
                                     decomposition_attempted = True
                                     rejection = {
                                         "status": "clarify",

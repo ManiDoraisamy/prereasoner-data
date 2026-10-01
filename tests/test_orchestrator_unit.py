@@ -1447,6 +1447,62 @@ def test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent(
     assert result["reply"] == "Could you ask those parts separately?"
 
 
+def test_a_split_proposed_before_the_engine_asks_is_sent_again_alone():
+    """A decomposition the model proposes before the engine returns `decompose` ended the turn with
+    "I couldn't split this question" (the category-gaps cutoff follow-up, about 1 time in 15). The
+    model is told to send the question alone, and the engine answers it."""
+    question = "only use the top 2 customers for the category gaps"
+    analysis = {"action": "create", "slug": "category_gaps"}
+    proposal = {
+        "subquestions": [{"id": "cust", "question": "top 2 customers by total spend"},
+                         {"id": "cat", "question": "top 3 categories by revenue"}],
+        "merges": [{"id": "pairs", "op": "cross", "inputs": ["cust", "cat"]}],
+        "output": "pairs", "grain": "one customer-category pair",
+    }
+    model_calls, engine_calls = [], []
+
+    class Messages:
+        def stream(self, **kwargs):
+            seen = kwargs["messages"][-1]["content"]
+            model_calls.append(json.loads(seen[0]["content"]) if isinstance(seen, list) else None)
+            if len(model_calls) == 1:
+                content = [SimpleNamespace(type="tool_use", name="prereasoner_query", id="early",
+                                           input={"question": question, **analysis, "decomposition": proposal})]
+                response = SimpleNamespace(stop_reason="tool_use", content=content)
+            elif len(model_calls) == 2:
+                content = [SimpleNamespace(type="tool_use", name="prereasoner_query", id="alone",
+                                           input={"question": question, **analysis})]
+                response = SimpleNamespace(stop_reason="tool_use", content=content)
+            else:
+                response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                    type="text", text="Cleo has never bought from Home.")])
+            return _MessageStream(response)
+
+    class Client(_Client):
+        def __init__(self):
+            self.messages = Messages()
+
+    async def query(*args, **kwargs):
+        engine_calls.append((args[0], kwargs.get("decomposition")))
+        return {"status": "answered",
+                "answer": {"columns": ["customer_name", "category"], "rows": [["Cleo", "Home"]]}}
+
+    async def run():
+        with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                patch.object(orchestrator.engine_client, "call_query", query):
+            return await orchestrator._run_turn(
+                question, [{"name": "purchases", "data": "id\n1\n"}], [],
+                engine_base_url="http://engine.invalid", bearer_token=None,
+                api_key="test", model="test-model")
+
+    result = asyncio.run(run())
+    repair = model_calls[1]
+    assert repair["status"] == "repair_required" and repair["code"] == "decomposition_not_requested", repair
+    assert engine_calls == [(question, None)], "the early split never reaches the engine"
+    assert result["reply"] == "Cleo has never bought from Home."
+
+
 def test_tool_exhaustion_never_exposes_an_internal_budget():
     calls = []
 
@@ -1537,6 +1593,7 @@ TESTS = [
     test_an_engine_rejected_proposal_gets_one_correction_then_answers,
     test_engine_rejections_terminate_in_plain_language_once_the_budget_is_spent,
     test_invalid_proposals_terminate_in_plain_language_once_the_budget_is_spent,
+    test_a_split_proposed_before_the_engine_asks_is_sent_again_alone,
     test_tool_exhaustion_never_exposes_an_internal_budget,
 ]
 
