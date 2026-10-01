@@ -1073,7 +1073,7 @@ async function startTurn(){
     if(j.error&&!VIEWS.length&&!REPLY){ REPLY='⚠ '+j.error; }
     if(Array.isArray(j.traces)){ try{renderTurnFromHTTP(j);}catch(error){fail('The answer data could not be loaded. Reopen this analysis to recover it.');return;}
       if(SETTLED){ const n=BOOK.filter(s=>s.cls==='deriv').length; if(n){ STATUS='Answered in '+n+' step'+(n===1?'':'s'); renderRail(); } saveConvState(); } }   // body landed AFTER 'done' settled: refresh the settled status + re-persist so a reload restores the real derivation
-    if(!REPLY&&j.reply) REPLY=j.reply;
+    takeBodyReply(j.reply);
     if(!SETTLED) markTurnDone();
     else if(EXEC) saveConvState();                            // late HTTP metadata upgrades the durable per-sheet provenance
   });
@@ -1134,6 +1134,14 @@ function renderTurnFromHTTP(j){                               // fallback: no RT
   });
   if(!rendered && (j.traces||[]).some(t=>Array.isArray(((t.engine||{}).result||{}).rows))) dropStale();   // a data answer with no derivation at all -> don't leave the prior turn's stale steps showing as this answer's
   if(rendered)paint();                                       // result promotion happens after appendView's last paint
+}
+// The /chat body's reply is the turn's final text. A streamed reply can end on a stale prefix when a slow
+// RTDB write lands after the final one (a first reply was saved as "Your rest", 2026-10-01), so the body's
+// reply wins, and a turn that already settled is shown and saved again with it.
+function takeBodyReply(reply){
+  if(typeof reply!=='string'||!reply||reply===REPLY)return;
+  REPLY=reply;
+  if(SETTLED&&!FAILMSG){ CONV=REPLY; renderRail(); saveConvState(); }
 }
 function markTurnDone(){                                      // the turn finished: settle, show Sonnet's reply in the rail
   if(SETTLED)return;

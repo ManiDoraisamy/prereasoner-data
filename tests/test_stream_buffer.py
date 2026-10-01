@@ -87,6 +87,28 @@ def test_emit_failure_never_raises_out():
     buf.close("y")                                         # both paths swallow the failure
 
 
+def test_a_slow_flush_lands_before_the_authoritative_write():
+    """Chrome gate, 2026-10-01: a first chat reply was saved as "Your rest". The first flush was slower
+    than close()'s 2 s wait, so it landed after the caller's final write and the node kept the prefix.
+    close() now returns only after the flush in flight has landed."""
+    import threading
+    writes, lock = [], threading.Lock()
+
+    def emit(node, value):
+        if value == "Your rest":
+            time.sleep(2.5)                                # a first RTDB write slower than the old wait
+        with lock:
+            writes.append(value)
+
+    buf = StreamBuffer(emit, "reply", interval=0.01)
+    buf.update("Your rest")
+    time.sleep(0.1)                                        # the flusher has taken it and is writing
+    buf.close()
+    emit("reply", "Your restaurant total comes to 9,600.")  # the orchestrator's authoritative write
+    time.sleep(0.1)
+    assert writes[-1] == "Your restaurant total comes to 9,600.", writes
+
+
 def test_updates_do_not_block_the_caller():
     slow_calls = []
     def slow_emit(node, value):
@@ -109,6 +131,7 @@ TESTS = [
     test_close_final_wins_over_pending_update,
     test_close_without_final_writes_nothing_more,
     test_emit_failure_never_raises_out,
+    test_a_slow_flush_lands_before_the_authoritative_write,
     test_updates_do_not_block_the_caller,
 ]
 

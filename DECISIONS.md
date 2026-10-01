@@ -1169,3 +1169,12 @@ says to use it exactly, adding only its currency. On replay neither case was mis
 writes the same string ("365.63 USD", not "365.631 USD"); the workbook keeps the exact value. The prompt also says to
 write the currency once, beside the amount. A reply may still say the amounts were converted ("£1,914.18 after
 converting everything to British pounds"), which tells the user how the total was reached.
+
+## A streamed reply cannot end on a stale prefix (2026-10-01)
+
+The final fresh pass saved the first reply of a neartail-catering conversation as "Your rest". The chat streams a reply
+to RTDB through `engine.trace.StreamBuffer`, whose full-state flushes run on a background thread, and `close()` waited
+2 s for a flush in flight. A slow first write landed after the authoritative final write, the node kept the prefix,
+and the browser saved it when the turn settled. `close()` now waits for the flush in flight (up to 30 s, inside the RTDB
+client's own timeout) before the final write. The browser also takes the `/chat` body's reply, the turn's final text,
+over the streamed one, and saves a settled turn again with it.

@@ -232,6 +232,23 @@ const checks = `
       {id:'bad',cls:'deriv',cols:['notice'],rows:{1:[7]}}
     ]}))throw new Error('malformed legacy snapshot was treated as valid');
     if(JSON.stringify(BOOK)!==beforeRestore)throw new Error('failed restore partially mutated the workbook');
+
+    // The /chat body's reply replaces a streamed prefix, and a settled turn is saved again with it
+    // (a first reply was saved as "Your rest", 2026-10-01). An empty body reply changes nothing.
+    const keepSave = saveConvState, keepRender = renderRail;
+    let resaved = 0; saveConvState = () => { resaved++; }; renderRail = () => {};
+    REPLY = 'Your rest'; CONV = 'Your rest'; SETTLED = true; FAILMSG = null;
+    takeBodyReply('Your restaurant total comes to 9,600.');
+    if (REPLY !== 'Your restaurant total comes to 9,600.' || CONV !== REPLY || resaved !== 1)
+      throw new Error('the body reply did not replace a streamed prefix');
+    takeBodyReply(''); takeBodyReply(null); takeBodyReply('Your restaurant total comes to 9,600.');
+    if (CONV !== 'Your restaurant total comes to 9,600.' || resaved !== 1)
+      throw new Error('an empty or unchanged body reply saved the turn again');
+    SETTLED = false; REPLY = 'Your rest'; CONV = null;
+    takeBodyReply('Your restaurant total comes to 9,600.');
+    if (REPLY !== 'Your restaurant total comes to 9,600.' || CONV !== null || resaved !== 1)
+      throw new Error('an unsettled turn was saved before it finished');
+    saveConvState = keepSave; renderRail = keepRender;
     __finish();
   } catch (error) { __finish(error); }
 }());`;

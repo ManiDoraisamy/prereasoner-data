@@ -207,6 +207,10 @@ class StreamBuffer:
     final text synchronously and stops the thread; it is the ONE write callers may rely on.
     Best-effort like every trace write — a failed flush never breaks the answer."""
 
+    # How long close() waits for a flush already in flight. A flush that lands after the caller's
+    # authoritative write leaves the node holding a prefix; the RTDB client's own timeout bounds it.
+    DRAIN_SECONDS = 30
+
     def __init__(self, emit, node, interval=0.1):
         import threading
         self._emit = emit
@@ -241,12 +245,16 @@ class StreamBuffer:
             time.sleep(self._interval)                   # rate limit BETWEEN flushes, not before the first
 
     def close(self, final=None):
-        """Stop the flusher; when `final` is given, write it synchronously as the authoritative value."""
+        """Stop the flusher; when `final` is given, write it synchronously as the authoritative value.
+
+        A flush already in flight is waited for first: writes are full-state, so one that lands after
+        the authoritative write wins. A first chat reply was saved as "Your rest" when its first
+        flush outlasted a 2 s wait (Chrome gate, 2026-10-01)."""
         with self._lock:
             self._stop = True
             self._latest = None
         self._wake.set()
-        self._thread.join(timeout=2)
+        self._thread.join(timeout=self.DRAIN_SECONDS)
         if final is not None:
             try:
                 self._emit(self._node, final)
