@@ -64,6 +64,16 @@ def action_words(text):
 
 
 @lru_cache(maxsize=1024)
+def measure_participles(text, measures):
+    """The past participles ``text`` attaches to one of ``measures``: "purchased" in "the total quantity
+    purchased", "paid" in "the total amount paid". They say how the measured values came about."""
+    return frozenset(
+        token.text.lower() for token in spacy_model()(text or "")
+        if token.tag_ == "VBN" and token.dep_ == "acl" and token.head.lower_ in measures
+    )
+
+
+@lru_cache(maxsize=1024)
 def degree_words(text):
     """The lowercased adjectives ``text`` grades: a comparative or superlative ("cheapest", "higher"), or one a
     degree word modifies ("most expensive", "least popular"). An ordering or a comparison realizes them."""

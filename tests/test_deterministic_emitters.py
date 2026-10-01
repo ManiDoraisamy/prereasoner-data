@@ -1592,10 +1592,12 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
     describes the rows sat near some town: "which item sold the most units" (sold), "how many documents are
     still pending" (still), "how many deliveries weigh more than 3 kg" (weigh), "how many leads came from
     France" (came, which also hid the counted noun), "what is the average score of the leads" (leads), "how
-    many payments were made by card" (made) and "what was the most expensive event" (expensive). A finite verb,
-    a light verb's participle or an adverb is covered, and so are the rows an aggregate is taken over and an
-    adjective an ordering grades; a participle that names a state of the rows, and a verb the data holds as a
-    value, are still row filters."""
+    many payments were made by card" (made), "what was the most expensive event" (expensive), "what is the total
+    quantity purchased" (purchased) and "which category brought in the most revenue" (revenue). A finite verb,
+    a light verb's participle or an adverb is covered, and so are the rows an aggregate is taken over, an
+    adjective an ordering grades, a participle on the measured column and a measure word an aggregate
+    realizes; a participle that names a state of the rows, and a verb the data holds as a value, are still row
+    filters."""
     from types import SimpleNamespace
     from unittest.mock import patch
     import engine.knowledge_query as knowledge_query
@@ -1661,6 +1663,32 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
         assert dropped("Which is the cheapest event?", events,
                        "SELECT event FROM catering ORDER BY amount ASC LIMIT 1") == []
         assert dropped("What was the most expensive event?", events, "SELECT event FROM catering") == ["expensive"]
+        # A participle on the measured column says how its values came about.
+        purchases = [{"table": "purchases", "name": "quantity", "affinity": "INTEGER", "values": [1, 2]}]
+        assert dropped("What is the total quantity purchased?", purchases,
+                       "SELECT SUM(quantity) FROM purchases") == []
+
+    # A measure word the aggregate realizes is covered before any town it sits near; without an aggregate it
+    # is still a dropped measure, and a place the query never filtered is still dropped.
+    import numpy as np
+
+    measured = SimpleNamespace(
+        _encode=lambda words: np.array([[1.0, 0.0] if word == "revenue" else [0.0, 1.0] for word in words]),
+        _word_qid=lambda word: None,
+        _phrase_qids=lambda phrases: {},
+        _best_world_entity=lambda words: (words[0], "Spurious Place", "city", 0.61),
+    )
+    sales = [{"table": "purchases", "name": "category", "affinity": "TEXT", "values": ["Office", "Home"]},
+             {"table": "purchases", "name": "line_total", "affinity": "REAL", "values": [100, 50],
+              "qvec": [1.0, 0.0]}]
+    ranked = "SELECT category FROM purchases GROUP BY category ORDER BY SUM(line_total) DESC LIMIT 1"
+    with patch.object(knowledge_query, "closed_class_words", wraps=knowledge_query.closed_class_words):
+        assert KnowledgeQuery._uncovered(
+            measured, "Which category brought in the most revenue?", sales, ranked) == []
+        assert KnowledgeQuery._uncovered(
+            measured, "Which category has revenue?", sales, "SELECT category FROM purchases") == ["revenue"]
+        assert KnowledgeQuery._uncovered(
+            measured, "Which category brought in the most revenue in France?", sales, ranked) == ["france"]
 
 
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():

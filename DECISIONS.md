@@ -1240,4 +1240,10 @@ covered like a finite verb, since make, do, have, take, give, get, go, come and 
 a graded adjective ("what was the most expensive event", covered when the query orders or compares). Nine of the
 eleven are answered; "average amount per event" groups by event, and "transfers signed in August" is declined
 because a month filter is not planned. Passive participles of other verbs ("orders were placed in Paris") are still
-checked, as a lifecycle state the data lacks should be. The serving gate does not run in the Spider evaluation.
+checked, as a lifecycle state the data lacks should be.
+
+A third batch of seven found two more: a measure word was checked for a nearby town before the measure test, so
+"which category brought in the most revenue" was declined over "revenue", although the docstring says a measure word
+is covered when the query aggregates; the measure test now comes first. And a participle on the measured column
+("the total quantity purchased") is covered, except the payment and listing states. The serving gate does not run in
+the Spider evaluation.

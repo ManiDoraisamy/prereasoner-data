@@ -39,7 +39,8 @@ from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
 from engine.bridge import STOP
 from engine.closed_class import (
-    EXCLUSION_CUES, action_words, closed_class_words, degree_words, measured_rows, noun_words,
+    EXCLUSION_CUES, action_words, closed_class_words, degree_words, measure_participles, measured_rows,
+    noun_words,
 )
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
@@ -648,7 +649,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # was declined over 'leads' (Chrome exploration, 2026-10-01). A word before them ('German leads')
             # is still checked.
             rows = measured_rows(question, frozenset(sch_words))
-            content = [word for word in content if word not in rows]
+            # A participle on the measured column says how its values came about: "the total quantity
+            # purchased" (2026-10-01). The payment and listing states stay with the prose rule.
+            described = measure_participles(question, frozenset(sch_words)) - _STATUS_WORDS
+            content = [word for word in content if word not in rows and word not in described]
         if content and _re.search(r'\border\s+by\b|[<>]', sqll):
             # A graded adjective is realized by the ordering or the comparison: "what was the most expensive
             # event" was declined over 'expensive' (Chrome exploration, 2026-10-01).
@@ -671,8 +675,13 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             content = [word for word in content if word not in covered]
         if not content:
             return []
-        nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
-        uv = self._encode(content)
+        nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])
+                 and c.get("qvec") is not None]
+        uv = self._encode(content) if nonid else None
+
+        def measure(i):
+            return bool(nonid) and max(_cos(uv[i], np.asarray(c["qvec"], np.float32)) for c in nonid) > 0.5
+
         dropped = []
         for i, w in enumerate(content):
             if _re.search(r"\b" + _re.escape(w) + r"\b", sqll):  # the word literally appears in the SQL (a filter value
@@ -680,15 +689,18 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             wq = self._word_qid(w)                               # qid-keyed SQL: a word is COVERED if its resolved QID
             if wq and wq.lower() in sqll:                        # appears (knowledgebase filters on qids, e.g. continent='Q46')
                 continue
+            if has_agg and w not in literals and w not in _STATUS_WORDS and measure(i):
+                # A measure word the aggregate realizes, as the docstring says; the town check below used to
+                # come first, and "which category brought in the most revenue" was declined (2026-10-01).
+                continue
             ent = self._best_world_entity([w])                   # also catches continents/currencies _best_world_entity
             #                                                      doesn't resolve (it only knows country/city).
             if ent:
                 if ent[1].lower() not in sqll:               # resolved to an entity the query did NOT filter on
                     dropped.append(w)
                 continue                                     # entity present in the SQL -> used
-            if nonid and not has_agg:                        # a measure word, but no aggregate applied -> dropped
-                if max(_cos(uv[i], np.asarray(c["qvec"], np.float32)) for c in nonid) > 0.5:
-                    dropped.append(w)
+            if not has_agg and measure(i):                   # a measure word, but no aggregate applied -> dropped
+                dropped.append(w)
         return dropped
 
     def _phrase_qids(self, phrases):
