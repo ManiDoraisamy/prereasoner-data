@@ -620,7 +620,8 @@ class PoolSelection:
     """How one question's query was chosen. Serving, evaluation and training read this record.
 
     ``executable`` records which members ran within the step budget and ``grounded`` which
-    compare every text literal with a column that can hold it (engine/sql_grounding.py). A
+    compare every text literal with a column that can hold it and join no two columns the
+    foreign keys keep apart (engine/sql_grounding.py). A
     member is eligible when both hold; ``likelihoods`` and ``scores`` are None for the rest, and
     those can never be selected. ``ranking`` lists the eligible members best first. ``selected`` is
     usually ``ranking[0]``; a question with a registered calculation intent takes the best

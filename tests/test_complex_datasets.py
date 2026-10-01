@@ -40,9 +40,10 @@ def _quote(identifier: str) -> str:
 
 
 def _run_fixture(planner: EncoderQuery, directory: Path, proposal: dict | None = None,
-                 question: str | None = None):
-    """Compile `proposal` (default: the shipped fixture) for `question` (default: the prompt)."""
-    raw_tables = _tables(directory)
+                 question: str | None = None, raw_tables: list[dict] | None = None):
+    """Compile `proposal` (default: the shipped fixture) for `question` (default: the prompt)
+    over `raw_tables` (default: the fixture's tables in file-name order)."""
+    raw_tables = raw_tables or _tables(directory)
     tables, foreign_keys = planner.ingest(raw_tables)
     schema, _, _ = planner.schema(tables, foreign_keys)
     proposal = proposal or json.loads(
@@ -140,6 +141,26 @@ def test_a_value_binds_to_the_column_that_holds_it():
         _plan, result = _run_fixture(planner, directory, proposal, lyon)
         actual = [[row[column] for column in expected["columns"]] for row in result.rows]
         assert actual == expected["rows"], (wording, actual)
+
+
+def test_a_purchases_leaf_joins_through_the_bridge_table():
+    """The Chrome gate (2026-10-01) caught this. In the production upload order (customers,
+    products, orders, order_items) the orchestrator worded the evidence leaf "For each customer,
+    list every product name they have ever bought". The 7B joined products ON orders.order_id =
+    products.product_id, skipping order_items; the query ran and matched no row, the arbiter
+    ranked it first, and every candidate pair survived the anti-join. A join the foreign keys
+    contradict is never eligible now (engine/sql_grounding.py), and the leaf serves the first
+    reading that keeps the customer as well as the product (engine/decomposition.py)."""
+    directory = DATASET_DIR / "complex-promotions"
+    by_name = {table["name"]: table for table in _tables(directory)}
+    upload_order = [by_name[name] for name in ("customers", "products", "orders", "order_items")]
+    proposal = json.loads((directory / "decomposition.json").read_text(encoding="utf-8"))
+    proposal["subquestions"][2]["question"] = (
+        "For each customer, list every product name they have ever bought")
+    _kind, expected = EXPECTED["complex-promotions"]
+    _plan, result = _run_fixture(EncoderQuery(), directory, proposal, raw_tables=upload_order)
+    actual = [[row[column] for column in expected["columns"]] for row in result.rows]
+    assert actual == expected["rows"], actual
 
 
 def test_a_decomposition_cannot_invent_a_cutoff():
@@ -296,6 +317,7 @@ TESTS = [
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
     test_a_value_binds_to_the_column_that_holds_it,
+    test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,
 ]
 
@@ -304,6 +326,7 @@ MODEL_BACKED = (
     test_shipped_complex_datasets_match_gold_in_python_and_sql,
     test_a_names_only_ranking_leaf_serves_its_own_ranking_with_the_measure,
     test_a_value_binds_to_the_column_that_holds_it,
+    test_a_purchases_leaf_joins_through_the_bridge_table,
     test_a_decomposition_cannot_invent_a_cutoff,
     test_full_complex_prompts_request_decomposition_without_executing_a_partial_answer,
     test_compose_surface_does_not_swallow_a_compound_question,

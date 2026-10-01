@@ -72,7 +72,8 @@ question + tables + foreign keys
              run each member on an in-memory SQLite copy
              (SELECT guard, fixed VM-step budget); failures are ineligible,
              and so are text literals bound to a column that never
-             holds them while another column does (sql_grounding.py)
+             holds them while another column does, and joins that
+             equate columns the foreign keys keep apart (sql_grounding.py)
                                |
                                v
              proposer likelihood of each runnable member

@@ -109,8 +109,8 @@ search candidate is not added twice but marks that candidate `proposer:endorsed`
 
 [`engine/tables.py:select_query`](../engine/tables.py) runs every pooled query on an in-memory copy of the
 tables (SELECT guard, fixed step budget); a query that fails is out, and so is one that compares a text
-column with a literal the column never holds while another column does
-([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The deployed measured policy uses neutral
+column with a literal the column never holds while another column does, or one that joins two columns the
+foreign keys keep apart ([`engine/sql_grounding.py`](../engine/sql_grounding.py)). The deployed measured policy uses neutral
 likelihood sentinels `(0.0, 1)`, not real language-model likelihoods. The arbiter
 ([`engine/sql_rank.py:SQLArbiter`](../engine/sql_rank.py))
 computes one number per query:

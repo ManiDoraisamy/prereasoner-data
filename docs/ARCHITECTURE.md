@@ -87,7 +87,8 @@ request identity, reject proactive or repeated decomposition, reject dead nodes,
 by explicit leaf limits. A leaf may keep only a row cutoff the decomposed question states, so a proposal
 cannot meet that bound by inventing one. The existing AST planner independently binds every leaf; common dimension keys
 for an anti-join come from those typed relations, and the evidence relation must preserve every physical
-dimension in the left input's grain. The result is one `AnalysisPlan`, not independently
+dimension in the left input's grain: an evidence leaf serves the first of its contract-compatible
+readings, in arbiter order, that does. The result is one `AnalysisPlan`, not independently
 generated SQL and Python and not a model-executed chain of partial answers.
 
 Temporary SQL views are evaluated when read, whereas Python stages retain tuples. Current trace
@@ -269,8 +270,11 @@ The own-data path pools two candidate sources over one typed SQL AST and selects
    and a fixed VM-step budget. A query that fails cannot be chosen. Neither can one that tests a text
    column against a literal the column never holds while another column does
    (`engine/sql_grounding.py`): bounded prompt values do not guarantee correct binding; an earlier proposer wrote
-   `customer_name = 'Lyon'` for "Lyon customers". Eligibility is not evidence that the query answers
-   the question.
+   `customer_name = 'Lyon'` for "Lyon customers". Nor can one that equates two columns the foreign keys
+   keep apart, between tables they connect: two foreign-key columns of different keys, or a key and a
+   column that shares no value with it. The 7B joined `orders.order_id = products.product_id`,
+   skipping the `order_items` bridge; the query ran and matched no row. Eligibility is not evidence
+   that the query answers the question.
 4. The arbiter scores each runnable query: a standardized linear function of nine named features
    (proposer likelihood, its length, per-token likelihood, pool score, pool rank, which source produced
    it, endorsement, pool size). The best score wins; the earlier pool position breaks ties. Calculation

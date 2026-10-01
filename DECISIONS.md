@@ -1178,3 +1178,31 @@ to RTDB through `engine.trace.StreamBuffer`, whose full-state flushes run on a b
 and the browser saved it when the turn settled. `close()` now waits for the flush in flight (up to 30 s, inside the RTDB
 client's own timeout) before the final write. The browser also takes the `/chat` body's reply, the turn's final text,
 over the streamed one, and saves a settled turn again with it.
+
+## A join the foreign keys contradict is never served; an evidence leaf keeps the left grain (2026-10-01)
+
+The final fresh gate pass answered complex-promotions' second question with six customer-product pairs instead of three.
+The orchestrator worded the evidence leaf "For each customer, list every product name they have ever bought". In the
+production upload order the 7B joined `products ON orders.order_id = products.product_id`, skipping the `order_items`
+bridge the discovered foreign keys state. The query ran and matched no row. With the neutral likelihood sentinels a
+runnable proposer-only member outranks every search member, so it was served, and the anti-join it fed removed nothing.
+The search never builds such a join: it joins only along foreign-key trees.
+
+Eligibility now also checks joins (`engine/sql_grounding.py`). Two equated columns of tables the foreign keys connect
+are mis-joined when the foreign keys do not make them one key and either both are foreign-key columns, or one is a key
+and the two share no value in the request's data. Joins between tables no foreign key connects, shortcut joins through
+a shared parent key, role keys whose values overlap, and attribute joins stay eligible. Replayed on the frozen
+2026-09-29 DEV run, the rule makes 1 of 1,022 importable served winners ineligible (car_1 #151, which becomes correct)
+and changes no other winner. A broader variant that counted any surrogate-key name as a key, without value evidence,
+also changed #546 and #548, but it rejects a legitimate role join (`orders.ship_to_id = customers.customer_id`)
+whenever discovery misses that key, so it was not adopted.
+
+With the misjoin gone, the leaf's best-ranked reading listed product names only, the anti-join could not tell which
+customer bought what, and the plan failed. An anti-join's evidence leaf is now chosen when its merge is built: the
+first of its contract-compatible readings, in arbiter order, that keeps every left-side dimension
+(`engine/decomposition.py`). The customer-and-product reading ranked next is served. With the local 7B in the
+production upload order, the prompt and the second question now return the expected three and two pairs.
+
+Open: the 7B decode depends on what the process decoded before (llama.cpp reuses the KV cache of a shared prompt
+prefix), so one leaf decoded both ways on this machine. A reset before each decode makes it deterministic but
+re-evaluates every prompt, which needs its own latency and Spider measurement.
