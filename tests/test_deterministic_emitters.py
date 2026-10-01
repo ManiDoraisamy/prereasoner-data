@@ -1591,7 +1591,8 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
     """Chrome exploration (2026-10-01): half of a dozen natural questions were declined because a word that
     describes the rows sat near some town: "which item sold the most units" (sold), "how many documents are
     still pending" (still), "how many deliveries weigh more than 3 kg" (weigh), "how many leads came from
-    France" (came, which also hid the counted noun). A finite verb or an adverb is covered; a participle that
+    France" (came, which also hid the counted noun), and "what is the average score of the leads" (leads). A
+    finite verb or an adverb is covered, and so are the rows an aggregate is taken over; a participle that
     names a state of the rows, and a verb the data holds as a value, are still row filters."""
     from types import SimpleNamespace
     from unittest.mock import patch
@@ -1635,6 +1636,14 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
         # A place the query did not filter on is still dropped.
         assert dropped("How many leads came from Spain?", leads,
                        "SELECT COUNT(*) FROM responses WHERE country = 'France'") == ["spain"]
+        # The rows an aggregate is taken over are covered like a counted noun; a word before them is not.
+        scored = leads + [{"table": "responses", "name": "score", "affinity": "INTEGER", "values": [74, 86]}]
+        assert dropped("What is the average score of the leads?", scored,
+                       "SELECT AVG(score) FROM responses") == []
+        assert dropped("What is the average score of the German leads?", scored,
+                       "SELECT AVG(score) FROM responses") == ["german"]
+        assert dropped("What is the average score of the leads in Spain?", scored,
+                       "SELECT AVG(score) FROM responses") == ["spain"]
 
 
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():

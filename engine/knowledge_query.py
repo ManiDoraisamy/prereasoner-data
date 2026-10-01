@@ -38,7 +38,7 @@ from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
 from engine.bridge import STOP
-from engine.closed_class import EXCLUSION_CUES, action_words, closed_class_words, noun_words
+from engine.closed_class import EXCLUSION_CUES, action_words, closed_class_words, measured_rows, noun_words
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
 )
@@ -641,6 +641,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     heads = [token for token in run if token in nouns]
                     head = heads[-1] if heads else run[-1]
                     content = [word for word in content if word != head]
+        if content and has_agg:
+            # The same holds for the rows another aggregate is taken over: "the average score of the leads"
+            # was declined over 'leads' (Chrome exploration, 2026-10-01). A word before them ('German leads')
+            # is still checked.
+            rows = measured_rows(question, frozenset(sch_words))
+            content = [word for word in content if word not in rows]
         if content:
             # A place is ONE name however many words it has, and its demonym is that name plus '-n'/'-an'
             # ('European' Europe, 'North American' North America). When a span names a qid the query filters

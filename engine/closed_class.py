@@ -61,6 +61,17 @@ def noun_words(text):
 
 
 @lru_cache(maxsize=1024)
+def measured_rows(text, measures):
+    """The common nouns ``text`` takes one of ``measures`` over: the object of "of" after the measure, as
+    "leads" in "the average score of the leads". A named entity ("the amount of France") is not one."""
+    return frozenset(
+        token.text.lower() for token in spacy_model()(text or "")
+        if token.dep_ == "pobj" and token.pos_ == "NOUN" and not token.ent_type_
+        and token.head.lower_ == "of" and token.head.head.lower_ in measures
+    )
+
+
+@lru_cache(maxsize=1024)
 def closed_class_words(text):
     """The lowercased words the tagger reads as closed-class somewhere in ``text``, except exclusion cues.
 

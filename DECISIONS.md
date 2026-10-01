@@ -1229,7 +1229,8 @@ A word the tagger reads as a finite or base-form verb, or as an adverb, is now c
 (`engine.closed_class.action_words`): it says what the rows did or how. Participles stay checked ("orders were
 returned" names a state, and a dropped state is a dropped filter), and so does any verb the data holds as a value
 ("Sold"), and the payment and listing states the existing prose rule decides. The noun a count cue governs is now
-the run's last noun, so "how many leads came from France" counts leads, and comparatives join the comparators the
-gate never treats as places. Of the twelve questions, nine are now answered correctly; "paid" (no payment status in
-the data), "the leads" as an aggregate's row noun, and a five-way tie remain. The serving gate does not run in the
-Spider evaluation.
+the run's last noun, so "how many leads came from France" counts leads; the rows another aggregate is taken over
+("the average score of the leads") are covered the same way; and comparatives join the comparators the gate never
+treats as places. Ten of the twelve questions are now answered correctly. "How many orders were paid in EUR?" is
+still declined, because "paid" is a constraint the data records nowhere, and "which customer placed the most
+orders" serves one of a five-way tie. The serving gate does not run in the Spider evaluation.
