@@ -40,6 +40,55 @@ def test_calculation_and_ecb_columns_keep_distinct_lineage():
     assert records["converted"]["operation"] == "multiply"
 
 
+def test_qualified_stage_columns_keep_the_origin_their_table_names():
+    """payment-commissions (Chrome gate, 2026-10-01): the deterministic emitter names stage
+    columns `<table>__<column>`, which the bare-name catalog never matched. Every column of the
+    `combined` sheet was badged as calculated, and the sheet's own commission rates as European
+    Central Bank data on the `calculated` sheet."""
+    context = ProvenanceContext([
+        {"name": "payments", "columns": ["payment_instrument", "amount"], "rows": []},
+        {"name": "commission_rates", "columns": ["payment_instrument", "commission_percent"],
+         "rows": []},
+    ], uploaded_count=2)
+    combined = context.decorate_view({"op": "join", "rows": [], "columns": [
+        "payments__payment_instrument", "payments__amount",
+        "commission_rates__payment_instrument", "commission_rates__commission_percent",
+    ]})
+    assert [(item["kind"], item["table"]) for item in combined["column_provenance"]] == [
+        ("input", "payments"), ("input", "payments"),
+        ("input", "commission_rates"), ("input", "commission_rates")]
+    calculated = context.decorate_view({"op": "convert", "rows": [], "columns": [
+        "payments__amount", "commission_rates__commission_percent", "aggregate_operand_1",
+    ]})
+    records = dict(zip(calculated["columns"], calculated["column_provenance"]))
+    assert records["commission_rates__commission_percent"]["kind"] == "input"
+    assert records["commission_rates__commission_percent"]["source"] == "upload"
+    assert records["aggregate_operand_1"]["kind"] == "derived"
+    assert records["aggregate_operand_1"]["operation"] == "calculation"
+
+    # Contrast: the world trail's lookup and exchange-rate columns stay references.
+    context = ProvenanceContext([
+        {"name": "orders", "columns": ["order ID", "city", "amount"], "rows": []},
+    ], uploaded_count=1)
+    enriched = context.decorate_view({
+        "op": "world_join", "rows": [], "source_release_id": "kb-2026-09",
+        "columns": ["orders__order ID", "orders__city", "city__country"],
+    })
+    records = dict(zip(enriched["columns"], enriched["column_provenance"]))
+    assert records["orders__order ID"]["kind"] == "input"
+    assert (records["city__country"]["kind"], records["city__country"]["source"]) == (
+        "reference", "Wikidata")
+    converted = context.decorate_view({
+        "op": "convert", "rows": [], "source_release_id": "ecb-2026-09-30",
+        "columns": ["orders__amount", "exchange_rate__rate_to_usd", "calculated_value"],
+    })
+    records = dict(zip(converted["columns"], converted["column_provenance"]))
+    assert records["orders__amount"]["kind"] == "input"
+    assert records["exchange_rate__rate_to_usd"]["source"] == "European Central Bank"
+    assert records["exchange_rate__rate_to_usd"]["release_id"] == "ecb-2026-09-30"
+    assert records["calculated_value"]["kind"] == "derived"
+
+
 def test_http_and_stream_paths_emit_the_same_provenance_shape():
     tables = [{"name": "orders", "columns": ["amount"], "rows": []}]
     response = {"views": [{"op": "group_agg", "columns": ["total"], "rows": [[3]]}],
@@ -213,6 +262,7 @@ TESTS = [
     test_json_artifacts_preserve_exact_database_scalars,
     test_provenance_uses_request_roles_not_column_name_guesses,
     test_calculation_and_ecb_columns_keep_distinct_lineage,
+    test_qualified_stage_columns_keep_the_origin_their_table_names,
     test_http_and_stream_paths_emit_the_same_provenance_shape,
     test_result_uses_typed_expression_even_when_alias_matches_input_column,
     test_trace_view_preserves_server_authored_lineage,

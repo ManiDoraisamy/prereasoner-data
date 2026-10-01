@@ -156,6 +156,28 @@ class ProvenanceContext:
     def _reference(source: str, column: str, *, table=None, release_id=None) -> dict:
         return _record("reference", source, table=table, column=column, release_id=release_id)
 
+    def _qualified_record(self, column: str, view: dict) -> dict | None:
+        """The origin of a stage column the deterministic emitter names `<table>__<column>`.
+
+        The bare-name catalog never matched these, so every column of a `combined` sheet was
+        badged as calculated, an uploaded `orders__order ID` beside a city lookup as Wikidata,
+        and a `commission_rates__commission_percent` as European Central Bank data
+        (payment-commissions, 2026-10-01). The table half names the input it came from.
+        """
+        table, separator, name = column.partition("__")
+        if not separator or not table or not name:
+            return None
+        located = self._by_location.get((table.casefold(), name.casefold()))
+        if located is not None:
+            return deepcopy(located)
+        if table.casefold() == "exchange_rate":
+            return self._reference("European Central Bank", name, table=table,
+                                   release_id=view.get("source_release_id"))
+        if table.casefold() in _WIKIDATA_TABLES:
+            return self._reference("Wikidata", name, table=table,
+                                   release_id=view.get("source_release_id"))
+        return None
+
     def _classify_view(self, view: dict, *, resolve: bool = False) -> list[dict]:
         columns = [str(column) for column in (view.get("columns") or [])]
         existing = view.get("column_provenance")
@@ -172,6 +194,10 @@ class ProvenanceContext:
         previous = self._last
         records = []
         for column in columns:
+            qualified = self._qualified_record(column, view)
+            if qualified is not None:
+                records.append(qualified)
+                continue
             carried = previous.get(column.casefold())
             catalog = self._catalog_record(column)
             if op == "convert":
@@ -179,11 +205,16 @@ class ProvenanceContext:
                 if low == "converted":
                     item = _record("derived", "Prereasoner", column=column,
                                    operation="multiply", inputs=("amount", "exchange rate"))
+                elif carried is not None or catalog is not None:
+                    item = carried or catalog
                 elif low == "rate_published" or "rate" in low:
+                    # The conversion trail's unqualified rate columns. A column the request's
+                    # tables already name (a sheet's own commission rate) keeps its origin above.
                     item = self._reference("European Central Bank", column,
                                            table="exchange_rate", release_id=view.get("source_release_id"))
                 else:
-                    item = carried or catalog
+                    item = _record("derived", "Prereasoner", column=column,
+                                   operation="calculation", inputs=tuple(previous))
             elif op == "world_join" and carried is None:
                 item = catalog or self._reference(
                     str(view.get("source") or "Wikidata"), column,
