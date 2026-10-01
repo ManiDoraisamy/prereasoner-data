@@ -669,6 +669,13 @@ def test_a_result_is_presented_on_its_own_in_a_continued_conversation():
         notes = [block for block in presented[0] if block.get("type") == "text"]
         assert (notes == [{"type": "text", "text": orchestrator.FRESH_ANSWER_NOTE}]) is noted, notes
         assert orchestrator.FRESH_ANSWER_NOTE not in json.dumps(result["history"])
+    # Chrome gate, 2026-10-01: conversations reopened after the reply rules changed kept the style of
+    # their earlier replies ("about $365.63 in US dollars", "Cara, your top spender", "she's the
+    # bigger spender"). On replay of such transcripts, the note took "about" from 7 of 10 to 0, a rank
+    # the rows do not show from 8 of 10 to 3, and an explained order from 7 of 10 to 2.
+    note = orchestrator.FRESH_ANSWER_NOTE.lower()
+    assert "earlier replies may break the rules for how you talk" in note
+    assert "follow the rules, not them" in note
 
 
 def test_a_clarification_nothing_earlier_can_settle_is_terminal():
