@@ -903,7 +903,9 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
     # Chrome gate, 2026-10-01: a second promotions analysis was named "..._v2", and "1082.41" was
     # written without a separator (5 of 6 replies on replay; 0 of 6 with the rule).
     assert "never name a new analysis as a version of an existing one" in prompt
-    assert "the same kind of result asked again with other cutoffs or measures is also `modify`" in prompt
+    assert ("the same list or ranking asked again with other cutoffs, or ranked by another measure, is "
+            "also `modify`") in prompt
+    assert "another aggregate of a column (the highest instead of the average) is a new analysis" in prompt
     assert "write large numbers with thousands separators" in prompt
     # A longer name is cut to the engine's limit with a hash ("top customers never bought top
     # 5e0be233"), so the model is told the limit.
