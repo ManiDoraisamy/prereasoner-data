@@ -82,8 +82,8 @@ const checks = `
     appendView({name:'from_sql', op:'select', label:'from sql', columns:['v'], rows:[[2]],
       sql:'SELECT 2', python:'python two'}, null, 'call-sql');
     noteExecution({actual:'sql', verified:false}, 'call-sql');
-    const pySheet = BOOK.find(s => s.name === 'from python');
-    const sqlSheet = BOOK.find(s => s.name === 'from sql');
+    const pySheet = BOOK.find(s => s.viewName === 'from_python');
+    const sqlSheet = BOOK.find(s => s.viewName === 'from_sql');
     if (sheetSource(pySheet).primary !== 'py') throw new Error('a later SQL call relabelled a Python sheet');
     if (sheetSource(sqlSheet).primary !== 'sql') throw new Error('a SQL sheet did not retain its own backend');
 
@@ -295,6 +295,11 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
   assert.deepStrictEqual(['SELECT MAX(cost) FROM a', 'SELECT MIN(cost) FROM a', 'SELECT MIN(cost), MAX(cost) FROM a']
     .map(sql => R.stepLabel({op: 'group_agg', sql: sql, label: 'total'})), ['highest', 'lowest', 'extremes']);
   assert(/ECB reference rate/.test(R.stepDescription(fx)), R.stepDescription(fx));
+  // A projection is named for what it does, never by the engine's label, which carries the
+  // decomposition leaf's id ("purch result", complex-promotions-xlsx, 2026-10-01).
+  const projection = {op: 'select', label: 'purch result'};
+  assert.strictEqual(R.stepLabel(projection), 'selected columns');
+  assert.strictEqual(R.stepDescription(projection), 'Kept the columns the answer needs.');
 }
 vm.runInContext(referenceSource, context, {filename: 'workbook-reference.js'});
 vm.runInContext(conversationSource, context, {filename: 'workbook-conversations.js'});

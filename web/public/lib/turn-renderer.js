@@ -167,11 +167,12 @@
 
   // The rail's step presentation for the engine's views, shared by the web workspace and the Google
   // Sheets add-on: a short name, a plain-English sentence, the live "working" line, the tables a step
-  // was built from, and the backend that produced its rows.
+  // was built from, and the backend that produced its rows. Every op has a name: a projection used the
+  // engine's label, which carries the decomposition leaf's id, and read "purch result" (2026-10-01).
   var STEP_NAMES = {join: 'combined', world_join: 'reference lookup', world_filter: 'filtered',
     filter: 'filtered', cross: 'candidate pairs', anti_join: 'not yet matched', time_filter: 'date filter',
     having: 'filtered', group_agg: 'total', yoy: 'year-over-year', running: 'running total',
-    divide: 'ratio', share: 'share', topn: 'top results', sort: 'sorted'};
+    divide: 'ratio', share: 'share', topn: 'top results', sort: 'sorted', select: 'selected columns'};
 
   function stepLabel(view) {
     var op = view && view.op;
@@ -229,7 +230,7 @@
         highest: 'Found the highest value.', lowest: 'Found the lowest value.',
         extremes: 'Found the highest and lowest values.'}[stepLabel(view)] || 'Added up the values to get the total.';
     }
-    var sentences = {topn: 'Kept just the top-ranked results.',
+    var sentences = {topn: 'Kept just the top-ranked results.', select: 'Kept the columns the answer needs.',
       cross: 'Built every candidate pair from the two ranked branches.',
       anti_join: 'Removed pairs already present in the evidence branch.', sort: 'Sorted the results in order.',
       yoy: 'Computed the year-over-year change.', running: 'Computed a running (cumulative) total.',

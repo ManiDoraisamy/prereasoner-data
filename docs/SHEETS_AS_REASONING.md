@@ -28,7 +28,7 @@ pretend that unrelated branches form one linear pipeline.
 | 3 | `world_join` | `knowledgebase_lookup` (renders as "enriched") | a knowledgebase reference table is joined | the base rows **plus every reference column any later step uses** (e.g. `country`), badged with the reference source |
 | 4 | `filter` / `world_filter` / `time_filter` / `having` | `filtered` | rows are dropped | the kept rows; the step label names the human-readable condition |
 | 5 | `convert` | `calculated` | per-row arithmetic (e.g. currency) | each input value beside the exact factor used (rate + its publication date) and the derived column, so the Result is visibly that column aggregated |
-| 6 | `group_agg` / `topn` / `sort` / `yoy` / `running` / `divide` / `share` | `total` / `top_results` / … | the final shaping | the aggregate the Result overlays |
+| 6 | `select` / `group_agg` / `topn` / `sort` / `yoy` / `running` / `divide` / `share` | `selected columns` / `total` / `top_results` / … | the final shaping | the aggregate the Result overlays, or the kept columns of each row |
 | 7 | `cross` | `candidate_pairs` | two independently bounded result sets form every candidate combination | both input rows flattened into one row; each input keeps a cutoff the question states, and their product is at most 10,000 |
 | 8 | `anti_join` | `not_yet_purchased` / … | candidates already present in an evidence branch must be removed | left rows with no SQL-equal key pair in the right branch, implemented as `NOT EXISTS` / `anti_join` |
 
