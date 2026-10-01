@@ -951,6 +951,12 @@ def test_a_reply_says_only_what_the_result_shows():
     assert "name a rank only when the rows list the whole ranking in order" in prompt
     assert "leave out figures from earlier turns, and comparisons with them" in prompt
     assert "ava" not in prompt.split() and "cleo" not in prompt.split()
+    # Chrome gate, 2026-10-01: the promotions replies explained the row order ("Cara is listed ahead
+    # of Bob since she's the higher spender"), in 4 of 10 first answers on replay, and 9 of 10 ran
+    # past 260 characters; with the rule, 0 and 1 of 10.
+    assert "a result with several rows is a list: say what it holds, by name" in prompt
+    assert "do not explain how they are sorted or compare their totals" in prompt
+    assert 'refer to the people in the data by name, never as "he" or "she"' in prompt
 
 
 def test_a_failed_turn_promises_no_retry():
