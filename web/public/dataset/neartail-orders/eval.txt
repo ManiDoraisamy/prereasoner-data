@@ -8,3 +8,5 @@
 #           release pass (which drives the real product) is what verifies them.
 how many orders in Lyon => 3
 total amount in Paris => 129
+how many orders came from Lyon? => 3
+What is the total amount in Paris? => 129
