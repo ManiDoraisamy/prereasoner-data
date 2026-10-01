@@ -28,7 +28,9 @@ from typing import Any
 import httpx
 
 from engine import dataset_attestation, request_timing
-from engine.analysis import MAX_ANALYSIS_SLUG_BYTES, AnalysisError, validate_analysis_spec
+from engine.analysis import (
+    MAX_ANALYSIS_SLUG_BYTES, AnalysisError, canonical_analysis_slug, validate_analysis_spec,
+)
 from engine.decomposition import DecompositionError, validate_decomposition
 from engine.request_validation import RequestValidationError, validate_question
 from mcp_server import engine_client
@@ -419,6 +421,27 @@ def _named_for_its_result(spec: dict[str, Any], user_message: str = "",
                               or words[-1].lower() in _NAME_CONNECTORS):
         words.pop()
     return {**spec, "slug": "_".join(words)}
+
+
+def _continued_analysis(spec: dict[str, Any], catalog: list[dict[str, Any]]) -> dict[str, Any]:
+    """A new analysis named like an existing one continues it.
+
+    A name says only what is measured and how it is grouped (prompt rule 7), so two analyses with
+    one name differ in their filters, and another filter is `modify`. "number of orders with
+    PayPal", after "How many orders were returned?", was created as "orders count", which the engine
+    stored as "orders count 2", and the Email question then continued that copy (Chrome gate,
+    2026-10-01).
+    """
+    if spec.get("action") != "create" or not isinstance(spec.get("slug"), str):
+        return spec
+    try:
+        slug = canonical_analysis_slug(spec["slug"])
+    except AnalysisError:
+        return spec
+    for item in catalog or ():
+        if isinstance(item, dict) and item.get("slug") == slug and item.get("analysis_id"):
+            return {"action": "modify", "analysis_id": item["analysis_id"], "slug": item["slug"]}
+    return spec
 
 
 def _terminal_fallback(shaped: dict[str, Any]) -> str:
@@ -820,11 +843,12 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                             analysis_spec = dict(forced_analysis)
                         else:
                             try:
-                                analysis_spec = validate_analysis_spec(_named_for_its_result({
+                                named = _named_for_its_result({
                                     key: (block.input or {}).get(key)
                                     for key in ("action", "slug", "analysis_id", "revision")
                                     if (block.input or {}).get(key) is not None
-                                }, user_message, tables))
+                                }, user_message, tables)
+                                analysis_spec = validate_analysis_spec(_continued_analysis(named, catalog))
                             except AnalysisError as exc:
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,

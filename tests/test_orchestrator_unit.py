@@ -755,6 +755,39 @@ def test_fallback_names_the_verified_output_currency():
     assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "Converted, it comes to $70,401."
 
 
+def test_a_new_analysis_named_like_an_existing_one_continues_it():
+    """Chrome gate, 2026-10-01: after "How many orders were returned?" (orders count), the model
+    created "number of orders with PayPal" as a new analysis. Without its filter the name was
+    "orders count" again, the engine stored it as "orders count 2", and the Email question continued
+    that copy. A name says what is measured and how it is grouped, so a new analysis named like an
+    existing one differs only in its filters: it is sent as a revision of that analysis."""
+    orders = [{"name": "orders", "data": "order_id,delivery_status,payment_method,channel\n"
+                                          "1,Returned,PayPal,Email\n2,Delivered,Card,Web\n"}]
+    existing = {"analysis_id": "a_" + "4" * 32, "slug": "orders_count",
+                "latest_question": "How many orders were returned?", "revision": 1, "stale": False}
+    other = {"analysis_id": "a_" + "5" * 32, "slug": "average_price",
+             "latest_question": "average price", "revision": 1, "stale": False}
+
+    def sent(slug, action="create", **extra):
+        _result, _model_calls, engine_calls = asyncio.run(_run(
+            "answered", user_message="number of orders with PayPal", tables=orders, catalog=[other, existing],
+            query_input={"question": "number of orders with PayPal", "action": action, "slug": slug, **extra},
+        ))
+        return engine_calls[0][1]["analysis"]
+
+    continued = {"action": "modify", "analysis_id": existing["analysis_id"], "slug": "orders_count",
+                 "revision": None}
+    assert sent("orders_count_paypal") == continued
+    assert sent("orders_count") == continued
+    # Contrasts: another measure is a new analysis, and a modify the model chose is sent as it is.
+    assert sent("paypal_order_share") == {"action": "create", "analysis_id": None,
+                                          "slug": "order_share", "revision": None}
+    assert sent("average_price", action="modify", analysis_id=other["analysis_id"]) == {
+        "action": "modify", "analysis_id": other["analysis_id"], "slug": "average_price", "revision": None}
+    assert orchestrator._continued_analysis({"action": "create", "slug": "orders_count"}, []) == {
+        "action": "create", "slug": "orders_count"}
+
+
 def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
     """2026-10-01: from the raw scalar, the presentation model wrote a fresh Belgium total in US
     dollars (365.631) as "$365,631.00" in 10 of 30 replays, reading the dot as a thousands separator,
@@ -1609,6 +1642,7 @@ TESTS = [
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_fallback_names_the_verified_output_currency,
+    test_a_new_analysis_named_like_an_existing_one_continues_it,
     test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it,
     test_a_currency_sign_the_turn_never_gave_is_dropped,
     test_a_verified_currency_is_written_beside_the_amount,

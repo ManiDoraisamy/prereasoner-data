@@ -1143,7 +1143,10 @@ does not see. Each one is fixed where it is produced:
 - Workbook names. The prompt says to leave filter values out, and the model kept them in 12 of 12 names on replay:
   "products not bought by paris customers" headed the Lyon answer and "orders count paypal" the Email answer. The
   chat now removes from a new name the words of any uploaded cell value the question names, and a name left with
-  only an aggregate word takes that value's column ("document_count").
+  only an aggregate word takes that value's column ("document_count"). The final pass then showed the PayPal
+  question created as "orders count" beside the returned-orders count, which the engine stored as "orders count
+  2". A name says what is measured and how it is grouped, so a new analysis named like an existing one differs
+  only in its filters; the chat sends it as that analysis's next revision, as the prompt asks for another filter.
 - Replies. On claude-sonnet-5 with the same engine results: "1082.41" without a thousands separator in 5 of 6 replies
   before and 0 of 6 after; a remark that the currency is unknown in 2 of 8 and 0 of 8; a same-shape question modified
   its analysis in 5 of 6 and 6 of 6. In a conversation with earlier turns, answers began "Rechecked it —" or
