@@ -272,6 +272,8 @@ vm.runInContext(turnRendererSource, context, {filename: 'turn-renderer.js'});
   const fx = {op: 'convert', label: 'calculated', columns: ['orders__amount', 'exchange_rate__rate_to_usd'],
     column_provenance: [{kind: 'input', source: 'upload'}, {kind: 'reference', source: 'European Central Bank'}]};
   assert.strictEqual(R.stepDescription(commission), 'Calculated a new value for each row from the columns before it.');
+  assert.strictEqual(R.stepDescription({op: 'join', label: 'combined'}), 'Combined your tables into one table.');
+  assert.strictEqual(R.stepDescription({op: 'join', label: 'join orders + tier'}), 'Combined orders and tier into one table.');
   // One extreme is named as such; only a step computing both is "extremes".
   assert.deepStrictEqual(['SELECT MAX(cost) FROM a', 'SELECT MIN(cost) FROM a', 'SELECT MIN(cost), MAX(cost) FROM a']
     .map(sql => R.stepLabel({op: 'group_agg', sql: sql, label: 'total'})), ['highest', 'lowest', 'extremes']);

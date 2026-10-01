@@ -197,7 +197,9 @@
   function stepDescription(view) {
     var label = (view && view.label) || '', op = view && view.op, match;
     if (op === 'join') {
-      var tables = label.replace(/^join\s+/i, '').replace(/\s*\+\s*/g, ' and ');
+      // Only a "join a + b" label names the tables; the emitter's own label is just "combined", which
+      // read "Combined combined into one table." on orders-tiers (2026-10-01).
+      var tables = /^join\s+/i.test(label) ? label.replace(/^join\s+/i, '').replace(/\s*\+\s*/g, ' and ') : '';
       return 'Combined ' + (tables || 'your tables') + ' into one table.';
     }
     if (op === 'world_join') {
