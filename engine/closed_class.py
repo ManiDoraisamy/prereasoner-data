@@ -17,6 +17,10 @@ from functools import lru_cache
 
 CLOSED_CLASS_POS = frozenset({"DET", "PRON", "ADP", "AUX", "CCONJ", "SCONJ", "PART", "INTJ", "PUNCT", "SYM"})
 
+# A verb's finite or base forms (sold, placed, comes, weigh). Participles (returned, listed, pending) are left
+# out: "orders were returned" names a state of the rows, and a state can be a row filter.
+FINITE_VERB_TAGS = frozenset({"VB", "VBD", "VBP", "VBZ"})
+
 # Negation and exclusion cues. Compose's exclusion detector reads this pattern, and a semantic search never
 # answers a question that uses one: similarity and word matching cannot express 'without a trench coat'.
 EXCLUSION_CUES = re.compile(r'exclud\w*|without|\bno\b|\bnot\b|ignoring|not counting', re.I)
@@ -34,6 +38,26 @@ def spacy_model():
                 import spacy
                 _MODEL = spacy.load("en_core_web_md", disable=["lemmatizer"])
     return _MODEL
+
+
+@lru_cache(maxsize=1024)
+def action_words(text):
+    """The lowercased words the tagger reads somewhere in ``text`` as a finite or base-form verb or an adverb.
+
+    They say what the rows did or how ("which item sold the most units", "documents still pending"), never
+    which rows: a dropped one is not a dropped filter. Participles stay out (see FINITE_VERB_TAGS), and so do
+    the exclusion cues."""
+    return frozenset(
+        token.text.lower() for token in spacy_model()(text or "")
+        if ((token.pos_ == "VERB" and token.tag_ in FINITE_VERB_TAGS) or token.pos_ == "ADV")
+        and not EXCLUSION_CUES.fullmatch(token.text)
+    )
+
+
+@lru_cache(maxsize=1024)
+def noun_words(text):
+    """The lowercased words the tagger reads somewhere in ``text`` as a noun or a proper noun."""
+    return frozenset(token.text.lower() for token in spacy_model()(text or "") if token.pos_ in {"NOUN", "PROPN"})
 
 
 @lru_cache(maxsize=1024)

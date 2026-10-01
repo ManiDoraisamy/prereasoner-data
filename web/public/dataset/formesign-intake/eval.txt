@@ -7,3 +7,4 @@
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
 how many Treatment Agreement documents => 3
+How many documents are still pending? => 5

@@ -1586,6 +1586,57 @@ def test_distinct_count_operator_and_sheet_scope_are_covered():
         assert KnowledgeQuery._uncovered(adapter, question + " In France.", schema, sql) == ['france']
 
 
+
+def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
+    """Chrome exploration (2026-10-01): half of a dozen natural questions were declined because a word that
+    describes the rows sat near some town: "which item sold the most units" (sold), "how many documents are
+    still pending" (still), "how many deliveries weigh more than 3 kg" (weigh), "how many leads came from
+    France" (came, which also hid the counted noun). A finite verb or an adverb is covered; a participle that
+    names a state of the rows, and a verb the data holds as a value, are still row filters."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    import engine.knowledge_query as knowledge_query
+    from engine.knowledge_query import KnowledgeQuery
+
+    adapter = SimpleNamespace(
+        _encode=lambda words: [[0] for _ in words],
+        _word_qid=lambda word: None,
+        _phrase_qids=lambda phrases: {},
+        _best_world_entity=lambda words: (words[0], "Spurious Place", "city", 0.61),
+    )
+    orders = [{"table": "orders", "name": "item", "affinity": "TEXT", "values": ["Baguette", "Croissant Box"]},
+              {"table": "orders", "name": "quantity", "affinity": "INTEGER", "values": [1, 2]},
+              {"table": "orders", "name": "unit price", "affinity": "REAL", "values": [3, 6]}]
+    intake = [{"table": "intake", "name": "status", "affinity": "TEXT", "values": ["Signed", "Pending"]}]
+    leads = [{"table": "responses", "name": "country", "affinity": "TEXT", "values": ["France", "Germany"]}]
+    deliveries = [{"table": "deliveries", "name": "weight kg", "affinity": "REAL", "values": [2, 5]}]
+    top_item = 'SELECT item FROM orders GROUP BY item ORDER BY SUM(quantity) DESC LIMIT 1'
+
+    def dropped(question, schema, sql):
+        return KnowledgeQuery._uncovered(adapter, question, schema, sql)
+
+    # The production tagger reads both the closed-class words and the verbs here: "are" ends the counted
+    # noun phrase in "how many documents are still pending" as it does in serving.
+    with patch.object(knowledge_query, "closed_class_words", wraps=knowledge_query.closed_class_words):
+        assert dropped("Which item sold the most units?", orders, top_item) == []
+        assert dropped("How many documents are still pending?", intake,
+                       "SELECT COUNT(*) FROM intake WHERE status = 'Pending'") == []
+        assert dropped("Which delivery weighs the most?", deliveries,
+                       'SELECT "delivery ID" FROM deliveries ORDER BY "weight kg" DESC LIMIT 1') == []
+        assert dropped("How many deliveries weigh more than 3 kg?", deliveries,
+                       'SELECT COUNT(*) FROM deliveries WHERE "weight kg" > 3') == []
+        assert dropped("How many leads came from France?", leads,
+                       "SELECT COUNT(*) FROM responses WHERE country = 'France'") == []
+        # A participle names a state of the rows: an unfiltered count of returned orders is declined.
+        assert dropped("How many orders were returned?", orders, "SELECT COUNT(*) FROM orders") == ["returned"]
+        # A verb the data holds as a value is a row filter too.
+        sold = orders + [{"table": "orders", "name": "status", "affinity": "TEXT", "values": ["Sold", "Open"]}]
+        assert dropped("Which item sold the most units?", sold, top_item) == ["sold"]
+        # A place the query did not filter on is still dropped.
+        assert dropped("How many leads came from Spain?", leads,
+                       "SELECT COUNT(*) FROM responses WHERE country = 'France'") == ["spain"]
+
+
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
     from engine.deterministic.plan import JunctionValue
     from engine.deterministic.runtime import (

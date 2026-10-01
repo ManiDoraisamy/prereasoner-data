@@ -38,7 +38,7 @@ from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
 from engine.bridge import STOP
-from engine.closed_class import EXCLUSION_CUES, closed_class_words
+from engine.closed_class import EXCLUSION_CUES, action_words, closed_class_words, noun_words
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
 )
@@ -165,6 +165,9 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
     # covered by this guard (content words are alphabetic), so exempting 'below'/'above' loses no real
     # constraint coverage.
     "below", "above", "current",
+    # Comparatives are comparators too. Once the counted noun was read by its part of speech, 'more' in
+    # "how many deliveries weigh more than 3 kg" surfaced as a place the query dropped (2026-10-01).
+    "more", "less", "fewer", "greater", "higher", "lower", "larger", "smaller", "bigger",
     # Spreadsheet scope prose. These words do not identify a row filter or world entity; treating them as
     # unresolved predicates turned an exact COUNT(DISTINCT "order ID") into a clarification about an unrelated
     # numeric column in production.
@@ -173,6 +176,11 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
     # Schema-named columns still win via the sheet's own vocabulary.
     "calculation", "calculations", "step", "steps", "reasoning", "analysis", "breakdown",
 })
+
+
+# Payment and listing states. 'paid' and 'listed' are prose in "the total amount paid" and "payments are
+# listed", and a row filter where the data records such a state; _uncovered decides which.
+_STATUS_WORDS = frozenset({"paid", "listed"})
 
 
 def _word_forms(word):
@@ -577,9 +585,17 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         # Closed-class words carry grammar, not a constraint: 'everything in France' drops nothing. Negation and
         # exclusion cues are never closed-class here (engine.closed_class), so a dropped 'not' is still caught.
         closed = closed_class_words(question)
+        literals = {word for c in sch for value in (c.get('values') or ())
+                    if value is not None for word in _re.findall(r'[a-z]+', str(value).casefold())}
+        # A finite verb or an adverb says what the rows did or how, never which rows. Each was declined as a
+        # dropped town: "which item sold the most units" (sold), "how many documents are still pending"
+        # (still), "how many deliveries weigh more than 3 kg" (weigh), "how many leads came from France"
+        # (came) (Chrome exploration, 2026-10-01). A word the data holds as a value ("Sold") is still a row
+        # filter, and so are the payment and listing states that the prose rule below decides.
+        action = {w for w in action_words(question) if w not in literals and w not in _STATUS_WORDS}
         content = [w for w in _re.findall(r"[a-z]+", question.lower())
                    if w not in STOP and w not in CUE and len(w) > 1 and w not in closed
-                   and w not in sch_words and w.rstrip("s") not in sch_words]
+                   and w not in action and w not in sch_words and w.rstrip("s") not in sch_words]
         # A weak embedding match to a town must not reinterpret ordinary query
         # prose as geography. Only exempt bounded grammatical forms, and never
         # when a status column or an observed literal makes the word a real
@@ -588,9 +604,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             set(_re.findall(r"[a-z]+", str(c['name']).lower())) &
             {'status', 'state', 'paid', 'listed', 'settled'} for c in sch
         )
-        if has_agg and not state_columns and set(content) & {'paid', 'listed'}:
-            literals = {word for c in sch for value in (c.get('values') or ())
-                        if value is not None for word in _re.findall(r'[a-z]+', str(value).casefold())}
+        if has_agg and not state_columns and set(content) & _STATUS_WORDS:
             prose = set()
             if _re.search(r'\b(?:is|are|was|were)\s+listed\b', question, _re.I):
                 prose.add('listed')
@@ -614,7 +628,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # The noun a count cue governs is what COUNT counts: the head of the words after 'how many' /
             # 'number of', up to the first grammar word. 'how many leads from Europe' was declined because
             # 'leads' sat 0.85 from the city of Leeds; in 'how many German leads' 'German' is still checked.
+            # The head is the run's last noun, so 'how many leads came from France' counts leads, not 'came'.
             low = question.lower()
+            nouns = noun_words(question)
             for cue in _re.finditer(r"\b(?:" + COUNT_CUE + r")\s+", low):
                 run = []
                 for token in _re.findall(r"[a-z]+|[.,;:!?]", low[cue.end():]):
@@ -622,7 +638,9 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                         break                                # a noun phrase ends at grammar or punctuation
                     run.append(token)
                 if run:
-                    content = [word for word in content if word != run[-1]]
+                    heads = [token for token in run if token in nouns]
+                    head = heads[-1] if heads else run[-1]
+                    content = [word for word in content if word != head]
         if content:
             # A place is ONE name however many words it has, and its demonym is that name plus '-n'/'-an'
             # ('European' Europe, 'North American' North America). When a span names a qid the query filters
