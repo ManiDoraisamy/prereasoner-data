@@ -318,8 +318,31 @@ def test_synthesized_currency_column_is_never_world_routed():
         f"real columns must still route, got {routes}")
 
 
+def test_synthesized_currency_column_is_never_shown_as_a_world_lookup():
+    """The composed host streams one "Looking up <column>" slide for each text column it grounds.
+    After "This is in euros." the synthesized currency column got one too, and the chat's status line
+    read "Looking up __currency_for_0af96a8ed622a394…" (Chrome gate, 2026-10-01)."""
+    from types import SimpleNamespace
+
+    from engine.knowledge_compose import ComposedKnowledgeQuery
+
+    synth = synthetic_currency_column("budget")
+    table = {"name": "responses", "columns": ["name", "budget", synth],
+             "rows": [["Elena", "15000", "EUR"], ["Pierre", "8000", "EUR"], ["Ines", "9000", "EUR"]]}
+    host = ComposedKnowledgeQuery.__new__(ComposedKnowledgeQuery)     # no model load, no database
+    host.qw = SimpleNamespace(route=lambda table: {}, _rconn=lambda: SimpleNamespace(cursor=lambda: None))
+    shown = []
+    host._emit_unconnected_slide = lambda table, column, index: shown.append(column)
+
+    assert host._world_lookup([table], "conversation") is None
+    assert synth not in shown, f"the synthesized currency column must never get a lookup slide: {shown}"
+    # The user's own text column in the same table still gets its slide: the guard is narrow.
+    assert shown == ["name"], f"real text columns must still be shown, got {shown}"
+
+
 TESTS = [
     test_synthesized_currency_column_is_never_world_routed,
+    test_synthesized_currency_column_is_never_shown_as_a_world_lookup,
     test_valid_set_normalizes_and_binds,
     test_unknown_op_table_column_and_code_are_rejected,
     test_src_data_outranks_conversation,

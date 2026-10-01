@@ -1249,3 +1249,17 @@ is covered when the query aggregates; the measure test now comes first. And a pa
 "which client has the biggest contract" compares values in mixed currencies as raw numbers. Across the three
 batches, 25 of the 30 natural questions are now answered correctly. The serving gate does not run in the Spider
 evaluation.
+
+## A stated currency is never shown by its private name (2026-10-01)
+
+After "This is in euros." dataset semantics adds a private column, `__currency_for_<hash>`, that holds the stated
+code. The 2026-09-08 rule keeps it out of both route sources, but two presentation paths still showed it, both seen
+in the Chrome gate on an existing formfacade-leads conversation. The composed host streams a "Looking up <column>"
+slide for every text column it does not route, so the chat's status line read "Looking up
+__currency_for_0af96a8ed622a394…". And the workbook split the derivation alias `responses____currency_for_…` at its
+last `__`, so the calculated sheet showed a "currency_for_0af96a8ed622a394" column under a "responses__" chip.
+
+`ComposedKnowledgeQuery._world_lookup` now skips the column with the same predicate,
+`dataset_semantics.is_synthetic_currency_column`. The workbook names the column from its server-authored provenance
+(`asserted`, operation `measure currency`, input `responses.budget`): "budget currency", under the "responses" chip
+with the conversation glyph. The emitted SQL and Python keep the real name, as the executed program must.

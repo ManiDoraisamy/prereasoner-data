@@ -74,7 +74,10 @@ strip remains a flat topological list because it is a workbook navigator, not a 
    its own sheet (`total`) so a per-row `calculated` grid is never replaced by a single number.
 7. **Provenance on every column.** Each sheet's columns carry their source badge — SRC (user
    upload), KB (knowledgebase reference), FX/AI (derived) — from the server-authored
-   `column_provenance`; the UI never guesses.
+   `column_provenance`; the UI never guesses. A currency the conversation stated for a measure is a
+   private engine column (`__currency_for_<hash>`); its header reads `<measure> currency` from that
+   provenance (`asserted`, operation `measure currency`), never the private name, and no lookup
+   step is shown for it.
 8. **One grammar for every path.** The own-data DAG, compose engine, and world-grounded conversion trail
    any future emitter produce the same ops, names, and ordering above. If a path cannot express
    its work in this grammar, fix the path, not the grammar.

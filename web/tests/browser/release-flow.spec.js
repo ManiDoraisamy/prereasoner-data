@@ -302,7 +302,10 @@ test('sign in, upload, answer, inspect trace, follow up, and delete',async({page
   await page.locator('.wtab').filter({hasText:'calculated'}).click();
   // The header carries the owning table as a chip and the provenance kind as a glyph, so the
   // <table>__<column> wire alias never reaches the user. aria-label keeps the kind readable.
-  await expect(page.locator('.provemoji')).toHaveText(['\u{1F4C4}','\u{1F4B1}','\u{1F9EE}']);
+  await expect(page.locator('.provemoji')).toHaveText(['\u{1F4C4}','\u{1F4AC}','\u{1F4B1}','\u{1F9EE}']);
+  // The currency the chat stated for `amount` is a private hashed column; it reads as that measure's currency.
+  await expect(page.locator('th').filter({hasText:'amount currency'}).locator('.tabtag')).toHaveText('\u{1F4AC}orders');
+  await expect(page.locator('thead')).not.toContainText(/currency_for|cf38d95c/);
   await expect(page.locator('.provemoji').first()).toHaveAttribute('aria-label',/uploaded data/);
   // The glyph leads the table inside one chip: "<currency>exchange_rate", not the reverse.
   await expect(page.locator('th').filter({hasText:'rate_to_usd'}).locator('.tabtag')).toHaveText('\u{1F4B1}exchange_rate');

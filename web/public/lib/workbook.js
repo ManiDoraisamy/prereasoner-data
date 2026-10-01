@@ -198,7 +198,14 @@ function renderGrid(m){
   // Engine views alias columns as <table>__<column> so joined tables cannot collide. That alias
   // is the wire name and the SQL name; the header shows the column alone and carries its table
   // as a chip. Only engine-authored sheets are split — an uploaded header may contain "__".
-  const splitCol=name=>{ const parts=showProv?String(name).match(/^([A-Za-z0-9_]+)__(.+)$/):null;
+  // A currency the conversation stated for a measure is a private engine column whose name is a
+  // hash; it read "currency_for_0af96a8ed622a394" under a "responses__" chip (Chrome gate,
+  // 2026-10-01). Its provenance names the measure, so it reads "budget currency".
+  const splitCol=(name,p)=>{
+    if(p&&p.kind==='asserted'&&p.operation==='measure currency'&&Array.isArray(p.inputs)&&p.inputs.length){
+      const table=String(p.table||''),input=String(p.inputs[0]);
+      return {table:table,label:(table&&input.startsWith(table+'.')?input.slice(table.length+1):input)+' currency'}; }
+    const parts=showProv?String(name).match(/^([A-Za-z0-9_]+)__(.+)$/):null;
     return parts?{table:parts[1],label:parts[2]}:{table:'',label:String(name)}; };
   // The kind is a glyph, not a word: the table chip beside it already carries the text.
   const PROV_EMOJI={SRC:'\u{1F4C4}',USER:'\u{1F4AC}',CALC:'\u{1F9EE}',WIKI:'\u{1F30D}',ECB:'\u{1F4B1}',IANA:'\u{1F310}',REF:'\u{1F4DA}'};
@@ -217,7 +224,7 @@ function renderGrid(m){
     // dataset-semantics badge: the conversation stated what this measure MEANS ("this is in euros").
     // Rendered as a chip on the user's own column header — metadata, never a fake data column.
     const ds=(m.cls==='input')?DS_META.find(d=>d.table===m.name&&d.column===cols[ci]):null;
-    const sc=splitCol(cols[ci]);
+    const sc=splitCol(cols[ci],pr);
     const glyph=pv?'<span class="provemoji '+pv+'" role=img aria-label="'+escAttr(provTitle(pr))+'" title="'+escAttr(provTitle(pr))+'">'+provEmoji(pr)+'</span>':'';
     h+='<th class="'+((numeric[ci]?'n ':'')+(pv?'prov prov-'+pv:'')).trim()+'"'
       +(m.cls==='master'?' ondblclick="editMasterCol(\''+m.id+'\','+ci+')" title="Double-click to rename"'

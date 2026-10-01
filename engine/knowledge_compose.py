@@ -23,6 +23,7 @@ import re
 import threading
 
 from engine.tables import qident
+from engine.dataset_semantics import is_synthetic_currency_column
 from engine.entities import WORLD_TABLE_TYPE
 from engine.knowledge_query import KnowledgeQuery
 from engine.primitive_head import PrimitiveReader
@@ -243,6 +244,10 @@ class ComposedKnowledgeQuery:
             ent, geocol = {}, None                        # value -> {attr: v, "_wt": type, "_wk": key}
             routed = {c: f for (tn, c), f in self.qw.route(t).items() if tn == t["name"]}
             for ci, col in enumerate(t["columns"]):       # column ORDER, so the resolve slides match the table layout
+                # A synthesized measure-currency column is engine metadata, not a column the user can look up:
+                # its slide read "Looking up __currency_for_0af96a8ed622a394…" (Chrome gate, 2026-10-01).
+                if is_synthetic_currency_column(col):
+                    continue
                 cells = [str(rw[ci]) for rw in t["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
                 if not cells:
                     continue

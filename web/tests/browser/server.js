@@ -41,6 +41,9 @@ function answer(question,analysis){
   const input=(column)=>({kind:'input',source:'upload',table:'orders',column});
   const ecb=(column)=>({kind:'reference',source:'European Central Bank',table:'exchange_rate',column,release_id:'ecb-2026-09-05'});
   const calc=(column,operation,inputs)=>({kind:'derived',source:'Prereasoner',column,operation,inputs});
+  // The currency "This is in euros." states for `amount` is a private engine column named by a hash.
+  const statedCurrency='__currency_for_cf38d95c9c6b1d9d';
+  const stated=(column,measure)=>({kind:'asserted',source:'conversation',table:'orders',column,operation:'measure currency',inputs:['orders.'+measure]});
   if(complex){
     const prefix=analysis.slug+'_';
     const sections={
@@ -79,7 +82,7 @@ function answer(question,analysis){
   return {question,conversation_id:conversation,analysis,
     // Exercise both sides of the client contract: a non-empty claim paints the source-column badge,
     // while the follow-up's empty effective list must clear it.
-    dataset_semantics:follow?[]:[{table:'orders',column:'amount',currency:'EUR',
+    dataset_semantics:follow?[]:[{table:'orders',column:'amount',currency:'EUR',currency_column:statedCurrency,
       basis:{source:'conversation',text:'This is in euros.',attested:true},supplied_by:'conversation'}],
     sql:'SELECT SUM(converted) AS total FROM calculated',
     views:[
@@ -92,8 +95,10 @@ function answer(question,analysis){
             ),
         )`,
         // The engine aliases joined columns as <table>__<column>; calculated values stay bare.
-        columns:['orders__amount','exchange_rate__rate_to_usd','converted'],rows:[[100,1.2,120],[50,1.2,60]],
-        column_provenance:[input('amount'),ecb('rate_to_usd'),calc('converted','multiply',['orders.amount','exchange_rate.rate_to_usd'])]},
+        columns:['orders__amount','orders__'+statedCurrency,'exchange_rate__rate_to_usd','converted'],
+        rows:[[100,'EUR',1.2,120],[50,'EUR',1.2,60]],
+        column_provenance:[input('amount'),stated(statedCurrency,'amount'),ecb('rate_to_usd'),
+          calc('converted','multiply',['orders.amount','exchange_rate.rate_to_usd'])]},
       {name:'total',op:'group_agg',label:'total',sql:'SELECT SUM(converted) AS total FROM calculated',
         python:`        # View: total
         total = calculated.reduce(
