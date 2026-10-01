@@ -864,7 +864,8 @@ def test_the_model_is_told_the_currency_the_engine_verified():
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "a figure is in a currency only when you were given one for it" in prompt
     assert "write that currency right beside the amount" in prompt
-    assert "give the bare number" in prompt and "never guess a unit" in prompt
+    assert "give the bare number" in prompt and "never guess or ask about a unit" in prompt
+    assert "do not remark that the currency is unknown" in prompt
 
 
 def test_a_reply_says_only_what_the_result_shows():
