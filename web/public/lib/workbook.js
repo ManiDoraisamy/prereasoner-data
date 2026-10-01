@@ -256,14 +256,14 @@ function tokCls(tk){const u=tk.toUpperCase();
 const KINDLBL={input:'Your data',deriv:'Derived',ref:'Public source',master:'Reference'};
 function dispName(s){ let n=s&&s.name||''; if(s&&s.cls==='deriv'&&/(wikipedia|knowledgebase|reference)[_ ]lookup/i.test(n)) n='enriched'; return n; }
 // The tab strip is flat, so each sheet's name there must be its own. Steps share names ("combined" in
-// every branch of a compound question, two "enriched" lookups): a shared name carries its branch, and
-// a name still shared is numbered in order. The reasoning tree keeps the short names; its branches
-// already say which is which.
+// every branch of a compound question, two "enriched" lookups): a shared name is followed by its branch
+// (the step first, so a cut tab still says what it is), and a name still shared is numbered in order.
+// The reasoning tree keeps the short names; its branches already say which is which.
 function flatNames(){
   const steps=BOOK.filter(s=>(s.cls==='deriv'||s.cls==='ref')&&!s.result);
   const tally=key=>steps.reduce((m,s)=>m.set(key(s),(m.get(key(s))||0)+1),new Map());
   const plain=tally(dispName);
-  const branch=s=>plain.get(dispName(s))>1&&s.sectionLabel?s.sectionLabel+' · '+dispName(s):dispName(s);
+  const branch=s=>plain.get(dispName(s))>1&&s.sectionLabel?dispName(s)+' · '+s.sectionLabel:dispName(s);
   const named=tally(branch), seen=new Map(), out=new Map();
   steps.forEach(s=>{ const n=branch(s);
     if(named.get(n)>1){ const k=(seen.get(n)||0)+1; seen.set(n,k); out.set(s.id,n+' '+k); } else out.set(s.id,n); });

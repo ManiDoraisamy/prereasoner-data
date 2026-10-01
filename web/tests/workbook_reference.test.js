@@ -123,7 +123,7 @@ const checks = `
     ];
     const flat = flatNames();
     const named = ['a','b','c','d','e','f'].map(id => flat.get(id)).join(' | ');
-    if (named !== 'top customers · combined | total | top products · combined | candidate pairs | enriched 1 | enriched 2')
+    if (named !== 'combined · top customers | total | combined · top products | candidate pairs | enriched 1 | enriched 2')
       throw new Error('tab names were not made unique: ' + named);
     if (flatName(BOOK[0]) !== 'orders') throw new Error('an uploaded sheet lost its own name');
     BOOK = tabBook;
