@@ -65,6 +65,11 @@ RECALCULATION_NOTE = (
     "recalculation: call prereasoner_query for it. An earlier reply is not a result, and the data "
     "or exchange rates behind it may have changed since."
 )
+# Said before the reply to a result in a conversation with earlier turns (see _run_turn).
+FRESH_ANSWER_NOTE = (
+    "Answer the user's latest message with this result on its own. Do not say you rechecked, "
+    "confirmed or repeated anything, and do not compare it with earlier replies."
+)
 # The engine could not read a follow-up sent in the user's own words, and earlier turns may already
 # say what it means. The model gets this one chance to answer the clarification from them (see _run_turn).
 SETTLE_FROM_CONVERSATION = (
@@ -1008,6 +1013,12 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                     # final round so the computation remains the engine's.
                     final_text = _terminal_fallback(terminal_query)
                     presentation_text = ""
+                    if history:
+                        # In a reopened conversation nearly every answer began "Rechecked it —" or
+                        # "Confirmed —" and said the total "still" came to its figure (8 of 8 in the
+                        # customer-orders Chrome gate, 2026-10-01): the model presented the result
+                        # against its earlier replies. The note stays inside this turn.
+                        messages[-1]["content"].append({"type": "text", "text": FRESH_ANSWER_NOTE})
                     try:
                         with request_timing.span("llm"):
                             async with client.messages.stream(

@@ -1112,3 +1112,40 @@ by region" when the data has no region. One looser reading was measured and kept
 are there?", the follow-up was resolved to the commission amount in 7 of 8 turns. In 5 of those the model rewrote it
 directly, as rule 4's example already teaches, and in 2 of 3 offers it answered the clarification. The engine's own
 reading there was a sum of percentages.
+
+## Production keeps one warm engine instance and never scales out (2026-10-01)
+
+Since revision 00123 (2026-09-29) production had run with `min_instances = 0`, against the documented default of 1.
+After an idle period the first question waited for a 3-5 minute model load, and the chat gave up at its 180 s engine
+call: "I couldn't reach your data just now". With min 1 restored, a question still waited 3.5 minutes on an instance
+that Cloud Run started for it while three others were ready, and failed the same way. The service now runs exactly
+one instance (min 1, max 1). An instance answers one question at a time (`WORLD_LOCK`), so a second simultaneous
+question gets the engine's "busy" after its 15 s admission window instead of a cold start. The service bills CPU
+always allocated, so the warm instance costs about $450 a month at list prices; that is the cost production carried
+before the drift.
+
+## The workbook says what each sheet is, and a name is not a filter (2026-10-01)
+
+Driving every shipped dataset in Chrome (80 fresh turns, 80 passed) found presentation defects the numeric grading
+does not see. Each one is fixed where it is produced:
+
+- Column badges. The deterministic emitter names stage columns `<table>__<column>`, which `engine/provenance.py`
+  never matched by table, so a `combined` sheet's uploaded columns were badged as calculated, payment-commissions'
+  own commission rates as European Central Bank data, and an uploaded order ID as Wikidata. A qualified column now
+  takes its table's record.
+- Step text. Every per-row calculation is a `convert` step, and the rail described each one as an ECB conversion. It
+  says so only when a column of the step is traced to the exchange-rate reference.
+- The flat tab strip repeated names ("combined", "combined"); a shared name now carries its branch, else a number. A
+  decomposition's question was read as twice. A computed decimal filled its cell ("19040.46312152585994148"); it
+  shows three decimals with the exact value in the tooltip. A highest value was badged EXTREMES. Two "city" lookups
+  matched yes/no columns and stayed beside a count that used no reference data; a lookup the finished derivation
+  never joined now leaves the workbook. Uploading your own file kept the demo question in the box; it is cleared.
+- Workbook names. The prompt says to leave filter values out, and the model kept them in 12 of 12 names on replay:
+  "products not bought by paris customers" headed the Lyon answer and "orders count paypal" the Email answer. The
+  chat now removes from a new name the words of any uploaded cell value the question names, and a name left with
+  only an aggregate word takes that value's column ("document_count").
+- Replies. On claude-sonnet-5 with the same engine results: "1082.41" without a thousands separator in 5 of 6 replies
+  before and 0 of 6 after; a remark that the currency is unknown in 2 of 8 and 0 of 8; a same-shape question modified
+  its analysis in 5 of 6 and 6 of 6. In a conversation with earlier turns, answers began "Rechecked it —" or
+  "Confirmed —" (8 of 8 in the customer-orders gate conversation); the presentation round is now told to answer on its
+  own, which took a transcript that already held such replies from 4 of 8 to 1 of 8.

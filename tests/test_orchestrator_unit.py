@@ -628,6 +628,49 @@ def test_an_engine_clarification_is_settled_at_most_once():
     assert "9.28" not in result["reply"], result["reply"]
 
 
+def test_a_result_is_presented_on_its_own_in_a_continued_conversation():
+    """Chrome gate (2026-10-01, customer-orders, existing conversation): 8 of 8 answers began
+    "Rechecked it —" or "Confirmed —" and said a total "still" came to its figure. In a conversation
+    with earlier turns, the presentation round is told to answer on its own; a first question is not."""
+    for history, noted in (([], False), (COMMISSION_HISTORY, True)):
+        presented = []
+
+        class Messages:
+            def stream(self, **kwargs):
+                if "tools" in kwargs:
+                    response = SimpleNamespace(stop_reason="tool_use", content=[SimpleNamespace(
+                        type="tool_use", name="prereasoner_query", id="q1",
+                        input={"question": "total commission amount for card payments",
+                               "action": "create", "slug": "card_commission"})])
+                else:
+                    presented.append(kwargs["messages"][-1]["content"])
+                    response = SimpleNamespace(stop_reason="end_turn", content=[SimpleNamespace(
+                        type="text", text="The commission from card payments comes to 9.28.")])
+                return _MessageStream(response)
+
+        class Client(_Client):
+            def __init__(self):
+                self.messages = Messages()
+
+        async def query(*_args, **_kwargs):
+            return COMMISSION_ANSWER
+
+        async def run():
+            with patch.object(orchestrator, "AsyncAnthropic", lambda **_kwargs: Client()), \
+                    patch.object(orchestrator.httpx, "AsyncClient", lambda **_kwargs: _HTTP()), \
+                    patch.object(orchestrator.engine_client, "call_query", query):
+                return await orchestrator._run_turn(
+                    "total commission amount for card payments",
+                    [{"name": "payments", "data": "payment_instrument,amount\ncard,120\n"}], history,
+                    engine_base_url="http://engine.invalid", bearer_token=None,
+                    api_key="test", model="test-model")
+
+        result = asyncio.run(run())
+        notes = [block for block in presented[0] if block.get("type") == "text"]
+        assert (notes == [{"type": "text", "text": orchestrator.FRESH_ANSWER_NOTE}]) is noted, notes
+        assert orchestrator.FRESH_ANSWER_NOTE not in json.dumps(result["history"])
+
+
 def test_a_clarification_nothing_earlier_can_settle_is_terminal():
     """No offer for a first question, or for a question the model already wrote from the
     conversation: the engine's clarification goes to a tool-disabled presentation round."""
@@ -1480,6 +1523,7 @@ TESTS = [
     test_a_recalculation_answered_from_memory_still_reaches_the_engine,
     test_an_engine_clarification_the_conversation_settles_is_answered,
     test_an_engine_clarification_is_settled_at_most_once,
+    test_a_result_is_presented_on_its_own_in_a_continued_conversation,
     test_a_clarification_nothing_earlier_can_settle_is_terminal,
     test_named_workbook_tool_contract_and_catalog_boundary,
     test_followup_prompt_treats_tier_calculation_as_a_data_question,
