@@ -1308,6 +1308,11 @@ exactly is dropped when the query never filters on it. Either one clarifies even
 sheets answer a country filter on the entity ("total deposits for banks in Switzerland") but not its country as a
 dimension or a continent; those questions are now declined rather than answered wrongly.
 
+"what percentage of orders are from Paris?" listed the Paris customers (2026-10-02). A share is realized only by a
+division, and shares are not planned on own data yet, so "percentage", "percent", "share", "proportion" and
+"fraction" are dropped unless the query divides, and the clarification offers no rephrasing: "what share of the
+total amount comes from Paris?" used to be offered "total unit price".
+
 ## A count per world value counts the rows of each value (2026-10-02)
 
 "how many attendees per country" on the workshops sheet answered 6, the number of countries: the world owner read

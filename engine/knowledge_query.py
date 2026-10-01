@@ -181,6 +181,9 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
 })
 
 
+# Words that ask for a share of a total. Only a division realizes one.
+_SHARE_WORDS = frozenset({"percentage", "percentages", "percent", "share", "proportion", "fraction"})
+
 # The world types a question can ask for by name, each with the singular a column or a world join shows.
 _WORLD_TYPE_WORDS = {
     "country": "country", "countries": "country", "city": "city", "cities": "city",
@@ -691,6 +694,10 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                        if any(qid.lower() in sqll for form in group for qid in qids.get(form, ()))
                        for word in spans[phrase]}
             content = [word for word in content if word not in covered]
+        # A share is realized only by a division: "what percentage of orders are from Paris" listed the Paris
+        # customers (Chrome exploration, 2026-10-02).
+        asked += [word for word in content if word in _SHARE_WORDS and not _re.search(r"/|\bdiv", sqll)]
+        content = [word for word in content if word not in _SHARE_WORDS]
         if not content:
             return asked
         nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])
@@ -921,11 +928,15 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     c = self._clarify(question, norm, fks, sch)
                 except Exception as e:                       # noqa: BLE001
                     print(f"clarify failed: {type(e).__name__}", flush=True); c = None
-                rephrased = bool(c) and c["proposed"].strip().lower() != (question or "").strip().lower()
+                # No rephrasing expresses a share: "what share of the total amount comes from Paris" was offered
+                # "total unit price".
+                rephrased = (bool(c) and c["proposed"].strip().lower() != (question or "").strip().lower()
+                             and not set(dropped) & _SHARE_WORDS)
                 # A world type or an exactly named place the query never realized is a dropped constraint whether
                 # or not a rephrasing exists: "which country has the most deposits" served the top bank because
                 # none was found (Chrome exploration, 2026-10-01).
-                firm = [word for word in dropped if word in _WORLD_TYPE_WORDS or self._word_qid(word)]
+                firm = [word for word in dropped
+                        if word in _WORLD_TYPE_WORDS or word in _SHARE_WORDS or self._word_qid(word)]
                 if rephrased or firm:
                     return {"question": question, "as_of": as_of, "clarify": True,
                             "original_sql": (res or {}).get("sql"),

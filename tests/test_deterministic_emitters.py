@@ -1743,6 +1743,11 @@ def test_a_place_or_world_type_the_query_never_realized_is_dropped():
                        'ORDER BY COUNT(*) DESC LIMIT 1') == []
         assert dropped("total amount for cities in France", orders,
                        'SELECT SUM("amount") FROM "query_filtered" WHERE "city__country" = \'Q142\'') == []
+        # A share is realized only by a division: "what percentage of orders are from Paris" listed the customers.
+        assert dropped("What percentage of orders are from Paris?", orders,
+                       'SELECT "orders"."customer" FROM "orders" WHERE "orders"."city" = \'Paris\'') == ["percentage"]
+        assert dropped("What percentage of orders are from Paris?", orders,
+                       'SELECT 100.0 * SUM(CASE WHEN "city" = \'Paris\' THEN 1 ELSE 0 END) / COUNT(*) FROM "orders"') == []
 
 
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
