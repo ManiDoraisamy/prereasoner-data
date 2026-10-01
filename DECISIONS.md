@@ -1206,3 +1206,12 @@ production upload order, the prompt and the second question now return the expec
 Open: the 7B decode depends on what the process decoded before (llama.cpp reuses the KV cache of a shared prompt
 prefix), so one leaf decoded both ways on this machine. A reset before each decode makes it deterministic but
 re-evaluates every prompt, which needs its own latency and Spider measurement.
+
+## A question mark is never a world value (2026-10-01)
+
+Exploring neartail-orders in Chrome, "how many orders came from Lyon?" answered 0, and "What is the total amount in
+Paris?" was declined as matching no rows. `engine/data/word_country.json` lists `'?'` among the continents, and the
+world value matcher (`KnowledgeTableQuery._find_value`) looked for every listed value in the question as written. A
+question ending in "?" therefore also filtered `continent = '?'`, which no row holds. The eval.txt questions mostly
+end without a question mark, so the release gates never asked one on a sheet with a city column. A value with no
+letter or digit now names nothing a question can say; the data file is unchanged.

@@ -396,6 +396,22 @@ def test_an_exact_world_name_beats_a_nearer_fuzzy_guess():
     ok(hit is not None and hit["value"] == "Q30", "a fuzzy reading still resolves when nothing is exact")
 
 
+def test_a_question_mark_is_never_a_world_value():
+    """Chrome exploration, neartail-orders (2026-10-01): "what share of the total amount comes from Paris?"
+    filtered continent = '?' AND city = 'Paris', matched no row, and the reply said there were no orders for
+    Paris. word_country.json lists '?' among the continents, and the matcher read the question's own question
+    mark as that value. A value with no letter or digit names nothing a question can say."""
+    country = {"key": "qid", "filter_attrs": ["continent"],
+               "filter_values": {"continent": ["?", "Africa", "Europe", "North America"]}}
+    walker = object.__new__(KnowledgeTableQuery)
+    ok(walker._find_value(" what share of the total   comes from  ? ", country) is None,
+       "the question mark is punctuation, not the continent '?'")
+    ok(walker._find_value(" total amount in europe? ", country) == ("continent", "Europe"),
+       "a continent the question names is still found before its question mark")
+    ok(walker._find_value(" orders from north america ", country) == ("continent", "North America"),
+       "a multi-word value is still read whole")
+
+
 def test_a_measure_named_in_two_words_is_summed_not_counted():
     """The sweep of the shipped sheets found "total weight kg for deliveries in Germany" answered COUNT(*)
     = 1: the measure matcher knew one-word column names only, so the table noun "deliveries" read as
@@ -1280,6 +1296,7 @@ TESTS = [
     test_the_coverage_gate_reads_a_place_as_one_name,
     test_a_continent_demonym_resolves_to_its_continent,
     test_an_exact_world_name_beats_a_nearer_fuzzy_guess,
+    test_a_question_mark_is_never_a_world_value,
     test_a_measure_named_in_two_words_is_summed_not_counted,
     test_intent_is_not_a_bare_currency_phrase,
     test_filter_conversion_and_annotation_matrix,

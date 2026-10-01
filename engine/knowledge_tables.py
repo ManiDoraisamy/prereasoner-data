@@ -177,11 +177,15 @@ class KnowledgeTableQuery:
     def _find_value(self, low_q, w, exact_only=False):
         """does a filter-attr value of word table `w` appear in the question? Uses the PRECOMPUTED distinct
         `filter_values` (so we never scan 200k rows). Longest match wins; tolerant of a trailing plural 's'.
-        Always an exact reading, so ``exact_only`` changes nothing here."""
+        Always an exact reading, so ``exact_only`` changes nothing here.
+
+        A value with no letter or digit names nothing a question can say. word_country.json lists '?' among
+        the continents, and "what share of the total amount comes from Paris?" filtered continent = '?' on
+        its own question mark, matched no row, and was answered as "no orders recorded for Paris" (2026-10-01)."""
         vals = {}
         for attr in w.get("filter_attrs", []):
             for v in w.get("filter_values", {}).get(attr, []):
-                if v:
+                if v and any(character.isalnum() for character in str(v)):
                     vals.setdefault(str(v).lower(), (attr, str(v)))
         for vl, (attr, vorig) in sorted(vals.items(), key=lambda kv: -len(kv[0])):
             if re.search(r"(?<![a-z])" + re.escape(vl) + r"s?(?![a-z])", low_q):
