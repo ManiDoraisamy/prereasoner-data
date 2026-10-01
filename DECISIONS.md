@@ -1149,3 +1149,15 @@ does not see. Each one is fixed where it is produced:
   its analysis in 5 of 6 and 6 of 6. In a conversation with earlier turns, answers began "Rechecked it —" or
   "Confirmed —" (8 of 8 in the customer-orders gate conversation); the presentation round is now told to answer on its
   own, which took a transcript that already held such replies from 4 of 8 to 1 of 8.
+
+## A dot in a tool result is a decimal point; a reply names its currency once (2026-10-01)
+
+The final gate pass answered "total amount in Belgium in US dollars" (365.631) with "$365.63 in US dollars" and a
+Europe total with "£1,914.18 in GBP". Replaying the Belgium question as the first of a conversation found a worse
+defect: claude-sonnet-5 read "365.631" as 365,631 and wrote "$365,631.00" in 10 of 30 trials on the production prompt.
+The grounding check rejected those sentences, and the fallback sent "365.631 USD", which reads the same way wherever a
+dot groups thousands. The prompt now says a dot in the tool result is always a decimal point (2 of 30 trials misread
+it), and the fallback writes the scalar with its thousands grouped and an amount of money, or a fraction above one, to
+two decimals ("365.63 USD", "70,401 USD"); the workbook keeps the exact value. The prompt also says to write a
+currency once: after a France reply ending "after converting everything to US dollars", 9 of 10 Europe replies
+repeated the currency in words, and 2 of 10 with the new prompt.

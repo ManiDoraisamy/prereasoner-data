@@ -22,7 +22,7 @@ import json
 import re
 import unicodedata
 import uuid
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import httpx
@@ -429,8 +429,25 @@ def _terminal_fallback(shaped: dict[str, Any]) -> str:
     rows = answer.get("rows") or []
     if len(rows) == 1 and len(rows[0]) == 1:
         currency = _output_currency(shaped)
-        return f"{rows[0][0]} {currency}" if currency else str(rows[0][0])
+        value = _readable_scalar(rows[0][0], bool(currency))
+        return f"{value} {currency}" if currency else value
     return "I completed the calculation; the result and its reasoning are shown in the workbook."
+
+
+def _readable_scalar(value: Any, money: bool) -> str:
+    """The engine's scalar as a reply writes it: thousands grouped, and an amount of money or a
+    fraction above one to two decimals (the workbook keeps the exact value). The fallback for a
+    Belgium total in US dollars was "365.631 USD", which reads as 365,631 dollars wherever a dot
+    groups thousands; the presentation model had read it that way itself (2026-10-01)."""
+    text = str(value).strip()
+    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", text):
+        return text
+    number = Decimal(text)
+    if "." not in text:
+        return f"{number:,}"
+    if money or abs(number) >= 1:
+        return f"{number.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
+    return f"{number:.3g}"
 
 
 def _output_currency(shaped: dict[str, Any]) -> str:

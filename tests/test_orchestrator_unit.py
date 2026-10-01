@@ -420,7 +420,7 @@ def test_presentation_that_states_the_engine_value_in_prose_is_kept():
         assert not kept(value, prose), (value, prose)
         assert orchestrator._grounded_presentation(
             {"status": "answered", "answer": {"columns": ["value"], "rows": [[value]]}}, prose,
-        ) == str(value)
+        ) == orchestrator._readable_scalar(value, False)
 
 
 def _answered_from_memory_turn(user_message, history, memory_reply, catalog=()):
@@ -745,14 +745,38 @@ def test_fallback_names_the_verified_output_currency():
                 "calculations": [{"specification": "currency", "status": status,
                                   "realization": realization, "target": target}]}
 
-    assert orchestrator._terminal_fallback(shaped()) == "70401 USD"
-    assert orchestrator._terminal_fallback(shaped(realization="identity", target="gbp")) == "70401 GBP"
-    assert orchestrator._terminal_fallback(shaped(realization="currency_filter")) == "70401"
-    assert orchestrator._terminal_fallback(shaped(status="ambiguous")) == "70401"
-    assert orchestrator._terminal_fallback(shaped(target="dollars")) == "70401"
-    assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[70401]]}}) == "70401"
-    assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70401 USD"
+    assert orchestrator._terminal_fallback(shaped()) == "70,401 USD"
+    assert orchestrator._terminal_fallback(shaped(realization="identity", target="gbp")) == "70,401 GBP"
+    assert orchestrator._terminal_fallback(shaped(realization="currency_filter")) == "70,401"
+    assert orchestrator._terminal_fallback(shaped(status="ambiguous")) == "70,401"
+    assert orchestrator._terminal_fallback(shaped(target="dollars")) == "70,401"
+    assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[70401]]}}) == "70,401"
+    assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70,401 USD"
     assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "Converted, it comes to $70,401."
+
+
+def test_a_three_decimal_amount_is_read_and_written_as_a_decimal():
+    """2026-10-01: a fresh "total amount in Belgium in US dollars" (365.631) was presented as
+    "$365,631.00" in 6 of 20 trials, the model reading the dot as a thousands separator. The grounding
+    rejected the prose, and the fallback "365.631 USD" read the same way to anyone who groups thousands
+    with a dot. The prompt says a dot in the tool result is a decimal point, and the fallback writes
+    the amount to the cent with its thousands grouped."""
+    belgium = {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["365.631"]]},
+               "calculations": [{"specification": "currency", "status": "satisfied",
+                                 "realization": "converted", "target": "USD"}]}
+    assert orchestrator._grounded_presentation(
+        belgium, "Your total for Belgium comes to $365,631.00.") == "365.63 USD"
+    assert orchestrator._grounded_presentation(
+        belgium, "Your total for Belgium comes to $365.63.") == "Your total for Belgium comes to $365.63."
+    europe = {**belgium, "answer": {"columns": ["total_gbp"], "rows": [["1914.18196"]]},
+              "calculations": [{**belgium["calculations"][0], "target": "GBP"}]}
+    assert orchestrator._terminal_fallback(europe) == "1,914.18 GBP"
+    plain = {"status": "answered", "answer": {"columns": ["avg"], "rows": [["263.96129174961291749613"]]}}
+    assert orchestrator._terminal_fallback(plain) == "263.96"
+    small = {"status": "answered", "answer": {"columns": ["share"], "rows": [["0.004567"]]}}
+    assert orchestrator._terminal_fallback(small) == "0.00457"
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert "a dot is always a decimal point, never a thousands separator" in prompt
 
 
 def test_a_currency_sign_the_turn_never_gave_is_dropped():
@@ -863,7 +887,7 @@ def test_the_model_is_told_the_currency_the_engine_verified():
         {"status": "answered", "answer": {"columns": ["avg_price"], "rows": [["250.78"]]}})
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
     assert "a figure is in a currency only when you were given one for it" in prompt
-    assert "write that currency right beside the amount" in prompt
+    assert "write that currency once, right beside the amount" in prompt
     assert "give the bare number" in prompt and "never guess or ask about a unit" in prompt
     assert "do not remark that the currency is unknown" in prompt
 
@@ -1092,7 +1116,7 @@ def test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_th
         if block.get("tool_use_id") == "empty"
     )
     assert repair["is_error"] and "question is required" in repair["content"]
-    assert result["reply"] == "1000.17"
+    assert result["reply"] == "1,000.17"
     assert "question is required" not in result["reply"]
     assert len(result["traces"]) == 1
 
@@ -1571,6 +1595,7 @@ TESTS = [
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_fallback_names_the_verified_output_currency,
+    test_a_three_decimal_amount_is_read_and_written_as_a_decimal,
     test_a_currency_sign_the_turn_never_gave_is_dropped,
     test_a_verified_currency_is_written_beside_the_amount,
     test_the_model_is_told_the_currency_the_engine_verified,
