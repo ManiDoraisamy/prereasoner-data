@@ -2253,6 +2253,101 @@ def test_world_projections_group_the_kept_rows_by_the_named_world_attribute():
             raise AssertionError(f"lowered an unsupported projection: {binding}")
 
 
+
+def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names():
+    # Chrome exploration (2026-10-01): "which city has the highest total amount in US dollars" was answered with
+    # the total of every city, and "total amount by country in US dollars" counted the orders per country. A
+    # converted SUM now lowers per an uploaded column or a world attribute, ranked or not, and both programs
+    # agree.
+    from engine.deterministic.world import lower_world_query
+
+    rows = [(1, "Paris", "EUR", 100), (2, "Lyon", "EUR", 80), (3, "London", "GBP", 50), (4, "Austin", "USD", 120)]
+    cities = {"Paris": ("Q90", "Q142"), "Lyon": ("Q456", "Q142"), "London": ("Q84", "Q145"),
+              "Austin": ("Q16559", "Q30")}
+    names = {"Q142": "France", "Q145": "United Kingdom", "Q30": "United States"}
+    rates = {"EUR": "1.25", "GBP": "2", "USD": "1"}
+
+    def run(**binding):
+        plan = lower_world_query(
+            slug="totals",
+            schema=[{"table": "orders", "name": column,
+                     "affinity": "INTEGER" if column in ("id", "amount") else "TEXT",
+                     "values": [row[index] for row in rows]}
+                    for index, column in enumerate(("id", "city", "currency", "amount"))],
+            uploaded=["orders"], foreign_keys=[],
+            joins=[{"left_table": "orders", "left_col": "city", "right_table": "city", "right_col": "qid"}],
+            bridge_name="orders connected to knowledgebase", route_table="orders", route_column="city",
+            meaning_filter=None, own_filters=[],
+            world_rate={"fact": "orders", "ccy_col": "currency", "date_col": None, "rate_col": "rate_to_usd"},
+            as_of="2026-10-01", aggregate=("SUM", "orders", "amount"), calculation=None, conversion=None,
+            reference_columns={
+                "city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)],
+                "exchange_rate": [("currency_code", SQLType.TEXT, False), ("date", SQLType.TEXT, False),
+                                  ("rate_to_usd", SQLType.REAL, False)],
+            },
+            **binding,
+        )
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        with engine.begin() as connection:
+            for namespace in ("conversation", "knowledgebase"):
+                connection.exec_driver_sql(f"ATTACH DATABASE ':memory:' AS {namespace}")
+            connection.exec_driver_sql(
+                "CREATE TABLE conversation.orders(id INTEGER, city TEXT, currency TEXT, amount INTEGER)")
+            connection.exec_driver_sql(
+                'CREATE TABLE conversation."orders connected to knowledgebase"'
+                '("column" TEXT, value TEXT, entity_qid TEXT)')
+            connection.exec_driver_sql("CREATE TABLE knowledgebase.city(qid TEXT, country TEXT)")
+            connection.exec_driver_sql(
+                "CREATE TABLE knowledgebase.exchange_rate(currency_code TEXT, date TEXT, rate_to_usd REAL)")
+            for row in rows:
+                connection.exec_driver_sql("INSERT INTO conversation.orders VALUES (?, ?, ?, ?)", row)
+            for city, (qid, country) in cities.items():
+                connection.exec_driver_sql(
+                    'INSERT INTO conversation."orders connected to knowledgebase" VALUES (?, ?, ?)',
+                    ("city", city, qid))
+                connection.exec_driver_sql("INSERT INTO knowledgebase.city VALUES (?, ?)", (qid, country))
+            for code, rate in rates.items():
+                connection.exec_driver_sql(
+                    "INSERT INTO knowledgebase.exchange_rate VALUES (?, ?, ?)", (code, "2026-10-01", rate))
+            result = DeterministicAnalysis(
+                plan, conversation_schema="conversation",
+                labels=lambda entities: {qid: names[qid] for qid in entities if qid in names},
+            ).run(connection, mode="verify", estimated_rows=len(rows))
+        assert result.mode.value == "verify"                  # both programs ran and agreed
+        return [tuple(row.values()) for row in result.output_rows()]
+
+    # Converted: Paris 125, Lyon 100, London 100, Austin 120; France 225.
+    assert run(dimension=("orders", "city"), order="DESC") == [("Paris", 125)]
+    assert sorted(run(dimension=("orders", "city"))) == [
+        ("Austin", 120), ("London", 100), ("Lyon", 100), ("Paris", 125)]
+    assert sorted(run(dimension=("city", "country"))) == [
+        ("France", 225), ("United Kingdom", 100), ("United States", 120)]
+    assert run(dimension=("city", "country"), order="ASC") == [("United Kingdom", 100)]
+
+
+def test_the_column_a_total_is_grouped_or_ranked_by_is_read_from_the_question():
+    from engine.knowledge_tables import KnowledgeTableQuery
+
+    schema = [{"table": "orders", "name": name, "affinity": affinity}
+              for name, affinity in (("order ID", "INTEGER"), ("customer", "TEXT"), ("city", "TEXT"),
+                                     ("tier", "TEXT"), ("currency", "TEXT"), ("amount", "INTEGER"))]
+
+    def dimension(question):
+        return KnowledgeTableQuery._own_dimension(question, schema)
+
+    assert dimension("which city has the highest total amount in US dollars?") == ("orders", "city", "DESC")
+    assert dimension("Which tier has the lowest total amount in euros?") == ("orders", "tier", "ASC")
+    assert dimension("total amount by tier in US dollars") == ("orders", "tier", None)
+    assert dimension("total amount by cities in US dollars") == ("orders", "city", None)
+    assert dimension("total amount for each customer in GBP") == ("orders", "customer", None)
+    # A value is not a column, a key or number column is not a dimension, and "which" without a ranking only
+    # asks which value, so none of these is grouped.
+    assert dimension("total amount ordered by Sherlock Holmes in US dollars") is None
+    assert dimension("average amount per order ID") is None
+    assert dimension("total amount in US dollars") is None
+    assert dimension("which city is London in") is None
+
+
 def test_sum_or_avg_over_a_text_column_is_refused():
     # 'What is the total population?' summed knowledgebase."city".population, which is stored as text: the Python
     # program concatenated the strings into 1426479827518622326844519127886040 and served it, and the SQL

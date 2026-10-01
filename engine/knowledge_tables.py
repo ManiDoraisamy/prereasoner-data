@@ -128,6 +128,43 @@ class KnowledgeTableQuery:
     def _numeric_multiply(left, right):
         return f"decimal_mul({left}, {right})"
 
+    @classmethod
+    def _summed(cls, agg, rate):
+        """SUM of the measure, each value converted first when the question names an output currency."""
+        measure = f'{qident(agg[1])}.{qident(agg[2])}'
+        if rate is not None:
+            measure = cls._numeric_multiply(measure, f'{qident(rate[0])}.{qident(rate[1])}')
+        return cls._numeric_aggregate("SUM", measure)
+
+    @staticmethod
+    def _own_dimension(question, sch):
+        """The uploaded text column a total is grouped or ranked by, or None.
+
+        "by tier", "per city" and "for each customer" group the total; "which city has the highest total"
+        ranks it and keeps the top value. A word names a column when it is the column's whole name, plural or
+        not, and only one column has it. -> (table, column, "DESC" | "ASC" | None)."""
+        words = re.findall(r"[a-z0-9]+", question.lower())
+        cues = set(words)
+        direction = (("ASC" if cues & ARGMIN_CUES else "DESC")
+                     if cues & (ARGMAX_CUES | ARGMIN_CUES) else None)
+        columns = [(c["table"], c["name"], name_words(c["name"])) for c in sch
+                   if c["affinity"] == "TEXT" and not is_surrogate_key(c["name"])
+                   and not is_synthetic_currency_column(c["name"])]
+
+        def named(start):
+            hits = {(table, name) for table, name, parts in columns
+                    if parts and len(words) >= start + len(parts)
+                    and words[start:start + len(parts) - 1] == parts[:-1]
+                    and wmatch(words[start + len(parts) - 1], parts[-1])}
+            return next(iter(hits)) if len(hits) == 1 else None
+
+        for index, word in enumerate(words[:-1]):
+            if word in ("by", "per", "each") and (hit := named(index + 1)):
+                return (*hit, None)
+            if word in ("which", "what") and direction and (hit := named(index + 1)):
+                return (*hit, direction)
+        return None
+
     @staticmethod
     def _calculation_dialect():
         return "sqlite_decimal"
@@ -728,12 +765,22 @@ class KnowledgeTableQuery:
         # this adapter currently owns scalar calculations with an optional world filter.
         if wtarget is not None:
             calculation_plan = None
+        # An uploaded column the total is grouped or ranked by. The registered calculation is one figure
+        # over every row: "which city has the highest total amount in US dollars" was answered with the total
+        # of every city, and "total amount by tier in US dollars" was declined (Chrome exploration, 2026-10-01).
+        own_dimension = (self._own_dimension(question, sch)
+                         if wtarget is None and agg and agg[0] == "SUM" and agg[2] else None)
+        if own_dimension is not None:
+            calculation_plan = None
+        # The rate a SUM is converted at: an uploaded rate sheet's typed edge, or the knowledgebase's daily rate.
+        rate = conversion or (("exchange_rate", world_rate["rate_col"]) if world_rate else None)
         selected_measure = None
         selected_conversion = False
         query_tail = ""
         # The shared plan's typed projection binding: its aggregate, the world attribute that groups the
-        # rows, and for an ordinal request which end of the ranking it keeps.
-        projection_aggregate, grouping, ranking = agg, None, None
+        # rows, and for an ordinal request which end of the ranking it keeps. `grain` is the column the
+        # answer is computed per, for the calculation evidence.
+        projection_aggregate, grouping, ranking, grain = agg, None, None, None
         if calculation_plan is not None:
             proj = (
                 render_scalar_expression(
@@ -752,6 +799,19 @@ class KnowledgeTableQuery:
             ))
             selected_measure = (calculation_plan.measure.table, calculation_plan.measure.name)
             selected_conversion = "currency" in calculation_plan.specification.split("+")
+        elif own_dimension is not None:
+            table, column, direction = own_dimension
+            aggregate = self._summed(agg, rate)
+            dimension = f'{qident(table)}.{qident(column)}'
+            grouping = grain = (table, column)
+            ranking = direction
+            proj = f'{dimension}, {aggregate}'
+            query_tail = f' GROUP BY {dimension}' + (f' ORDER BY {aggregate} {direction} LIMIT 1' if direction else '')
+            pdesc = ("select", f'{table}.{column} (SUM by your column)',
+                     f'ordered {direction.lower()} aggregate' if direction else 'grouped aggregate')
+            involved = list(dict.fromkeys((mtab, agg[1], table)))
+            selected_measure = (agg[1], agg[2])
+            selected_conversion = rate is not None
         elif wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
             grouping = (wtarget["table"], wtarget["col"])
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
@@ -763,17 +823,22 @@ class KnowledgeTableQuery:
             # DISTINCT projection.  Keep the aggregate in ORDER BY while returning
             # only the requested dimension, matching the natural answer shape for
             # "which continent has the highest total amount".
-            measure = f'{qident(agg[1])}.{qident(agg[2])}'
-            aggregate = self._numeric_aggregate(agg[0], measure)
+            # A SUM is converted when the question names an output currency; an AVG is not, and stays
+            # declined by the currency check rather than ranked by a sum.
+            converted = agg[0] == "SUM" and rate is not None
+            aggregate = (self._summed(agg, rate) if converted
+                         else self._numeric_aggregate(agg[0], f'{qident(agg[1])}.{qident(agg[2])}'))
             dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
             direction = "ASC" if set(question.lower().split()) & ARGMIN_CUES else "DESC"
             grouping, ranking = (wtarget["table"], wtarget["col"]), direction
+            grain = grouping
             proj = dimension
             query_tail = f' GROUP BY {dimension} ORDER BY {aggregate} {direction} LIMIT 1'
             pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} ({agg[0]} by dimension)',
                      f'ordered {direction.lower()} aggregate')
             involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
             selected_measure = (agg[1], agg[2])
+            selected_conversion = converted
         elif wtarget and agg and agg[0] in ("SUM", "AVG") and wtarget["affinity"] in ("INTEGER", "REAL"):
             operand = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
             projection_aggregate = (agg[0], wtarget["table"], wtarget["col"])   # the world measure itself
@@ -781,6 +846,20 @@ class KnowledgeTableQuery:
             pdesc = ("aggregate", f'{agg[0]}({wtarget["table"]}.{wtarget["col"]})', "agg cue + world measure named")
             involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
             selected_measure = (wtarget["table"], wtarget["col"])
+        elif (wtarget and agg and agg[0] == "SUM" and agg[2] and wtarget["affinity"] == "TEXT"
+              and re.search(r"\b(?:by|per|each)\s+" + re.escape(wtarget["word"]) + r"\b", question.lower())):
+            # "total amount by continent in US dollars": the total per world value. It fell to the projection
+            # below, which counts the rows per value (Chrome exploration, 2026-10-01). "the total currency"
+            # names no grouping: a text attribute is listed, never summed.
+            aggregate = self._summed(agg, rate)
+            dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
+            grouping = grain = (wtarget["table"], wtarget["col"])
+            proj = f'{dimension}, {aggregate}'
+            query_tail = f' GROUP BY {dimension}'
+            pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} (SUM by dimension)', "grouped aggregate")
+            involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
+            selected_measure = (agg[1], agg[2])
+            selected_conversion = rate is not None
         elif wtarget:
             projection_aggregate, grouping = None, (wtarget["table"], wtarget["col"])   # each value, not an aggregate
             proj = f'DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])}'      # SELECT DISTINCT the world attribute
@@ -1017,7 +1096,11 @@ class KnowledgeTableQuery:
                 for left, right in zip(from_cols, to_cols)
             )
             join_facts.append(JoinFact(pairs))
-        computation = ComputationEvidence((BranchEvidence(outputs, predicates, tuple(join_facts)),))
+        grain_refs = ()
+        if grain is not None:
+            entry = graph.column_map.get(grain)
+            grain_refs = (entry.ref if entry is not None else ColumnRef(grain[0], grain[1], SQLType.TEXT),)
+        computation = ComputationEvidence((BranchEvidence(outputs, predicates, tuple(join_facts), grain_refs),))
         response["computation"] = computation.record()
         assessments = assess_calculations(
             question, norm, graph, computation,

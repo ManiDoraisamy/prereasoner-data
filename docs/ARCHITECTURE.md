@@ -162,7 +162,9 @@ offline into a release-labelled daily `knowledgebase.exchange_rate` projection, 
 planner joins dated facts on the exact `(currency, date)` pair. It carries the prior published
 business-day value only during projection construction, never through request-time network or
 latest-prior SQL. The calculation verifier proves direction and aggregate arithmetic; missing
-coverage fails closed. No embedded or demo FX fixture is a production fact source.
+coverage fails closed. A converted SUM is computed per the uploaded column or world attribute the
+question groups or ranks by, and its evidence records that grain; an AVG with an output currency
+fails closed. No embedded or demo FX fixture is a production fact source.
 
 The target source-materialization design makes the database boundary explicit: physical shared
 schemas are source-owned (`wikidata` after its pending migration and the publisher schemas in

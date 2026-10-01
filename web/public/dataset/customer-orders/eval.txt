@@ -16,3 +16,5 @@ how many orders in GBP => 5
 total amount in Belgium in USD => ~365.63
 total amount in Belgium in US dollars => ~365.63
 chat: how about Belgium? => ~365.63
+# Cleveland's 3,495 USD tops every other city at any plausible rate (London 810 GBP, Paris 970 EUR).
+which city has the highest total amount in US dollars? => {"columns":["city"],"rows":[["Cleveland"]]}

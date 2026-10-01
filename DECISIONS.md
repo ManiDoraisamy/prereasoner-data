@@ -1269,3 +1269,22 @@ last `__`, so the calculated sheet showed a "currency_for_0af96a8ed622a394" colu
 `dataset_semantics.is_synthetic_currency_column`. The workbook names the column from its server-authored provenance
 (`asserted`, operation `measure currency`, input `responses.budget`): "budget currency", under the "responses" chip
 with the conversation glyph. The emitted SQL and Python keep the real name, as the executed program must.
+
+## A converted total is computed per the column the question groups or ranks by (2026-10-01)
+
+Exploring the customer-orders sheet in Chrome after the release gate, a currency target turned every grouped or
+ranked total into the wrong shape. "which city has the highest total amount in US dollars?" was answered with the
+converted total of every city, 9,540.93, as if it were the answer; "total amount by country in US dollars" counted
+the orders per country and was declined ("not every set-operation branch produces a scalable numeric aggregate"),
+and the chat explained the decline as missing exchange-rate data; "total amount by tier in US dollars" was declined
+for its grain. The world owner (`KnowledgeTableQuery.serve`) had one converted shape, the registered scalar
+calculation, and a world attribute named with a total fell to the projection that counts rows per value.
+
+The world owner now reads the uploaded column a SUM is grouped by ("by tier", "per city", "for each customer") or
+ranked by ("which city has the highest …") and lowers the converted SUM per that column, ranked or not, through
+`lower_world_query`'s existing grouped and ranked stages; a world attribute named with a total ("by continent")
+gets the total per value, converted when a currency is named. The calculation evidence records the grain, so the
+grain check accepts the grouped answer and still declines one figure over every row. An AVG with a currency target
+stays declined: the conversion stage computes a SUM. The Python materializer flattened every table whose attribute
+a row carried, and the total per uploaded "city" shared its name with the knowledgebase "city" table; it now
+flattens only the tables the view's shape names, so the group value survives in both programs.

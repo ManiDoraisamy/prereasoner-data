@@ -186,13 +186,17 @@ def materialized_python_views(
     """Flatten ORM objects into the same named columns exposed by SQL stages."""
     materialized = []
     shapes = plan.view_columns()
-    table_attributes = {table.attribute for table in plan.tables}
     for view in result.views:
         expected = shapes[view.name]
         rows = []
+        # The tables a view's rows carry are the ones its shape names. A grouped value can share a table's
+        # attribute: the total per uploaded "city" beside the knowledgebase "city" table (2026-10-01).
+        carried = [table for table in plan.tables
+                   if any(column.startswith(f"{table.name}__") for column in expected)]
+        table_attributes = {table.attribute for table in carried}
         for row in view.rows:
             values: dict[str, object] = {}
-            for table in plan.tables:
+            for table in carried:
                 if not hasattr(row, table.attribute):
                     continue
                 instance = getattr(row, table.attribute)
