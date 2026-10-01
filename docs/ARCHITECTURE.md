@@ -68,9 +68,10 @@ responses identify the requested and actual mode; the MCP adapter preserves that
 The knowledge-query adapter also preserves the own-data delegate's generated program and stages.
 Its coverage check reads the complete emitted SQL program so a filter in an earlier stage is not
 mistaken for a condition missing from the final aggregate. A word the tagger reads as a finite verb or
-an adverb ("which item sold the most units") is covered, because it says what the rows did, and so are the
-rows an aggregate is taken over ("the average score of the leads"); participles, words the data holds as
-values, and the payment and listing states are still checked.
+an adverb ("which item sold the most units") is covered, because it says what the rows did, and so are a light
+verb's participle ("made"), the rows an aggregate is taken over ("the average score of the leads") and an
+adjective an ordering grades ("the most expensive event"); other participles, words the data holds as values,
+and the payment and listing states are still checked.
 
 The own-data `TableQuery._serve_ast` winner, world planner's grounded slots, and selected
 ComposeEngine primitive records have separate lowering adapters under `engine/deterministic/`.

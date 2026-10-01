@@ -21,6 +21,13 @@ CLOSED_CLASS_POS = frozenset({"DET", "PRON", "ADP", "AUX", "CCONJ", "SCONJ", "PA
 # out: "orders were returned" names a state of the rows, and a state can be a row filter.
 FINITE_VERB_TAGS = frozenset({"VB", "VBD", "VBP", "VBZ"})
 
+# The participles of light verbs (make, do, have, take, give, get, go, come, put) carry no state of their own:
+# "how many payments were made by card" asks which payments, not whether they were made.
+LIGHT_VERB_PARTICIPLES = frozenset({"made", "done", "had", "taken", "given", "got", "gotten", "gone", "come", "put"})
+
+# Degree words: "the most expensive event", "the least popular workshop", "more expensive than 4000".
+DEGREE_MODIFIERS = frozenset({"most", "least", "more", "less"})
+
 # Negation and exclusion cues. Compose's exclusion detector reads this pattern, and a semantic search never
 # answers a question that uses one: similarity and word matching cannot express 'without a trench coat'.
 EXCLUSION_CUES = re.compile(r'exclud\w*|without|\bno\b|\bnot\b|ignoring|not counting', re.I)
@@ -42,15 +49,28 @@ def spacy_model():
 
 @lru_cache(maxsize=1024)
 def action_words(text):
-    """The lowercased words the tagger reads somewhere in ``text`` as a finite or base-form verb or an adverb.
+    """The lowercased words the tagger reads somewhere in ``text`` as a finite or base-form verb, a light verb's
+    participle, or an adverb.
 
     They say what the rows did or how ("which item sold the most units", "documents still pending"), never
-    which rows: a dropped one is not a dropped filter. Participles stay out (see FINITE_VERB_TAGS), and so do
-    the exclusion cues."""
+    which rows: a dropped one is not a dropped filter. Other participles stay out (see FINITE_VERB_TAGS), and so
+    do the exclusion cues."""
     return frozenset(
         token.text.lower() for token in spacy_model()(text or "")
-        if ((token.pos_ == "VERB" and token.tag_ in FINITE_VERB_TAGS) or token.pos_ == "ADV")
+        if ((token.pos_ == "VERB" and (token.tag_ in FINITE_VERB_TAGS or token.lower_ in LIGHT_VERB_PARTICIPLES))
+            or token.pos_ == "ADV")
         and not EXCLUSION_CUES.fullmatch(token.text)
+    )
+
+
+@lru_cache(maxsize=1024)
+def degree_words(text):
+    """The lowercased adjectives ``text`` grades: a comparative or superlative ("cheapest", "higher"), or one a
+    degree word modifies ("most expensive", "least popular"). An ordering or a comparison realizes them."""
+    return frozenset(
+        token.text.lower() for token in spacy_model()(text or "")
+        if token.pos_ == "ADJ" and (token.tag_ in {"JJR", "JJS"}
+                                    or any(child.lower_ in DEGREE_MODIFIERS for child in token.children))
     )
 
 

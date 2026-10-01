@@ -38,7 +38,9 @@ from engine.knowledge_bridges import KnowledgeBridgeMixin
 from engine.knowledge_typing import KnowledgeTypingMixin
 from engine.knowledge_tables import COUNT_CUE
 from engine.bridge import STOP
-from engine.closed_class import EXCLUSION_CUES, action_words, closed_class_words, measured_rows, noun_words
+from engine.closed_class import (
+    EXCLUSION_CUES, action_words, closed_class_words, degree_words, measured_rows, noun_words,
+)
 from engine.currency_intent import (
     currency_conversion_target, currency_conversion_words, currency_rate_attribute,
 )
@@ -647,6 +649,11 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # is still checked.
             rows = measured_rows(question, frozenset(sch_words))
             content = [word for word in content if word not in rows]
+        if content and _re.search(r'\border\s+by\b|[<>]', sqll):
+            # A graded adjective is realized by the ordering or the comparison: "what was the most expensive
+            # event" was declined over 'expensive' (Chrome exploration, 2026-10-01).
+            graded = degree_words(question)
+            content = [word for word in content if word not in graded]
         if content:
             # A place is ONE name however many words it has, and its demonym is that name plus '-n'/'-an'
             # ('European' Europe, 'North American' North America). When a span names a qid the query filters

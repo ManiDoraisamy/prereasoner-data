@@ -1233,4 +1233,11 @@ the run's last noun, so "how many leads came from France" counts leads; the rows
 ("the average score of the leads") are covered the same way; and comparatives join the comparators the gate never
 treats as places. Ten of the twelve questions are now answered correctly. "How many orders were paid in EUR?" is
 still declined, because "paid" is a constraint the data records nowhere, and "which customer placed the most
-orders" serves one of a five-way tie. The serving gate does not run in the Spider evaluation.
+orders" serves one of a five-way tie.
+
+A second batch of eleven found two more families: a light verb's participle ("how many payments were made by card",
+covered like a finite verb, since make, do, have, take, give, get, go, come and put carry no state of their own) and
+a graded adjective ("what was the most expensive event", covered when the query orders or compares). Nine of the
+eleven are answered; "average amount per event" groups by event, and "transfers signed in August" is declined
+because a month filter is not planned. Passive participles of other verbs ("orders were placed in Paris") are still
+checked, as a lifecycle state the data lacks should be. The serving gate does not run in the Spider evaluation.
