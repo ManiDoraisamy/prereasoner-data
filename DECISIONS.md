@@ -1288,3 +1288,29 @@ grain check accepts the grouped answer and still declines one figure over every 
 stays declined: the conversion stage computes a SUM. The Python materializer flattened every table whose attribute
 a row carried, and the total per uploaded "city" shared its name with the knowledgebase "city" table; it now
 flattens only the tables the view's shape names, so the group value survives in both programs.
+
+In production the owner's saved "tier" reference sheet sits beside the orders' own tier column, and "total amount by
+tier in US dollars" was declined as ambiguous (2026-10-02). When more than one sheet has the column, the measure's
+own sheet now answers; the reference column is the same grain through its key.
+
+## A world type or a place the query never realized is never answered past (2026-10-01)
+
+The same exploration on the bank, restaurant and hospital sheets found answers to a different question served as
+answers. "which country has the most deposits?" was answered "JPMorgan Chase", the top bank; "total amount by
+country" on the catering sheet was one total over every restaurant; "which bank has the most deposits in Europe?"
+ranked every bank in the world. The coverage gate exempts world type nouns ("country", "cities") because they
+usually name the rows ("total amount for cities in France"), its fuzzy place check knows only countries and cities,
+and it served the answer whenever no rephrasing was found.
+
+A world type the question asks for ("which country", "by country", "per city") is now a dropped constraint unless a
+column of that name or the query itself realizes it, and a word that names a country, continent, city or state
+exactly is dropped when the query never filters on it. Either one clarifies even without a rephrasing. These
+sheets answer a country filter on the entity ("total deposits for banks in Switzerland") but not its country as a
+dimension or a continent; those questions are now declined rather than answered wrongly.
+
+## A count per world value counts the rows of each value (2026-10-02)
+
+"how many attendees per country" on the workshops sheet answered 6, the number of countries: the world owner read
+every COUNT with a world column as "how many countries". A count whose world word follows "by", "per" or "each" now
+takes the projection that counts the rows holding each value (Germany 3, Portugal 2, …); "how many countries are
+the customers in" still counts the distinct countries. `tests.test_world` checks both on the same sheet.

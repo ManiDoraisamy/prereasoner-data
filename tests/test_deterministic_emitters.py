@@ -1700,6 +1700,51 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
             measured, "Which category brought in the most revenue in France?", sales, ranked) == ["france"]
 
 
+
+def test_a_place_or_world_type_the_query_never_realized_is_dropped():
+    """Chrome exploration (2026-10-01) on the bank, restaurant and hospital sheets: "which country has the most
+    deposits" ranked the banks, "total amount by country" summed every restaurant into one total, and "which bank
+    has the most deposits in Europe" ranked every bank in the world. A world type the question asks for is
+    dropped unless a column of that name or the query realizes it, and so is a place named exactly that the
+    query never filtered on, continents included."""
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    import engine.knowledge_query as knowledge_query
+    from engine.knowledge_query import KnowledgeQuery
+
+    adapter = SimpleNamespace(
+        _encode=lambda words: [[0] for _ in words],
+        _word_qid=lambda word: {"europe": "Q46", "france": "Q142"}.get(word),
+        _phrase_qids=lambda phrases: {},
+        _best_world_entity=lambda words: None,
+    )
+    deposits = [{"table": "deposits", "name": "bank", "affinity": "TEXT", "values": ["UBS", "Barclays"]},
+                {"table": "deposits", "name": "deposits", "affinity": "INTEGER", "values": [900, 500]}]
+    ranked_banks = 'SELECT "deposits"."bank" FROM "deposits" ORDER BY "deposits"."deposits" DESC LIMIT 1'
+
+    def dropped(question, schema, sql):
+        return KnowledgeQuery._uncovered(adapter, question, schema, sql)
+
+    with patch.object(knowledge_query, "closed_class_words", wraps=knowledge_query.closed_class_words):
+        assert dropped("Which country has the most deposits?", deposits, ranked_banks) == ["country"]
+        assert dropped("total deposits by country", deposits,
+                       'SELECT SUM("deposits"."deposits") FROM "deposits"') == ["country"]
+        assert dropped("Which bank has the most deposits in Europe?", deposits, ranked_banks) == ["europe"]
+        # Realized: a world join brings the country, and the continent filter holds Europe's QID.
+        assert dropped("Which country has the most deposits?", deposits,
+                       'SELECT "bank__country" AS "country" FROM "query_total" ORDER BY "sum" DESC LIMIT 1') == []
+        assert dropped("Which bank has the most deposits in Europe?", deposits,
+                       ranked_banks.replace(" ORDER", " WHERE \"country__continent\" = 'Q46' ORDER")) == []
+        # A column of that name answers it, and a type noun that only names the rows is not asked for.
+        orders = [{"table": "orders", "name": "city", "affinity": "TEXT", "values": ["Paris", "Lyon"]},
+                  {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [12, 14]}]
+        assert dropped("Which city has the most orders?", orders,
+                       'SELECT "orders"."city" FROM "orders" GROUP BY "orders"."city" '
+                       'ORDER BY COUNT(*) DESC LIMIT 1') == []
+        assert dropped("total amount for cities in France", orders,
+                       'SELECT SUM("amount") FROM "query_filtered" WHERE "city__country" = \'Q142\'') == []
+
+
 def test_resolved_secondary_relationship_returns_real_knowledgebase_objects():
     from engine.deterministic.plan import JunctionValue
     from engine.deterministic.runtime import (
@@ -2346,6 +2391,13 @@ def test_the_column_a_total_is_grouped_or_ranked_by_is_read_from_the_question():
     assert dimension("average amount per order ID") is None
     assert dimension("total amount in US dollars") is None
     assert dimension("which city is London in") is None
+    # A saved reference sheet with the same column: the measure's own sheet answers, and without a measure sheet
+    # the two stay ambiguous.
+    referenced = schema + [{"table": "tier", "name": "tier", "affinity": "TEXT"},
+                           {"table": "tier", "name": "benefits", "affinity": "TEXT"}]
+    assert KnowledgeTableQuery._own_dimension("total amount by tier in US dollars", referenced, "orders") == (
+        "orders", "tier", None)
+    assert KnowledgeTableQuery._own_dimension("total amount by tier in US dollars", referenced) is None
 
 
 def test_sum_or_avg_over_a_text_column_is_refused():

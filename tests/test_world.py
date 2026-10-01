@@ -237,6 +237,12 @@ def main():
     listed = {str(row[0]) for row in (which.get("result") or {}).get("rows") or []}
     ok("type noun: 'which countries are the customers in' lists France, Germany and Japan",
        listed == {"France", "Germany", "Japan"}, f"rows={(which.get('result') or {}).get('rows')}")
+    # Contrastive: a count per country counts the rows of each one; it answered 3, the number of countries
+    # (the workshops sheet's "how many attendees per country" answered 6, Chrome exploration 2026-10-02).
+    per = served(sub, wr.serve, [CUST], "how many customers per country", sub)
+    counted = {(str(row[0]), str(row[-1])) for row in (per.get("result") or {}).get("rows") or []}
+    ok("type noun: 'how many customers per country' counts each country's customers",
+       counted == {("France", "2"), ("Germany", "1"), ("Japan", "1")}, f"rows={(per.get('result') or {}).get('rows')}")
 
     # --- (K) a comparison binds the attribute it names (2026-09-28) ---
     # 'What is the total sales in big cities with population over 1,000,000?' was served as an empty table of

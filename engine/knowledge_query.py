@@ -181,6 +181,13 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
 })
 
 
+# The world types a question can ask for by name, each with the singular a column or a world join shows.
+_WORLD_TYPE_WORDS = {
+    "country": "country", "countries": "country", "city": "city", "cities": "city",
+    "continent": "continent", "continents": "continent", "state": "state", "states": "state",
+}
+
+
 # Payment and listing states. 'paid' and 'listed' are prose in "the total amount paid" and "payments are
 # listed", and a row filter where the data records such a state; _uncovered decides which.
 _STATUS_WORDS = frozenset({"paid", "listed"})
@@ -585,6 +592,14 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # literally in the emitted SQL. A column actually named "value" is already covered by
             # sch_words, so this only closes the operator-language false-positive.
             CUE |= {"distinct", "unique", "different", "value", "values"}
+        # A world type the question asks for ("which country", "by country") is realized only by a column of that
+        # name or by a world join that brings one: "which country has the most deposits" ranked the banks, and
+        # "total amount by country" summed every restaurant into one total (Chrome exploration, 2026-10-01). A
+        # type noun that only names the rows ("total amount for cities in France") stays exempt.
+        asked = [word for word in _WORLD_TYPE_WORDS
+                 if _re.search(r"\b(?:which|what|by|per|each)\s+" + word + r"\b", question.lower())
+                 and word not in sch_words and _WORLD_TYPE_WORDS[word] not in sch_words
+                 and _WORLD_TYPE_WORDS[word] not in sqll]
         # Closed-class words carry grammar, not a constraint: 'everything in France' drops nothing. Negation and
         # exclusion cues are never closed-class here (engine.closed_class), so a dropped 'not' is still caught.
         closed = closed_class_words(question)
@@ -677,7 +692,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                        for word in spans[phrase]}
             content = [word for word in content if word not in covered]
         if not content:
-            return []
+            return asked
         nonid = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])
                  and c.get("qvec") is not None]
         uv = self._encode(content) if nonid else None
@@ -696,6 +711,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 # A measure word the aggregate realizes, as the docstring says; the town check below used to
                 # come first, and "which category brought in the most revenue" was declined (2026-10-01).
                 continue
+            if wq:
+                # A place named exactly that the query never filtered on. The fuzzy check below knows only
+                # countries and cities, so "which bank has the most deposits in Europe" ranked every bank in the
+                # world (Chrome exploration, 2026-10-01).
+                dropped.append(w)
+                continue
             ent = self._best_world_entity([w])                   # also catches continents/currencies _best_world_entity
             #                                                      doesn't resolve (it only knows country/city).
             if ent:
@@ -704,7 +725,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 continue                                     # entity present in the SQL -> used
             if not has_agg and measure(i):                   # a measure word, but no aggregate applied -> dropped
                 dropped.append(w)
-        return dropped
+        return asked + dropped
 
     def _phrase_qids(self, phrases):
         """The place qids each phrase names exactly (the resolver's exact-name lookup), in one lookup."""
@@ -900,10 +921,16 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     c = self._clarify(question, norm, fks, sch)
                 except Exception as e:                       # noqa: BLE001
                     print(f"clarify failed: {type(e).__name__}", flush=True); c = None
-                if c and c["proposed"].strip().lower() != (question or "").strip().lower():
+                rephrased = bool(c) and c["proposed"].strip().lower() != (question or "").strip().lower()
+                # A world type or an exactly named place the query never realized is a dropped constraint whether
+                # or not a rephrasing exists: "which country has the most deposits" served the top bank because
+                # none was found (Chrome exploration, 2026-10-01).
+                firm = [word for word in dropped if word in _WORLD_TYPE_WORDS or self._word_qid(word)]
+                if rephrased or firm:
                     return {"question": question, "as_of": as_of, "clarify": True,
-                            "original_sql": (res or {}).get("sql"), "proposed": c["proposed"],
-                            "bindings": c["bindings"], "dropped": dropped,
+                            "original_sql": (res or {}).get("sql"),
+                            "proposed": c["proposed"] if rephrased else "",
+                            "bindings": c["bindings"] if rephrased else [], "dropped": dropped,
                             "calculations": calculations,
                             "computation": (res or {}).get("computation"),
                             "currency": currency,

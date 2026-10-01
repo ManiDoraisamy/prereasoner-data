@@ -137,12 +137,14 @@ class KnowledgeTableQuery:
         return cls._numeric_aggregate("SUM", measure)
 
     @staticmethod
-    def _own_dimension(question, sch):
+    def _own_dimension(question, sch, measure_table=None):
         """The uploaded text column a total is grouped or ranked by, or None.
 
         "by tier", "per city" and "for each customer" group the total; "which city has the highest total"
         ranks it and keeps the top value. A word names a column when it is the column's whole name, plural or
-        not, and only one column has it. -> (table, column, "DESC" | "ASC" | None)."""
+        not. When more than one sheet has it, the measure's own sheet answers: a saved "tier" reference beside
+        the orders' tier column made "total amount by tier in US dollars" ambiguous (2026-10-02).
+        -> (table, column, "DESC" | "ASC" | None)."""
         words = re.findall(r"[a-z0-9]+", question.lower())
         cues = set(words)
         direction = (("ASC" if cues & ARGMIN_CUES else "DESC")
@@ -156,6 +158,8 @@ class KnowledgeTableQuery:
                     if parts and len(words) >= start + len(parts)
                     and words[start:start + len(parts) - 1] == parts[:-1]
                     and wmatch(words[start + len(parts) - 1], parts[-1])}
+            if len(hits) > 1:
+                hits = {hit for hit in hits if hit[0] == measure_table}
             return next(iter(hits)) if len(hits) == 1 else None
 
         for index, word in enumerate(words[:-1]):
@@ -768,7 +772,7 @@ class KnowledgeTableQuery:
         # An uploaded column the total is grouped or ranked by. The registered calculation is one figure
         # over every row: "which city has the highest total amount in US dollars" was answered with the total
         # of every city, and "total amount by tier in US dollars" was declined (Chrome exploration, 2026-10-01).
-        own_dimension = (self._own_dimension(question, sch)
+        own_dimension = (self._own_dimension(question, sch, agg[1])
                          if wtarget is None and agg and agg[0] == "SUM" and agg[2] else None)
         if own_dimension is not None:
             calculation_plan = None
@@ -812,7 +816,10 @@ class KnowledgeTableQuery:
             involved = list(dict.fromkeys((mtab, agg[1], table)))
             selected_measure = (agg[1], agg[2])
             selected_conversion = rate is not None
-        elif wtarget and agg and agg[0] == "COUNT":            # "how many countries …" counts DISTINCT world values,
+        elif (wtarget and agg and agg[0] == "COUNT"            # "how many countries …" counts DISTINCT world values;
+              and not re.search(r"\b(?:by|per|each)\s+" + re.escape(wtarget["word"]) + r"\b", question.lower())):
+            # "how many attendees per country" counts the rows per value, the projection below (it answered 6, the
+            # number of countries, in the Chrome exploration of 2026-10-02).
             grouping = (wtarget["table"], wtarget["col"])
             proj = f'COUNT( DISTINCT {qident(wtarget["table"])}.{qident(wtarget["col"])} )'   # not join rows
             pdesc = ("aggregate", f'COUNT(DISTINCT {wtarget["table"]}.{wtarget["col"]})', "count cue + world column named")
