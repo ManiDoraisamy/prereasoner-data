@@ -76,11 +76,12 @@ def measure_participles(text, measures):
 @lru_cache(maxsize=1024)
 def degree_words(text):
     """The lowercased adjectives ``text`` grades: a comparative or superlative ("cheapest", "higher"), or one a
-    degree word modifies ("most expensive", "least popular"). An ordering or a comparison realizes them."""
+    degree word modifies ("most expensive", "least popular"). An ordering or a comparison realizes them. A named
+    entity is a place, not a grade: "German" in "the most German leads" is a filter."""
     return frozenset(
         token.text.lower() for token in spacy_model()(text or "")
-        if token.pos_ == "ADJ" and (token.tag_ in {"JJR", "JJS"}
-                                    or any(child.lower_ in DEGREE_MODIFIERS for child in token.children))
+        if token.pos_ == "ADJ" and not token.ent_type_
+        and (token.tag_ in {"JJR", "JJS"} or any(child.lower_ in DEGREE_MODIFIERS for child in token.children))
     )
 
 

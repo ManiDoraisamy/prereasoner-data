@@ -1250,6 +1250,12 @@ is covered when the query aggregates; the measure test now comes first. And a pa
 batches, 25 of the 30 natural questions are now answered correctly. The serving gate does not run in the Spider
 evaluation.
 
+The release gate's exploration found one more: "which country has the most leads?" was declined over "leads",
+although the query ranked the countries by `COUNT(*)`; "highest number of leads" passed because "number of" is a
+count cue. The noun after "most", "fewest" or "least" is now the counted noun when the query orders by `COUNT(`, as
+after "how many". The case also showed that the graded-adjective rule read the demonym in "the most German leads" as
+a grade, so a query that never filtered Germany passed the gate; a named entity is no longer a graded adjective.
+
 ## A stated currency is never shown by its private name (2026-10-01)
 
 After "This is in euros." dataset semantics adds a private column, `__currency_for_<hash>`, that holds the stated

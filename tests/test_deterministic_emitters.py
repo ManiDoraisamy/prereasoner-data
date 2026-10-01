@@ -1640,6 +1640,15 @@ def test_a_verb_or_adverb_says_what_the_rows_did_not_which_rows():
         # A place the query did not filter on is still dropped.
         assert dropped("How many leads came from Spain?", leads,
                        "SELECT COUNT(*) FROM responses WHERE country = 'France'") == ["spain"]
+        # The noun a ranking by the count takes the most or fewest of is what COUNT counts: "which country has
+        # the most leads" was declined over 'leads'. Ranked by another aggregate it is still checked, and so is
+        # a word before it.
+        by_count = "SELECT country FROM responses GROUP BY country ORDER BY COUNT(*) {} LIMIT 1"
+        assert dropped("Which country has the most leads?", leads, by_count.format("DESC")) == []
+        assert dropped("Which country has the fewest leads?", leads, by_count.format("ASC")) == []
+        ranked_score = "SELECT country FROM responses GROUP BY country ORDER BY SUM(score) DESC LIMIT 1"
+        assert dropped("Which country has the most leads?", leads, ranked_score) == ["leads"]
+        assert dropped("Which country has the most German leads?", leads, by_count.format("DESC")) == ["german"]
         # The rows an aggregate is taken over are covered like a counted noun; a word before them is not.
         scored = leads + [{"table": "responses", "name": "score", "affinity": "INTEGER", "values": [74, 86]}]
         assert dropped("What is the average score of the leads?", scored,

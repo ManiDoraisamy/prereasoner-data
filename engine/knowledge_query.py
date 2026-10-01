@@ -632,9 +632,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             # 'number of', up to the first grammar word. 'how many leads from Europe' was declined because
             # 'leads' sat 0.85 from the city of Leeds; in 'how many German leads' 'German' is still checked.
             # The head is the run's last noun, so 'how many leads came from France' counts leads, not 'came'.
+            # A ranking by the count reads the same way: "which country has the most leads" ranks by COUNT(*) and
+            # was declined over 'leads' (Chrome exploration, 2026-10-01).
+            cues = COUNT_CUE + (r"|most|fewest|least" if _re.search(r'\border\s+by\s+count\s*\(', sqll) else "")
             low = question.lower()
             nouns = noun_words(question)
-            for cue in _re.finditer(r"\b(?:" + COUNT_CUE + r")\s+", low):
+            for cue in _re.finditer(r"\b(?:" + cues + r")\s+", low):
                 run = []
                 for token in _re.findall(r"[a-z]+|[.,;:!?]", low[cue.end():]):
                     if token in closed or not token.isalpha() or len(run) == 4:
