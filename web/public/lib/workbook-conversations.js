@@ -203,6 +203,14 @@ function saveConvState(){                                     // persist the sna
 function restoredSheetExecution(st,s){
   return normalizedExecution((s&&s.execution)||((st&&st.v<3)&&st.execution));
 }
+// A derived sheet takes its step's current name when a snapshot is restored: one saved before a projection had a
+// name showed the engine's label, which carries the decomposition leaf's id ("purch result", 2026-10-01). A
+// description that only repeated that label is written again; any other saved description stands.
+function restoredStep(s){
+  if(s.cls!=='deriv'||!s.op) return {name:s.name, desc:s.desc||''};
+  const view={op:s.op, label:s.name, sql:s.sql||'', column_provenance:s.columnProvenance||[]};
+  return {name:stepLabel(view), desc:(!s.desc||s.desc===s.name)?stepDesc(view):s.desc};
+}
 function restoreConvState(st){                               // render a stored snapshot; returns true if it took over (no re-run)
   if(!st||![1,2,3].includes(st.v)||!Array.isArray(st.turns)||!st.turns.length) return false;
   if(st.cid && convId() && st.cid!==convId()) return false;  // stale snapshot from another conversation
@@ -215,8 +223,8 @@ function restoreConvState(st){                               // render a stored 
     return false;
   }
   noteExecution(st.execution);                               // v1/v2 fallback; v3 stores provenance per sheet
-  (st.sheets||[]).forEach(s=>{ BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:s.name, cols:s.cols||[],
-      rows:s.rows||[], sql:s.sql||'', python:s.python||'', desc:s.desc||'', result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
+  (st.sheets||[]).forEach(s=>{ const step=restoredStep(s); BOOK.push({id:s.id||('r'+BOOK.length), cls:s.cls, name:step.name, cols:s.cols||[],
+      rows:s.rows||[], sql:s.sql||'', python:s.python||'', desc:step.desc, result:!!s.result, columnProvenance:s.columnProvenance||[], saved:!!s.saved, dirty:!!s.dirty,
       viewName:s.viewName||'',op:s.op||'',inputs:s.inputs||[],section:s.section||null,sectionLabel:s.sectionLabel||'',
       sectionQuestion:s.sectionQuestion||'',sectionInputs:s.sectionInputs||[],isOutput:!!s.isOutput,
       execution:restoredSheetExecution(st,s),cellAI:Array.isArray(s.cellAI)?new Set(s.cellAI):undefined});

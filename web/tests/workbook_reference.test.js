@@ -233,6 +233,23 @@ const checks = `
     ]}))throw new Error('malformed legacy snapshot was treated as valid');
     if(JSON.stringify(BOOK)!==beforeRestore)throw new Error('failed restore partially mutated the workbook');
 
+    // A restored snapshot names each derived sheet as the rail does now: a projection saved before it had a
+    // name showed "purch result" (complex-promotions-xlsx, 2026-10-01); other saved descriptions stand.
+    const keepBook = BOOK, keepPaint = paint;
+    BOOK = []; paint = () => {};
+    if(!restoreConvState({v:3,turns:[{q:'pairs',reply:'two gaps'}],sheets:[
+      {id:'p',cls:'deriv',op:'select',name:'purch result',desc:'purch result',cols:['customer_name'],rows:[['Cara']]},
+      {id:'f',cls:'deriv',op:'filter',name:'filtered',desc:'Kept only the rows where city is Paris.',cols:['city'],rows:[['Paris']]},
+      {id:'i',cls:'input',name:'orders',cols:['city'],rows:[['Paris']]},
+    ]}))throw new Error('a valid snapshot was not restored');
+    const restoredNames = BOOK.map(sheet => [sheet.name, sheet.desc]);
+    if (JSON.stringify(restoredNames) !== JSON.stringify([
+      ['selected columns', 'Kept the columns the answer needs.'],
+      ['filtered', 'Kept only the rows where city is Paris.'],
+      ['orders', ''],
+    ])) throw new Error('restored sheet names: ' + JSON.stringify(restoredNames));
+    BOOK = keepBook; paint = keepPaint;
+
     // The /chat body's reply replaces a streamed prefix, and a settled turn is saved again with it
     // (a first reply was saved as "Your rest", 2026-10-01). An empty body reply changes nothing.
     const keepSave = saveConvState, keepRender = renderRail;
