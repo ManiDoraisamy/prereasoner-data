@@ -220,6 +220,13 @@ def _trim_for_model(shaped: dict[str, Any]) -> dict[str, Any]:
     out = {"status": shaped.get("status")}
     if shaped.get("answer") is not None:
         out["answer"] = shaped["answer"]
+        # A one-number answer as the reply should write it. Reading the raw scalar, the model wrote
+        # "$365,631.00" for 365.631 and "$70,401.50" for 70401 after an earlier "$37,471.50"
+        # (2026-10-01); the grounding check then replaced each reply with the bare number.
+        rows = shaped["answer"].get("rows") if isinstance(shaped["answer"], dict) else None
+        if (isinstance(rows, list) and len(rows) == 1 and isinstance(rows[0], list) and len(rows[0]) == 1
+                and re.fullmatch(r"[-+]?\d+(?:\.\d+)?", str(rows[0][0]).strip())):
+            out["value"] = _readable_scalar(rows[0][0], bool(_output_currency(shaped)))
     # The rows the answer covers, as its filter steps name them. The final SQL alone hides them: the
     # reply to a total that had also kept only GBP rows said "For all of Europe" (2026-09-29).
     filters = [str(view["label"]) for view in shaped.get("views") or ()
@@ -435,18 +442,19 @@ def _terminal_fallback(shaped: dict[str, Any]) -> str:
 
 
 def _readable_scalar(value: Any, money: bool) -> str:
-    """The engine's scalar as a reply writes it: thousands grouped, and an amount of money or a
-    fraction above one to two decimals (the workbook keeps the exact value). The fallback for a
-    Belgium total in US dollars was "365.631 USD", which reads as 365,631 dollars wherever a dot
-    groups thousands; the presentation model had read it that way itself (2026-10-01)."""
+    """The engine's scalar as a reply writes it: thousands grouped, an amount of money to the cent,
+    and any other fraction above one to two decimals (the workbook keeps the exact value). The
+    fallback for a Belgium total in US dollars was "365.631 USD", which reads as 365,631 dollars
+    wherever a dot groups thousands; the presentation model had read it that way itself, and wrote
+    a whole-dollar total as "$70,401.50" after an earlier "$37,471.50" (2026-10-01)."""
     text = str(value).strip()
     if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", text):
         return text
     number = Decimal(text)
+    if money or ("." in text and abs(number) >= 1):
+        return f"{number.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
     if "." not in text:
         return f"{number:,}"
-    if money or abs(number) >= 1:
-        return f"{number.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
     return f"{number:.3g}"
 
 

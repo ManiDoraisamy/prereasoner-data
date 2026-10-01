@@ -1150,14 +1150,19 @@ does not see. Each one is fixed where it is produced:
   "Confirmed —" (8 of 8 in the customer-orders gate conversation); the presentation round is now told to answer on its
   own, which took a transcript that already held such replies from 4 of 8 to 1 of 8.
 
-## A dot in a tool result is a decimal point; a reply names its currency once (2026-10-01)
+## A one-number answer reaches the model as the reply writes it; a currency is named once (2026-10-01)
 
 The final gate pass answered "total amount in Belgium in US dollars" (365.631) with "$365.63 in US dollars" and a
-Europe total with "£1,914.18 in GBP". Replaying the Belgium question as the first of a conversation found a worse
-defect: claude-sonnet-5 read "365.631" as 365,631 and wrote "$365,631.00" in 10 of 30 trials on the production prompt.
-The grounding check rejected those sentences, and the fallback sent "365.631 USD", which reads the same way wherever a
-dot groups thousands. The prompt now says a dot in the tool result is always a decimal point (2 of 30 trials misread
-it), and the fallback writes the scalar with its thousands grouped and an amount of money, or a fraction above one, to
-two decimals ("365.63 USD", "70,401 USD"); the workbook keeps the exact value. The prompt also says to write a
-currency once: after a France reply ending "after converting everything to US dollars", 9 of 10 Europe replies
-repeated the currency in words, and 2 of 10 with the new prompt.
+Europe total with "£1,914.18 in GBP". Replays showed the model also misreads the raw scalar. As the first question of
+a conversation it wrote the Belgium total as "$365,631.00" in 10 of 30 replays on the production prompt, reading the
+dot as a thousands separator. A prompt sentence saying the dot is a decimal point (`65597c1`) cut that to 2 of 30, but
+the gate then found formfacade-leads answering "70,401 USD": after an earlier "$37,471.50", the model wrote the
+whole-dollar Europe total 70401 as "$70,401.50" in 16 of 20 replays (0 of 20 before). Each time the grounding check
+replaced the reply with the bare number.
+
+The chat now hands the model a one-number answer as the reply writes it. The tool result carries `value` ("365.63",
+"70,401.00", "263.96"): thousands grouped, money to the cent, any other fraction above one to two decimals. The prompt
+says to use it exactly, adding only its currency. On replay neither case was misread (0 of 18 each), and the fallback
+writes the same string ("365.63 USD", not "365.631 USD"); the workbook keeps the exact value. The prompt also says to
+write the currency once, beside the amount. A reply may still say the amounts were converted ("£1,914.18 after
+converting everything to British pounds"), which tells the user how the total was reached.

@@ -745,38 +745,52 @@ def test_fallback_names_the_verified_output_currency():
                 "calculations": [{"specification": "currency", "status": status,
                                   "realization": realization, "target": target}]}
 
-    assert orchestrator._terminal_fallback(shaped()) == "70,401 USD"
-    assert orchestrator._terminal_fallback(shaped(realization="identity", target="gbp")) == "70,401 GBP"
+    assert orchestrator._terminal_fallback(shaped()) == "70,401.00 USD"
+    assert orchestrator._terminal_fallback(shaped(realization="identity", target="gbp")) == "70,401.00 GBP"
     assert orchestrator._terminal_fallback(shaped(realization="currency_filter")) == "70,401"
     assert orchestrator._terminal_fallback(shaped(status="ambiguous")) == "70,401"
     assert orchestrator._terminal_fallback(shaped(target="dollars")) == "70,401"
     assert orchestrator._terminal_fallback({"status": "answered", "answer": {"rows": [[70401]]}}) == "70,401"
-    assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70,401 USD"
+    assert orchestrator._grounded_presentation(shaped(), "It comes to about seventy thousand dollars.") == "70,401.00 USD"
     assert orchestrator._grounded_presentation(shaped(), "Converted, it comes to $70,401.") == "Converted, it comes to $70,401."
 
 
-def test_a_three_decimal_amount_is_read_and_written_as_a_decimal():
-    """2026-10-01: a fresh "total amount in Belgium in US dollars" (365.631) was presented as
-    "$365,631.00" in 6 of 20 trials, the model reading the dot as a thousands separator. The grounding
-    rejected the prose, and the fallback "365.631 USD" read the same way to anyone who groups thousands
-    with a dot. The prompt says a dot in the tool result is a decimal point, and the fallback writes
-    the amount to the cent with its thousands grouped."""
-    belgium = {"status": "answered", "answer": {"columns": ["total_usd"], "rows": [["365.631"]]},
-               "calculations": [{"specification": "currency", "status": "satisfied",
-                                 "realization": "converted", "target": "USD"}]}
+def test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it():
+    """2026-10-01: from the raw scalar, the presentation model wrote a fresh Belgium total in US
+    dollars (365.631) as "$365,631.00" in 10 of 30 replays, reading the dot as a thousands separator,
+    and a whole-dollar Europe total (70401) as "$70,401.50" in 16 of 20 after an earlier reply of
+    "$37,471.50". The grounding check replaced each with the bare number. The tool result now carries
+    `value`, the number as the reply writes it, and the fallback writes the same string."""
+    def converted(value, target="USD"):
+        return {"status": "answered", "answer": {"columns": ["total"], "rows": [[value]]},
+                "calculations": [{"specification": "currency", "status": "satisfied",
+                                  "realization": "converted", "target": target}]}
+
+    belgium, europe, leads = converted("365.631"), converted("1914.18196", "GBP"), converted(70401)
+    assert orchestrator._trim_for_model(belgium)["value"] == "365.63"
+    assert orchestrator._trim_for_model(europe)["value"] == "1,914.18"
+    assert orchestrator._trim_for_model(leads)["value"] == "70,401.00"
+    plain = {"status": "answered", "answer": {"columns": ["avg"], "rows": [["263.96129174961291749613"]]}}
+    assert orchestrator._trim_for_model(plain)["value"] == "263.96"
+    assert orchestrator._trim_for_model({"status": "answered", "answer": {"rows": [[6]]}})["value"] == "6"
+    small = {"status": "answered", "answer": {"columns": ["share"], "rows": [["0.004567"]]}}
+    assert orchestrator._trim_for_model(small)["value"] == "0.00457"
+    for answer in ({"rows": [["Ava"]]}, {"rows": [[1], [2]]}, {"rows": [[1, 2]]}, {"rows": []}):
+        assert "value" not in orchestrator._trim_for_model({"status": "answered", "answer": answer})
+
     assert orchestrator._grounded_presentation(
         belgium, "Your total for Belgium comes to $365,631.00.") == "365.63 USD"
     assert orchestrator._grounded_presentation(
         belgium, "Your total for Belgium comes to $365.63.") == "Your total for Belgium comes to $365.63."
-    europe = {**belgium, "answer": {"columns": ["total_gbp"], "rows": [["1914.18196"]]},
-              "calculations": [{**belgium["calculations"][0], "target": "GBP"}]}
+    assert orchestrator._grounded_presentation(
+        leads, "Your total budget for Europe comes to $70,401.50.") == "70,401.00 USD"
+    assert orchestrator._grounded_presentation(
+        leads, "Your total budget for Europe comes to $70,401.00.") == "Your total budget for Europe comes to $70,401.00."
     assert orchestrator._terminal_fallback(europe) == "1,914.18 GBP"
-    plain = {"status": "answered", "answer": {"columns": ["avg"], "rows": [["263.96129174961291749613"]]}}
     assert orchestrator._terminal_fallback(plain) == "263.96"
-    small = {"status": "answered", "answer": {"columns": ["share"], "rows": [["0.004567"]]}}
-    assert orchestrator._terminal_fallback(small) == "0.00457"
     prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
-    assert "a dot is always a decimal point, never a thousands separator" in prompt
+    assert "a one-number result comes with `value`" in prompt
+    assert "use it exactly as given, adding only its currency" in prompt
 
 
 def test_a_currency_sign_the_turn_never_gave_is_dropped():
@@ -930,7 +944,7 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
     assert ("the same list or ranking asked again with other cutoffs, or ranked by another measure, is "
             "also `modify`") in prompt
     assert "another aggregate of a column (the highest instead of the average) is a new analysis" in prompt
-    assert "write large numbers with thousands separators" in prompt
+    assert "write any other large number with thousands separators" in prompt
     # A longer name is cut to the engine's limit with a hash ("top customers never bought top
     # 5e0be233"), so the model is told the limit.
     slug = next(tool for tool in orchestrator.CLAUDE_TOOLS
@@ -1595,7 +1609,7 @@ TESTS = [
     test_terminal_engine_status_uses_one_query_and_a_tool_disabled_presentation,
     test_terminal_fallback_preserves_the_engine_outcome,
     test_fallback_names_the_verified_output_currency,
-    test_a_three_decimal_amount_is_read_and_written_as_a_decimal,
+    test_a_one_number_answer_reaches_the_model_as_the_reply_writes_it,
     test_a_currency_sign_the_turn_never_gave_is_dropped,
     test_a_verified_currency_is_written_beside_the_amount,
     test_the_model_is_told_the_currency_the_engine_verified,
