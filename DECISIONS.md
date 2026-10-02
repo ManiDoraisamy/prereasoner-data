@@ -1362,3 +1362,12 @@ The name a new analysis takes already drops the cell values the question names (
 question "How many deliveries weigh more than 3 kg?" created "deliveries over 3kg", which would head a later "more
 than 5 kg" answer. A word of the proposed name that holds a number the question states is a threshold, a cutoff or a
 date, and is dropped with the comparison before it: "deliveries", "top customers by spend", "revenue".
+
+## A repeated question answered with the user's data from memory is recalculated (2026-10-02)
+
+A message that repeats an earlier question word for word is a recalculation when the model answers it with a number
+from the transcript (2026-09-24). In the existing-conversation gate, "how about customers from Lyon?" was answered
+"the products that haven't sold are Alpha, Beta, Delta, and Omega" in two seconds, with no engine call and no rows:
+a list has no number. The reply to a repeated question now counts as recalled when it states a number or a value of
+the uploaded data, and the correction round forces the query call as before; "You're welcome!" to a repeated "thanks"
+still stands.

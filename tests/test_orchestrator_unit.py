@@ -423,7 +423,7 @@ def test_presentation_that_states_the_engine_value_in_prose_is_kept():
         ) == orchestrator._readable_scalar(value, False)
 
 
-def _answered_from_memory_turn(user_message, history, memory_reply, catalog=()):
+def _answered_from_memory_turn(user_message, history, memory_reply, catalog=(), tables=None):
     """A turn whose model first answers ``memory_reply`` without the tool, calls the tool when the
     correction arrives, then presents. Returns (result, model_calls, engine_calls); each model call
     records the kwargs of its round."""
@@ -462,7 +462,7 @@ def _answered_from_memory_turn(user_message, history, memory_reply, catalog=()):
                 patch.object(orchestrator.engine_client, "call_query", query), \
                 patch.object(orchestrator.engine_client, "call_analysis_catalog", get_catalog):
             return await orchestrator._run_turn(
-                user_message, [{"name": "orders", "data": "country,amount\nBelgium,10\n"}],
+                user_message, tables or [{"name": "orders", "data": "country,amount\nBelgium,10\n"}],
                 history, engine_base_url="http://engine.invalid", bearer_token=None,
                 api_key="test", model="test-model", principal="user-a", conversation_id="c_test",
             )
@@ -501,6 +501,19 @@ def test_a_recalculation_answered_from_memory_still_reaches_the_engine():
     _result, model_calls, engine_calls = _answered_from_memory_turn(
         "minimum notice_days", notice, "Still 5 days.")
     assert len(engine_calls) == 1 and engine_calls[0][0][0] == "minimum notice_days"
+    assert model_calls[1]["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
+
+    # Chrome gate, 2026-10-02: a list answer has no number. The repeated "how about customers from
+    # Lyon?" came back as the product names from the transcript, with no engine call and no rows.
+    purchases = [{"name": "purchases", "data": "customer,city,product\nAva,Paris,Alpha\nBen,Lyon,Beta\n"
+                                               "Cleo,Lyon,Delta\nDan,Paris,Omega\n"}]
+    lyon = [{"role": "user", "content": "how about customers from Lyon?"},
+            {"role": "assistant", "content": "For customers in Lyon, Alpha and Omega haven't sold."}]
+    _result, model_calls, engine_calls = _answered_from_memory_turn(
+        "how about customers from Lyon?", lyon,
+        "For customers in Lyon, the products that haven't sold are **Alpha** and **Omega**.",
+        tables=purchases)
+    assert len(engine_calls) == 1, "a list answered from memory is recalculated"
     assert model_calls[1]["tool_choice"] == {"type": "tool", "name": "prereasoner_query"}
 
     # Contrasts: a repeated message answered without a number, and a new message answered from

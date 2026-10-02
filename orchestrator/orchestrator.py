@@ -769,14 +769,17 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                 if resp.stop_reason != "tool_use":
                     text = "".join(b.text for b in resp.content if b.type == "text").strip()
                     if (not traces and not recalculation_requested
-                            and (forced_analysis or (repeated_question and re.search(r"\d", text)))):
+                            and (forced_analysis or (repeated_question and (
+                                re.search(r"\d", text) or _named_values(text, tables))))):
                         # Chrome pass (2026-09-24): re-asked in reopened conversations, questions
                         # such as "total amount in Belgium in US dollars" and "minimum notice_days"
                         # came back as the earlier numbers, the Belgium one at the morning's
                         # exchange rate, with no engine call and no workbook step. A message that
                         # restates a catalog analysis's question, or repeats an earlier question
-                        # and is answered with a number, is a recalculation, and only the engine
-                        # answers it. A note alone was ignored once, so the correction round
+                        # and is answered with a number or a value of the user's data, is a
+                        # recalculation, and only the engine answers it: "how about customers from
+                        # Lyon?" came back as "Alpha, Beta, Delta, and Omega" with no rows (Chrome
+                        # gate, 2026-10-02). A note alone was ignored once, so the correction round
                         # forces the query call. The note never reaches the saved transcript,
                         # which keeps only the user's words and the final reply.
                         recalculation_requested = True
