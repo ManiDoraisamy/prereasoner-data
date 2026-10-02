@@ -17,10 +17,15 @@ from typing import Any, Sequence
 from engine.sql_ast import (
     Aggregate,
     BinaryExpr,
+    BooleanExpr,
     ColumnRef,
     Comparison,
+    DatePart,
+    ExistsPredicate,
+    InPredicate,
     Literal,
     OrderTerm,
+    ScalarSubquery,
     SelectItem,
     SelectQuery,
     SQLType,
@@ -281,6 +286,7 @@ class SQLSearcher:
         # The expansions read a conjunction of one column's values as either value or both
         # (engine/sql_constraints.py, engine/sql_recursive.py); the conjunction itself matches no row.
         pool = [candidate for candidate in pool if not contradictory(candidate.query)]
+        pool = _merge_candidates([], [self._simplified(candidate, named_tables) for candidate in pool])
         if not rank_candidates:
             return pool[:self.max_candidates]
         from engine.sql_rank import CandidateRanker
@@ -305,6 +311,75 @@ class SQLSearcher:
                 expanded.append(replace(draft, **{field: value}, score=draft.score + score,
                                         evidence=draft.evidence + evidence))
         return sorted(expanded, key=lambda d: (-d.score, repr(d)))[:self.beam_size]
+
+    def _simplified(self, candidate: ScoredQuery, named_tables: set[str]) -> ScoredQuery:
+        """``candidate`` without what its answer never reads: the second end of a foreign key in its
+        projection (both ends carry one value), and a joined table no clause reads that the question
+        does not name. Spider DEV, 2026-10-02: "the id and name of the museum with the most staff"
+        projected museum.Museum_ID and visit.Museum_ID, and an unread join multiplies the rows a count
+        counts. Every expansion's candidates pass through it; queries with subqueries or aliases stay."""
+        query = candidate.query
+        if (not isinstance(query, SelectQuery) or not query.joins or not isinstance(query.from_table, str)
+                or query.from_alias or any(join.alias for join in query.joins) or _has_subquery(query)):
+            return candidate
+        twins: dict[ColumnRef, set[ColumnRef]] = {}
+        for fk in self.schema.foreign_keys:
+            for child, parent in fk.column_pairs:
+                twins.setdefault(child, set()).add(parent)
+                twins.setdefault(parent, set()).add(child)
+        anchored = set().union(
+            *(_clause_tables(item.expression) for item in query.select if not isinstance(item.expression, ColumnRef)),
+            _clause_tables(query.where), _clause_tables(query.having),
+            *(_clause_tables(term.expression) for term in query.order_by))
+        kept: list[ColumnRef] = []
+        for item in query.select:
+            column = item.expression
+            if not isinstance(column, ColumnRef):
+                continue
+            twin = next((other for other in kept if other in twins.get(column, ())), None)
+            if twin is None:
+                kept.append(column)
+            elif column.table in anchored and twin.table not in anchored:
+                kept[kept.index(twin)] = column
+        echoes = {item.expression for item in query.select
+                  if isinstance(item.expression, ColumnRef) and item.expression not in kept}
+        select = tuple(item for item in query.select if item.expression not in echoes)
+        group_by = tuple(column for column in query.group_by if column not in echoes)
+        joins = list(query.joins)
+        root = query.from_table
+        read = set().union(*(_clause_tables(item.expression) for item in select), *(column.table for column in group_by),
+                           _clause_tables(query.where), _clause_tables(query.having),
+                           *(_clause_tables(term.expression) for term in query.order_by))
+        changed = bool(echoes)
+        # COUNT(*) counts the rows the joins make: "the model with the most versions" counts car_names.
+        counts_rows = any(_counts_rows(node) for node in (*(item.expression for item in query.select),
+                                                          query.having, *(term.expression for term in query.order_by)))
+        while not counts_rows:
+            edges = [{left.table for left, _ in join.predicates} | {right.table for _, right in join.predicates}
+                     for join in joins]
+            leaf = next((index for index, join in enumerate(joins)
+                         if join.table not in read and join.table not in named_tables
+                         and not any(join.table in edge for other, edge in enumerate(edges) if other != index)), None)
+            if leaf is not None:
+                del joins[leaf]
+                changed = True
+                continue
+            touching = [index for index, edge in enumerate(edges) if root in edge]
+            if root not in read and root not in named_tables and len(touching) == 1:
+                root = joins[touching[0]].table
+                del joins[touching[0]]
+                changed = True
+                continue
+            break
+        if not changed:
+            return candidate
+        simplified = replace(query, select=select, group_by=group_by, from_table=root, joins=tuple(joins))
+        try:
+            validate_query(simplified)
+            sql = render_query(simplified)
+        except (TypeError, ValueError):
+            return candidate
+        return ScoredQuery(simplified, sql, candidate.score, candidate.evidence + ("simplified",))
 
     def _column_forms(self, table: str) -> frozenset[str]:
         """The words a question may name a column of ``table`` by: its whole name run together ("makeid")
@@ -1068,6 +1143,53 @@ def _merge_candidates(
         if old is None or candidate.score > old.score:
             combined[candidate.sql] = candidate
     return sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
+
+
+def _clause_tables(node: Any) -> set[str]:
+    """The table qualifiers a select item, predicate or ordering reads."""
+    if node is None:
+        return set()
+    if isinstance(node, ColumnRef):
+        return {node.table}
+    if isinstance(node, (Aggregate, DatePart)):
+        return _clause_tables(node.operand)
+    if isinstance(node, (BinaryExpr, Comparison)):
+        return _clause_tables(node.left) | _clause_tables(node.right)
+    if isinstance(node, BooleanExpr):
+        return set().union(*(_clause_tables(term) for term in node.terms))
+    if isinstance(node, InPredicate):
+        source = node.source if isinstance(node.source, tuple) else ()
+        return _clause_tables(node.left).union(*(_clause_tables(value) for value in source))
+    return set()
+
+
+def _counts_rows(node: Any) -> bool:
+    """Whether ``node`` holds a COUNT(*), whose rows are those the joins make."""
+    if isinstance(node, Aggregate):
+        return isinstance(node.operand, Star)
+    if isinstance(node, (BinaryExpr, Comparison)):
+        return _counts_rows(node.left) or _counts_rows(node.right)
+    if isinstance(node, BooleanExpr):
+        return any(_counts_rows(term) for term in node.terms)
+    return False
+
+
+def _has_subquery(query: SelectQuery) -> bool:
+    """Whether any clause of ``query`` holds a subquery, which may read the outer tables."""
+    def walk(node: Any) -> bool:
+        if isinstance(node, (ScalarSubquery, ExistsPredicate)):
+            return True
+        if isinstance(node, InPredicate):
+            return not isinstance(node.source, tuple) or walk(node.left)
+        if isinstance(node, (Aggregate, DatePart)):
+            return walk(node.operand)
+        if isinstance(node, (BinaryExpr, Comparison)):
+            return walk(node.left) or walk(node.right)
+        if isinstance(node, BooleanExpr):
+            return any(walk(term) for term in node.terms)
+        return False
+    return (any(walk(item.expression) for item in query.select) or walk(query.where) or walk(query.having)
+            or any(walk(term.expression) for term in query.order_by))
 
 
 def _names_together(tokens: tuple[str, ...], words: list[str], column_forms: frozenset[str] = frozenset()) -> bool:

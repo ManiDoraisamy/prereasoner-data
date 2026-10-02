@@ -2230,6 +2230,41 @@ def test_an_order_of_names_its_target_as_by_does():
     assert [row[-1] for row in execute(tables, candidate.sql)] == [52, 41, 29], candidate.sql
 
 
+def test_a_candidate_drops_a_key_echo_and_an_unread_join():
+    """Spider car_1 and cre_Doc_Template_Mgt, 2026-10-02: "the model of the car with the smallest amount of
+    horsepower" projected car_names.Model and model_list.Model, one value through a foreign key, and joined
+    model_list for it; "the template ids" projected Templates.Template_ID and Documents.Template_ID. Every
+    candidate projects a key once and keeps no joined table that nothing reads and the question does not
+    name; COUNT(*) keeps its joins, which make the rows it counts."""
+    names = {"name": "car_names", "columns": ["MakeId", "Model", "Make"], "rows": [
+        [1, "chevrolet", "chevrolet chevelle"], [2, "buick", "buick skylark"], [3, "chevrolet", "chevrolet impala"]]}
+    models = {"name": "model_list", "columns": ["ModelId", "Maker", "Model"], "rows": [
+        [1, 1, "chevrolet"], [2, 2, "buick"]]}
+    cars = {"name": "cars_data", "columns": ["Id", "Horsepower"], "rows": [[1, 130], [2, 95], [3, 220]]}
+    fks = [{"from_table": "car_names", "from_col": "Model", "to_table": "model_list", "to_col": "Model"},
+           {"from_table": "cars_data", "from_col": "Id", "to_table": "car_names", "to_col": "MakeId"}]
+    tables = [names, models, cars]
+    weakest = best("What is the model of the car with the smallest amount of horsepower?", tables, fks)
+    assert '"model_list"' not in weakest.sql and execute(tables, weakest.sql) == [("buick",)], weakest.sql
+    # Contrast: COUNT(*) counts the rows its joins make, and a named table stays joined.
+    from engine.sql_ast import Aggregate, Join, OrderTerm, SelectItem, SelectQuery, Star
+    from engine.sql_candidate import ScoredQuery
+
+    searcher = SQLSearcher.from_tables(tables, fks)
+    model = ColumnRef("model_list", "Model", SQLType.TEXT)
+    versions = SelectQuery((SelectItem(model),), "model_list",
+                           joins=(Join("car_names", ColumnRef("car_names", "Model", SQLType.TEXT), model),),
+                           group_by=(model,), order_by=(OrderTerm(Aggregate("COUNT", Star()), "DESC"),), limit=1)
+    counted = ScoredQuery(versions, render_query(versions), 1.0, ())
+    assert searcher._simplified(counted, set()).sql == counted.sql
+    echo = SelectQuery((SelectItem(ColumnRef("car_names", "Model", SQLType.TEXT)), SelectItem(model)), "car_names",
+                       joins=(Join("model_list", model, ColumnRef("car_names", "Model", SQLType.TEXT)),))
+    once = searcher._simplified(ScoredQuery(echo, render_query(echo), 1.0, ()), set())
+    assert once.sql == 'SELECT "car_names"."Model" FROM "car_names"', once.sql
+    named = searcher._simplified(ScoredQuery(echo, render_query(echo), 1.0, ()), {"model_list"})
+    assert '"model_list"' in named.sql and named.sql.count('"Model"') == 3, named.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3654,6 +3689,7 @@ TESTS = [
     test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing,
     test_a_table_joins_every_reading_only_when_named_together,
     test_an_order_of_names_its_target_as_by_does,
+    test_a_candidate_drops_a_key_echo_and_an_unread_join,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
