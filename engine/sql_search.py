@@ -67,6 +67,17 @@ _LATE_WORDS = frozenset({"last", "latest", "recent", "newest"})
 # "name" or "line" names a part of a name or an address, not a place in an ordering.
 _NAME_PART_WORDS = frozenset({"first", "middle", "last", "second", "third", "and", "or", "full", "given", "family"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
+# Comparatives and the operator each makes with the number after "than"; the measure some describe.
+_COMPARATIVES = {
+    "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
+    "longer": ">", "later": ">", "lower": "<", "smaller": "<", "younger": "<", "lighter": "<", "shorter": "<",
+    "cheaper": "<", "earlier": "<",
+}
+_COMPARATIVE_COLUMNS = {
+    "older": frozenset({"age"}), "younger": frozenset({"age"}), "heavier": frozenset({"weight"}),
+    "lighter": frozenset({"weight"}), "taller": frozenset({"height"}), "shorter": frozenset({"height", "length"}),
+    "longer": frozenset({"length", "duration"}), "cheaper": frozenset({"price", "cost"}),
+}
 _CATEGORICAL_INITIALS = {
     "left": "l", "right": "r",
     "male": "m", "female": "f",
@@ -955,6 +966,36 @@ class SQLSearcher:
                 if options:
                     groups.append(options)
                     used_numbers.add(number_index)
+
+        # A comparative before "than" and a number compares the column it describes: "pets heavier than
+        # 10", "every pet who is older than 1", "a greater weight than 10" (Spider pets_1, 2026-10-02: no
+        # cue matched, and the filter was dropped).
+        for i, token in enumerate(tokens):
+            operator = _COMPARATIVES.get(token)
+            if operator is None or i in claimed:
+                continue
+            than = next((j for j in range(i + 1, min(len(tokens), i + 4)) if tokens[j] == "than"), None)
+            if than is None:
+                continue
+            number_index = next((j for j in range(than + 1, min(len(tokens), than + 3))
+                                 if j not in used_numbers and _NUMBER_RE.match(tokens[j])), None)
+            if number_index is None:
+                continue
+            value = _number(tokens[number_index])
+            # The measure the word implies comes first ("older": an age column, mentioned or not); no
+            # comparative compares an identifier.
+            described = _COMPARATIVE_COLUMNS.get(token, frozenset())
+            implied = tuple(column.ref for column in self.schema.columns
+                            if column.ref.type.numeric and not is_surrogate_key(column.ref.name)
+                            and described & {_canon(word) for word in _name_words(column.ref.name)})
+            targets = [column for column in _unique_columns(implied + tuple(self._numeric_targets(mentions, i)))
+                       if not is_surrogate_key(column.name)]
+            options = [((Comparison(target, operator, Literal(value, target.type)),), 4.5,
+                        f"comparison:{target.table}.{target.name}{operator}{value}")
+                       for target in targets[:4]]
+            if options:
+                groups.append(options)
+                used_numbers.add(number_index)
 
         for i, token in enumerate(tokens):
             if i in used_numbers or not re.fullmatch(r"(?:19|20)\d{2}", token):

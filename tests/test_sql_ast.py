@@ -813,7 +813,8 @@ def test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose():
     proposer = ScriptedProposer(lines, likelihood=lambda sql: (-1.0, 12) if sql == favored
                                 else (-80.0, 12))
     planner = _hermetic_planner(proposer)
-    selection = _select(planner, "how many people are older than 30")
+    # A phrasing the search does not read ("older than 30" it compares itself), so beam 2 is novel.
+    selection = _select(planner, "how many people have an age exceeding 30")
     novel = [c for c in selection.pool if c.sql in selection.proposed]
     assert [c.sql for c in novel] == [favored]
     floor = min(c.score for c in selection.pool if c.sql not in selection.proposed)
@@ -827,7 +828,7 @@ def test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose():
 
     # The same question over the same tables is decoded and scored once (request-memo).
     decodes = proposer.decodes
-    again = _select(planner, "how many people are older than 30")
+    again = _select(planner, "how many people have an age exceeding 30")
     assert again.candidate.sql == favored and proposer.decodes == decodes
     assert len(proposer.scored) == 1
 
@@ -2283,6 +2284,23 @@ def test_a_listing_drops_a_key_that_repeats_a_read_table():
     assert "JOIN" not in candidate.sql and execute(tables, candidate.sql) == [("music",)], candidate.sql
 
 
+def test_a_comparative_than_a_number_compares_the_measure_it_describes():
+    """Spider pets_1, 2026-10-02: "how many pets have a greater weight than 10", "the number of pets whose
+    weight is heavier than 10" and "the id and weight of every pet who is older than 1" matched no
+    comparison cue and dropped their filter. A comparative before "than" and a number compares the
+    column it describes, preferring the measure the word implies (older: age)."""
+    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
+        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
+    for question, expected in (("How many pets have a greater weight than 10?", [(2,)]),
+                               ("Find the number of pets whose weight is heavier than 10.", [(2,)]),
+                               ("What is the id and weight of every pet who is older than 1?",
+                                [(2001, 12.0), (2002, 13.4)])):
+        candidate = best(question, [pets])
+        assert execute([pets], candidate.sql) == expected, (question, candidate.sql)
+    older = best("What is the id and weight of every pet who is older than 1?", [pets])
+    assert '"Pets"."pet_age" > 1' in older.sql, older.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3709,6 +3727,7 @@ TESTS = [
     test_an_order_of_names_its_target_as_by_does,
     test_a_candidate_drops_a_key_echo_and_an_unread_join,
     test_a_listing_drops_a_key_that_repeats_a_read_table,
+    test_a_comparative_than_a_number_compares_the_measure_it_describes,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
