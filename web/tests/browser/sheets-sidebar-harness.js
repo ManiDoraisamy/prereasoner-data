@@ -49,8 +49,9 @@ const views = [
 ];
 
 // Opens the sidebar on `page` with the sheet `rows`; google.script.run calls are recorded in window.__calls
-// and askPrereasoner waits in window.__server.pendingAsk for the caller to answer.
-async function openSidebar(page, rows) {
+// and askPrereasoner waits in window.__server.pendingAsk for the caller to answer. `failing` maps a server
+// function to the message Apps Script rejects it with.
+async function openSidebar(page, rows, failing = {}) {
   const sidebar = fs.readFileSync(path.join(root, 'sheets-addon/Sidebar.html'), 'utf8')
     .replace('<?!= reasonBase ?>', JSON.stringify('https://chat.prereasoner.com/reason/'));
   await page.route(SIDEBAR_URL, route => route.fulfill({contentType: 'text/html; charset=utf-8', body: sidebar}));
@@ -63,7 +64,7 @@ async function openSidebar(page, rows) {
   await page.route('https://www.gstatic.com/firebasejs/**', route => route.fulfill({contentType: 'text/javascript',
     headers: {'access-control-allow-origin': '*'}, body: fakeFirebase[path.basename(new URL(route.request().url()).pathname)]}));
   await page.route('https://ssl.gstatic.com/**', route => route.fulfill({contentType: 'text/css', body: ''}));
-  await page.addInitScript(initialRows => {
+  await page.addInitScript(({initialRows, failing}) => {
     window.__calls = [];
     window.__server = {rows: initialRows, pendingAsk: null};
     const grids = () => ({grids: [{name: 'Orders', rows: window.__server.rows,
@@ -82,11 +83,11 @@ async function openSidebar(page, rows) {
       return {withFailureHandler(fail) {
         return new Proxy({}, {get: (_, name) => arg => {
           window.__calls.push({name, arg: arg === undefined ? null : JSON.parse(JSON.stringify(arg))});
-          setTimeout(() => handlers[name](arg, ok, fail), 10);
+          setTimeout(() => failing[name] ? fail({name: 'ScriptError', message: failing[name]}) : handlers[name](arg, ok, fail), 10);
         }});
       }};
     }}}};
-  }, rows);
+  }, {initialRows: rows, failing});
   await page.goto(SIDEBAR_URL);
 }
 

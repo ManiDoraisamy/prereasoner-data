@@ -67,6 +67,7 @@ test('the Sheets sidebar refuses a shifted header row, then reads the fixed shee
   await openSidebar(page, shifted);
   await expect(page.locator('.empty.sheet-error')).toContainText('Sheet "Orders": Column D has values but no header, and the ' +
     'headers look one column to the left of their data (C1 "amount" is above "Holmes"). Put each header above its data.');
+  await expect(page.locator('.empty.sheet-error')).toContainText('Fix the sheet, then ask your question.');
   expect(await calls(page, 'restorePrereasonerSheetConversation')).toEqual([]);
   await page.locator('#question').fill('total amount');
   await page.locator('#question').press('Enter');
@@ -83,4 +84,22 @@ test('the Sheets sidebar refuses a shifted header row, then reads the fixed shee
     .toBe('order ID,customer,amount\n101,Holmes,118\n102,Watson,95');
   await expect(page.locator('#note')).toHaveText('Sheet "Orders": column A has no header, so it was left out.');
   await expect(page.locator('.answer.error')).toHaveCount(0);
+});
+
+test('the Sheets sidebar explains a multi-account refusal instead of blaming the sheet', async ({page}) => {
+  // A user signed in to two Google accounts (2026-10-02): the menu opened the sidebar, then Apps Script
+  // refused every sidebar call, made as the browser's default account, before any add-on code ran.
+  const refused = 'Authorization is required to perform that action.';
+  await openSidebar(page, orders, {getSidebarContext: refused, getWorkbookGrids: refused});
+  const account = 'This happens when the browser is signed in to more than one Google account. Open the sheet in a ' +
+    'window signed in only to the account that installed Prereasoner (an Incognito window works)';
+  await expect(page.locator('.empty.sheet-error')).toContainText(account);
+  await expect(page.locator('.empty.sheet-error')).not.toContainText('Fix the sheet');
+  await expect(page.locator('.empty.sheet-error')).not.toContainText(refused);
+
+  await page.locator('#question').fill('What is the keyword volume for permit management?');
+  await page.locator('#question').press('Enter');
+  await expect(page.locator('.answer.error')).toContainText(account);
+  await expect(page.locator('#question')).toHaveValue('What is the keyword volume for permit management?');
+  expect(await calls(page, 'askPrereasoner')).toEqual([]);
 });

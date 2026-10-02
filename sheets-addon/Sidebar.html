@@ -135,12 +135,17 @@
           });
         }
 
+        // In a browser signed in to several Google accounts, Apps Script sends the sidebar's calls as the
+        // browser's default account, not the account that opened the sheet. Google then refuses them with
+        // one of these messages (all seen in the add-on's logs); none of them is about the sheet.
+        var ACCOUNT_MISMATCH = /PERMISSION_DENIED|Authorization is required to perform that action|You do not have permission to access the requested document|No item with the given ID could be found/i;
+        var ACCOUNT_MESSAGE = 'Google could not run Prereasoner for the account that opened this sheet. This happens when ' +
+          'the browser is signed in to more than one Google account. Open the sheet in a window signed in only to the ' +
+          'account that installed Prereasoner (an Incognito window works), then choose Extensions → Prereasoner → Ask a question.';
+
         function errorText(error) {
           var message = String((error && error.message) || error || 'Something went wrong.');
-          if (/PERMISSION_DENIED/i.test(message)) {
-            return 'Google blocked access to this sheet. Reopen the add-on in the account that owns the sheet, then authorize it.';
-          }
-          return message;
+          return ACCOUNT_MISMATCH.test(message) ? ACCOUNT_MESSAGE : message;
         }
 
         // Sign-in for the live trace: the shared Firebase module arrives as a module script.
@@ -239,7 +244,8 @@
 
         function emptyHtml() {
           if (state.sheetError) {
-            return '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) + '<br>Fix the sheet, then ask your question.</div>';
+            return '<div class="empty sheet-error">' + R.escapeHtml(state.sheetError) +
+              (state.sheetError === ACCOUNT_MESSAGE ? '' : '<br>Fix the sheet, then ask your question.') + '</div>';
           }
           return '<div class="empty"><div>Ask a question about the current sheet.</div><p class="data-notice">When you send a question, ' +
             'Prereasoner securely processes your question and the visible, non-empty tabs in this spreadsheet to produce and save ' +

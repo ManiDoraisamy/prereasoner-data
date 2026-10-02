@@ -25,7 +25,7 @@ clasp status
 
 Review changes before each `clasp push`: it updates the linked cloud Apps Script project. Marketplace installs run the script version set in the Marketplace SDK App Configuration, and a change there takes effect when the listing is published.
 
-If the sidebar reports that Google blocked access to the sheet, open the sheet in a browser session with only the Google account that owns or has access to it, then authorize the add-on again. This is a Google Apps Script V8 multi-account session issue, not a Prereasoner API error.
+In a browser signed in to several Google accounts, the menu runs as the account that opened the sheet, but Apps Script sends the sidebar's `google.script.run` calls as the browser's default account. Google then refuses them before any add-on code runs, with "Authorization is required to perform that action.", `PERMISSION_DENIED`, "You do not have permission to access the requested document.", or "No item with the given ID could be found". The sidebar shows one message for all of them: open the sheet in a window signed in only to the account that installed Prereasoner (an Incognito window works). This is a Google Apps Script multi-account limitation, not a Prereasoner API error.
 
 ## Runtime flow
 
