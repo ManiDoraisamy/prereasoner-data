@@ -1445,3 +1445,32 @@ planner, so a share is a typed ratio there, not a compose plan: the kept rows' S
 of every row the query reads (`sql_ast.share_of`; "what percentage of orders are from Lyon" counts the rows it would
 list), ranked above the total it divides. It lowers into the shared plan as the kept rows' reduction crossed with the
 whole's reduction and divided, so both programs run it in linear time.
+
+## A view's label keeps its logical name past a 63-byte cut (2026-10-02)
+
+A decomposition names each leaf's views under the root analysis slug, and a name past PostgreSQL's 63 bytes is cut
+and given a hash (`engine.analysis.analysis_view_name`). The execution record read a view's logical name back from
+its physical name, so under "top_customers_never_bought_top_products" a step was labelled "top products b 2f5cf8f2".
+A plan records each renamed view's logical name (`AnalysisPlan.logical_names`); decomposition records the leaf and
+merge names, the stage manifest carries them to both emitters' record, and physical names, SQL and Python are
+unchanged.
+
+## A stated date is served and compares on PostgreSQL (2026-10-02)
+
+The engine build's live suite (the 7B on a disposable seed) showed what the hermetic tests could not: the arbiter
+ranked the 7B's undated reading of "total transfers signed in August" first, and the coverage gate declined it. The
+one served selection keeps to the readings that realize the dates the question names when one does
+(`select_ranked_candidate`'s `date_satisfied`), a serving fact the evaluator records and arbiter training replays; old
+label pools lack it and must be regenerated before a replay. The SQL program wrote a date as `DATE '2026-07-10'`,
+and PostgreSQL has no `text < date` for the TEXT column an upload stores dates in; the literal is now an untyped ISO
+string, which compares with a DATE column too. The parser reads ordinal days and "between <date> and <date>", and a
+lone month that is a value of the data ("the first name April") stays that value.
+
+## A non-geo entity resolves to the exact nearest entity of its type (2026-10-02)
+
+A cell with no exact name in `knowledgebase.words` resolves to the nearest entity of its type by embedding. The lookup
+went through the HNSW index, which is approximate and applies the type filter after its scan, so whether it returned
+a row depended on the graph a restore builds and on the planner: on the build's fresh seed "Mayo Clinic" stayed
+unresolved and the US hospitals totalled 32 instead of 46. It now sorts the exact distance over the rows of its type,
+bounded by the `(type, qid)` B-tree; on production it returns the same match at similar latency. `knowledgebase.words`
+holds no embedding for any of its 3,114 banks, so a bank name resolves only by its exact name.
