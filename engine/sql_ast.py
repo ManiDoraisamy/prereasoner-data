@@ -504,6 +504,15 @@ def _equality(term: Predicate) -> bool:
             and isinstance(term.left, (ColumnRef, DatePart)) and isinstance(term.right, Literal))
 
 
+def _comparable(value: Any) -> Any:
+    """A literal as SQL compares it with another: '1', 1 and 1.0 are one value."""
+    text = str(value).strip()
+    try:
+        return float(text)
+    except ValueError:
+        return text
+
+
 def _equality_conflicts(terms: Sequence[Predicate]) -> dict[ScalarExpr, list[Comparison]]:
     """The expressions a conjunction of ``terms`` holds equal to two different values, with their
     equalities: no row satisfies ``city = 'Paris' AND city = 'Lyon'``."""
@@ -512,7 +521,12 @@ def _equality_conflicts(terms: Sequence[Predicate]) -> dict[ScalarExpr, list[Com
         if _equality(term):
             groups.setdefault(term.left, []).append(term)
     return {left: group for left, group in groups.items()
-            if any(term.right.value != group[0].right.value for term in group)}
+            if any(_comparable(term.right.value) != _comparable(group[0].right.value) for term in group)}
+
+
+def equality_conflicts(predicate: Predicate | None) -> dict[ScalarExpr, list[Comparison]]:
+    """The expressions the conjunction ``predicate`` holds equal to two different values."""
+    return _equality_conflicts(tuple(_conjoined(predicate)))
 
 
 def contradictory(query: Query) -> bool:

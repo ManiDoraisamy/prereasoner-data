@@ -26,7 +26,9 @@ from engine.sql_ast import (
     and_predicates,
     conjunction,
     contradictory,
+    equality_conflicts,
 )
+from engine.sql_dates import date_phrases
 from engine.sql_expansion import (
     CountThreshold,
     ExpansionSupport,
@@ -64,7 +66,7 @@ class ConstraintQueryExpander(ExpansionSupport):
         generated.extend(self._count_having_candidates(question, candidates))
         generated.extend(self._aggregate_having_candidates(question, candidates))
         generated.extend(self._or_candidates(question, candidates))
-        generated.extend(self._union_candidates(candidates))
+        generated.extend(self._union_candidates(question, candidates))
         generated.extend(self._scalar_aggregate_candidates(question, candidates))
         generated.extend(self._scalar_selector_candidates(question, candidates))
         generated.extend(self._membership_candidates(question, candidates))
@@ -90,11 +92,14 @@ class ConstraintQueryExpander(ExpansionSupport):
         for threshold in thresholds:
             if self.threshold_targets_column(tokens, threshold):
                 continue
+            counted = tokens[threshold.end] if threshold.end < len(tokens) else None
             if (tokens[threshold.start] == "over" and threshold.start > 0
-                    and tokens[threshold.start - 1] in table_words):
+                    and tokens[threshold.start - 1] in table_words
+                    and counted != "time" and counted not in table_words):
                 # "the total amount of orders over 50" compares each order, as every Spider question
                 # with a plural noun before "over <n>" does ("students over 20 years old"); it was
-                # read as "more than 50 orders" and lost its total (probe, 2026-10-02).
+                # read as "more than 50 orders" and lost its total (probe, 2026-10-02). "Orders over 2
+                # times" still counts them (review, 2026-10-02).
                 continue
             entity_options = self.entity_tables(tokens, threshold)
             for entity_table, entity_score in entity_options[:2]:
@@ -264,17 +269,28 @@ class ConstraintQueryExpander(ExpansionSupport):
         return out
 
     @staticmethod
-    def _union_candidates(candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
-        """Two values of one column joined by "and" name the rows of either: "the total amount from
+    def _union_candidates(question: str, candidates: Sequence[ScoredQuery]) -> list[ScoredQuery]:
+        """Two values of one column the question lists name the rows of either: "the total amount from
         Paris and Lyon" filtered city = 'Paris' AND city = 'Lyon' and answered nothing (probe,
-        2026-10-02). "Or" is read by ``_or_candidates``; "both" by the set expansions."""
+        2026-10-02). Only listed values, with nothing but "and" or "or" between them: "destination Paris
+        and origin Lyon" binds two columns and "from Aberdeen to Ashley" two roles, and "both" asks for
+        the set expansions' INTERSECT. The reading keeps its conjunction's score, so a reading that binds
+        the values to two columns still outranks it (review, 2026-10-02). "Or" is read by
+        ``_or_candidates``."""
+        tokens = _tokens(question)
+        if "both" in tokens:
+            return []
         out = []
         for candidate in candidates:
             query = candidate.query
-            if not isinstance(query, SelectQuery) or not contradictory(query):
+            if not isinstance(query, SelectQuery):
+                continue
+            conflicts = equality_conflicts(query.where)
+            if not conflicts or not all(_listed_values(tokens, [term.right.value for term in group])
+                                        for group in conflicts.values()):
                 continue
             built = _candidate(replace(query, where=conjunction(_and_terms(query.where))),
-                               candidate.score + 19.0, candidate.evidence + ("constraint:where-union",))
+                               candidate.score, candidate.evidence + ("constraint:where-union",))
             if built is not None:
                 out.append(built)
         return out
@@ -283,7 +299,10 @@ class ConstraintQueryExpander(ExpansionSupport):
         self, question: str, candidates: Sequence[ScoredQuery]
     ) -> list[ScoredQuery]:
         tokens = _tokens(question)
-        if "or" not in tokens and "either" not in tokens:
+        # An "or" inside a date phrase lists its months ("in July or August 2026"), one span of dates.
+        dated = {position for phrase in date_phrases(question, tokens)
+                 for position in range(phrase.start, phrase.end)}
+        if not any(token in {"or", "either"} and position not in dated for position, token in enumerate(tokens)):
             return []
         out = []
         numeric = self.numeric_comparisons(tokens)
@@ -941,8 +960,47 @@ def _explicit_aggregate_constraint(
     )
 
 
+def _listed_values(tokens: tuple[str, ...], values: Sequence[Any]) -> bool:
+    """Whether the question names each value and lists them, with nothing but "and" or "or" between
+    one value and the next ("Paris, Lyon and Nice")."""
+    spans = []
+    for value in values:
+        wanted = _tokens(str(value))
+        start = next((index for index in range(len(tokens) - len(wanted) + 1)
+                      if wanted and tokens[index:index + len(wanted)] == wanted), None)
+        if start is None:
+            return False
+        spans.append((start, start + len(wanted)))
+    spans.sort()
+    return all(set(tokens[end:following]) <= {"and", "or"}
+               for (_, end), (following, _) in zip(spans, spans[1:]))
+
+
+_LOWER_BOUNDS = frozenset({">", ">="})
+_UPPER_BOUNDS = frozenset({"<", "<="})
+
+
 def _build_or_predicate(predicates: Sequence[Predicate]) -> Predicate:
-    terms = _unique_predicates(predicates)
+    terms = list(_unique_predicates(predicates))
+    # A lower and an upper bound of one column are one range ("in July or August 2026" is one span of
+    # dates): a disjunction of its bounds keeps every row (review, 2026-10-02).
+    bounds: dict[ColumnRef, list[Comparison]] = {}
+    for term in terms:
+        if (isinstance(term, Comparison) and isinstance(term.left, ColumnRef)
+                and term.operator in _LOWER_BOUNDS | _UPPER_BOUNDS):
+            bounds.setdefault(term.left, []).append(term)
+    for group in bounds.values():
+        lower = [term.right.value for term in group if term.operator in _LOWER_BOUNDS and isinstance(term.right, Literal)]
+        upper = [term.right.value for term in group if term.operator in _UPPER_BOUNDS and isinstance(term.right, Literal)]
+        try:
+            ranged = bool(lower and upper) and max(lower) < min(upper)
+        except TypeError:
+            ranged = False
+        # "after 2013 or before 2008" has bounds no row meets together: a disjunction.
+        if ranged:
+            position = terms.index(group[0])
+            terms = [term for term in terms if term not in group]
+            terms.insert(position, BooleanExpr("AND", tuple(group)))
     by_column: dict[ColumnRef, list[Predicate]] = {}
     for term in terms:
         if isinstance(term, Comparison) and isinstance(term.left, ColumnRef):

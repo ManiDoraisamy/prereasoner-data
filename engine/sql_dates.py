@@ -10,15 +10,19 @@ comparisons which calendar words a query realized.
 A phrase names a day ("August 10, 2026", "August 10th, 2026", "10 August 2026", "the 10th of August
 2026", "2026-08-10"), a month ("August", "August 2026") or a quarter ("Q3 2026", "the third quarter of
 2026"), optionally after a cue: before, after, since, from, until, till, through, on, in, during. Two of
-them make a range: "between A and B", "from A to B", "A through B", "A-B"; a year one end names is the
-other's too ("from March to May 2026"). A list of months is the range it covers when they follow one
-another ("June, July and August 2026"); a list with a gap ("January and March") is no range and compares
-nothing, so the coverage gate asks instead of answering for no month. A month without a year compares
-the month of each date (DatePart); a dated phrase compares the date itself, so a timestamp later on the
-named day is still that day.
+them make a range: "between A and B", "from A to B", "A through B", "A-B", "July 1 and 10, 2026"; a year
+one end names is the other's too ("from March to May 2026"), and "after A through B" starts the day after
+A. A list of months is the range it covers when they follow one another ("June, July and August 2026");
+a list with a gap ("January and March") is no range and compares nothing, so the coverage gate asks
+instead of answering for no month. A month that is also a word ("may", "march") joins a list or a range
+only where it is surely a date: "hired in April may retire" is April alone. A month without a year
+compares the month of each date (DatePart); a dated phrase compares the date itself, so a timestamp
+later on the named day is still that day. A quarter column ("the first quarter" of a game) keeps its
+quarters.
 """
 from __future__ import annotations
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
 import re
@@ -86,14 +90,14 @@ class DatePhrase:
     # A range's last day as (year, month, day): "between July 1 and July 10, 2026", "from March to May
     # 2026", a quarter, a list of consecutive months. A missing day is the whole month.
     until: tuple[int | None, int, int | None] | None = None
-    # A list of months no single range covers ("January and March"): no comparison keeps them.
-    scattered: bool = False
+    # No single span of days: a list of months with a gap ("January and March"), an impossible day.
+    spanless: bool = False
 
     def comparisons(self, column: ColumnRef) -> tuple[Comparison, ...]:
         """The typed comparisons on ``column``, a date column, that keep the phrase's dates. A day
-        without a year ("after August 10"), a yearless range across the year's end and a scattered list
-        name no span to compare with: none."""
-        if self.scattered:
+        without a year ("after August 10"), a yearless range across the year's end and a spanless
+        phrase name no span to compare with: none."""
+        if self.spanless:
             return ()
         year, month, day = self.until or (self.year, self.month, self.day)
         if self.year is None or year is None:
@@ -106,17 +110,26 @@ class DatePhrase:
                     Comparison(part, "<=", Literal(month, SQLType.INTEGER)))
         try:
             first = date(self.year, self.month, self.day or 1)
-            if day is not None:
-                after = date(year, month, day) + timedelta(days=1)
-            else:
-                after = date(year + month // 12, month % 12 + 1, 1)
+            last = date(year, month, day if day is not None else monthrange(year, month)[1])
         except ValueError:                                       # "between February 30 and ..."
             return ()
-        if after <= first:
+        if last < first:
             return ()
-        bounds = {"start": first.isoformat(), "end": after.isoformat()}
-        return tuple(Comparison(column, operator, Literal(bounds[side], SQLType.DATE))
-                     for operator, side in _CUES.get(self.cue, _WITHIN))
+        try:
+            after = last + timedelta(days=1)
+        except OverflowError:
+            after = None                                         # 9999-12-31, the open-ended sentinel
+        comparisons = []
+        for operator, side in _CUES.get(self.cue, _WITHIN):
+            if side == "start":
+                comparisons.append(Comparison(column, operator, Literal(first.isoformat(), SQLType.DATE)))
+            elif after is not None:
+                comparisons.append(Comparison(column, operator, Literal(after.isoformat(), SQLType.DATE)))
+            else:
+                # The day after the last is past the calendar: compare the last day itself.
+                comparisons.append(Comparison(column, {"<": "<=", ">=": ">"}[operator],
+                                              Literal(last.isoformat(), SQLType.DATE)))
+        return tuple(comparisons)
 
 
 @dataclass(frozen=True)
@@ -196,6 +209,13 @@ def _mentions(question: str, tokens: tuple[str, ...]) -> list[_Mention]:
     return out
 
 
+def _firm(mention: _Mention, tokens: tuple[str, ...]) -> bool:
+    """Whether a mention is surely a date: a month that is also a word ("may", "march") is one with a
+    day or a year, or as the question's last word ("in March and May")."""
+    return (mention.word not in _AMBIGUOUS or mention.year is not None or mention.day is not None
+            or mention.end >= len(tokens))
+
+
 def _cue(tokens: tuple[str, ...], start: int) -> tuple[str | None, int]:
     """The cue before a phrase that starts at ``start``, past one "the" ("after the 10th of August"),
     and where the phrase then starts."""
@@ -207,17 +227,51 @@ def _cue(tokens: tuple[str, ...], start: int) -> tuple[str | None, int]:
     return None, start
 
 
-def _range(first: _Mention, last: _Mention, start: int, end: int) -> DatePhrase:
+def _range(first: _Mention, last: _Mention, start: int, end: int, cue: str | None = None) -> DatePhrase:
     """The range from ``first`` to ``last``; an end without a year takes the other's, the year before
-    or after when the range crosses a year's end ("from November to February 2026")."""
+    or after when the range crosses a year's end ("from November to February 2026"). After "after" it
+    starts the day after ``first``: "after January 15, 2026 through March 31, 2026" kept the 15th
+    (review, 2026-10-02)."""
     first_year, last_year = first.year, last.year
     ordered = (first.month, first.day or 0) <= (last.last, last.day or 31)
     if first_year is None and last_year is not None:
         first_year = last_year if ordered else last_year - 1
     elif last_year is None and first_year is not None:
         last_year = first_year if ordered else first_year + 1
-    return DatePhrase(start, end, "between", first.month, first_year, first.day,
-                      (last_year, last.last, last.day))
+    until = (last_year, last.last, last.day)
+    year, month, day = first_year, first.month, first.day
+    if cue == "after" and first_year is not None:
+        try:
+            if first.day is not None:
+                begin = date(first_year, first.month, first.day) + timedelta(days=1)
+            else:
+                begin = date(first_year + first.last // 12, first.last % 12 + 1, 1)
+        except (ValueError, OverflowError):
+            return DatePhrase(start, end, "between", month, year, day, until, spanless=True)
+        year, month, day = begin.year, begin.month, begin.day
+    return DatePhrase(start, end, "between", month, year, day, until)
+
+
+def _closing_day(tokens: tuple[str, ...], mention: _Mention, cue: str | None, dashed: set[tuple[str, str]],
+                 limit: int) -> _Mention | None:
+    """A bare day that closes a range ``mention`` opens, in the mention's month: "between July 1 and 10,
+    2026", "from August 10 to 15, 2026", "August 10-15, 2026" (review, 2026-10-02: the first read as an
+    amount between 1 and 10). Tokens from ``limit`` on belong to a later phrase."""
+    if mention.day is None:
+        return None
+    index = mention.end
+    if index < len(tokens) and _day(tokens[index]) is not None and (tokens[index - 1], tokens[index]) in dashed:
+        day_at = index
+    elif (index + 1 < len(tokens) and _day(tokens[index + 1]) is not None
+          and (tokens[index] in _RANGE_JOINS or (tokens[index] == "and" and cue == "between"))):
+        day_at = index + 1
+    else:
+        return None
+    year = _year(tokens, day_at + 1)
+    end = day_at + 2 if year is not None else day_at + 1
+    if end > limit:
+        return None
+    return _Mention(day_at, end, mention.month, year, _day(tokens[day_at]), mention.month, tokens[day_at])
 
 
 def _opening_day(tokens: tuple[str, ...], mention: _Mention, dashed: set[tuple[str, str]],
@@ -265,27 +319,36 @@ def date_phrases(question: str, tokens: Sequence[str]) -> tuple[DatePhrase, ...]
         if opening is not None:
             first = _Mention(opening, opening + 1, mention.month, None, _day(tokens[opening]), mention.month,
                              tokens[opening])
-            out.append(_range(first, mention, _cue(tokens, opening)[1], mention.end))
+            opening_cue, opening_start = _cue(tokens, opening)
+            out.append(_range(first, mention, opening_start, mention.end, opening_cue))
             index += 1
             continue
         cue, start = _cue(tokens, mention.start)
         following = mentions[index + 1] if index + 1 < len(mentions) else None
         between = tokens[mention.end:following.start] if following else None
-        # A range: "between A and B", "from A to B", "A through B", "A-B".
+        # A range: "between A and B", "from A to B", "A through B", "A-B". Two adjacent months are a
+        # range only across a dash: "from June, July and August 2026" is a list.
         if following is not None and (
                 (len(between) == 1 and between[0] in _RANGE_JOINS)
-                or (between == ("and",) and cue == "between")
-                or (between == () and (cue in ("from", "between")
-                                       or (tokens[mention.end - 1], tokens[following.start]) in dashed))):
-            out.append(_range(mention, following, start, following.end))
+                or (between == ("and",) and cue == "between" and _firm(following, tokens))
+                or (between == () and (tokens[mention.end - 1], tokens[following.start]) in dashed)):
+            out.append(_range(mention, following, start, following.end, cue))
             index += 2
+            continue
+        closing = _closing_day(tokens, mention, cue, dashed, following.start if following else len(tokens))
+        if closing is not None:
+            out.append(_range(mention, closing, start, closing.end, cue))
+            index += 1
             continue
         # A list of months: "June, July and August 2026", "in July or August".
         listed = [mention]
-        while (index + len(listed) < len(mentions)
-               and listed[-1].day is None and mentions[index + len(listed)].day is None
-               and tokens[listed[-1].end:mentions[index + len(listed)].start] in _LIST_JOINS):
-            listed.append(mentions[index + len(listed)])
+        while index + len(listed) < len(mentions):
+            following = mentions[index + len(listed)]
+            gap = tokens[listed[-1].end:following.start]
+            if (listed[-1].day is not None or following.day is not None or gap not in _LIST_JOINS
+                    or not _firm(following, tokens) or (gap == () and not _firm(listed[-1], tokens))):
+                break
+            listed.append(following)
         if len(listed) > 1 and mention.day is None:
             out.append(_listed(listed, start, cue))
             index += len(listed)
@@ -310,8 +373,8 @@ def date_phrases(question: str, tokens: Sequence[str]) -> tuple[DatePhrase, ...]
 
 
 def _listed(listed: list[_Mention], start: int, cue: str | None) -> DatePhrase:
-    """A list of months as one phrase: the range they cover when each follows the one before, else a
-    scattered list. A year the list names closes it, so it is every earlier month's too."""
+    """A list of months as one phrase: the range they cover when each follows the one before, else
+    spanless. A year the list names closes it, so it is every earlier month's too."""
     years: list[int | None] = [mention.year for mention in listed]
     for position in range(len(listed) - 2, -1, -1):
         if years[position] is None and years[position + 1] is not None:
@@ -328,19 +391,24 @@ def _listed(listed: list[_Mention], start: int, cue: str | None) -> DatePhrase:
         for previous, current, previous_year, year in zip(listed, listed[1:], years, years[1:]))
     first, last = listed[0], listed[-1]
     return DatePhrase(start, last.end, cue if cue in _YEARLESS_CUES else None, first.month, years[0], None,
-                      (years[-1], last.last, None), scattered=not consecutive)
+                      (years[-1], last.last, None), spanless=not consecutive)
 
 
 def served_date_phrases(question: str, tokens: Sequence[str], schema) -> tuple[DatePhrase, ...]:
     """The phrases a query over ``schema`` (a SchemaGraph) can realize: only where a date column takes
-    their comparisons, and a lone month that is a value of the data ("the first name April", a text
-    month column's "may") stays that value."""
+    their comparisons. A lone month that is a value of the data ("the first name April", a text month
+    column's "may") stays that value, and a quarter column keeps its quarters ("total points scored in
+    the first quarter" of a game read months 1-3, review 2026-10-02)."""
     if not any(column.ref.type == SQLType.DATE for column in schema.columns):
         return ()
+    quarter_column = any(word in {"quarter", "qtr"} for column in schema.columns
+                         for word in re.findall(r"[a-z]+", column.ref.name.lower()))
     return tuple(phrase for phrase in date_phrases(question, tokens)
-                 if phrase.year is not None or phrase.day is not None
-                 or not any(schema.value_index.get(token) for token in tokens[phrase.start:phrase.end]
-                            if token in MONTHS or token in QUARTERS))
+                 if not (quarter_column and any(token in QUARTERS or token == "quarter"
+                                                for token in tokens[phrase.start:phrase.end]))
+                 and (phrase.year is not None or phrase.day is not None
+                      or not any(schema.value_index.get(token) for token in tokens[phrase.start:phrase.end]
+                                 if token in MONTHS or token in QUARTERS)))
 
 
 def _comparison_key(comparison: Comparison):
@@ -397,6 +465,8 @@ def realized_month_words(question: str, sql: str) -> frozenset[str]:
             else:
                 found = found and f"'{comparison.right.value}'" in (sql or "")
         if found:
-            realized.update(token for token in tokens[phrase.start:phrase.end]
-                            if token in MONTHS or token in QUARTERS or token == "quarter")
+            span = tokens[phrase.start:phrase.end]
+            realized.update(token for position, token in enumerate(span)
+                            if token in MONTHS or token in QUARTERS or token == "quarter"
+                            or (token in _ORDINAL_QUARTERS and span[position + 1:position + 2] == ("quarter",)))
     return frozenset(realized)

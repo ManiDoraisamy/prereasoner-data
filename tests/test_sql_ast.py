@@ -2009,6 +2009,113 @@ def test_a_noun_over_a_number_compares_each_row():
     assert "HAVING COUNT(*) > 1" in repeat.sql and execute([orders], repeat.sql) == [("Ada",)], repeat.sql
 
 
+def test_a_month_word_joins_a_date_phrase_only_as_a_date():
+    """Review of the 2026-10-02 date reader: "hired in April may retire" read April-May, "hired in March
+    may get a raise" dropped March, "after January 15, 2026 through March 31, 2026" kept the 15th, "from
+    June, July and August 2026" paired June with July and answered 0, "between July 1 and 10, 2026"
+    compared an amount, and "valid_to on 9999-12-31" crashed. Each now reads as its dates."""
+    employees = {"name": "employees", "columns": ["employee_id", "name", "hired", "salary"], "rows": [
+        [1, "Ann", "2024-04-03", 10], [2, "Bo", "2024-05-09", 20], [3, "Cy", "2025-04-20", 30],
+        [4, "Di", "2025-03-11", 40], [5, "Ed", "2025-05-15", 50]]}
+    orders = {"name": "orders", "columns": ["order_id", "placed", "amount"], "rows": [
+        [1, "2026-01-15", 10], [2, "2026-01-16", 10], [3, "2026-02-20", 10], [4, "2026-03-31", 10],
+        [5, "2026-04-01", 10], [6, "2026-06-02", 10], [7, "2026-07-01", 10], [8, "2026-07-05", 10],
+        [9, "2026-07-10", 10], [10, "2026-07-11", 10], [11, "2026-08-10", 10], [12, "2026-08-12", 10],
+        [13, "2026-08-16", 10]]}
+    contracts = {"name": "contracts", "columns": ["contract_id", "client", "valid_to"], "rows": [
+        [1, "A", "9999-12-31"], [2, "B", "2026-05-01"], [3, "C", "9999-12-31"]]}
+    for question, tables, expected in (
+            ("How many employees hired in April may retire?", [employees], 2),
+            ("How many employees hired in March may get a raise?", [employees], 1),
+            ("How many orders were placed after January 15, 2026 through March 31, 2026?", [orders], 3),
+            ("How many orders were placed from June, July and August 2026?", [orders], 8),
+            ("How many orders were placed between July 1 and 10, 2026?", [orders], 3),
+            ("How many orders were placed from August 10 to 15, 2026?", [orders], 2),
+            ("How many orders were placed in July or August 2026?", [orders], 7),
+            ("How many contracts have valid_to on 9999-12-31?", [contracts], 2),
+            ("How many contracts are valid until December 31, 9999?", [contracts], 3)):
+        candidate = best(question, tables)
+        assert execute(tables, candidate.sql) == [(expected,)], (question, candidate.sql)
+    # A quarter column keeps its quarters: "Q3" is its value, and a game's "first quarter" is no month.
+    sales = {"name": "sales", "columns": ["sale id", "sold on", "quarter", "amount"], "rows": [
+        [1, "2026-01-10", "Q1", 20], [2, "2026-04-10", "Q2", 25], [3, "2026-08-02", "Q3", 30],
+        [4, "2025-08-02", "Q3", 15]]}
+    third = best("total amount in Q3 2026", [sales])
+    assert "'Q3'" in third.sql and execute([sales], third.sql) == [(30,)], third.sql
+    scores = {"name": "scores", "columns": ["score id", "game date", "team", "quarter", "points"], "rows": [
+        [1, "2026-01-10", "Bulls", 1, 20], [2, "2026-05-02", "Bulls", 1, 30], [3, "2026-05-02", "Bulls", 3, 15]]}
+    game = best("total points scored in the first quarter", [scores])
+    assert "SUBSTR" not in game.sql and "2026-01-01" not in game.sql, game.sql
+
+
+def test_either_value_reads_only_listed_values():
+    """Review of the either-value rewrite (2026-10-02): it outranked "destination Paris and origin Lyon"
+    bound to two columns, and a count over INTERSECT for "both English and Dutch". It reads values the
+    question lists with "and" or "or", never after "both", at its conjunction's score."""
+    shipments = {"name": "shipments", "columns": ["shipment id", "origin", "destination", "weight"], "rows": [
+        [1, "Lyon", "Paris", 10], [2, "Paris", "Lyon", 20], [3, "Lyon", "Nice", 30], [4, "Nice", "Paris", 40],
+        [5, "Lyon", "Paris", 50]]}
+    routed = best("List the weight of shipments with destination Paris and origin Lyon", [shipments])
+    assert execute([shipments], routed.sql) == [(10,), (50,)], routed.sql
+    country = {"name": "country", "columns": ["Code", "Name"], "rows": [
+        ["ABW", "Aruba"], ["NLD", "Netherlands"], ["GBR", "United Kingdom"], ["AND", "Andorra"]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [
+        ["ABW", "Dutch"], ["ABW", "English"], ["NLD", "Dutch"], ["NLD", "English"], ["GBR", "English"],
+        ["AND", "Catalan"]]}
+    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    both = best("How many countries speak both English and Dutch?", [country, languages], fks)
+    assert "INTERSECT" in both.sql and execute([country, languages], both.sql) == [(2,)], both.sql
+    # Contrast: listed values of one column are either value.
+    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
+        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Nice"]]}
+    listed = best("total amount from Paris and Lyon", [orders])
+    assert execute([orders], listed.sql) == [(189,)], listed.sql
+    # Negative: a value compared as text and as a number is one value, not a conflict.
+    from engine.sql_ast import BooleanExpr, contradictory
+
+    code = ColumnRef("orders", "order ID", SQLType.TEXT)
+    same = SelectQuery((SelectItem(Star()),), "orders", where=BooleanExpr("AND", (
+        Comparison(code, "=", Literal("1", SQLType.TEXT)), Comparison(code, "=", Literal(1, SQLType.INTEGER)))))
+    assert not contradictory(same)
+
+
+def test_a_count_over_times_and_a_share_word_that_names_a_thing():
+    """Review, 2026-10-02: "orders over 2 times" lost its count once "orders over 50" compared rows, and the
+    share cue summed "the highest share price" and "the highest percentage discount" and shared out "the %
+    discount on the Desk". A share is asked by "share of", "percentage of", "% of" or "as a percentage",
+    and it sums the measure the phrase after "of" names in full ("the share of the order amount")."""
+    customers = {"name": "customers", "columns": ["customer_id", "name"], "rows": [[1, "Ann"], [2, "Bob"], [3, "Cy"]]}
+    orders = {"name": "orders", "columns": ["order_id", "customer_id", "amount"], "rows": [
+        [10, 1, 5], [11, 1, 7], [12, 1, 70], [13, 2, 60], [14, 2, 3], [15, 3, 1]]}
+    fks = [{"from_table": "orders", "from_col": "customer_id", "to_table": "customers", "to_col": "customer_id"}]
+    repeat = best("Which customers have placed orders over 2 times?", [customers, orders], fks)
+    assert "HAVING COUNT(*) > 2" in repeat.sql and execute([customers, orders], repeat.sql) == [("Ann",)], repeat.sql
+    companies = {"name": "companies", "columns": ["company id", "name", "sector", "price"], "rows": [
+        [1, "Acme", "Tech", 10.0], [2, "Bolt", "Tech", 30.0], [3, "Crux", "Energy", 60.0]]}
+    products = {"name": "products", "columns": ["product id", "name", "category", "discount", "price"], "rows": [
+        [1, "Pen", "Office", 5, 2.0], [2, "Desk", "Furniture", 30, 200.0], [3, "Lamp", "Furniture", 15, 40.0]]}
+    for question, tables, expected in (
+            ("Which company has the highest share price?", [companies], 60.0),
+            ("Which product has the highest percentage discount?", [products], 30),
+            ("What is the % discount on the Desk?", [products], 30)):
+        candidate = best(question, tables)
+        assert "/" not in candidate.sql and execute(tables, candidate.sql)[0][-1] == expected, (question, candidate.sql)
+    sales = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
+        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 18, "Nice"]]}
+    order_amount = best("What share of the order amount comes from Paris?", [sales])
+    assert abs(execute([sales], order_amount.sql)[0][0] - 129 / 207) < 1e-12, order_amount.sql
+    revenue = {"name": "revenue", "columns": ["month", "region", "revenue"], "rows": [
+        ["Jan", "North", 100], ["Feb", "North", 50], ["Jan", "South", 10], ["Feb", "South", 40]]}
+    regions = dict(execute([revenue], best("percentage of revenue by region", [revenue]).sql))
+    assert regions == {"North": 0.75, "South": 0.25}, regions
+    # Negative: "share" as a verb divides nothing, and a pattern's "%" is no percent.
+    shared = best("which customers share a city", [sales])
+    assert "/" not in shared.sql, shared.sql
+    from engine.sql_expansion import tokens
+
+    assert "percent" not in tokens("names like 'A%'")
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3425,6 +3532,9 @@ TESTS = [
     test_a_share_word_is_the_aggregate_of_the_rows_it_divides,
     test_two_values_of_one_column_are_either,
     test_a_noun_over_a_number_compares_each_row,
+    test_a_month_word_joins_a_date_phrase_only_as_a_date,
+    test_either_value_reads_only_listed_values,
+    test_a_count_over_times_and_a_share_word_that_names_a_thing,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

@@ -33,6 +33,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
+from engine.sql_expansion import words
 from engine.sql_schema import ForeignKey, SchemaGraph, is_surrogate_key
 
 
@@ -865,7 +866,7 @@ def _semantic_name_tokens(name: str) -> tuple[str, ...]:
 
 def _tokens(text: str) -> tuple[str, ...]:
     out = []
-    for token in re.findall(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?", text.lower()):
+    for token in words(text):
         if token.endswith("'s"):
             token = token[:-2]
         out.append(_canon(token))

@@ -722,29 +722,52 @@ def implicit_sum_measures(question_tokens: Sequence[str]) -> tuple[ImplicitMeasu
 SHARE_WORDS = frozenset({"share", "percentage", "percent", "proportion", "fraction"})
 
 
+def _share_positions(question_tokens: Sequence[str], column_words: Iterable[str]) -> list[int]:
+    """The positions of the share words that ask for a fraction: "what share of", "the percentage of
+    orders", "as a percentage", a last word. A share word that names a column ("the maximum share of TV
+    series") is that column; one before another word names a thing ("the highest share price", "the %
+    discount"), and "share" as a verb ("customers who share a city") divides nothing (review,
+    2026-10-02)."""
+    column_words = set(column_words)
+    tokens = tuple(question_tokens)
+    return [index for index, token in enumerate(tokens)
+            if token in SHARE_WORDS and token not in column_words
+            and (tokens[index + 1:index + 2] in (("of",), ()) or tokens[max(0, index - 2):index] == ("as", "a"))]
+
+
 def share_requested(question_tokens: Sequence[str], column_words: Iterable[str] = ()) -> bool:
-    """Whether the question asks for a fraction of a whole. A share word that names a column ("the
-    maximum share of TV series", "the largest percentage of people") is that column, not a fraction."""
-    return bool((SHARE_WORDS - set(column_words)) & set(question_tokens))
+    """Whether the question asks for a fraction of a whole (``_share_positions``)."""
+    return bool(_share_positions(question_tokens, column_words))
+
+
+# Words that end the noun phrase after "share of": "the share of the order amount comes from Paris".
+_SHARE_PHRASE_ENDS = frozenset({
+    "come", "came", "from", "in", "by", "for", "is", "are", "was", "were", "that", "which", "who", "with",
+    "to", "do", "doe", "did", "of", "per", "each", "on", "at", "where", "and", "or", "account",
+})
 
 
 def share_cue(question_tokens: Sequence[str], schema: SchemaGraph) -> tuple[str, int] | None:
-    """The aggregate a share word asks for, at the word's position: a share is an aggregate of the rows
-    it divides. "percentage of amount by city" sums the measure it names within its next three words;
-    "share of orders by city" and "what percentage of customers are in Paris" count the rows (probe,
-    2026-10-02: the first two were listings that divided nothing, the third a count per customer). A
-    share word that names a column asks for no share."""
+    """The aggregate a share asks for, at its word's position: a share is an aggregate of the rows it
+    divides. "percentage of amount by city" and "the share of the order amount" sum the measure the
+    phrase after "of" names in full; "share of orders by city" and "what percentage of customers are in
+    Paris" count the rows (probe, 2026-10-02: the first two were listings that divided nothing)."""
     column_words = {word for column in schema.columns for word in name_tokens(column.ref.name)}
-    position = next((index for index, token in enumerate(question_tokens)
-                     if token in SHARE_WORDS and token not in column_words), None)
+    tokens = tuple(question_tokens)
+    position = next((index for index in _share_positions(tokens, column_words)
+                     if tokens[index + 1:index + 2] == ("of",)), None)
     if position is None:
         return None
-    table_words = {word for table in schema.tables for word in name_tokens(table)}
-    measure_words = {word for column in schema.columns
-                     if column.ref.type.numeric and not is_surrogate_key(column.ref.name)
-                     for word in name_tokens(column.ref.name)}
-    named = set(question_tokens[position + 1:position + 4]) - table_words
-    return ("SUM" if named & measure_words else "COUNT"), position
+    phrase: set[str] = set()
+    for token in tokens[position + 2:position + 8]:
+        if token in _SHARE_PHRASE_ENDS:
+            break
+        phrase.add(token)
+    named = any(words and words <= phrase
+                for column in schema.columns
+                if column.ref.type.numeric and not is_surrogate_key(column.ref.name)
+                for words in (set(name_tokens(column.ref.name)),))
+    return ("SUM" if named else "COUNT"), position
 
 
 # A superlative of quantity ranks totals: "the most deposits" is the largest total of deposits. "The
@@ -845,9 +868,10 @@ def name_tokens(name: str) -> tuple[str, ...]:
     return tuple(canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
 
 
-# A "%" that follows no number is the word "percent" ("what % of the total amount comes from Paris"
-# served the Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit.
-_QUESTION_WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?|(?<!\d)(?<!\d\s)%")
+# A "%" standing alone is the word "percent" ("what % of the total amount comes from Paris" served the
+# Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit, and inside a word or
+# quotes ("names like 'A%'") a pattern's wildcard.
+_QUESTION_WORD = re.compile(r"[A-Za-z0-9]+(?:'[A-Za-z0-9]+)?|(?<![\w%'\"])(?<!\d\s)%(?![\w'\"])")
 
 
 def words(text: str) -> list[str]:
