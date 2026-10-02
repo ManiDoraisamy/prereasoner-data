@@ -114,7 +114,7 @@ schema-linking mistakes, selection mistakes, source gaps, or entity-resolution e
 | How is PostgreSQL bootstrapped and seeded? | [../db/README.md](../db/README.md) |
 | How are models trained, calibrated, and promoted? | [TRAINING.md](TRAINING.md) |
 | What are the model and corpus limits? | [MODEL_CARD.md](MODEL_CARD.md), [DATA_CARD.md](DATA_CARD.md) |
-| What metadata is published with the weight bundle? | [HUGGING_FACE_MODEL_CARD.md](HUGGING_FACE_MODEL_CARD.md) |
+| What metadata is published with the weight bundle? | [HUGGING_FACE_MODEL_CARD.md](HUGGING_FACE_MODEL_CARD.md), and [HUGGING_FACE_ADAPTER_CARD.md](HUGGING_FACE_ADAPTER_CARD.md) for `qwen_lora/` |
 | Which tests prove which boundary? | [TESTING.md](TESTING.md) |
 | How do MCP and the optional chat service fit in? | [MCP.md](MCP.md) |
 | How is Google Cloud deployment performed? | [../infra/README.md](../infra/README.md) |

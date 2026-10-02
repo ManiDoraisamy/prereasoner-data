@@ -40,16 +40,15 @@ the complete bundle, and only then installs it.
 | `encoder_meta.pt` | Readout allocation and constructor configuration |
 | `qwen_lora/adapter_model.safetensors` | LoRA adapter for `Qwen/Qwen2.5-0.5B` |
 | `qwen_lora/adapter_config.json` | PEFT adapter configuration |
-| `sql_proposer/adapter_model.safetensors` | Retired LoRA SQL proposer from an earlier design; not in the source manifest, not downloaded, not loaded |
-| `sql_proposer/adapter_config.json` | PEFT adapter configuration for the retired proposer |
 | `anchor_assignment.npz` | Calibrated named-dimension thresholds |
 | `primitives.npz` | Learned primitive-composition head |
 | `schema_property_head.pt` | Calibrated Schema.org named-property evidence head |
 
 The source repository contains the small ontology, calibration, taxonomy, and manifest artifacts.
 The base Qwen model is downloaded separately from its publisher. `python -m engine.fetch_weights`
-downloads only the files the source manifest lists, so it skips the retired `sql_proposer/`
-directory. Current Prereasoner loads no SQL-generating model.
+downloads only the files the source manifest lists. Prereasoner loads no SQL-generating model; the
+retired SQL proposer adapter (`sql_proposer/`) was removed from this repository on 2026-10-02 and
+remains in its history.
 
 ## Model Boundary
 
@@ -96,6 +95,6 @@ servable. Unsupported and under-calibrated coordinates abstain.
 ## License
 
 The Prereasoner weight bundle is released under Apache-2.0. The base model and source datasets retain
-their own licenses and terms. The retired `sql_proposer/` adapter was trained on Spider TRAIN (Yu et al.,
-EMNLP 2018; CC BY-SA 4.0); keep that attribution when redistributing it. See
+their own licenses and terms. The retired `sql_proposer/` adapter in earlier revisions was trained on
+Spider TRAIN (Yu et al., EMNLP 2018; CC BY-SA 4.0); keep that attribution when redistributing it. See
 [`THIRD_PARTY.md`](https://github.com/ManiDoraisamy/prereasoner-data/blob/main/THIRD_PARTY.md).
