@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto=require('crypto');
 const http=require('http');
 const fs=require('fs');
 const path=require('path');
@@ -19,8 +20,23 @@ const states=new Map();
 function stateOf(req){
   const id=(new RegExp('(?:^|;\\s*)'+STATE_COOKIE+'=([^;]+)').exec(req.headers.cookie||'')||[])[1];
   if(!id)return null;
-  if(!states.has(id))states.set(id,{deleted:false,requestCount:0,revisions:new Map()});
+  if(!states.has(id))states.set(id,{deleted:false,requestCount:0,syncCount:0,source:null,revisions:new Map()});
   return states.get(id);
+}
+
+// Upload once: the page stores the conversation's sheets when they change (POST /api/conversation/sync)
+// and every question names them by source_hash. As engine/conversations.py:stored_source does, a named
+// snapshot the conversation no longer holds answers 409 with the stored hash, and the page uploads again.
+function sourceHash(tables){
+  return crypto.createHash('sha256').update(JSON.stringify((tables||[]).map(t=>[t.name,t.data]))).digest('hex');
+}
+function refusedSource(state,body){
+  if(Array.isArray(body.tables))return null;      // an MCP client may still send its tables
+  if(!body.source_hash||!body.conversation_id)return {status:400,body:{error:'need tables or conversation_id + source_hash'}};
+  if(body.conversation_id!==conversation||!state.source)return {status:404,body:{error:'conversation not found'}};
+  if(body.source_hash!==state.source.hash)
+    return {status:409,body:{error:"the conversation's sheets changed; upload them again",source_hash:state.source.hash}};
+  return null;
 }
 
 const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8',
@@ -131,11 +147,25 @@ const server=http.createServer(async(req,res)=>{
   const stateful=url.pathname==='/__state'||url.pathname==='/chat'||url.pathname.startsWith('/api/');
   const state=stateful?stateOf(req):null;
   if(stateful&&!state)return send(res,400,{error:'no '+STATE_COOKIE+' cookie: import test from web/tests/browser/fixtures.js'});
-  if(url.pathname==='/__state')return send(res,200,{deleted:state.deleted,requestCount:state.requestCount});
+  if(url.pathname==='/__state'){
+    // A test replaces the stored snapshot, as another tab or device uploading changed sheets would.
+    if(req.method==='POST'&&(await readJson(req)).replaceSource&&state.source)state.source.hash=sourceHash([{name:'elsewhere',data:String(Date.now())}]);
+    return send(res,200,{deleted:state.deleted,requestCount:state.requestCount,syncCount:state.syncCount});
+  }
+  if(req.method==='POST'&&url.pathname==='/api/conversation/sync'){
+    const body=await readJson(req);
+    if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
+    if(body.id&&body.id!==conversation)return send(res,404,{error:'conversation not found'});
+    const hash=sourceHash(body.tables),changed=!state.source||state.source.hash!==hash;
+    state.syncCount+=1;
+    state.source={hash,version:(state.source?state.source.version:0)+(changed?1:0)};
+    return send(res,200,{conversation_id:conversation,changed,source_hash:hash,dataset_version:state.source.version});
+  }
   if(req.method==='GET'&&url.pathname==='/api/reason')return send(res,200,{ok:true});
   if(req.method==='POST'&&url.pathname==='/api/reason'){
     const body=await readJson(req);state.requestCount+=1;
     if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
+    const refused=refusedSource(state,body);if(refused)return send(res,refused.status,refused.body);
     const analysis=analysisFor(body.question||''); const raw=answer(body.question||'',analysis);
     raw.execution=executionFor(body.use);
     state.revisions.set(analysis.analysis_id+':'+analysis.revision,raw);
@@ -144,6 +174,7 @@ const server=http.createServer(async(req,res)=>{
   if(req.method==='POST'&&url.pathname==='/chat'){
     const body=await readJson(req);state.requestCount+=1;
     if(req.headers.authorization!=='Bearer local-dev')return send(res,401,{error:'sign in required'});
+    const refused=refusedSource(state,body);if(refused)return send(res,refused.status,refused.body);
     const analysis=analysisFor(body.message||''); const raw=answer(body.message||'',analysis);
     raw.execution=executionFor(body.use);
     state.revisions.set(analysis.analysis_id+':'+analysis.revision,raw);

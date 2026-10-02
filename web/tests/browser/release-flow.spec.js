@@ -600,9 +600,11 @@ test('an orchestrated turn keeps backend provenance per engine call',async({page
 
 test('customer-orders ?load prompt carries its Europe-to-GBP follow-up in the same chat',async({page})=>{
   await mockAuth(page,'1');
-  const calls=[];
+  const calls=[],uploads=[];
   page.on('request',request=>{
-    if(new URL(request.url()).pathname==='/chat'&&request.method()==='POST')calls.push(request.postDataJSON());
+    const pathname=new URL(request.url()).pathname;
+    if(pathname==='/chat'&&request.method()==='POST')calls.push(request.postDataJSON());
+    if(pathname==='/api/conversation/sync'&&request.method()==='POST')uploads.push(request.postDataJSON());
   });
   await page.goto('/?load=customer-orders');
   await expect(page.locator('#chips .nm')).toHaveText(['orders']);
@@ -639,14 +641,45 @@ test('customer-orders ?load prompt carries its Europe-to-GBP follow-up in the sa
   expect(calls[1].history).toEqual(expect.arrayContaining([
     expect.objectContaining({role:'user',content:'total amount in France in US dollars'}),
   ]));
-  expect(calls[1].tables).toHaveLength(1);
-  expect(calls[2].tables).toHaveLength(1);
-  expect(calls[3].tables).toHaveLength(1);
   expect(calls[3].history).toEqual(expect.arrayContaining([
     expect.objectContaining({role:'user',content:'why is France and other European countries not included?'}),
   ]));
-  expect(calls[1].tables[0].data).toContain('101,Sherlock Holmes,London,Gold,"Magnifying Glass, Brass",GBP,118');
-  expect(calls[1].tables[0].data).toContain('109,Inspector Clouseau,Paris,Bronze,Gabardine Trench Coat,EUR,310');
+  // Upload once: the sheet goes up with the first question, and all four questions name it.
+  expect(uploads).toHaveLength(1);
+  expect(uploads[0].tables).toHaveLength(1);
+  expect(uploads[0].tables[0].data).toContain('101,Sherlock Holmes,London,Gold,"Magnifying Glass, Brass",GBP,118');
+  expect(uploads[0].tables[0].data).toContain('109,Inspector Clouseau,Paris,Bronze,Gabardine Trench Coat,EUR,310');
+  for(const call of calls){
+    expect(call.tables).toBeUndefined();
+    expect(call.source_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(call.source_hash).toBe(calls[0].source_hash);
+    expect(call.conversation_id).toMatch(new RegExp(`^${conversationPattern()}$`));
+  }
+});
+
+test('a question naming replaced sheets uploads them again and asks once more',async({page})=>{
+  await mockAuth(page,'1');
+  const uploads=[],statuses=[];
+  page.on('request',request=>{
+    if(new URL(request.url()).pathname==='/api/conversation/sync'&&request.method()==='POST')uploads.push(request.postDataJSON());
+  });
+  page.on('response',response=>{
+    if(new URL(response.url()).pathname==='/chat')statuses.push(response.status());
+  });
+  await page.goto('/?load=orders-tiers');
+  await page.locator('#q').fill('total amount');
+  await page.getByRole('button',{name:'Ask',exact:true}).click();
+  await expect(page.locator('.turn-answer').last()).toContainText('Your total is 180.');
+  expect(uploads).toHaveLength(1);
+  // Another tab replaces the conversation's stored sheets.
+  await page.request.post('/__state',{data:{replaceSource:true}});
+  await page.locator('#chatq').fill('only Paris');
+  await page.getByRole('button',{name:'Send'}).click();
+  await expect(page.locator('.turn-answer').last()).toContainText('The Paris total is 120.');
+  expect(statuses).toEqual([200,409,200]);
+  expect(uploads).toHaveLength(2);
+  expect(uploads[1].id).toMatch(new RegExp(`^${conversationPattern()}$`));
+  expect(uploads[1].tables).toEqual(uploads[0].tables);
 });
 
 test('signed-in conversations remain reachable on mobile home',async({page})=>{
