@@ -1132,7 +1132,16 @@ def _sanitized_having_query(
     if not groups:
         return None
     group = groups[0]
-    select = tuple(selected_aggregates) + (SelectItem(group),)
     if not selected_aggregates:
         return None
+    # The question's order: "the cities with total sales over 100" lists the city, then its total. The
+    # aggregate went first, so the product read [200, 'Osaka'] (live suite, 2026-10-02).
+    group_words = set(_semantic_tokens(group.name))
+    group_at = next((index for index, token in enumerate(tokens) if token in group_words), len(tokens))
+    cue_at = min((index for index, token in enumerate(tokens)
+                  if token in set().union(*function_cues.values())), default=len(tokens))
+    if group_at < cue_at:
+        select = (SelectItem(group),) + tuple(selected_aggregates)
+    else:
+        select = tuple(selected_aggregates) + (SelectItem(group),)
     return replace(query, select=select, group_by=(group,), order_by=(), limit=None)

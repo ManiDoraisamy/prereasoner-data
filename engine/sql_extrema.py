@@ -184,6 +184,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                         limit=limit,
                         distinct=query.distinct or _explicit_distinct(tokens),
                     )
+                    transformed = _measure_extreme(transformed, target, where, tokens)
                     built = _candidate(
                         transformed,
                         58.0 + target.score + where_bonus - 0.2 * len(query.joins),
@@ -343,6 +344,7 @@ class ExtremaQueryExpander(ExpansionSupport):
                         limit=limit,
                         distinct=_explicit_distinct(tokens),
                     )
+                    query = _measure_extreme(query, target, and_predicates(filters), tokens)
                     built = _candidate(
                         query,
                         64.0 + target.score + 0.75 * len(projection)
@@ -670,6 +672,22 @@ class ExtremaQueryExpander(ExpansionSupport):
             for index in range(row_count)
         ]
         return len(rows) != len(set(rows))
+
+
+
+def _measure_extreme(query: SelectQuery, target, where, tokens: tuple[str, ...]) -> SelectQuery:
+    """A row superlative that lists only the column it orders by, of a table the question does not name, is
+    that column's extreme value: "the maximum notice_days" is MAX(notice_days), one value even when rows tie
+    (live suite, 2026-10-02: the first row by the ordering won, and the served ties made the answer a table).
+    One that names its entity ("the store with the highest revenue"), lists anything else, or more than one
+    row ("the top 3") keeps its ordering."""
+    if query.limit != 1 or len(query.select) != 1 or query.select[0].expression != target.column:
+        return query
+    if set(_semantic_tokens(target.column.table)) & set(tokens):
+        return query
+    function = "MAX" if target.direction == "DESC" else "MIN"
+    return replace(query, select=(SelectItem(Aggregate(function, target.column)),), where=where,
+                   order_by=(), limit=None, distinct=False)
 
 
 def _has_dual_extrema(tokens: tuple[str, ...]) -> bool:

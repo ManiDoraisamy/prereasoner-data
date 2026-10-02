@@ -2340,6 +2340,33 @@ def test_a_distinct_counted_noun_counts_the_column_it_names():
     assert execute([players], everyone.sql) == [(4,)], everyone.sql
 
 
+def test_a_having_reading_lists_in_the_question_order():
+    """Live suite without generated SQL, 2026-10-02: "cities with total sales over 100" served
+    [200, 'Osaka']: the sanitized HAVING reading put the total before the city it groups. It lists them in
+    the order the question names them (Spider writes some golds total-first against such wording: an
+    order-only difference)."""
+    sales = {"name": "s", "columns": ["city", "sales"], "rows": [
+        ["Osaka", 120], ["Osaka", 80], ["Tokyo", 50], ["Kyoto", 90]]}
+    cities = best("cities with total sales over 100", [sales])
+    assert execute([sales], cities.sql) == [("Osaka", 200)], cities.sql
+
+
+def test_a_superlative_of_only_its_measure_is_the_extreme_value():
+    """Live suite without generated SQL, 2026-10-02 (eval-formesign-termination-xlsx): "maximum notice_days"
+    served the first row ordered by notice_days, and the served ties turned it into a table. A row
+    superlative that lists only the column it orders, of a table the question does not name, is MAX or
+    MIN of it; one that names its entity keeps the row."""
+    terminations = {"name": "terminations", "columns": ["contract", "notice_days", "reason"], "rows": [
+        ["A", 30, "x"], ["B", 90, "y"], ["C", 90, "z"], ["D", 60, "x"]]}
+    longest = best("maximum notice_days", [terminations])
+    assert "MAX(" in longest.sql and execute([terminations], longest.sql) == [(90,)], longest.sql
+    shortest = best("minimum notice_days", [terminations])
+    assert "MIN(" in shortest.sql and execute([terminations], shortest.sql) == [(30,)], shortest.sql
+    # Contrast: the entity a question names stays its answer.
+    contract = best("Which contract has the longest notice_days?", [terminations])
+    assert "LIMIT 1" in contract.sql and execute([terminations], contract.sql)[0][0] in {"B", "C"}, contract.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3769,6 +3796,8 @@ TESTS = [
     test_a_comparative_than_a_number_compares_the_measure_it_describes,
     test_a_contained_text_compares_the_lowered_values,
     test_a_distinct_counted_noun_counts_the_column_it_names,
+    test_a_having_reading_lists_in_the_question_order,
+    test_a_superlative_of_only_its_measure_is_the_extreme_value,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
