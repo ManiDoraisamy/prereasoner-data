@@ -55,7 +55,9 @@ def _wire_cell(value):
 
 
 def _operand(value):
-    while isinstance(value, FunctionValue):           # LOWER and TEXT are storage details, not the condition
+    # LOWER and TEXT are storage details, not the condition. MONTH is the condition: "signed in August" compares
+    # month(signed), and a label without it read "where signed = 8" (2026-10-02).
+    while isinstance(value, FunctionValue) and value.function in {"LOWER", "TEXT"}:
         value = value.operand
     return value
 
@@ -99,6 +101,8 @@ def _term(value, labels):
         return str(value.value)
     if isinstance(value, BinaryValue):
         return f"({_term(value.left, labels)} {value.operator} {_term(value.right, labels)})"
+    if isinstance(value, FunctionValue):
+        return f"{value.function.lower()}({_term(value.operand, labels)})"
     return str(value)
 
 

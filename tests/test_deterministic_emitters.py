@@ -1138,6 +1138,9 @@ def test_a_month_comparison_runs_in_both_programs():
     ], estimated_rows=4)
     assert result.mode.value == "verify"                       # both programs ran and agreed
     assert [tuple(row.values()) for row in result.rows] == [(2,)], result.rows
+    # The filter sheet's label names the month it compares; it read "where signed = 8" in the Chrome gate.
+    labels = {view["logical_name"]: view["label"] for view in result.record()["views"]}
+    assert labels["filtered"] == "where month(signed) = 8", labels
     # "How many transfers were signed in Q3?": a yearless quarter is a range of months, in both programs.
     from engine.sql_ast import BooleanExpr
 
@@ -1152,6 +1155,8 @@ def test_a_month_comparison_runs_in_both_programs():
     ], estimated_rows=5)
     assert result.mode.value == "verify"
     assert [tuple(row.values()) for row in result.rows] == [(3,)], result.rows
+    labels = {view["logical_name"]: view["label"] for view in result.record()["views"]}
+    assert labels["filtered"] == "where month(signed) >= 7 and month(signed) <= 9", labels
 
 
 def test_a_contained_text_runs_in_both_programs():
@@ -1171,6 +1176,9 @@ def test_a_contained_text_runs_in_both_programs():
     ], estimated_rows=4)
     assert result.mode.value == "verify"                       # both programs ran and agreed
     assert [tuple(row.values()) for row in result.rows] == [("Alana",), ("Kendall",), ("Sal_ly",)], result.rows
+    # Contrast with the month label: LOWER is how the programs compare, not the condition, so the label omits it.
+    labels = {view["logical_name"]: view["label"] for view in result.record()["views"]}
+    assert labels["filtered"] == "where contestant_name LIKE '%al%'", labels
 
 
 def test_a_share_of_the_whole_runs_in_both_programs():
