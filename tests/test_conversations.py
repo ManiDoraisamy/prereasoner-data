@@ -441,6 +441,60 @@ def test_modify_reclaims_abandoned_pending_rows_without_reusing_failed_numbers()
                for statement, _ in cursor.statements)
 
 
+def test_modify_renames_the_analysis_in_place_without_its_dropped_filter():
+    """Chrome gate, 2026-10-02: 25 of 60 follow-ups in older conversations showed a name holding an
+    older filter ("orders in paris" over a Lyon answer). A modify may carry the stored name less some
+    of its words; the analysis keeps its id and revision history. Any other name is refused, and a
+    name another analysis of the conversation holds is left to it."""
+
+    def reserve(requested, taken=False):
+        class Cursor:
+            def __init__(self):
+                self.one = None
+                self.statements = []
+
+            def execute(self, statement, params=None):
+                text = str(statement)
+                self.statements.append((text, params))
+                if 'SELECT c.source_hash, c.dataset_version' in text:
+                    self.one = ("7" * 64, 3)
+                elif "SELECT a.slug" in text:
+                    self.one = ("orders_in_paris", "how many orders in Paris", 1, False)
+                elif 'SELECT 1 FROM "chat"."analysis" WHERE conversation_id' in text:
+                    self.one = (1,) if taken else None
+                elif "SELECT COUNT(*)" in text and 'FROM "chat"."analysis_revision"' in text:
+                    self.one = (1, 1)
+
+            def fetchone(self):
+                return self.one
+
+        cursor = Cursor()
+        with patch.object(conversations, "_pg", return_value=_Connection(cursor)):
+            descriptor = conversations.begin_analysis(
+                "user", "c_" + "2" * 32,
+                {"action": "modify", "slug": requested, "analysis_id": "a_" + "1" * 32},
+                "how many orders in Lyon", request_input_hash="8" * 64, request_source_hash="7" * 64,
+            )
+        renames = [params for statement, params in cursor.statements
+                   if statement.startswith('UPDATE "chat"."analysis" SET slug')]
+        return descriptor, renames
+
+    descriptor, renames = reserve("orders")
+    assert descriptor["slug"] == "orders" and descriptor["analysis_id"] == "a_" + "1" * 32
+    assert descriptor["revision"] == 2 and renames == [("orders", "a_" + "1" * 32)]
+    # Contrast: the stored name is sent unchanged, and a name another analysis holds stays that one's.
+    assert reserve("orders_in_paris") == ({**descriptor, "slug": "orders_in_paris"}, [])
+    assert reserve("orders", taken=True) == ({**descriptor, "slug": "orders_in_paris"}, [])
+    # Negative: a name that is not the stored one's words is another analysis's, as before.
+    for other in ("revenue", "paris_orders", "orders_in_paris_by_tier"):
+        try:
+            reserve(other)
+        except conversations.AnalysisError as exc:
+            assert "does not match analysis_id" in str(exc), exc
+        else:
+            raise AssertionError(f"renamed orders_in_paris to {other}")
+
+
 def test_failed_modify_keeps_a_zero_payload_revision_tombstone():
     class Cursor:
         def __init__(self):
@@ -598,6 +652,7 @@ TESTS = [
     test_analysis_reservation_uses_the_effective_request_input_hash,
     test_analysis_reservation_rejects_a_superseded_source_snapshot,
     test_modify_reclaims_abandoned_pending_rows_without_reusing_failed_numbers,
+    test_modify_renames_the_analysis_in_place_without_its_dropped_filter,
     test_failed_modify_keeps_a_zero_payload_revision_tombstone,
     test_decomposition_probe_cancels_its_empty_revision_without_a_gap,
     test_historical_revision_uses_its_own_input_hash_and_rejects_zero,

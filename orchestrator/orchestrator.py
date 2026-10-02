@@ -414,8 +414,9 @@ def _named_for_its_result(spec: dict[str, Any], user_message: str = "",
 
     The engine cuts a longer name mid-word and adds a hash, which became the workbook's heading:
     "top customers products never bo c9272891" (Chrome pass, 2026-09-30). The tool schema states
-    the limit and the model still exceeds it. An existing analysis keeps its stored name, which
-    `modify` and `inspect` must match exactly.
+    the limit and the model still exceeds it. An existing analysis keeps its stored name here, which
+    `modify` and `inspect` must match exactly; a modify then drops only the filter words its question no
+    longer asks for (_without_dropped_filters).
     """
     slug = spec.get("slug")
     if spec.get("action") != "create" or not isinstance(slug, str):
@@ -464,6 +465,64 @@ def _continued_analysis(spec: dict[str, Any], catalog: list[dict[str, Any]]) -> 
         if isinstance(item, dict) and item.get("slug") == slug and item.get("analysis_id"):
             return {"action": "modify", "analysis_id": item["analysis_id"], "slug": item["slug"]}
     return spec
+
+
+def _without_dropped_filters(spec: dict[str, Any], catalog: list[dict[str, Any]], question: str,
+                             tables: list[dict] | None = None) -> dict[str, Any]:
+    """A modified analysis named for a filter its follow-up no longer asks about loses that word.
+
+    Analyses created before names lost their filters (_named_for_its_result) kept them through every
+    follow-up: in the 2026-10-02 Chrome gate's existing conversations, 25 of 60 follow-ups showed
+    "Reasoning steps for orders in paris" over a Lyon answer, or "total amount france usd" over a Europe
+    total in pounds. A word of the stored name is a filter when it is a word of a value of the uploaded
+    data, a currency, or a name the analysis's last question capitalizes (France, Asia) other than the
+    data's own table and column names; it stays while the question still asks for it, and an aggregate
+    or a measure word ("average price") always stays.
+    The engine renames the analysis in place (conversations._renamed_analysis): the id, the links and
+    the revision history stay.
+    """
+    from engine.currency_intent import currency_intent
+    from engine.enrichment.value_types import ISO4217_CODES
+
+    if spec.get("action") != "modify" or not isinstance(spec.get("slug"), str):
+        return spec
+    row = next((item for item in catalog or () if isinstance(item, dict)
+                and item.get("analysis_id") == spec.get("analysis_id")), None)
+    if row is None or row.get("slug") != spec["slug"]:
+        return spec
+    words = spec["slug"].split("_")
+    asked = set(_question_words(question))
+    intent = currency_intent(question)
+    target = intent.target.casefold() if intent is not None else None
+    values = {word for value, _column in _named_values(" ".join(words), tables or []) for word in value}
+    schema = set()
+    for table in tables or ():
+        schema.update(_question_words(str(table.get("name") or "")))
+        try:
+            schema.update(_question_words(" ".join(next(csv.reader(io.StringIO(str(table.get("data") or "")))))))
+        except (StopIteration, csv.Error):
+            continue
+    latest = re.findall(r"[A-Za-z0-9]+", str(row.get("latest_question") or ""))
+    proper = {word.casefold() for word in latest[1:] if word[:1].isupper()}
+
+    def dropped(word: str) -> bool:
+        word = word.casefold()
+        if word in asked or word in _GENERIC_NAME_WORDS or word in _NAME_CONNECTORS:
+            return False
+        if word in values:
+            return True
+        if word.upper() in ISO4217_CODES or word in {"dollar", "dollars", "euro", "euros", "pound", "pounds"}:
+            return word != target
+        return word in proper and word not in schema
+
+    kept = [word for word in words if not dropped(word)]
+    # A connector the dropped words left dangling goes too: "orders in paris" is "orders".
+    kept = [word for index, word in enumerate(kept)
+            if word.casefold() not in _NAME_CONNECTORS
+            or (0 < index < len(kept) - 1 and kept[index + 1].casefold() not in _NAME_CONNECTORS)]
+    if not kept or kept == words:
+        return spec
+    return {**spec, "slug": "_".join(kept)}
 
 
 def _terminal_fallback(shaped: dict[str, Any]) -> str:
@@ -873,7 +932,8 @@ async def _run_turn(user_message: str, tables: list[dict], history: list[dict], 
                                     for key in ("action", "slug", "analysis_id", "revision")
                                     if (block.input or {}).get(key) is not None
                                 }, user_message, tables)
-                                analysis_spec = validate_analysis_spec(_continued_analysis(named, catalog))
+                                analysis_spec = validate_analysis_spec(_without_dropped_filters(
+                                    _continued_analysis(named, catalog), catalog, question, tables))
                             except AnalysisError as exc:
                                 tool_results.append({
                                     "type": "tool_result", "tool_use_id": block.id,

@@ -1053,6 +1053,44 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
     assert engine_calls[0][1]["analysis"]["slug"] == "top_customers_products_never_bought"
 
 
+def test_a_follow_up_drops_the_filter_its_question_no_longer_asks_from_the_name():
+    """Chrome gate, 2026-10-02, existing conversations: 25 of 60 follow-ups rendered "Reasoning steps
+    for" a name holding an older filter: "orders in paris" over a Lyon answer, "total amount france usd"
+    over a Europe total in pounds, "contracts value asia usd" over Europe. Analyses created since then
+    name no filter; a modify of an older one is sent with the filter words its question no longer asks
+    about removed, and the engine renames it in place."""
+    orders = [{"name": "orders", "data": "order ID,customer,city,currency,amount\n1,Ada,Paris,EUR,10\n"
+                                         "2,Bo,Lyon,EUR,20\n"}]
+    contracts = [{"name": "contracts", "data": "contract,party,country,currency,value\n"
+                                               "C1,Acme,Japan,JPY,100\n"}]
+
+    def renamed(slug, latest, question, tables):
+        catalog = [{"analysis_id": "a_" + "4" * 32, "slug": slug, "latest_question": latest}]
+        spec = {"action": "modify", "analysis_id": "a_" + "4" * 32, "slug": slug}
+        return orchestrator._without_dropped_filters(spec, catalog, question, tables)["slug"]
+
+    for slug, latest, question, tables, expected in (
+            ("orders_in_paris", "how many orders in Paris", "how many orders in Lyon", orders, "orders"),
+            ("total_amount_france_usd", "total amount in France in US dollars",
+             "total amount in Europe in GBP", orders, "total_amount"),
+            ("contracts_value_asia_usd", "total value for contracts in Asia in US dollars",
+             "total value for contracts in Europe in US dollars", contracts, "contracts_value_usd"),
+            # Contrasts: a filter the question still asks for stays, and so does the conversion target.
+            ("orders_in_paris", "how many orders in Paris", "how many orders in Paris last week", orders,
+             "orders_in_paris"),
+            ("total_amount_france_usd", "total amount in France in US dollars",
+             "total amount in France in British pounds", orders, "total_amount_france"),
+            # Negative: an aggregate and a column of the data are never filters.
+            ("average_amount_by_city", "average amount by city", "maximum amount by currency", orders,
+             "average_amount_by_city")):
+        assert renamed(slug, latest, question, tables) == expected, (slug, question)
+    # Negative: a create, and a modify the catalog does not hold, are sent as they are.
+    create = {"action": "create", "slug": "orders_in_paris"}
+    assert orchestrator._without_dropped_filters(create, [], "how many orders in Lyon", orders) == create
+    stray = {"action": "modify", "analysis_id": "a_" + "5" * 32, "slug": "orders_in_paris"}
+    assert orchestrator._without_dropped_filters(stray, [], "how many orders in Lyon", orders) == stray
+
+
 def test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis():
     question = (
         "Find the top selling products and top buying customers and list the top "
@@ -1695,6 +1733,7 @@ TESTS = [
     test_followup_prompt_separates_geography_from_output_currency_and_executes_yes,
     test_an_output_currency_survives_a_complete_question_in_between,
     test_the_model_sees_the_rows_the_answer_covers,
+    test_a_follow_up_drops_the_filter_its_question_no_longer_asks_from_the_name,
     test_decomposition_is_one_engine_triggered_retry_of_the_same_analysis,
     test_a_query_call_without_a_question_is_repaired_by_the_model_not_sent_to_the_engine,
     test_decomposition_contract_has_no_schema_or_code_escape_hatch,

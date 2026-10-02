@@ -339,6 +339,26 @@ def _owned_analysis(cur, user_id, conversation_id, analysis_id, *, lock=False):
     return row
 
 
+def _renamed_analysis(cur, conversation_id, analysis_id, stored, requested):
+    """Rename an analysis in place to a name made of its stored name's words, without some of them.
+
+    A follow-up drops the filter words its question no longer asks about: "orders in paris" headed a
+    Lyon answer (Chrome gate, 2026-10-02; orchestrator._without_dropped_filters). The analysis id, its
+    links and its revision history stay; the next revision's sheets carry the new name. Any other name
+    is not this analysis's, and a name another analysis of the conversation holds stays that one's.
+    """
+    words = stored.split("_")
+    kept = iter(words)
+    if not all(word in kept for word in requested.split("_")) or len(requested) >= len(stored):
+        raise AnalysisError("analysis slug does not match analysis_id")
+    cur.execute('SELECT 1 FROM "chat"."analysis" WHERE conversation_id = %s AND slug = %s '
+                'AND analysis_id <> %s', (conversation_id, requested, analysis_id))
+    if cur.fetchone() is not None:
+        return stored
+    cur.execute('UPDATE "chat"."analysis" SET slug = %s WHERE analysis_id = %s', (requested, analysis_id))
+    return requested
+
+
 def begin_analysis(user_id, conversation_id, spec, question, *, request_input_hash,
                    request_source_hash):
     """Reserve one create/modify revision and return its server-owned descriptor."""
@@ -397,8 +417,9 @@ def begin_analysis(user_id, conversation_id, spec, question, *, request_input_ha
             analysis_id = spec.get("analysis_id")
             row = _owned_analysis(cur, user_id, conversation_id, analysis_id, lock=True)
             slug = str(row[0])
-            if canonical_analysis_slug(spec["slug"]) != slug:
-                raise AnalysisError("analysis slug does not match analysis_id")
+            requested = canonical_analysis_slug(spec["slug"])
+            if requested != slug:
+                slug = _renamed_analysis(cur, conversation_id, analysis_id, slug, requested)
             cur.execute('UPDATE "chat"."analysis_revision" SET status = %s, completed_at = now() '
                         'WHERE analysis_id = %s AND status = %s '
                         'AND created_at < now() - interval \'1 hour\'',
