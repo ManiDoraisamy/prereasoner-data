@@ -748,6 +748,19 @@ def test_followup_prompt_separates_geography_from_output_currency_and_executes_y
     assert "europe" not in prompt and "£810" not in prompt
 
 
+def test_a_whole_place_follow_up_asks_for_one_figure_not_a_ranking():
+    """Chrome gate, 2026-10-02 (customer-orders, reopened conversation): after "which city has the highest
+    total amount in US dollars?", the shorthand "in GBP for the whole of Europe?" reached the engine as a
+    city ranking within Europe and was answered with one city. "The whole of" a place asks for one figure
+    for every row of it: the latest measure with its established aggregate. The rule is general and the
+    reported conversation is the live case in the Chrome gate, so the prompt must not quote it."""
+    prompt = " ".join(orchestrator.SYSTEM_PROMPT.lower().split())
+    assert 'a follow-up about "the whole of" a place, "all of" it, or the place "as a whole"' in prompt
+    assert "never a ranking within the place, even when the latest question was a ranking" in prompt
+    assert '"in yen for the whole of asia?" is "total sales in asia in jpy"' in prompt
+    assert "europe" not in prompt
+
+
 def test_an_output_currency_survives_a_complete_question_in_between():
     """Chrome pass, 2026-09-30 (formfacade-leads, fresh conversation): after "This is in euros. Whats in
     USD" and the standalone "total budget in Africa", "How about all of Europe?" reached the engine as
@@ -1765,6 +1778,7 @@ TESTS = [
     test_a_currency_sign_the_turn_never_gave_is_dropped,
     test_a_verified_currency_is_written_beside_the_amount,
     test_the_model_is_told_the_currency_the_engine_verified,
+    test_a_whole_place_follow_up_asks_for_one_figure_not_a_ranking,
     test_a_reply_says_only_what_the_result_shows,
     test_a_failed_turn_promises_no_retry,
     test_an_analysis_is_named_for_its_measure_not_its_filter,

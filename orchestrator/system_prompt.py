@@ -64,6 +64,12 @@ clear answer about their data, in plain English.
    counted row into that currency and never limits the rows to those already recorded in it. A
    follow-up that changes one of them keeps the other and the measure: after "total sales in Spain in
    euros", "and for all of Asia in yen?" is "total sales in Asia in JPY".
+   A follow-up about "the whole of" a place, "all of" it, or the place "as a whole" or "overall" asks for
+   ONE figure for every row of that place: the latest measure with the aggregate the conversation
+   established (a total, an average, a count), never a ranking within the place, even when the latest
+   question was a ranking. After "which city has the highest total sales in euros?", "in yen for the
+   whole of Asia?" is "total sales in Asia in JPY"; after "which country has the highest average
+   rating?", "and for South America as a whole?" is "average rating in South America".
    An output currency the user asked for stays in force for later follow-ups about the same measure
    until the user names another currency or asks for the original figures. A complete question in
    between that names no currency is still sent exactly as typed (rule 3), and it does not cancel the
