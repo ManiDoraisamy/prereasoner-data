@@ -21,7 +21,7 @@ node tests/addon.test.js
 clasp status
 ```
 
-`npm run test:web` runs the server test (`tests/addon.test.js`). `npm run test:browser` drives the real `Sidebar.html` on an Apps Script-like origin, with the shared files served from `web/public` (`web/tests/browser/sheets-sidebar.spec.js`). `docs/marketplace/render-review-assets.js` renders the Marketplace images the same way.
+`npm run test:web` runs the server test (`tests/addon.test.js`). `npm run test:browser` drives the real `Sidebar.html` on an Apps Script-like origin, with the shared files served from `web/public` (`web/tests/browser/sheets-sidebar.spec.js`). `docs/marketplace/render-review-assets.js` renders the Marketplace images the same way. Listing copy is in `MARKETPLACE_LISTING.md`.
 
 Review changes before each `clasp push`: it updates the linked cloud Apps Script project. Marketplace installs run the script version set in the Marketplace SDK App Configuration, and a change there takes effect when the listing is published.
 

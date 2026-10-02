@@ -183,8 +183,7 @@ The single production Cloud Run service now runs the merged 7B implementation at
 revision `prereasoner-api-00122-zc4`, image
 `us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:82f8f154d8c655bb23e05e0c1a98d956175f3ef1ab13a3fbfe6eb3bd9313b79c`.
 The source merged via PR #30 (`ad4f4076fc8f7b09c146811e84aa96802794ce2a`); health, release,
-live disposable-PostgreSQL product, CPU HTTP, and browser checks passed. See the newest entry in
-`chatgpt-handoff.md` for revision, cutover, test, rollback, and RunPod details.
+live disposable-PostgreSQL product, CPU HTTP, and browser checks passed.
 
 The production-matched full Spider DEV diagnostic is **864/1,034 strict (83.56%)** and
 **867/1,034 lenient (83.85%)**, versus the historical 0.5B main baseline **647/1,034 strict
