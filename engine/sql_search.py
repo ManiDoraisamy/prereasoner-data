@@ -55,6 +55,12 @@ _FUNCTION_WORDS = frozenset({
     "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "into", "is", "it", "of", "on", "or",
     "than", "that", "the", "this", "to", "was", "were", "with",
 })
+# Words that place a row first or last in time ("the first student to register", "the most recent order").
+_EARLY_WORDS = frozenset({"first", "earliest"})
+_LATE_WORDS = frozenset({"last", "latest", "recent", "newest"})
+# "first name", "first, middle, and last name", "first and second line": a word of this run before
+# "name" or "line" names a part of a name or an address, not a place in an ordering.
+_NAME_PART_WORDS = frozenset({"first", "middle", "last", "second", "third", "and", "or", "full", "given", "family"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
 _CATEGORICAL_INITIALS = {
     "left": "l", "right": "r",
@@ -940,10 +946,15 @@ class SQLSearcher:
             direction = "DESC"
         elif token_set & {"ascending", "asc", "lowest", "smallest", "least", "earliest", "oldest", "bottom"}:
             direction = "ASC"
+        # "the first student to register" and "when was the last transcript released" order by time; the
+        # "first" of "first name" places nothing (probe, 2026-10-02: "what are the first names of all
+        # students" answered one row, ordered by age).
+        temporal = next(((("ASC" if token in _EARLY_WORDS else "DESC"), i) for i, token in enumerate(tokens)
+                         if token in _EARLY_WORDS | _LATE_WORDS and not _names_a_part(tokens, i)), None)
 
         limit = None
         for i, token in enumerate(tokens):
-            if token in {"top", "bottom", "first"}:
+            if token in {"top", "bottom", "first", "last"} and not _names_a_part(tokens, i):
                 limit = next((int(_number(tokens[j])) for j in range(i + 1, min(len(tokens), i + 4))
                               if _NUMBER_RE.match(tokens[j]) and int(_number(tokens[j])) > 0), None)
                 limit = limit or 1
@@ -951,10 +962,13 @@ class SQLSearcher:
         if limit is None and token_set & {"most", "least", "highest", "lowest", "largest", "smallest"}:
             limit = 1
 
-        order_cue = direction is not None or limit is not None or ordering_requested(question)
+        order_cue = (direction is not None or limit is not None or temporal is not None
+                     or ordering_requested(question))
         if not order_cue:
             return [((), None, 0.0, ())]
         direction = direction or ("DESC" if draft.aggregates else "ASC")
+        # A date column ordered by a word of time takes that word's direction.
+        directions: dict[ColumnRef, str] = {}
 
         expressions: list[tuple[ColumnRef | Aggregate, float]] = []
         by_position = next((i for i, token in enumerate(tokens) if token == "by"), None)
@@ -976,6 +990,16 @@ class SQLSearcher:
         if not expressions:
             typed = [c.ref for c in self.schema.columns
                      if c.ref.type in {SQLType.INTEGER, SQLType.REAL, SQLType.DATE} and not is_surrogate_key(c.ref.name)]
+            if temporal is not None:
+                # The date the question names first ("the first student to register" orders by the
+                # registration date), then the table's other dates, as every Spider DEV question of this
+                # shape does.
+                named = [option.column for option in self._target_columns(mentions, temporal[1], numeric=False)
+                         if option.column.type == SQLType.DATE]
+                dated = _unique_columns(tuple(named) + tuple(c for c in typed if c.type == SQLType.DATE))
+                for rank, column in enumerate(dated[:4]):
+                    expressions.append((column, 1.5 - 0.1 * rank))
+                    directions[column] = temporal[0]
             expressions.extend((column, 0.5) for column in typed[:4])
         out = []
         seen = set()
@@ -983,8 +1007,9 @@ class SQLSearcher:
             if expression in seen:
                 continue
             seen.add(expression)
-            out.append(((OrderTerm(expression, direction),), limit, 3.0 + expression_score,
-                        (f"order:{_expr_label(expression)}:{direction}",)))
+            ordered = directions.get(expression, direction)
+            out.append(((OrderTerm(expression, ordered),), limit, 3.0 + expression_score,
+                        (f"order:{_expr_label(expression)}:{ordered}",)))
         return sorted(out, key=lambda item: (-item[2], repr(item[0])))[:6] or [
             ((), limit, 0.5, (f"limit:{limit}",) if limit else ())
         ]
@@ -1021,6 +1046,14 @@ def _merge_candidates(
         if old is None or candidate.score > old.score:
             combined[candidate.sql] = candidate
     return sorted(combined.values(), key=lambda candidate: (-candidate.score, candidate.sql))
+
+
+def _names_a_part(tokens: tuple[str, ...], index: int) -> bool:
+    """Whether the word at ``index`` begins a run of name-part words that ends at "name" or "line"."""
+    following = index + 1
+    while following < len(tokens) and tokens[following] in _NAME_PART_WORDS:
+        following += 1
+    return following < len(tokens) and tokens[following] in {"name", "line"}
 
 
 def _tokens(question: str) -> tuple[str, ...]:

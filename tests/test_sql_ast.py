@@ -2159,6 +2159,30 @@ def test_a_stated_comparison_on_an_aggregate_needs_no_where():
     assert "HAVING" not in spend.sql, spend.sql
 
 
+def test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing():
+    """Probe without generated SQL, 2026-10-02: "what are the first names of all students" returned one
+    row ordered by age (every "first" was a top-1 cue), "who is the first student to register" ordered by
+    age, and "what is the last transcript release date" kept no order. A word of time orders by the date
+    the question names, in its direction, as every Spider DEV question of that shape does; the "first" or
+    "last" of a name or an address line places nothing."""
+    students = {"name": "student", "columns": ["StuID", "first_name", "last_name", "age", "date_first_registered"],
+                "rows": [[1, "Ann", "Lee", 20, "2020-09-01"], [2, "Bo", "Kim", 22, "2019-09-01"],
+                         [3, "Cy", "Ng", 21, "2021-09-01"]]}
+    names = best("What are the first names of all students?", [students])
+    assert execute([students], names.sql) == [("Ann",), ("Bo",), ("Cy",)], names.sql
+    both = best("List the first and last name of all students", [students])
+    assert "LIMIT" not in both.sql and len(execute([students], both.sql)) == 3, both.sql
+    first = best("Who is the first student to register? List the first name.", [students])
+    assert execute([students], first.sql) == [("Bo",)], first.sql
+    transcripts = {"name": "transcripts", "columns": ["transcript_id", "transcript_date", "other_details"], "rows": [
+        [1, "2018-03-01", "a"], [2, "2019-07-01", "b"], [3, "2017-01-01", "c"]]}
+    last = best("What is the last transcript release date?", [transcripts])
+    assert execute([transcripts], last.sql) == [("2019-07-01",)], last.sql
+    # Contrast: a "by" target orders by itself ("the first 2 students by age").
+    by_age = best("List the first 2 students by age", [students])
+    assert 'ORDER BY "student"."age" ASC LIMIT 2' in by_age.sql, by_age.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3580,6 +3604,7 @@ TESTS = [
     test_a_count_over_times_and_a_share_word_that_names_a_thing,
     test_a_lowercase_grammar_word_links_to_no_value,
     test_a_stated_comparison_on_an_aggregate_needs_no_where,
+    test_a_word_of_time_orders_by_a_date_and_a_name_part_places_nothing,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
