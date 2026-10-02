@@ -1543,3 +1543,14 @@ the next deterministic lever. Median prediction time fell from about 20 s to und
 forbids a SQL-generating model or a learned ranker over model output. The fallback fires only when
 nothing runs; most wrong readings still run (a `SELECT *` almost always does), so it is not an accuracy
 lever and must not be widened without the owner.
+
+## A contained text compares the lowered values in both programs (2026-10-02)
+
+The search had no substring reading: "the contestants whose names contain the substring 'Al'" and "a song
+having 'Hey' in its name" dropped their filter (Spider DEV), and 'Al' became the state code 'AL'. The typed
+AST gains `Lower(column)` (`engine/sql_ast.py`) and the shared plan gains `LIKE` in both emitters, with a parity
+test. A contained text compares `LOWER(column) LIKE '%text%'`: lower-casing both sides makes SQLite (whose LIKE
+ignores ASCII case), PostgreSQL (whose LIKE does not) and the Python program agree. "substring", "letter" and
+"the word X" ask for it even where the text is a whole value of the data; after "contain", "include" or "in its
+<column>" a whole value stays an equality ("the documents that contain the paragraph text 'Brazil'"). It
+compares the text column that holds the text, the nearest named first (commits f572eb6 and ab5093a).

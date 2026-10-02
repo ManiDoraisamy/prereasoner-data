@@ -248,7 +248,9 @@ Explicit Python and verification surface the error and never accept an unverifie
 Operators propagate SQL nulls, ignore null aggregate operands, return zero for empty counts, and
 return null for empty sums/averages/minima/maxima. Division by zero returns null. Python execution
 uses a local 128-digit Decimal context; division and averages round to 20 decimal places with ties
-away from zero, matching the emitted PostgreSQL `ROUND(..., 20)` policy.
+away from zero, matching the emitted PostgreSQL `ROUND(..., 20)` policy. `LIKE` matches `%` (any run) and
+`_` (one character) over the whole text as both SQL engines do; the search always compares `LOWER(column)`
+with a lower-case pattern, so case never decides it.
 
 Verification compares each ordinary stage as an unordered multiset, preserving duplicates and column names.
 Explicit sorted stages are also checked in order; top-N adds deterministic tie keys, and a stage with
@@ -324,7 +326,8 @@ through the existing timing collector; backend durations include stage materiali
 
 ## Coverage and extension
 
-Own-data AST lowering supports unaliased inner joins, Boolean comparison filters, projections and arithmetic,
+Own-data AST lowering supports unaliased inner joins, Boolean comparison filters (including `LIKE` over
+`LOWER(column)`), projections and arithmetic,
 `COUNT/SUM/AVG/MIN/MAX`, grouped aggregates whose projected group columns precede aggregates, the month of a
 date column (`DatePart('month')`, lowered as `FunctionValue` `MONTH`), a share of the whole for a
 non-distinct column or `COUNT(*)` aggregate (`sql_ast.share_of`, a reduction crossed with the whole's

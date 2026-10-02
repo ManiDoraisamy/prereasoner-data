@@ -248,6 +248,7 @@ The AST, validator, renderer, and search rules support:
 - `COUNT`, `SUM`, `AVG`, `MIN`, and `MAX`;
 - typed `+`, `-`, `*`, and real-valued `/` expressions, including aggregates over expressions;
 - typed comparisons, ranges, dates, categorical values, `AND`, and `OR`;
+- substring filters: `LOWER(column) LIKE '%text%'` (`Lower`);
 - calendar phrases on a date column (`engine/sql_dates.py`): a month without a year compares
   `DatePart('month')`, and a dated phrase ("after August 10, 2026") compares the date itself;
 - grouping, `HAVING`, ordering, and limits;
