@@ -33,7 +33,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_expansion import words
+from engine.sql_expansion import positive_predicate, words
 from engine.sql_schema import ForeignKey, SchemaGraph, canon, is_surrogate_key
 
 
@@ -198,7 +198,7 @@ class RecursiveQueryExpander:
             if entity_key is None:
                 continue
 
-            positive_where = _positive_predicate(query.where)
+            positive_where = positive_predicate(query.where)
             membership = replace(
                 query,
                 select=(SelectItem(entity_key),),
@@ -651,16 +651,6 @@ def _entity_join_key(query: SelectQuery, table: str) -> ColumnRef | None:
     if not options:
         return None
     return sorted(set(options), key=lambda column: (0 if is_surrogate_key(column.name) else 1, column.name))[0]
-
-
-def _positive_predicate(predicate: Predicate | None) -> Predicate | None:
-    if predicate is None:
-        return None
-    if isinstance(predicate, BooleanExpr):
-        return BooleanExpr(predicate.operator, tuple(_positive_predicate(term) for term in predicate.terms))
-    if isinstance(predicate, Comparison) and predicate.operator in {"!=", "<>"}:
-        return Comparison(predicate.left, "=", predicate.right)
-    return predicate
 
 
 def _expression_table(expression) -> str | None:

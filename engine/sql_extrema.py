@@ -26,11 +26,13 @@ from engine.sql_expansion import (
     and_terms as _and_terms,
     build_candidate as _candidate,
     column_matches as _column_matches,
+    count_requested as _count_requested,
     join_key as _join_key,
     linker_noise as _linker_noise,
     ordering_requested,
     parse_number as _parse_number,
     physical_tables as _physical_tables,
+    positive_predicate as _positive_predicate,
     projection_window as _projection_window,
     semantic_tokens as _semantic_tokens,
     tokens as _tokens,
@@ -49,6 +51,8 @@ _MIN_CUES = frozenset({
     "earliest", "fewest", "least", "lowest", "min", "minimum", "rarest",
     "shortest", "smallest",
 })
+# Words that ask for an aggregate of the rows (canon() forms).
+_AGGREGATE_CUES = frozenset({"average", "avg", "mean", "sum", "total", "maximum", "max", "minimum", "min"})
 _NEGATIVE_RE = re.compile(
     r"\b(?:except|without|no|not|never|did not|do not|does not|have not|has not)\b",
     re.I,
@@ -478,6 +482,19 @@ class ExtremaQueryExpander(ExpansionSupport):
         if match is None or "but" in _tokens(question):
             return []
         tokens = _tokens(question)
+        # A difference lists the values of the rows left. "The average age of students who do not have any
+        # pet" asks an aggregate of those rows, which an EXCEPT of their values cannot carry (it would average
+        # distinct ages): the anti-join that keeps the aggregate answers it (engine/sql_recursive.py). Spider
+        # DEV, 2026-10-02: 17 of the 40 differences that won over gold dropped such an aggregate.
+        if _count_requested(tokens) or set(tokens) & _AGGREGATE_CUES:
+            return []
+        # A row's own value the question denies is an inequality, not a difference: "the teachers whose
+        # hometown is not Little Lever Urban District", "the tv channels that do not use English" (Spider
+        # DEV, 2026-10-02: 12 differences won over gold's "!="). A reading that lists a table's columns
+        # and compares one of them unequal to a stated value reads the denial so.
+        best = next((candidate.query for candidate in candidates if isinstance(candidate.query, SelectQuery)), None)
+        if best is not None and _lists_and_denies(best):
+            return []
         normalized_prefix = _tokens(question[:match.start()])
         negative_position = len(normalized_prefix)
         pseudo = CountThreshold((("=", 1),), negative_position, negative_position + 1, 0.0)
@@ -813,6 +830,16 @@ def _explicit_distinct(tokens: tuple[str, ...]) -> bool:
     return bool(set(tokens) & {"distinct", "distinctive", "different", "unique"})
 
 
+def _lists_and_denies(query) -> bool:
+    """Whether ``query`` lists columns of a table and compares a column of that table unequal to a value."""
+    if not isinstance(query, SelectQuery):
+        return False
+    listed = {item.expression.table for item in query.select if isinstance(item.expression, ColumnRef)}
+    return any(isinstance(term, Comparison) and term.operator in {"!=", "<>"} and isinstance(term.left, ColumnRef)
+               and isinstance(term.right, Literal) and term.left.table in listed
+               for term in _and_terms(query.where))
+
+
 def _split_difference_terms(
     terms: Sequence[Predicate], tokens: tuple[str, ...], negative_position: int
 ) -> tuple[list[Predicate], list[Predicate]]:
@@ -830,5 +857,7 @@ def _split_difference_terms(
         if positions and min(positions) < negative_position:
             left.append(term)
         else:
-            right.append(term)
+            # The excluded rows are those the denial names: "students who do not have a cat pet" exclude
+            # the students whose pet is a cat, which the search read as "!= 'cat'".
+            right.append(_positive_predicate(term))
     return left, right

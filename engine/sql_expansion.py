@@ -455,6 +455,18 @@ def join_key(joins: tuple[Join, ...], table: str) -> ColumnRef | None:
     )[0] if columns else None
 
 
+def positive_predicate(predicate: Predicate | None) -> Predicate | None:
+    """The rows a denial excludes: ``predicate`` with each "!=" read as "=" ("students who do not have a cat"
+    exclude the students who have one)."""
+    if predicate is None:
+        return None
+    if isinstance(predicate, BooleanExpr):
+        return BooleanExpr(predicate.operator, tuple(positive_predicate(term) for term in predicate.terms))
+    if isinstance(predicate, Comparison) and predicate.operator in {"!=", "<>"}:
+        return Comparison(predicate.left, "=", predicate.right)
+    return predicate
+
+
 def entity_join_key(query: SelectQuery, table: str) -> ColumnRef | None:
     return join_key(query.joins, table)
 

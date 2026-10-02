@@ -2577,6 +2577,44 @@ def test_a_key_named_by_the_table_it_references_needs_its_whole_name():
                                                   ("Understanding DB", 1)], keyed.sql
 
 
+def test_a_denial_is_read_by_what_it_denies():
+    """Spider DEV, 2026-10-02: all 40 of the search's set-operation misfires were the extrema difference
+    (an EXCEPT on a fixed 51-point base). "The average age of students who do not have any pet" listed raw
+    ages, since an EXCEPT of values cannot carry the asked aggregate; "the teachers whose hometown is not
+    Little Lever Urban District" was a difference of grades, not the row's own value unequal; and "students
+    who do not have a cat pet" excluded the students whose pet is NOT a cat. An aggregate or a count leaves
+    the anti-join that keeps it, a denied value of the listed rows is "!=", and the excluded rows are those
+    the denial names."""
+    student = {"name": "Student", "columns": ["StuID", "LName", "Major", "Age"], "rows": [
+        [1001, "Smith", 600, 18], [1002, "Kim", 600, 19], [1003, "Jones", 600, 21], [1004, "Kumar", 600, 20],
+        [1005, "Gompers", 520, 26]]}
+    has_pet = {"name": "Has_Pet", "columns": ["StuID", "PetID"], "rows": [[1001, 2001], [1002, 2002],
+                                                                         [1002, 2003]]}
+    pets = {"name": "Pets", "columns": ["PetID", "PetType", "pet_age", "weight"], "rows": [
+        [2001, "cat", 3, 12.0], [2002, "dog", 2, 13.4], [2003, "dog", 1, 9.3]]}
+    fks = [{"from_table": "Has_Pet", "from_col": "StuID", "to_table": "Student", "to_col": "StuID"},
+           {"from_table": "Has_Pet", "from_col": "PetID", "to_table": "Pets", "to_col": "PetID"}]
+    tables = [student, has_pet, pets]
+    average = best("Find the average age of students who do not have any pet.", tables, fks)
+    assert [round(value, 6) for (value,) in execute(tables, average.sql)] == [22.333333], average.sql
+    no_cat = best("Find the last names of students who do not have a cat pet.", tables, fks)
+    assert sorted(execute(tables, no_cat.sql)) == [("Gompers",), ("Jones",), ("Kim",), ("Kumar",)], no_cat.sql
+    teacher = {"name": "teacher", "columns": ["Teacher_ID", "Name", "Age", "Hometown"], "rows": [
+        [1, "Joseph Huts", 32, "Blackrod Urban District"], [2, "Gustaaf Deloor", 29, "Bolton County Borough"],
+        [3, "Vicente Carretero", 26, "Little Lever Urban District"]]}
+    arrange = {"name": "course_arrange", "columns": ["Course_ID", "Teacher_ID", "Grade"], "rows": [
+        [2, 1, 1], [3, 2, 3], [4, 3, 2]]}
+    course = {"name": "course", "columns": ["Course_ID", "Staring_Date", "Course"], "rows": [
+        [2, "6 May", "Science"], [3, "7 May", "English"], [4, "9 May", "Art"]]}
+    teacher_fks = [
+        {"from_table": "course_arrange", "from_col": "Teacher_ID", "to_table": "teacher", "to_col": "Teacher_ID"},
+        {"from_table": "course_arrange", "from_col": "Course_ID", "to_table": "course", "to_col": "Course_ID"}]
+    teachers = [teacher, arrange, course]
+    elsewhere = best("List the name of teachers whose hometown is not Little Lever Urban District.", teachers,
+                     teacher_fks)
+    assert sorted(execute(teachers, elsewhere.sql)) == [("Gustaaf Deloor",), ("Joseph Huts",)], elsewhere.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -4033,6 +4071,7 @@ TESTS = [
     test_a_column_is_named_without_the_word_of_its_kind,
     test_a_plural_reads_as_its_singular_everywhere,
     test_a_key_named_by_the_table_it_references_needs_its_whole_name,
+    test_a_denial_is_read_by_what_it_denies,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
