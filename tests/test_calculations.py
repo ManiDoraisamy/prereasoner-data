@@ -440,6 +440,42 @@ def test_a_measure_named_in_two_words_is_summed_not_counted():
     ok(read("how many deliveries in Germany", "COUNT") == ("COUNT", "deliveries", None), "a COUNT is unchanged")
 
 
+def test_an_average_converts_every_row_before_averaging():
+    """Chrome exploration, 2026-10-02: "average amount in US dollars" was declined: the currency check
+    knew only a converted SUM, so AVG(amount * rate_to_usd) read as "does not convert". A rate is a row
+    factor; it is realized whether the converted rows are then totalled or averaged."""
+    graph = SchemaGraph.from_tables((ORDERS, USD_RATES), (EDGE,))
+    amount, currency, rate, code = (graph.column_map[key].ref for key in (
+        ("orders", "amount"), ("orders", "currency"), ("fx", "rate_to_usd"), ("fx", "currency_code")))
+    join = Join("fx", currency, code)
+    question = "average order amount in US dollars"
+    averaged = SelectQuery((SelectItem(Aggregate("AVG", BinaryExpr(amount, "*", rate))),), "orders",
+                           joins=(join,))
+    converted = _currency_assessment(question, (ORDERS, USD_RATES), graph, describe_computation(averaged))
+    ok(converted["status"] == "satisfied" and converted["realization"] == "converted",
+       f"AVG(amount * rate_to_usd) converts every row before averaging (got {converted['status']}: "
+       f"{converted.get('reason')})")
+    # Contrast: the raw average of mixed currencies converts nothing.
+    raw = SelectQuery((SelectItem(Aggregate("AVG", amount)),), "orders")
+    unconverted = _currency_assessment(question, (ORDERS, USD_RATES), graph, describe_computation(raw))
+    ok(unconverted["status"] != "satisfied", "a raw average of mixed currencies is not in US dollars")
+    # Negative: a converted maximum is not a registered realization, so it is not certified either.
+    largest = SelectQuery((SelectItem(Aggregate("MAX", BinaryExpr(amount, "*", rate))),), "orders",
+                          joins=(join,))
+    maximum = _currency_assessment("largest order amount in US dollars", (ORDERS, USD_RATES), graph,
+                                   describe_computation(largest))
+    ok(maximum["status"] != "satisfied", "only a SUM or an AVG of converted rows is certified")
+    # The own-data selection keeps the question's aggregate around the registered row factor: it served
+    # SUM(amount * rate_to_usd) AS total_usd for the average.
+    chosen, selected = _assessment(question)
+    ok(chosen.sql.startswith('SELECT AVG(("orders"."amount" * "fx"."rate_to_usd")) AS "average_usd"')
+       and selected["status"] == "satisfied" and selected["realization"] == "converted",
+       f"the average of converted rows is selected for the average (got {chosen.sql})")
+    total, _ = _assessment("total order amount in US dollars")
+    ok(total.sql.startswith('SELECT SUM(("orders"."amount" * "fx"."rate_to_usd")) AS "total_usd"'),
+       f"a total keeps the registered SUM (got {total.sql})")
+
+
 def test_set_query_requires_every_numeric_branch_to_convert():
     amount = ColumnRef("orders", "amount", SQLType.REAL)
     rate = ColumnRef("fx", "rate_to_usd", SQLType.REAL)
@@ -1300,6 +1336,7 @@ TESTS = [
     test_a_measure_named_in_two_words_is_summed_not_counted,
     test_intent_is_not_a_bare_currency_phrase,
     test_filter_conversion_and_annotation_matrix,
+    test_an_average_converts_every_row_before_averaging,
     test_set_query_requires_every_numeric_branch_to_convert,
     test_filter_evidence_is_guaranteed_on_every_path,
     test_unjoinable_rate_is_not_advertised,

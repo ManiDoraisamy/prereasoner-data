@@ -167,9 +167,10 @@ def _multiplication_terms(expression):
 
 
 def _currency_expression(expression) -> tuple[ColumnRef, str] | None:
+    # Each row is converted, then the converted rows are totalled or averaged.
     if (
         not isinstance(expression, Aggregate)
-        or expression.function != "SUM"
+        or expression.function not in ("SUM", "AVG")
     ):
         return None
     columns = [term for term in _multiplication_terms(expression.operand)

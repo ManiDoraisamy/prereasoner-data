@@ -18,3 +18,8 @@ total amount in Belgium in US dollars => ~365.63
 chat: how about Belgium? => ~365.63
 # Cleveland's 3,495 USD tops every other city at any plausible rate (London 810 GBP, Paris 970 EUR).
 which city has the highest total amount in US dollars? => {"columns":["city"],"rows":[["Cleveland"]]}
+# 23 orders: 7,008 USD + 810 GBP + 1,292 EUR + 125 INR, each converted at its ECB rate and then averaged
+# (414.82 at the 2026-10-08 rates). The United States averages 7,008 / 8 = 876 USD; no other country
+# averages above 250 at any plausible rate.
+average amount in US dollars => ~414.82
+which country has the highest average amount in US dollars? => {"columns":["country"],"rows":[["United States"]]}

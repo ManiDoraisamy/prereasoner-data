@@ -6,6 +6,7 @@ from engine.calculations.registry import (
     detect_calculations,
 )
 from engine.sql_ast import (
+    Aggregate,
     SelectItem,
     SelectQuery,
     SubquerySource,
@@ -46,12 +47,13 @@ class CalculationQueryExpander:
                     if column not in plan.required_columns
                     and (column in roles.group_columns or column.table in roles.group_tables)
                 )
+                expression, alias = _aggregated_as_base(plan, base)
                 select = tuple(SelectItem(column) for column in group_by) + (
-                    SelectItem(plan.expression, alias=plan.alias),
+                    SelectItem(expression, alias=alias),
                 )
                 required = {column.table for column in plan.required_columns + group_by}
                 if base.where is not None:
-                    probe = SelectQuery((SelectItem(plan.expression),), plan.root_table, where=base.where)
+                    probe = SelectQuery((SelectItem(expression),), plan.root_table, where=base.where)
                     required.update(probe.referenced_tables())
                 if not required:
                     required.add(plan.root_table)
@@ -95,3 +97,19 @@ class CalculationQueryExpander:
         return sorted(generated.values(), key=lambda candidate: (-candidate.score, candidate.sql))[
             :self.max_candidates
         ]
+
+
+def _aggregated_as_base(plan, base):
+    """The plan's output under the aggregate the base query applies to the plan's measure.
+
+    A registered row factor (a rate, a discount) applies to each row before the rows are combined, and
+    the question decides how they are combined: "average order amount in US dollars" was served as
+    SUM(amount * rate_to_usd) AS total_usd (2026-10-02). A base that averages the measure averages
+    the converted rows; every other base keeps the plan's own SUM.
+    """
+    expression = plan.expression
+    if (plan.measure is None or not isinstance(expression, Aggregate) or expression.function != "SUM"
+            or not any(isinstance(item.expression, Aggregate) and item.expression.function == "AVG"
+                       and item.expression.operand == plan.measure for item in base.select)):
+        return expression, plan.alias
+    return Aggregate("AVG", expression.operand), "average_" + plan.alias.removeprefix("total_")

@@ -90,9 +90,9 @@ def lower_world_query(
     ``dimension`` is the world attribute a projection names, as (reference table, column). The kept rows
     are grouped by it, so each shape ends like the own-data and compose trails, a grouped total:
     without an aggregate ('which continent is Tokyo in') each value with the number of rows holding it;
-    with ``order`` ("DESC" or "ASC", 'which continent has the highest total amount') the aggregate per
-    value and the top group; with a COUNT and no order ('how many continents') the number of distinct
-    non-empty values. The reference value stays the stored QID in both programs; the trail shows its label.
+    with ``order`` ("DESC" or "ASC", 'which continent has the highest total amount', 'which country has
+    the most banks') the aggregate or row count per value and the top group; with a COUNT and no order
+    ('how many continents') the number of distinct non-empty values. The reference value stays the stored QID in both programs; the trail shows its label.
     """
     ast_joins = []
     for table, fk in zip(uploaded[1:], foreign_keys, strict=True):
@@ -282,19 +282,21 @@ def lower_world_query(
         operand = None if function == "COUNT" else ColumnValue(table, column)
         alias = function.lower()
         if world_rate or conversion:
+            # Each row is converted before the rows are totalled or averaged: "average amount in US
+            # dollars" was declined because this stage only summed (Chrome exploration, 2026-10-02).
+            if function not in ("SUM", "AVG"):
+                raise UnsupportedDeterministicPlan("a currency conversion lowers only as a SUM or AVG")
             rate = (
                 ("exchange_rate", world_rate["rate_col"]) if world_rate else conversion
             )
             operand = BinaryValue(operand, "*", ColumnValue(*rate))
-            function = "SUM"
             if world_rate and world_rate.get("target"):
                 # Named for its currency, as the registered conversion names a converted total
                 # ("total_usd"): "which city has the highest total amount in US dollars?" headed its
                 # total "sum" (Chrome gate, 2026-10-02).
-                alias = f"total_{world_rate['target'].lower()}"
+                kind = "total" if function == "SUM" else "average"
+                alias = f"{kind}_{world_rate['target'].lower()}"
     elif dimension is not None:
-        if order is not None:
-            raise UnsupportedDeterministicPlan("a ranked world projection needs a SUM or AVG measure")
         function, operand, alias = "COUNT", None, "count"
     elif world_rate or conversion:
         raise UnsupportedDeterministicPlan("a currency conversion lowers only as an aggregate")
@@ -325,8 +327,6 @@ def lower_world_query(
         return AnalysisPlan(slug, tuple(tables.values()), tuple(views))
     if order not in (None, "DESC", "ASC"):
         raise UnsupportedDeterministicPlan(f"unsupported ranking order: {order!r}")
-    if order is not None and function == "COUNT":
-        raise UnsupportedDeterministicPlan("a ranked world projection needs a SUM or AVG measure")
     reference, attribute = dimension
     key, alias = _unique_identifiers((attribute, alias))
     group = SelectedValue(key, ColumnValue(reference, attribute))
@@ -347,12 +347,13 @@ def lower_world_query(
             )
         )
     elif order is not None:
-        # The key breaks ties, so both programs keep the same group.
+        # Every group tied at the top is kept; the key orders them alike in both programs.
         views.append(
             SortedView(
                 f"{slug}_top_results",
                 views[-1].name,
                 (SortValue(ViewValue(alias), order == "DESC"), SortValue(ViewValue(key))),
+                1,
                 1,
             )
         )

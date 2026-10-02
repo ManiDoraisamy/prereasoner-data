@@ -47,6 +47,7 @@ from engine.currency_intent import (
 )
 from engine.calculations import calculation_clarify
 from engine.numeric import parse_decimal
+from engine.sql_expansion import SHARE_WORDS
 from engine.sql_schema import is_surrogate_key
 
 
@@ -182,7 +183,7 @@ _QUERY_WORDS = _OPERATOR_WORDS | frozenset({
 
 
 # Words that ask for a share of a total. Only a division realizes one.
-_SHARE_WORDS = frozenset({"percentage", "percentages", "percent", "share", "proportion", "fraction"})
+_SHARE_WORDS = SHARE_WORDS | {"percentages", "shares", "proportions", "fractions"}   # unstemmed words
 
 # The world types a question can ask for by name, each with the singular a column or a world join shows.
 _WORLD_TYPE_WORDS = {
@@ -382,19 +383,47 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             self._wtmap = m
         return m
 
-    def _nongeo_plan(self, norm, question):
+    def _nongeo_plan(self, norm, question, sch):
         """Plan a non-geo world join from calibrated evidence and exact source keys.
 
-        Schema.org evidence is captured when available. The actual fine type is
-        established independently by a majority of exact ``knowledgebase.words``
-        matches and an explicit type mention in the question. Thus model abstention
-        cannot remove deterministic coverage, and model output cannot invent a join.
+        An entity's world facts answer three requests: its country or its country's continent as a
+        filter ("total deposits for banks in Switzerland", "total deposits for banks in Europe"), its
+        country as the dimension of a grouped or ranked total ("total deposits by country", "which country
+        has the most deposits"), and the uploaded rows ranked inside such a filter ("which bank has the
+        most deposits in Europe"). Schema.org evidence is captured when available. The actual fine type is
+        established independently by a majority of exact ``knowledgebase.words`` matches. A sheet with a
+        place column answers places through that column, so there the question must also name the type
+        ("for hospitals in France"): a person-name column, which grounds as some entity type, cannot hijack
+        the place aggregate. Thus model abstention cannot remove deterministic coverage, and model output
+        cannot invent a join.
         """
         import re as _re
-        cr = self._resolve(question, "country")
-        if not cr:                                                        # only the country-filtered non-geo agg for now
+        from engine.knowledge_tables import ARGMAX_CUES, ARGMIN_CUES, _world_word_is_output
+        from engine.tables import name_words
+        agg = self.read_op_all(question, sch)
+        if agg is None or (agg[2] is not None and agg[1] not in {t["name"] for t in norm}):
             return None
         ql = question.lower()
+        country = self._resolve(question, "country")
+        continent = None if country else self._resolve(question, "continent")
+        # The entity's country is the answer's dimension when the question asks for countries and the upload
+        # holds no country column of its own (which would answer it as own data).
+        word = next((w for w in ("countries", "country") if _re.search(r"\b" + w + r"\b", ql)), None)
+        by_country = (bool(word)
+                      and not any(part in ("country", "countries") for c in sch for part in name_words(c["name"]))
+                      and _world_word_is_output(question, word, agg))
+        if not (country or continent or by_country):
+            return None
+        cues = set(_re.findall(r"[a-z]+", ql))
+        order = (("ASC" if cues & ARGMIN_CUES else "DESC")
+                 if cues & (ARGMAX_CUES | ARGMIN_CUES) else None)
+        own_dimension = None
+        if not by_country and agg[0] in ("SUM", "AVG") and agg[2] is not None:
+            own_dimension = self._own_dimension(question, sch, agg[1])
+        aggregate = agg
+        if (by_country and agg[0] == "COUNT" and order is None
+                and _re.search(r"\b(?:by|per|each)\s+countr", ql)):
+            aggregate = None                                  # "how many banks per country": rows per value
         r = None
         if kb_model_route_enabled():
             try:
@@ -402,6 +431,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             except Exception as exc:                                     # noqa: BLE001
                 print(f"[knowledge_query] schema router unavailable: {type(exc).__name__}", flush=True)
         cur = self._rconn().cursor()
+        places = None
         for t in norm:
             for ci, col in enumerate(t["columns"]):
                 cells = [str(rw[ci]) for rw in t["rows"] if ci < len(rw) and rw[ci] not in (None, "")]
@@ -430,8 +460,6 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 wl, tqid = self._dominant_nongeo_type(cells)             # FINE type = dominant knowledgebase.words type the cells resolve to
                 if not (wl and tqid):
                     continue
-                # the QUESTION must name this type ('...for hospitals...') — 'total amount in France' names no type,
-                # so a person-name column (which grounds as some entity type) can't hijack the plain geo aggregate.
                 # English plural forms count as naming the type: hospital->hospitals (-s), university->universities
                 # (-y/-ies), church->churches (-es); a bare "s?" missed every -ies plural and silently dropped the
                 # university family to the clarify path.
@@ -439,12 +467,22 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                     stem = _re.escape(w[:-1]) + r"(?:y|ies)" if w.endswith("y") else _re.escape(w) + r"(?:s|es)?"
                     return _re.search(r"\b" + stem + r"\b", ql)
                 if not any(_names_type(w) for w in wl.replace("_", " ").split() if len(w) > 3):
-                    continue
+                    if places is None:                           # source-key place routes, read once
+                        places = any(WORLD_TABLE_TYPE.get(world) in PLACE_TYPES
+                                     for table in norm for world in self._value_membership_routes(table).values())
+                    if places:
+                        continue
                 cur.execute("SELECT 1 FROM information_schema.columns WHERE table_schema='knowledgebase' "
                             "AND table_name=%s AND column_name='country'", (wl,))
                 if not cur.fetchone():
-                    continue                                             # need knowledgebase."<wl>".country to filter
-                return {"table": t, "col": col, "label": wl, "qid": tqid, "country": cr[0], "cells": cells}
+                    continue                                             # need knowledgebase."<wl>".country
+                if aggregate is not None and aggregate[2] is not None and aggregate[1] != t["name"]:
+                    continue                                             # the measure lives on another sheet
+                return {"table": t, "col": col, "label": wl, "qid": tqid, "cells": cells,
+                        "country": country[0] if country else None,
+                        "continent": continent[0] if continent else None,
+                        "aggregate": aggregate, "by_country": by_country,
+                        "own_dimension": own_dimension, "order": order}
         return None
 
     def _dominant_nongeo_type(self, cells):
@@ -469,22 +507,18 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         return (wl, q[0][0]) if q else (None, None)
 
     def _serve_world_type(self, norm, question, sch, plan, schema):
-        """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table, filtered by country.
+        """Aggregate an uploaded NON-GEO table joined to its faithful Wikidata world table.
         e.g. hospitals.csv(hospital, beds) + 'total beds for hospitals in United States' -> resolve each hospital to
-        a pre-synchronized knowledgebase.\"hospital\" row, keep those whose .country = 'United States', SUM(beds).
+        a pre-synchronized knowledgebase."hospital" row, keep those whose .country = 'United States', SUM(beds).
+        A continent filter walks one hop further, to knowledgebase.country.continent; the entity's country
+        groups or ranks the total; an uploaded column ranks it inside the filter.
 
         The per-cell entity resolution is the engine's resolver (Python); it persists the connected bridge,
         and the shared deterministic plan runs every relational step after it in both programs, returning the
         derivation trail (docs/SHEETS_AS_REASONING.md): lookup -> filtered -> total."""
-        t = plan["table"]; label = plan["label"]; country = plan["country"]
+        t = plan["table"]; label = plan["label"]
         ci = t["columns"].index(plan["col"])
-        op = (self.read_op_model([t], question)[0]) or "COUNT"
-        measure = None
-        if op in ("SUM", "AVG"):
-            measure = next((c["name"] for c in sch if c["table"] == t["name"]
-                            and c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])), None)
-            if not measure:
-                op = "COUNT"
+        aggregate = plan["aggregate"]
 
         resolved = []                                                     # (upload row, resolved world qid)
         for rw in t["rows"]:
@@ -499,6 +533,24 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         cur = self._rconn().cursor()
         cur.execute('SELECT label FROM knowledgebase."types" WHERE qid=%s', (plan["qid"],))
         _r = cur.fetchone(); wl = (str(_r[0]) if _r and _r[0] else label)[:63]   # table = the EXACT Wikidata label
+        joins = [{"left_table": t["name"], "left_col": plan["col"], "right_table": wl, "right_col": "qid"}]
+        required = {wl: {"country"}}
+        meaning_filter = None
+        if plan["country"]:
+            meaning_filter = {"filter_table": wl, "attr": "country", "value": plan["country"]}
+        elif plan["continent"]:
+            joins.append({"left_table": wl, "left_col": "country", "right_table": "country", "right_col": "qid"})
+            required["country"] = {"continent"}
+            meaning_filter = {"filter_table": "country", "attr": "continent", "value": plan["continent"]}
+        if plan["by_country"]:
+            dimension, order = (wl, "country"), plan["order"]
+        elif plan["own_dimension"]:
+            dimension, order = plan["own_dimension"][:2], plan["own_dimension"][2]
+        else:
+            dimension, order = None, None
+        # A value the upload holds is the user's filter ('total deposits for UBS in Europe').
+        own_filters = [(table, column, value) for table, column, value in self._own_value_matches(question, norm)
+                       if table == t["name"]]
         model = f'engine - non-geo world join (pre-synchronized knowledgebase."{wl}")'
         from engine.deterministic.context import current_analysis_context, current_execution_record
         context = current_analysis_context()
@@ -506,6 +558,8 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
             raise RuntimeError("world questions are served inside an analysis context")
         from engine.deterministic.world import lower_world_query, reference_schema
         from engine.numeric import wire_rows
+        from engine.sql_ast import Aggregate, Star
+        from engine.sql_schema import SchemaGraph
         self._pg_schema = schema
         self.q11._pg_schema = schema
         self._persist_connected(t["name"], plan["col"], label,
@@ -514,22 +568,30 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         try:
             shared_plan = lower_world_query(
                 slug=context.slug, schema=sch, uploaded=[t["name"]], foreign_keys=[],
-                joins=[{"left_table": t["name"], "left_col": plan["col"], "right_table": wl, "right_col": "qid"}],
-                bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"], route_column=plan["col"],
-                meaning_filter={"filter_table": wl, "attr": "country", "value": country},
-                own_filters=[], world_rate=None, as_of=None, aggregate=(op, t["name"], measure),
-                calculation=None, conversion=None, reference_columns=reference_schema(con, {wl: {"country"}}))
+                joins=joins, bridge_name=self._conn_bridge_name(t["name"]), route_table=t["name"],
+                route_column=plan["col"], meaning_filter=meaning_filter, own_filters=own_filters,
+                world_rate=None, as_of=None, aggregate=aggregate, calculation=None, conversion=None,
+                reference_columns=reference_schema(con, required), dimension=dimension, order=order)
             release = self._bridge_world_version()
             con.conn.commit()
             columns, rows = self.q11._execute_deterministic({t["name"]: t}, shared_plan, release,
                                                             labels=self._qid_labels)
             record = current_execution_record()
-            return {"question": question, "as_of": None, "sql": record["final_sql"],
-                    "result": {"columns": columns, "rows": wire_rows(rows[:50])},
-                    "views": record["views"], "deterministic": record, "model": model}
         finally:
             con.close()
             self._con = None
+        response = {"question": question, "as_of": None, "sql": record["final_sql"],
+                    "result": {"columns": columns, "rows": wire_rows(rows[:50])},
+                    "views": record["views"], "deterministic": record, "model": model}
+        # The computation, with the grain it is computed per (the entity's country, or the uploaded column
+        # a ranking keeps), for the registered calculation checks.
+        graph = SchemaGraph.from_planner(sch, [])
+        expression = None
+        if aggregate is not None:
+            operand = Star() if aggregate[2] is None else self._schema_column(graph, aggregate[1], aggregate[2])
+            expression = Aggregate(aggregate[0], operand)
+        return self._record_computation(response, question, norm, graph, expression, own_filters, [],
+                                        tuple(dimension) if dimension else None)
 
     # ---------------- connected / unconnected split ----------------
     def _avglen(self, table, col):
@@ -645,6 +707,12 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
                 and currency_rate_attribute(currency_target) in sqll):
             realized = currency_conversion_words(currency_target)
             content = [word for word in content if word not in realized]
+        if content:
+            # A month the query compares a date column with is realized: "how many transfers were signed
+            # in August" (engine/sql_dates.py).
+            from engine.sql_dates import realized_month_words
+            months = realized_month_words(question, sql or "")
+            content = [word for word in content if word not in months]
         if content and _re.search(r'\bcount\s*\(', sqll):
             # The noun a count cue governs is what COUNT counts: the head of the words after 'how many' /
             # 'number of', up to the first grammar word. 'how many leads from Europe' was declined because
@@ -854,7 +922,7 @@ class KnowledgeQuery(EncoderQuery, KnowledgeBridgeMixin, KnowledgeTypingMixin, E
         if is_agg and schema:                                         # NON-GEO world join over synchronized facts
             ngp = None
             try:
-                ngp = self._nongeo_plan(norm, question)
+                ngp = self._nongeo_plan(norm, question, sch)
                 if ngp:
                     return verify_nonempty(
                         self._serve_world_type(norm, question, sch, ngp, schema), question)

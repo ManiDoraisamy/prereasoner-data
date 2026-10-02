@@ -762,8 +762,9 @@ def test_spider_scalar_gold_runner_executes_the_selected_ast_with_python():
 def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
     """Gold grading must observe serving, not silently substitute a SQL answer.
 
-    Ties may be underdetermined, but that is a reported divergence, not a reason
-    to change which backend's output the evaluator grades. Verify fails hard.
+    A top-1 ranking serves every tied row (sql_ast.keep_ties). A backend that
+    still returns one of them diverges, and the divergence is reported rather
+    than graded away: the evaluator grades what AUTO serves. Verify fails hard.
     """
     from engine.sql_candidate import ScoredQuery
     from spider.probe.full_eval import ast_predict
@@ -825,7 +826,7 @@ def test_auto_grades_the_served_python_answer_when_a_limit_cutoff_ties():
         schema_fks=(), execution_backend="auto", python_row_limit=10_000,
     )
     assert evaluated["ok"] is True
-    assert evaluated["rows"] == [["ai", 1]]                 # exactly what AUTO serves
+    assert evaluated["rows"] == [["ai", 1], ["rs", 1]]      # exactly what AUTO serves: both tied rows
     assert evaluated["execution_backend_actual"] == "python"
     assert evaluated["python_sql_equal"] is False           # the divergence is recorded
     assert not evaluated.get("python_fallback_reason")
@@ -1051,6 +1052,131 @@ def test_custom_orm_join_uses_python_spelling_for_sql_is_predicates():
             plan, conversation_schema="conversation"
         ).run(connection, mode="verify", estimated_rows=1)
     assert result.rows == ({"total_amount": Decimal("25.00000000000000000000")},)
+
+
+def test_an_average_of_converted_rows_runs_in_both_programs():
+    # "average order amount in US dollars" (2026-10-02): each amount is converted at its currency's rate,
+    # then the converted amounts are averaged: (310 * 1.25 + 100 * 2 + 94 * 1.25) / 3 = 235. The rates are
+    # exact in binary, as SQLite's REAL storage reads them; production stores NUMERIC.
+    from engine.sql_ast import BinaryExpr, Join
+
+    amount = ColumnRef("orders", "amount", SQLType.INTEGER)
+    rate = ColumnRef("fx", "rate_to_usd", SQLType.REAL)
+    query = SelectQuery(
+        select=(SelectItem(Aggregate("AVG", BinaryExpr(amount, "*", rate)), "average_usd"),),
+        from_table="orders",
+        joins=(Join("fx", ColumnRef("orders", "currency", SQLType.TEXT),
+                    ColumnRef("fx", "currency_code", SQLType.TEXT)),),
+    )
+    schema = [
+        {"table": "orders", "name": "order_id", "affinity": "INTEGER", "values": [1, 2, 3]},
+        {"table": "orders", "name": "currency", "affinity": "TEXT", "values": ["EUR", "GBP", "EUR"]},
+        {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [310, 100, 94]},
+        {"table": "fx", "name": "currency_code", "affinity": "TEXT", "values": ["EUR", "GBP"]},
+        {"table": "fx", "name": "rate_to_usd", "affinity": "REAL", "values": ["1.25", "2"]},
+    ]
+    foreign_keys = [{"from_table": "orders", "from_cols": ["currency"],
+                     "to_table": "fx", "to_cols": ["currency_code"]}]
+    plan = lower_select_query("average_usd", query, schema, foreign_keys)
+    result = _execute_fixture(plan, [
+        "CREATE TABLE conversation.orders (order_id INTEGER, currency TEXT, amount INTEGER)",
+        "CREATE TABLE conversation.fx (currency_code TEXT, rate_to_usd NUMERIC)",
+        "INSERT INTO conversation.orders VALUES (1, 'EUR', 310), (2, 'GBP', 100), (3, 'EUR', 94)",
+        "INSERT INTO conversation.fx VALUES ('EUR', 1.25), ('GBP', 2)",
+    ])
+    assert result.mode.value == "verify"                       # both programs ran and agreed
+    assert [Decimal(str(row["average_usd"])) for row in result.rows] == [Decimal("235")], result.rows
+
+
+def test_a_top_1_ranking_keeps_every_tied_row_in_both_programs():
+    # "which customer placed the most orders" (customer-orders, 2026-10-02): five customers tie at three
+    # orders and one was served. The served top-1 keeps every tied row (sql_ast.keep_ties), the SQL with
+    # RANK() and the Python program by comparing the ranking keys, in the same order.
+    from engine.sql_ast import keep_ties, render_query
+
+    customer = ColumnRef("orders", "customer", SQLType.TEXT)
+    count = Aggregate("COUNT", Star())
+    ranked = SelectQuery(
+        (SelectItem(customer, "customer"), SelectItem(count, "orders")), "orders", group_by=(customer,),
+        order_by=(OrderTerm(count, "DESC"),), limit=1,
+    )
+    served = keep_ties(ranked)
+    assert served.with_ties and "RANK() OVER" in render_query(served)
+    schema = [{"table": "orders", "name": "order_id", "affinity": "INTEGER", "values": [1, 2, 3, 4, 5]},
+              {"table": "orders", "name": "customer", "affinity": "TEXT",
+               "values": ["Bo", "Ada", "Cy", "Ada", "Bo"]}]
+    statements = [
+        "CREATE TABLE conversation.orders (order_id INTEGER, customer TEXT)",
+        "INSERT INTO conversation.orders VALUES (1, 'Bo'), (2, 'Ada'), (3, 'Cy'), (4, 'Ada'), (5, 'Bo')",
+    ]
+    result = _execute_fixture(lower_select_query("most_orders", served, schema, ()), statements,
+                              estimated_rows=5)
+    assert result.mode.value == "verify"                       # both programs ran and agreed, in order
+    assert [tuple(row.values()) for row in result.rows] == [("Ada", 2), ("Bo", 2)], result.rows
+    # Contrast: an explicit cutoff above one keeps exactly that many rows, and the unserved LIMIT 1 one row.
+    assert keep_ties(replace(ranked, limit=2)) == replace(ranked, limit=2)
+    single = _execute_fixture(lower_select_query("most_orders", ranked, schema, ()), statements,
+                              estimated_rows=5)
+    assert [tuple(row.values()) for row in single.rows] == [("Ada", 2)], single.rows
+    # Negative: WITH TIES is not valid without an order to rank by.
+    try:
+        render_query(replace(ranked, order_by=(), with_ties=True))
+    except ValueError as exc:
+        assert "WITH TIES" in str(exc), exc
+    else:
+        raise AssertionError("rendered WITH TIES without an ORDER BY")
+
+
+def test_a_month_comparison_runs_in_both_programs():
+    # "How many transfers were signed in August?" (2026-10-02): the month of each date, read from its
+    # ISO text by the SQL program and from the date by the Python program.
+    from engine.sql_ast import DatePart
+
+    signed = ColumnRef("transfers", "signed", SQLType.DATE)
+    query = SelectQuery((SelectItem(Aggregate("COUNT", Star()), "transfers"),), "transfers",
+                        where=Comparison(DatePart("month", signed), "=", Literal(8, SQLType.INTEGER)))
+    schema = [{"table": "transfers", "name": "hospital", "affinity": "TEXT", "values": ["Mayo", "Charite", "Toronto"]},
+              {"table": "transfers", "name": "signed", "affinity": "TEXT", "is_date": True,
+               "values": ["2026-08-04", "2026-07-13", "2026-09-15"]}]
+    plan = lower_select_query("august", query, schema, ())
+    result = _execute_fixture(plan, [
+        "CREATE TABLE conversation.transfers (hospital TEXT, signed DATE)",
+        "INSERT INTO conversation.transfers VALUES ('Mayo', '2026-08-04'), ('Charite', '2026-07-13'), "
+        "('Toronto', '2026-09-15'), ('Cleveland', '2025-08-11')",
+    ], estimated_rows=4)
+    assert result.mode.value == "verify"                       # both programs ran and agreed
+    assert [tuple(row.values()) for row in result.rows] == [(2,)], result.rows
+
+
+def test_a_share_of_the_whole_runs_in_both_programs():
+    # "what share of the total amount comes from Paris?" (2026-10-02): the kept rows' total, crossed with
+    # the total of every row and divided, in both programs. The fractions are exact in binary, as SQLite's
+    # REAL arithmetic computes them; production divides PostgreSQL NUMERIC.
+    from engine.sql_ast import share_of
+
+    amount = ColumnRef("orders", "amount", SQLType.INTEGER)
+    city = ColumnRef("orders", "city", SQLType.TEXT)
+    total = Aggregate("SUM", amount)
+    schema = [{"table": "orders", "name": "order_id", "affinity": "INTEGER", "values": [1, 2, 3]},
+              {"table": "orders", "name": "city", "affinity": "TEXT", "values": ["Paris", "Lyon", "Paris"]},
+              {"table": "orders", "name": "amount", "affinity": "INTEGER", "values": [100, 300, 100]}]
+    statements = ["CREATE TABLE conversation.orders (order_id INTEGER, city TEXT, amount INTEGER)",
+                  "INSERT INTO conversation.orders VALUES (1, 'Paris', 100), (2, 'Lyon', 300), (3, 'Paris', 100)"]
+    filtered = SelectQuery((SelectItem(Aggregate("SUM", amount)),), "orders",
+                           where=Comparison(city, "=", Literal("Paris", SQLType.TEXT)))
+    paris = replace(filtered, select=(SelectItem(share_of(total, filtered), "share"),))
+    plan = lower_select_query("paris_share", paris, schema, ())
+    assert [type(view).__name__ for view in plan.views][-4:] == [
+        "ReducedView", "CrossView", "CalculatedView", "ProjectedView"]
+    result = _execute_fixture(plan, statements)
+    assert result.mode.value == "verify"
+    assert [Decimal(str(row["share"])) for row in result.rows] == [Decimal("0.4")], result.rows
+    grouped = SelectQuery((SelectItem(city), SelectItem(total)), "orders", group_by=(city,))
+    by_city = replace(grouped, select=(SelectItem(city), SelectItem(share_of(total, grouped), "share")))
+    result = _execute_fixture(lower_select_query("city_share", by_city, schema, ()), statements)
+    assert result.mode.value == "verify"
+    assert sorted((row["city"], Decimal(str(row["share"]))) for row in result.rows) == [
+        ("Lyon", Decimal("0.6")), ("Paris", Decimal("0.4"))], result.rows
 
 
 def test_lowering_does_not_treat_a_repeated_foreign_id_as_row_identity():
@@ -1988,6 +2114,24 @@ def test_composition_lowers_selected_bindings_and_executes_real_reference_relati
                 question,
                 result.rows,
             )
+        # A top 1 keeps every tied value in both programs (2026-10-02): a Chennai order of 30 ties India
+        # with France at 180. A top 2 is two rows either way.
+        tied = [dict(tables[0], rows=tables[0]["rows"] + [[4, "Chennai", 30]])]
+        connection.exec_driver_sql("INSERT INTO conversation.orders VALUES(4,'Chennai',30)")
+        for question, expected in (("top 1 country by total amount", [["France", 180], ["India", 180]]),
+                                   ("top 2 countries by total amount", [["France", 180], ["India", 180]])):
+            candidate = ComposeEngine().run(tied, question, world=world)
+            with patch(
+                "engine.deterministic.compose.reference_schema",
+                return_value={
+                    "Cities": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)]
+                },
+            ):
+                plan = lower_composition("metric", tied, schema, candidate["bindings"], world, connection)
+            result = DeterministicAnalysis(
+                plan, conversation_schema="conversation"
+            ).run(connection, mode="verify", estimated_rows=4)
+            assert sorted([list(row.values()) for row in result.rows]) == expected, (question, result.rows)
 
 
 def test_a_world_listing_ends_at_the_filtered_sheet_in_both_emitters():
@@ -2278,9 +2422,10 @@ def test_world_projections_group_the_kept_rows_by_the_named_world_attribute():
                                                ["South America", 90]]
     _plan_asc, lowest = run(sales, aggregate=highest, order="ASC")
     assert [tuple(row.values()) for row in lowest.output_rows()] == [("South America", 90)]
-    # A tie is broken by the stored key in both programs: Asia (Q48) before North America (Q49).
+    # Every group tied at the top is the answer, ordered by the stored key in both programs: Asia (Q48)
+    # before North America (Q49). One of them used to be served (2026-10-02).
     _plan_tie, tie = run([*sales[:4], ("United States", 310), *sales[5:]], aggregate=highest, order="DESC")
-    assert [tuple(row.values()) for row in tie.output_rows()] == [("Asia", 310)]
+    assert [tuple(row.values()) for row in tie.output_rows()] == [("Asia", 310), ("North America", 310)]
 
     # 'which continent …' without an aggregate: each value and the rows that hold it.
     _plan_values, values = run(sales, aggregate=None)
@@ -2291,16 +2436,21 @@ def test_world_projections_group_the_kept_rows_by_the_named_world_attribute():
     assert [view.name for view in plan.stages()][-2:] == ["continents_groups", "continents_total"]
     assert [tuple(row.values()) for row in counted.output_rows()] == [(4,)]
 
-    # Negative: a ranking needs the attribute it ranks, and a SUM or AVG to rank by.
-    for binding, message in (({"aggregate": highest, "order": "DESC", "dimension": None}, "attribute"),
-                             ({"aggregate": ("COUNT", "sales", None), "order": "DESC"}, "SUM or AVG"),
-                             ({"aggregate": None, "order": "ASC"}, "SUM or AVG")):
-        try:
-            run(sales, **binding)
-        except UnsupportedDeterministicPlan as exc:
-            assert message in str(exc), exc
-        else:
-            raise AssertionError(f"lowered an unsupported projection: {binding}")
+    # A count ranks too: 'which country has the most banks' answered the number of countries
+    # (2026-10-02). The rows per value are ranked, not the distinct values counted.
+    plan, most = run(sales, aggregate=("COUNT", "sales", None), order="DESC")
+    assert [view.name for view in plan.stages()][-2:] == ["continents_total", "continents_top_results"]
+    assert [tuple(row.values()) for row in most.output_rows()] == [("Asia", 3)]
+    _plan_rows, fewest = run(sales[:5], aggregate=None, order="ASC")
+    assert [tuple(row.values()) for row in fewest.output_rows()] == [("North America", 1)], fewest.output_rows()
+
+    # Negative: a ranking needs the attribute it ranks.
+    try:
+        run(sales, aggregate=highest, order="DESC", dimension=None)
+    except UnsupportedDeterministicPlan as exc:
+        assert "attribute" in str(exc), exc
+    else:
+        raise AssertionError("lowered a ranking without the attribute it ranks")
 
 
 
@@ -2318,6 +2468,7 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
     rates = {"EUR": "1.25", "GBP": "2", "USD": "1"}
 
     def run(**binding):
+        binding.setdefault("aggregate", ("SUM", "orders", "amount"))
         plan = lower_world_query(
             slug="totals",
             schema=[{"table": "orders", "name": column,
@@ -2330,7 +2481,7 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
             meaning_filter=None, own_filters=[],
             world_rate={"fact": "orders", "ccy_col": "currency", "date_col": None, "rate_col": "rate_to_usd",
                         "target": "USD"},
-            as_of="2026-10-01", aggregate=("SUM", "orders", "amount"), calculation=None, conversion=None,
+            as_of="2026-10-01", calculation=None, conversion=None,
             reference_columns={
                 "city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)],
                 "exchange_rate": [("currency_code", SQLType.TEXT, False), ("date", SQLType.TEXT, False),
@@ -2378,6 +2529,28 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
     assert sorted(run(dimension=("city", "country"))) == [
         ("France", 225), ("United Kingdom", 100), ("United States", 120)]
     assert run(dimension=("city", "country"), order="ASC") == [("United Kingdom", 100)]
+
+    # An average converts every row before averaging them: "average amount in US dollars" was declined
+    # because the conversion stage only summed (Chrome exploration, 2026-10-02). (125 + 100 + 100 + 120) / 4.
+    from decimal import Decimal
+
+    average = ("AVG", "orders", "amount")
+    named = []
+    assert [tuple(Decimal(str(cell)) for cell in row) for row in run(aggregate=average)] == [(Decimal("111.25"),)]
+    assert named == [("average_usd",)], named
+    assert [(country, Decimal(str(value))) for country, value in sorted(
+        run(aggregate=average, dimension=("city", "country")))] == [
+        ("France", Decimal("112.5")), ("United Kingdom", Decimal("100")), ("United States", Decimal("120"))]
+    assert run(aggregate=average, dimension=("city", "country"), order="DESC") == [("United States", 120)]
+    # Negative: a count is never converted.
+    from engine.deterministic.lower import UnsupportedDeterministicPlan
+
+    try:
+        run(aggregate=("COUNT", "orders", None))
+    except UnsupportedDeterministicPlan as exc:
+        assert "SUM or AVG" in str(exc), exc
+    else:
+        raise AssertionError("lowered a converted COUNT")
 
 
 def test_the_column_a_total_is_grouped_or_ranked_by_is_read_from_the_question():
@@ -2737,7 +2910,7 @@ def test_every_stage_reports_the_exact_python_that_produced_it():
         assert segment.startswith(f"        # View: {view.name}\n"), view.name
         assert segment in source, view.name
     assert "view_sources" not in package.record()["manifest"]
-    assert package.record()["manifest"]["emitter_version"] == 9
+    assert package.record()["manifest"]["emitter_version"] == 10
     # A one-sheet entry is no stage: the stage that reads it opens with the upload's ORM load, and that
     # slice of the module is what the sheet shows.
     orders = _plan().table("orders")

@@ -157,7 +157,7 @@ def _safe_id(value: str, prefix: str) -> bool:
 
 
 class PythonEmitter:
-    VERSION = 9
+    VERSION = 10
 
     def emit(
         self,
@@ -661,6 +661,7 @@ class PythonEmitter:
                         f"            keys=lambda row: ({', '.join(keys)},),",
                         f"            descending={tuple(item.descending for item in view.order)!r},",
                         f"            limit={view.limit!r},",
+                        *([f"            ties_on={view.ties_on!r},"] if view.ties_on else []),
                         "        )",
                     ]
                 )
@@ -1279,6 +1280,8 @@ def _orm_value(plan, value):
         return f"{table.class_name}.{table.scalar_attribute(value.column)}"
     if isinstance(value, FunctionValue):
         operand = _orm_value(plan, value.operand)
+        if value.function == "MONTH":
+            raise TypeError("a month is not a join value")
         return (
             f"cast({operand}, Text)"
             if value.function == "TEXT"

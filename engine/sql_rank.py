@@ -19,7 +19,11 @@ from pathlib import Path
 import re
 from typing import Mapping, Sequence
 
-from engine.sql_ast import Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery
+from engine.sql_ast import (
+    Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, keep_ties, render_query,
+    share_aggregate,
+)
+from engine.sql_expansion import share_requested
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, is_surrogate_key
 
@@ -130,13 +134,20 @@ class CandidateRanker:
                 *((f"right:{name}", 0.5 * value) for name, value in right),
             )
         select_columns = tuple(item.expression for item in query.select if isinstance(item.expression, ColumnRef))
-        aggregates = tuple(item.expression for item in query.select if isinstance(item.expression, Aggregate))
+        # A share (sql_ast.share_of) answers with the aggregate it divides, as the total it shares out.
+        shares = tuple(part for item in query.select
+                       if (part := share_aggregate(item.expression, query)) is not None)
+        aggregates = tuple(item.expression for item in query.select
+                           if isinstance(item.expression, Aggregate)) + shares
         group_columns = query.group_by
         count_ranked = any(
             isinstance(term.expression, Aggregate) and term.expression.function == "COUNT"
             for term in query.order_by
         )
         features: list[tuple[str, float]] = [("base", 0.0)]
+        if shares or share_requested(roles.tokens):
+            # "what share of the total amount comes from Paris" asks for the fraction, not the total.
+            features.append(("share_of_whole", 6.0 if shares and share_requested(roles.tokens) else -6.0))
 
         if roles.count_requested:
             if count_ranked:
@@ -644,7 +655,15 @@ class PoolSelection:
 
     @property
     def candidate(self) -> ScoredQuery | None:
-        return None if self.selected is None else self.pool[self.selected]
+        """The member served: the selected pool member, a top-1 ranking keeping every tied row
+        (sql_ast.keep_ties). Ranking, features and origin read the pool member itself."""
+        if self.selected is None:
+            return None
+        member = self.pool[self.selected]
+        served = keep_ties(member.query)
+        if served is member.query:
+            return member
+        return ScoredQuery(served, render_query(served), member.score, member.evidence)
 
     def constrained(self, admissible) -> PoolSelection:
         """This selection under a caller's contract, a filter on the ranking and never a rescore.

@@ -7,3 +7,4 @@
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
 total amount for Noma => 4800
+which country spent the most on catering? => {"columns":["country"],"rows":[["United States"]]}

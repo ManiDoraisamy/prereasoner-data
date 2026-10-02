@@ -51,7 +51,7 @@ WORLD_COL_SYN = {"currency": "currency", "currencies": "currency", "population":
 WORLD_SKIP_COLS = {"name", "is_primary", "updated_at", "source", "source_release_id",
                    "valid_from", "valid_to"}
 ARGMAX_CUES = frozenset({"highest", "largest", "most", "maximum", "max", "top"})
-ARGMIN_CUES = frozenset({"lowest", "smallest", "least", "minimum", "min", "bottom"})
+ARGMIN_CUES = frozenset({"lowest", "smallest", "least", "fewest", "minimum", "min", "bottom"})
 AGG_CUES = {"COUNT": {"count", "counts", "number", "many"}, "SUM": {"sum", "total", "totals"} | MEASURE_NOUNS,
             "AVG": {"avg", "average", "mean", "averages"}}
 # A count cue and the noun phrase it governs: "how many orders", "number of leads", "count (of|the) deliveries".
@@ -129,12 +129,13 @@ class KnowledgeTableQuery:
         return f"decimal_mul({left}, {right})"
 
     @classmethod
-    def _summed(cls, agg, rate):
-        """SUM of the measure, each value converted first when the question names an output currency."""
+    def _aggregated(cls, agg, rate):
+        """The SUM or AVG of the measure, each value converted first when the question names an output
+        currency."""
         measure = f'{qident(agg[1])}.{qident(agg[2])}'
         if rate is not None:
             measure = cls._numeric_multiply(measure, f'{qident(rate[0])}.{qident(rate[1])}')
-        return cls._numeric_aggregate("SUM", measure)
+        return cls._numeric_aggregate(agg[0], measure)
 
     @staticmethod
     def _own_dimension(question, sch, measure_table=None):
@@ -358,15 +359,15 @@ class KnowledgeTableQuery:
 
         The knowledgebase table joins exactly like a tenant table — conversation + tenant +
         knowledgebase is the ONE join shape — on the fact table's (currency, date) pair. Requires an
-        OUTPUT-kind currency intent, a monetary SUM, a currency-code column and a date column on the
-        fact table, and the exchange_rate table registered in the words index. Uploaded rate sheets
+        OUTPUT-kind currency intent, a monetary SUM or AVG, a currency-code column and a date column on
+        the fact table, and the exchange_rate table registered in the words index. Uploaded rate sheets
         always win: this is only consulted after _currency_conversion_binding returns None.
         """
         from engine.currency_intent import CurrencyIntentKind, currency_intent
 
         if "exchange_rate" not in getattr(self, "words", {}):
             return None                              # no registry (hermetic stub) = no knowledgebase tables
-        if (not agg or agg[0] != "SUM" or not agg[1] or not agg[2]
+        if (not agg or agg[0] not in ("SUM", "AVG") or not agg[1] or not agg[2]
                 or not is_currency_measure_column(agg[2])):
             return None
         intent = currency_intent(question)
@@ -400,8 +401,8 @@ class KnowledgeTableQuery:
 
     @staticmethod
     def _currency_conversion_binding(question, agg, sch, fks):
-        """Find the one direct-rate column that can convert a world-filtered SUM."""
-        if (not agg or agg[0] != "SUM" or not agg[1] or not agg[2]
+        """Find the one direct-rate column that can convert a world-filtered SUM or AVG."""
+        if (not agg or agg[0] not in ("SUM", "AVG") or not agg[1] or not agg[2]
                 or not is_currency_measure_column(agg[2])):
             return None
         return currency_rate_binding(
@@ -751,8 +752,11 @@ class KnowledgeTableQuery:
                 else world_rate["fact"])                     # conversion-only: the fact sheet drives the join
         route_col = (mf["csv_col"] if mf else wtarget["path"][0]["left_col"] if wtarget
                      else world_rate["ccy_col"])
-        if proj_world_col and agg and agg[0] == "COUNT":     # an interrogative projection is DISTINCT, not a COUNT
-            agg = None                                       # (the permissive count gate fires on 'which continent…')
+        ranks = bool(set(re.findall(r"[a-z]+", question.lower())) & (ARGMAX_CUES | ARGMIN_CUES))
+        if proj_world_col and agg and agg[0] == "COUNT" and not ranks:
+            agg = None                                       # an interrogative projection is DISTINCT, not a COUNT
+            #                                                  (the permissive count gate fires on 'which continent…');
+            #                                                  'which country has the most orders' ranks the counts
         namecol = next((c["name"] for c in sch if c["table"] == mtab and c["affinity"] == "TEXT"), None)
         joins = list(mf["joins"]) if mf else []              # join chain = the FILTER joins UNION the world-target's path…
         if wtarget:                                          # …so the table holding the requested world column is joined in
@@ -773,10 +777,11 @@ class KnowledgeTableQuery:
         # over every row: "which city has the highest total amount in US dollars" was answered with the total
         # of every city, and "total amount by tier in US dollars" was declined (Chrome exploration, 2026-10-01).
         own_dimension = (self._own_dimension(question, sch, agg[1])
-                         if wtarget is None and agg and agg[0] == "SUM" and agg[2] else None)
+                         if wtarget is None and agg and agg[0] in ("SUM", "AVG") and agg[2] else None)
         if own_dimension is not None:
             calculation_plan = None
-        # The rate a SUM is converted at: an uploaded rate sheet's typed edge, or the knowledgebase's daily rate.
+        # The rate a SUM or AVG is converted at: an uploaded rate sheet's typed edge, or the knowledgebase's
+        # daily rate.
         rate = conversion or (("exchange_rate", world_rate["rate_col"]) if world_rate else None)
         selected_measure = None
         selected_conversion = False
@@ -805,17 +810,29 @@ class KnowledgeTableQuery:
             selected_conversion = "currency" in calculation_plan.specification.split("+")
         elif own_dimension is not None:
             table, column, direction = own_dimension
-            aggregate = self._summed(agg, rate)
+            aggregate = self._aggregated(agg, rate)
             dimension = f'{qident(table)}.{qident(column)}'
             grouping = grain = (table, column)
             ranking = direction
             proj = f'{dimension}, {aggregate}'
             query_tail = f' GROUP BY {dimension}' + (f' ORDER BY {aggregate} {direction} LIMIT 1' if direction else '')
-            pdesc = ("select", f'{table}.{column} (SUM by your column)',
+            pdesc = ("select", f'{table}.{column} ({agg[0]} by your column)',
                      f'ordered {direction.lower()} aggregate' if direction else 'grouped aggregate')
             involved = list(dict.fromkeys((mtab, agg[1], table)))
             selected_measure = (agg[1], agg[2])
             selected_conversion = rate is not None
+        elif wtarget and agg and agg[0] == "COUNT" and wtarget["affinity"] == "TEXT" and ranks:
+            # "which country has the most orders" ranks the rows per value; it listed every country's count
+            # (2026-10-02). The DISTINCT count below answers "how many countries".
+            direction = "ASC" if set(re.findall(r"[a-z]+", question.lower())) & ARGMIN_CUES else "DESC"
+            dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
+            grouping, ranking = (wtarget["table"], wtarget["col"]), direction
+            grain = grouping
+            proj = dimension
+            query_tail = f' GROUP BY {dimension} ORDER BY COUNT( * ) {direction} LIMIT 1'
+            pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} (COUNT by dimension)',
+                     f'ordered {direction.lower()} count')
+            involved = [mtab] + ([agg[1]] if agg[1] and agg[1] != mtab else [])
         elif (wtarget and agg and agg[0] == "COUNT"            # "how many countries …" counts DISTINCT world values;
               and not re.search(r"\b(?:by|per|each)\s+" + re.escape(wtarget["word"]) + r"\b", question.lower())):
             # "how many attendees per country" counts the rows per value, the projection below (it answered 6, the
@@ -829,12 +846,10 @@ class KnowledgeTableQuery:
             # An ordinal request over a text dimension is a grouped aggregate, not a
             # DISTINCT projection.  Keep the aggregate in ORDER BY while returning
             # only the requested dimension, matching the natural answer shape for
-            # "which continent has the highest total amount".
-            # A SUM is converted when the question names an output currency; an AVG is not, and stays
-            # declined by the currency check rather than ranked by a sum.
-            converted = agg[0] == "SUM" and rate is not None
-            aggregate = (self._summed(agg, rate) if converted
-                         else self._numeric_aggregate(agg[0], f'{qident(agg[1])}.{qident(agg[2])}'))
+            # "which continent has the highest total amount". The SUM or AVG is converted when the
+            # question names an output currency.
+            converted = rate is not None
+            aggregate = self._aggregated(agg, rate)
             dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
             direction = "ASC" if set(question.lower().split()) & ARGMIN_CUES else "DESC"
             grouping, ranking = (wtarget["table"], wtarget["col"]), direction
@@ -853,17 +868,17 @@ class KnowledgeTableQuery:
             pdesc = ("aggregate", f'{agg[0]}({wtarget["table"]}.{wtarget["col"]})', "agg cue + world measure named")
             involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
             selected_measure = (wtarget["table"], wtarget["col"])
-        elif (wtarget and agg and agg[0] == "SUM" and agg[2] and wtarget["affinity"] == "TEXT"
+        elif (wtarget and agg and agg[0] in ("SUM", "AVG") and agg[2] and wtarget["affinity"] == "TEXT"
               and re.search(r"\b(?:by|per|each)\s+" + re.escape(wtarget["word"]) + r"\b", question.lower())):
             # "total amount by continent in US dollars": the total per world value. It fell to the projection
             # below, which counts the rows per value (Chrome exploration, 2026-10-01). "the total currency"
             # names no grouping: a text attribute is listed, never summed.
-            aggregate = self._summed(agg, rate)
+            aggregate = self._aggregated(agg, rate)
             dimension = f'{qident(wtarget["table"])}.{qident(wtarget["col"])}'
             grouping = grain = (wtarget["table"], wtarget["col"])
             proj = f'{dimension}, {aggregate}'
             query_tail = f' GROUP BY {dimension}'
-            pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} (SUM by dimension)', "grouped aggregate")
+            pdesc = ("select", f'{wtarget["table"]}.{wtarget["col"]} ({agg[0]} by dimension)', "grouped aggregate")
             involved = [mtab] + ([agg[1]] if agg[1] != mtab else [])
             selected_measure = (agg[1], agg[2])
             selected_conversion = rate is not None
@@ -879,10 +894,10 @@ class KnowledgeTableQuery:
         elif agg and world_rate:
             measure_sql = f'{qident(agg[1])}.{qident(agg[2])}'
             rate_sql = f'{qident("exchange_rate")}.{qident(world_rate["rate_col"])}'
-            proj = self._numeric_aggregate("SUM", self._numeric_multiply(measure_sql, rate_sql))
+            proj = self._numeric_aggregate(agg[0], self._numeric_multiply(measure_sql, rate_sql))
             pdesc = (
                 "aggregate",
-                f'SUM({agg[1]}.{agg[2]} * exchange_rate.{world_rate["rate_col"]})',
+                f'{agg[0]}({agg[1]}.{agg[2]} * exchange_rate.{world_rate["rate_col"]})',
                 "explicit currency target + knowledgebase daily rate (code, date) join",
             )
             involved = list(dict.fromkeys((mtab, agg[1])))   # exchange_rate joins as a WORLD table, not a sheet
@@ -892,10 +907,10 @@ class KnowledgeTableQuery:
             rate_table, rate_col = conversion
             measure_sql = f'{qident(agg[1])}.{qident(agg[2])}'
             rate_sql = f'{qident(rate_table)}.{qident(rate_col)}'
-            proj = self._numeric_aggregate("SUM", self._numeric_multiply(measure_sql, rate_sql))
+            proj = self._numeric_aggregate(agg[0], self._numeric_multiply(measure_sql, rate_sql))
             pdesc = (
                 "aggregate",
-                f'SUM({agg[1]}.{agg[2]} * {rate_table}.{rate_col})',
+                f'{agg[0]}({agg[1]}.{agg[2]} * {rate_table}.{rate_col})',
                 "explicit currency target + typed direct-rate edge",
             )
             involved = list(dict.fromkeys((mtab, agg[1], rate_table)))
@@ -1052,47 +1067,72 @@ class KnowledgeTableQuery:
         if deterministic_record is not None:
             response.update(deterministic=deterministic_record,
                             views=deterministic_record["views"], sql=deterministic_record["final_sql"])
-        from engine.calculations import (
-            BranchEvidence, ComputationEvidence, JoinFact, OutputEvidence, PredicateFact,
-            assess_calculations,
-        )
-        from engine.calculations.core import aggregate_functions, expression_columns
-        from engine.calculations.registry import attach_calculation_evidence
-        from engine.sql_ast import BinaryExpr, ColumnRef, SQLType
-        predicates = frozenset(
-            PredicateFact(table, column, "=", value)
-            for table, column, value in own_filters
-        )
-        if world_fk:
-            selected_fks = list(selected_fks) + [world_fk]
+        from engine.sql_ast import BinaryExpr
         graph = calculation_graph
-
-        def _typed(table, column):
-            """The column as the SCHEMA declares it.
-
-            ColumnRef is a frozen dataclass, so its equality covers the declared SQL type. Synthesizing
-            the measure as REAL made an integer-typed column (the demo's whole-currency amounts) compare
-            unequal to the planned expression, so a correct SUM(amount * rate_to_usd) was reported as
-            not converting and the world path declined a right answer.
-            """
-            entry = graph.column_map.get((table, column))
-            return entry.ref if entry is not None else ColumnRef(table, column, SQLType.REAL)
-
-        outputs = ()
+        expression = None
         if selected_measure:
-            measure = _typed(*selected_measure)
+            measure = self._schema_column(graph, *selected_measure)
             if calculation_plan is not None:
                 expression = calculation_plan.expression
             else:
                 expression = Aggregate(agg[0], measure)
                 rate_binding = conversion or (world_rate and ("exchange_rate", world_rate["rate_col"]))
                 if selected_conversion and rate_binding:
-                    expression = Aggregate("SUM", BinaryExpr(measure, "*", _typed(*rate_binding)))
-            outputs = (OutputEvidence(
-                expression, True, aggregate_functions(expression), expression_columns(expression),
-            ),)
+                    expression = Aggregate(
+                        agg[0], BinaryExpr(measure, "*", self._schema_column(graph, *rate_binding)))
+        unconverted = ()
+        if world_rate and coverage_gap:
+            gap, base = coverage_gap
+            unconverted = ({
+                "specification": "currency", "status": "unmet", "realization": None,
+                "reason": (f"{gap} of {base} rows have no ECB reference rate for their "
+                           f"(currency, date) — outside published coverage"),
+                "proposal": "",
+            },)
+        return self._record_computation(
+            response, question, norm, graph, expression, own_filters,
+            list(selected_fks) + ([world_fk] if world_fk else []), grain, unconverted)
+
+    @staticmethod
+    def _schema_column(graph, table, column):
+        """The column as the SCHEMA declares it.
+
+        ColumnRef is a frozen dataclass, so its equality covers the declared SQL type. Synthesizing
+        the measure as REAL made an integer-typed column (the demo's whole-currency amounts) compare
+        unequal to the planned expression, so a correct SUM(amount * rate_to_usd) was reported as
+        not converting and the world path declined a right answer.
+        """
+        from engine.sql_ast import ColumnRef, SQLType
+        entry = graph.column_map.get((table, column))
+        return entry.ref if entry is not None else ColumnRef(table, column, SQLType.REAL)
+
+    @staticmethod
+    def _record_computation(response, question, norm, graph, expression, own_filters, foreign_keys,
+                            grain, extra_assessments=()):
+        """Record the computation a world answer ran, and the registered calculation checks on it.
+
+        ``expression`` is the aggregate the answer computed (None when it computed none),
+        ``own_filters`` the uploaded-value predicates, ``foreign_keys`` the joins between uploaded
+        sheets, and ``grain`` the column the answer is computed per: an uploaded column, or a world
+        attribute such as a bank's country, which the uploaded schema graph does not hold. Both world
+        routes, the place joins here and the entity joins (KnowledgeQuery._serve_world_type), record
+        their answers through this one method."""
+        from engine.calculations import (
+            BranchEvidence, ComputationEvidence, JoinFact, OutputEvidence, PredicateFact,
+            assess_calculations,
+        )
+        from engine.calculations.core import aggregate_functions, expression_columns
+        from engine.calculations.registry import attach_calculation_evidence
+        from engine.sql_ast import ColumnRef, SQLType
+        predicates = frozenset(
+            PredicateFact(table, column, "=", value)
+            for table, column, value in own_filters
+        )
+        outputs = () if expression is None else (OutputEvidence(
+            expression, True, aggregate_functions(expression), expression_columns(expression),
+        ),)
         join_facts = []
-        for foreign_key in selected_fks:
+        for foreign_key in foreign_keys:
             from_cols = tuple(foreign_key.get("from_cols") or (foreign_key["from_col"],))
             to_cols = tuple(foreign_key.get("to_cols") or (foreign_key["to_col"],))
             pairs = tuple(
@@ -1109,17 +1149,7 @@ class KnowledgeTableQuery:
             grain_refs = (entry.ref if entry is not None else ColumnRef(grain[0], grain[1], SQLType.TEXT),)
         computation = ComputationEvidence((BranchEvidence(outputs, predicates, tuple(join_facts), grain_refs),))
         response["computation"] = computation.record()
-        assessments = assess_calculations(
-            question, norm, graph, computation,
-        )
-        if world_rate and coverage_gap:
-            gap, base = coverage_gap
-            assessments = tuple(list(assessments) + [{
-                "specification": "currency", "status": "unmet", "realization": None,
-                "reason": (f"{gap} of {base} rows have no ECB reference rate for their "
-                           f"(currency, date) — outside published coverage"),
-                "proposal": "",
-            }])
+        assessments = tuple(assess_calculations(question, norm, graph, computation)) + tuple(extra_assessments)
         attach_calculation_evidence(response, assessments)
         return response
 

@@ -362,7 +362,7 @@ def ast_predict(
         "path": "ast",
         **backend,
         "plan": list(candidate.evidence),
-        "proposal_selected": candidate.sql in chosen.proposed,
+        "proposal_selected": chosen.origin(chosen.selected) == "proposer",
         "candidate_score": round(candidate.score, 4),
         **evidence,
     }
@@ -373,8 +373,9 @@ def _score_pool_oracle(record, gold_rows):
 
     Fresh records carry "pool_execution" (raw rows); those rows are compared here and replaced with
     compact per-candidate flags under "pool" so checkpoints stay small. Resumed checkpoint records
-    already carry "pool" and are rescored from the stored flags. top1_cmp is the serving-equivalent
-    outcome of the same run's served selection (None when nothing was selectable)."""
+    already carry "pool" and are rescored from the stored flags. top1_cmp is the outcome of the same
+    run's selected pool member (None when nothing was selectable); a served top-1 ranking also keeps its
+    tied rows (sql_ast.keep_ties), which only the served selection mode grades."""
     raw = record.pop("pool_execution", None)
     if raw is not None:
         import hashlib

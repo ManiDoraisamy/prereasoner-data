@@ -33,6 +33,15 @@ from engine.deterministic.plan import (
     WindowView,
 )
 from engine.numeric import DIVISION_SCALE
+from engine.sql_ast import month_of_date_sql
+
+
+def _function(function: str, operand: str) -> str:
+    if function == "TEXT":
+        return f"CAST({operand} AS TEXT)"
+    if function == "MONTH":
+        return month_of_date_sql(operand)
+    return f"LOWER({operand})"
 
 _BINARY = {"+": "+", "-": "-", "*": "*", "/": "/"}
 
@@ -68,7 +77,7 @@ class GeneratedSQL:
 
 
 class SQLEmitter:
-    VERSION = 6
+    VERSION = 7
 
     def __init__(self, schema_map: Mapping[str, str] | None = None):
         self.schema_map = MappingProxyType(dict(schema_map or {}))
@@ -178,13 +187,24 @@ class SQLEmitter:
             elif isinstance(view, SortedView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
-                order = ", ".join(
+                terms = [
                     f"{self._value(item.value, available_tables, available_values)} {'DESC' if item.descending else 'ASC'} NULLS LAST"
                     for item in view.order
-                )
-                sql = f"SELECT * FROM {relation(view.source)} ORDER BY {order}"
-                if view.limit is not None:
-                    sql += f" LIMIT {view.limit}"
+                ]
+                order = ", ".join(terms)
+                if view.ties_on:
+                    # FETCH FIRST n ROWS WITH TIES, which SQLite lacks: rank by the leading terms and keep
+                    # the rows ranked within the limit, in the full order.
+                    columns = ", ".join(_q(name) for name in columns_by_view[view.source])
+                    sql = (
+                        f"SELECT {columns} FROM (SELECT *, RANK() OVER (ORDER BY {', '.join(terms[:view.ties_on])}) "
+                        f"AS {_q('__rank')} FROM {relation(view.source)}) AS {_q(view.source)} "
+                        f"WHERE {_q('__rank')} <= {view.limit} ORDER BY {order}"
+                    )
+                else:
+                    sql = f"SELECT * FROM {relation(view.source)} ORDER BY {order}"
+                    if view.limit is not None:
+                        sql += f" LIMIT {view.limit}"
             elif isinstance(view, WindowView):
                 available_tables = set(tables_by_view[view.source])
                 available_values = set(values_by_view[view.source])
@@ -435,12 +455,7 @@ class SQLEmitter:
 
     def _value(self, value: Value, tables: set[str], values: set[str]) -> str:
         if isinstance(value, FunctionValue):
-            operand = self._value(value.operand, tables, values)
-            return (
-                f"CAST({operand} AS TEXT)"
-                if value.function == "TEXT"
-                else f"LOWER({operand})"
-            )
+            return _function(value.function, self._value(value.operand, tables, values))
         if isinstance(value, LiteralValue):
             return _literal(value.value)
         if isinstance(value, ViewValue):
@@ -469,12 +484,7 @@ class SQLEmitter:
             if isinstance(item, ColumnValue):
                 return resolve(item)
             if isinstance(item, FunctionValue):
-                operand = value(item.operand)
-                return (
-                    f"CAST({operand} AS TEXT)"
-                    if item.function == "TEXT"
-                    else f"LOWER({operand})"
-                )
+                return _function(item.function, value(item.operand))
             if isinstance(item, BinaryValue):
                 left = value(item.left)
                 right = value(item.right)

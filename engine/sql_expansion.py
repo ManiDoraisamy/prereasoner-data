@@ -717,6 +717,81 @@ def implicit_sum_measures(question_tokens: Sequence[str]) -> tuple[ImplicitMeasu
     return tuple(out)
 
 
+# Words that ask for a part as a fraction of its whole (canon() forms): "what share of the total amount
+# comes from Paris", "the percentage of orders from Lyon".
+SHARE_WORDS = frozenset({"share", "percentage", "percent", "proportion", "fraction"})
+
+
+def share_requested(question_tokens: Sequence[str]) -> bool:
+    return bool(SHARE_WORDS & set(question_tokens))
+
+
+# A superlative of quantity ranks totals: "the most deposits" is the largest total of deposits. "The
+# highest amount" stays out: it may name the largest single value as well as the largest total.
+QUANTITY_SUPERLATIVES = frozenset({"most", "least", "fewest"})
+
+
+def _numeric_measures(sch: Sequence[dict]) -> list[dict]:
+    return [entry for entry in sch
+            if entry.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(entry["name"])]
+
+
+def ranked_measure_columns(question: str, sch: Sequence[dict]) -> list[dict]:
+    """The numeric columns a quantity superlative ranks totals of, else [].
+
+    "which country has the most deposits" and "which bank has the fewest transfers" name the column
+    right after the cue. "which country spent the most on catering" names no column; its money verb
+    asks for the money columns. ``sch`` is the planner schema ({table, name, affinity, ...}).
+    """
+    question_tokens = tokens(question)
+    cue = next((index for index, token in enumerate(question_tokens)
+                if token in QUANTITY_SUPERLATIVES), None)
+    if cue is None:
+        return []
+    numeric = _numeric_measures(sch)
+    following = question_tokens[cue + 1:]
+    named = [entry for entry in numeric
+             if (words := name_tokens(entry["name"])) and following[:len(words)] == words]
+    if named:
+        return named
+    money = {word for measure in implicit_sum_measures(question_tokens) for word in measure.column_words
+             if question_tokens[measure.position] in MONEY_MEASURE_NOUNS}
+    return [entry for entry in numeric if set(name_tokens(entry["name"])) & money]
+
+
+def ranked_row_tables(question: str, sch: Sequence[dict]) -> list[str]:
+    """The sheets whose rows a quantity superlative counts, else [].
+
+    "which country has the most orders" counts the rows of the orders sheet, and "which country has the
+    most banks" the rows of the sheet whose bank column names one bank per row. A measure column the
+    superlative names is ranked_measure_columns' reading, not this one.
+    """
+    question_tokens = tokens(question)
+    cue = next((index for index, token in enumerate(question_tokens)
+                if token in QUANTITY_SUPERLATIVES), None)
+    if cue is None or cue + 1 >= len(question_tokens):
+        return []
+    noun = question_tokens[cue + 1]
+    return sorted({entry["table"] for entry in sch
+                   if name_tokens(entry["table"]) == (noun,)
+                   or (entry.get("affinity") == "TEXT" and name_tokens(entry["name"]) == (noun,))})
+
+
+def counted_measure_columns(question: str, sch: Sequence[dict]) -> list[dict]:
+    """The numeric columns that already hold the count a count cue asks for, else [].
+
+    In a sheet whose ``transfers`` column holds each row's number of transfers, "how many transfers"
+    asks for that column's total, not for the number of rows. The counted noun must be the column's
+    whole name, right after "how many", "number of" or "count of".
+    """
+    question_tokens = tokens(question)
+    starts = [index + 2 for index in range(len(question_tokens) - 1)
+              if question_tokens[index:index + 2] in (("how", "many"), ("number", "of"), ("count", "of"))]
+    return [entry for entry in _numeric_measures(sch)
+            if (words := name_tokens(entry["name"]))
+            and any(question_tokens[start:start + len(words)] == words for start in starts)]
+
+
 def measure_words_after(question_tokens: Sequence[str], position: int) -> frozenset[str] | None:
     """Preferred measure-column words for an explicit aggregate cue at ``position``.
 

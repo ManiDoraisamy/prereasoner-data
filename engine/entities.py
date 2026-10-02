@@ -469,13 +469,21 @@ class EntityQuery(RoutedQuery):
 
     def _qid_labels(self, qids):
         """qid -> canonical label via knowledgebase."words" (the qid->canonical index; knowledgebase."types" holds
-        only the taxonomy, not entity labels). Returns {} on a lookup miss so callers degrade to showing the qid."""
+        only the taxonomy, not entity labels). Returns {} on a lookup miss so callers degrade to showing the qid.
+
+        A qid can carry more than one canonical row: a later sync added "Czech Republic" beside the source's
+        "Czechia" (Q213) and "People's Republic of China" beside "China" (Q148). The label is the primary row's,
+        then the one the source record names itself, then the earliest: building the map from every row let
+        the row order decide, and the world answer said "Czech Republic" where compose said "Czechia"
+        (2026-10-02). This is the one qid label source; every trail and answer reads it."""
         qids = sorted({q for q in qids if q})
         if not qids:
             return {}
         try:
             return dict(self._kb_rows(
-                'SELECT qid, canonical FROM knowledgebase."words" WHERE qid = ANY(%s) AND canonical IS NOT NULL',
+                'SELECT DISTINCT ON (qid) qid, canonical FROM knowledgebase."words" '
+                'WHERE qid = ANY(%s) AND canonical IS NOT NULL '
+                "ORDER BY qid, is_primary IS TRUE DESC, canonical = props->>'name' IS TRUE DESC, id",
                 (qids,)))
         except Exception as e:                                    # noqa: BLE001 — leave qids as-is on a lookup miss
             print(f"[entities] qid_to_label_failed error={type(e).__name__}", flush=True)

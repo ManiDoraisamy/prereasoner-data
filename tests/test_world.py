@@ -336,6 +336,34 @@ def main():
     ok("aggregate domain: 'the top 2 cities by population' ranks the cities",
        [str(row[0]) for row in rows_of(response)] == ["Tokyo", "Osaka"], f"rows={rows_of(response)}")
 
+    # --- (N) a world attribute ranked by a row count (2026-10-02) ---
+    # 'which country has the most orders' listed every country's count, and 'which country has the most
+    # banks' answered the number of countries. A superlative of the rows the sheet lists ranks the row
+    # count per world value. Paris and Lyon are in France, Berlin in Germany, Tokyo in Japan.
+    for question, expected in (("which country has the most customers", [["France", "2"]]),
+                               ("which continent has the most customers", [["Europe", "3"]]),
+                               ("which continent has the fewest customers", [["Asia", "1"]])):
+        response = served(sub, wr.serve, [CUST], question, sub, mode="verify")
+        got = [[str(cell) for cell in row] for row in rows_of(response)]
+        ok(f"ranked count: '{question}'", got == expected and (response.get("execution") or {}).get("verified"),
+           f"rows={got} views={[view.get('op') for view in response.get('views') or []]} "
+           f"error={response.get('error')}")
+    # Contrast: counting the countries counts the distinct values, and a total still ranks by its sum.
+    response = served(sub, wr.serve, [CUST], "how many countries are the customers in", sub)
+    ok("ranked count: 'how many countries are the customers in' still counts 3 countries",
+       [[str(cell) for cell in row] for row in rows_of(response)] == [["3"]], f"rows={rows_of(response)}")
+    response = served(sub, wr.serve, [CUST], "which continent has the highest total amount", sub)
+    ok("ranked count: a total still ranks by its sum",
+       [[str(cell) for cell in row] for row in rows_of(response)] == [["Europe", "220"]], f"rows={rows_of(response)}")
+
+    # --- (O) one label per entity (2026-10-02) ---
+    # Q213 carries a later "Czech Republic" row beside the source's "Czechia", and Q148 "People's Republic of
+    # China" beside "China". The label map was built from every row, so the last row read won: the world answer
+    # said "Czech Republic" where compose said "Czechia". The primary row names the entity everywhere.
+    labels = wr.qw._qid_labels(["Q213", "Q148", "Q30"])
+    ok("labels: one primary label per entity",
+       labels == {"Q213": "Czechia", "Q148": "China", "Q30": "United States"}, f"labels={labels}")
+
     print(f"\n{P}/{P+F} passed" + ("" if not F else f"  ({F} FAILED)"))
     sys.exit(1 if F else 0)
 

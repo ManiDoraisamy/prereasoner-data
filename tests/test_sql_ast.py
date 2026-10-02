@@ -1733,6 +1733,83 @@ def test_directional_year_filter_targets_date_column():
     assert execute([employees], candidate.sql) == [("Lin",)]
 
 
+def test_month_and_dated_phrases_filter_the_date_column():
+    """Chrome exploration, 2026-10-02: "How many transfers were signed in August?", "How many leads
+    were submitted after August 10, 2026?" and "How many contracts were signed before July 10, 2026?"
+    were planned without their date; the coverage gate declined them over the month name. A month
+    compares the month of each date, and a dated phrase compares the date (engine/sql_dates.py)."""
+    leads = {"name": "leads", "columns": ["submitted", "name", "budget"], "rows": [
+        ["2026-08-03", "Elena", 15000], ["2026-08-04", "Pierre", 8000], ["2026-08-05", "Sara", 25000],
+        ["2026-08-07", "Akira", 12000], ["2026-08-09", "Maria", 5000], ["2026-08-11", "Tom", 18000],
+        ["2026-08-12", "Lucia", 6000], ["2026-08-14", "Raj", 9000], ["2026-08-15", "Emma", 4000],
+        ["2026-08-18", "Hans", 11000]]}
+    contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
+        ["Service Agreement", 12000, "2026-07-02"], ["License", 900000, "2026-07-05"], ["NDA", 5000, "2026-07-06"],
+        ["Maintenance", 400000, "2026-07-08"], ["License", 3000000, "2026-07-10"],
+        ["Service Agreement", 30000, "2026-07-12"], ["NDA", 4000, "2026-07-15"], ["Maintenance", 80000, "2026-07-18"]]}
+    transfers = {"name": "transfers", "columns": ["hospital", "signed", "transfers"], "rows": [
+        ["Mayo Clinic", "2026-08-04", 14], ["Massachusetts General Hospital", "2026-08-06", 11],
+        ["Johns Hopkins Hospital", "2026-08-08", 9], ["Cleveland Clinic", "2026-08-11", 12],
+        ["Charite", "2026-07-13", 7], ["Toronto General Hospital", "2026-09-15", 8]]}
+    for question, tables, fragment, expected in (
+            ("How many leads were submitted after August 10, 2026?", [leads], "'2026-08-11'", 5),
+            ("How many contracts were signed before July 10, 2026?", [contracts], "'2026-07-10'", 4),
+            ("How many transfers were signed in August?", [transfers], "AS TEXT), 6, 2) AS INTEGER) = 8", 4),
+            # Same profile, other cues: "since" keeps the named day, "until" keeps it too, "in <month> <year>"
+            # is that month, and a day-month-year or ISO date reads the same.
+            ("How many leads were submitted since August 11, 2026?", [leads], "'2026-08-11'", 5),
+            ("How many leads were submitted until August 11, 2026?", [leads], "'2026-08-12'", 6),
+            ("total transfers in August 2026", [transfers], "'2026-09-01'", 46),
+            ("How many transfers were signed on 6 August 2026?", [transfers], "'2026-08-07'", 1),
+            ("how many transfers since 2026-08-06", [transfers], "'2026-08-06'", 4),
+            ("How many transfers were signed in July?", [transfers], "AS TEXT), 6, 2) AS INTEGER) = 7", 1)):
+        candidate = best(question, tables)
+        assert fragment in candidate.sql, (question, candidate.sql)
+        assert execute(tables, candidate.sql)[0][0] == expected, (question, candidate.sql)
+    # Negative: "may" as a verb is no month, and a day with no year names no date to compare with, so
+    # neither is a date filter (the coverage gate asks about the unread month); "after 2015" stays a year.
+    for question in ("how many transfers may have been signed", "How many leads were submitted after August 10?"):
+        candidate = best(question, [transfers if "transfers" in question else leads])
+        assert "WHERE" not in candidate.sql, (question, candidate.sql)
+
+
+def test_the_coverage_gate_reads_the_months_a_query_compares():
+    from engine.sql_dates import realized_month_words
+
+    question = "How many transfers were signed in August?"
+    month = 'SELECT COUNT(*) FROM t WHERE CAST(SUBSTR(CAST("t"."signed" AS TEXT), 6, 2) AS INTEGER) = 8'
+    assert realized_month_words(question, month) == {"august"}
+    dated = "How many leads were submitted after August 10, 2026?"
+    assert realized_month_words(dated, "SELECT COUNT(*) FROM x WHERE submitted >= '2026-08-11'") == {"august"}
+    # Contrast: another month's comparison, or none, realizes nothing.
+    assert realized_month_words(question, month.replace("= 8", "= 7")) == frozenset()
+    assert realized_month_words(dated, "SELECT COUNT(*) FROM x") == frozenset()
+
+
+def test_a_share_divides_the_kept_rows_aggregate_by_the_whole():
+    """Chrome exploration, 2026-10-02 (neartail-orders): "what share of the total amount comes from
+    Paris?" served the Paris total, and "share of total amount by city" each city's total; the coverage
+    gate declined both over the dropped word and proposed "total unit price". A share is the kept rows'
+    aggregate over the same aggregate of every row the query reads (sql_ast.share_of)."""
+    orders = {"name": "orders", "columns": ["order ID", "customer", "amount", "city"], "rows": [
+        [1, "Ada", 100, "Paris"], [2, "Ben", 29, "Paris"], [3, "Cy", 60, "Lyon"], [4, "Dee", 12, "Marseille"],
+        [5, "Eve", 6, "Nice"]]}
+    paris = best("what share of the total amount comes from Paris?", [orders])
+    assert "/ NULLIF((SELECT SUM(\"orders\".\"amount\") FROM \"orders\"), 0)" in paris.sql, paris.sql
+    assert abs(execute([orders], paris.sql)[0][0] - 129 / 207) < 1e-12
+    by_city = best("share of total amount by city", [orders])
+    shares = dict(execute([orders], by_city.sql))
+    assert set(shares) == {"Paris", "Lyon", "Marseille", "Nice"} and abs(shares["Lyon"] - 60 / 207) < 1e-12
+    lyon = best("what percentage of orders are from Lyon?", [orders])
+    assert "COUNT(*)" in lyon.sql and execute([orders], lyon.sql) == [(0.2,)], lyon.sql
+    # Contrast, same sheet: a total asked without a share word stays the total.
+    total = best("total amount from Paris", [orders])
+    assert "/" not in total.sql and execute([orders], total.sql) == [(129,)], total.sql
+    # Negative: an average is never shared out.
+    average = best("what share of orders have the highest average amount", [orders])
+    assert "share" not in average.sql.lower() or "AVG" not in average.sql, average.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -2074,6 +2151,53 @@ def test_world_path_money_noun_naming_the_table_sums_its_money_column():
     units = [{"table": "sales", "name": "city", "affinity": "TEXT"},
              {"table": "sales", "name": "units", "affinity": "INTEGER"}]
     assert reader("SUM").read_op_all("total sales in France", units) == ("COUNT", "sales", None)
+
+
+def test_world_path_reads_quantity_superlatives_and_counted_measures():
+    """Chrome exploration, 2026-10-01/02: "which country has the most deposits" read no aggregate, so the
+    bank sheet's world path never ran and the question was declined; "how many transfers in Canada" counted
+    the hospital rows (1) where the transfers column holds the 8 transfers. The world operand reader
+    (EncoderQuery.read_op_all) reads a quantity superlative as the top total of the column it names, or as
+    the row count of the sheet it names, and a count of what a numeric column already counts as that
+    column's total. The intent head's operator reading is stubbed, as the production head read it."""
+    import numpy as np
+
+    from engine.encoder_overlay import EncoderQuery
+
+    def reader(op):
+        query = EncoderQuery.__new__(EncoderQuery)
+        query.ingest = lambda tables: (tables, [])
+        query.read_op_model = lambda norm, question, fks: (op, None)
+        query._encode = lambda texts: np.eye(len(texts), 8, dtype=np.float32)
+        return query
+
+    deposits = [{"table": "deposits", "name": name, "affinity": affinity} for name, affinity in (
+        ("bank", "TEXT"), ("account manager", "TEXT"), ("deposits", "INTEGER"))]
+    catering = [{"table": "catering", "name": name, "affinity": affinity} for name, affinity in (
+        ("restaurant", "TEXT"), ("event", "TEXT"), ("amount", "INTEGER"))]
+    transfers = [{"table": "transfers", "name": name, "affinity": affinity} for name, affinity in (
+        ("hospital", "TEXT"), ("signed", "TEXT"), ("transfers", "INTEGER"))]
+    # Positive: the column the superlative names, whichever operator the head read ("fewest" reads a count).
+    assert reader(None).read_op_all("which country has the most deposits?", deposits) == (
+        "SUM", "deposits", "deposits")
+    assert reader("COUNT").read_op_all("which country has the fewest deposits?", deposits) == (
+        "SUM", "deposits", "deposits")
+    # A money verb names the money column; the rows the superlative names are counted.
+    assert reader(None).read_op_all("which country spent the most on catering?", catering) == (
+        "SUM", "catering", "amount")
+    assert reader(None).read_op_all("which country has the most banks?", deposits) == ("COUNT", "deposits", None)
+    # The transfers column already counts transfers.
+    assert reader("COUNT").read_op_all("how many transfers in Canada?", transfers) == (
+        "SUM", "transfers", "transfers")
+    assert reader("COUNT").read_op_all("number of transfers in Canada", transfers) == (
+        "SUM", "transfers", "transfers")
+    # Contrastive, same sheet: counting the hospitals counts rows; an explicit total is unchanged.
+    assert reader("COUNT").read_op_all("how many hospitals in Canada?", transfers) == ("COUNT", "transfers", None)
+    assert reader("SUM").read_op_all("total transfers in Canada", transfers) == ("SUM", "transfers", "transfers")
+    # Negative: "the highest deposits" may be the largest single value, and a superlative of a quality
+    # names no measure, so neither is read as a total.
+    assert reader(None).read_op_all("which country has the highest deposits?", deposits) is None
+    assert reader(None).read_op_all("which bank has the most recent deposits?", deposits) is None
 
 
 def test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word():
@@ -3094,6 +3218,9 @@ TESTS = [
     test_entity_id_does_not_follow_owner_foreign_key,
     test_duplicate_property_projection_respects_entity_qualifier,
     test_directional_year_filter_targets_date_column,
+    test_month_and_dated_phrases_filter_the_date_column,
+    test_the_coverage_gate_reads_the_months_a_query_compares,
+    test_a_share_divides_the_kept_rows_aggregate_by_the_whole,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,
@@ -3121,6 +3248,7 @@ TESTS = [
     test_money_named_table_without_a_money_column_keeps_the_entity,
     test_served_selection_contract_keeps_money_totals_and_converted_totals,
     test_world_path_money_noun_naming_the_table_sums_its_money_column,
+    test_world_path_reads_quantity_superlatives_and_counted_measures,
     test_operator_readout_never_reads_an_aggregate_off_a_closed_class_word,
     test_one_surrogate_key_rule_names_keys_not_measures_or_codes,
     test_literal_measure_column_keeps_raw_interpretation,

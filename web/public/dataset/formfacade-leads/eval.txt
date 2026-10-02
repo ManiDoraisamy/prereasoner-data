@@ -17,3 +17,5 @@ chat: This is in euros. Whats in USD => ~38352.60
 total budget in Africa => clarify
 # The claim must SURVIVE a widening of scope, and still convert.
 chat: How about all of Europe? => ~72056.40
+# Leads submitted 2026-08-11, 08-12, 08-14, 08-15 and 08-18.
+How many leads were submitted after August 10, 2026? => 5

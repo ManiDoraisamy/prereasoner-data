@@ -6,7 +6,7 @@ scope-aware and always runs before rendering.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 from enum import Enum
 import math
@@ -78,12 +78,24 @@ class BinaryExpr:
     right: "ScalarExpr"
 
 
-ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr
+@dataclass(frozen=True)
+class DatePart:
+    """One calendar field of a date column, as an integer: the ``month`` of '2026-08-04' is 8.
+
+    "How many transfers were signed in August?" compares the month of each date (2026-10-02). Both
+    SQLite and PostgreSQL read it from the date's ISO text (month_of_date_sql)."""
+    part: str
+    operand: ColumnRef
+
+
+DATE_PARTS = frozenset({"month"})
+
+ScalarExpr: TypeAlias = ColumnRef | Star | Literal | Aggregate | ScalarSubquery | BinaryExpr | DatePart
 
 
 @dataclass(frozen=True)
 class Comparison:
-    left: ColumnRef | Aggregate | ScalarSubquery
+    left: ColumnRef | Aggregate | ScalarSubquery | DatePart
     operator: str
     right: ColumnRef | Literal | Aggregate | ScalarSubquery
 
@@ -169,6 +181,9 @@ class SelectQuery:
     limit: int | None = None
     distinct: bool = False
     from_alias: str | None = None
+    # FETCH FIRST ``limit`` ROWS WITH TIES: the rows that sort equal to the last kept row on every ORDER BY
+    # term are kept too. Set only by ``keep_ties`` for the served answer.
+    with_ties: bool = False
 
     def referenced_tables(self) -> frozenset[str]:
         out = set()
@@ -211,9 +226,18 @@ COMPARISONS = frozenset({"=", "!=", "<>", ">", "<", ">=", "<=", "LIKE", "NOT LIK
 SET_OPERATORS = frozenset({"UNION", "INTERSECT", "EXCEPT"})
 
 
+def month_of_date_sql(operand: str) -> str:
+    """The month of an ISO date as one SQL expression SQLite and PostgreSQL both run: '2026-08-04' -> 8.
+
+    The typed AST renders DatePart with it and the deterministic SQL emitter renders MONTH with it."""
+    return f"CAST(SUBSTR(CAST({operand} AS TEXT), 6, 2) AS INTEGER)"
+
+
 def expression_type(expr: ScalarExpr) -> SQLType:
     if isinstance(expr, ColumnRef):
         return expr.type
+    if isinstance(expr, DatePart):
+        return SQLType.INTEGER
     if isinstance(expr, Literal):
         return expr.type
     if isinstance(expr, Aggregate):
@@ -254,6 +278,8 @@ def _validate_query(query: Query, outer_scope: frozenset[str]) -> None:
         raise ASTValidationError("SELECT must contain at least one item")
     if query.limit is not None and query.limit <= 0:
         raise ASTValidationError("LIMIT must be positive")
+    if query.with_ties and (not query.order_by or query.limit is None or _has_star_projection(query)):
+        raise ASTValidationError("WITH TIES needs ORDER BY, a LIMIT and named projections")
     if isinstance(query.from_table, SubquerySource) and query.from_alias is not None:
         raise ASTValidationError("derived-table aliases belong on SubquerySource")
 
@@ -355,12 +381,77 @@ def render_scalar_expression(expression: ScalarExpr, *, dialect: str = "standard
     return _render_expr(expression, dialect)
 
 
+def share_of(aggregate: Aggregate, query: SelectQuery) -> BinaryExpr:
+    """``aggregate`` over the rows ``query`` keeps, as a fraction of the same aggregate over every row it
+    reads: "what share of the total amount comes from Paris" is SUM(amount) of the Paris rows divided by
+    SUM(amount) of all of them (2026-10-02). The whole keeps the query's tables and joins and drops its
+    filter and grouping."""
+    whole = SelectQuery((SelectItem(aggregate),), query.from_table, joins=query.joins,
+                        from_alias=query.from_alias)
+    return BinaryExpr(aggregate, "/", ScalarSubquery(whole))
+
+
+def share_aggregate(expression: ScalarExpr, query: SelectQuery) -> Aggregate | None:
+    """The aggregate ``expression`` takes ``query``'s share of (``share_of``), else None."""
+    if (isinstance(expression, BinaryExpr) and expression.operator == "/"
+            and isinstance(expression.left, Aggregate)
+            and expression == share_of(expression.left, query)):
+        return expression.left
+    return None
+
+
+def keep_ties(query: Query) -> Query:
+    """The served form of a top-1 ranking: every row tied with the first one.
+
+    "which customer placed the most orders" ranked five customers tied at three orders and served one
+    of them (2026-10-02). A top-level ORDER BY ... LIMIT 1 keeps every row that sorts equal to its first
+    row, as FETCH FIRST 1 ROW WITH TIES does. A larger LIMIT is the number of rows the question asks
+    for, a subquery's LIMIT 1 stays one row, and a SELECT * keeps its plain LIMIT.
+    """
+    if (isinstance(query, SelectQuery) and query.limit == 1 and query.order_by and not query.with_ties
+            and not _has_star_projection(query)):
+        return replace(query, with_ties=True)
+    return query
+
+
 def _render_query(query: Query, dialect: str = "standard") -> str:
     if isinstance(query, SetQuery):
         return f"{_render_query(query.left, dialect)} {query.operator} {_render_query(query.right, dialect)}"
+    if query.with_ties:
+        return _render_with_ties(query, dialect)
 
     select = ", ".join(_render_select(item, dialect) for item in query.select)
-    sql = "SELECT " + ("DISTINCT " if query.distinct else "") + select
+    return "SELECT " + ("DISTINCT " if query.distinct else "") + select + _render_rows(query, dialect)
+
+
+def _render_with_ties(query: SelectQuery, dialect: str) -> str:
+    """FETCH FIRST n ROWS WITH TIES, which SQLite lacks: rank the rows by the ORDER BY terms and keep
+    those ranked within the limit, in the same order."""
+    labels = [item.alias or (item.expression.name if isinstance(item.expression, ColumnRef) else None)
+              for item in query.select]
+    names, taken = [], {"__rank"}
+    for index, label in enumerate(labels):
+        name = label if label and label.lower() not in taken else f"__c{index}"
+        taken.add(name.lower())
+        names.append(name)
+    order = ", ".join(
+        f"{_render_order_expr(term.expression, dialect)} {term.direction}" for term in query.order_by
+    )
+    inner = ", ".join(
+        f"{_render_expr(item.expression, dialect)} AS {_qident(name)}" for item, name in zip(query.select, names)
+    )
+    inner = ("SELECT " + ("DISTINCT " if query.distinct else "") + inner
+             + f", RANK() OVER (ORDER BY {order}) AS {_qident('__rank')}"
+             + _render_rows(replace(query, order_by=(), limit=None, with_ties=False), dialect))
+    outer = ", ".join(_qident(name) if label in (None, name) else f"{_qident(name)} AS {_qident(label)}"
+                      for name, label in zip(names, labels))
+    return (f"SELECT {outer} FROM ({inner}) AS {_qident('ranked')} WHERE {_qident('__rank')} <= {query.limit} "
+            f"ORDER BY {_qident('__rank')}, {', '.join(_qident(name) for name in names)}")
+
+
+def _render_rows(query: SelectQuery, dialect: str) -> str:
+    """Everything after the SELECT list: FROM, joins, WHERE, GROUP BY, HAVING, ORDER BY and LIMIT."""
+    sql = ""
     if isinstance(query.from_table, SubquerySource):
         sql += f" FROM ({_render_query(query.from_table.query, dialect)}) AS {_qident(query.from_table.alias)}"
     else:
@@ -401,6 +492,13 @@ def and_predicates(predicates: Iterable[Predicate]) -> Predicate | None:
 
 
 def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
+    if isinstance(expr, DatePart):
+        if expr.part not in DATE_PARTS:
+            raise ASTValidationError(f"unsupported date part: {expr.part}")
+        if not isinstance(expr.operand, ColumnRef) or expr.operand.type != SQLType.DATE:
+            raise ASTValidationError("a date part reads a date column")
+        _validate_expr(expr.operand, visible)
+        return
     if isinstance(expr, ScalarSubquery):
         _validate_query(expr.query, visible)
         if _output_arity(expr.query) != 1:
@@ -427,9 +525,10 @@ def _validate_expr(expr: ScalarExpr, visible: frozenset[str]) -> None:
         if expr.operator not in ARITHMETIC_OPERATORS:
             raise ASTValidationError(f"unsupported arithmetic operator: {expr.operator}")
         for side in (expr.left, expr.right):
-            if not isinstance(side, (ColumnRef, Literal, Aggregate, BinaryExpr)):
+            if not isinstance(side, (ColumnRef, Literal, Aggregate, BinaryExpr, ScalarSubquery)):
                 raise ASTValidationError(
-                    "arithmetic operands must be a column, literal, aggregate, or arithmetic expression"
+                    "arithmetic operands must be a column, literal, aggregate, scalar subquery, or "
+                    "arithmetic expression"
                 )
             _validate_expr(side, visible)
             side_type = expression_type(side)
@@ -535,6 +634,8 @@ def _render_expr(expr: ScalarExpr, dialect: str = "standard") -> str:
         return f"({_render_expr(expr.left, dialect)} {expr.operator} {_render_expr(expr.right, dialect)})"
     if isinstance(expr, ScalarSubquery):
         return f"({_render_query(expr.query, dialect)})"
+    if isinstance(expr, DatePart):
+        return month_of_date_sql(_render_expr(expr.operand, dialect))
     raise TypeError(f"unsupported expression: {type(expr).__name__}")
 
 
@@ -626,7 +727,7 @@ def _predicate_has_aggregate(predicate: Predicate | None) -> bool:
 def _expr_tables(expr: ScalarExpr) -> set[str]:
     if isinstance(expr, ColumnRef):
         return {expr.table}
-    if isinstance(expr, Aggregate):
+    if isinstance(expr, (Aggregate, DatePart)):
         return _expr_tables(expr.operand)
     if isinstance(expr, BinaryExpr):
         return _expr_tables(expr.left) | _expr_tables(expr.right)

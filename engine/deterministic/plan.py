@@ -189,11 +189,13 @@ class BinaryValue:
 
 @dataclass(frozen=True)
 class FunctionValue:
+    """A scalar function of one value: LOWER and TEXT of any value, MONTH of a date (an integer)."""
+
     function: str
     operand: Value
 
     def __post_init__(self) -> None:
-        if self.function not in {"LOWER", "TEXT"}:
+        if self.function not in {"LOWER", "TEXT", "MONTH"}:
             raise ValueError(f"unsupported scalar function: {self.function}")
 
 
@@ -356,10 +358,15 @@ class SortValue:
 
 @dataclass(frozen=True)
 class SortedView:
+    """ORDER BY, with an optional LIMIT. ``ties_on`` is the number of leading order terms that rank the
+    rows: a row equal to the last kept row on those terms is kept too (FETCH FIRST n ROWS WITH TIES).
+    The later terms only order the kept rows, so both programs show them alike."""
+
     name: str
     source: str
     order: tuple[SortValue, ...]
     limit: int | None = None
+    ties_on: int = 0
 
     def __post_init__(self):
         _require_identifier(self.name, "view name")
@@ -369,6 +376,10 @@ class SortedView:
             self.limit is not None and (type(self.limit) is not int or self.limit < 0)
         ):
             raise ValueError("sort requires keys and a nonnegative integer limit")
+        if type(self.ties_on) is not int or not 0 <= self.ties_on <= len(self.order) or (
+            self.ties_on and self.limit is None
+        ):
+            raise ValueError("ties rank by leading sort keys under a limit")
 
 
 @dataclass(frozen=True)

@@ -194,6 +194,10 @@ class EncoderQuery(TableQuery):
             non-id numeric columns. An explicitly-named column/table wins; a single measure is taken directly.
           - a money noun that names the table ("sales") reads as its money-named measure column unless the question
             counts or lists it — the same rule as the own-data search (sql_expansion.money_total_position).
+          - a quantity superlative ranks totals of the column it names ("which country has the most deposits",
+            sql_expansion.ranked_measure_columns) or counts of the rows it names ("the most banks",
+            sql_expansion.ranked_row_tables), and a count of a noun a numeric column already counts is that
+            column's total ("how many transfers", sql_expansion.counted_measure_columns).
         Returns (fn, table, col) | ("COUNT", table|None, None) | None, the format KnowledgeTableQuery.serve() expects."""
         import numpy as _np
         # rebuild tables from sch (incl. per-column `values` when the rich planner sch carries them) so ingest()'s
@@ -217,9 +221,17 @@ class EncoderQuery(TableQuery):
         tnames = sorted(by_table)
         low = question.lower().split()
         nonid_num = [c for c in sch if c.get("affinity") in ("INTEGER", "REAL") and not is_surrogate_key(c["name"])]
-        from engine.sql_expansion import money_total_columns
+        from engine.sql_expansion import (
+            counted_measure_columns, money_total_columns, ranked_measure_columns, ranked_row_tables,
+        )
         money = money_total_columns(question, sch)
-        if op is None and not money:
+        # "which country has the most deposits" reads no aggregate in the model and "the fewest deposits" reads
+        # a count; a superlative of quantity over a measure column asks for the top total (Chrome exploration,
+        # 2026-10-01).
+        ranked = ranked_measure_columns(question, sch) if op in (None, "COUNT") else []
+        # "which country has the most banks" counts the rows of the sheet that lists them.
+        rows = ranked_row_tables(question, sch) if op is None and not ranked and not money else []
+        if op is None and not money and not ranked and len(rows) != 1:
             return None
 
         # encode the question + table names + any column names lacking a cached qvec, in ONE batch
@@ -260,19 +272,30 @@ class EncoderQuery(TableQuery):
                           or (words[0] in said and len(words[0]) > 2 and heads.count([words[0]]) == 1))]
             return named[0] if len(named) == 1 else None
 
+        def closest(columns):
+            return columns[0] if len(columns) == 1 else max(columns, key=lambda c: cos(qv, cvec(c)))
+
         def money_total():
             if not money:
                 return None
             table, columns = money
-            column = columns[0] if len(columns) == 1 else max(columns, key=lambda c: cos(qv, cvec(c)))
-            return table, column["name"]
+            return table, closest(columns)["name"]
 
-        if op is None:                                       # "what's the sales in London": the head read no
-            return ("SUM", *money_total())                   # aggregate, but the money noun asks for the total
+        if ranked:                                           # "which bank has the most deposits"
+            column = closest(ranked)
+            return ("SUM", column["table"], column["name"])
+        if op is None:
+            if money:                                        # "what's the sales in London": the head read no
+                return ("SUM", *money_total())               # aggregate, but the money noun asks for the total
+            return ("COUNT", rows[0], None)
         if op == "COUNT":
             total = money_total()                            # "whats the sales in france": no count was asked
             if total:
                 return ("SUM", *total)
+            counted = counted_measure_columns(question, sch)
+            if counted:                                      # "how many transfers in Canada" (2026-10-02): the
+                column = closest(counted)                    # transfers column holds each hospital's count
+                return ("SUM", column["table"], column["name"])
             t = token_table() or (max(tnames, key=lambda t: cos(qv, tvec[t])) if tnames else None)
             return ("COUNT", t, None)
         # SUM / AVG: explicit measure token > money noun naming the table > (table-noun w/ no measure -> COUNT)

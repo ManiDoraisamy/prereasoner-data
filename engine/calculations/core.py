@@ -335,14 +335,17 @@ def _multiplication_terms(expression: ScalarExpr) -> list[ScalarExpr]:
 
 
 def _output_realizes_plan(expression: ScalarExpr, plan: CalculationPlan) -> bool:
-    """Match one registered row factor inside an exactly typed aggregate expression."""
+    """Match one registered row factor inside an exactly typed aggregate expression.
+
+    A row factor applies to each row before the rows are combined, so it is realized under a SUM of
+    the rows and under their AVG alike: the average amount in US dollars converts every amount."""
     if expression == plan.expression:
         return True
     if (
         plan.measure is None
         or plan.factor is None
         or not isinstance(expression, Aggregate)
-        or expression.function != "SUM"
+        or expression.function not in ("SUM", "AVG")
     ):
         return False
     available = _multiplication_terms(expression.operand)

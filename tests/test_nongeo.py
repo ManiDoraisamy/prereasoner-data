@@ -14,6 +14,22 @@ from decimal import Decimal
 HOSP = {"name": "hospitals", "columns": ["hospital", "beds"], "rows": [
     ["Massachusetts General Hospital", 100], ["Cleveland Clinic", 80],
     ["Johns Hopkins Hospital", 60], ["Charite", 50]]}              # Charite = Berlin/Germany -> excluded from US
+# The demo sheets (web/public/dataset/formfacade-bank-deposits, neartail-catering,
+# formesign-hospital-transfers). Countries: UBS and Credit Suisse Switzerland, Deutsche Bank Germany, BNP
+# Paribas France, JPMorgan Chase United States, Barclays United Kingdom; the French Laundry and Eleven Madison
+# Park United States; Toronto General Canada, Charite Germany, the other four hospitals United States.
+BANKS = {"name": "deposits", "columns": ["bank", "account manager", "deposits"], "rows": [
+    ["UBS", "Martin Keller", 900], ["Credit Suisse", "Anna Roth", 650], ["Deutsche Bank", "Jonas Weber", 700],
+    ["BNP Paribas", "Claire Dubois", 550], ["JPMorgan Chase", "Emily Park", 1200],
+    ["Barclays", "Oliver Grant", 500]]}
+CATERING = {"name": "catering", "columns": ["restaurant", "event", "amount"], "rows": [
+    ["The French Laundry", "Wine Dinner", 5200], ["Noma", "Chef Residency", 4800],
+    ["Osteria Francescana", "Truffle Gala", 3900], ["Eleven Madison Park", "Private Tasting", 4400],
+    ["The Fat Duck", "Anniversary Menu", 3600], ["El Celler de Can Roca", "Harvest Feast", 4100]]}
+TRANSFERS = {"name": "transfers", "columns": ["hospital", "signed", "transfers"], "rows": [
+    ["Mayo Clinic", "2026-08-04", 14], ["Massachusetts General Hospital", "2026-08-06", 11],
+    ["Johns Hopkins Hospital", "2026-08-08", 9], ["Cleveland Clinic", "2026-08-11", 12],
+    ["Charite", "2026-08-13", 7], ["Toronto General Hospital", "2026-08-15", 8]]}
 
 
 def _scalar(res):
@@ -111,6 +127,62 @@ def main():
         named_ok = False
     if named_result.get("clarify") or not named_ok:
         fails.append(f"named entity predicate was incorrectly clarified (got {named_result!r})")
+
+    # World dimensions of a non-geo entity (Chrome exploration, 2026-10-01/02): the entity's country as the
+    # dimension of a grouped or ranked total, its country's continent as a filter, and the uploaded rows
+    # ranked inside that filter. Each was declined; "how many transfers in Canada" read Canada as a
+    # hospital name. Expected values are derived from the sheets above.
+    def rows_of(response):
+        return [[str(cell) for cell in row] for row in (response.get("result") or {}).get("rows") or []]
+
+    for tables, question, expected, ops in (
+        ([BANKS], "which country has the most deposits?", [["Switzerland", "1550"]],
+         ["world_join", "group_agg", "topn"]),
+        ([BANKS], "which country has the fewest deposits?", [["United Kingdom", "500"]],
+         ["world_join", "group_agg", "topn"]),
+        ([BANKS], "which country has the most banks?", [["Switzerland", "2"]], ["world_join", "group_agg", "topn"]),
+        ([BANKS], "which bank has the most deposits in Europe?", [["UBS", "900"]],
+         ["world_join", "world_join", "filter", "group_agg", "topn"]),
+        ([BANKS], "total deposits for banks in Europe", [["3300"]],
+         ["world_join", "world_join", "filter", "group_agg"]),
+        ([CATERING], "which country spent the most on catering?", [["United States", "9600"]],
+         ["world_join", "group_agg", "topn"]),
+        ([TRANSFERS], "which country has the most transfers?", [["United States", "46"]],
+         ["world_join", "group_agg", "topn"]),
+        ([TRANSFERS], "how many transfers in Canada?", [["8"]], ["world_join", "filter", "group_agg"]),
+        # Contrastive, same sheet: the hospitals are counted when the question counts hospitals.
+        ([TRANSFERS], "how many hospitals are in Canada?", [["1"]], ["world_join", "filter", "group_agg"]),
+    ):
+        response = served(schema, Q.serve, tables, question, schema=schema)
+        got = rows_of(response)
+        trail = [view.get("op") for view in response.get("views") or []]
+        print(f"{question:48s} -> {got} trail={trail}")
+        if got != expected or trail != ops or response.get("clarify") or response.get("error"):
+            fails.append(f"{question!r}: expected {expected} over {ops}, got {got} over {trail} "
+                         f"(clarify={response.get('clarify')}, error={response.get('error')})")
+    by_country = served(schema, Q.serve, [BANKS], "total deposits by country", schema=schema)
+    grouped = sorted(rows_of(by_country))
+    print(f"total deposits by country -> {grouped}")
+    if grouped != [["France", "550"], ["Germany", "700"], ["Switzerland", "1550"], ["United Kingdom", "500"],
+                   ["United States", "1200"]]:
+        fails.append(f"total deposits by country: got {grouped}")
+    # The grain the total is computed per is recorded in the calculation evidence.
+    grain = [branch.get("grouping") for branch in (by_country.get("computation") or {}).get("branches") or []]
+    if grain != [[{"table": "bank", "column": "country"}]]:
+        fails.append(f"total deposits by country: the grain is not recorded: {grain}")
+    # Negative: no bank is in Asia, which is said, not answered with a blank or a zero.
+    asia = served(schema, Q.serve, [BANKS], "total deposits for banks in Asia", schema=schema)
+    if not asia.get("clarify") or rows_of(asia):
+        fails.append(f"total deposits for banks in Asia answered {rows_of(asia)} instead of saying none matched")
+    # Negative: a country column of the upload answers "which country" as own data, not the bank's country.
+    branches = {"name": "branches", "columns": ["bank", "country", "deposits"], "rows": [
+        ["UBS", "Germany", 900], ["Credit Suisse", "Switzerland", 650], ["Deutsche Bank", "Germany", 700]]}
+    own = served(schema, Q.serve, [branches], "which country has the most deposits?", schema=schema)
+    print(f"own country column -> {rows_of(own)} model={(own.get('model') or '')[:40]}")
+    if "non-geo" in (own.get("model") or "") or not rows_of(own) or rows_of(own)[0][0] != "Germany":
+        fails.append(f"an uploaded country column lost to the bank's world country: {rows_of(own)} "
+                     f"model={own.get('model')}")
+
     print("\n" + ("PASS — non-geo world join over pre-synchronized facts works" if not fails
                   else "FAIL:\n  " + "\n  ".join(fails)))
     return 1 if fails else 0

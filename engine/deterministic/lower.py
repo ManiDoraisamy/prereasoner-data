@@ -18,7 +18,9 @@ from engine.deterministic.plan import (
     ColumnSpec,
     ColumnValue,
     CombinedView,
+    CrossView,
     FilteredView,
+    FunctionValue,
     JunctionValue,
     LiteralValue,
     PredicateValue,
@@ -39,12 +41,14 @@ from engine.sql_ast import (
     BooleanExpr,
     ColumnRef,
     Comparison,
+    DatePart,
     Literal,
     SelectItem,
     SelectQuery,
     Star,
 )
 from engine.sql_ast import SQLType as ASTType
+from engine.sql_ast import share_aggregate
 from engine.sql_schema import is_surrogate_key
 
 
@@ -219,13 +223,21 @@ def lower_select_query(
             )
         )
 
+    # A share (sql_ast.share_of) is its part, aggregated with the rest, over the same aggregate of every
+    # row the query reads: the whole, crossed in after the reduction and divided out.
+    shares = {
+        index: part
+        for index, item in enumerate(query.select)
+        if (part := share_aggregate(item.expression, query)) is not None
+    }
     aggregates = [
-        item for item in query.select if isinstance(item.expression, Aggregate)
+        item for index, item in enumerate(query.select)
+        if isinstance(item.expression, Aggregate) or index in shares
     ]
     if aggregates:
         if any(
-            not isinstance(item.expression, (Aggregate, ColumnRef))
-            for item in query.select
+            not isinstance(item.expression, (Aggregate, ColumnRef)) and index not in shares
+            for index, item in enumerate(query.select)
         ):
             raise UnsupportedDeterministicPlan(
                 "grouped projections may contain only group columns and aggregates"
@@ -236,7 +248,9 @@ def lower_select_query(
         for index, (item, output_name) in enumerate(
             zip(query.select, output_names, strict=True)
         ):
-            expression = item.expression
+            expression = shares.get(index, item.expression)
+            if index in shares:
+                output_name = f"{output_name}_part"
             if not isinstance(expression, Aggregate):
                 continue
             if expression.distinct:
@@ -285,6 +299,40 @@ def lower_select_query(
                 tuple(grouped),
             )
         )
+        if shares:
+            wholes = []
+            for index, part in shares.items():
+                if not isinstance(part.operand, (ColumnRef, Star)) or part.distinct:
+                    raise UnsupportedDeterministicPlan("a share of a calculated or distinct aggregate")
+                operand = None if isinstance(part.operand, Star) else _value(part.operand)
+                wholes.append(AggregateValue(f"{output_names[index]}_whole", part.function, operand))
+            total = views[-1].name
+            views.append(ReducedView(f"{slug}_whole", views[0].name, tuple(wholes)))
+            views.append(CrossView(f"{slug}_with_whole", total, views[-1].name))
+            views.append(
+                CalculatedView(
+                    f"{slug}_shares",
+                    views[-1].name,
+                    tuple(
+                        SelectedValue(
+                            output_names[index],
+                            BinaryValue(
+                                ViewValue(f"{output_names[index]}_part"),
+                                "/",
+                                ViewValue(f"{output_names[index]}_whole"),
+                            ),
+                        )
+                        for index in shares
+                    ),
+                )
+            )
+            views.append(
+                ProjectedView(
+                    f"{slug}_result",
+                    views[-1].name,
+                    tuple(SelectedValue(name, ViewValue(name)) for name in output_names),
+                )
+            )
     else:
         if query.group_by:
             raise UnsupportedDeterministicPlan(
@@ -336,6 +384,7 @@ def lower_select_query(
                 views[-1].name,
                 tuple(order),
                 query.limit,
+                len(query.order_by) if query.with_ties else 0,
             )
         )
     try:
@@ -453,6 +502,8 @@ def _value(value) -> Value:
         return LiteralValue(literal)
     if isinstance(value, BinaryExpr):
         return BinaryValue(_value(value.left), value.operator, _value(value.right))
+    if isinstance(value, DatePart) and value.part == "month":
+        return FunctionValue("MONTH", _value(value.operand))
     raise UnsupportedDeterministicPlan(
         f"expression {type(value).__name__} is not supported"
     )

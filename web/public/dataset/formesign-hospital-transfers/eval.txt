@@ -7,3 +7,7 @@
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
 total transfers for Mayo Clinic => 14
+which country has the most transfers? => {"columns":["country"],"rows":[["United States"]]}
+how many transfers in Canada? => 8
+# Every transfer was signed in August 2026: 14 + 11 + 9 + 12 + 7 + 8.
+total transfers signed in August => 61

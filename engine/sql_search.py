@@ -27,15 +27,18 @@ from engine.sql_ast import (
     Star,
     and_predicates,
     render_query,
+    share_of,
     validate_query,
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
+from engine.sql_dates import date_phrases
 from engine.sql_expansion import (
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
     ordering_requested,
+    share_requested,
 )
 from engine.sql_profile_expansion import ProfileSearchConfig
 from engine.sql_schema import SchemaGraph, is_surrogate_key
@@ -132,7 +135,7 @@ class SQLSearcher:
 
         projection_choices = self._projection_choices(tokens, mentions, table_scores)
         aggregate_choices = self._aggregate_choices(tokens, mentions)
-        predicate_choices = self._predicate_choices(tokens, mentions)
+        predicate_choices = self._predicate_choices(tokens, mentions, question)
 
         drafts = [_Draft()]
         drafts = self._expand(drafts, projection_choices, "projections")
@@ -201,6 +204,8 @@ class SQLSearcher:
                                                     draft.score + group_score + order_score + join_score,
                                                     evidence))
 
+        if share_requested(tokens):
+            complete.extend(self._share_candidates(complete))
         dedup: dict[str, ScoredQuery] = {}
         for candidate in complete:
             old = dedup.get(candidate.sql)
@@ -575,10 +580,16 @@ class SQLSearcher:
             if c.ref.type.numeric and not is_surrogate_key(c.ref.name) and carries(c.ref)
         ]
 
-    def _predicate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[tuple[tuple, float, tuple[str, ...]]]:
+    def _predicate_choices(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
+                           question: str = "") -> list[tuple[tuple, float, tuple[str, ...]]]:
         groups: list[list[tuple[tuple[Comparison, ...], float, str]]] = []
-        groups.extend(self._value_predicate_groups(tokens, mentions))
-        groups.extend(self._numeric_predicate_groups(tokens, mentions))
+        # A calendar phrase claims its tokens: "after August 10, 2026" is one date, not the number 10
+        # and the year 2026, and "since 2026-08-06" is not the cell value 2026-08-06.
+        phrases = date_phrases(question, tokens)
+        claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
+        groups.extend(self._value_predicate_groups(tokens, mentions, claimed))
+        groups.extend(self._date_phrase_groups(phrases, mentions))
+        groups.extend(self._numeric_predicate_groups(tokens, mentions, claimed))
         if not groups:
             return [((), 0.0, ())]
         beam: list[tuple[tuple[Comparison, ...], float, tuple[str, ...]]] = [((), 0.0, ())]
@@ -590,7 +601,8 @@ class SQLSearcher:
             beam = sorted(expanded, key=lambda item: (-item[1], repr(item[0])))[:self.beam_size]
         return [(predicates, score, evidence) for predicates, score, evidence in beam]
 
-    def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+    def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
+                                claimed: set[int] = frozenset()) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
@@ -599,7 +611,7 @@ class SQLSearcher:
                 if options:
                     matches.append((start, start + size, phrase, options))
         matches.sort(key=lambda item: (-(item[1] - item[0]), item[0], item[2]))
-        occupied: set[int] = set()
+        occupied: set[int] = set(claimed)
         selected = []
         for match in matches:
             span = set(range(match[0], match[1]))
@@ -682,9 +694,60 @@ class SQLSearcher:
                 groups.append(alternatives)
         return groups
 
-    def _numeric_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+    @staticmethod
+    def _share_candidates(candidates: list[ScoredQuery]) -> list[ScoredQuery]:
+        """Each one-aggregate candidate read as a share of its whole (sql_ast.share_of).
+
+        "what share of the total amount comes from Paris" was planned as the Paris total and
+        "share of total amount by city" as each city's total, and the coverage gate declined both over
+        the dropped word (2026-10-02). The share reading ranks above the total it divides.
+        """
+        out = []
+        for candidate in candidates:
+            query = candidate.query
+            if not isinstance(query, SelectQuery):
+                continue
+            aggregates = [index for index, item in enumerate(query.select) if isinstance(item.expression, Aggregate)]
+            if not aggregates and query.where is not None and not query.group_by:
+                # "what percentage of orders are from Lyon" counts the rows it lists.
+                query = replace(query, select=(SelectItem(Aggregate("COUNT", Star())),), order_by=(),
+                                limit=None, distinct=False)
+                aggregates = [0]
+            if len(aggregates) != 1 or query.having is not None or query.distinct or query.limit is not None:
+                continue
+            aggregate = query.select[aggregates[0]].expression
+            if aggregate.function not in {"SUM", "COUNT"} or aggregate.distinct:
+                continue
+            select = list(query.select)
+            select[aggregates[0]] = SelectItem(share_of(aggregate, query), "share")
+            shared = SelectQuery(tuple(select), query.from_table, query.joins, query.where, query.group_by,
+                                 from_alias=query.from_alias)
+            try:
+                validate_query(shared)
+                sql = render_query(shared)
+            except (TypeError, ValueError):
+                continue
+            out.append(ScoredQuery(shared, sql, candidate.score + 1.0, candidate.evidence + ("share:of-whole",)))
+        return out
+
+    def _date_phrase_groups(self, phrases, mentions: tuple[_Mention, ...]) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+        """One group per calendar phrase: its comparisons on each date column it may name."""
         groups = []
-        used_numbers: set[int] = set()
+        for phrase in phrases:
+            targets = [column for column in self._date_targets(mentions, phrase.start)
+                       if column.type == SQLType.DATE]
+            label = "-".join(str(part) for part in (phrase.year, phrase.month, phrase.day) if part is not None)
+            options = [(phrase.comparisons(target), 5.0,
+                        f"date:{target.table}.{target.name}:{phrase.cue or 'in'}:{label}")
+                       for target in targets[:4] if phrase.comparisons(target)]
+            if options:
+                groups.append(options)
+        return groups
+
+    def _numeric_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
+                                  claimed: set[int] = frozenset()) -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
+        groups = []
+        used_numbers: set[int] = set(claimed)
         for i, token in enumerate(tokens):
             if token != "between":
                 continue
@@ -712,7 +775,7 @@ class SQLSearcher:
         for cue, operator in patterns:
             size = len(cue)
             for i in range(len(tokens) - size + 1):
-                if tokens[i:i + size] != cue:
+                if tokens[i:i + size] != cue or i in claimed:
                     continue
                 number_index = next((j for j in range(i + size, min(len(tokens), i + size + 5))
                                      if j not in used_numbers and _NUMBER_RE.match(tokens[j])), None)

@@ -90,11 +90,14 @@ class View(Generic[T]):
                 )
         return View(name, tuple(materialized), self.row_limit)
 
-    def sort(self, name, keys, descending, limit=None):
-        """ORDER BY with explicit NULLS LAST; emitters supply deterministic tie keys."""
+    def sort(self, name, keys, descending, limit=None, ties_on=0):
+        """ORDER BY with explicit NULLS LAST; emitters supply deterministic tie keys. With ``ties_on``,
+        a row equal to the last kept row on the first ``ties_on`` keys is kept too (FETCH FIRST n ROWS
+        WITH TIES)."""
 
-        def compare(left, right):
-            for a, b, desc in zip(keys(left), keys(right), descending, strict=True):
+        def compare(left, right, terms=None):
+            pairs = zip(keys(left), keys(right), descending, strict=True)
+            for a, b, desc in list(pairs)[:terms]:
                 if a is None or b is None:
                     result = (a is None) - (b is None)
                 else:
@@ -105,11 +108,12 @@ class View(Generic[T]):
                     return result
             return 0
 
-        return View(
-            name,
-            tuple(sorted(self.rows, key=cmp_to_key(compare))[:limit]),
-            self.row_limit,
-        )
+        ordered = sorted(self.rows, key=cmp_to_key(compare))
+        end = limit
+        if limit is not None and ties_on and limit > 0:
+            while end < len(ordered) and compare(ordered[end], ordered[limit - 1], ties_on) == 0:
+                end += 1
+        return View(name, tuple(ordered[:end]), self.row_limit)
 
     def cross(
         self,
@@ -286,6 +290,14 @@ def TEXT(value):
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+def MONTH(value):
+    """The month of a date, read from its ISO text as the SQL program reads it: '2026-08-04' -> 8."""
+    if value is None:
+        return None
+    text = value.isoformat() if isinstance(value, date) else str(value)
+    return int(text[5:7])
 
 
 def AND(*values):

@@ -168,13 +168,14 @@ def lower_composition(slug, tables, schema, bindings, world, connection):
             columns[step["outcol"]] = ViewValue(out)
         elif operation in {"topn", "sort"}:
             order = [SortValue(columns[step["order"]], step["desc"])]
-            # A tied top-N must choose the same rows in both programs.
+            # A tied top-N must choose the same rows in both programs; a top 1 keeps every tied row
+            # (sql_ast.keep_ties).
             order.extend(
                 SortValue(columns[column])
                 for column in sorted(columns)
                 if column != step["order"]
             )
-            views.append(SortedView(name, source, tuple(order), step["n"]))
+            views.append(SortedView(name, source, tuple(order), step["n"], 1 if step["n"] == 1 else 0))
             if step.get("select"):
                 names = _unique_names(tuple(step["select"]))
                 views.append(

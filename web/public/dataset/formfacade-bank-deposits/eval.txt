@@ -7,3 +7,6 @@
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
 total deposits for JPMorgan Chase => 1200
+which country has the most deposits? => {"columns":["country"],"rows":[["Switzerland"]]}
+which bank has the most deposits in Europe? => {"columns":["bank"],"rows":[["UBS"]]}
+total deposits for banks in Europe => 3300

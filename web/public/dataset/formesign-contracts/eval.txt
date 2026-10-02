@@ -7,3 +7,5 @@
 #           engine reads wording literally, so tests.test_datasets skips these; the Chrome
 #           release pass (which drives the real product) is what verifies them.
 total value for contracts in Europe in US dollars => ~19358.65
+# Contracts signed 2026-07-02, 07-05, 07-06 and 07-08.
+How many contracts were signed before July 10, 2026? => 4
