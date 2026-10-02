@@ -594,6 +594,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         SOURCE_HOSTING_ALLOWLIST,
         SOURCE_SUITE_ALLOWLIST,
         SOURCE_SYNC_ALLOWLIST,
+        SUITE_TARGETS,
         chat_engine_sources,
         target_allowlist,
     )
@@ -614,6 +615,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         "web",
     } <= set(target_allowlist("engine"))
     assert target_allowlist("engine") == SOURCE_SUITE_ALLOWLIST
+    assert {"engine", "release", "suite"} <= SUITE_TARGETS
     assert target_allowlist("chat") == SOURCE_CHAT_ALLOWLIST
     try:
         target_allowlist("unknown")
@@ -663,9 +665,9 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert '"release": SOURCE_SUITE_ALLOWLIST' in source
     assert 'target in {"engine", "release"}' in source
     assert '"release", "suite", "chat"' in source
-    assert 'if target in {"suite", "release"}' in source
+    assert 'if target in SUITE_TARGETS' in source
     assert 'output / "tests" / "build_provenance.json"' in source
-    assert 'if target == "release":' in source
+    assert 'if target in SUITE_TARGETS:' in source
     assert '"build_target": target' in source
     hosting = _text("cloudbuild.hosting.yaml")
     assert "firebase deploy" in hosting

@@ -136,6 +136,7 @@ SOURCE_HOSTING_ALLOWLIST = (
     "deploy/gcp/hosting_release.js",
     "web",
 )
+SUITE_TARGETS = frozenset(("engine", "release", "suite"))
 
 
 def target_allowlist(target: str) -> tuple[str, ...]:
@@ -230,10 +231,10 @@ def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
         "source_commit": commit,
         "weights_manifest_sha256": fingerprint,
     }
-    if target in {"suite", "release"}:
+    if target in SUITE_TARGETS:
         provenance_record["source_files"] = sorted(source_files)
     provenance.write_text(json.dumps(provenance_record, sort_keys=True, indent=2) + "\n", encoding="ascii")
-    if target == "release":
+    if target in SUITE_TARGETS:
         # The live/hermetic runner overlays the release source and builds its temporary Git
         # snapshot from this attested inventory. Keep it alongside the model-bundle provenance.
         suite_provenance = output / "tests" / "build_provenance.json"
