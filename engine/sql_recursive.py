@@ -101,6 +101,9 @@ class RecursiveQueryExpander:
                 if pair is None:
                     continue
                 operator = _set_operator(tokens, pair)
+                if (operator is None and "and" in tokens and all(term.operator == "=" for term in pair)
+                        and self._many_valued(question, query, pair[0].left)):
+                    operator = "INTERSECT"
                 if operator is None:
                     continue
                 predicate_column = pair[0].left
@@ -511,6 +514,22 @@ class RecursiveQueryExpander:
             mention_rank = -(mention if mention is not None else 10_000)
             scored.append((before_negative, mention_rank, selected, root, table))
         return max(scored)[-1]
+
+    def _many_valued(self, question: str, query: SelectQuery, column) -> bool:
+        """Whether ``column`` holds several values per entity the query lists, so that two of them joined
+        by "and" are both held: the languages of a country, the paragraph texts of a document. Spider DEV,
+        2026-10-02: "the countries with English and French as official languages" and "the document id with
+        paragraph text 'Brazil' and 'Ireland'" were read as either value. A column of the listed rows
+        themselves ("the total amount from Paris and Lyon") stays either value."""
+        if not isinstance(column, ColumnRef):
+            return False
+        keys = [fk for fk in self.schema.foreign_keys if fk.from_column.table == column.table]
+        entity = self._entity_table(question, query, column.table)
+        if entity is not None and any(fk.to_column.table == entity for fk in keys):
+            return True
+        projected = [item.expression for item in query.select if isinstance(item.expression, ColumnRef)]
+        held = {(fk.from_column.table, fk.from_column.name) for fk in keys}
+        return bool(projected) and all((item.table, item.name) in held for item in projected)
 
     def _projection_columns(self, question: str, table: str) -> list[tuple[ColumnRef, int]]:
         options = []

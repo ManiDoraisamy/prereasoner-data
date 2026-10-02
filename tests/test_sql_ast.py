@@ -2336,6 +2336,63 @@ def test_a_superlative_of_only_its_measure_is_the_extreme_value():
     assert "LIMIT 1" in contract.sql and execute([terminations], contract.sql)[0][0] in {"B", "C"}, contract.sql
 
 
+def test_a_year_column_compares_the_year_itself():
+    """Spider DEV, 2026-10-02: "the countries that became independent after 1950" and "the cars produced
+    after 1980" compared an integer year column with a date ('1951-01-01'), which validated nowhere, so the
+    search returned no reading at all (15 such questions). A column holding the year compares the year;
+    a date column still compares the year's first and last day."""
+    country = {"name": "country", "columns": ["Code", "Name", "IndepYear"], "rows": [
+        ["ARE", "United Arab Emirates", 1971], ["AFG", "Afghanistan", 1919], ["AGO", "Angola", 1975],
+        ["ALB", "Albania", 1912]]}
+    independent = best("What are the names of all the countries that became independent after 1950?", [country])
+    assert '"country"."IndepYear" > 1950' in independent.sql, independent.sql
+    assert sorted(execute([country], independent.sql)) == [("Angola",), ("United Arab Emirates",)], independent.sql
+    # Contrast: a date column compares the date.
+    orders = {"name": "orders", "columns": ["order_id", "placed", "amount"], "rows": [
+        [1, "2015-03-01", 10], [2, "2016-01-01", 20], [3, "2017-06-30", 30]]}
+    later = best("How many orders were placed after 2015?", [orders])
+    assert "'2016-01-01'" in later.sql and execute([orders], later.sql) == [(2,)], later.sql
+
+
+def test_an_unjoinable_projection_drops_out_of_the_reading():
+    """Spider dog_kennels, 2026-10-02: "the cost of each treatment and the corresponding treatment type
+    description" also read "type" as Charges.charge_type, a table no foreign key reaches, so no join
+    tree held the reading and the search returned nothing. A projected column or a named table that the
+    foreign keys do not reach from what the reading filters, aggregates, groups or orders drops out."""
+    treatments = {"name": "Treatments", "columns": ["treatment_id", "treatment_type_code", "cost_of_treatment"],
+                  "rows": [[1, "WALK", 567], [2, "VAC", 147], [3, "EXAM", 429]]}
+    types = {"name": "Treatment_Types", "columns": ["treatment_type_code", "treatment_type_description"],
+             "rows": [["EXAM", "Physical examination"], ["VAC", "Vaccination"], ["WALK", "Take for a Walk"]]}
+    charges = {"name": "Charges", "columns": ["charge_id", "charge_type", "charge_amount"],
+               "rows": [[1, "Daily Accommodation", 98], [2, "Drugs", 322]]}
+    fks = [{"from_table": "Treatments", "from_col": "treatment_type_code",
+            "to_table": "Treatment_Types", "to_col": "treatment_type_code"}]
+    tables = [treatments, types, charges]
+    candidate = best("List the cost of each treatment and the corresponding treatment type description.", tables, fks)
+    assert '"Charges"' not in candidate.sql, candidate.sql
+    assert sorted(execute(tables, candidate.sql)) == [(147, "Vaccination"), (429, "Physical examination"),
+                                                      (567, "Take for a Walk")], candidate.sql
+
+
+def test_two_values_a_child_table_holds_are_both():
+    """Spider world_1, 2026-10-02: "the number of nations that use English and Dutch" was read as either
+    language. Two values joined by "and" in a table that holds several rows per listed entity (the languages
+    of a country) are both, an INTERSECT; a column of the listed rows themselves stays either value (see
+    test_two_values_of_one_column_are_either). "Contain the paragraph text 'Brazil'" names a whole value."""
+    country = {"name": "country", "columns": ["Code", "Name"], "rows": [
+        ["CAN", "Canada"], ["FRA", "France"], ["GBR", "United Kingdom"]]}
+    languages = {"name": "countrylanguage", "columns": ["CountryCode", "Language"], "rows": [
+        ["CAN", "English"], ["CAN", "French"], ["FRA", "French"], ["GBR", "English"]]}
+    fks = [{"from_table": "countrylanguage", "from_col": "CountryCode", "to_table": "country", "to_col": "Code"}]
+    tables = [country, languages]
+    both = best("What is the number of nations that use English and French?", tables, fks)
+    assert "INTERSECT" in both.sql and execute(tables, both.sql) == [(1,)], both.sql
+    paragraphs = {"name": "Paragraphs", "columns": ["Paragraph_ID", "Document_ID", "Paragraph_Text"], "rows": [
+        [1, 10, "Brazil"], [2, 10, "Ireland"], [3, 20, "Brazil"]]}
+    contained = best("What are the ids of documents that contain the paragraph text 'Brazil'?", [paragraphs])
+    assert "LIKE" not in contained.sql and "= 'Brazil'" in contained.sql, contained.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3777,6 +3834,9 @@ TESTS = [
     test_a_distinct_counted_noun_counts_the_column_it_names,
     test_a_having_reading_lists_in_the_question_order,
     test_a_superlative_of_only_its_measure_is_the_extreme_value,
+    test_a_year_column_compares_the_year_itself,
+    test_an_unjoinable_projection_drops_out_of_the_reading,
+    test_two_values_a_child_table_holds_are_both,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

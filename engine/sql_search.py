@@ -68,10 +68,11 @@ _LATE_WORDS = frozenset({"last", "latest", "recent", "newest"})
 # "name" or "line" names a part of a name or an address, not a place in an ordering.
 _NAME_PART_WORDS = frozenset({"first", "middle", "last", "second", "third", "and", "or", "full", "given", "family"})
 _ID_WORDS = frozenset({"id", "identifier", "code", "key"})
-# Words that ask for the values holding a text (canon() forms); "include" also names a whole value ("the
-# paragraph that includes the text 'Korea'" is that text).
-_SUBSTRING_CUES = frozenset({"contain", "containing", "substring", "letter"})
-_INCLUDE_CUES = frozenset({"include", "including"})
+# Words that ask for the values holding a text (canon() forms). "contain" and "include" also name a whole
+# value: "the documents that contain the paragraph text 'Brazil'" and "the paragraph that includes the text
+# 'Korea'" are those texts, so a whole value of the data stays an equality after them.
+_SUBSTRING_CUES = frozenset({"substring", "letter"})
+_INCLUDE_CUES = frozenset({"contain", "containing", "include", "including"})
 # Comparatives and the operator each makes with the number after "than"; the measure some describe.
 _COMPARATIVES = {
     "greater": ">", "higher": ">", "bigger": ">", "larger": ">", "older": ">", "heavier": ">", "taller": ">",
@@ -229,7 +230,26 @@ class SQLSearcher:
                     if not required:
                         required.add(max(table_scores, key=table_scores.get) if table_scores else self.schema.tables[0])
                     root = self._preferred_root(required, table_scores, draft)
-                    for tree in self.schema.join_trees(required, root):
+                    trees = self.schema.join_trees(required, root)
+                    anchors = self._required_tables(tuple(SelectItem(a) for a in draft.aggregates),
+                                                    draft.predicates, grouped, order_terms)
+                    reachable = self._reachable(anchors or {root}) if not trees and len(required) > 1 else set()
+                    stray = {item.expression for item in expressions if isinstance(item.expression, ColumnRef)
+                             and item.expression.table not in reachable} if reachable else set()
+                    if stray and not (mentioned_tables | anchors) - reachable and len(stray) < len(expressions):
+                        # A projected column no foreign key reaches from the tables the filters, aggregates,
+                        # groups and order read drops out: "the cost of each treatment and the corresponding
+                        # treatment type description" also read "type" as the unjoined Charges.charge_type,
+                        # and the reading vanished (Spider dog_kennels, 2026-10-02). A table the question
+                        # names that cannot be reached leaves no reading: "how many flights does an airline
+                        # have" without a key joining flights to airlines must not count airlines.
+                        expressions = tuple(item for item in expressions if item.expression not in stray)
+                        grouped = tuple(column for column in grouped if column not in stray)
+                        required = self._required_tables(expressions, draft.predicates, grouped, order_terms)
+                        required.update(mentioned_tables)
+                        root = self._preferred_root(required, table_scores, draft)
+                        trees = self.schema.join_trees(required, root)
+                    for tree in trees:
                         query = SelectQuery(
                             select=expressions,
                             from_table=tree.root,
@@ -432,6 +452,20 @@ class SQLSearcher:
         except (TypeError, ValueError):
             return candidate
         return ScoredQuery(simplified, sql, candidate.score, candidate.evidence + ("simplified",))
+
+    def _reachable(self, tables: set[str]) -> set[str]:
+        """The tables the foreign keys connect to ``tables``, those included."""
+        neighbours: dict[str, set[str]] = {}
+        for fk in self.schema.foreign_keys:
+            neighbours.setdefault(fk.from_column.table, set()).add(fk.to_column.table)
+            neighbours.setdefault(fk.to_column.table, set()).add(fk.from_column.table)
+        reached, frontier = set(tables), list(tables)
+        while frontier:
+            for table in neighbours.get(frontier.pop(), ()):
+                if table not in reached:
+                    reached.add(table)
+                    frontier.append(table)
+        return reached
 
     def _column_forms(self, table: str) -> frozenset[str]:
         """The words a question may name a column of ``table`` by: its whole name run together ("makeid")
@@ -798,8 +832,9 @@ class SQLSearcher:
         equality. The column is the text column the question names nearest the text, or one whose values
         hold it."""
         named = re.search(r"\b(?:substring|letter|word)\s+(?:the\s+)?['\"]?([\w-]+)", question, re.I)
-        # "contain", "substring" or "the word X" ask for a text inside values even where the text is also a
-        # whole value ("the substring 'Al'" beside a state code 'AL'); "'Hey' in its name" only where it is not.
+        # "substring", "letter" or "the word X" ask for a text inside values even where the text is also a
+        # whole value ("the substring 'Al'" beside a state code 'AL'); "contain", "include" and "'Hey' in its
+        # name" only where it is not.
         explicit = bool(set(tokens) & _SUBSTRING_CUES) or named is not None
         if (not explicit and not set(tokens) & _INCLUDE_CUES
                 and not re.search(r"\bin (?:its|their|the)\b", question, re.I)):
@@ -1031,10 +1066,16 @@ class SQLSearcher:
                 if date_targets:
                     options = []
                     for target in date_targets[:4]:
-                        date_operator, boundary = _date_year_boundary(cue[0], value)
-                        options.append(((Comparison(
-                            target, date_operator, Literal(boundary, SQLType.DATE)
-                        ),), 5.0, f"date:{target.table}.{target.name}{date_operator}{boundary}"))
+                        if target.type == SQLType.DATE:
+                            date_operator, boundary = _date_year_boundary(cue[0], value)
+                            literal = Literal(boundary, SQLType.DATE)
+                        else:
+                            # A year column holds the year itself: "countries that became independent
+                            # after 1950" is IndepYear > 1950. A date literal there validated nowhere, and
+                            # every reading of the question was dropped (Spider DEV, 2026-10-02: 15 such).
+                            date_operator, literal = operator, Literal(value, target.type)
+                        options.append(((Comparison(target, date_operator, literal),), 5.0,
+                                        f"date:{target.table}.{target.name}{date_operator}{literal.value}"))
                 else:
                     targets = self._numeric_targets(mentions, i)
                     options = [((Comparison(target, operator, Literal(value, target.type)),), 4.5,
