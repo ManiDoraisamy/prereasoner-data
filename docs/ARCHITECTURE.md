@@ -310,8 +310,11 @@ filters by country. The path is:
 4. persist a conversation-scoped cell-to-QID bridge;
 5. join through QID foreign keys and execute the requested operation.
 
-`engine/knowledge_query.py` owns ordinary world lookup. `engine/knowledge_compose.py` and `engine/compose.py` own
-multi-step operations that genuinely require a world dependency. `engine.routing.compose_owns()` is the authority;
+`engine/knowledge_query.py` owns ordinary world lookup. A non-geographic entity column (a bank, a restaurant, a
+hospital) grounds through the same bridge to its Wikidata table, whose country answers a filter, a grouped or
+ranked dimension ("which country has the most deposits"), and through `country.continent` a continent filter; a
+sheet with its own place column answers places through that column. `engine/knowledge_compose.py` and
+`engine/compose.py` own multi-step operations that genuinely require a world dependency. `engine.routing.compose_owns()` is the authority;
 a primitive prediction alone cannot seize a self-contained own-data question.
 
 World lookup does not contact Wikidata at request time. Missing rows or ambiguous keys are an explicit
@@ -443,7 +446,9 @@ conversation-global freshness flag, because two valid workbooks may select diffe
 
 The orchestrator sees a compact, engine-owned catalog and proposes one action: `create` for a distinct result,
 `modify` for a refinement of an existing result, or `inspect` to reopen it. It cannot assign IDs, claim another
-conversation's analysis, or overwrite a revision. The browser link includes both analysis id and revision, so a
+conversation's analysis, or overwrite a revision. A `modify` may carry the stored name less some of its words: a
+follow-up drops the filter words its question no longer asks about (`orchestrator._without_dropped_filters`), and the
+engine renames the analysis in place, keeping its id, links and revision history (`conversations._renamed_analysis`). The browser link includes both analysis id and revision, so a
 historical turn always restores the workbook that produced that answer. Shared input and private-reference tabs
 remain visible while only the derived stack is switched.
 

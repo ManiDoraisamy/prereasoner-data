@@ -1371,3 +1371,77 @@ from the transcript (2026-09-24). In the existing-conversation gate, "how about 
 a list has no number. The reply to a repeated question now counts as recalled when it states a number or a value of
 the uploaded data, and the correction round forces the query call as before; "You're welcome!" to a repeated "thanks"
 still stands.
+
+## A non-geo entity's country is a dimension and its continent a filter (2026-10-02)
+
+The bank, restaurant and hospital demo sheets answered a country filter on their entity ("total deposits for banks
+in Switzerland") and nothing else: "which country has the most deposits", "total deposits by country", "which bank
+has the most deposits in Europe" and "how many transfers in Canada" were declined since the coverage gate stopped
+answering past a world word (2026-10-01). The one non-geo owner (`KnowledgeQuery._nongeo_plan`/`_serve_world_type`)
+now binds the entity's country as a filter, as the dimension of a grouped or ranked total, and through
+`knowledgebase.country.continent` as a continent filter, and ranks an uploaded column inside such a filter; every
+shape lowers through `lower_world_query`'s existing stages, and the grain is recorded in the calculation evidence
+through the one record the place joins use (`KnowledgeTableQuery._record_computation`). A sheet with its own place
+column still answers places through it, so there the question must name the type. The world operand reader
+(`EncoderQuery.read_op_all`) reads a superlative of quantity as the top total of the column it names ("the most
+deposits") or the row count of the sheet it names ("the most banks", "the most orders"), and a count of what a
+numeric column already counts as that column's total ("how many transfers"); the place path ranks a row count per
+world value the same way ("which country has the most orders" listed every country's count).
+
+## An average converts every row before averaging (2026-10-02)
+
+"average amount in US dollars" was declined: the world lowering forced SUM whenever a rate applied, the rate
+bindings accepted only a SUM, and the currency check recognized only a converted SUM. A rate is a row factor, so an
+AVG of the converted rows realizes it as a SUM does: the world owner converts and averages (`average_<currency>`),
+`_output_realizes_plan` and the currency check accept SUM or AVG of the converted rows, and the own-data calculation
+expander keeps the base candidate's AVG around a registered row factor; it had served SUM(amount * rate_to_usd) AS
+total_usd for "average order amount in US dollars". A converted COUNT or MAX is still not certified.
+
+## One label per entity (2026-10-02)
+
+Q213 carries a later "Czech Republic" row in `knowledgebase.words` beside the source's "Czechia", and Q148 "People's
+Republic of China" beside "China". `_qid_labels`, the one qid label source of every trail and answer, built its map
+from every row, so the row order chose the label: the world owner said "Czech Republic" where compose said
+"Czechia". It now takes the primary row's label, then the one the source record names itself, then the earliest.
+
+## A top-1 ranking returns every tied row (2026-10-02)
+
+"which customer placed the most orders?" ranked five customers tied at three orders and served one; "which country
+has the highest average rating?" served Ireland or Czechia, both at 5. The owner chose every tied row over a
+clarification. The served member of the one selection (`PoolSelection.candidate`) keeps every row tied with the
+first on a top-level ORDER BY ... LIMIT 1 (`sql_ast.keep_ties`, FETCH FIRST 1 ROW WITH TIES, rendered with RANK()
+because SQLite lacks it); the shared plan's sort stage carries the ranking terms (`SortedView.ties_on`) to both
+emitters and the runtime sort; the world ranking and compose's top 1 keep ties the same way. Ranking, arbiter
+features and the pool are unchanged: only the served answer keeps the ties. A larger LIMIT is the number of rows
+asked for, and a subquery's LIMIT 1 stays one row. Spider's gold uses LIMIT 1, so a tie its database holds now
+grades strict-wrong where the arbitrary row used to match; the fresh whole_db run reports the transition.
+
+## A follow-up renames an analysis without its dropped filter (2026-10-02)
+
+Analyses created before names lost their filters kept them: in the 2026-10-02 Chrome gate's existing conversations,
+25 of 60 follow-ups showed "Reasoning steps for orders in paris" over a Lyon answer. The owner chose renaming on the
+next follow-up over a one-time migration of stored names. A `modify` whose stored name holds a word the question no
+longer asks for (a word of a value of the uploaded data, a currency, or a name the last question capitalizes) is
+sent with that word removed, and the engine renames the analysis in place: same id, links and revision history,
+the next revision's sheets under the new name. The engine accepts only the stored name's own words, in order and
+fewer of them, and leaves a name another analysis of the conversation holds to that one.
+
+## Dates and months filter a date column (2026-10-02)
+
+"How many transfers were signed in August?", "How many leads were submitted after August 10, 2026?" and "How many
+contracts were signed before July 10, 2026?" were planned without their date and declined over the month name.
+`engine/sql_dates.py` reads a month with an optional day and year after an optional cue (before, after, since, from,
+until, till, through, on, in, during) and turns it into typed comparisons on a date column: a dated phrase compares
+the date with its first day or the day after it, and a month without a year compares the month of each date
+(`DatePart`, the shared plan's MONTH, read from the date's ISO text by both programs). A phrase claims its tokens, so
+"August 10, 2026" is not the number 10 or the year 2026; a day without a year ("after August 10") filters nothing and
+the coverage gate asks about it. The coverage gate reads the months a query realized from the same comparisons.
+
+## An own-data share is a typed-AST ratio (2026-10-02)
+
+"what share of the total amount comes from Paris?" served the Paris total and "share of total amount by city" each
+city's total; the gate declined both over the dropped word. Routing keeps every own-data question with the typed-AST
+planner, so a share is a typed ratio there, not a compose plan: the kept rows' SUM or COUNT over the same aggregate
+of every row the query reads (`sql_ast.share_of`; "what percentage of orders are from Lyon" counts the rows it would
+list), ranked above the total it divides. It lowers into the shared plan as the kept rows' reduction crossed with the
+whole's reduction and divided, so both programs run it in linear time.
