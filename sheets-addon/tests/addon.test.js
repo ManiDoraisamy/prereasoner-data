@@ -105,18 +105,25 @@ assert.throws(() => normalizeGrids(shifted.workbook.grids),
 // Apps Script cannot load web/public/lib/upload-limits.js, so the add-on's copy is pinned to it here.
 const shared = {};
 vm.runInNewContext(fs.readFileSync(path.join(root, '../web/public/lib/upload-limits.js'), 'utf8'), shared);
-for (const key of ['sheets', 'rows', 'columns']) equal(addon.GRID_LIMITS[key], shared.UPLOAD_LIMITS[key], key);
+for (const key of ['sheets', 'rows', 'columns', 'cells']) equal(addon.GRID_LIMITS[key], shared.UPLOAD_LIMITS[key], key);
 
-// The upload's worksheet limits hold per tab before any cell is read: two 6,000-row tabs are read, as an
-// upload of them would be; a tab past 10,000 data rows or 256 columns is refused by name.
+// The upload's worksheet limits hold per tab before any cell is read: two 30,000-row tabs are read, as an
+// upload of them would be; an active tab past 50,000 data rows or 256 columns is refused by name.
 const rows = count => [['id', 'amount']].concat(Array.from({length: count}, (_, i) => [i + 1, 1]));
-equal(load(book([sheet(7, 'A', rows(6000)), sheet(8, 'B', rows(6000))])).getSidebarContext().workbook.grids.length, 2);
-assert.throws(() => load(book([sheet(9, 'Long', rows(10001))])).getSidebarContext(),
-  /^Error: Sheet "Long": each worksheet may contain at most 10,000 data rows$/); checks++;
+equal(load(book([sheet(7, 'A', rows(30000)), sheet(8, 'B', rows(30000))])).getSidebarContext().workbook.grids.length, 2);
+assert.throws(() => load(book([sheet(9, 'Long', rows(50001))])).getSidebarContext(),
+  /^Error: Sheet "Long": each worksheet may contain at most 50,000 data rows$/); checks++;
 const wide = sheet(5, 'Wide', [Array.from({length: 257}, (_, i) => 'c' + i), Array.from({length: 257}, () => 1)]);
 assert.throws(() => load(book([wide])).getSidebarContext(), /^Error: Sheet "Wide": each worksheet may contain at most 256 columns$/); checks++;
-const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 10000}, () => Array(26).fill(1)));
-assert.throws(() => load(book([sheet(10, 'Dense', dense)])).getSidebarContext(), /too large to analyze in one request/); checks++;
+const dense = [Array.from({length: 26}, (_, i) => 'c' + i)].concat(Array.from({length: 20000}, () => Array(26).fill(1)));
+assert.throws(() => load(book([sheet(10, 'Dense', dense)])).getSidebarContext(),
+  /^Error: Sheet "Dense": too large to analyze in one request \(520,026 cells; at most 500,000 in all\)/); checks++;
+// Another tab that does not fit beside the active one is left out by name, not the whole spreadsheet: a
+// 30,000-row tab beside five more was refused (customer report, 2026-10-02). So is a tab past the row limit.
+const beside = load(book([sheet(11, 'NT', rows(30000)), sheet(12, 'SI', dense), sheet(13, 'Log', rows(50001)),
+  sheet(14, 'FF', rows(100))])).getSidebarContext().workbook;
+equal(beside.grids.map(grid => grid.name), ['NT', 'FF'], 'the active tab and the tabs that fit beside it');
+equal(beside.skipped, ['SI', 'Log'], 'the tabs left out, by name');
 assert.throws(() => load(book([blank])).getSidebarContext(), /header row and at least one data row/); checks++;
 
 // Prereasoner calls go server to server with the Firebase identity of the Google account.

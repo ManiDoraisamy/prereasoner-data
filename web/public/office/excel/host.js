@@ -2,11 +2,9 @@ import '../../lib/upload-limits.js';
 
 // The upload's worksheet limits hold per tab before any cell is read; the cell cap bounds what one
 // task-pane read requests from Excel.
-const {sheets: MAX_SHEETS, rows: MAX_ROWS, columns: MAX_COLUMNS} = globalThis.UPLOAD_LIMITS;
-const MAX_CELLS = 250000;
+const {sheets: MAX_SHEETS, rows: MAX_ROWS, columns: MAX_COLUMNS, cells: MAX_CELLS,
+  tableChars: MAX_TABLE_BYTES, totalChars: MAX_TOTAL_BYTES} = globalThis.UPLOAD_LIMITS;
 const VALUE_CHUNK_ROWS = 200;
-const MAX_TABLE_BYTES = 2 * 1024 * 1024;
-const MAX_TOTAL_BYTES = 6 * 1024 * 1024;
 
 // The workbook upload's importer decides headers, dates, durations, merged cells, totals and errors
 // (lib/workbook-import.js through lib/xlsx-worker.js). The task pane reads the cells and hands the
@@ -119,9 +117,9 @@ export async function readWorkbook(normalize = normalizeInWorker) {
   let byteTotal = 0;
   const tables = sheets.map(sheet => {
     const bytes = new TextEncoder().encode(sheet.csv).byteLength;
-    if (bytes > MAX_TABLE_BYTES) throw new Error(`The tab “${sheet.name}” is larger than 2 MB.`);
+    if (bytes > MAX_TABLE_BYTES) throw new Error(`The tab “${sheet.name}” is larger than ${MAX_TABLE_BYTES / 1e6} MB.`);
     byteTotal += bytes;
-    if (byteTotal > MAX_TOTAL_BYTES) throw new Error('Combined workbook data is larger than 6 MB.');
+    if (byteTotal > MAX_TOTAL_BYTES) throw new Error(`Combined workbook data is larger than ${MAX_TOTAL_BYTES / 1e6} MB.`);
     return {name: sheet.name, data: sheet.csv, import: sheet.import, source: {kind: 'excel'}};
   });
   if (!tables.length) throw new Error('This workbook has no visible table with a header and data rows.');

@@ -18,10 +18,10 @@ MAX_QUESTION_CHARS = 20_000
 MAX_HISTORY_ITEMS = 24
 MAX_HISTORY_CHARS = 80_000
 MAX_TABLES = 8
-MAX_UPLOAD_ROWS = 10_000
+MAX_UPLOAD_ROWS = 50_000
 MAX_TABLE_DISPLAY_NAME_CHARS = 128
-MAX_TABLE_CHARS = 2_000_000
-MAX_TABLE_TOTAL_CHARS = 6_000_000
+MAX_TABLE_CHARS = 8_000_000
+MAX_TABLE_TOTAL_CHARS = 20_000_000
 
 # PostgreSQL identifiers are limited to 63 bytes. Runtime bridge tables append
 # " unconnected to knowledgebase" (29 characters), so uploaded identifiers use

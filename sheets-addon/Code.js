@@ -16,7 +16,7 @@ var FIREBASE_API_KEY = 'AIzaSyAC_Kiqj3lqd52ufpqYDAO17G6T7wfBd9Q';
 var FIREBASE_TOKEN_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=' + FIREBASE_API_KEY;
 // The upload's worksheet limits (web/public/lib/upload-limits.js; tests pin this copy to it), checked
 // before any cell is read, plus a cell cap that bounds what one sidebar call reads and sends.
-var GRID_LIMITS = {sheets: 8, rows: 10000, columns: 256, cells: 250000};
+var GRID_LIMITS = {sheets: 8, rows: 50000, columns: 256, cells: 500000};
 var REQUEST_LIMITS = {questionChars: 20000, historyItems: 24, historyChars: 80000};
 // The strings Sheets returns for a cell whose formula failed.
 var SHEETS_ERRORS = /^#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A|ERROR!)$/;
@@ -193,19 +193,34 @@ function readGrids_(spreadsheet) {
   if (sheets.length > GRID_LIMITS.sheets) {
     throw new Error('Prereasoner can read at most ' + GRID_LIMITS.sheets + ' non-empty tabs at once.');
   }
+  // The active tab is read first and must fit. Another tab that does not fit, by itself or beside the tabs
+  // already read, is left out by name: a 30,000-row tab beside five more refused the whole spreadsheet
+  // (customer report, 2026-10-02).
   var cellTotal = 0;
-  var grids = sheets.map(function(sheet) {
+  var skipped = [];
+  var fitting = sheets.filter(function(sheet, index) {
     var rowCount = sheet.getLastRow();
     var columnCount = sheet.getLastColumn();
+    var cells = rowCount * columnCount;
     var tab = 'Sheet "' + sheet.getName() + '": ';
-    if (rowCount - 1 > GRID_LIMITS.rows) {
-      throw new Error(tab + 'each worksheet may contain at most 10,000 data rows');
+    var problem = rowCount - 1 > GRID_LIMITS.rows
+      ? tab + 'each worksheet may contain at most ' + grouped_(GRID_LIMITS.rows) + ' data rows'
+      : columnCount > GRID_LIMITS.columns ? tab + 'each worksheet may contain at most 256 columns'
+      : cellTotal + cells > GRID_LIMITS.cells
+        ? tab + 'too large to analyze in one request (' + grouped_(cells) + ' cells; at most ' +
+          grouped_(GRID_LIMITS.cells) + ' in all). Reduce the data and try again.'
+        : '';
+    if (problem && index === 0) throw new Error(problem);
+    if (problem) {
+      skipped.push(sheet.getName());
+      return false;
     }
-    if (columnCount > GRID_LIMITS.columns) throw new Error(tab + 'each worksheet may contain at most 256 columns');
-    cellTotal += rowCount * columnCount;
-    if (cellTotal > GRID_LIMITS.cells) {
-      throw new Error('This spreadsheet is too large to analyze in one request. Reduce the data and try again.');
-    }
+    cellTotal += cells;
+    return true;
+  });
+  var grids = fitting.map(function(sheet) {
+    var rowCount = sheet.getLastRow();
+    var columnCount = sheet.getLastColumn();
     var range = sheet.getRange(1, 1, rowCount, columnCount);
     var values = range.getValues();
     return {
@@ -224,7 +239,12 @@ function readGrids_(spreadsheet) {
       date1904: false
     };
   });
-  return {grids: grids};
+  return {grids: grids, skipped: skipped};
+}
+
+// A count as the add-on's messages write it: 50000 is "50,000".
+function grouped_(count) {
+  return String(count).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 }
 
 // google.script.run cannot return Date objects. A date, time or duration cell becomes the serial day

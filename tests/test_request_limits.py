@@ -398,7 +398,7 @@ def test_uploaded_row_limit_rejects_without_truncating_at_the_public_boundary():
 
     oversized = {"name": "orders", "rows": rows + [[MAX_UPLOAD_ROWS]]}
     error = upload_row_limit_error([oversized])
-    assert error == "orders has too many data rows; maximum is 10000"
+    assert error == "orders has too many data rows; maximum is 50000"
     assert len(oversized["rows"]) == MAX_UPLOAD_ROWS + 1
 
 

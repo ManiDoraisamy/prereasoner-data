@@ -9,7 +9,7 @@
 
   function readWorkbook(file){
     if(!file||typeof file.arrayBuffer!=='function')return Promise.reject(new Error('invalid spreadsheet file'));
-    if(file.size>MAX_XLSX_BYTES)return Promise.reject(new Error('spreadsheet files must be 8 MB or smaller'));
+    if(file.size>MAX_XLSX_BYTES)return Promise.reject(new Error('spreadsheet files must be '+MAX_XLSX_BYTES/1048576+' MB or smaller'));
     return file.arrayBuffer().then(buffer=>new Promise((resolve,reject)=>{
       const worker=new Worker('/lib/xlsx-worker.js');
       let settled=false;
@@ -25,12 +25,12 @@
 
   async function readText(file){
     if(!file||typeof file.text!=='function')throw new Error('invalid text file');
-    if(file.size>MAX_TEXT_BYTES)throw new Error('CSV and text files must be 2 MB or smaller');
+    if(file.size>MAX_TEXT_BYTES)throw new Error('CSV and text files must be '+MAX_TEXT_BYTES/1048576+' MB or smaller');
     const text=await file.text();
     if(text.length>root.UPLOAD_LIMITS.tableChars)throw new Error('decoded table is too large');
     const parsed=typeof root.parseCSV==='function'?root.parseCSV(text):null;
     if(parsed&&parsed.rows.length>root.UPLOAD_LIMITS.rows)
-      throw new Error('each table may contain at most 10,000 data rows');
+      throw new Error('each table may contain at most '+root.UPLOAD_LIMITS.rows.toLocaleString('en-US')+' data rows');
     return text;
   }
 

@@ -128,7 +128,7 @@ def _start_spacy_warmup(model):
     return worker
 
 
-MAX_BODY = 10 * 1024 * 1024
+MAX_BODY = 30 * 1024 * 1024
 MAX_SHEETS = 8
 MAX_REFERENCE_ROWS = 5000
 MAX_TABLE_CHARS = 2 * 1024 * 1024

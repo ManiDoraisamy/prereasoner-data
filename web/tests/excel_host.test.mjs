@@ -136,15 +136,15 @@ const grouped = await runWorkbook([sheet('Grouped', 'Visible', [
 assert.match(grouped.tables[0].data, /^"?ID"?,Amounts Net,Amounts Tax\n1,10,2$/);
 
 // The upload's worksheet limits hold per tab before any cell is read: two 6,000-row tabs are read, as their
-// uploaded .xlsx would be; a tab past 10,000 data rows or 256 columns is refused by name.
+// uploaded .xlsx would be; a tab past 50,000 data rows or 256 columns is refused by name.
 const rows = count => [['id', 'amount']].concat(Array.from({length: count}, (_, i) => [i + 1, 1]));
 const pair = await runWorkbook([sheet('A', 'Visible', rows(6000)), sheet('B', 'Visible', rows(6000))]);
 assert.equal(JSON.stringify(pair.tables.map(table => table.import.dataRows)), '[6000,6000]');   // tables from the worker's realm
-await assert.rejects(() => runWorkbook([sheet('Long', 'Visible', [], {rowCount: 10002, columnCount: 2})]),
-  /^Error: Sheet "Long": each worksheet may contain at most 10,000 data rows$/);
+await assert.rejects(() => runWorkbook([sheet('Long', 'Visible', [], {rowCount: 50002, columnCount: 2})]),
+  /^Error: Sheet "Long": each worksheet may contain at most 50,000 data rows$/);
 await assert.rejects(() => runWorkbook([sheet('Wider', 'Visible', [], {rowCount: 2, columnCount: 257})]),
   /^Error: Sheet "Wider": each worksheet may contain at most 256 columns$/);
-await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', [], {rowCount: 1000, columnCount: 256})]),
+await assert.rejects(() => runWorkbook([sheet('Wide', 'Visible', [], {rowCount: 2000, columnCount: 256})]),
   /too large to analyze/);
 await assert.rejects(() => runWorkbook([sheet('No data', 'Visible', [['header']])]),
   /no visible table/);

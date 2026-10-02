@@ -161,7 +161,7 @@
         let normalized;
         try{
           const ref=sheet['!fullref']||sheet['!ref'], range=ref?XLSX.utils.decode_range(ref):null;
-          if(range&&range.e.r-range.s.r+1>limits.rows+1)throw new Error('each worksheet may contain at most 10,000 data rows');
+          if(range&&range.e.r-range.s.r+1>limits.rows+1)throw new Error('each worksheet may contain at most '+limits.rows.toLocaleString('en-US')+' data rows');
           if(range&&range.e.c-range.s.c+1>limits.columns)throw new Error('each worksheet may contain at most 256 columns');
           normalized=normalize(sheet,XLSX,{date1904});
           if(normalized&&normalized.csv.length>limits.tableChars)throw new Error('an expanded worksheet is too large');

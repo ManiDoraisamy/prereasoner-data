@@ -32,7 +32,7 @@ from orchestrator.orchestrator import run_chat
 from engine.request_validation import RequestValidationError, validate_chat_request
 
 WEB_ROOT = Path(config.__file__).resolve().parent.parent / "web" / "public"
-MAX_BODY = 8 * 1024 * 1024
+MAX_BODY = 30 * 1024 * 1024
 CHAT_TIMEOUT_SECONDS = 240
 CHAT_GATE = RequestGate(requests=10, window_seconds=60, in_flight=8)
 

@@ -1554,3 +1554,37 @@ ignores ASCII case), PostgreSQL (whose LIKE does not) and the Python program agr
 "the word X" ask for it even where the text is a whole value of the data; after "contain", "include" or "in its
 <column>" a whole value stays an equality ("the documents that contain the paragraph text 'Brazil'"). It
 compares the text column that holds the text, the nearest named first (commits f572eb6 and ab5093a).
+
+## Larger sheets: 50,000 rows a tab, and the add-on reads the active tab first (2026-10-02)
+
+A customer's 30,000-row Subscriptions sheet was refused with "too large to analyze in one request", and
+Gemini in Sheets answered it. The limits bound the per-question upload, not the database or SQL. Each
+question sends the whole workbook, and the engine loads it again. So the limits are raised to measured
+headroom:
+
+- 50,000 data rows a tab, up from 10,000.
+- 8 million characters a table and 20 million in all, up from 2 and 6 million.
+- 30 MiB request bodies for the engine and the chat, under Cloud Run's 32 MiB.
+- 8 MiB CSV files and 16 MiB workbooks in the browser.
+- 500,000 cells in one add-on read, up from 250,000.
+- A 45 s worker parse timeout.
+
+`engine/request_validation.py` and `web/public/lib/upload-limits.js` state them once each, and the add-ins
+take theirs from the latter.
+
+Measured on a 30,000-row, 11-column sheet of the customer's shape:
+- The planner loads it in 1.0 s and selects in 3.9-4.7 s per question on a workstation CPU.
+- The full serving path through the local Cloud SQL proxy answered in about 30 s per question in the
+  default mode, mostly in round trips through the proxy.
+- The Python program keeps its own 10,000-row limit, and `auto` runs SQL above it. Verify mode, which needs
+  both programs, still refuses such a sheet.
+
+The Sheets add-on reads the active tab first, and that tab must fit. Another tab that does not fit is left
+out, and the sidebar names it, instead of the whole spreadsheet being refused. A tab does not fit when it
+breaks the row or column limit, or would push the cell total past the cap beside the tabs already read. The
+customer's sheet had six tabs.
+
+One engine instance still serves one question at a time, and a large sheet holds it longer. Rows stop
+costing per question only when a sheet is uploaded once and every question runs on the stored tables. The
+add-on's own limit lives in Apps Script (`sheets-addon/Code.js`). It reaches users only after a `clasp
+push` and a new version set in the Marketplace App Configuration.

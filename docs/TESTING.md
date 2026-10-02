@@ -190,9 +190,9 @@ links. The release gate evaluates the union of both manifests. Numeric and clari
 orchestrator/browser path. The `orders-tiers` fixture includes the joined `tier.csv` discount schedule and its
 exact tier follow-up is covered by `tests.test_orchestrator`.
 
-The candidate upload UI limits CSV/text files to 2 MiB, workbooks to 8 MiB and worksheets to 10,000
-data rows (plus one header). Expanded tables also obey the backend's 2,000,000-character per-table and
-6,000,000-character combined limits. These are independent of execution routing and the 500-row display
+The candidate upload UI limits CSV/text files to 8 MiB, workbooks to 16 MiB and worksheets to 50,000
+data rows (plus one header). Expanded tables also obey the backend's 8,000,000-character per-table and
+20,000,000-character combined limits. These are independent of execution routing and the 500-row display
 preview. `web/public/lib/upload-limits.js` is shared by the reader and worker. A failed upload leaves the
 previous inputs intact but blocks Ask until a successful retry; partial batches are never submitted.
 
@@ -209,7 +209,7 @@ The original .xls/.xlsx files remain unchanged in evaluation-only directories wi
 The Google Sheets picker reads the selected file once via Drive `files.export` (XLSX), using the existing
 `drive.file` scope. It passes those bytes to the identical worker; it does not edit or continuously sync
 the source Sheet. This preserves the layout/date information that the former `values:batchGet` path
-discarded. The same 8 MiB, sheet, row, and expanded-text limits apply; failed exports or ambiguous layouts
+discarded. The same 16 MiB, sheet, row, and expanded-text limits apply; failed exports or ambiguous layouts
 attach nothing. Chrome tests cover the complete picker round-trip with a mocked Google export containing
 the original formatted supplier workbook, plus rate-limit and layout failures. That is adapter/UI
 evidence, not a claim that a real user's Google OAuth grant has been verified.

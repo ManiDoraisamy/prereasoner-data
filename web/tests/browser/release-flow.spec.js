@@ -95,13 +95,13 @@ for(const [file,names,count,header] of [
 test('10,000-row workbooks are accepted, but 10,001 rows are rejected atomically',async({page})=>{
   await mockAuth(page);await page.goto('/');
   const book=XLSX.utils.book_new();
-  const rows=[['id','amount'],...Array.from({length:10000},(_,i)=>[i+1,1])];
+  const rows=[['id','amount'],...Array.from({length:50000},(_,i)=>[i+1,1])];
   XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet(rows),'orders');
   const upload=()=>page.locator('#file').setInputFiles({name:'boundary.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     buffer:Buffer.from(XLSX.write(book,{type:'buffer',bookType:'xlsx'}))});
   await upload();await expect(page.locator('#chips .nm')).toHaveText('boundary');
-  rows.push([10001,1]);book.Sheets.orders=XLSX.utils.aoa_to_sheet(rows);
-  await upload();await expect(page.locator('#err')).toContainText('10,000 data rows');
+  rows.push([50001,1]);book.Sheets.orders=XLSX.utils.aoa_to_sheet(rows);
+  await upload();await expect(page.locator('#err')).toContainText('50,000 data rows');
   await expect(page.locator('#chips .nm')).toHaveText('boundary');
   await expect(page.getByRole('button',{name:'Ask',exact:true})).toBeDisabled();
 });
