@@ -958,6 +958,17 @@ def name_tokens(name: str) -> tuple[str, ...]:
     return tuple(canon(token) for token in re.findall(r"[A-Za-z0-9]+", spaced))
 
 
+def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[int]:
+    """The positions where the question spells a several-word column's name, its words together: "the first
+    and last name" holds no value 'Last', and "the avg. monthly searches" names the column Avg. monthly
+    searches, not an average of it."""
+    phrases = {name_tokens(column.ref.name) for column in schema.columns}
+    return frozenset(index for words in phrases if len(words) > 1
+                     for start in range(len(question_tokens) - len(words) + 1)
+                     if question_tokens[start:start + len(words)] == words
+                     for index in range(start, start + len(words)))
+
+
 # A "%" standing alone is the word "percent" ("what % of the total amount comes from Paris" served the
 # Paris total, 2026-10-02); after a number ("over 50%") it is the number's unit, and inside a word or
 # quotes ("names like 'A%'") a pattern's wildcard.

@@ -2641,6 +2641,38 @@ def test_a_ranking_measure_is_not_an_asked_aggregate():
     assert execute(tables, total.sql) == [(67,)], total.sql
 
 
+def test_same_shaped_tabs_answer_a_stated_keyword():
+    """A customer's keyword-planner workbook, 2026-10-02: three tabs shaped alike (Forklift, Checklist and
+    Inspection, each with Keyword, Avg. monthly searches, Top of page bid (low range), ...) gave "total of the
+    avg. monthly searches for forklift inspection" no reading at all ("planner: no valid AST candidate"), and the
+    Forklift tab alone summed it and averaged it too. The keyword 'forklift inspection' named the Forklift and
+    Inspection tabs, which no key joins; "of" in "Top of page bid" qualified "the avg. monthly searches" as
+    another entity's, so the column was never named; and "avg" in its name read as an average beside the asked
+    total. A spelled column name's aggregate word still asks the aggregate when no other word does."""
+    columns = ["Keyword", "Avg. monthly searches", "Competition", "Top of page bid (low range)"]
+
+    def tab(name, rows):
+        return {"name": name, "columns": columns, "rows": [list(row) for row in rows]}
+
+    forklift = tab("Forklift", [("forklift inspection", 500, "Medium", 3.47),
+                                ("forklift inspection checklist", 5000, "High", 1.37),
+                                ("forklift checklist", 5000, "High", 1.37)])
+    checklist = tab("Checklist", [("forklift inspection checklist", 5000, "High", 1.37),
+                                  ("daily checklist", 500, "Low", 0.80)])
+    inspection = tab("Inspection", [("forklift inspection", 500, "Medium", 3.47),
+                                    ("home inspection", 50000, "High", 4.20)])
+    workbook = [forklift, checklist, inspection]
+    for tables in ([forklift], workbook):
+        answer = best("total of the avg. monthly searches for forklift inspection", tables)
+        assert execute(tables, answer.sql) == [(500,)], answer.sql
+    volume = best("What is the total search volume for forklift inspection checklist", workbook)
+    assert execute(workbook, volume.sql) == [(5000,)], volume.sql
+    orders = {"name": "orders", "columns": ["City", "Total Amount"],
+              "rows": [["Paris", 10], ["Paris", 20], ["Lyon", 5]]}
+    paris = best("What is the total amount in Paris?", [orders])
+    assert execute([orders], paris.sql) == [(30,)], paris.sql
+
+
 def test_a_listing_follows_the_order_the_question_names():
     """Spider DEV, 2026-10-02: "the airline names and abbreviations for airlines in the USA" listed the
     abbreviation first, and "the names and birth dates of people" the dates: a column was placed at its last
@@ -4137,6 +4169,7 @@ TESTS = [
     test_a_key_named_by_the_table_it_references_needs_its_whole_name,
     test_a_denial_is_read_by_what_it_denies,
     test_a_ranking_measure_is_not_an_asked_aggregate,
+    test_same_shaped_tabs_answer_a_stated_keyword,
     test_a_listing_follows_the_order_the_question_names,
     test_by_after_a_participle_names_who_acted,
     test_multiple_aggregates_share_a_typed_operand,

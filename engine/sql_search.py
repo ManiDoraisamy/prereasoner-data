@@ -49,11 +49,13 @@ from engine.sql_expansion import (
     implicit_sum_measures,
     measure_words_after,
     money_total_position,
+    name_tokens,
     naming_context,
     naming_words,
     ordering_requested,
     share_cue,
     share_requested,
+    spelled_names,
     word_spans,
     words,
 )
@@ -156,7 +158,13 @@ class SQLSearcher:
         tokens = _tokens(question)
         if not tokens:
             return []
-        table_scores = self._table_scores(tokens)
+        # The words of a several-word value the question states are the value's: "the avg. monthly searches for
+        # forklift inspection" names the keyword 'forklift inspection', not the Forklift and Inspection tabs,
+        # which no key joins (a customer's three keyword tabs, 2026-10-02: no reading at all).
+        stated, _ = self._value_matches(tokens, frozenset(), question)
+        in_values = {index for start, end, _, _ in stated if end - start > 1 for index in range(start, end)}
+        unvalued = tuple("" if index in in_values else token for index, token in enumerate(tokens))
+        table_scores = self._table_scores(unvalued)
         mentions = self._column_mentions(tokens, table_scores)
         mentions = self._suppress_fk_attribute_qualifiers(tokens, mentions)
         clause_boundary = next((i for i, token in enumerate(tokens)
@@ -195,7 +203,7 @@ class SQLSearcher:
         # TV_series' first word before its Channel column.
         table_words = {table: {canon(word) for word in _name_words(table)} for table in self.schema.tables}
         named_tables = {table for table in self.schema.tables
-                        if _names_together(tokens, [canon(word) for word in _name_words(table)],
+                        if _names_together(unvalued, [canon(word) for word in _name_words(table)],
                                            self._column_forms(table).difference(
                                                *(words for other, words in table_words.items() if other != table)))}
         aggregate_choices = self._aggregate_choices(tokens, mentions)
@@ -672,6 +680,12 @@ class SQLSearcher:
             if tokens[i:i + 2] == ("how", "many"):
                 cues.append(("COUNT", i))
         cues = list(dict.fromkeys(cues))
+        # A several-word column name the question spells names the column: its aggregate word asks an aggregate
+        # only when no other word does. "The total of the avg. monthly searches" sums them, with no stray
+        # average (a customer's keyword tabs, 2026-10-02); "the total amount in Paris" still totals Total Amount.
+        spelled = spelled_names(tokens, self.schema)
+        if any(position not in spelled for _, position in cues):
+            cues = [(function, position) for function, position in cues if position not in spelled]
         # "count the number" and "average mean" are reinforcing paraphrases, not requests for duplicate
         # The base search supports several different aggregates in one query; repeated functions
         # collapse to their earliest cue until argument-scope parsing becomes more precise.
@@ -934,10 +948,7 @@ class SQLSearcher:
         'Option', "the vote ids" no state 'ID' (Spider DEV, 2026-10-02: 8 readings filtered on them)."""
         capitalized = _capitalized(question)
         quoted = _quoted_positions(question)
-        phrases = {tuple(canon(word) for word in _name_words(column.ref.name)) for column in self.schema.columns}
-        named = {index for words in phrases if len(words) > 1
-                 for start in range(len(tokens) - len(words) + 1) if tokens[start:start + len(words)] == words
-                 for index in range(start, start + len(words))}
+        named = spelled_names(tokens, self.schema)
         matches: list[tuple[int, int, str, tuple[tuple[ColumnRef, Any], ...]]] = []
         for start in range(len(tokens)):
             for size in range(1, min(6, len(tokens) - start) + 1):
@@ -1689,6 +1700,13 @@ def _column_link_positions(
         for word in _name_words(schema_column.ref.table) + _name_words(schema_column.ref.name)[:-1]
         if canon(word) not in {"name", "id", "identifier", "key"}
     }
+    # A several-word name the question spells names the column whatever precedes it: "of the avg. monthly
+    # searches" is no other entity's, though "Top of page bid (low range)" makes "of" an entity word (a
+    # customer's three keyword tabs, 2026-10-02: the column was never mentioned).
+    own = name_tokens(column.name)
+    spelled = {index for start in range(len(tokens) - len(own) + 1)
+               if len(own) > 1 and tokens[start:start + len(own)] == own
+               for index in range(start, start + len(own))}
     qualified = []
     for position in positions:
         context = set(tokens[max(0, position - 2):position])
@@ -1702,7 +1720,7 @@ def _column_link_positions(
         if position + 1 < len(tokens) and tokens[position + 1] == "of":
             context.update(tokens[position + 2:position + 4])
         entity_context = context & schema_entities
-        if not entity_context or entity_context & column_entities:
+        if position in spelled or not entity_context or entity_context & column_entities:
             qualified.append(position)
             continue
         if set(link_words) == {"name"}:

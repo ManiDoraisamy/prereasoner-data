@@ -18,7 +18,7 @@ from engine.sql_ast import (
     Aggregate, ColumnRef, Comparison, Query, SelectQuery, SetQuery, keep_ties, render_query,
     share_aggregate,
 )
-from engine.sql_expansion import by_groups, share_cue, share_requested, words
+from engine.sql_expansion import by_groups, share_cue, share_requested, spelled_names, words
 from engine.sql_candidate import ScoredQuery
 from engine.sql_schema import SchemaGraph, canon, is_surrogate_key
 
@@ -330,6 +330,12 @@ def analyze_question(question: str, schema: SchemaGraph) -> QuestionRoles:
             aggregate_positions["MIN"].append(i)
         elif token in {"maximum", "max"}:
             aggregate_positions["MAX"].append(i)
+    # A spelled column name's aggregate word asks an aggregate only when no other word does, as the search
+    # reads it: "the total of the avg. monthly searches" asks no average.
+    spelled = spelled_names(tokens, schema)
+    if any(position not in spelled for positions in aggregate_positions.values() for position in positions):
+        aggregate_positions = {function: [position for position in positions if position not in spelled]
+                               for function, positions in aggregate_positions.items()}
 
     if not any(aggregate_positions.values()) and (share := share_cue(tokens, schema)):
         aggregate_positions[share[0]].append(share[1])            # the search reads the same cue
