@@ -14,7 +14,7 @@ steps:
 
 substitutions:
   _RUN_PRODUCT_SUITES: "1"
-  _BASE_IMAGE: us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:3cbb0037832a06630dc1e0d0a450e44b415e4e5f0ac4ef92b7607de2862891dd
+  _BASE_IMAGE: us-central1-docker.pkg.dev/prereasoner-inference/prereasoner/engine@sha256:d45af36701221f603d5b2cdefacb3aac91014ef9fd10fc20f22b3f48db005aaa
   _PGVECTOR_IMAGE: pgvector/pgvector:pg16@sha256:eac621400b7b7ff52493883e41e930e3d104695fea5b68cc0c42370cf7880067
 
 options:

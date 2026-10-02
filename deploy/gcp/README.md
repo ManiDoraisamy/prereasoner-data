@@ -76,6 +76,9 @@ service and the engine (`/api/converse`, reference generation, the selection fal
 It keeps deletion protection on, activates only the reviewed `iana_country` enrichment dataset, and
 restores the pinned `community-seed-v4.dump` after verifying its SHA-256. The deployment creates the
 engine API, chat service, Firebase Hosting CDN release, and daily PostgreSQL conversation-retention job.
+The seed is produced by `seed-export/`, a one-shot job that runs `pg_dump` of the `public`,
+`knowledgebase`, and `iana` schemas of the reference world database and uploads the dump to
+`SEED_BUCKET`; a new seed needs a new object name and a new pinned SHA-256 in `deploy.sh`.
 
 The tier is pinned here rather than in `infra/variables.tf`, because the reference deployment takes
 `db-g1-small` from that default and moving it would resize production. It is bought for one reason: a

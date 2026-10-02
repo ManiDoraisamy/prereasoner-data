@@ -230,11 +230,12 @@ variable "enrichment_active_datasets" {
 variable "min_instances" {
   description = <<-EOT
     Minimum warm engine instances. 1 is the production default: a cold start pulls the image and
-    loads the model stacks including the 7B SQL proposer, 3-5 minutes on 8 vCPU (measured on Cloud
-    Run 2026-10-01). That is longer than the chat's 180 s engine call, so with 0 the first question
-    after an idle period fails. The engine runs with CPU always allocated (instance-based billing),
-    so one warm 8-CPU/16Gi instance costs about $450 a month at list prices. Use 0 for disposable
-    dev environments. The service runs at most one instance (see main.tf).
+    loads the model stacks, 71 s from instance start to a passing startup probe on 8 vCPU, image
+    pull not included (prereasoner-api-00136-srv, 2026-10-02; 3-5 minutes while the retired 7B SQL
+    proposer loaded). With 0, the first question after an idle period waits for that start. The
+    engine runs with CPU always allocated (instance-based billing), so one warm 8-CPU/16Gi instance
+    costs about $450 a month at list prices. Use 0 for disposable dev environments. The service
+    runs at most one instance (see main.tf).
   EOT
   type        = number
   default     = 1
