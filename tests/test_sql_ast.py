@@ -2472,6 +2472,41 @@ def test_the_article_a_is_no_value():
     assert sorted(execute([classes], in_a.sql)) == [("Ann",), ("Cy",)], in_a.sql
 
 
+def test_a_value_compares_the_column_whose_words_introduce_it():
+    """Spider wta_1, 2026-10-02: "the players who are left / L hand" compared first_name = 'L', the first of
+    two columns holding 'L' by name, not the hand the question names beside it. The column whose words
+    introduce the value is the one compared."""
+    players = {"name": "players", "columns": ["player_id", "first_name", "last_name", "hand"], "rows": [
+        [1, "Martina", "Hingis", "R"], [2, "Mirjana", "Lucic", "L"], [3, "L", "Jones", "R"]]}
+    left = best("List the first and last name of all players who are left / L hand.", [players])
+    assert execute([players], left.sql) == [("Mirjana", "Lucic")], left.sql
+    # Contrast: the first name that introduces 'L' is compared.
+    named = best("List the last name of the players whose first name is L.", [players])
+    assert execute([players], named.sql) == [("Jones",)], named.sql
+
+
+def test_a_value_stated_once_is_compared_once():
+    """Spider concert_singer, 2026-10-02: "how many concerts are there in year 2014 or 2015" counted the
+    concerts whose year and whose singers' song release year were both 2014 or 2015, joining the singers
+    (10 readings compared one stated value on two columns). A value is compared in as many AND-ed terms
+    as the question states it; one term may still compare it on two columns."""
+    concert = {"name": "concert", "columns": ["concert_ID", "concert_Name", "Year"], "rows": [
+        [1, "Auditions", 2014], [2, "Bootcamp", 2015], [3, "Home Visits", 2016], [4, "Week 1", 2014]]}
+    singer = {"name": "singer", "columns": ["Singer_ID", "Name", "Song_release_year"], "rows": [
+        [1, "Joe Sharp", 2014], [2, "Timbaland", 2008]]}
+    links = {"name": "singer_in_concert", "columns": ["concert_ID", "Singer_ID"], "rows": [[1, 1], [2, 2], [4, 2]]}
+    fks = [{"from_table": "singer_in_concert", "from_col": "concert_ID", "to_table": "concert",
+            "to_col": "concert_ID"},
+           {"from_table": "singer_in_concert", "from_col": "Singer_ID", "to_table": "singer", "to_col": "Singer_ID"}]
+    tables = [concert, singer, links]
+    counted = best("How many concerts are there in year 2014 or 2015?", tables, fks)
+    assert "JOIN" not in counted.sql and execute(tables, counted.sql) == [(3,)], counted.sql
+    # Contrast: one OR term compares the value on either column.
+    either = best("What are the names of singers whose song release year is 2014 or whose concert year is 2014?",
+                  tables, fks)
+    assert sorted(execute(tables, either.sql)) == [("Joe Sharp",), ("Timbaland",)], either.sql
+
+
 def test_multiple_aggregates_share_a_typed_operand():
     candidate = best("What are the average, minimum and maximum age of people from France?", [PEOPLE])
     assert execute([PEOPLE], candidate.sql) == [(25.0, 20, 30)]
@@ -3920,6 +3955,8 @@ TESTS = [
     test_the_words_of_a_column_name_are_no_value,
     test_a_several_word_column_name_is_a_mention_where_it_is_said,
     test_the_article_a_is_no_value,
+    test_a_value_compares_the_column_whose_words_introduce_it,
+    test_a_value_stated_once_is_compared_once,
     test_multiple_aggregates_share_a_typed_operand,
     test_repeated_count_paraphrase_is_one_aggregate,
     test_total_number_of_entities_is_a_scalar_count,

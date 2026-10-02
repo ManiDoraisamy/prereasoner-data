@@ -29,9 +29,12 @@ from engine.sql_ast import (
     ScalarSubquery,
     SelectItem,
     SelectQuery,
+    SetQuery,
     SQLType,
     Star,
+    SubquerySource,
     and_predicates,
+    comparable_value,
     contradictory,
     render_query,
     share_of,
@@ -340,6 +343,9 @@ class SQLSearcher:
         # The expansions read a conjunction of one column's values as either value or both
         # (engine/sql_constraints.py, engine/sql_recursive.py); the conjunction itself matches no row.
         pool = [candidate for candidate in pool if not contradictory(candidate.query)]
+        # A value the question states once is compared once: "concerts in year 2014" is no concert year and
+        # song release year of 2014 (Spider DEV, 2026-10-02: 10 readings compared one value on two columns).
+        pool = [candidate for candidate in pool if not _reads_a_value_twice(candidate.query, tokens)]
         # The tables the question names: their words together, and scored as a mention.
         named_here = {table for table in named_tables if table_scores.get(table, 0.0) >= 2.5}
         pool = _merge_candidates([], [self._simplified(candidate, named_here) for candidate in pool])
@@ -949,31 +955,24 @@ class SQLSearcher:
         numeric = {column.ref for column in self.schema.columns
                    if column.ref.type.numeric or column.ref.type == SQLType.DATE}
         spans += [(index, index + 1, numeric, False) for index, token in enumerate(tokens) if _NUMBER_RE.match(token)]
-        qualifiers: set[int] = set()
-        for start, end, columns, data_value in spans:
-            words = {word for column in columns for word in _column_link_words(column, True)}
-            before = start - 1
-            while before >= 0 and (tokens[before] in words or tokens[before] in _VALUE_BRIDGE_WORDS):
-                if tokens[before] in words:
-                    qualifiers.add(before)
-                before -= 1
-            after = end
-            while data_value and after < len(tokens) and tokens[after] in words:
-                qualifiers.add(after)
-                after += 1
-        return frozenset(qualifiers)
+        return frozenset(position for start, end, columns, data_value in spans
+                         for position in _introducers(tokens, start, end, columns, data_value))
 
     def _value_predicate_groups(self, tokens: tuple[str, ...], mentions: tuple[_Mention, ...],
                                 claimed: set[int] = frozenset(),
                                 question: str = "") -> list[list[tuple[tuple[Comparison, ...], float, str]]]:
         selected, occupied = self._value_matches(tokens, claimed, question)
         groups = []
-        for start, _, phrase, options in selected:
+        for start, end, phrase, options in selected:
             operator = "!=" if set(tokens[max(0, start - 3):start]) & {"not", "except", "excluding", "without"} else "="
+            # The column whose words introduce the value is the one it names: "left / L hand" is a hand,
+            # not a first name 'L' (Spider wta_1, 2026-10-02).
+            introduced = {column for column, _ in options if _introducers(tokens, start, end, {column}, True)}
             choices = []
-            for column, value in sorted(options, key=lambda item: (item[0].table, item[0].name))[:4]:
+            for column, value in sorted(options, key=lambda item: (item[0] not in introduced, item[0].table,
+                                                                   item[0].name))[:4]:
                 literal = Literal(value, column.type)
-                choices.append(((Comparison(column, operator, literal),), 5.0,
+                choices.append(((Comparison(column, operator, literal),), 5.5 if column in introduced else 5.0,
                                 f"value:{column.table}.{column.name}{operator}{phrase}"))
             groups.append(choices)
         groups.extend(self._categorical_initial_groups(tokens, mentions, occupied))
@@ -1482,6 +1481,72 @@ def _coordinated_modifiers(tokens: tuple[str, ...], head: int, modifiers: set[st
             found.append(index)
         index -= 1
     return found if len(found) > 1 else []
+
+
+def _reads_a_value_twice(query: Any, tokens: tuple[str, ...]) -> bool:
+    """Whether a WHERE of ``query``, in any of its SELECTs, compares a value the question states on
+    different columns in more of its AND-ed terms than the question states it. One term may compare it on
+    several columns ("the first or last name Smith"); a value the question does not state (a date bound,
+    a category's initial) is not counted."""
+    if isinstance(query, SetQuery):
+        return _reads_a_value_twice(query.left, tokens) or _reads_a_value_twice(query.right, tokens)
+    if not isinstance(query, SelectQuery):
+        return False
+    if isinstance(query.from_table, SubquerySource) and _reads_a_value_twice(query.from_table.query, tokens):
+        return True
+    readings: dict[Any, set[tuple[int, Any]]] = {}
+    for index, term in enumerate(_and_terms(query.where)):
+        for comparison in _comparisons(term):
+            if isinstance(comparison.right, Literal) and not isinstance(comparison.left, Literal):
+                readings.setdefault(comparable_value(comparison.right.value), set()).add((index, comparison.left))
+    for value, read in readings.items():
+        columns = {left for _, left in read}
+        if len(columns) > 1 and len({index for index, _ in read}) > 1:
+            stated = _times_stated(value, tokens)
+            if stated and len(columns) > stated:
+                return True
+    return False
+
+
+def _and_terms(predicate: Any) -> list[Any]:
+    if isinstance(predicate, BooleanExpr) and predicate.operator == "AND":
+        return [term for child in predicate.terms for term in _and_terms(child)]
+    return [] if predicate is None else [predicate]
+
+
+def _comparisons(predicate: Any) -> list[Comparison]:
+    if isinstance(predicate, BooleanExpr):
+        return [comparison for term in predicate.terms for comparison in _comparisons(term)]
+    return [predicate] if isinstance(predicate, Comparison) else []
+
+
+def _times_stated(value: Any, tokens: tuple[str, ...]) -> int:
+    """How many times the question states ``value``: a number as a number, a text as its words."""
+    if isinstance(value, float):
+        return sum(1 for token in tokens if _NUMBER_RE.match(token) and float(_number(token)) == value)
+    wanted = _tokens(str(value))
+    if not wanted:
+        return 0
+    return sum(1 for start in range(len(tokens) - len(wanted) + 1) if tokens[start:start + len(wanted)] == wanted)
+
+
+def _introducers(tokens: tuple[str, ...], start: int, end: int, columns: set[ColumnRef],
+                 data_value: bool) -> set[int]:
+    """The positions of the words of ``columns`` that introduce the value at ``start``-``end``: before it,
+    across bridge words ("in year 2014", "the state of Hawaii", "earnings above 300000"), or right after a
+    data value ("'Brig' type ships")."""
+    words = {word for column in columns for word in _column_link_words(column, True)}
+    found = set()
+    before = start - 1
+    while before >= 0 and (tokens[before] in words or tokens[before] in _VALUE_BRIDGE_WORDS):
+        if tokens[before] in words:
+            found.add(before)
+        before -= 1
+    after = end
+    while data_value and after < len(tokens) and tokens[after] in words:
+        found.add(after)
+        after += 1
+    return found
 
 
 def _quoted_positions(question: str) -> frozenset[int]:
