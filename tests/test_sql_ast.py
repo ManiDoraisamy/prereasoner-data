@@ -1771,6 +1771,12 @@ def test_month_and_dated_phrases_filter_the_date_column():
     for question in ("how many transfers may have been signed", "How many leads were submitted after August 10?"):
         candidate = best(question, [transfers if "transfers" in question else leads])
         assert "WHERE" not in candidate.sql, (question, candidate.sql)
+    # Without a date column a month is a value: "in may" filters a text month column.
+    contacts = {"name": "contacts", "columns": ["age", "job", "month", "balance"], "rows": [
+        [30, "admin", "may", 100], [40, "tech", "jun", 50], [35, "admin", "may", 70]]}
+    contacted = best("number of contacts reached in may", [contacts])
+    assert "\"contacts\".\"month\" = 'may'" in contacted.sql, contacted.sql
+    assert execute([contacts], contacted.sql) == [(2,)], contacted.sql
 
 
 def test_the_coverage_gate_reads_the_months_a_query_compares():

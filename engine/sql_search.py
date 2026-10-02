@@ -584,8 +584,10 @@ class SQLSearcher:
                            question: str = "") -> list[tuple[tuple, float, tuple[str, ...]]]:
         groups: list[list[tuple[tuple[Comparison, ...], float, str]]] = []
         # A calendar phrase claims its tokens: "after August 10, 2026" is one date, not the number 10
-        # and the year 2026, and "since 2026-08-06" is not the cell value 2026-08-06.
-        phrases = date_phrases(question, tokens)
+        # and the year 2026, and "since 2026-08-06" is not the cell value 2026-08-06. Without a date column
+        # to compare, "in May" stays a value of a text month column.
+        phrases = [phrase for phrase in date_phrases(question, tokens)
+                   if any(column.type == SQLType.DATE for column in self._date_targets(mentions, phrase.start))]
         claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
         groups.extend(self._value_predicate_groups(tokens, mentions, claimed))
         groups.extend(self._date_phrase_groups(phrases, mentions))
