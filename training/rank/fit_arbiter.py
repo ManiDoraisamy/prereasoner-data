@@ -135,7 +135,7 @@ def selected_index(record, arbiter):
     """Return the served candidate for one saved pool, using only serving-time fields."""
     candidates = record.get("candidates") or []
     required = {"proposed", "eligible", "executable", "grounded",
-                "calculation_satisfied", "money_total"}
+                "calculation_satisfied", "money_total", "date_satisfied"}
     if any(not required.issubset(candidate) for candidate in candidates):
         raise ValueError("pool lacks serving selection facts; regenerate labels before replay")
     rows = pool_rows(record)
@@ -151,7 +151,7 @@ def selected_index(record, arbiter):
     _, ranking = arbitrate(pool, frozenset(proposed), likelihoods, arbiter)
     return select_ranked_candidate(
         ranking, [c["calculation_satisfied"] for c in candidates],
-        [c["money_total"] for c in candidates])
+        [c["money_total"] for c in candidates], [c["date_satisfied"] for c in candidates])
 
 
 def replay(pools, arbiter):

@@ -201,7 +201,8 @@ def main():
                            "grounded": entry["grounded"],
                            "eligible": entry["eligible"],
                            "calculation_satisfied": entry["calculation_satisfied"],
-                           "money_total": entry["money_total"]}
+                           "money_total": entry["money_total"],
+                           "date_satisfied": entry["date_satisfied"]}
                 if "likelihood" in entry:
                     labeled["features"] = {**labeled["features"],
                                            "proposer:scored_logprob": entry["likelihood"],

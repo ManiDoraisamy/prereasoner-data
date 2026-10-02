@@ -32,7 +32,7 @@ from engine.sql_ast import (
 )
 from engine.numeric import parse_decimal
 from engine.sql_candidate import ScoredQuery
-from engine.sql_dates import date_phrases
+from engine.sql_dates import served_date_phrases
 from engine.sql_expansion import (
     implicit_sum_measures,
     measure_words_after,
@@ -587,8 +587,7 @@ class SQLSearcher:
         # A calendar phrase claims its tokens: "after August 10, 2026" is one date, not the number 10
         # and the year 2026, and "since 2026-08-06" is not the cell value 2026-08-06. Without a date column
         # to compare, "in May" stays a value of a text month column.
-        phrases = [phrase for phrase in date_phrases(question, tokens)
-                   if any(column.type == SQLType.DATE for column in self._date_targets(mentions, phrase.start))]
+        phrases = served_date_phrases(question, tokens, self.schema)
         claimed = {index for phrase in phrases for index in range(phrase.start, phrase.end)}
         groups.extend(self._value_predicate_groups(tokens, mentions, claimed))
         groups.extend(self._date_phrase_groups(phrases, mentions))

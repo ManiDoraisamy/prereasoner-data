@@ -3,13 +3,15 @@
 "How many transfers were signed in August?", "leads submitted after August 10, 2026" and "contracts
 signed before July 10, 2026" were planned without their date (2026-10-02): the search read no month
 name, and read "10" and "2026" as a number and a year. Each phrase here becomes typed comparisons on a
-date column (engine/sql_search.py), and the coverage gate (KnowledgeQuery._uncovered) reads from the
-same comparisons which month words a query realized.
+date column (engine/sql_search.py), the served selection prefers a query that realizes them
+(TableQuery.select_query), and the coverage gate (KnowledgeQuery._uncovered) reads from the same
+comparisons which month words a query realized.
 
 A phrase is a month with an optional day and year ("August", "August 2026", "August 10, 2026",
-"10 August 2026", "2026-08-10"), optionally after a cue: before, after, since, from, until, till,
-through, on, in, during. A month without a year compares the month of each date (DatePart); a dated
-phrase compares the date itself, so a timestamp later on the named day is still that day.
+"August 10th, 2026", "10 August 2026", "2026-08-10"), optionally after a cue: before, after, since,
+from, until, till, through, on, in, during; "between <date> and <date>" is one range. A month without a
+year compares the month of each date (DatePart); a dated phrase compares the date itself, so a timestamp
+later on the named day is still that day.
 """
 from __future__ import annotations
 
@@ -18,7 +20,16 @@ from datetime import date, timedelta
 import re
 from typing import Sequence
 
-from engine.sql_ast import ColumnRef, Comparison, DatePart, Literal, SQLType, month_of_date_sql
+from engine.sql_ast import (
+    BooleanExpr,
+    ColumnRef,
+    Comparison,
+    DatePart,
+    Literal,
+    SelectQuery,
+    SQLType,
+    month_of_date_sql,
+)
 
 MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6, "july": 7,
@@ -40,9 +51,11 @@ _CUES = {
     "on": ((">=", "start"), ("<", "end")),
     "in": ((">=", "start"), ("<", "end")),
     "during": ((">=", "start"), ("<", "end")),
+    "between": ((">=", "start"), ("<", "end")),
 }
 _WITHIN = (">=", "start"), ("<", "end")
 _ISO = re.compile(r"\b(\d{4})-(\d{1,2})-(\d{1,2})\b")
+_DAY = re.compile(r"(\d{1,2})(?:st|nd|rd|th)?")
 
 
 @dataclass(frozen=True)
@@ -53,6 +66,8 @@ class DatePhrase:
     month: int
     year: int | None = None
     day: int | None = None
+    # "between <date> and <date>": the second date, as (year, month, day), closes the range.
+    until: tuple[int, int, int | None] | None = None
 
     def comparisons(self, column: ColumnRef) -> tuple[Comparison, ...]:
         """The typed comparisons on ``column``, a date column, that keep the phrase's dates. A day
@@ -62,10 +77,12 @@ class DatePhrase:
         if self.year is None:
             return (Comparison(DatePart("month", column), "=", Literal(self.month, SQLType.INTEGER)),)
         first = date(self.year, self.month, self.day or 1)
-        if self.day is not None:
-            after = first + timedelta(days=1)
+        year, month, day = self.until or (self.year, self.month, self.day)
+        last = date(year, month, day or 1)
+        if day is not None:
+            after = last + timedelta(days=1)
         else:
-            after = date(self.year + self.month // 12, self.month % 12 + 1, 1)
+            after = date(year + month // 12, month % 12 + 1, 1)
         bounds = {"start": first.isoformat(), "end": after.isoformat()}
         return tuple(Comparison(column, operator, Literal(bounds[side], SQLType.DATE))
                      for operator, side in _CUES.get(self.cue, _WITHIN))
@@ -75,6 +92,11 @@ def _number(token: str, low: int, high: int) -> int | None:
     if re.fullmatch(r"\d{1,4}", token) and low <= int(token) <= high:
         return int(token)
     return None
+
+
+def _day(token: str) -> int | None:
+    match = _DAY.fullmatch(token)
+    return int(match.group(1)) if match and 1 <= int(match.group(1)) <= 31 else None
 
 
 def date_phrases(question: str, tokens: Sequence[str]) -> tuple[DatePhrase, ...]:
@@ -104,13 +126,13 @@ def date_phrases(question: str, tokens: Sequence[str]) -> tuple[DatePhrase, ...]
             continue
         start, end, year, day = index, index + 1, None, None
         following = tokens[index + 1:index + 3]
-        if following and (day := _number(following[0], 1, 31)) is not None and len(following[0]) <= 2:
+        if following and (day := _day(following[0])) is not None:
             year = _number(following[1], 1000, 9999) if len(following) > 1 else None
             # "August 10" names no year: the phrase is read, so "10" is no number, but filters nothing.
             end = index + 3 if year is not None else index + 2
         elif following and (year := _number(following[0], 1000, 9999)) is not None:
             day, end = None, index + 2
-            if index > 0 and (before := _number(tokens[index - 1], 1, 31)) is not None:
+            if index > 0 and (before := _day(tokens[index - 1])) is not None:
                 day, start = before, index - 1          # "10 August 2026"
         else:
             day = None
@@ -130,8 +152,63 @@ def date_phrases(question: str, tokens: Sequence[str]) -> tuple[DatePhrase, ...]
             except ValueError:
                 continue
         cue = tokens[start - 1] if start > 0 and tokens[start - 1] in _CUES else None
-        out.append(DatePhrase(start - 1 if cue else start, end, cue, month, year, day))
-    return tuple(out)
+        phrase = DatePhrase(start - 1 if cue else start, end, cue, month, year, day)
+        previous = out[-1] if out else None
+        if (previous is not None and previous.cue == "between" and previous.until is None
+                and cue is None and previous.end + 1 == start and tokens[previous.end] == "and"
+                and previous.year is not None and year is not None):
+            out[-1] = DatePhrase(previous.start, end, "between", previous.month, previous.year,
+                                 previous.day, (year, month, day))
+            continue
+        out.append(phrase)
+    # A "between" left without its second date is no range.
+    return tuple(phrase for phrase in out if phrase.cue != "between" or phrase.until is not None)
+
+
+def served_date_phrases(question: str, tokens: Sequence[str], schema) -> tuple[DatePhrase, ...]:
+    """The phrases a query over ``schema`` (a SchemaGraph) can realize: only where a date column takes
+    their comparisons, and a lone month that is a value of the data ("the first name April", a text
+    month column's "may") stays that value."""
+    if not any(column.ref.type == SQLType.DATE for column in schema.columns):
+        return ()
+    return tuple(phrase for phrase in date_phrases(question, tokens)
+                 if phrase.year is not None or phrase.day is not None
+                 or not any(schema.value_index.get(token) for token in tokens[phrase.start:phrase.end]
+                            if token in MONTHS))
+
+
+def _comparison_key(comparison: Comparison):
+    left = comparison.left
+    side = (("month",) + (left.operand.table, left.operand.name) if isinstance(left, DatePart)
+            else (left.table, left.name) if isinstance(left, ColumnRef) else None)
+    right = comparison.right
+    value = str(right.value) if isinstance(right, Literal) else None
+    return side, comparison.operator, value
+
+
+def _where_comparisons(predicate):
+    if isinstance(predicate, Comparison):
+        yield predicate
+    elif isinstance(predicate, BooleanExpr) and predicate.operator == "AND":
+        for term in predicate.terms:
+            yield from _where_comparisons(term)
+
+
+def realizes_dates(query, phrases: Sequence[DatePhrase]) -> bool:
+    """Whether ``query`` keeps the rows every phrase names: its WHERE holds each phrase's comparisons on
+    one date column, however a proposer typed the literal."""
+    if not phrases or not isinstance(query, SelectQuery):
+        return False
+    present = {_comparison_key(comparison) for comparison in _where_comparisons(query.where)}
+    columns = {comparison.left.operand if isinstance(comparison.left, DatePart) else comparison.left
+               for comparison in _where_comparisons(query.where)
+               if isinstance(comparison.left, (ColumnRef, DatePart))}
+    return all(
+        any((wanted := phrase.comparisons(column))
+            and all(_comparison_key(comparison) in present for comparison in wanted)
+            for column in columns)
+        for phrase in phrases
+    )
 
 
 def realized_month_words(question: str, sql: str) -> frozenset[str]:

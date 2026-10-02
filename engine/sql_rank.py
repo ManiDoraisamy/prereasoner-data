@@ -655,6 +655,7 @@ class PoolSelection:
     calculation_satisfied: tuple[bool, ...] = ()
     money_total: tuple[bool, ...] = ()
     proposer_abstention: str = ""
+    date_satisfied: tuple[bool, ...] = ()
 
     @property
     def candidate(self) -> ScoredQuery | None:
@@ -717,15 +718,20 @@ class PoolSelection:
 
 
 def select_ranked_candidate(ranking: Sequence[int], calculation_satisfied: Sequence[bool],
-                            money_total: Sequence[bool]) -> int | None:
+                            money_total: Sequence[bool],
+                            date_satisfied: Sequence[bool] = ()) -> int | None:
     """The shared post-ranking serving rule; inputs are gold-blind candidate facts.
 
-    Prefer a satisfied calculation, if any. A named money total then constrains
-    that choice, retaining it when compatible or taking the first ranked total.
-    Training replays these exact facts rather than copying this policy.
+    A query that keeps the dates the question names (engine/sql_dates.realizes_dates) is served
+    when any does: with the 7B's undated readings in the pool, "how many contracts were signed before
+    July 10, 2026" was served undated and declined (2026-10-02). Among those, prefer a satisfied
+    calculation, if any. A named money total then constrains that choice, retaining it when
+    compatible or taking the first ranked total. Training replays these exact facts rather than
+    copying this policy.
     """
     if not ranking:
         return None
+    ranking = [i for i in ranking if date_satisfied and date_satisfied[i]] or list(ranking)
     selected = next((i for i in ranking if calculation_satisfied[i]), ranking[0])
     totals = [i for i in ranking if money_total[i]]
     if totals and not money_total[selected]:

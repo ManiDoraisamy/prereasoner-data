@@ -7,6 +7,7 @@ from __future__ import annotations
 from collections import Counter
 import json
 import os
+import re
 from pathlib import Path
 import sqlite3
 import sys
@@ -687,7 +688,9 @@ def _hermetic_planner(proposer, arbiter=None):
                     columns.append({
                         "table": table["name"], "name": name, "idx": index, "struct": set(),
                         "affinity": "INTEGER" if numeric else "TEXT", "ace": [],
-                        "is_date": False, "qvec": np.zeros(2, dtype=np.float32), "values": values,
+                        "is_date": bool(values) and all(
+                            re.match(r"\d{4}-\d{2}-\d{2}", str(value)) for value in values),
+                        "qvec": np.zeros(2, dtype=np.float32), "values": values,
                     })
                     index += 1
             return columns, {}, {table["name"]: table for table in tables}
@@ -827,6 +830,27 @@ def test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose():
     again = _select(planner, "how many people are older than 30")
     assert again.candidate.sql == favored and proposer.decodes == decodes
     assert len(proposer.scored) == 1
+
+
+def test_select_query_serves_the_reading_that_keeps_the_named_date():
+    """Cloud product suite, 2026-10-02: with the 7B's undated reading ranked first, "How many
+    contracts were signed before July 10, 2026?" was served without its date and declined. The
+    served selection keeps to the readings that realize the date when one does."""
+    contracts = {"name": "contracts", "columns": ["contract", "value", "signed"], "rows": [
+        ["NDA", 5000, "2026-07-06"], ["License", 900000, "2026-07-05"], ["Lease", 30000, "2026-07-12"]]}
+    undated = 'SELECT COUNT(*) FROM "contracts"'
+    proposer = ScriptedProposer((undated,), likelihood=lambda sql: (-1.0, 8) if sql == undated
+                                else (-90.0, 8))
+    selection = _select(_hermetic_planner(proposer), "How many contracts were signed before July 10, 2026?",
+                        [contracts])
+    assert selection.pool[selection.ranking[0]].sql == undated, "the arbiter prefers the undated reading"
+    served = selection.candidate
+    assert "'2026-07-10'" in served.sql and selection.date_satisfied[selection.selected], served.sql
+    # Contrast: without a date in the question the arbiter's choice stands.
+    plain = _select(_hermetic_planner(ScriptedProposer((undated,), likelihood=lambda sql: (-1.0, 8)
+                                                       if sql == undated else (-90.0, 8))),
+                    "How many contracts are there?", [contracts])
+    assert plain.candidate.sql == undated and not any(plain.date_satisfied)
 
 
 def test_select_query_never_chooses_a_query_that_does_not_run():
@@ -1326,7 +1350,7 @@ def test_arbiter_labels_preserve_structural_origin_and_grounding():
                  "features": {"proposer:scored_logprob": 0.0, "proposer:scored_tokens": 1},
                  "strict": True, "proposed": True, "eligible": True,
                  "executable": True, "grounded": True,
-                 "calculation_satisfied": False, "money_total": False}
+                 "calculation_satisfied": False, "money_total": False, "date_satisfied": False}
     record = {"db_id": "fixture", "idx": 0, "candidates": [candidate]}
     row = pool_rows(record)[0]
     assert row[1][ARBITER_FEATURES.index("from_search")] == 0.0
@@ -1362,11 +1386,13 @@ def test_arbiter_pool_rows_keep_serving_eligibility_when_label_execution_fails()
         {"sql": "SELECT 1", "score": 0.0, "evidence": ["search:fixture"],
          "features": {"proposer:scored_logprob": -1.0, "proposer:scored_tokens": 1},
          "strict": False, "proposed": False, "eligible": True, "executable": True,
-         "grounded": True, "calculation_satisfied": False, "money_total": False},
+         "grounded": True, "calculation_satisfied": False, "money_total": False,
+         "date_satisfied": False},
         {"sql": "SELECT 2", "score": -5.0, "evidence": ["proposer:variant0"],
          "features": {"proposer:scored_logprob": -2.0, "proposer:scored_tokens": 1},
          "strict": True, "proposed": True, "eligible": True, "executable": True,
-         "grounded": True, "calculation_satisfied": False, "money_total": False},
+         "grounded": True, "calculation_satisfied": False, "money_total": False,
+         "date_satisfied": False},
     ]
     record = {"db_id": "fixture", "idx": 0, "candidates": candidates}
     old = _toy_arbiter(coef=(1.0, 0, 0, 0, 0, 0, 0, 0, 0))
@@ -1431,6 +1457,10 @@ def test_shared_ranking_rule_preserves_calculation_then_money_precedence():
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3) == 1
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (True, False, True)) == 2
     assert select_ranked_candidate((2, 1, 0), (False, True, False), (False, True, True)) == 1
+    # A query that keeps the named dates comes first; the calculation and money rules apply among them.
+    assert select_ranked_candidate((2, 1, 0), (False,) * 3, (False,) * 3, (True, False, False)) == 0
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (True, True, False)) == 1
+    assert select_ranked_candidate((2, 1, 0), (False, True, False), (False,) * 3, (False,) * 3) == 1
 
 def test_gold_import_maps_numeric_arithmetic_but_refuses_nonnumeric():
     """The proposer importer maps row/order arithmetic over numeric columns into BinaryExpr
@@ -1771,6 +1801,14 @@ def test_month_and_dated_phrases_filter_the_date_column():
     for question in ("how many transfers may have been signed", "How many leads were submitted after August 10?"):
         candidate = best(question, [transfers if "transfers" in question else leads])
         assert "WHERE" not in candidate.sql, (question, candidate.sql)
+    # Ordinal days and a "between" range read as dates; a month that is a value of the data stays it.
+    staff = {"name": "staff", "columns": ["first_name", "hired"], "rows": [
+        ["April", "2007-10-01"], ["Ben", "2008-03-04"], ["Cy", "2009-08-09"], ["April", "2010-01-01"]]}
+    between = best("How many staff were hired between November 5th, 2007 and July 5th, 2009?", [staff])
+    assert "'2007-11-05'" in between.sql and "'2009-07-06'" in between.sql, between.sql
+    assert execute([staff], between.sql) == [(1,)], between.sql
+    named = best("How many staff are named April?", [staff])
+    assert "'April'" in named.sql and "SUBSTR" not in named.sql, named.sql
     # Without a date column a month is a value: "in may" filters a text month column.
     contacts = {"name": "contacts", "columns": ["age", "job", "month", "balance"], "rows": [
         [30, "admin", "may", 100], [40, "tech", "jun", 50], [35, "admin", "may", 70]]}
@@ -3191,6 +3229,7 @@ TESTS = [
     test_xiyan_runtime_thread_override_is_recorded_and_bounded,
     test_shipped_arbiter_is_the_manifested_served_contract,
     test_select_query_pools_validated_proposals_and_lets_the_arbiter_choose,
+    test_select_query_serves_the_reading_that_keeps_the_named_date,
     test_select_query_never_chooses_a_query_that_does_not_run,
     test_literal_grounding_names_the_column_a_value_actually_occupies,
     test_select_query_never_serves_a_misgrounded_proposal,

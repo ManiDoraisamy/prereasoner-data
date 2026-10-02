@@ -471,8 +471,9 @@ class TableQuery:
            while another column does, or one that joins two columns the foreign keys keep apart
            (engine/sql_grounding.py).
         4. The proposer scores each eligible query's likelihood and the arbiter ranks them
-           (engine/sql_rank.py). A registered calculation intent (engine/calculations) takes the
-           best-ranked query that satisfies it, when one exists.
+           (engine/sql_rank.py). A date the question names (engine/sql_dates) keeps the ranking to
+           the queries that realize it, when one does; a registered calculation intent
+           (engine/calculations) takes the best-ranked query that satisfies it, when one exists.
         5. A money noun that names its table ("what's the sales in London") asks for that table's
            money total (engine/sql_expansion.money_total_columns): the best-ranked query that
            aggregates a money column is served when one exists; otherwise the ranking stands.
@@ -486,7 +487,9 @@ class TableQuery:
             raise RuntimeError("SQL selection models are not loaded - construct the planner through "
                                "engine.encoder_overlay (EncoderQuery / KnowledgeQuery)")
         from engine.calculations import select_calculation_candidate, detect_calculations
+        from engine.sql_dates import realizes_dates, served_date_phrases
         from engine.sql_expansion import aggregates_money_column, money_total_columns
+        from engine.sql_expansion import tokens as question_tokens
         from engine.sql_grounding import grounded_members
         from engine.sql_rank import PoolSelection, arbitrate, merge_proposals, select_ranked_candidate
         from engine.sql_schema import SchemaGraph
@@ -527,11 +530,14 @@ class TableQuery:
 
             for index in ranking:
                 money_total[index] = aggregates_money_column(pool[index].query, table, names)
-        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total)
+        phrases = served_date_phrases(question, question_tokens(question), graph)
+        date_satisfied = [realizes_dates(member.query, phrases) for member in pool]
+        selected = select_ranked_candidate(ranking, calculation_satisfied, money_total, date_satisfied)
         request_timing.count("pool", len(pool))
         return PoolSelection(tuple(pool), proposed, executable, grounded, tuple(likelihoods),
                              scores, ranking, selected, len(searched),
-                             tuple(calculation_satisfied), tuple(money_total), abstention)
+                             tuple(calculation_satisfied), tuple(money_total), abstention,
+                             tuple(date_satisfied))
 
     def _serve_ast(self, question, norm, fks, sch, tablemap):
         """Select the own-data query (``select_query``) and execute it through this executor."""

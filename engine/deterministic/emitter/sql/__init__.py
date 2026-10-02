@@ -552,5 +552,7 @@ def _literal(value: object) -> str:
     if isinstance(value, int):
         return str(value)
     if isinstance(value, date):
-        return "DATE '" + value.isoformat() + "'"
+        # An untyped ISO literal compares with a DATE column and with the TEXT column an upload stores its
+        # dates in alike; PostgreSQL has no TEXT < DATE ("contracts signed before July 10, 2026", 2026-10-02).
+        return "'" + value.isoformat() + "'"
     return "'" + str(value).replace("'", "''") + "'"
