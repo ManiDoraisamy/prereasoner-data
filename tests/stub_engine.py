@@ -79,6 +79,9 @@ def _answer(question: str) -> dict:
 # concurrent users, where a process-wide token would silently cross requests.
 AUTH_SEEN: list[str | None] = []
 REQUESTS: list[dict] = []
+# jobIds (None for a request without one) whose next /api/reason response is lost: the stub closes
+# the connection instead of answering, as a response lost between the services looks to the caller.
+LOSE_FIRST_RESPONSE: set[str | None] = set()
 
 
 class H(BaseHTTPRequestHandler):
@@ -108,6 +111,10 @@ class H(BaseHTTPRequestHandler):
             self._send(200, {"error": "bad json"}); return
         REQUESTS.append(req)
         path = self.path.rstrip("/")
+        if path in ("/api/reason", "/api/knowledge") and req.get("jobId") in LOSE_FIRST_RESPONSE:
+            LOSE_FIRST_RESPONSE.discard(req.get("jobId"))
+            self.close_connection = True
+            return
         if path in ("/api/reason", "/api/knowledge"):
             self._send(200, _answer(req.get("question", "")))
         elif path == "/api/dimension":

@@ -83,6 +83,7 @@ from engine.request_limits import (
     JSONBodyError,
     RequestGate,
     RequestLease,
+    ResponseReplay,
     SlidingWindowLimiter,
     allowed_origin,
     read_json_object,
@@ -132,6 +133,9 @@ MAX_GENERATE_ROWS = 250
 MAX_GENERATE_COLS = 32
 MAX_GENERATE_CHARS = 256 * 1024
 WORLD_RATE = SlidingWindowLimiter(limit=30, window_seconds=60)
+# A /api/reason or /api/knowledge request repeated with the jobId of one that already ran is
+# answered with that request's response (engine.request_limits.ResponseReplay).
+WORLD_REPLAY = ResponseReplay()
 DIM_RATE = SlidingWindowLimiter(limit=60, window_seconds=60)
 PAID_LOCAL_GATES = {
     "converse": RequestGate(requests=6, window_seconds=60, in_flight=4),
@@ -182,6 +186,9 @@ class H(BaseHTTPRequestHandler):
 
     def _send(self, code, body, ctype="application/json", retry_after=None):
         self._status = code                              # every exit path, so the timing line reports the outcome
+        replay_key, self._replay_key = getattr(self, "_replay_key", None), None
+        if replay_key is not None:                       # recorded BEFORE the write: the write is what can be lost
+            WORLD_REPLAY.finish(replay_key, (code, body, ctype, retry_after))
         b = body.encode("utf-8")
         self.send_response(code); self.send_header("Content-Type", ctype)
         self._cors()
@@ -660,6 +667,21 @@ class H(BaseHTTPRequestHandler):
             if not sub:
                 self._send(401, json.dumps({"error": "sign in required (no valid Google token)"}))
                 return
+            if req.get("jobId"):
+                # The chat service repeats a request whose response it lost, with the same jobId.
+                # The question runs once: a repeat gets the first request's response, waiting for
+                # it while it runs.
+                replay_key = (self.path.rstrip("/"), sub, req["jobId"])
+                waited = time.perf_counter()
+                owner, replayed = WORLD_REPLAY.claim(replay_key)
+                if not owner:
+                    request_timing.mark("replayed", time.perf_counter() - waited)
+                    if replayed is None:
+                        self._send(503, json.dumps({"error": "Engine is busy; retry shortly", "retryable": True}))
+                    else:
+                        self._send(*replayed)
+                    return
+                self._replay_key = replay_key
             allowed, retry_after = WORLD_RATE.allow(sub or self.client_address[0])
             if not allowed:
                 self._send(429, json.dumps({"error": "request rate limit exceeded"}), retry_after=retry_after)
@@ -912,6 +934,9 @@ class H(BaseHTTPRequestHandler):
             print(f"world request failed: {type(e).__name__} at {frames}", flush=True)
             self._send(500, json.dumps({"error": "internal server error"}))
         finally:
+            replay_key, self._replay_key = getattr(self, "_replay_key", None), None
+            if replay_key is not None:                   # ended without a response: the next request with the id runs
+                WORLD_REPLAY.release(replay_key)
             request_timing.emit("reason", status=getattr(self, "_status", None),
                                 py_fallback=getattr(self, "_py_fallback", None))
             request_timing.end(timing_token)

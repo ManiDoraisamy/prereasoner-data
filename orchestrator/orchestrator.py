@@ -118,7 +118,11 @@ CLAUDE_TOOLS = [
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "id": {"type": "string"},
+                                    "id": {"type": "string",
+                                           "description": "A readable snake_case name of what this "
+                                                          "leaf holds, such as top_customers. It names "
+                                                          "the sheets the user reads: never a letter or "
+                                                          "an abbreviation."},
                                     "question": {"type": "string"},
                                     "label": {"type": "string"},
                                 },
@@ -131,7 +135,11 @@ CLAUDE_TOOLS = [
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "id": {"type": "string"},
+                                    "id": {"type": "string",
+                                           "description": "A readable snake_case name of what this "
+                                                          "merge holds, such as candidate_pairs or "
+                                                          "never_bought. It names the sheets the user "
+                                                          "reads."},
                                     "op": {"type": "string", "enum": ["cross", "anti_join"]},
                                     "inputs": {
                                         "type": "array", "minItems": 2, "maxItems": 2,

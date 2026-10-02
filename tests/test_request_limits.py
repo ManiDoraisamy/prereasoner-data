@@ -9,6 +9,7 @@ from engine.request_budget import BudgetPolicy, PostgresRequestBudget
 from engine.request_limits import (
     JSONBodyError,
     RequestGate,
+    ResponseReplay,
     SlidingWindowLimiter,
     allowed_origin,
     parse_content_length,
@@ -504,6 +505,132 @@ def test_distributed_paid_budget_is_atomic_and_releases_lease():
     assert any("DELETE FROM chat.request_lease" in statement for statement, _ in released.statements)
 
 
+def test_a_repeated_request_id_is_answered_once_with_the_first_response():
+    """The guard behind a lost /api/reason response (Chrome gate, 2026-10-02): a repeat of a running
+    request waits for its response, a finished one is sent again, ids are per principal, a request
+    that ends without a response hands its id to the next caller, and finished entries expire and
+    stay bounded without ever dropping one that is still running."""
+    import threading
+    import time
+
+    now = [100.0]
+    replay = ResponseReplay(ttl_seconds=60, max_entries=2, wait_seconds=5, clock=lambda: now[0])
+    key = ("/api/reason", "sub-1", "turn_1")
+    answer = (200, '{"result": 1}', "application/json", None)
+    assert replay.claim(key) == (True, None)
+    waited = []
+    repeat = threading.Thread(target=lambda: waited.append(replay.claim(key)))
+    repeat.start()
+    time.sleep(0.05)
+    assert not waited, "a repeat waits while the first request runs"
+    replay.finish(key, answer)
+    repeat.join(5)
+    assert waited == [(False, answer)]
+    assert replay.claim(key) == (False, answer)
+    assert replay.claim(("/api/reason", "sub-2", "turn_1")) == (True, None), "ids are per principal"
+    unanswered = ("/api/reason", "sub-1", "turn_2")
+    assert replay.claim(unanswered) == (True, None)
+    replay.release(unanswered)
+    assert replay.claim(unanswered) == (True, None), "an id released without a response runs again"
+    impatient = ResponseReplay(wait_seconds=0.05)
+    assert impatient.claim(key) == (True, None)
+    assert impatient.claim(key) == (False, None), "a repeat stops waiting after wait_seconds"
+    now[0] += 61
+    assert replay.claim(key) == (True, None), "a finished response expires"
+    bounded = ResponseReplay(max_entries=1, wait_seconds=0.05)
+    running, first, second = ("r", "s", "running"), ("r", "s", "first"), ("r", "s", "second")
+    for name in (running, first, second):
+        assert bounded.claim(name) == (True, None)
+    bounded.finish(first, answer)
+    bounded.finish(second, answer)
+    assert bounded.claim(first) == (True, None), "the oldest finished response is dropped first"
+    assert bounded.claim(second) == (False, answer)
+    assert bounded.claim(running) == (False, None), "a request still running is never dropped"
+    sized = ResponseReplay(max_bytes=50, wait_seconds=0.05)
+    for name, body in ((first, "x" * 20), (second, "y" * 20)):
+        assert sized.claim(name) == (True, None)
+        sized.finish(name, (200, body, "application/json", None))
+    assert sized.claim(first) == (True, None), "the kept responses are bounded by their size"
+    assert sized.claim(second) == (False, (200, "y" * 20, "application/json", None))
+
+
+def test_a_lost_reason_response_is_sent_again_and_the_question_runs_once():
+    """Chrome gate, 2026-10-02 (complex-category-gaps, second question): the engine answered in 65 s
+    and its response never reached the chat service, so the reply asked the user to send the
+    question again. The chat service repeats the request with its jobId, and the engine answers the
+    repeat with the response it produced, waiting while the question still runs, instead of
+    running the question a second time behind the model lock."""
+    import json
+    import socket
+    import threading
+    import time
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from engine import server
+
+    served, proceed = [], threading.Event()
+
+    class Model:
+        def serve(self, tables, question, conversation, as_of, **_kwargs):
+            served.append(question)
+            proceed.wait(5)
+            return {"question": question, "result": {"columns": ["runs"], "rows": [[len(served)]]},
+                    "error": None}
+
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), server.H)
+    httpd.handle_error = lambda *_args: None          # the lost response's write fails, as it should
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    host, port = httpd.server_address[:2]
+
+    def body(job):
+        return json.dumps({"tables": [{"name": "orders", "data": "id,amount\n1,2\n"}],
+                           "question": "total amount", "jobId": job}).encode()
+
+    def post(job):
+        request = urllib.request.Request(
+            f"http://{host}:{port}/api/reason", data=body(job), method="POST",
+            headers={"Authorization": "Bearer token", "Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, json.loads(response.read())["result"]["rows"]
+
+    principal = {"value": ("sub-1", "uid-1")}
+    try:
+        with (
+            patch.object(server, "_verify_principal", lambda _token: principal["value"]),
+            patch.object(server, "resolve_conversation", lambda *_args: "c_" + "0" * 32),
+            patch.object(server.master, "relevant_tables", lambda *_args: {"tables": [], "warnings": []}),
+            patch.object(server, "emitter", lambda *_args: (lambda *_a, **_k: None)),
+            patch.object(server, "MODEL", Model()),
+            patch.object(server, "WORLD_REPLAY", ResponseReplay(wait_seconds=10)),
+        ):
+            # The first request's caller is gone before the answer: its response is lost.
+            payload = body("turn_1")
+            lost = socket.create_connection((host, port))
+            lost.sendall(b"POST /api/reason HTTP/1.1\r\nHost: engine\r\nAuthorization: Bearer token\r\n"
+                         b"Content-Type: application/json\r\nContent-Length: "
+                         + str(len(payload)).encode() + b"\r\n\r\n" + payload)
+            deadline = time.time() + 5
+            while not served and time.time() < deadline:
+                time.sleep(0.01)
+            lost.close()
+            # The repeat arrives while the question still runs, and gets its response.
+            repeated = []
+            repeat = threading.Thread(target=lambda: repeated.append(post("turn_1")))
+            repeat.start()
+            time.sleep(0.2)
+            proceed.set()
+            repeat.join(10)
+            assert repeated == [(200, [[1]])], repeated
+            assert served == ["total amount"], f"the question ran {len(served)} times"
+            assert post("turn_1") == (200, [[1]]), "a finished response is sent again"
+            principal["value"] = ("sub-2", "uid-2")
+            assert post("turn_1") == (200, [[2]]), "another principal's jobId is its own question"
+            assert len(served) == 2
+    finally:
+        httpd.shutdown()
+
+
 TESTS = [
     test_sliding_window_limiter_is_bounded_and_expires,
     test_server_500_logs_where_it_failed_without_user_data,
@@ -523,6 +650,8 @@ TESTS = [
     test_json_body_guard_rejects_bad_lengths_payloads_and_shapes,
     test_shared_request_gate_releases_capacity_and_limits_rate,
     test_distributed_paid_budget_is_atomic_and_releases_lease,
+    test_a_repeated_request_id_is_answered_once_with_the_first_response,
+    test_a_lost_reason_response_is_sent_again_and_the_question_runs_once,
 ]
 
 

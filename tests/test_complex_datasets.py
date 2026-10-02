@@ -181,10 +181,10 @@ def test_a_decomposition_cannot_invent_a_cutoff():
              "question": "List each customer name and the product name they have bought."},
         ],
         "merges": [
-            {"id": "m1", "op": "cross", "inputs": ["paris_customers", "products"]},
-            {"id": "m2", "op": "anti_join", "inputs": ["m1", "purchases"]},
+            {"id": "candidate_pairs", "op": "cross", "inputs": ["paris_customers", "products"]},
+            {"id": "not_purchased", "op": "anti_join", "inputs": ["candidate_pairs", "purchases"]},
         ],
-        "output": "m2",
+        "output": "not_purchased",
         "grain": "one Paris customer-product pair not purchased",
     }
     planner = EncoderQuery()

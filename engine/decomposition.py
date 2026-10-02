@@ -949,6 +949,14 @@ def _identifier(value: object, label: str) -> str:
         raise DecompositionError(f"{label} must be a short identifier")
     if len(value) > 40:
         raise DecompositionError(f"{label} is too long")
+    if len(value) < 3:
+        # A node id names the sheets and sections the user reads: leaves named "c", "p" and "ev"
+        # became the sheets "c combined" and "ev result" and the column "p_sum" (Chrome gate,
+        # 2026-10-02). The model renames it within its correction budget.
+        raise DecompositionError(
+            f"{label} {value!r} names the sheets the user reads: use a readable snake_case name "
+            "of what it holds, such as top_customers"
+        )
     return value
 
 

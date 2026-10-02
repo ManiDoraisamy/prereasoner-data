@@ -190,7 +190,10 @@ replay. The legacy Wikidata schema migration is still pending.
 2. `engine.request_validation` validates both engine and orchestrator request shapes. It bounds questions, history,
    table count, per-table size, and aggregate size, then converts display names into one 34-byte canonical table
    identifier. Names that collide after canonicalization are rejected before parsing or paid inference.
-3. `engine.server` verifies the Firebase principal and parses the validated CSV payloads. Browser XLSX parsing is
+3. `engine.server` verifies the Firebase principal and parses the validated CSV payloads. A request repeated with
+   the jobId of one the same principal already sent is answered with that request's response, waiting while it
+   still runs (`engine.request_limits.ResponseReplay`); the chat's engine client repeats a request once, with its
+   jobId, only when the response is lost in transport. Browser XLSX parsing is
    isolated in `web/public/lib/xlsx-worker.js`, which uses a vendored SheetJS build with compressed, expanded,
    row, column, worksheet, and time limits. Host grids (the Excel add-in's and the Google Sheets add-on's cells)
    are written as the workbook those cells would export to and take the same worker, limits and layout rule, so a

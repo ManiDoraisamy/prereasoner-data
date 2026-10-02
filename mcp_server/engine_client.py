@@ -10,11 +10,15 @@ compute (the engine has no top-level `status` field).
 """
 from __future__ import annotations
 
+import asyncio
 import os
+import time
 from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
+
+from engine import request_timing
 
 # Read at call time so tests / the orchestrator can set these before a call (mirrors engine/config.py style).
 DEFAULT_TIMEOUT = float(os.environ.get("ENGINE_HTTP_TIMEOUT", "180"))  # cold Cloud Run can take minutes
@@ -160,9 +164,24 @@ async def call_query(question: str, tables: list[dict], job_id: str | None = Non
         body["use"] = use
     try:
         async with _http(client, timeout) as http:
-            r = await http.post(f"{base}/api/reason", json=body,
-                                headers=_headers(token, request_id, dataset_attestation),
-                                timeout=timeout or DEFAULT_TIMEOUT)
+            for attempt in (1, 2):
+                started = time.perf_counter()
+                try:
+                    r = await http.post(f"{base}/api/reason", json=body,
+                                        headers=_headers(token, request_id, dataset_attestation),
+                                        timeout=timeout or DEFAULT_TIMEOUT)
+                    break
+                except (httpx.ReadTimeout, httpx.PoolTimeout):
+                    raise                            # the engine is slow, not unreachable: asking again waits again
+                except httpx.TransportError as e:
+                    # A response lost between the services ended a chat turn with "send the question
+                    # again" although the engine had answered (Chrome gate, 2026-10-02). The engine
+                    # answers a repeated jobId with the first request's response
+                    # (engine.request_limits.ResponseReplay), so asking once more never runs it twice.
+                    request_timing.mark(f"engine_transport_{type(e).__name__}", time.perf_counter() - started)
+                    if attempt == 2 or not job_id:
+                        raise
+                    await asyncio.sleep(1.0)
     except httpx.HTTPError as e:
         return {"status": "error", "error": f"could not reach the Prereasoner engine at {base}: {e}"}
     # The engine returns 200 for most in-band outcomes; 401/500 carry a top-level {"error": ...}.

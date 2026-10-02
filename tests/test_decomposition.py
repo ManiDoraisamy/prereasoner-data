@@ -82,18 +82,62 @@ def test_validation_is_closed_and_idempotent_at_transport_boundaries():
     _reject(lambda: validate_decomposition(proposal))
 
 
+def test_a_node_id_is_a_readable_name_because_it_names_the_sheets():
+    """Chrome gate, 2026-10-02 (complex-category-gaps, "only use the top 2 customers"): the proposal
+    named its leaves "c", "p" and "ev", and the user read the sheets "c combined", "c top results"
+    and "ev result" and the result column "p_sum". A node id names the sheets, so a letter or two is
+    rejected with the reason, which the model corrects within its proposal budget."""
+    proposal = {
+        "subquestions": [
+            {"id": "c", "question": "top 2 customer names by total spend"},
+            {"id": "p", "question": "top 3 category names by total revenue"},
+            {"id": "ev", "question": "customer name and category name for each purchase"},
+        ],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["c", "p"]},
+            {"id": "never_bought", "op": "anti_join", "inputs": ["pairs", "ev"]},
+        ],
+        "output": "never_bought",
+        "grain": "one customer-category pair",
+    }
+    try:
+        validate_decomposition(proposal)
+    except DecompositionError as exc:
+        assert "'c' names the sheets the user reads" in str(exc), exc
+        assert "readable snake_case name" in str(exc), exc
+    else:
+        raise AssertionError("a one-letter node id was accepted")
+    renamed = {
+        **proposal,
+        "subquestions": [
+            {"id": "top_customers", "question": "top 2 customer names by total spend"},
+            {"id": "top_categories", "question": "top 3 category names by total revenue"},
+            {"id": "purchases", "question": "customer name and category name for each purchase"},
+        ],
+        "merges": [
+            {"id": "pairs", "op": "cross", "inputs": ["top_customers", "top_categories"]},
+            {"id": "never_bought", "op": "anti_join", "inputs": ["pairs", "purchases"]},
+        ],
+    }
+    assert validate_decomposition(renamed)["subquestions"][0]["label"] == "top customers"
+    for short in ("m1", "q0"):
+        merge = {**renamed, "merges": [{**renamed["merges"][0], "id": short},
+                                       {**renamed["merges"][1], "inputs": [short, "purchases"]}]}
+        _reject(lambda merge=merge: validate_decomposition(merge))
+
+
 def test_size_limit_counts_utf8_bytes_not_characters():
     proposal = {
         "subquestions": [
-            {"id": "q" + str(i), "question": "😀" * 600, "label": "😀" * 80}
+            {"id": "leaf_" + str(i), "question": "😀" * 600, "label": "😀" * 80}
             for i in range(4)
         ],
         "merges": [
-            {"id": "m0", "op": "anti_join", "inputs": ["q0", "q1"], "label": "😀" * 80},
-            {"id": "m1", "op": "anti_join", "inputs": ["q2", "q3"], "label": "😀" * 80},
-            {"id": "m2", "op": "anti_join", "inputs": ["m0", "m1"], "label": "😀" * 80},
+            {"id": "merge_0", "op": "anti_join", "inputs": ["leaf_0", "leaf_1"], "label": "😀" * 80},
+            {"id": "merge_1", "op": "anti_join", "inputs": ["leaf_2", "leaf_3"], "label": "😀" * 80},
+            {"id": "merge_2", "op": "anti_join", "inputs": ["merge_0", "merge_1"], "label": "😀" * 80},
         ],
-        "output": "m2",
+        "output": "merge_2",
         "grain": "😀" * 120,
     }
     _reject(lambda: validate_decomposition(proposal))
@@ -663,6 +707,7 @@ def test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain():
 TESTS = [
     test_validation_is_closed_and_idempotent_at_transport_boundaries,
     test_size_limit_counts_utf8_bytes_not_characters,
+    test_a_node_id_is_a_readable_name_because_it_names_the_sheets,
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain,

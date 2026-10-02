@@ -122,6 +122,83 @@ class RequestGate:
         return RequestLease(self.semaphore.release), 0, None
 
 
+class ResponseReplay:
+    """One response per request id, so a caller that lost a response can ask for it again.
+
+    The chat service waits a minute or more for a question, and a response lost between the two
+    services ended a turn with "could you send the question again?" although the engine had
+    answered it (Chrome gate, 2026-10-02). The caller repeats the request with the same id: a
+    finished request's response is sent again, and a request still running is waited for, so the
+    question runs once. Entries are keyed by the caller's verified principal and expire after
+    `ttl_seconds`; a request that ends without a response releases its id to the next caller. The
+    finished responses kept are bounded by count and by the size of their bodies.
+    """
+
+    def __init__(self, *, ttl_seconds: float = 300.0, max_entries: int = 64,
+                 max_bytes: int = 64 * 1024 * 1024, wait_seconds: float = 270.0,
+                 clock: Callable[[], float] = time.monotonic):
+        self.ttl_seconds = float(ttl_seconds)
+        self.max_entries = int(max_entries)
+        self.max_bytes = int(max_bytes)
+        self.wait_seconds = float(wait_seconds)
+        self._clock = clock
+        self._entries: dict = {}                  # key -> [done Event, response or None, finished at]
+        self._lock = threading.Lock()
+
+    def claim(self, key) -> tuple[bool, object]:
+        """(True, None) when the caller owns `key` and must `finish` or `release` it; (False,
+        response) when an earlier request with `key` produced `response`; (False, None) when that
+        request is still running after `wait_seconds`."""
+        deadline = self._clock() + self.wait_seconds
+        while True:
+            with self._lock:
+                self._expire()
+                entry = self._entries.get(key)
+                if entry is None:
+                    self._entries[key] = [threading.Event(), None, None]
+                    return True, None
+            # The entry itself is read once it is set, so a response evicted after it finished is
+            # still the one returned.
+            if not entry[0].wait(max(0.0, deadline - self._clock())):
+                return False, None
+            if entry[2] is not None:
+                return False, entry[1]
+            # Released without a response: the next pass claims the key.
+
+    def finish(self, key, response) -> None:
+        """Record the owner's response and wake every caller waiting for it."""
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None or entry[0].is_set():
+                return
+            entry[1], entry[2] = response, self._clock()
+            entry[0].set()
+            finished = sorted((item[2], name) for name, item in self._entries.items() if item[0].is_set())
+            kept = sum(self._size(self._entries[name][1]) for _, name in finished)
+            while finished and (len(finished) > self.max_entries or kept > self.max_bytes):
+                _, name = finished.pop(0)
+                kept -= self._size(self._entries.pop(name)[1])
+
+    def release(self, key) -> None:
+        """Give up an owned key that produced no response; the next caller with it runs it."""
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None or entry[0].is_set():
+                return
+            del self._entries[key]
+            entry[0].set()
+
+    @staticmethod
+    def _size(response) -> int:
+        return sum(len(part) for part in response if isinstance(part, (str, bytes))) if response else 0
+
+    def _expire(self) -> None:
+        cutoff = self._clock() - self.ttl_seconds
+        for name in [name for name, item in self._entries.items()
+                     if item[0].is_set() and item[2] is not None and item[2] <= cutoff]:
+            del self._entries[name]
+
+
 def allowed_origin(origin: str | None, configured: str) -> str | None:
     """Return the exact allowed origin; never turn an allowlist into ``*``."""
     if not origin:

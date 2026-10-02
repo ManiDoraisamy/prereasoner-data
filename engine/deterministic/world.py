@@ -287,6 +287,11 @@ def lower_world_query(
             )
             operand = BinaryValue(operand, "*", ColumnValue(*rate))
             function = "SUM"
+            if world_rate and world_rate.get("target"):
+                # Named for its currency, as the registered conversion names a converted total
+                # ("total_usd"): "which city has the highest total amount in US dollars?" headed its
+                # total "sum" (Chrome gate, 2026-10-02).
+                alias = f"total_{world_rate['target'].lower()}"
     elif dimension is not None:
         if order is not None:
             raise UnsupportedDeterministicPlan("a ranked world projection needs a SUM or AVG measure")

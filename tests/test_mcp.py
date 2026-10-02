@@ -21,7 +21,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from mcp_server import engine_client
-from tests.stub_engine import AUTH_SEEN, H, REQUESTS
+from tests.stub_engine import AUTH_SEEN, H, LOSE_FIRST_RESPONSE, REQUESTS
 
 P = 0
 F = 0
@@ -180,6 +180,25 @@ def test_integration(base):
     bad = asyncio.run(engine_client.call_query("x", tables, "jobD",
                                                base_url="http://127.0.0.1:9", timeout=2))
     ok(bad["status"] == "error", "unreachable engine -> status 'error' (no crash)")
+
+    # Chrome gate, 2026-10-02 (complex-category-gaps): the engine answered in 65 s, its response was
+    # lost on the way to the chat service, and the reply asked the user to send the question again.
+    # The client asks once more with the same jobId; the engine answers a repeated jobId with the
+    # first request's response (engine.request_limits.ResponseReplay), so nothing runs twice.
+    LOSE_FIRST_RESPONSE.add("jobLost")
+    before = len(REQUESTS)
+    lost = asyncio.run(engine_client.call_query("total amount in France", tables, "jobLost", base_url=base))
+    ok(lost["status"] == "answered" and lost["answer"]["rows"] == [[270]],
+       f"a lost response is asked for again and answers (got {lost.get('status')}: {lost.get('error')})")
+    ok([request.get("jobId") for request in REQUESTS[before:]] == ["jobLost", "jobLost"],
+       "the repeat carries the first request's jobId, so the engine can answer it without a second run")
+    # Without a jobId the engine cannot tell a repeat from a new question, so nothing is repeated.
+    LOSE_FIRST_RESPONSE.add(None)
+    before = len(REQUESTS)
+    unnamed = asyncio.run(engine_client.call_query("total amount in France", tables, None, base_url=base))
+    ok(unnamed["status"] == "error" and len(REQUESTS) - before == 1,
+       "a request without a jobId is never sent twice")
+    LOSE_FIRST_RESPONSE.discard(None)
 
     # AUTH IS PER CALL, NOT PER PROCESS. The orchestrator now calls this coroutine in-process while
     # serving concurrent users, so an explicit token must win over the process-wide env fallback —

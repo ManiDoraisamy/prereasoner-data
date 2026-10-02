@@ -1319,3 +1319,39 @@ total amount comes from Paris?" used to be offered "total unit price".
 every COUNT with a world column as "how many countries". A count whose world word follows "by", "per" or "each" now
 takes the projection that counts the rows holding each value (Germany 3, Portugal 2, …); "how many countries are
 the customers in" still counts the distinct countries. `tests.test_world` checks both on the same sheet.
+
+## A response lost between the chat and the engine is asked for again; the question runs once (2026-10-02)
+
+In the Chrome gate on revision 00134 the category-gaps follow-up was answered by the engine in 65 s (HTTP 200,
+64 KB, revision 2 committed, the rows streamed to the workbook), yet the reply read "Sorry, I ran into a hiccup
+pulling that up just now. Could you send the question again in a moment?". Replayed 46 times on claude-sonnet-5 with
+the engine's answer, the presentation never said that; replayed with the connection dropped before the response, it
+said "something went wrong on my end trying to pull that up. Could you send the question again in a moment?" in 5
+of 5. The model was shown a failure, and the engine's request log holds a 200 with the whole 64 KB body, so the
+response was lost between the services. The chat logged nothing about it.
+
+The engine client now repeats a request once when the transport fails, with the same jobId, after one second. It
+does not repeat a read timeout (the engine is slow, and asking again waits again) or any HTTP answer, so a busy
+engine is still reported as busy (2026-09-30). The engine answers a repeated jobId from the response the first
+request produced (`engine.request_limits.ResponseReplay`): it claims the id for the verified principal right after
+authentication, before a conversation is minted or dataset ops are appended, records the response before writing
+it, waits while the first request still runs, and keeps finished responses for five minutes, at most 64 of them
+and 64 MB. The question runs once, and the 2026-09-30 reason not to resend (a second conversation and ops appended
+twice) does not arise. A repeat whose first request ended without a response runs as a new request. The browser's
+own re-drive of a direct question already reused its jobId, and it now waits for the first answer instead of
+running the question again. The timing lines now name a lost response: `engine_transport_<error>_ms` on the chat
+side and `replayed_ms` on the engine side.
+
+## A decomposition node id is a readable name (2026-10-02)
+
+The node ids a decomposition proposes name the sheets, sections and merged columns the user reads. For "only use
+the top 2 customers" the model named its leaves "c", "p" and "ev", and the workbook showed "c combined", "c top
+results" and "ev result" and a result column "p_sum". The tool schema now says each id is a readable snake_case
+name of what the node holds, and validation rejects an id shorter than three characters with that reason, which the
+model corrects within its proposal budget like any other rejection.
+
+## A converted total is named for its currency (2026-10-02)
+
+The registered conversion names a converted total `total_usd`, and the totals the world owner groups or ranks
+(2026-10-01) were headed `sum`: "which city has the highest total amount in US dollars?" showed `city | sum`. The
+world lowering now names a total converted at the knowledgebase rate `total_<currency>`.

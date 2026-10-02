@@ -2328,7 +2328,8 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
             joins=[{"left_table": "orders", "left_col": "city", "right_table": "city", "right_col": "qid"}],
             bridge_name="orders connected to knowledgebase", route_table="orders", route_column="city",
             meaning_filter=None, own_filters=[],
-            world_rate={"fact": "orders", "ccy_col": "currency", "date_col": None, "rate_col": "rate_to_usd"},
+            world_rate={"fact": "orders", "ccy_col": "currency", "date_col": None, "rate_col": "rate_to_usd",
+                        "target": "USD"},
             as_of="2026-10-01", aggregate=("SUM", "orders", "amount"), calculation=None, conversion=None,
             reference_columns={
                 "city": [("qid", SQLType.TEXT, False), ("country", SQLType.TEXT, False)],
@@ -2364,10 +2365,14 @@ def test_a_converted_total_is_grouped_or_ranked_by_the_column_the_question_names
                 labels=lambda entities: {qid: names[qid] for qid in entities if qid in names},
             ).run(connection, mode="verify", estimated_rows=len(rows))
         assert result.mode.value == "verify"                  # both programs ran and agreed
+        named.extend(tuple(row) for row in result.output_rows())
         return [tuple(row.values()) for row in result.output_rows()]
 
     # Converted: Paris 125, Lyon 100, London 100, Austin 120; France 225.
+    named = []
     assert run(dimension=("orders", "city"), order="DESC") == [("Paris", 125)]
+    # The total is named for its currency like the registered conversion's "total_usd", not "sum".
+    assert named == [("city", "total_usd")], named
     assert sorted(run(dimension=("orders", "city"))) == [
         ("Austin", 120), ("London", 100), ("Lyon", 100), ("Paris", 125)]
     assert sorted(run(dimension=("city", "country"))) == [
