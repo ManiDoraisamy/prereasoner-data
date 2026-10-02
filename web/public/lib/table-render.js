@@ -1,5 +1,4 @@
-// table-render.js — the shared "table in a bubble" renderer (the .bubble/.rtab markup used by
-// reason.html and knowledge.html for inputs, resolution slides, streamed views and the result).
+// table-render.js — the "table in a bubble" renderer (the .bubble/.rtab markup) used by chatui.html.
 // CLASSIC script; requires lib/shared.js (esc) to be loaded first.
 
 // tableBubble(cols, rows, label, opts)

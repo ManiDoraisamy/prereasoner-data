@@ -42,15 +42,14 @@ Connection params are env-driven (`KB_PG_HOST` default `localhost`, plus `_PORT`
 ### `training/calibrate/` — calibration + validation gates
 `calibrate_route.py`, `calibrate_dims.py`, `validate_data.py`, `validate_route.py`.
 
-### `training/world/` — offline world-DB build helpers
-`fetch_properties.py`, `sync_wikidata_world.py`, `mirror_world_schema.py`,
-`sync_world_types.py`, `unify_words_qid.py`. (These overlap with `db/sync/`; the world DB is
-normally built from `db/sync/`.) The qid-keyed entity tables are built by
-`db/sync/build_wikipedia.py`, which owns that step outright.
+### World database
+The world DB is built by `db/sync/` (its own copy under `training/world/` was removed on
+2026-10-02). The qid-keyed entity tables are built by `db/sync/build_wikipedia.py`.
 
 ### `training/tools/`
-`pipeline.py` (orchestrates the reproduction loop transactionally), `runpod_api.py` (RunPod pod
-driver; pod name/key/paths are genericized).
+`runpod_api.py` (RunPod pod driver; pod name/key/paths are genericized) and
+`install_dependencies.py`. The gen20 reproduction loop `pipeline.py`, which copied training outputs
+into `engine/data/` outside the promotion path, was removed on 2026-10-02.
 
 ### Artifact names (must stay consistent with engine/)
 `encoder.pt` (the readout state_dict) + `encoder_meta.pt` (`{alloc, cfg}`) are the shipped encoder;
@@ -58,16 +57,17 @@ driver; pod name/key/paths are genericized).
 `multitask`/`sql_base` checkpoints (the warm-start chain) and `route_eval.json`. Internal iteration
 numbers are written `genN` in prose (README explains).
 
-## Pipeline order (from the tools/pipeline.py reproduction loop + README)
+## Pipeline order (the historical gen20 reproduction loop)
 
-1. **World DB** (`world/`): fetch_properties → sync_wikidata_world / mirror_world_schema → `db/sync/build_wikipedia.py` → sync_world_types → unify_words_qid.
+1. **World DB**: built by `db/sync/` (`build_wikipedia.py` and the type sync); the gen20 loop used a `training/world/` copy of those helpers, removed on 2026-10-02.
 2. **Discovery** (`corpus/`): discover_csv_types → cluster_columns → split_for_rename → (external LLM rename) → cluster_coherence.
 3. **Taxonomy** (`taxonomy/`): reconcile_taxonomy → rollup_taxonomy → build_alloc (audit: coverage_list).
 4. **Training corpus** (`corpus/`): build_from_entity (reads the capped entity-instances table; run ONCE — its query has no ORDER BY, so a re-run desyncs the shipped units). Earlier-generation corpus: build_review / build_corpus / fetch_type_instances (inputs to train_taxonomy).
 5. **Encoder training** (`train/`, GPU/RunPod): train_multitask → train_unified → train_taxonomy (produces the `qwen_lora` adapter).
 6. **Readout** (`anchor/`): reanchor (produces `encoder.pt`) → anchor_head.
-7. **Calibration + gates** (`calibrate/`): calibrate_route, calibrate_dims, validate_data, validate_route — orchestrated transactionally by `tools/pipeline.py`.
-8. **Packaging**: copy `training/data` artifacts → `engine/data/`.
+7. **Calibration + gates** (`calibrate/`): calibrate_route, calibrate_dims, validate_data, validate_route.
+8. **Packaging**: today only `training/props/promote.py` and `training/schema_org/promote.py` install
+   artifacts into `engine/data/`.
 
 ## Is train_multitask still required?
 
@@ -77,8 +77,8 @@ numbers are written `genN` in prose (README explains).
   RelBlock from `train_multitask`'s checkpoint. `train_taxonomy` in turn warm-starts from `train_unified`'s
   `qwen_lora` + checkpoint and saves the shipped `qwen_lora` / readout. So `train_multitask` is a live link in
   the shipped encoder's warm-start chain.
-- The practical reproduction loop (`tools/pipeline.py`) treats full encoder training as **legacy**: it starts
-  from the already-trained `qwen_lora` and only re-runs
+- The practical gen20 reproduction loop treated full encoder training as **legacy**: it started
+  from the already-trained `qwen_lora` and only re-ran
   `build_from_entity → anchor → reanchor → calibrate → validate`. `train_taxonomy` has a hard guard that exits
   unless the historical bootstrap artifacts exist.
 - Residual caveat: `train_multitask` itself warm-starts from an even earlier SQL-base checkpoint and consumes
@@ -102,5 +102,4 @@ numbers are written `genN` in prose (README explains).
   calibrate_route / calibrate_dims / validate_route calibrate against the *served* readout by construction.
   Keep it reconciled with `engine/router.py` (risk: drift between the two).
 - **Artifact-name coupling:** the `{alloc, cfg}` companion to `encoder.pt` is named `encoder_meta.pt`; if the
-  engine loader ever expects a different name, align the engine or rename in `anchor/reanchor.py` +
-  `tools/pipeline.py`.
+  engine loader ever expects a different name, align the engine or rename in `anchor/reanchor.py`.

@@ -113,7 +113,8 @@ Test ID: `CE-LOCAL-001`
 
 3. Open `http://localhost:8090/` and repeat the same default-fixture checks: `orders` is present,
    the question is `total amount in France in US dollars`, **Ask (↑)** is enabled, and the result
-   sheet is rendered without an error. Confirm `/config` reports local test auth and that the
+   sheet is rendered without an error (`node tests/community_launch_smoke.js http://localhost:8090`
+   runs these checks). Confirm `/config` reports local test auth and that the
    browser request reaches local `POST /chat`; the engine is available at `http://localhost:8080`.
 4. Confirm the local chat container serves the canonical mounted `web/public` directory. Change a
    harmless static label in a disposable working copy, reload, and verify the mounted UI changes

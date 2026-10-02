@@ -760,6 +760,7 @@ TESTS = [
     test_size_limit_counts_utf8_bytes_not_characters,
     test_a_node_id_is_a_readable_name_because_it_names_the_sheets,
     test_merge_keys_follow_dimensions_through_projection_not_aliases_or_measures,
+    test_merge_key_alias_can_follow_only_a_complete_direct_foreign_key,
     test_anti_join_evidence_must_preserve_the_complete_left_grain,
     test_anti_join_evidence_takes_the_first_reading_that_keeps_the_left_grain,
     test_long_leaf_names_are_unique_postgres_identifiers_with_the_root_slug,

@@ -64,8 +64,6 @@ infra/$plan
 node_modules/
 test-results/
 playwright-report/
-# Playwright's raw recordings from docs/marketplace/render-demo-video.js; the script copies the final cut out.
-docs/marketplace/.video-tmp/
 
 # OS
 Thumbs.db

@@ -4,7 +4,7 @@ Routes:
   POST /chat        {message, tables, history} + optional Bearer  -> {reply, traces, history}
   GET  /healthz     liveness
   ANY  /api/**      proxied to the engine (ENGINE_BASE_URL) — pre-warm pings, direct engine calls
-  GET  /...         static files from web/public (the chat UI); / -> chat.html
+  GET  /...         static files from web/public (the chat UI); / -> index.html
 
 In production Firebase Hosting serves the static UI and rewrites /chat + /api to the respective Cloud Run
 services (docs/MCP.md); this single-origin server is the local-dev equivalent so the whole
@@ -218,7 +218,7 @@ class H(BaseHTTPRequestHandler):
 
     # ---------- static ----------
     def _static(self, path):
-        # "/" is the real pitch home (web/public/index.html) — the chat lives at /chat.html.
+        # "/" is the home page and workbook (web/public/index.html), which also runs the chat.
         rel = "index.html" if path in ("/", "") else path.lstrip("/")
         f = (WEB_ROOT / rel).resolve()
         if not f.suffix and not f.is_file():

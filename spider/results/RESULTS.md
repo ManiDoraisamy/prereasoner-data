@@ -1,5 +1,9 @@
 # Spider Results
 
+Dated entries come newest first. Each records a run at the commit it names; the scripts, options, and models an older
+entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
+been removed, and that commit holds the code that ran.
+
 ## The engine alone at `0624a24`, fresh whole_db DEV run (2026-10-02)
 
 The same serving-faithful contract as the runs below (`spider/probe/full_eval.py --config whole_db`,

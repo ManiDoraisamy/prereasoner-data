@@ -158,7 +158,6 @@ The bulk-population pipeline. Run order and per-script detail are in
 | `sync_entity.py` | standalone offline Wikidata per-type/entity sync for maintainers; never imported by serving |
 | `mirror_schema.py` / `build_wikipedia.py` | optionally pre-create qid-keyed Wikidata tables before an explicit offline population run |
 | `unify_words_qid.py` | migration/health-check (sets `resolver_type`; `sync_types.py` already does this on fresh builds) |
-| `archive_conversation.py` | serializes/restores a conversation's data schema to/from GCS (pg_dump→gzip→GCS) |
 | `data/taxonomy.csv` | 42 accepted taxonomy leaves |
 | `data/p279_cache.json` | P279 chain cache ⇒ `sync_types.py` needs no Wikidata API on the first run |
 

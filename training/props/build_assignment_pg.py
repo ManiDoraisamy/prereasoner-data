@@ -24,7 +24,7 @@ def short(u): return u.rstrip("/").split("/")[-1]
 
 def main():
     P2S = {short(r["wd"]): short(r["s"]) for r in csv.DictReader(open(os.path.join(HERE, "bridge_prop.csv")))}
-    cn = psycopg2.connect(host=os.environ.get("WORLD_PG_HOST", "34.123.19.176"), dbname="world", user="postgres",
+    cn = psycopg2.connect(host=os.environ["WORLD_PG_HOST"], dbname="world", user="postgres",
                           password=os.environ["WORLD_PG_PASSWORD"], connect_timeout=25)
     cur = cn.cursor()
     cur.execute("""SELECT et.type_qid, t.label, count(*) c FROM capped.entity_type et JOIN capped.type t ON t.qid=et.type_qid

@@ -33,7 +33,6 @@ the modules, the env-var contract, and the data files the serving path opens.
 | `router.py` | `Router` — schema.org-property superposition-decode column typing (see docs/TRAINING.md); device from `DEVICE`. |
 | `trace.py` | RTDB streaming. `RTDB_URL` is OPTIONAL — unset ⇒ `emitter()` is a no-op and `ensure_app()` initializes firebase-admin without a databaseURL (auth still works). |
 | `bridge.py` | `Bridge` + the shared `STOP` predicate stopwords. |
-| `graph_walk.py` | `build_from_units`, `edges_from_meta`. |
 | `fk_edges.py` | `edges()`; `N_EDGE`, `fam_dims_map`. |
 | `encoder_model.py` | `RelationalModel` (the relational-content readout; state_dict-loaded). |
 | `relations.py` | `relate`, `discover_fks`, `dedup`. |
@@ -79,10 +78,9 @@ The engine is a proper package run from the repo root (no `sys.path` hacks).
 
 The serving path opens: `qwen_lora/` (PEFT adapter for the Qwen base), `encoder.pt`
 (the relational-content readout state_dict) + `encoder_meta.pt` (`{"alloc", "cfg"}`),
-`alloc.json`, `families.json` + `props_thr.json` (the property-family router — see
-docs/TRAINING.md), `taxonomy.csv`, `anchor_assignment.npz`, `assignment.csv`,
-`dim_thresholds.json`, `route_thresholds.json`, `primitives.npz`, and
-`word_{city,country,state,element}.json`. The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
+`taxonomy.csv`, `anchor_assignment.npz`, `dim_thresholds.json`, `primitives.npz`, and the
+`word_*.json` world-table metadata. `alloc.json`, `families.json`, and `props_thr.json` are training
+outputs kept beside the bundle; no `engine/` module reads them (see engine/data/README.md). The `*.pt`, `*.npz`, and `qwen_lora/` weights are gitignored (a fresh clone
 has none) — the entrypoint gate reports missing weights at startup (see
 `infra/README.md`).
 

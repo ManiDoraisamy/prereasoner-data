@@ -65,7 +65,7 @@ Never create an unowned training pod or train directly into `engine/data/`.
 | `props/` | Shared encoder lineage and historical property-router pipeline |
 | `tools/` | Bounded remote execution and reproducible dependency installation |
 | `lib/` | Encoder and graph components retained by the shared representation |
-| `train/`, `corpus/`, `taxonomy/`, `anchor/`, `calibrate/`, `world/` | Historical gen20 warm-start lineage; not a second serving path |
+| `train/`, `corpus/`, `taxonomy/`, `anchor/`, `calibrate/` | Historical gen20 warm-start lineage; not a second serving path |
 
 The historical directories are retained because they produced the shared encoder inputs. Their old
 `genN` names and taxonomy procedures do not describe the active Schema.org class model. Maintainer

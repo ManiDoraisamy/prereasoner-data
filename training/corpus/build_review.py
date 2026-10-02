@@ -12,7 +12,7 @@ the real Wikidata P279 (subclass-of) hierarchy. So every named dim is an actual 
                      leaf via knowledgebase."words" / the discovery cache (Wikidata P31); a header -> leaf via a lexical alias.
   inference.csv    — the same rows + dim columns left EMPTY (to be filled by the model probe) + Accuracy, R2, PASS.
 
-  $env:KB_PG_PASSWORD=(gcloud secrets versions access latest --secret=prereasoner-kb-pg-password --project prereasoner-inference)
+  $env:KB_PG_PASSWORD=(gcloud secrets versions access latest --secret=<kb-password-secret> --project <PROJECT_ID>)
   $env:PYTHONUTF8=1; python -m training.corpus.build_review
 """
 from __future__ import annotations

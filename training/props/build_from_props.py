@@ -87,7 +87,7 @@ def main():
           "taxon": ("Q16521", "taxon", {"taxon_rank": "taxonRank", "taxon_name": "taxonName",
                                         "parent_taxon": "parentTaxon"})}
     try:
-        cn = psycopg2.connect(host=os.environ.get("KB_PG_HOST", "34.123.19.176"), dbname="world", user="postgres",
+        cn = psycopg2.connect(host=os.environ["KB_PG_HOST"], dbname="world", user="postgres",
                               password=os.environ["KB_PG_PASSWORD"], sslmode="require", connect_timeout=25)
         cur = cn.cursor()
         by_type.pop(("taxon", "Q16521"), None)     # drop the bio-less pg taxon -> replace with the bio-carrying rows
@@ -105,7 +105,7 @@ def main():
         cn.close()
         print(f"added person({sum(1 for k in by_type if k[0]=='person')}) + taxon-bio from knowledgebase")
     except Exception as e:
-        print("KB person/taxon pull SKIPPED (set KB_PG_PASSWORD):", str(e)[:80])
+        print("KB person/taxon pull SKIPPED (set KB_PG_HOST and KB_PG_PASSWORD):", str(e)[:80])
 
     def blank():
         row = {d: 0 for d in DIMS}

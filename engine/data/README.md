@@ -31,8 +31,6 @@ A local-only manifest intentionally refuses fresh-clone download. To retrain fro
 | `alloc.json` | 10 KB | The dim allocation as JSON (same content as `encoder_meta.pt["alloc"]`). No `engine/` code reads this file; serving reads the allocation from `encoder_meta.pt`. | yes |
 | `anchor_assignment.npz` | 667 KB | Per-dim Youden-J firing thresholds from the anchor head (`dims`, `thr` arrays). Used by `engine.encoder_overlay.load_encoder` and `engine.dimension`. | no (gitignored, `*.npz`) |
 | `dim_thresholds.json` | 2 KB | Threshold OVERRIDES calibrated on the trained model for the /api/dimension readout. | yes |
-| `route_thresholds.json` | 44 B | Per-leaf firing gates for world column routing (calibrated, recall-favoring). Not read by serving; written and read by `training/calibrate/` and `training/lib/router.py` (training/history). | yes |
-| `assignment.csv` | 3.7 MB | The training-token table. Not read by serving; read by `training/` corpus, calibration and family builders (training/history). | yes |
 | `families.json` | 6 KB | Wikidata type QID -> Schema.org family map on the router side, written by `training/props/build_families.py`. No `engine/` module reads it. | yes |
 | `props_thr.json` | 2 KB | Calibrated property thresholds for the unified encoder, written by `training/props/calibrate_props.py` and installed by `python -m training.props.promote`. No `engine/` module reads it. | yes |
 | `word_exchange_rate.json` | 1 KB | World word-table metadata for the ECB `exchange_rate` table; loaded with the other `word_*.json` files by `engine.knowledge_tables` and `engine.resolve_base`. | yes |

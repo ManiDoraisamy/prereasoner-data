@@ -56,6 +56,7 @@ SOURCE_SUITE_ALLOWLIST = (
     "spider/README.md",
     "spider/results/RESULTS.md",
     "world_eval/run.py",
+    "world_eval/cases.py",
     "README.md",
     ".gitignore",
     "CONTRIBUTING.md",

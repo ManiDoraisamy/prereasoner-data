@@ -103,8 +103,7 @@ npm run test:browser
 `tests/workbook_reference.test.js` evaluates the production classic script in a minimal VM and verifies reference
 row compaction, numeric zero preservation, dirty/provenance snapshot state, successful autosave, and surfaced save
 errors. The Playwright release journey uses a real XLSX upload and covers sign-in, answer rendering, provenance,
-SQL trace, follow-up, and deletion against a deterministic local API fixture. `tests/regression.js` remains the
-larger signed-in browser regression against a live `/api/reason` endpoint.
+SQL trace, follow-up, and deletion against a deterministic local API fixture.
 
 ## Deployment
 

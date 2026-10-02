@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -357,12 +358,10 @@ def test_bootstrap_records_failure_and_rejects_privileged_serving_role():
         bootstrap_module._mark = original_mark
 
 
-def test_seed_import_rebuilds_typed_qid_projections_before_granting_access(monkeypatch, tmp_path):
+def test_seed_import_rebuilds_typed_qid_projections_before_granting_access():
     from db.sync import community_seed_import as seed_import
 
     events = []
-    seed_path = tmp_path / "community.dump"
-    seed_path.write_bytes(b"fixture")
 
     class Cursor:
         def __enter__(self):
@@ -384,21 +383,28 @@ def test_seed_import_rebuilds_typed_qid_projections_before_granting_access(monke
         def rollback(self):
             events.append(("rollback", None))
 
-    monkeypatch.setattr(seed_import, "_initialize_database", lambda connection: None)
-    monkeypatch.setattr(seed_import, "_ready", lambda connection: False)
-    monkeypatch.setattr(seed_import, "_mark", lambda connection, status, error=None: events.append(
-        ("mark", status)
-    ))
-    monkeypatch.setattr(seed_import, "_download", lambda *args: str(seed_path))
-    monkeypatch.setattr(seed_import, "_restore", lambda path: events.append(("restore", path)))
-    monkeypatch.setattr(seed_import.subprocess, "run", lambda command, check: events.append(
-        ("run", tuple(command))
-    ))
-    monkeypatch.setattr(seed_import, "_grant_serving_access", lambda *args: events.append(("grant", None)))
-
-    assert seed_import.import_seed(
-        Connection(), "serving", frozenset(), "https://example.invalid/seed.dump", "a" * 64,
-    )
+    with tempfile.TemporaryDirectory() as tmp:
+        seed_path = Path(tmp) / "community.dump"
+        seed_path.write_bytes(b"fixture")
+        patches = {
+            (seed_import, "_initialize_database"): lambda connection: None,
+            (seed_import, "_ready"): lambda connection: False,
+            (seed_import, "_mark"): lambda connection, status, error=None: events.append(("mark", status)),
+            (seed_import, "_download"): lambda *args: str(seed_path),
+            (seed_import, "_restore"): lambda path: events.append(("restore", path)),
+            (seed_import.subprocess, "run"): lambda command, check: events.append(("run", tuple(command))),
+            (seed_import, "_grant_serving_access"): lambda *args: events.append(("grant", None)),
+        }
+        originals = {key: getattr(*key) for key in patches}
+        try:
+            for (owner, name), value in patches.items():
+                setattr(owner, name, value)
+            assert seed_import.import_seed(
+                Connection(), "serving", frozenset(), "https://example.invalid/seed.dump", "a" * 64,
+            )
+        finally:
+            for (owner, name), value in originals.items():
+                setattr(owner, name, value)
     commands = [event[1] for event in events if event[0] == "run"]
     assert commands == [
         (sys.executable, "-m", "db.sync.app_migrations"),
@@ -798,6 +804,7 @@ TESTS = [
     test_bootstrap_builds_every_table_the_maintenance_catalog_promises,
     test_bootstrap_replays_and_abstains_after_ready_version,
     test_bootstrap_records_failure_and_rejects_privileged_serving_role,
+    test_seed_import_rebuilds_typed_qid_projections_before_granting_access,
     test_public_deployer_has_isolated_state_and_cost_safe_defaults,
     test_release_smoke_rejects_a_non_reasoning_or_wrong_numeric_answer,
     test_release_smoke_checks_current_chat_migration,
