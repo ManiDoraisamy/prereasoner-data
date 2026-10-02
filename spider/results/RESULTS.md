@@ -4,6 +4,39 @@ Dated entries come newest first. Each records a run at the commit it names; the 
 entry names (the 7B SQL proposer, the arbiter, `training/rank/`, `--selection arbiter`) may since have
 been removed, and that commit holds the code that ran.
 
+## The engine alone at `60a55a3`, fresh whole_db DEV run (2026-10-02)
+
+The same serving-faithful contract as the runs below (`spider/probe/full_eval.py --config whole_db`,
+`served` selection, SQL backend, row cap 5,000, the Gemini fallback off), from a clean checkout of
+`60a55a3` (`worktree_dirty=false`, tag `main-60a55a3`), the commit the customer-fix release serves. It adds
+the commits from `0624a24` to `60a55a3`; the ones that change own-data selection are the plural rule
+(`1c5eac6`), the typed-search fixes `a9d6e1e`, `e736771`, `2574519`, `e321bab`, `82ad6b8`, `89223b2` and
+`60a55a3`, and the coverage gate's reading of a measure named in other words (`7604226`).
+
+| Difficulty | n | Answered | Strict | Lenient | Scalar |
+|---|---:|---:|---:|---:|---:|
+| easy | 248 | 248 | 161 | 179 | 130/173 |
+| medium | 446 | 440 | 214 | 254 | 72/101 |
+| hard | 174 | 172 | 70 | 107 | 55/77 |
+| extra | 166 | 165 | 52 | 63 | 29/57 |
+| **all** | **1,034** | **1,025** | **497 (48.1%)** | **603 (58.3%)** | **286/408 (70.1%)** |
+
+Against `0624a24` (458):
+
+| | strict | lenient |
+|---|---:|---:|
+| win | 40 | 36 |
+| loss | 1 | 2 |
+| both correct | 457 | 567 |
+| both wrong | 536 | 429 |
+
+The strict wins by difficulty: easy 10, medium 20, hard 6, extra 4. The one strict loss (idx 461, `wta_1`,
+"Find the year that has the most number of matches.") now ranks years by the `match_num` column instead of
+counting matches per year. Nine questions have no candidate that runs and grounds (nine on `0624a24`). No
+pool-oracle run was made at this commit; the last one (`4679bed`) is below. Prediction seconds: median 1.23,
+p90 2.63, p95 3.03, max 6.89. Output:
+`%LOCALAPPDATA%/Temp/prereasoner-no-sql-model-20261002/full_eval_main-60a55a3.json`.
+
 ## The engine alone at `0624a24`, fresh whole_db DEV run (2026-10-02)
 
 The same serving-faithful contract as the runs below (`spider/probe/full_eval.py --config whole_db`,

@@ -163,7 +163,7 @@ off, its default, no model in the loop writes SQL.
 **What this costs.** Earlier designs pooled a local SQL-writing model with the search and scored
 higher on Spider than the search alone; those runs are history in `spider/results/RESULTS.md`.
 Removing that model trades recall for answers whose every step the engine builds: the engine alone
-scores 458/1,034 strict on Spider DEV, against 866 with a 7B SQL-writing model, and the search already
+scores 497/1,034 strict on Spider DEV, against 866 with a 7B SQL-writing model, and the search already
 pools a correct query for 544 questions (`spider/results/RESULTS.md`, 2026-10-02).
 
 **Versus post-hoc probing / SAEs.** The standard interpretability move trains a *separate*
