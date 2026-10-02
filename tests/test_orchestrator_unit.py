@@ -1022,7 +1022,14 @@ def test_an_analysis_is_named_for_its_measure_not_its_filter():
             ("treatment_agreement_count", "how many Treatment Agreement documents", intake, "document_count"),
             # Contrasts: a value the question does not name, and a measure that is not a value, stay.
             ("paris_orders", "how many orders are there?", purchases, "paris_orders"),
-            ("total_amount", "total amount in Paris", purchases, "total_amount")):
+            ("total_amount", "total amount in Paris", purchases, "total_amount"),
+            # Chrome gate, 2026-10-02: a number the question states is a threshold or a cutoff, and goes
+            # with the comparison before it; a number the question does not state stays.
+            ("deliveries_over_3kg", "How many deliveries weigh more than 3 kg?", purchases, "deliveries"),
+            ("top_3_customers_by_spend", "top 3 customers by total spend", purchases,
+             "top_customers_by_spend"),
+            ("revenue_2025", "total revenue in 2025", purchases, "revenue"),
+            ("q3_revenue", "total revenue for the year", purchases, "q3_revenue")):
         assert orchestrator._named_for_its_result(
             {"action": "create", "slug": slug}, message, tables)["slug"] == sent, slug
     existing = {"action": "modify", "slug": "intake_consent_count", "analysis_id": "a_" + "6" * 32}

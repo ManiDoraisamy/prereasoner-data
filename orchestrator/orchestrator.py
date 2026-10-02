@@ -356,6 +356,11 @@ def _recalculation_target(user_message: str, catalog: list[dict[str, Any]],
 _NAME_CONNECTORS = frozenset({
     "a", "an", "and", "by", "for", "from", "in", "of", "on", "or", "per", "the", "to", "with",
 })
+# A comparison before a number the question states ("deliveries over 3kg") belongs to that threshold.
+_COMPARISON_NAME_WORDS = frozenset({
+    "above", "after", "before", "below", "between", "exceeding", "fewer", "greater", "least", "less",
+    "more", "most", "over", "since", "than", "under", "until",
+})
 # Words that cannot be a name alone: "count" says nothing about what is counted.
 _GENERIC_NAME_WORDS = frozenset({
     "average", "avg", "count", "highest", "lowest", "max", "maximum", "mean", "min", "minimum",
@@ -404,6 +409,8 @@ def _named_for_its_result(spec: dict[str, Any], user_message: str = "",
     agreement count" (Chrome gate, 2026-10-01). The prompt says to leave filter values out, and the
     model kept them in 12 of 12 names on replay. A word of a cell value the question names is
     removed; a name left with only "count" or "total" takes that value's column ("document count").
+    A number the question states is a threshold, a cutoff or a date, and goes with the comparison
+    before it: "deliveries over 3kg" (Chrome gate, 2026-10-02) would head a "more than 5 kg" answer.
 
     The engine cuts a longer name mid-word and adds a hash, which became the workbook's heading:
     "top customers products never bo c9272891" (Chrome pass, 2026-09-30). The tool schema states
@@ -414,14 +421,19 @@ def _named_for_its_result(spec: dict[str, Any], user_message: str = "",
     if spec.get("action") != "create" or not isinstance(slug, str):
         return spec
     words = [word for word in re.split(r"[^A-Za-z0-9]+", slug) if word]
+    asked = set(_question_words(user_message))
+    stated = {index for index, word in enumerate(words) if re.search(r"\d", word)
+              and (word.casefold() in asked or set(re.findall(r"\d+", word)) & asked)}
     named = _named_values(user_message, tables or [])
     filters = {word for value, _column in named for word in value}
-    kept = [word for word in words if word.casefold() not in filters]
+    kept = [word for index, word in enumerate(words)
+            if index not in stated and word.casefold() not in filters
+            and not (index + 1 in stated and word.casefold() in _COMPARISON_NAME_WORDS)]
     if kept and kept != words:
-        if all(word.casefold() in _GENERIC_NAME_WORDS | _NAME_CONNECTORS for word in kept):
+        if named and all(word.casefold() in _GENERIC_NAME_WORDS | _NAME_CONNECTORS for word in kept):
             column = [word for word in re.split(r"[^A-Za-z0-9]+", named[0][1].casefold()) if word]
             kept = column + [word for word in kept if word.casefold() not in _NAME_CONNECTORS]
-        while len(kept) > 1 and kept[-1].casefold() in _NAME_CONNECTORS:
+        while len(kept) > 1 and kept[-1].casefold() in _NAME_CONNECTORS | _COMPARISON_NAME_WORDS:
             kept.pop()
         words = kept
     if len("_".join(words)) <= MAX_ANALYSIS_SLUG_BYTES:

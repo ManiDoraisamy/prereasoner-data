@@ -1355,3 +1355,10 @@ model corrects within its proposal budget like any other rejection.
 The registered conversion names a converted total `total_usd`, and the totals the world owner groups or ranks
 (2026-10-01) were headed `sum`: "which city has the highest total amount in US dollars?" showed `city | sum`. The
 world lowering now names a total converted at the knowledgebase rate `total_<currency>`.
+
+## A number the question states is not part of an analysis name (2026-10-02)
+
+The name a new analysis takes already drops the cell values the question names (2026-10-01). The gate's shipping
+question "How many deliveries weigh more than 3 kg?" created "deliveries over 3kg", which would head a later "more
+than 5 kg" answer. A word of the proposed name that holds a number the question states is a threshold, a cutoff or a
+date, and is dropped with the comparison before it: "deliveries", "top customers by spend", "revenue".
