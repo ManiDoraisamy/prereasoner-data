@@ -595,6 +595,7 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
         SOURCE_SUITE_ALLOWLIST,
         SOURCE_SYNC_ALLOWLIST,
         chat_engine_sources,
+        target_allowlist,
     )
 
     source = _text("deploy/gcp/build_context.py")
@@ -606,6 +607,20 @@ def test_cloud_build_context_is_git_archive_plus_manifested_weights():
     assert not {"training", "tests", "spider", "world_eval", "infra"} & set(SOURCE_ALLOWLIST)
     assert {"tests", "training", "web", "docs", ".github"} <= set(SOURCE_SUITE_ALLOWLIST)
     assert "spider" not in SOURCE_SUITE_ALLOWLIST
+    assert {
+        "deploy/gcp/run_product_suite.sh",
+        "deploy/gcp/run_hermetic_suite.sh",
+        "tests",
+        "web",
+    } <= set(target_allowlist("engine"))
+    assert target_allowlist("engine") == SOURCE_SUITE_ALLOWLIST
+    assert target_allowlist("chat") == SOURCE_CHAT_ALLOWLIST
+    try:
+        target_allowlist("unknown")
+    except ValueError as exc:
+        assert "unknown build target" in str(exc)
+    else:
+        raise AssertionError("unknown build target was accepted")
     assert {
         "Dockerfile.orchestrator",
         "cloudbuild.orchestrator.yaml",
@@ -1055,6 +1070,7 @@ def test_class_metrics_separate_evidence_coverage_from_accuracy():
 
 def test_cpu_suite_timeouts_are_bounded_and_overridable():
     import os
+
     from tests.run_all import suite_timeout_seconds
     with patch.dict(os.environ, {}, clear=True):
         assert suite_timeout_seconds("tests.test_sql_ast") == 900

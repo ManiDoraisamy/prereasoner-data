@@ -962,7 +962,16 @@ def spelled_names(question_tokens: tuple[str, ...], schema: Any) -> frozenset[in
     """The positions where the question spells a several-word column's name, its words together: "the first
     and last name" holds no value 'Last', and "the avg. monthly searches" names the column Avg. monthly
     searches, not an average of it."""
-    phrases = {name_tokens(column.ref.name) for column in schema.columns}
+    phrases = set()
+    for column in schema.columns:
+        phrase = name_tokens(column.ref.name)
+        phrases.add(phrase)
+        # Spreadsheet headers commonly abbreviate "average" as "Avg.". Treat those
+        # spellings as the same column mention so "sum of average monthly searches"
+        # does not also interpret "average" as a second aggregate operation.
+        for index, token in enumerate(phrase):
+            if token in {"avg", "average"}:
+                phrases.add((*phrase[:index], "average" if token == "avg" else "avg", *phrase[index + 1:]))
     return frozenset(index for words in phrases if len(words) > 1
                      for start in range(len(question_tokens) - len(words) + 1)
                      if question_tokens[start:start + len(words)] == words

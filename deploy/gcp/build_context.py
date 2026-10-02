@@ -14,6 +14,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+from engine.artifact_provenance import (
+    load_weights_manifest,
+    validate_weight_bundle,
+)
+
 SOURCE_ALLOWLIST = (
     ".dockerignore",
     ".gcloudignore",
@@ -132,11 +137,26 @@ SOURCE_HOSTING_ALLOWLIST = (
     "web",
 )
 
-from engine.artifact_provenance import (  # noqa: E402
-    load_weights_manifest,
-    validate_weight_bundle,
-)
 
+def target_allowlist(target: str) -> tuple[str, ...]:
+    """Return the immutable upload inventory required by a build target.
+
+    The engine Cloud Build also invokes the live product suite, which overlays this
+    source tree into the image. Keep its inputs in the build workspace while the
+    Dockerfile still copies only its declared runtime files into the image.
+    """
+    allowlists = {
+        "engine": SOURCE_SUITE_ALLOWLIST,
+        "release": SOURCE_SUITE_ALLOWLIST,
+        "suite": SOURCE_SUITE_ALLOWLIST,
+        "chat": SOURCE_CHAT_ALLOWLIST,
+        "sync": SOURCE_SYNC_ALLOWLIST,
+        "hosting": SOURCE_HOSTING_ALLOWLIST,
+    }
+    try:
+        return allowlists[target]
+    except KeyError as exc:
+        raise ValueError(f"unknown build target: {target}") from exc
 
 def _git(*args: str) -> str:
     return subprocess.check_output(("git", "-C", str(ROOT), *args), text=True).strip()
@@ -152,20 +172,10 @@ def require_clean_head() -> str:
 
 def create_context(output: Path, target: str = "engine") -> tuple[str, str]:
     commit = require_clean_head()
-    allowlists = {
-        "engine": SOURCE_ALLOWLIST,
-        "release": SOURCE_SUITE_ALLOWLIST,
-        "suite": SOURCE_SUITE_ALLOWLIST,
-        "chat": SOURCE_CHAT_ALLOWLIST,
-        "sync": SOURCE_SYNC_ALLOWLIST,
-        "hosting": SOURCE_HOSTING_ALLOWLIST,
-    }
-    if target not in allowlists:
-        raise ValueError(f"unknown build target: {target}")
+    allowlist = target_allowlist(target)
     if output.exists() and any(output.iterdir()):
         raise RuntimeError(f"build context must be empty: {output}")
     output.mkdir(parents=True, exist_ok=True)
-    allowlist = allowlists[target]
     archive = subprocess.check_output((
         "git", "-C", str(ROOT), "archive", "--format=tar", commit,
         "--", *allowlist,
